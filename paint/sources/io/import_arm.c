@@ -356,10 +356,21 @@ static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 res, u32 size
 	return texture;
 }
 
+// Files of the materials being imported: same-named textures of other folders are skipped
+static string_array_t *import_arm_material_files = NULL;
+
 // Image nodes are saved by asset name, the saved index only picks between assets sharing a name
 static i32 import_arm_image_asset_index(ui_node_button_t *but) {
 	char *name  = u8_array_to_string(but->data);
 	i32   saved = but->default_value->buffer[0];
+	if (import_arm_material_files != NULL) {
+		for (i32 i = 0; i < g_project->_->assets->length; ++i) {
+			asset_t *a = g_project->_->assets->buffer[i];
+			if (string_equals(a->name, name) && string_array_index_of(import_arm_material_files, a->file) != -1) {
+				return i;
+			}
+		}
+	}
 	if (saved >= 0 && saved < g_project->_->assets->length && string_equals(g_project->_->assets->buffer[saved]->name, name)) {
 		return saved;
 	}
@@ -593,7 +604,8 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 		return;
 	}
 
-	char *base = path_base_dir(path);
+	char *base                = path_base_dir(path);
+	import_arm_material_files = any_array_create_from_raw((void *[]){}, 0);
 	if (project->assets != NULL) {
 		for (i32 i = 0; i < project->assets->length; ++i) {
 			char *file = project->assets->buffer[i];
@@ -612,6 +624,7 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 				import_arm_make_pink(abs);
 			}
 			import_texture_run(abs, true);
+			any_array_push(import_arm_material_files, abs);
 		}
 	}
 
@@ -648,6 +661,7 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 		}
 	}
 
+	import_arm_material_files = NULL;
 	sys_notify_on_next_frame(&import_arm_run_material_from_project_on_next_frame, imported);
 	ui_nodes_group_stack = any_array_create_from_raw((void *[]){}, 0);
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
