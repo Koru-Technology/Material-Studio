@@ -7,8 +7,11 @@ static UIDocumentPickerViewController *documentPicker = nil;
 void IOSFileDialogOpen() {
 	UIViewController<UIDocumentPickerDelegate> *myViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
 	if (documentPicker == nil) {
-		documentPicker          = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.data" ] inMode:UIDocumentPickerModeOpen];
+		// public.folder lets a whole material folder be picked; multiple selection imports several at once
+		documentPicker          = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.data", @"public.folder" ]
+                                                                                     inMode:UIDocumentPickerModeOpen];
 		documentPicker.delegate = myViewController;
+		documentPicker.allowsMultipleSelection = YES;
 		documentPicker.modalPresentationStyle = UIModalPresentationFormSheet;
 	}
 	[myViewController presentViewController:documentPicker animated:YES completion:nil];
