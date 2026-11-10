@@ -526,6 +526,10 @@ static void dock_update_visible(dock_node_t *n) {
 	if (n->collapsed && ui_base_show) {
 		dock_hide(n->fixed == 1 ? n->a : n->b);
 	}
+	// No bottom bar: the status leaf is never shown
+	if (n->role == DOCK_ROLE_STATUS && dock_is_leaf(n->b)) {
+		dock_hide(n->b);
+	}
 	n->visible = n->a->visible || n->b->visible;
 }
 
