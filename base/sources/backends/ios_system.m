@@ -490,7 +490,69 @@ int iron_window_display() {
 	visible = value;
 }
 
+// Log import problems to both the system log and stderr (visible with devicectl --console)
+#define IMPORT_LOG(...) do { NSString *_m = [NSString stringWithFormat:__VA_ARGS__]; NSLog(@"%@", _m); fprintf(stderr, "%s\n", _m.UTF8String); fflush(stderr); } while (0)
+
+// Copy one file through a file coordinator, so file-provider / network (SMB) files get downloaded first.
+static BOOL importCopyFile(NSURL *src, NSString *dst) {
+	__block BOOL     ok       = NO;
+	__block NSError *copy_err = nil;
+	NSError         *coord_err = nil;
+	NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+	[coordinator coordinateReadingItemAtURL:src
+	                                options:NSFileCoordinatorReadingWithoutChanges
+	                                  error:&coord_err
+	                             byAccessor:^(NSURL *new_url) {
+		                             [[NSFileManager defaultManager] removeItemAtPath:dst error:nil];
+		                             // Read only the file's contents: a full copy also reads the file's security info (ACL),
+		                             // which the iPadOS SMB client refuses for files on the share
+		                             NSData *data = [NSData dataWithContentsOfURL:new_url options:0 error:&copy_err];
+		                             ok           = data != nil && [data writeToFile:dst options:NSDataWritingAtomic error:&copy_err];
+	                             }];
+	if (!ok) {
+		IMPORT_LOG(@"[import] copy failed %@ -> %@ coord=%@ copy=%@", src, dst, coord_err, copy_err);
+	}
+	return ok;
+}
+
+// Copy a file or a whole folder tree; folders are walked file by file instead of one bulk copy,
+// because a bulk copy of a not-yet-downloaded provider folder fails silently.
+static BOOL importCopyTree(NSURL *src, NSString *dst) {
+	NSNumber *is_dir = nil;
+	[src getResourceValue:&is_dir forKey:NSURLIsDirectoryKey error:nil];
+	if (![is_dir boolValue] && !src.hasDirectoryPath) {
+		return importCopyFile(src, dst);
+	}
+	[[NSFileManager defaultManager] createDirectoryAtPath:dst withIntermediateDirectories:YES attributes:nil error:nil];
+	__block NSArray<NSURL *> *children = nil;
+	__block NSError          *list_err = nil;
+	NSError                  *coord_err = nil;
+	NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+	[coordinator coordinateReadingItemAtURL:src
+	                                options:NSFileCoordinatorReadingWithoutChanges
+	                                  error:&coord_err
+	                             byAccessor:^(NSURL *new_url) {
+		                             children = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:new_url
+		                                                                      includingPropertiesForKeys:@[ NSURLIsDirectoryKey ]
+		                                                                                         options:NSDirectoryEnumerationSkipsHiddenFiles
+		                                                                                           error:&list_err];
+	                             }];
+	if (children == nil) {
+		IMPORT_LOG(@"[import] cannot list %@ coord=%@ list=%@", src, coord_err, list_err);
+		return NO;
+	}
+	BOOL any = NO;
+	for (NSURL *child in children) {
+		any |= importCopyTree(child, [dst stringByAppendingPathComponent:child.lastPathComponent]);
+	}
+	return any;
+}
+
 void importFile(NSURL *url) {
+	if (url == nil) {
+		IMPORT_LOG(@"[import] no URL received");
+		return;
+	}
 	NSArray  *paths       = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
 	NSString *folder_name = [NSString stringWithUTF8String:ios_title];
 	NSString *file_path   = [[paths objectAtIndex:0] stringByAppendingPathComponent:folder_name];
@@ -499,27 +561,27 @@ void importFile(NSURL *url) {
 	}
 	NSString *suggestedName = url.lastPathComponent;
 	file_path               = [file_path stringByAppendingPathComponent:suggestedName];
-	[url startAccessingSecurityScopedResource];
-	NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
-	[coordinator coordinateReadingItemAtURL:url
-	                                options:NSFileCoordinatorReadingWithoutChanges
-	                                  error:nil
-	                             byAccessor:^(NSURL *new_url) {
-		                             if ([[NSFileManager defaultManager] fileExistsAtPath:file_path]) {
-			                             [[NSFileManager defaultManager] removeItemAtPath:file_path error:nil];
-		                             }
-		                             [[NSFileManager defaultManager] copyItemAtURL:new_url toURL:[NSURL fileURLWithPath:file_path] error:nil];
-	                             }];
-
-	[url stopAccessingSecurityScopedResource];
+	BOOL scoped             = [url startAccessingSecurityScopedResource];
+	[[NSFileManager defaultManager] removeItemAtPath:file_path error:nil];
+	BOOL ok = importCopyTree(url, file_path);
+	if (scoped) {
+		[url stopAccessingSecurityScopedResource];
+	}
+	if (!ok) {
+		IMPORT_LOG(@"[import] import failed %@ -> %@", url, file_path);
+		return;
+	}
 	const char *cpath = [file_path cStringUsingEncoding:NSUTF8StringEncoding];
 	iron_internal_drop_files_callback(cpath);
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-	for (NSURL *url in urls) {
-		importFile(url);
-	}
+	// Copy off the main thread: pulling folders from a network share can take a while
+	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+		for (NSURL *url in urls) {
+			importFile(url);
+		}
+	});
 }
 
 - (void)dropInteraction:(UIDropInteraction *)interaction performDrop:(id<UIDropSession>)session {
@@ -531,6 +593,9 @@ void importFile(NSURL *url) {
 	for (UIDragItem *item in session.items) {
 		[item.itemProvider loadInPlaceFileRepresentationForTypeIdentifier:item.itemProvider.registeredTypeIdentifiers[0]
 		                                                completionHandler:^(NSURL *_Nullable url, BOOL isInPlace, NSError *_Nullable error) {
+			                                                if (url == nil) {
+				                                                IMPORT_LOG(@"[import] drop failed for %@: %@", item.itemProvider.registeredTypeIdentifiers, error);
+			                                                }
 			                                                importFile(url);
 		                                                }];
 	}
