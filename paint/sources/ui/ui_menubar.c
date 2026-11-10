@@ -732,7 +732,7 @@ void ui_menubar_draw_category_items() {
 
 		if (ui_menu_button(tr("About..."), "", ICON_INFO)) {
 
-			char *msg = string("%s.org - v%s (%s) - %s\n", manifest_title, manifest_version, config_get_date(), config_get_sha());
+			char *msg = string("%s - v%s (%s) - %s\n", manifest_title, manifest_version, config_get_date(), config_get_sha());
 			msg       = string("%s%s - %s", msg, iron_system_id(), strings_graphics_api());
 
 			char *gpu = gpu_device_name();

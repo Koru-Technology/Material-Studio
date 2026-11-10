@@ -1,7 +1,7 @@
 #include "../base/tools/amake/amake.h"
 
 project_t *main() {
-	flags->name                = "ArmorPaint";
+	flags->name                = "PiratePaint";
 	flags->package             = "org.armorpaint";
 	flags->embed               = has_arg("--embed"); // !has_arg("--debug"); // clang 19
 	flags->with_physics        = true;

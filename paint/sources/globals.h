@@ -5,7 +5,7 @@
 #include "types.h"
 #include <iron.h>
 
-char *manifest_title           = "ArmorPaint";
+char *manifest_title           = "PiratePaint";
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "23";
 char *manifest_version_config  = "4";
