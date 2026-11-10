@@ -598,3 +598,11 @@ typedef enum {
 	HISTORY_ACTION_EDIT_SWATCH,
 	HISTORY_ACTION_OBJECT_TRANSFORM,
 } history_action_t;
+
+// Rounded corners of floating panels
+typedef enum {
+	UI_BASE_CORNER_TL = 1,
+	UI_BASE_CORNER_TR = 2,
+	UI_BASE_CORNER_BR = 4,
+	UI_BASE_CORNER_BL = 8,
+} ui_base_corner_t;

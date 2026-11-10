@@ -9,6 +9,7 @@ typedef enum {
 	MENUBAR_CATEGORY_CAMERA   = 4,
 	MENUBAR_CATEGORY_WINDOW   = 5,
 	MENUBAR_CATEGORY_HELP     = 6,
+	MENUBAR_CATEGORY_IMPORT_EXPORT = 7, // File button in the touch top bar
 } menubar_category_t;
 
 typedef struct update_info {
@@ -33,9 +34,24 @@ static bool ui_menubar_is_floating() {
 
 i32 ui_menu_panel_x() {
 	if (ui_menubar_is_floating()) {
-		return base_view_x(0) + 5 * UI_SCALE();
+		return base_view_x(0); // Flush with the screen edge
 	}
 	return 0;
+}
+
+// The menu fill would cover the rounded panel, keep it transparent
+static void ui_menubar_begin_panel_menu(bool panel) {
+	u32 sep = g_theme->SEPARATOR_COL;
+	if (panel) {
+		g_theme->SEPARATOR_COL = 0x00000000;
+	}
+	ui_begin_menu();
+	g_theme->SEPARATOR_COL = sep;
+}
+
+// Space above the icons of the floating top bar
+i32 ui_menubar_top_pad() {
+	return ui_menubar_is_floating() && g_config->touch_ui ? math_floor(10 * UI_SCALE()) : 0;
 }
 
 i32 ui_menu_top_y() {
@@ -60,7 +76,7 @@ i32 ui_menu_panel_y() {
 #endif
 
 	if (ui_menubar_is_floating()) {
-		return base_y() + 5 * UI_SCALE();
+		return base_y(); // Flush with the screen edge
 	}
 	return 0;
 }
@@ -225,7 +241,50 @@ static void ui_menubar_delete_unused(void *_) {
 	tab_textures_delete_unused();
 }
 
+static void ui_menubar_draw_import_export_items() {
+	ui_menu_label(tr("Import"), NULL);
+	if (ui_menu_button(tr("Texture..."), "", ICON_IMAGE)) {
+		project_import_asset(string_array_join(path_texture_formats(), ","), false);
+	}
+	if (ui_menu_button(tr("Material..."), "", ICON_SPHERE)) {
+		project_import_material();
+	}
+	if (ui_menu_button(tr("Mesh..."), "", ICON_CUBE)) {
+		project_import_mesh(true, NULL);
+	}
+	if (ui_menu_button(tr("Envmap..."), "", ICON_LANDSCAPE)) {
+		ui_files_show("hdr", false, false, &ui_menubar_import_envmap);
+	}
+	if (ui_menu_button(tr("Brush..."), "", ICON_PAINT)) {
+		project_import_brush();
+	}
+	if (ui_menu_button(tr("Swatches..."), "", ICON_PALETTE)) {
+		project_import_swatches(false);
+	}
+	if (ui_menu_button(tr("Font..."), "", ICON_FONT)) {
+		project_import_asset("ttf,ttc,otf", true);
+	}
+	ui_menu_separator();
+	ui_menu_label(tr("Export"), NULL);
+	if (ui_menu_button(tr("Textures..."), "", ICON_IMAGE)) {
+		g_context->layers_export = EXPORT_MODE_VISIBLE;
+		box_export_tab           = 0;
+		box_export_show_textures();
+	}
+	if (ui_menu_button(tr("Mesh..."), "", ICON_CUBE)) {
+		g_context->export_mesh_index = 0; // All
+		box_export_show_mesh();
+	}
+	if (ui_menu_button(tr("Swatches..."), "", ICON_PALETTE)) {
+		project_export_swatches();
+	}
+}
+
 void ui_menubar_draw_category_items() {
+	if (ui_menubar_category == MENUBAR_CATEGORY_IMPORT_EXPORT) {
+		ui_menubar_draw_import_export_items();
+		return;
+	}
 	if (ui_menubar_category == MENUBAR_CATEGORY_FILE) {
 		if (ui_menu_button(tr("New Project..."), any_map_get(g_keymap, "file_new"), ICON_FILE_NEW)) {
 			project_new_box();
@@ -840,7 +899,7 @@ void ui_menubar_show_menu(i32 category) {
 	i32 panel_x = ui_menu_panel_x();
 	i32 panel_y = ui_menu_panel_y();
 	ui_menu_x   = math_floor(g_ui->_x - g_ui->_w) + panel_x;
-	ui_menu_y   = math_floor(ui_MENUBAR_H(g_ui)) + panel_y;
+	ui_menu_y   = math_floor(ui_MENUBAR_H(g_ui)) + panel_y + ui_menubar_top_pad();
 	if (g_config->touch_ui) {
 		i32 menu_w = math_floor(base_default_element_w * UI_SCALE() * 2.0);
 		ui_menu_x -= math_floor((menu_w - g_ui->_w) / 2.0) + math_floor(ui_header_h / 2.0);
@@ -890,7 +949,13 @@ void ui_menubar_render_ui() {
 
 	// Menubar is drawn in a row of its own when the tab names leave no space for it
 	i32 window_w = ui_dock_is_menubar_row() ? iron_window_width() : ui_menubar_w;
-	if (ui_window(ui_menubar_menu_handle, panel_x, panel_y, window_w, ui_header_h, false)) {
+	bool panel = ui_menubar_is_floating() && !ui_dock_is_menubar_row();
+	i32  pad   = ui_menubar_top_pad();
+	if (panel ? ui_base_panel_window(ui_menubar_menu_handle, panel_x, panel_y, window_w, ui_header_h + pad, UI_BASE_CORNER_BR, false)
+	          : ui_window(ui_menubar_menu_handle, panel_x, panel_y, window_w, ui_header_h, false)) {
+		if (panel) {
+			g_ui->_y += pad;
+		}
 		if (ui_dock_is_menubar_row()) {
 			ui_fill(0, 0, g_ui->_window_w, g_ui->_window_h + 4, g_theme->SEPARATOR_COL);
 		}
@@ -899,13 +964,17 @@ void ui_menubar_render_ui() {
 			g_ui->_x += 1;
 		}
 
-		ui_begin_menu();
+		ui_menubar_begin_panel_menu(panel);
 
 		if (g_config->touch_ui) {
 			g_ui->_w = item_w;
 
-			if (ui_menubar_icon_button(ICON_MENU)) {
-				box_preferences_show();
+			i32 size = math_floor(g_ui->_w / (float)UI_SCALE());
+			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_IMPORT_EXPORT) {
+				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
+			}
+			if (ui_menubar_icon_button(ICON_FILE)) {
+				ui_menubar_show_menu(MENUBAR_CATEGORY_IMPORT_EXPORT);
 			}
 			if (ui_menubar_icon_button(ICON_PROJECTS)) {
 				// Save project icon in lit mode
@@ -913,14 +982,6 @@ void ui_menubar_render_ui() {
 				console_toast(tr("Saving project"));
 				sys_notify_on_next_frame(&ui_menubar_render_ui_save_project, NULL);
 			}
-			if (ui_menubar_icon_button(ICON_IMPORT)) {
-				project_import_asset(NULL, true);
-			}
-			if (ui_menubar_icon_button(ICON_EXPORT)) {
-				box_export_tab = 0;
-				box_export_show_textures();
-			}
-			i32 size = math_floor(g_ui->_w / (float)UI_SCALE());
 			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_VIEWPORT) {
 				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
 			}
@@ -969,6 +1030,9 @@ void ui_menubar_render_ui() {
 				history_redo();
 			}
 			g_ui->enabled = true;
+			if (ui_menubar_icon_button(ICON_COG)) {
+				box_preferences_show();
+			}
 		}
 		else {
 			string_array_t *categories = ui_menubar_categories();

@@ -8,6 +8,56 @@ i32 _ui_toolbar_bottom = 0;
 
 void ui_toolbar_init() {}
 
+static i32 ui_toolbar_color_i = 0; // Position of the next item, picks its color
+static i32 ui_toolbar_sel_y   = -1; // Screen y of the selected item, its chevron floats next to the toolbar
+static i32 ui_toolbar_sel_h   = 0;
+static u32 ui_toolbar_sel_col = 0;
+
+static i32 ui_toolbar_label_size() {
+	return math_floor(g_ui->font_size * 0.65);
+}
+
+// Height of the label under each icon
+static i32 ui_toolbar_label_h() {
+	return draw_font_height(g_ui->ops->font, ui_toolbar_label_size()) + math_floor(2 * UI_SCALE());
+}
+
+// Space in between the items
+static i32 ui_toolbar_gap() {
+	return math_floor(8 * UI_SCALE());
+}
+
+// Touch: the toolbar is a panel, items are padded inside their highlight
+static bool ui_toolbar_is_panel() {
+	return context_is_floating_toolbar() && g_config->touch_ui;
+}
+
+static i32 ui_toolbar_side() {
+	return ui_toolbar_is_panel() ? math_floor(8 * UI_SCALE()) : 0;
+}
+
+// Each item gets its own hue
+static u32 ui_toolbar_item_color(i32 i) {
+	f32 h = fmodf(i * 0.13f, 1.0f) * 6.0f;
+	f32 s = 0.55f;
+	f32 v = 0.98f;
+	i32 k = (i32)h;
+	f32 f = h - k;
+	f32 p = v * (1 - s);
+	f32 q = v * (1 - s * f);
+	f32 t = v * (1 - s * (1 - f));
+	f32 r, g, b;
+	switch (k % 6) {
+	case 0: r = v, g = t, b = p; break;
+	case 1: r = q, g = v, b = p; break;
+	case 2: r = p, g = v, b = t; break;
+	case 3: r = p, g = q, b = v; break;
+	case 4: r = t, g = p, b = v; break;
+	default: r = v, g = p, b = q; break;
+	}
+	return 0xff000000 | ((u32)(r * 255) << 16) | ((u32)(g * 255) << 8) | (u32)(b * 255);
+}
+
 // From TOOL_TYPE_EMPTY to TOOL_TYPE_CURVE
 static i32 ui_toolbar_object_tool_icons[] = {ICON_EMPTY,   ICON_PLANE, ICON_CUBE,   ICON_UVSPHERE, ICON_CONE, ICON_CYLINDER,
                                              ICON_CAPSULE, ICON_TORUS, ICON_TEXT3D, ICON_PATH,     ICON_CURVE};
@@ -100,7 +150,14 @@ void ui_toolbar_update() {
 void ui_toolbar_draw_highlight(u32 col) {
 	i32 size = ui_toolbar_w(false) - 4;
 	draw_set_color(col);
-	ui_draw_rect(true, true, g_ui->_x + -1, g_ui->_y + 2, size + 2, size + 2);
+	if (ui_toolbar_is_panel()) {
+		// Whole width of the panel, the side and gap become padding inside the highlight
+		i32 side = ui_toolbar_side();
+		i32 gap  = ui_toolbar_gap();
+		ui_draw_rect(true, true, g_ui->_x - 2 - side, g_ui->_y + 2 - gap / 2, ui_toolbar_w(false) + side * 2, size + 2 + ui_toolbar_label_h() + gap);
+		return;
+	}
+	ui_draw_rect(true, true, g_ui->_x + -1, g_ui->_y + 2, size + 2, size + 2 + ui_toolbar_label_h());
 }
 
 static bool ui_toolbar_input_visible() {
@@ -110,10 +167,16 @@ static bool ui_toolbar_input_visible() {
 	return true;
 }
 
-static ui_state_t ui_toolbar_draw_icon(bool selected, bool visible, i32 tile_i, gpu_texture_t *img, i32 icon_accent) {
+static ui_state_t ui_toolbar_draw_icon(bool selected, bool visible, i32 tile_i, gpu_texture_t *img, i32 icon_accent, char *label) {
 	i32 size = ui_toolbar_w(false) - 4;
+	u32 color = ui_toolbar_item_color(ui_toolbar_color_i++);
+	if (icon_accent != -1) {
+		color = icon_accent; // Light theme
+	}
 	if (selected) {
-		ui_toolbar_draw_highlight(g_theme->HIGHLIGHT_COL);
+		// Touch: a dark shade of the item color
+		u32 dark = 0xff000000 | ((u32)(((color >> 16) & 0xff) * 0.35f) << 16) | ((u32)(((color >> 8) & 0xff) * 0.35f) << 8) | (u32)((color & 0xff) * 0.35f);
+		ui_toolbar_draw_highlight(g_config->touch_ui ? dark : g_theme->HIGHLIGHT_COL);
 	}
 	else if (visible && ui_input_in_rect(g_ui->_window_x + g_ui->_x - 1, g_ui->_window_y + g_ui->_y + 2, size + 2, size + 2)) {
 		ui_toolbar_draw_highlight(g_theme->HOVER_COL);
@@ -122,11 +185,27 @@ static ui_state_t ui_toolbar_draw_icon(bool selected, bool visible, i32 tile_i, 
 	rect_t *rect = resource_tile50(img, tile_i);
 	i32     _y   = g_ui->_y;
 	g_ui->_x -= 2;
-	ui_state_t image_state = ui_sub_image(img, icon_accent, -1.0, rect->x, rect->y, rect->w, rect->h);
+	ui_state_t image_state = ui_sub_image(img, color, -1.0, rect->x, rect->y, rect->w, rect->h);
 	g_ui->_x += 2;
 
+	// Name under the icon
+	i32 label_size = ui_toolbar_label_size();
+	draw_set_font(g_ui->ops->font, label_size);
+	draw_set_color(color);
+	i32 label_w = draw_string_width(g_ui->ops->font, label_size, label);
+	draw_string(label, g_ui->_x + (size - label_w) / 2.0, g_ui->_y);
+	draw_set_font(g_ui->ops->font, g_ui->font_size);
+	g_ui->_y += ui_toolbar_label_h();
+
+	// Touch: the chevron is drawn next to the toolbar, see ui_toolbar_draw_chevron
+	if (selected && ui_toolbar_is_panel()) {
+		i32 gap            = ui_toolbar_gap();
+		ui_toolbar_sel_y   = g_ui->_window_y + _y + 2 - gap / 2;
+		ui_toolbar_sel_h   = size + 2 + ui_toolbar_label_h() + gap;
+		ui_toolbar_sel_col = color;
+	}
 	// Clicking the selected tool again opens its properties
-	if (selected && context_is_floating_toolbar()) {
+	else if (selected && context_is_floating_toolbar()) {
 		float aw = 4 * UI_SCALE();
 		float ah = 8 * UI_SCALE();
 		float ax = g_ui->_x + size - aw;
@@ -150,7 +229,23 @@ void ui_toolbar_draw_sculpt_tool(sculpt_type_t mode, gpu_texture_t *img, i32 ico
 	g_ui->_x += 2;
 	bool       visible     = ui_toolbar_input_visible();
 	bool       selected    = g_context->tool == TOOL_TYPE_BRUSH && g_context->brush_sculpt == mode;
-	ui_state_t image_state = ui_toolbar_draw_icon(selected, visible, ICON_SCULPT_DRAW + mode, img, icon_accent);
+	string_array_t *names = any_array_create_from_raw_tmp(
+	    (void *[]){
+	        tr("Draw"),
+	        tr("Grab"),
+	        tr("Inflate"),
+	        tr("Flatten"),
+	        tr("Clay"),
+	        tr("Pinch"),
+	        tr("Crease"),
+	        tr("Cloth"),
+	        tr("Twist"),
+	        tr("Stretch"),
+	        tr("Trim"),
+	        tr("Plateau"),
+	    },
+	    12);
+	ui_state_t image_state = ui_toolbar_draw_icon(selected, visible, ICON_SCULPT_DRAW + mode, img, icon_accent, names->buffer[mode]);
 
 	if (image_state == UI_STATE_STARTED && visible) {
 		_ui_toolbar_i = mode;
@@ -160,26 +255,10 @@ void ui_toolbar_draw_sculpt_tool(sculpt_type_t mode, gpu_texture_t *img, i32 ico
 	ui_toolbar_handle_release(image_state, visible, -1 - mode);
 
 	if (g_ui->is_hovered) {
-		string_array_t *names = any_array_create_from_raw_tmp(
-		    (void *[]){
-		        tr("Draw"),
-		        tr("Grab"),
-		        tr("Inflate"),
-		        tr("Flatten"),
-		        tr("Clay"),
-		        tr("Pinch"),
-		        tr("Crease"),
-		        tr("Cloth"),
-		        tr("Twist"),
-		        tr("Stretch"),
-		        tr("Trim"),
-		        tr("Plateau"),
-		    },
-		    12);
 		ui_tooltip(names->buffer[mode]);
 	}
 	g_ui->_x -= 2;
-	g_ui->_y += 2;
+	g_ui->_y += ui_toolbar_gap();
 }
 
 static u32 ui_toolbar_last_picker_mask_color = 0;
@@ -206,7 +285,8 @@ void ui_toolbar_draw_tool(i32 tool, gpu_texture_t *img, i32 icon_accent) {
 		tile_i = plugin_tool_get(tool)->icon;
 	}
 
-	ui_state_t image_state = ui_toolbar_draw_icon(g_context->tool == tool, visible, tile_i, img, icon_accent);
+	char      *label       = string_equals(ui_toolbar_tool_names->buffer[tool], "ColorID") ? tr("ID") : tr(ui_toolbar_tool_names->buffer[tool]);
+	ui_state_t image_state = ui_toolbar_draw_icon(g_context->tool == tool, visible, tile_i, img, icon_accent, label);
 
 	if (image_state == UI_STATE_STARTED && visible) {
 		_ui_toolbar_i = tool;
@@ -243,7 +323,7 @@ void ui_toolbar_draw_tool(i32 tool, gpu_texture_t *img, i32 icon_accent) {
 		ui_tooltip(tooltip);
 	}
 	g_ui->_x -= 2;
-	g_ui->_y += 2;
+	g_ui->_y += ui_toolbar_gap();
 }
 
 i32 ui_toolbar_w(bool screen_size_request) {
@@ -308,8 +388,18 @@ void ui_toolbar_header_menu_draw() {
 }
 
 static void ui_toolbar_draw_window(ui_window_t *handle, i32 x, i32 y, i32 h) {
-	if (ui_window(handle, x, y, ui_toolbar_w(false), h, false)) {
+	bool panel = ui_toolbar_is_panel();
+	i32  side  = ui_toolbar_side(); // Padding left and right of the buttons
+	if (panel ? ui_base_panel_window(handle, x, y, ui_toolbar_w(false) + side * 2, h, UI_BASE_CORNER_TR | UI_BASE_CORNER_BR, false)
+	          : ui_window(handle, x, y, ui_toolbar_w(false), h, false)) {
+		g_ui->_x += side;
+		g_ui->_w = ui_toolbar_w(false);
+		ui_toolbar_sel_y = -1;
+		if (panel) {
+			g_ui->_y += ui_toolbar_gap(); // Room for the padding of the first highlight
+		}
 		g_ui->image_scroll_align   = false;
+		ui_toolbar_color_i         = 0;
 		gpu_texture_t *img         = resource_get("icons.k");
 		u32            col         = g_theme->WINDOW_BG_COL;
 		bool           light       = col > 0xff666666;
@@ -360,6 +450,34 @@ static void ui_toolbar_draw_window(ui_window_t *handle, i32 x, i32 y, i32 h) {
 	}
 }
 
+// Chevron floating to the right of the selected tool, tapping it opens the tool properties
+static void ui_toolbar_draw_chevron(i32 toolbar_x) {
+	if (!ui_toolbar_is_panel() || ui_toolbar_sel_y < 0) {
+		return;
+	}
+	static ui_window_t *hwnd = NULL;
+	if (hwnd == NULL) {
+		hwnd = ui_window_create();
+	}
+	hwnd->redraws = 2;
+	i32 size      = math_floor(34 * UI_SCALE());
+	i32 x         = toolbar_x + ui_toolbar_w(false) + ui_toolbar_side() * 2 + math_floor(2 * UI_SCALE());
+	i32 y         = ui_toolbar_sel_y + (ui_toolbar_sel_h - size) / 2;
+	u32 bg        = g_theme->WINDOW_BG_COL;
+	g_theme->WINDOW_BG_COL = 0x00000000;
+	bool draw     = ui_window(hwnd, x, y, size, size, false);
+	g_theme->WINDOW_BG_COL = bg;
+	if (draw) {
+		gpu_texture_t *img  = resource_get("icons.k");
+		rect_t        *rect = resource_tile50(img, ICON_CHEVRON_RIGHT);
+		g_ui->image_scroll_align = false;
+		if (ui_sub_image(img, ui_toolbar_sel_col, size, rect->x, rect->y, rect->w, rect->h) == UI_STATE_RELEASED) {
+			ui_menu_draw(&ui_toolbar_tool_properties_menu_draw, x + size, ui_toolbar_sel_y);
+		}
+		g_ui->image_scroll_align = true;
+	}
+}
+
 void ui_toolbar_render_ui() {
 	i32 _WINDOW_BG_COL = g_theme->WINDOW_BG_COL;
 
@@ -391,11 +509,21 @@ void ui_toolbar_render_ui() {
 			_ui_toolbar_bottom = ui_view2d_wy + ui_view2d_wh;
 		}
 		else {
-			x = base_view_x(0) + ui_toolbar_x();
+			x = base_view_x(0) + (g_config->touch_ui ? 0 : ui_toolbar_x()); // Touch: flush with the screen edge
 		}
 		y                      = _ui_toolbar_y + ui_header_h + ui_toolbar_x() + 3 * UI_SCALE();
-		h                      = ui_toolbar_item_count() * (ui_toolbar_w(false) + 2);
-		g_theme->WINDOW_BG_COL = g_theme->SEPARATOR_COL;
+		h                      = ui_toolbar_item_count() * (ui_toolbar_w(false) + ui_toolbar_label_h() + ui_toolbar_gap());
+		if (!g_config->touch_ui) {
+			g_theme->WINDOW_BG_COL = g_theme->SEPARATOR_COL;
+		}
+		else {
+			h += ui_toolbar_gap(); // Top padding
+		}
+		if (g_config->touch_ui && base_view3d_show) {
+			// Centered on the side of the screen, kept clear of the top bar and its shadow
+			i32 top = _ui_toolbar_y + ui_header_h + ui_menubar_top_pad() + ui_base_panel_shadow() + ui_toolbar_gap();
+			y       = math_max(top, (_ui_toolbar_y + _ui_toolbar_bottom - h) / 2);
+		}
 		if (!base_view3d_show && ui_view2d_show && !g_config->touch_ui) {
 			y += ui_toolbar_w(false);
 		}
@@ -419,6 +547,7 @@ void ui_toolbar_render_ui() {
 	for (i32 i = 0; i < views; ++i) {
 		ui_toolbar_draw_window(i == 0 ? ui_toolbar_handle : ui_toolbar_split_handle, x + base_view_x(i) - base_view_x(0), y, h);
 	}
+	ui_toolbar_draw_chevron(x);
 
 	if (context_is_floating_toolbar()) {
 		g_theme->WINDOW_BG_COL = _WINDOW_BG_COL;

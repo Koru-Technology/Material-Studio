@@ -357,3 +357,68 @@ void ui_base_show_3d_view() {
 	ui_dock_show_view(TAB_VIEW3D, !base_view3d_show);
 	base_resize();
 }
+
+// Floating panels (top bar, toolbar): darker, rounded on the sides away from the screen edge, with a drop shadow
+
+i32 ui_base_panel_shadow() {
+	return math_floor(4 * UI_SCALE());
+}
+
+static void ui_base_fill_round_rect(f32 x, f32 y, f32 w, f32 h, f32 r, i32 corners) {
+	gpu_texture_t *c = ui_round_corner((i32)r);
+	draw_filled_rect(x + r, y, w - r * 2, h);
+	draw_filled_rect(x, y + r, r, h - r * 2);
+	draw_filled_rect(x + w - r, y + r, r, h - r * 2);
+	if (corners & UI_BASE_CORNER_TL) {
+		draw_scaled_image(c, x, y, r, r);
+	}
+	else {
+		draw_filled_rect(x, y, r, r);
+	}
+	if (corners & UI_BASE_CORNER_TR) {
+		draw_scaled_image(c, x + w, y, -r, r);
+	}
+	else {
+		draw_filled_rect(x + w - r, y, r, r);
+	}
+	if (corners & UI_BASE_CORNER_BR) {
+		draw_scaled_image(c, x + w, y + h, -r, -r);
+	}
+	else {
+		draw_filled_rect(x + w - r, y + h - r, r, r);
+	}
+	if (corners & UI_BASE_CORNER_BL) {
+		draw_scaled_image(c, x, y + h, r, -r);
+	}
+	else {
+		draw_filled_rect(x, y + h - r, r, r);
+	}
+}
+
+// Window holding a panel of size w x h, the window is larger by the shadow on the right (or left) and bottom
+bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 corners, bool shadow_left) {
+	i32 s      = ui_base_panel_shadow();
+	i32 wx     = shadow_left ? x - s : x;
+	u32 bg     = g_theme->WINDOW_BG_COL;
+	g_theme->WINDOW_BG_COL = 0x00000000;
+	bool draw  = ui_window(handle, wx, y, w + s, h + s, false);
+	g_theme->WINDOW_BG_COL = bg;
+	if (!draw) {
+		return false;
+	}
+
+	f32 px = shadow_left ? s : 0;
+	f32 r  = 12 * UI_SCALE();
+	// Shadow: stacked translucent layers, growing outwards
+	for (i32 i = s; i >= 1; --i) {
+		draw_set_color(0x0c000000);
+		ui_base_fill_round_rect(px - i, i / 2 - i, w + i * 2, h + i * 2, r + i, corners);
+	}
+	draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker
+	ui_base_fill_round_rect(px, 0, w, h, r, corners);
+	draw_set_color(0xffffffff);
+
+	g_ui->_x += px;
+	g_ui->_w = w; // Content keeps the panel width, the shadow is outside of it
+	return true;
+}

@@ -325,6 +325,11 @@ static gpu_texture_t *ui_get_round_corner(int r, int s) {
 	return &c->image;
 }
 
+// Filled quarter circle of radius r, the corner sits at the bottom right of the image
+gpu_texture_t *ui_round_corner(int r) {
+	return ui_get_round_corner(r, r);
+}
+
 void ui_rect_round(float x, float y, float w, float h, uint32_t color, float strength) {
 	draw_set_color(color);
 	if (!current->enabled) {
@@ -3163,5 +3168,5 @@ void ui_theme_default(ui_theme_t *t) {
 	t->FULL_TABS         = false;
 	t->SHADOWS           = true;
 	t->LINK_STYLE        = UI_LINK_STYLE_LINE;
-	t->VIEWPORT_COL      = 0xff070707;
+	t->VIEWPORT_COL      = 0xff050505; // Darker than the panels
 }

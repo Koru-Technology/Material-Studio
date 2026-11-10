@@ -37,6 +37,13 @@ void ui_menu_fit_to_screen() {
 		}
 		ui_menu_x += 1; // Move out of mouse focus
 	}
+	// Menus centered under a button at the screen edge would start off screen
+	if (ui_menu_x < 0) {
+		ui_menu_x = 0;
+	}
+	if (ui_menu_y < 0) {
+		ui_menu_y = 0;
+	}
 }
 
 void ui_menu_render() {
