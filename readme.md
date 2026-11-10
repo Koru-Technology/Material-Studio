@@ -1,3 +1,5 @@
+> **PiratePaint** is a vibe-coded plagiarism of [ArmorPaint](https://github.com/armory3d/armorpaint), modified to be a bit easier to use on iPad.
+
 ![](https://armorpaint.org/img/git.jpg)
 
 armorpaint
