@@ -24,6 +24,7 @@ void base_on_shutdown() {
 }
 
 void base_on_foreground() {
+	library_rescan(); // Pick up materials added while away
 	g_context->foreground_event = true;
 	g_context->last_paint_x     = -1;
 	g_context->last_paint_y     = -1;
@@ -607,6 +608,8 @@ void base_init() {
 	g_context->camera_pivot    = g_config->camera_pivot;
 	g_context->camera_controls = g_config->camera_controls;
 
+	library_init();
+
 	bool has_projects = g_config->recent_projects->length > 0;
 	if (g_config->splash_screen && has_projects) {
 		box_projects_show();
@@ -925,6 +928,15 @@ any_array_t *base_combo_enum_textures(char *node_type) {
 	}
 
 	return NULL;
+}
+
+i32 base_get_asset_index_by_file(char *file) {
+	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
+		if (string_equals(g_project->_->assets->buffer[i]->file, file)) {
+			return i;
+		}
+	}
+	return 0;
 }
 
 i32 base_get_asset_index(char *file_name) {

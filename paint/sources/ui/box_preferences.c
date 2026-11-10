@@ -1112,6 +1112,26 @@ void box_preferences_cloud_tab() {
 	ui_text_input(&g_config->server, tr("Cloud Server"), UI_ALIGN_LEFT, true, false);
 }
 
+void box_preferences_library_tab() {
+	box_preferences_section(tr("Materials Folder"));
+	bool set = !string_equals(g_config->materials_folder, "");
+	ui_text(set ? g_config->materials_folder : tr("No folder selected"), UI_ALIGN_LEFT, 0x00000000);
+	ui_text(tr("Each folder of textures inside it becomes a material in the Library tab."), UI_ALIGN_LEFT, 0x00000000);
+	if (set) {
+		ui_text(library_status(), UI_ALIGN_LEFT, 0x00000000);
+	}
+	ui_row3();
+	if (ui_icon_button(tr("Choose Folder..."), ICON_FOLDER_OPEN, UI_ALIGN_CENTER)) {
+		library_pick_folder();
+	}
+	if (set && ui_icon_button(tr("Rescan Now"), ICON_REFRESH, UI_ALIGN_CENTER)) {
+		library_rescan();
+	}
+	if (set && ui_icon_button(tr("Forget Folder"), ICON_CLOSE, UI_ALIGN_CENTER)) {
+		library_forget();
+	}
+}
+
 void box_preferences_show_on_hide() {
 	config_save();
 }
@@ -1155,6 +1175,9 @@ void box_preferences_show_box() {
 	}
 	if (ui_tab(&box_preferences_tab, tr("Plugins"), true, -1, false)) {
 		box_preferences_plugins_tab();
+	}
+	if (ui_tab(&box_preferences_tab, tr("Library"), true, -1, false)) {
+		box_preferences_library_tab();
 	}
 }
 

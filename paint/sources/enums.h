@@ -329,7 +329,8 @@ typedef enum {
 	TAB_VIEW3D    = 14,
 	TAB_VIEW2D    = 15,
 	TAB_NODES     = 16,
-	TAB_COUNT     = 17,
+	TAB_LIBRARY   = 17,
+	TAB_COUNT     = 18,
 } tab_id_t;
 
 typedef enum {
@@ -606,3 +607,5 @@ typedef enum {
 	UI_BASE_CORNER_BR = 4,
 	UI_BASE_CORNER_BL = 8,
 } ui_base_corner_t;
+
+#define IMPORT_FOLDER_MAPS 7 // Base color, opacity, occlusion, roughness, metallic, normal, height

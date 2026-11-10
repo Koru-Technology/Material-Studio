@@ -1513,3 +1513,24 @@ void              mesh_math_node_init();
 void              mesh_vector_node_init();
 void              mesh_output_node_init();
 void              edit_uvmap_update();
+
+// Material library
+void             library_init();
+void             library_rescan();
+void             library_pick_folder();
+void             library_forget();
+bool             library_has_folder();
+char            *library_status();
+i32              library_entry_count();
+library_entry_t *library_entry_get(i32 i);
+bool             library_entry_ready(library_entry_t *e);
+bool             library_entry_broken(library_entry_t *e);
+char            *library_entry_name(library_entry_t *e);
+char            *library_entry_rel(library_entry_t *e);
+gpu_texture_t   *library_entry_icon(library_entry_t *e);
+void             library_use(library_entry_t *e);
+i32              base_get_asset_index_by_file(char *file);
+bool             import_folder_find_maps(string_array_t *files, char **maps);
+slot_material_t *import_folder_make_material(char *name, char *dir, char **maps);
+buffer_t        *export_arm_encode_library_material(slot_material_t *m);
+void             tab_library_draw(i32 *htab);

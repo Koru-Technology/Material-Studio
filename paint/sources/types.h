@@ -190,6 +190,7 @@ typedef struct config {
 	bool                 pixel_snap;
 	bool                 large_asset_previews;
 	bool                 tooltips;
+	char                *materials_folder; // Library root, "" when not set
 } config_t;
 
 typedef struct slot_material {
@@ -1083,3 +1084,5 @@ typedef struct ui_nodes_editor_state {
 	ui_color_state_t color_state;
 	i32              line;
 } ui_nodes_editor_state_t;
+
+typedef struct library_entry library_entry_t; // Material library item, library.c

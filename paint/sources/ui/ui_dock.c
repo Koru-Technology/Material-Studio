@@ -341,6 +341,7 @@ void ui_dock_reset() {
 	dock_default_leaf(sidebar0, TAB_DEBUG);
 	dock_node_t *sidebar1 = dock_leaf_create();
 	dock_default_leaf(sidebar1, TAB_MATERIALS);
+	dock_default_leaf(sidebar1, TAB_LIBRARY);
 	dock_default_leaf(sidebar1, TAB_BRUSHES);
 	dock_default_leaf(sidebar1, TAB_PLUGINS);
 
@@ -487,12 +488,21 @@ void ui_dock_load() {
 
 	// Tabs added after the config was saved
 	dock_node_t *leaves[DOCK_MAX_LEAVES];
-	dock_collect_leaves(ui_dock_root, leaves, 0);
+	i32          leaf_count = dock_collect_leaves(ui_dock_root, leaves, 0);
+	// Library goes next to Materials
+	dock_node_t *materials_leaf = leaves[0];
+	for (i32 l = 0; l < leaf_count; ++l) {
+		for (i32 t = 0; t < leaves[l]->tab_count; ++t) {
+			if (leaves[l]->tabs[t] == TAB_MATERIALS) {
+				materials_leaf = leaves[l];
+			}
+		}
+	}
 	for (i32 i = 0; i < TAB_COUNT; ++i) {
 		tab_draw_t *tab = ui_base_get_tab(i);
 		if (tab != NULL && !docked[i]) {
 			tab->closed = tab->closed_default;
-			dock_leaf_add(leaves[0], i, -1);
+			dock_leaf_add(i == TAB_LIBRARY ? materials_leaf : leaves[0], i, -1);
 		}
 	}
 	ui_dock_layout();

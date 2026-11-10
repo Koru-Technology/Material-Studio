@@ -589,6 +589,50 @@ void export_arm_run_material(char *path) {
 	free(buffer);
 }
 
+// Material file saved next to its textures (material library): textures are referenced by file name,
+// nothing is packed, the preview is embedded
+buffer_t *export_arm_encode_library_material(slot_material_t *m) {
+	ui_node_canvas_t_array_t *mnodes = any_array_create_from_raw((void *[]){}, 0);
+	ui_node_canvas_t         *c      = util_clone_canvas(m->canvas);
+	asset_t_array_t          *assets = any_array_create_from_raw((void *[]){}, 0);
+	for (i32 i = 0; i < c->nodes->length; ++i) {
+		export_arm_export_node(c->nodes->buffer[i], assets);
+	}
+	any_array_push(mnodes, c);
+
+	string_array_t *texture_files = any_array_create_from_raw((void *[]){}, 0);
+	for (i32 i = 0; i < assets->length; ++i) {
+		asset_t *a = assets->buffer[i];
+		any_array_push(texture_files, string_copy(a->name)); // File name with extension
+	}
+
+#ifdef IRON_BGRA
+	buffer_t *icon = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
+#else
+	buffer_t *icon = lz4_encode(gpu_get_texture_pixels(m->image));
+#endif
+	material_data2_t_array_t *mdata2 = any_array_create_from_raw((void *[]){}, 0);
+	material_data2_t         *md2    = ALLOC_INIT(material_data2_t, {
+	                                                                    .paint_base   = m->paint_base,
+	                                                                    .paint_opac   = m->paint_opac,
+	                                                                    .paint_occ    = m->paint_occ,
+	                                                                    .paint_rough  = m->paint_rough,
+	                                                                    .paint_met    = m->paint_met,
+	                                                                    .paint_nor    = m->paint_nor,
+	                                                                    .paint_height = m->paint_height,
+	                                                                    .paint_emis   = m->paint_emis,
+	                                                                    .paint_subs   = m->paint_subs,
+                                                         });
+	any_array_push(mdata2, md2);
+
+	project_t *raw = ALLOC_INIT(project_t, {.version        = manifest_version_project,
+	                                        .material_nodes = mnodes,
+	                                        .material_icons = any_array_create_from_raw((void *[]){icon}, 1),
+	                                        .material_datas = mdata2,
+	                                        .assets         = texture_files});
+	return util_encode_project(raw);
+}
+
 void export_arm_run_brush(char *path) {
 	if (!ends_with(path, ".arm")) {
 		path = string("%s.arm", path);
