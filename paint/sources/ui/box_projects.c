@@ -102,7 +102,6 @@ static void box_projects_cloud_menu() {
 
 void box_projects_cloud_tab() {
 	if (ui_tab(&box_projects_tab_index, tr("Cloud"), true, -1, false)) {
-		box_projects_draw_badge();
 
 		if (box_projects_cloud == NULL) {
 			ui_text(tr("Sign in to store projects in the cloud."), UI_ALIGN_LEFT, 0x00000000);
@@ -239,136 +238,139 @@ void box_projects_cloud_save_show(bool save_and_quit) {
 }
 #endif
 
-void box_projects_tab() {
-	if (ui_tab(&box_projects_tab_index, tr("Projects"), true, -1, false)) {
-		ui_begin_sticky();
+// Recent projects grid
+static void box_projects_draw() {
+	ui_begin_sticky();
 
-		ui_separator(UI_ELEMENT_H(), false);
+	ui_separator(UI_ELEMENT_H(), false);
 
-		box_projects_draw_badge();
-
-		if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
-			project_new(true);
-			ui_box_hide();
-			// Pick unique name
-			i32   i     = 0;
-			i32   j     = 0;
-			char *title = string("%s%s", tr("untitled"), i32_to_string(i));
-			while (j < g_config->recent_projects->length) {
-				char *base = g_config->recent_projects->buffer[j];
-				base       = string_copy(substring(base, string_last_index_of(base, PATH_SEP) + 1, string_last_index_of(base, ".")));
-				j++;
-				if (string_equals(title, base)) {
-					i++;
-					title = string("%s%s", tr("untitled"), i32_to_string(i));
-					j     = 0;
-				}
+	if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
+		project_new(true);
+		ui_box_hide();
+		// Pick unique name
+		i32   i     = 0;
+		i32   j     = 0;
+		char *title = string("%s%s", tr("untitled"), i32_to_string(i));
+		while (j < g_config->recent_projects->length) {
+			char *base = g_config->recent_projects->buffer[j];
+			base       = string_copy(substring(base, string_last_index_of(base, PATH_SEP) + 1, string_last_index_of(base, ".")));
+			j++;
+			if (string_equals(title, base)) {
+				i++;
+				title = string("%s%s", tr("untitled"), i32_to_string(i));
+				j     = 0;
 			}
-			sys_title_set(title);
 		}
-		ui_end_sticky();
-		ui_separator(3, false);
+		sys_title_set(title);
+	}
+	ui_end_sticky();
+	ui_separator(3, false);
 
-		i32 slotw = math_floor(150 * UI_SCALE());
-		i32 num   = math_floor(iron_window_width() / (float)slotw);
-		if (num == 0) {
-			return;
+	i32 slotw = math_floor(150 * UI_SCALE());
+	i32 num   = math_floor(iron_window_width() / (float)slotw);
+	if (num == 0) {
+		return;
+	}
+	string_array_t *recent_projects  = g_config->recent_projects;
+	bool            show_asset_names = true;
+
+	for (i32 row = 0; row < math_ceil(recent_projects->length / (float)num); ++row) {
+		i32          mult = show_asset_names ? 2 : 1;
+		f32_array_t *ar   = f32_array_create_from_raw((f32[]){}, 0);
+		for (i32 i = 0; i < num * mult; ++i) {
+			f32_array_push(ar, 1 / (float)num);
 		}
-		string_array_t *recent_projects  = g_config->recent_projects;
-		bool            show_asset_names = true;
+		ui_row(ar);
 
-		for (i32 row = 0; row < math_ceil(recent_projects->length / (float)num); ++row) {
-			i32          mult = show_asset_names ? 2 : 1;
-			f32_array_t *ar   = f32_array_create_from_raw((f32[]){}, 0);
-			for (i32 i = 0; i < num * mult; ++i) {
-				f32_array_push(ar, 1 / (float)num);
-			}
-			ui_row(ar);
+		g_ui->_x += 2;
+		f32 off = show_asset_names ? 96 * UI_SCALE() : 16 * UI_SCALE();
+		if (row > 0) {
+			g_ui->_y += off;
+		}
 
-			g_ui->_x += 2;
-			f32 off = show_asset_names ? 96 * UI_SCALE() : 16 * UI_SCALE();
-			if (row > 0) {
-				g_ui->_y += off;
-			}
-
-			for (i32 j = 0; j < num; ++j) {
-				i32 imgw = math_floor(128 * UI_SCALE());
-				i32 i    = j + row * num;
-				if (i >= recent_projects->length) {
-					ui_end_element_of_size(imgw);
-					if (show_asset_names) {
-						ui_end_element_of_size(0);
-					}
-					continue;
+		for (i32 j = 0; j < num; ++j) {
+			i32 imgw = math_floor(128 * UI_SCALE());
+			i32 i    = j + row * num;
+			if (i >= recent_projects->length) {
+				ui_end_element_of_size(imgw);
+				if (show_asset_names) {
+					ui_end_element_of_size(0);
 				}
+				continue;
+			}
 
-				char *path = recent_projects->buffer[i];
+			char *path = recent_projects->buffer[i];
 
 #ifdef IRON_IOS
-				char *document_directory = iron_save_dialog("", "");
-				document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
-				path                     = string("%s%s", document_directory, path);
+			char *document_directory = iron_save_dialog("", "");
+			document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
+			path                     = string("%s%s", document_directory, path);
 #endif
 
-				char *icon_path = string_tmp("%s_icon.png", substring(path, 0, string_length(path) - 4));
-				if (box_projects_icon_map == NULL) {
-					box_projects_icon_map = any_map_create();
-				}
-				gpu_texture_t *icon = any_map_get(box_projects_icon_map, icon_path);
-				if (icon == NULL) {
-					gpu_texture_t *image = data_get_texture(icon_path);
-					icon                 = image;
-					any_map_set(box_projects_icon_map, string_copy(icon_path), icon); // The map holds the key
-				}
-
-				i32 uix = g_ui->_x;
-				if (icon != NULL) {
-					ui_fill(0, 0, 128, 128, g_theme->SEPARATOR_COL);
-
-					i32 state = ui_image(icon, 0xffffffff, 128 * UI_SCALE());
-					if (state == UI_STATE_RELEASED) {
-						i32 _uix = g_ui->_x;
-						g_ui->_x = uix;
-						ui_fill(0, 0, 128, 128, 0x66000000);
-						g_ui->_x = _uix;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
-						console_toast(tr("Opening project"));
-#endif
-						sys_notify_on_next_frame(&box_projects_tab_on_next_frame, path);
-					}
-
-					char *name = substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, "."));
-					if (g_ui->is_hovered && g_ui->input_released_r) {
-						_box_projects_path      = string_copy(path);
-						_box_projects_icon_path = string_copy(icon_path);
-						_box_projects_i         = i;
-						ui_menu_draw(&box_projects_tab_menu, -1, -1);
-					}
-
-					if (show_asset_names) {
-						g_ui->_x = uix - (150 - 128) / 2.0;
-						g_ui->_y += slotw * 0.9;
-						ui_text(name, UI_ALIGN_CENTER, 0x00000000);
-						if (g_ui->is_hovered) {
-							ui_tooltip(name);
-						}
-						g_ui->_y -= slotw * 0.9;
-						if (i == recent_projects->length - 1) {
-							g_ui->_y += j == num - 1 ? imgw : imgw + UI_ELEMENT_H() + UI_ELEMENT_OFFSET();
-						}
-					}
-				}
-				else {
-					ui_end_element_of_size(0);
-					if (show_asset_names) {
-						ui_end_element_of_size(0);
-					}
-					g_ui->_x = uix;
-				}
+			char *icon_path = string_tmp("%s_icon.png", substring(path, 0, string_length(path) - 4));
+			if (box_projects_icon_map == NULL) {
+				box_projects_icon_map = any_map_create();
+			}
+			gpu_texture_t *icon = any_map_get(box_projects_icon_map, icon_path);
+			if (icon == NULL) {
+				gpu_texture_t *image = data_get_texture(icon_path);
+				icon                 = image;
+				any_map_set(box_projects_icon_map, string_copy(icon_path), icon); // The map holds the key
 			}
 
-			g_ui->_y += 150;
+			i32 uix = g_ui->_x;
+			if (icon != NULL) {
+				ui_fill(0, 0, 128, 128, g_theme->SEPARATOR_COL);
+
+				i32 state = ui_image(icon, 0xffffffff, 128 * UI_SCALE());
+				if (state == UI_STATE_RELEASED) {
+					i32 _uix = g_ui->_x;
+					g_ui->_x = uix;
+					ui_fill(0, 0, 128, 128, 0x66000000);
+					g_ui->_x = _uix;
+#if defined(IRON_ANDROID) || defined(IRON_IOS)
+					console_toast(tr("Opening project"));
+#endif
+					sys_notify_on_next_frame(&box_projects_tab_on_next_frame, path);
+				}
+
+				char *name = substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, "."));
+				if (g_ui->is_hovered && g_ui->input_released_r) {
+					_box_projects_path      = string_copy(path);
+					_box_projects_icon_path = string_copy(icon_path);
+					_box_projects_i         = i;
+					ui_menu_draw(&box_projects_tab_menu, -1, -1);
+				}
+
+				if (show_asset_names) {
+					g_ui->_x = uix - (150 - 128) / 2.0;
+					g_ui->_y += slotw * 0.9;
+					ui_text(name, UI_ALIGN_CENTER, 0x00000000);
+					if (g_ui->is_hovered) {
+						ui_tooltip(name);
+					}
+					g_ui->_y -= slotw * 0.9;
+					if (i == recent_projects->length - 1) {
+						g_ui->_y += j == num - 1 ? imgw : imgw + UI_ELEMENT_H() + UI_ELEMENT_OFFSET();
+					}
+				}
+			}
+			else {
+				ui_end_element_of_size(0);
+				if (show_asset_names) {
+					ui_end_element_of_size(0);
+				}
+				g_ui->_x = uix;
+			}
 		}
+
+		g_ui->_y += 150;
+	}
+}
+
+void box_projects_tab() {
+	if (ui_tab(&box_projects_tab_index, tr("Projects"), true, -1, false)) {
+		box_projects_draw();
 	}
 }
 
@@ -406,8 +408,7 @@ void box_projects_show_box() {
 #endif
 
 #if defined(IRON_ANDROID) || defined(IRON_IOS)
-	box_projects_tab();
-	box_projects_get_started_tab();
+	box_projects_draw(); // Projects only, no tabs
 #elif defined(IRON_WASM)
 	box_projects_cloud_tab();
 	box_projects_get_started_tab();
@@ -458,7 +459,6 @@ void box_projects_recent_load(char *path) {
 void box_projects_recent_tab() {
 	if (ui_tab(&box_projects_tab_index, tr("Recent"), true, -1, false)) {
 
-		box_projects_draw_badge();
 
 		g_ui->enabled       = g_config->recent_projects->length > 0;
 		bool was_typing     = g_ui->is_typing;
