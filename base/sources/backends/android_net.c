@@ -59,3 +59,7 @@ void iron_net_request(const char *url_base, const char *url_path, const char *da
 void iron_net_update() {}
 
 volatile uint64_t iron_net_bytes_downloaded = 0;
+
+bool iron_net_progress(const char *dst_path, uint64_t *written, uint64_t *expected) {
+	return false;
+}

@@ -79,6 +79,12 @@ slot_material_t *import_folder_make_material(char *name, char *dir, char **maps)
 }
 
 void import_folder_run(char *path) {
+	string_array_t *dirs = string_split(path, PATH_SEP);
+	import_folder_run_named(path, dirs->buffer[dirs->length - 1]);
+}
+
+// Adds the material made of the textures in the folder to the project
+void import_folder_run_named(char *path, char *name) {
 	string_array_t *files = file_read_directory(path);
 	char           *maps[IMPORT_FOLDER_MAPS];
 	if (!import_folder_find_maps(files, maps)) {
@@ -91,8 +97,7 @@ void import_folder_run(char *path) {
 		}
 	}
 
-	string_array_t *dirs = string_split(path, PATH_SEP);
-	g_context->material  = import_folder_make_material(dirs->buffer[dirs->length - 1], path, maps);
+	g_context->material = import_folder_make_material(name, path, maps);
 	any_array_push(g_project->_->materials, g_context->material);
 
 	make_material_parse_paint_material(true);

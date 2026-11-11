@@ -4,6 +4,7 @@
 
 volatile uint64_t    iron_net_bytes_downloaded = 0;
 static NSURLSession *download_session          = nil;
+static NSMutableDictionary *download_progress  = nil; // dst_path -> @[written, expected], guarded by itself
 
 @interface IronDownloadDelegate : NSObject <NSURLSessionDownloadDelegate>
 @end
@@ -16,6 +17,12 @@ static NSURLSession *download_session          = nil;
             totalBytesWritten:(int64_t)totalBytesWritten
     totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
 	iron_net_bytes_downloaded += bytesWritten;
+	NSString *dstPath = objc_getAssociatedObject(downloadTask, @"dst_path");
+	if (dstPath != nil && download_progress != nil) {
+		@synchronized(download_progress) {
+			download_progress[dstPath] = @[ @(totalBytesWritten), @(totalBytesExpectedToWrite) ];
+		}
+	}
 }
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
@@ -47,6 +54,11 @@ static NSURLSession *download_session          = nil;
 	iron_https_callback_t     callback     = cbVal ? [cbVal pointerValue] : NULL;
 	void                     *callbackdata = dataVal ? [dataVal pointerValue] : NULL;
 	int status = error == nil && [task.response isKindOfClass:[NSHTTPURLResponse class]] ? (int)((NSHTTPURLResponse *)task.response).statusCode : 0;
+	if (dstPath != nil && download_progress != nil) {
+		@synchronized(download_progress) {
+			[download_progress removeObjectForKey:dstPath];
+		}
+	}
 	dispatch_async(dispatch_get_main_queue(), ^{
 		if (dstPath) {
 			callback(status, NULL, callbackdata);
@@ -64,6 +76,9 @@ static NSURLSession *download_session          = nil;
 
 void iron_net_request(const char *url_base, const char *url_path, const char *data, int port, int method, const char *headers, iron_https_callback_t callback,
                       void *callbackdata, const char *dst_path) {
+	if (download_progress == nil) {
+		download_progress = [NSMutableDictionary dictionary];
+	}
 	if (!download_session) {
 		NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
 		NSOperationQueue          *queue  = [[NSOperationQueue alloc] init];
@@ -106,3 +121,18 @@ void iron_net_request(const char *url_base, const char *url_path, const char *da
 }
 
 void iron_net_update() {}
+
+bool iron_net_progress(const char *dst_path, uint64_t *written, uint64_t *expected) {
+	if (download_progress == nil || dst_path == NULL) {
+		return false;
+	}
+	@synchronized(download_progress) {
+		NSArray *p = download_progress[[NSString stringWithUTF8String:dst_path]];
+		if (p == nil) {
+			return false;
+		}
+		*written  = [p[0] unsignedLongLongValue];
+		*expected = [p[1] unsignedLongLongValue];
+		return *expected > 0;
+	}
+}

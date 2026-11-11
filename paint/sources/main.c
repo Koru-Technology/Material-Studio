@@ -242,6 +242,7 @@
 #include "camera.c"
 #include "config.c"
 #include "library.c"
+#include "library_cloud.c"
 #include "console.c"
 #include "context.c"
 #include "history.c"

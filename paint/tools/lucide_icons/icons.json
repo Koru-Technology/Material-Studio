@@ -11,7 +11,7 @@
   "48": "arrow-up", "49": "arrow-down",
   "50": {"name": "play", "rotate": 90, "fill": true}, "51": {"name": "play", "rotate": -90, "fill": true},
   "52": "check", "53": "rotate-cw", "54": "minus", "55": "square-plus", "56": "delete", "57": "move-diagonal",
-  "58": "maximize", "59": "copy-plus", "60": "chevron-up", "61": "chevron-down",
+  "58": "maximize-2", "59": "copy-plus", "60": "chevron-up", "61": "chevron-down",
   "62": {"name": "play", "rotate": 180, "fill": true}, "63": {"name": "play", "fill": true},
   "64": "move", "65": "file-input", "66": "folder-plus", "67": "circle-arrow-down", "68": "arrow-up-from-line",
   "69": "zoom-out", "70": "zoom-in", "71": "file-text", "72": "star", "73": "box", "74": "brush", "75": "palette",

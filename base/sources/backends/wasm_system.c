@@ -249,3 +249,7 @@ const char *iron_internal_save_path() {
 // void        iron_internal_cut_callback(void);
 // void        iron_internal_copy_callback(void);
 // void        iron_internal_paste_callback(char *);
+
+bool iron_net_progress(const char *dst_path, uint64_t *written, uint64_t *expected) {
+	return false;
+}

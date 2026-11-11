@@ -193,6 +193,7 @@ typedef struct config {
 	char                *materials_folder; // Library root, "" when not set
 	bool                 reload_project;   // Open the last project on startup
 	bool                 show_scripts;     // Scripts tab
+	i32                  cloud_resolution; // Cloud materials texture size, 0 - 1K, 1 - 2K, 2 - 4K, 3 - 8K
 } config_t;
 
 typedef struct slot_material {
@@ -1088,3 +1089,4 @@ typedef struct ui_nodes_editor_state {
 } ui_nodes_editor_state_t;
 
 typedef struct library_entry library_entry_t; // Material library item, library.c
+typedef struct cloud_item    cloud_item_t;    // Cloud material, library_cloud.c

@@ -81,6 +81,72 @@ void box_preferences_interface_tab_restore_menu() {
 	}
 }
 
+static void box_preferences_section(char *title);
+
+static void box_preferences_workspace(workspace_preset_t preset) {
+	ui_box_hide();
+	base_set_workspace(preset);
+}
+
+// Workspace, tools and tabs, these were in the Window menu of the top bar
+static void box_preferences_interface_layout() {
+	box_preferences_section(tr("Workspace"));
+	ui_row3();
+	if (ui_button(tr("3D View"), UI_ALIGN_CENTER, "")) {
+		box_preferences_workspace(WORKSPACE_PRESET_VIEW_3D);
+	}
+	if (ui_button(tr("2D View"), UI_ALIGN_CENTER, "")) {
+		box_preferences_workspace(WORKSPACE_PRESET_VIEW_2D);
+	}
+	if (ui_button(tr("Nodes"), UI_ALIGN_CENTER, "")) {
+		box_preferences_workspace(WORKSPACE_PRESET_NODES);
+	}
+	ui_row3();
+	if (ui_button(tr("Scripts"), UI_ALIGN_CENTER, "")) {
+		box_preferences_workspace(WORKSPACE_PRESET_SCRIPT);
+	}
+	if (ui_button(tr("Player"), UI_ALIGN_CENTER, "")) {
+		ui_box_hide();
+		sys_notify_on_next_frame(player_start, NULL);
+	}
+	ui_end_element();
+
+	box_preferences_section(tr("Tools"));
+	string_array_t *tools = any_array_create_from_raw_tmp((void *[]){tr("Paint"), tr("Sculpt"), tr("Object")}, 3);
+	bool            tools_changed = false;
+	ui_row3();
+	for (i32 i = 0; i < tools->length; ++i) {
+		ui_radio((int *)&g_config->tools, i, tools->buffer[i], "");
+		tools_changed |= ui_item_changed();
+	}
+	if (tools_changed) {
+		config_save();
+		base_update_tools();
+	}
+
+	// Scripts and Plugins are shown by their own settings
+	box_preferences_section(tr("Tabs"));
+	static bool tab_visible[TAB_COUNT];
+	i32         column = 0;
+	for (i32 i = 0; i < TAB_COUNT; ++i) {
+		tab_draw_t *tab = ui_base_get_tab(i);
+		if (tab == NULL || i == TAB_SCRIPTS || i == TAB_PLUGINS) {
+			continue;
+		}
+		if (column++ % 3 == 0) {
+			ui_row3();
+		}
+		tab_visible[i] = ui_dock_tab_open(i);
+		ui_check(&tab_visible[i], tr(tab->name), "");
+		if (ui_item_changed()) {
+			tab_visible[i] ? ui_base_show_tab(i) : ui_base_close_tab(i);
+		}
+	}
+	while (column++ % 3 != 0) {
+		ui_end_element();
+	}
+}
+
 void box_preferences_interface_tab() {
 	if (box_preferences_locales == NULL) {
 		box_preferences_locales = translator_get_supported_locales();
@@ -199,7 +265,9 @@ void box_preferences_interface_tab() {
 
 	ui_check(&g_config->experimental, tr("Experimental Features"), "");
 
-	ui_end_element();
+	box_preferences_interface_layout();
+
+	ui_separator(8, false);
 
 	ui_row2();
 	if (ui_icon_button(tr("Restore"), ICON_REPLAY, UI_ALIGN_CENTER) && !ui_menu_show) {
@@ -262,7 +330,7 @@ void box_preferences_theme_tab_new_box() {
 		box_preferences_fetch_themes(); // Refresh file list
 		g_config->theme = string_copy(theme_name);
 		ui_box_hide();
-		box_preferences_tab = 1; // Themes
+		box_preferences_tab = PREFERENCES_TAB_THEME;
 		box_preferences_show();
 	}
 }
@@ -737,7 +805,7 @@ void box_preferences_keymap_tab_new_box() {
 		box_preferences_fetch_keymaps(); // Refresh file list
 		g_config->keymap = string_copy(keymap_name);
 		ui_box_hide();
-		box_preferences_tab = 5; // Keymap
+		box_preferences_tab = PREFERENCES_TAB_KEYMAP;
 		box_preferences_show();
 	}
 }
@@ -1132,6 +1200,30 @@ void box_preferences_library_tab() {
 	if (set && ui_icon_button(tr("Forget Folder"), ICON_CLOSE, UI_ALIGN_CENTER)) {
 		library_forget();
 	}
+
+	box_preferences_section(tr("Cloud"));
+	ui_text(tr("Materials from Poly Haven and ambientCG, shown with the cloud button of the Library tab."), UI_ALIGN_LEFT, 0x00000000);
+	string_array_t *sizes = any_array_create_from_raw_tmp((void *[]){"1K", "2K", "4K", "8K"}, 4);
+	i32             res   = g_config->cloud_resolution;
+	ui_combo(&res, sizes, tr("Texture Size"), true, UI_ALIGN_LEFT, false);
+	if (res != g_config->cloud_resolution) {
+		g_config->cloud_resolution = res;
+		library_cloud_resolution_changed();
+	}
+	if (g_config->cloud_resolution >= 2) {
+		ui_text(tr("Large textures take a lot of memory and time to download."), UI_ALIGN_LEFT, 0x00000000);
+	}
+	any_map_t *vars = any_map_create();
+	any_map_set(vars, "size", string("%.0f", library_cloud_disk_usage() / (1024.0 * 1024.0)));
+	ui_text(vtr("Downloaded: {size} MB", vars), UI_ALIGN_LEFT, 0x00000000);
+	map_free(vars);
+	ui_row2();
+	if (ui_icon_button(tr("Clear Downloads"), ICON_DELETE, UI_ALIGN_CENTER)) {
+		library_cloud_clear_downloads();
+	}
+	if (ui_icon_button(tr("Refresh Catalog"), ICON_REFRESH, UI_ALIGN_CENTER)) {
+		library_cloud_refresh();
+	}
 }
 
 void box_preferences_show_on_hide() {
@@ -1141,6 +1233,9 @@ void box_preferences_show_on_hide() {
 void box_preferences_show_box() {
 	if (ui_tab(&box_preferences_tab, tr("Interface"), true, -1, false)) {
 		box_preferences_interface_tab();
+	}
+	if (ui_tab(&box_preferences_tab, tr("Library"), true, -1, false)) {
+		box_preferences_library_tab();
 	}
 	if (ui_tab(&box_preferences_tab, tr("Theme"), true, -1, false)) {
 		box_preferences_theme_tab();
@@ -1177,9 +1272,6 @@ void box_preferences_show_box() {
 	}
 	if (ui_tab(&box_preferences_tab, tr("Plugins"), true, -1, false)) {
 		box_preferences_plugins_tab();
-	}
-	if (ui_tab(&box_preferences_tab, tr("Library"), true, -1, false)) {
-		box_preferences_library_tab();
 	}
 }
 

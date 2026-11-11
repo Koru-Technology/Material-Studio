@@ -254,6 +254,14 @@ static void ui_menubar_delete_unused(void *_) {
 }
 
 static void ui_menubar_draw_import_export_items() {
+	ui_menu_label(tr("Projects"), NULL);
+	if (ui_menu_button(tr("View Projects..."), "", ICON_PROJECTS)) {
+		// Saved first, previewed in lit mode
+		context_set_viewport_mode(VIEWPORT_MODE_LIT);
+		console_toast(tr("Saving project"));
+		sys_notify_on_next_frame(&ui_menubar_render_ui_save_project, NULL);
+	}
+	ui_menu_separator();
 	ui_menu_label(tr("Import"), NULL);
 	if (ui_menu_button(tr("Texture..."), "", ICON_IMAGE)) {
 		project_import_asset(string_array_join(path_texture_formats(), ","), false);
@@ -996,12 +1004,6 @@ void ui_menubar_render_ui() {
 			if (ui_menubar_icon_button(ICON_FILE)) {
 				ui_menubar_show_menu(MENUBAR_CATEGORY_IMPORT_EXPORT);
 			}
-			if (ui_menubar_icon_button(ICON_PROJECTS)) {
-				// Save project icon in lit mode
-				context_set_viewport_mode(VIEWPORT_MODE_LIT);
-				console_toast(tr("Saving project"));
-				sys_notify_on_next_frame(&ui_menubar_render_ui_save_project, NULL);
-			}
 			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_VIEWPORT) {
 				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
 			}
@@ -1020,11 +1022,12 @@ void ui_menubar_render_ui() {
 			if (ui_menubar_icon_button(ICON_CAMERA)) {
 				ui_menubar_show_menu(MENUBAR_CATEGORY_CAMERA);
 			}
-			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_WINDOW) {
-				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
+			// Workspace, tools and tabs are in the preferences
+			if (ui_menubar_icon_button(ICON_FULLSCREEN)) {
+				ui_base_toggle_distract_free();
 			}
-			if (ui_menubar_icon_button(ICON_WORKSPACE)) {
-				ui_menubar_show_menu(MENUBAR_CATEGORY_WINDOW);
+			if (g_ui->is_hovered) {
+				ui_tooltip(tr("Distract Free"));
 			}
 
 			bool full = true;

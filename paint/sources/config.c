@@ -143,6 +143,7 @@ void config_save() {
 	json_encode_string("materials_folder", g_config->materials_folder);
 	json_encode_bool("reload_project", g_config->reload_project);
 	json_encode_bool("show_scripts", g_config->show_scripts);
+	json_encode_i32("cloud_resolution", g_config->cloud_resolution);
 	char *config_json = json_encode_end();
 
 	buffer_t *buffer = sys_string_to_buffer(config_json);
@@ -302,6 +303,7 @@ config_t *config_create_default() {
 	c->materials_folder = "";
 	c->reload_project   = true;
 	c->show_scripts     = false;
+	c->cloud_resolution = 1;
 	return c;
 }
 
@@ -408,12 +410,18 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->materials_folder      = string_copy(materials_folder != NULL ? materials_folder : "");
 	c->reload_project        = armpack_map_get_i32(old, "reload_project") > 0;
 	c->show_scripts          = armpack_map_get_i32(old, "show_scripts") > 0;
+	c->cloud_resolution      = armpack_map_get_i32(old, "cloud_resolution");
 	return c;
+}
+
+config_t *config_from_version_7(any_map_t *old) {
+	armpack_map_set_i32(old, "cloud_resolution", 1);
+	return config_from_map_to_config(old);
 }
 
 config_t *config_from_version_6(any_map_t *old) {
 	armpack_map_set_i32(old, "show_scripts", false);
-	return config_from_map_to_config(old);
+	return config_from_version_7(old);
 }
 
 config_t *config_from_version_5(any_map_t *old) {
@@ -469,6 +477,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_4,
 	    config_from_version_5,
 	    config_from_version_6,
+	    config_from_version_7,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {
