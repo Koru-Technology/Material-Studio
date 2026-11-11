@@ -425,6 +425,8 @@ void                   uniforms_ext_init();
 void                   render_path_lit_commands();
 void                   box_projects_show();
 void                   box_projects_load(char *path);
+void                   box_projects_cancel_load();
+char                  *project_unique_title(char *name);
 void                   box_projects_recent_tab();
 bool                   box_projects_is_cloud_path(char *path);
 i32                    box_projects_cloud_slot(char *path);

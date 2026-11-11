@@ -255,6 +255,19 @@ static void ui_menubar_delete_unused(void *_) {
 
 static void ui_menubar_draw_import_export_items() {
 	ui_menu_label(tr("Projects"), NULL);
+	if (ui_menu_button(tr("Save"), any_map_get(g_keymap, "file_save"), ICON_SAVE)) {
+		project_save(false);
+	}
+	if (ui_menu_button(tr("Save As..."), any_map_get(g_keymap, "file_save_as"), ICON_SAVE_AS)) {
+		project_save_as(false);
+	}
+	// Textures, fonts and sounds go into the project file instead of being referenced by path
+	g_ui->changed = false;
+	ui_menu_align();
+	ui_check(&g_context->pack_assets_on_save, tr("Pack Assets"), "");
+	if (g_ui->changed) {
+		ui_menu_keep_open = true;
+	}
 	if (ui_menu_button(tr("View Projects..."), "", ICON_PROJECTS)) {
 		// Saved first, previewed in lit mode
 		context_set_viewport_mode(VIEWPORT_MODE_LIT);

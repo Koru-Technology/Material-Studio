@@ -35,7 +35,13 @@ char *box_projects_recent_path(i32 i) {
 	return path;
 }
 
+static bool _box_projects_load_cancelled = false;
+
 void box_projects_load_on_next_frame(void *_) {
+	if (_box_projects_load_cancelled) {
+		_box_projects_load_cancelled = false;
+		return;
+	}
 	if (--_box_projects_load_frames > 0) {
 		sys_notify_on_next_frame(&box_projects_load_on_next_frame, NULL);
 		return;
@@ -43,7 +49,15 @@ void box_projects_load_on_next_frame(void *_) {
 	import_arm_run_project(_box_projects_load_path);
 }
 
+// A project load that was asked for and has not started yet is dropped (a shared file opens instead)
+void box_projects_cancel_load() {
+	if (_box_projects_load_frames > 0) {
+		_box_projects_load_cancelled = true;
+	}
+}
+
 void box_projects_load(char *path) {
+	_box_projects_load_cancelled = false;
 	ui_box_hide();
 	_box_projects_load_path   = string_copy(path);
 	_box_projects_load_frames = GPU_FRAMES_IN_FLIGHT + 1;

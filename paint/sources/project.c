@@ -82,9 +82,60 @@ void project_save_as_on_file_picked(char *path) {
 	project_save(_project_save_and_quit);
 }
 
+#ifdef IRON_IOS
+// No save dialog on iOS: the project is named here and saved in the documents folder
+static char *project_save_as_name = "";
+
+static char *project_documents_path(char *name) {
+	char *dir = iron_save_dialog("", "");
+	dir       = string_copy(substring(dir, 0, string_length(dir) - 8)); // Strip /"untitled"
+	return string("%s/%s.arm", dir, name);
+}
+
+static void project_save_as_box() {
+	ui_text_input(&project_save_as_name, tr("Name"), UI_ALIGN_LEFT, true, false);
+	char *name = string_copy(string_replace_all(trim_end(project_save_as_name), "/", "-"));
+	bool  ok   = !string_equals(name, "");
+	if (ok && iron_file_exists(project_documents_path(name))) {
+		ui_text(tr("A project with this name exists, it will be replaced."), UI_ALIGN_LEFT, 0x00000000);
+	}
+	ui_row2();
+	if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
+		ui_box_hide();
+	}
+	g_ui->enabled = ok;
+	bool save     = ui_icon_button(tr("Save"), ICON_SAVE, UI_ALIGN_CENTER);
+	g_ui->enabled = true;
+	if (ok && (save || g_ui->is_return_down)) {
+		g_project->_->filepath = project_documents_path(name);
+		sys_title_set(name);
+		ui_box_hide();
+		project_save(_project_save_and_quit);
+	}
+}
+#endif
+
+// Name for a new project that does not replace a saved one: "name", "name 2", ...
+char *project_unique_title(char *name) {
+#ifdef IRON_IOS
+	char *title = name;
+	for (i32 i = 2; iron_file_exists(project_documents_path(title)); ++i) {
+		title = string("%s %d", name, i);
+	}
+	return string_copy(title);
+#else
+	return string_copy(name);
+#endif
+}
+
 void project_save_as(bool save_and_quit) {
 	_project_save_and_quit = save_and_quit;
+#ifdef IRON_IOS
+	project_save_as_name = string_copy(sys_title());
+	ui_box_show_custom(&project_save_as_box, 400, 200, NULL, true, tr("Save As"));
+#else
 	ui_files_show("arm", true, false, &project_save_as_on_file_picked);
+#endif
 }
 
 void project_cleanup() {

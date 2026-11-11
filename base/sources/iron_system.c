@@ -184,6 +184,33 @@ void iron_internal_shutdown_callback(void) {
 	}
 }
 
+// Files shared with the app, kept until the app listens for them (launched by sharing a file)
+static void (*open_file_callback)(char *) = NULL;
+static char *open_file_pending[8];
+static int   open_file_pending_count = 0;
+
+void iron_set_open_file_callback(void (*callback)(char *)) {
+	open_file_callback = callback;
+	for (int i = 0; i < open_file_pending_count; ++i) {
+		callback(open_file_pending[i]);
+		free(open_file_pending[i]);
+	}
+	open_file_pending_count = 0;
+}
+
+bool iron_has_pending_open_file(void) {
+	return open_file_pending_count > 0;
+}
+
+void iron_internal_open_file_callback(char *path) {
+	if (open_file_callback != NULL) {
+		open_file_callback(path);
+	}
+	else if (open_file_pending_count < 8) {
+		open_file_pending[open_file_pending_count++] = strdup(path);
+	}
+}
+
 void iron_internal_drop_files_callback(char *filePath) {
 	if (drop_files_callback != NULL) {
 		drop_files_callback(filePath, drop_files_callback_data);

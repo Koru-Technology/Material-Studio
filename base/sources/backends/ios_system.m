@@ -548,10 +548,11 @@ static BOOL importCopyTree(NSURL *src, NSString *dst) {
 	return any;
 }
 
-void importFile(NSURL *url) {
+// Copies the file into the documents folder, returns the copy or nil
+static NSString *importCopy(NSURL *url) {
 	if (url == nil) {
 		IMPORT_LOG(@"[import] no URL received");
-		return;
+		return nil;
 	}
 	NSArray  *paths       = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
 	NSString *folder_name = [NSString stringWithUTF8String:ios_title];
@@ -569,10 +570,37 @@ void importFile(NSURL *url) {
 	}
 	if (!ok) {
 		IMPORT_LOG(@"[import] import failed %@ -> %@", url, file_path);
+		return nil;
+	}
+	// Files shared by other apps arrive in Documents/Inbox, the copy is kept instead
+	if ([url.path containsString:@"/Documents/Inbox/"]) {
+		[[NSFileManager defaultManager] removeItemAtURL:url error:nil];
+	}
+	return file_path;
+}
+
+void importFile(NSURL *url) {
+	NSString *file_path = importCopy(url);
+	if (file_path == nil) {
 		return;
 	}
 	const char *cpath = [file_path cStringUsingEncoding:NSUTF8StringEncoding];
 	iron_internal_drop_files_callback(cpath);
+}
+
+// A file shared with the app (Open in / Share sheet): copied off the main thread, opened on it
+static void openSharedFile(NSURL *url) {
+	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+		NSString *file_path = importCopy(url);
+		if (file_path == nil) {
+			return;
+		}
+		char *cpath = strdup([file_path cStringUsingEncoding:NSUTF8StringEncoding]);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			iron_internal_open_file_callback(cpath);
+			free(cpath);
+		});
+	});
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
@@ -638,6 +666,17 @@ void importFile(NSURL *url) {
 	[self.window makeKeyAndVisible];
 	[my_view_controller setVisible:YES];
 	[self performSelectorOnMainThread:@selector(mainLoop) withObject:nil waitUntilDone:NO];
+
+	// Launched by sharing a file with the app
+	for (UIOpenURLContext *context in connectionOptions.URLContexts) {
+		openSharedFile(context.URL);
+	}
+}
+
+- (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts {
+	for (UIOpenURLContext *context in URLContexts) {
+		openSharedFile(context.URL);
+	}
 }
 
 - (void)sceneDidDisconnect:(UIScene *)scene {

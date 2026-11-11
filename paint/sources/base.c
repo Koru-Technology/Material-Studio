@@ -114,6 +114,52 @@ void base_update_import_asset_done() {
 	}
 }
 
+// ███████╗██╗  ██╗ █████╗ ██████╗ ███████╗██████╗
+// Models shared with the app from another one (share sheet, Open in) start a new project
+
+static string_array_t *base_open_paths = NULL;
+
+void base_on_open_file(char *path) {
+	if (base_open_paths == NULL) {
+		base_open_paths = any_array_create_from_raw((void *[]){}, 0);
+	}
+	any_array_push(base_open_paths, string_copy(path));
+}
+
+static void base_open_new_project_title(void *path) {
+	sys_title_set(project_unique_title(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, "."))));
+}
+
+static void base_open_new_project(void *path) {
+	project_new(true);
+	import_mesh_run(path, true, true, false);
+	sys_notify_on_next_frame(&base_open_new_project_title, path); // Once the mesh import named the project
+	console_info(tr("Model opened in a new project"));
+}
+
+static void base_open_after_save(void *path) {
+	sys_notify_on_next_frame(&base_open_new_project, path);
+}
+
+static void base_handle_open_paths() {
+	if (base_open_paths == NULL || base_open_paths->length == 0) {
+		return;
+	}
+	char *path = array_shift(base_open_paths);
+	if (!path_is_mesh(path) && !context_enable_import_plugin(path)) {
+		console_error(strings_unknown_asset_format());
+		return;
+	}
+	box_projects_cancel_load(); // Instead of reopening the last project on startup
+	ui_box_hide();
+	ui_menu_show = false;
+	// The open project is kept: saved first when it has a file
+	if (!string_equals(g_project->_->filepath, "")) {
+		project_save(false);
+	}
+	sys_notify_on_next_frame(&base_open_after_save, path);
+}
+
 void base_handle_drop_paths() {
 	if (base_drop_paths->length > 0) {
 		bool wait = false;
@@ -388,6 +434,7 @@ void base_update(void *_) {
 	}
 
 	base_handle_drop_paths();
+	base_handle_open_paths();
 
 	if (g_context->tool == TOOL_TYPE_CURSOR && context_in_3d_view() && !context_object_deselected()) {
 		if (keyboard_down("control") && keyboard_started("d")) {
@@ -552,6 +599,7 @@ void base_init() {
 	base_last_window_height = iron_window_height();
 
 	sys_notify_on_drop_files(&base_on_drop_files);
+	iron_set_open_file_callback(&base_on_open_file);
 	sys_notify_on_app_state(&base_on_foreground, &base_on_background, &base_on_shutdown);
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
 	agent_init();
@@ -617,7 +665,8 @@ void base_init() {
 	bool  has_projects = g_config->recent_projects->length > 0;
 	char *reload       = NULL;
 	bool  has_start    = iron_file_exists(string("%s/start.arm", iron_internal_files_location()));
-	if (g_config->reload_project && has_projects && !args_use && !has_start) {
+	bool  shared       = base_open_paths != NULL && base_open_paths->length > 0; // Launched by sharing a model
+	if (g_config->reload_project && has_projects && !args_use && !has_start && !shared) {
 		reload = box_projects_recent_path(0);
 		if (!iron_file_exists(reload)) {
 			reload = NULL;
