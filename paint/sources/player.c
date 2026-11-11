@@ -67,9 +67,6 @@ static bool player_keep_object(object_t *o) {
 			return true;
 		}
 	}
-	if (render_compass_is_hitbox(o)) {
-		return true;
-	}
 	return false;
 }
 

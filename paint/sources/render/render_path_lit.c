@@ -17,7 +17,6 @@ void render_path_lit_draw() {
 		render_path_set_target("gbuffer1", NULL, "main", GPU_CLEAR_NONE, 0, 0.0);
 		render_grid();
 		render_path_set_target("gbuffer1", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-		render_compass();
 		render_envsphere();
 		render_pathsphere_tool();
 		render_gizmo_draw();

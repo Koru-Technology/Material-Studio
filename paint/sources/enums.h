@@ -521,7 +521,7 @@ typedef enum {
 	ICON_EMPTY            = 132,
 	ICON_CAPSULE          = 133,
 	ICON_TEXT3D           = 134,
-	ICON_RESERVED3        = 135,
+	ICON_SCAN             = 135,
 	ICON_RESERVED4        = 136,
 	ICON_WORKSPACE        = 137,
 	ICON_UVSPHERE         = 138,

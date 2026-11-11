@@ -45,18 +45,53 @@ void viewport_reset() {
 	}
 }
 
+// Moves the camera to frame the model in the middle of the view, keeping the view direction, the model stays in place
+void viewport_frame() {
+	camera_object_t *cam = scene_camera;
+	mesh_object_t   *po  = context_main_object();
+	mesh_data_t     *md  = g_context->merged_object == NULL ? po->data : g_context->merged_object->data;
+	vec4_t           amin;
+	vec4_t           amax;
+	mesh_data_calculate_aabb_min_max(md, &amin, &amax);
+	amin.w            = 1.0;
+	amax.w            = 1.0;
+	vec4_t wmin       = vec4_apply_mat4(amin, po->base->transform->world);
+	vec4_t wmax       = vec4_apply_mat4(amax, po->base->transform->world);
+	vec4_t center     = vec4_mult(vec4_add(wmin, wmax), 0.5);
+	center.w          = 1.0;
+	f32 radius        = vec4_len(vec4_sub(wmax, wmin)) / 2.0;
+	f32 fov           = cam->data->fov; // Vertical, the horizontal one is narrower on portrait views
+	f32 aspect        = sys_w() / (float)sys_h();
+	f32 half          = aspect < 1.0 ? math_atan(math_tan(fov / 2.0) * aspect) : fov / 2.0;
+	f32 dist          = radius / math_sin(half) * 1.05;
+	vec4_t look       = vec4_norm(camera_object_look_world(cam));
+	look.w            = 0.0;
+	vec4_t loc        = vec4_sub(center, vec4_mult(look, dist));
+	loc.w             = 1.0;
+	cam->base->transform->loc = loc;
+	transform_build_matrix(cam->base->transform);
+	camera_object_build_proj(cam, -1.0);
+	camera_reset(g_context->view_index_last);
+	camera_origins[camera_index()] = center; // Orbit around the model
+	g_context->ddirty               = 2;
+	render_path_raytrace_ready      = false;
+}
+
 void viewport_set_view(f32 x, f32 y, f32 z, f32 rx, f32 ry, f32 rz) {
 	g_context->paint_object->base->transform->rot   = (quat_t){0, 0, 0, 1};
 	g_context->paint_object->base->transform->dirty = true;
-	camera_object_t *cam                            = scene_camera;
-	f32              dist                           = vec4_len(cam->base->transform->loc);
-	cam->base->transform->loc                       = (vec4_t){x * dist, y * dist, z * dist, 1.0};
-	cam->base->transform->rot                       = quat_from_euler(rx, ry, rz);
+	camera_object_t *cam = scene_camera;
+	// Around the current pivot: the origin, or the model center after viewport_frame
+	vec4_t pivot              = camera_origins[camera_index()];
+	f32    dist               = vec4_dist(cam->base->transform->loc, pivot);
+	cam->base->transform->loc = (vec4_t){pivot.x + x * dist, pivot.y + y * dist, pivot.z + z * dist, 1.0};
+	cam->base->transform->rot = quat_from_euler(rx, ry, rz);
 	transform_build_matrix(cam->base->transform);
 	camera_object_build_proj(cam, -1.0);
 	g_context->ddirty = 2;
 	camera_reset(g_context->view_index_last);
-	render_path_raytrace_ready = false;
+	camera_origins[camera_index()] = pivot;
+	render_path_raytrace_ready     = false;
 }
 
 void viewport_orbit(f32 x, f32 y) {

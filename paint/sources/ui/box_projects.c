@@ -24,6 +24,17 @@ void box_projects_tab_menu() {
 	}
 }
 
+// Full path of a recent project, iOS stores only the file name inside the documents folder
+char *box_projects_recent_path(i32 i) {
+	char *path = g_config->recent_projects->buffer[i];
+#ifdef IRON_IOS
+	char *document_directory = iron_save_dialog("", "");
+	document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
+	path                     = string("%s%s", document_directory, path);
+#endif
+	return path;
+}
+
 void box_projects_load_on_next_frame(void *_) {
 	if (--_box_projects_load_frames > 0) {
 		sys_notify_on_next_frame(&box_projects_load_on_next_frame, NULL);
@@ -299,13 +310,7 @@ static void box_projects_draw() {
 				continue;
 			}
 
-			char *path = recent_projects->buffer[i];
-
-#ifdef IRON_IOS
-			char *document_directory = iron_save_dialog("", "");
-			document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
-			path                     = string("%s%s", document_directory, path);
-#endif
+			char *path = box_projects_recent_path(i);
 
 			char *icon_path = string_tmp("%s_icon.png", substring(path, 0, string_length(path) - 4));
 			if (box_projects_icon_map == NULL) {

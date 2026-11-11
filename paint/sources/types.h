@@ -191,6 +191,8 @@ typedef struct config {
 	bool                 large_asset_previews;
 	bool                 tooltips;
 	char                *materials_folder; // Library root, "" when not set
+	bool                 reload_project;   // Open the last project on startup
+	bool                 show_scripts;     // Scripts tab
 } config_t;
 
 typedef struct slot_material {

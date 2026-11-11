@@ -413,7 +413,6 @@ void base_update(void *_) {
 		}
 	}
 
-	render_compass_update();
 
 	if (args_player) {
 		player_update();
@@ -610,8 +609,19 @@ void base_init() {
 
 	library_init();
 
-	bool has_projects = g_config->recent_projects->length > 0;
-	if (g_config->splash_screen && has_projects) {
+	bool  has_projects = g_config->recent_projects->length > 0;
+	char *reload       = NULL;
+	bool  has_start    = iron_file_exists(string("%s/start.arm", iron_internal_files_location()));
+	if (g_config->reload_project && has_projects && !args_use && !has_start) {
+		reload = box_projects_recent_path(0);
+		if (!iron_file_exists(reload)) {
+			reload = NULL;
+		}
+	}
+	if (reload != NULL) {
+		box_projects_load(reload);
+	}
+	else if (g_config->splash_screen && has_projects) {
 		box_projects_show();
 	}
 

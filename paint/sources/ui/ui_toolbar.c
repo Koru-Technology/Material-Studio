@@ -464,6 +464,7 @@ static void ui_toolbar_draw_chevron(i32 toolbar_x) {
 	i32 x         = toolbar_x + ui_toolbar_w(false) + ui_toolbar_side() * 2 + math_floor(2 * UI_SCALE());
 	i32 y         = ui_toolbar_sel_y + (ui_toolbar_sel_h - size) / 2;
 	u32 bg        = g_theme->WINDOW_BG_COL;
+	ui_base_panel_add_rect(x, y, size, size);
 	g_theme->WINDOW_BG_COL = 0x00000000;
 	bool draw     = ui_window(hwnd, x, y, size, size, false);
 	g_theme->WINDOW_BG_COL = bg;
@@ -521,8 +522,9 @@ void ui_toolbar_render_ui() {
 		}
 		if (g_config->touch_ui && base_view3d_show) {
 			// Centered on the side of the screen, kept clear of the top bar and its shadow
-			i32 top = _ui_toolbar_y + ui_header_h + ui_menubar_top_pad() + ui_base_panel_shadow() + ui_toolbar_gap();
-			y       = math_max(top, (_ui_toolbar_y + _ui_toolbar_bottom - h) / 2);
+			i32 top = _ui_toolbar_y + ui_header_h + ui_menubar_top_pad() + ui_menubar_side_pad() + ui_base_panel_shadow() + ui_toolbar_gap();
+			i32 bottom = _ui_toolbar_bottom - ui_panels_history_h(); // Above the undo / redo panel
+			y          = math_max(top, (_ui_toolbar_y + bottom - h) / 2);
 		}
 		if (!base_view3d_show && ui_view2d_show && !g_config->touch_ui) {
 			y += ui_toolbar_w(false);

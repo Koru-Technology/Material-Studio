@@ -1,6 +1,12 @@
 
 #include "../global.h"
 
+// Floating panels drawn last frame, see ui_base_panel_add_rect
+#define UI_BASE_PANEL_RECTS_MAX 16
+static f32 ui_base_panel_rects[UI_BASE_PANEL_RECTS_MAX * 4];
+static i32 ui_base_panel_rects_count = 0;
+static i32 ui_base_panel_rects_drawn = 0;
+
 void ui_base_init_on_next_frame(void *_) {
 	layers_init();
 }
@@ -145,6 +151,8 @@ static void ui_base_draw_empty() {
 	draw_end();
 }
 
+static void ui_base_panel_update_grab();
+
 void ui_base_update(void *_) {
 
 	if (console_message_timer > 0) {
@@ -156,7 +164,8 @@ void ui_base_update(void *_) {
 
 	ui_sidebar_w_mini = math_floor(ui_base_sidebar_mini_w(g_config->large_asset_previews) * UI_SCALE());
 
-	if (base_ui_enabled) {
+	ui_base_panel_update_grab();
+	if (base_ui_enabled && !ui_base_panel_grab) {
 		render_gizmo_update();
 		util_layer_update_path();
 		util_touch_update();
@@ -201,6 +210,7 @@ void ui_base_update(void *_) {
 	}
 
 	if (!ui_base_show) {
+		ui_base_panel_rects_count = 0;
 		return;
 	}
 
@@ -211,13 +221,16 @@ void ui_base_update(void *_) {
 		ui_base_draw_empty();
 	}
 
+	ui_base_panel_rects_drawn = 0;
 	ui_begin(g_ui);
 	ui_menubar_update_w();
 	ui_dock_render_ui();
 	ui_toolbar_render_ui();
 	ui_menubar_render_ui();
 	ui_header_render_ui();
+	ui_panels_render_ui();
 	ui_end();
+	ui_base_panel_rects_count = ui_base_panel_rects_drawn;
 	g_ui->input_enabled = true;
 }
 
@@ -396,8 +409,41 @@ static void ui_base_fill_round_rect(f32 x, f32 y, f32 w, f32 h, f32 r, i32 corne
 	}
 }
 
+// A touch starting on a floating panel neither paints nor moves the camera
+
+void ui_base_panel_add_rect(i32 x, i32 y, i32 w, i32 h) {
+	if (ui_base_panel_rects_drawn >= UI_BASE_PANEL_RECTS_MAX) {
+		return;
+	}
+	f32 *r = &ui_base_panel_rects[ui_base_panel_rects_drawn++ * 4];
+	r[0]   = x;
+	r[1]   = y;
+	r[2]   = w;
+	r[3]   = h;
+}
+
+static bool ui_base_panel_hit(f32 x, f32 y) {
+	for (i32 i = 0; i < ui_base_panel_rects_count; ++i) {
+		f32 *r = &ui_base_panel_rects[i * 4];
+		if (x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void ui_base_panel_update_grab() {
+	if (mouse_started("left") || pen_started("tip")) {
+		ui_base_panel_grab = ui_base_panel_hit(mouse_x, mouse_y);
+	}
+	else if (!mouse_down("left") && !pen_down("tip")) {
+		ui_base_panel_grab = false;
+	}
+}
+
 // Window holding a panel of size w x h, the window is larger by the shadow on the right (or left) and bottom
 bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 corners, bool shadow_left) {
+	ui_base_panel_add_rect(x, y, w, h);
 	i32 s      = ui_base_panel_shadow();
 	i32 wx     = shadow_left ? x - s : x;
 	u32 bg     = g_theme->WINDOW_BG_COL;

@@ -12,7 +12,6 @@ void render_path_unlit_draw() {
 	render_path_set_target("buf", NULL, "main", GPU_CLEAR_NONE, 0, 0.0);
 	render_grid();
 	render_path_set_target("buf", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	render_compass();
 	render_envsphere();
 	render_pathsphere_tool();
 	render_gizmo_draw();

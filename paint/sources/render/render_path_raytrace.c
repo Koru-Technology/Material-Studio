@@ -608,8 +608,6 @@ void render_path_raytrace_draw(bool use_live_layer) {
 	render_path_raytrace_commands(use_live_layer);
 	render_path_set_target("buf", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	render_gizmo_draw();
-	render_path_set_target("buf", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	render_compass();
 	render_path_set_target("last", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	render_path_bind_target("buf", "tex");
 	render_path_draw_shader("Scene/compositor_pass/compositor_pass");

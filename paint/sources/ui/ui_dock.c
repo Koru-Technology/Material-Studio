@@ -78,9 +78,20 @@ static i32 dock_collect_leaves(dock_node_t *n, dock_node_t **out, i32 count) {
 	return dock_collect_leaves(n->b, out, count);
 }
 
+// Tabs hidden whatever the layout says: Plugins without running plugins, Scripts unless enabled in the preferences
+static bool dock_tab_hidden(i32 id) {
+	if (id == TAB_PLUGINS) {
+		return g_plugins == NULL || g_plugins->keys->length == 0;
+	}
+	if (id == TAB_SCRIPTS) {
+		return !g_config->show_scripts;
+	}
+	return false;
+}
+
 static bool dock_tab_open(i32 id) {
 	tab_draw_t *tab = ui_base_get_tab(id);
-	return tab != NULL && !tab->closed;
+	return tab != NULL && !tab->closed && !dock_tab_hidden(id);
 }
 
 static i32 dock_leaf_open_count(dock_node_t *l) {
@@ -392,7 +403,8 @@ static void dock_save_node(i32_array_t *a, dock_node_t *n) {
 		i32_array_push(a, n->tab_count);
 		i32_array_push(a, n->active);
 		for (i32 i = 0; i < n->tab_count; ++i) {
-			i32_array_push(a, n->tabs[i] + (dock_tab_open(n->tabs[i]) ? 0 : 1000));
+			tab_draw_t *tab = ui_base_get_tab(n->tabs[i]);
+			i32_array_push(a, n->tabs[i] + (tab != NULL && !tab->closed ? 0 : 1000)); // Hidden tabs keep their open state
 		}
 		return;
 	}
@@ -546,6 +558,9 @@ static void dock_update_visible(dock_node_t *n) {
 static i32 dock_split_min_size(dock_node_t *n) {
 	if (n->role == DOCK_ROLE_STATUS) {
 		return math_floor(ui_statusbar_default_h * g_config->window_scale);
+	}
+	if (n->role == DOCK_ROLE_SIDEBAR) {
+		return math_floor(ui_base_sidebar_mini_w(g_config->large_asset_previews) * UI_SCALE()); // Collapsed width
 	}
 	return DOCK_MIN_SIZE;
 }
@@ -1039,15 +1054,9 @@ static void ui_dock_render_view3d_tabs(dock_node_t *l) {
 	}
 }
 
+// No collapse / expand button at the bottom of the sidebar, it is resized by dragging its edge
 i32 ui_dock_sidebar_button_inset() {
-	dock_node_t *s = dock_find_role(ui_dock_root, DOCK_ROLE_SIDEBAR);
-	if (!g_config->touch_ui || s == NULL || s->collapsed || !s->b->visible) {
-		return 0;
-	}
-	i32  button_y = s->b->y + s->b->h - math_floor(UI_ELEMENT_H() + UI_ELEMENT_OFFSET());
-	f32  bottom   = g_ui->_window_y + g_ui->_window_h;
-	bool overlap  = g_ui->_window_x < s->b->x + s->b->w && g_ui->_window_x + g_ui->_window_w > s->b->x && bottom > button_y;
-	return overlap ? math_floor(bottom - button_y) : 0;
+	return 0;
 }
 
 static void ui_dock_render_sidebar_buttons() {
@@ -1078,29 +1087,6 @@ static void ui_dock_render_sidebar_buttons() {
 			g_theme->TEXT_COL   = _TEXT_COL;
 		}
 		return;
-	}
-
-	// Collapse / expand button for mini sidebar
-	if (g_config->touch_ui && s->b->visible) {
-		bool               mini   = s->b->w <= ui_sidebar_w_mini;
-		i32                width  = s->b->w;
-		i32                height = math_floor(UI_ELEMENT_H() + UI_ELEMENT_OFFSET());
-		static ui_window_t window = {0};
-		if (ui_window(&window, s->b->x, s->b->y + s->b->h - height, width, height + 1, false)) {
-			g_ui->_w            = width;
-			i32 _BUTTON_H       = g_theme->BUTTON_H;
-			i32 _BUTTON_COL     = g_theme->BUTTON_COL;
-			g_theme->BUTTON_H   = g_theme->ELEMENT_H;
-			g_theme->BUTTON_COL = g_theme->WINDOW_BG_COL;
-			if (ui_button(mini ? "<" : ">", UI_ALIGN_CENTER, "")) {
-				bool large = g_config->large_asset_previews;
-				s->size    = math_floor((mini ? ui_base_sidebar_full_w(large) : ui_base_sidebar_mini_w(large)) * UI_SCALE());
-				base_resize();
-				ui_dock_save();
-			}
-			g_theme->BUTTON_H   = _BUTTON_H;
-			g_theme->BUTTON_COL = _BUTTON_COL;
-		}
 	}
 }
 
@@ -1282,6 +1268,26 @@ static void ui_dock_update_resize() {
 void ui_dock_update() {
 	if (ui_dock_root == NULL) {
 		return;
+	}
+
+	// Plugins started / stopped or Scripts toggled in the preferences
+	static i32 hidden_last = -1;
+	i32        hidden      = (dock_tab_hidden(TAB_PLUGINS) ? 1 : 0) | (dock_tab_hidden(TAB_SCRIPTS) ? 2 : 0);
+	if (hidden != hidden_last) {
+		bool first  = hidden_last == -1;
+		hidden_last = hidden;
+		if (!first) {
+			dock_node_t *leaves[DOCK_MAX_LEAVES];
+			i32          count = dock_collect_leaves(ui_dock_root, leaves, 0);
+			for (i32 i = 0; i < count; ++i) {
+				dock_leaf_clamp_active(leaves[i]);
+				if (leaves[i]->hwnd != NULL) {
+					leaves[i]->hwnd->redraws = 2;
+				}
+			}
+			ui_dock_layout();
+			base_redraw_ui();
+		}
 	}
 
 	// Tab dropped on the tab names

@@ -29,6 +29,6 @@
   "140": "donut", "141": "cylinder", "142": "cone", "143": "box",
   "144": "brush", "145": "hand-grab", "146": "circle-plus", "147": "equal", "148": "layers-2", "149": "minimize-2",
   "150": "arrow-down-to-line", "151": "shirt", "152": "rotate-cw", "153": "move-horizontal", "154": "scissors",
-  "155": "square-minus",
+  "155": "square-minus", "135": "scan",
   "eye_on": "eye", "eye_off": "eye-off"
 }

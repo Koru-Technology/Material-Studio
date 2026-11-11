@@ -186,6 +186,8 @@ void box_preferences_interface_tab() {
 	}
 
 	ui_check(&g_config->splash_screen, tr("Splash Screen"), "");
+	ui_check(&g_config->reload_project, tr("Reload Project on Startup"), "");
+	ui_check(&g_config->show_scripts, tr("Scripts Tab"), "");
 
 	ui_check(&g_config->grid_snap, tr("Grid Snap"), "");
 	ui_nodes_grid_snap = g_config->grid_snap;

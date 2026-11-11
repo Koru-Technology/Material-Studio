@@ -92,6 +92,25 @@ static void camera_orbit_action(bool modif, bool default_keymap, bool ruler) {
 	transform_move(camera->base->transform, camera_object_look_world(camera), -dist);
 }
 
+// Orbits around the view origin with the mouse movement, used by the view cube
+void camera_orbit_drag() {
+	camera_object_t *camera = scene_camera;
+	camera_redraws          = 2;
+	f32 dist                = camera_distance();
+	f32 angle_x             = -mouse_movement_x / 100.0 * g_config->camera_rotation_speed;
+	f32 angle_y             = -mouse_movement_y / 100.0 * g_config->camera_rotation_speed;
+	transform_move(camera->base->transform, camera_object_look_world(camera), dist);
+	transform_rotate(camera->base->transform, vec4_z_axis(), angle_x);
+	transform_rotate(camera->base->transform, camera_object_right_world(camera), angle_y);
+	vec4_t up_world = camera_object_up_world(camera);
+	if (up_world.z < 0 && !g_config->camera_upside_down) {
+		transform_rotate(camera->base->transform, camera_object_right_world(camera), -angle_y);
+	}
+	transform_move(camera->base->transform, camera_object_look_world(camera), -dist);
+	camera_object_build_mat(camera);
+	g_context->ddirty = 2;
+}
+
 static void camera_rotate_action(bool modif, bool default_keymap, bool ruler) {
 	camera_object_t *camera    = scene_camera;
 	camera_redraws             = 2;
@@ -322,7 +341,7 @@ void camera_update(void *_) {
 		camera_controls_down = false;
 	}
 
-	if (_input_occupied || !base_ui_enabled || base_is_dragging || g_ui->is_scrolling || g_ui->combo_selected_id != 0 || !camera_controls_down) {
+	if (_input_occupied || !base_ui_enabled || ui_base_panel_grab || base_is_dragging || g_ui->is_scrolling || g_ui->combo_selected_id != 0 || !camera_controls_down) {
 		return;
 	}
 

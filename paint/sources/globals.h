@@ -8,7 +8,7 @@
 char *manifest_title           = "PiratePaint";
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "23";
-char *manifest_version_config  = "5";
+char *manifest_version_config  = "7";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -127,6 +127,7 @@ char            *ui_files_filename;
 char            *ui_files_path;
 char            *ui_files_last_path     = "";
 bool             base_ui_enabled        = true;
+bool             ui_base_panel_grab     = false; // Touch started on a floating panel
 bool             base_view3d_show       = true;
 i32              base_appx              = 0;
 i32              base_appy              = 0;

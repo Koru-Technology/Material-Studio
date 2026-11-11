@@ -54,6 +54,18 @@ i32 ui_menubar_top_pad() {
 	return ui_menubar_is_floating() && g_config->touch_ui ? math_floor(10 * UI_SCALE()) : 0;
 }
 
+// Space below the icons of the floating top bar
+i32 ui_menubar_side_pad() {
+	return ui_menubar_is_floating() && g_config->touch_ui ? math_floor(7 * UI_SCALE()) : 0;
+}
+
+// Space left and right of the icons, less than above as the icon cells are already inset horizontally
+static i32 ui_menubar_x_pad() {
+	return ui_menubar_is_floating() && g_config->touch_ui ? math_floor(3 * UI_SCALE()) : 0;
+}
+
+static i32 ui_menubar_panel_content_w = 0; // Icons width measured last frame, the floating top bar fits them
+
 i32 ui_menu_top_y() {
 #ifdef IRON_IOS
 	if (config_is_iphone()) {
@@ -899,7 +911,7 @@ void ui_menubar_show_menu(i32 category) {
 	i32 panel_x = ui_menu_panel_x();
 	i32 panel_y = ui_menu_panel_y();
 	ui_menu_x   = math_floor(g_ui->_x - g_ui->_w) + panel_x;
-	ui_menu_y   = math_floor(ui_MENUBAR_H(g_ui)) + panel_y + ui_menubar_top_pad();
+	ui_menu_y   = math_floor(ui_MENUBAR_H(g_ui)) + panel_y + ui_menubar_top_pad() + ui_menubar_side_pad();
 	if (g_config->touch_ui) {
 		i32 menu_w = math_floor(base_default_element_w * UI_SCALE() * 2.0);
 		ui_menu_x -= math_floor((menu_w - g_ui->_w) / 2.0) + math_floor(ui_header_h / 2.0);
@@ -951,11 +963,19 @@ void ui_menubar_render_ui() {
 	i32 window_w = ui_dock_is_menubar_row() ? iron_window_width() : ui_menubar_w;
 	bool panel = ui_menubar_is_floating() && !ui_dock_is_menubar_row();
 	i32  pad   = ui_menubar_top_pad();
-	if (panel ? ui_base_panel_window(ui_menubar_menu_handle, panel_x, panel_y, window_w, ui_header_h + pad, UI_BASE_CORNER_BR, false)
+	i32  side  = ui_menubar_side_pad();
+	i32  xpad  = ui_menubar_x_pad();
+	i32  start = 0;
+	if (panel && g_config->touch_ui && ui_menubar_panel_content_w > 0) {
+		window_w = ui_menubar_panel_content_w + xpad * 2;
+	}
+	if (panel ? ui_base_panel_window(ui_menubar_menu_handle, panel_x, panel_y, window_w, ui_header_h + pad + side, UI_BASE_CORNER_BR, false)
 	          : ui_window(ui_menubar_menu_handle, panel_x, panel_y, window_w, ui_header_h, false)) {
 		if (panel) {
 			g_ui->_y += pad;
+			g_ui->_x += xpad;
 		}
+		start = g_ui->_x;
 		if (ui_dock_is_menubar_row()) {
 			ui_fill(0, 0, g_ui->_window_w, g_ui->_window_h + 4, g_theme->SEPARATOR_COL);
 		}
@@ -1021,17 +1041,24 @@ void ui_menubar_render_ui() {
 			// 	ui_menubar_show_menu(MENUBAR_CATEGORY_HELP);
 			// }
 
-			g_ui->enabled = history_undos > 0;
-			if (ui_menubar_icon_button(ICON_UNDO)) {
-				history_undo();
+			// Undo / redo float at the bottom left, see ui_panels.c
+			if (!ui_menubar_is_floating()) {
+				g_ui->enabled = history_undos > 0;
+				if (ui_menubar_icon_button(ICON_UNDO)) {
+					history_undo();
+				}
+				g_ui->enabled = history_redos > 0;
+				if (full && ui_menubar_icon_button(ICON_REDO)) {
+					history_redo();
+				}
+				g_ui->enabled = true;
 			}
-			g_ui->enabled = history_redos > 0;
-			if (full && ui_menubar_icon_button(ICON_REDO)) {
-				history_redo();
-			}
-			g_ui->enabled = true;
 			if (ui_menubar_icon_button(ICON_COG)) {
 				box_preferences_show();
+			}
+			if (panel && g_ui->_x - start != ui_menubar_panel_content_w) {
+				ui_menubar_panel_content_w           = g_ui->_x - start;
+				ui_menubar_menu_handle->redraws = 2;
 			}
 		}
 		else {
