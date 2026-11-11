@@ -63,7 +63,7 @@ void util_brush_update() {
 
 	bool down = paint_down || decal_mask || set_clone_source ||
 	            keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "brush_ruler"), any_map_get(g_keymap, "action_paint")), SHORTCUT_TYPE_DOWN) ||
-	            (pen_down("tip") && !keyboard_down("alt"));
+	            (pen_down("tip") && !keyboard_down("alt") && !string_equals(any_map_get(g_keymap, "action_paint"), "")); // "" while a touch rotates
 
 	if (g_config->touch_ui) {
 		if (pen_down("tip")) {

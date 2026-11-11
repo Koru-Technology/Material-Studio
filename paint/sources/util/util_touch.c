@@ -20,8 +20,8 @@ void util_touch_update() {
 #endif
 			bool is_pen = pen_only && pen_down("tip");
 			// Mesh picked or placing a shape - disable rotate
-			// Pen painting only - rotate with touch, paint with pen
-			if ((is_mesh && !pen_only) || is_pen || util_shape_tool_takes_press()) {
+			// Pen painting only - rotate with touch, paint with pen on the mesh, the pen rotates from the background
+			if ((is_mesh && (!pen_only || is_pen)) || util_shape_tool_takes_press()) {
 				any_map_set(g_keymap, "action_rotate", "");
 				any_map_set(g_keymap, "action_paint", util_touch_action_paint_remap);
 			}
