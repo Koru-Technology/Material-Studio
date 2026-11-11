@@ -1179,12 +1179,71 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 					if (l1->paint_met) {
 						layers_commands_merge_pack(pipes_get_merge_b(), l0->texpaint_pack, weight, l1->texpaint_pack, 1.0, empty, 101);
 					}
+					if (l1->paint_height) {
+						layers_commands_merge_pack(pipes_get_merge_a(), l0->texpaint_pack, weight, l1->texpaint_pack, 1.0, empty,
+						                           l1->paint_height_blend ? 107 : 101);
+					}
 				}
 			}
 		}
 
 		gpu_delete_texture(weight);
 	}
+}
+
+// Multiplies mask m into dst, the masks of layer combined so far. A height blended mask moves its edge with the height of the layer
+// compared to below (composited height of the layers under it in .a, NULL for a flat level)
+void layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer, gpu_texture_t *below) {
+	if (!m->height_blend || layer == NULL || layer->texpaint_pack == NULL) {
+		slot_layer_t *t = ALLOC_INIT(slot_layer_t, {.texpaint = dst});
+		layers_merge_layer(t, m, false);
+		return;
+	}
+	layers_make_temp_img();
+	draw_begin(layers_temp_image, false, 0); // Copy to temp
+	draw_set_pipeline(pipes_copy);
+	draw_image(dst, 0, 0);
+	draw_set_pipeline(NULL);
+	draw_end();
+
+	render_target_t *empty_rt = any_map_get(render_path_render_targets, "empty_white");
+	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	gpu_set_pipeline(pipes_height_blend_mask);
+	gpu_set_texture(0, m->texpaint);
+	gpu_set_texture(1, layers_temp_image);
+	gpu_set_texture(2, layer->texpaint_pack);
+	gpu_set_texture(3, below != NULL ? below : empty_rt->_image);
+	render_target_t *white_rt = any_map_get(render_path_render_targets, "empty_white");
+	gpu_set_texture(4, util_uv_dilatemap_cached ? util_uv_dilatemap : white_rt->_image); // Uv island coverage
+	gpu_set_float(pipes_opac_height_blend, m->mask_opacity);
+	gpu_set_float(pipes_influence_height_blend, m->height_blend_influence);
+	gpu_set_float(pipes_sharpness_height_blend, m->height_blend_sharpness);
+	gpu_set_float(pipes_offset_height_blend, m->height_blend_offset);
+	gpu_set_float(pipes_below_height_blend, below != NULL && m->height_blend_below ? 1.0 : 0.0);
+	gpu_set_float(pipes_reach_height_blend, m->height_blend_reach);
+	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+	gpu_set_index_buffer(const_data_screen_aligned_ib);
+	gpu_draw();
+	gpu_end();
+}
+
+// Composited height of the layers under l (pack .a), NULL when nothing below paints height
+gpu_texture_t *layers_height_below(slot_layer_t *l) {
+	slot_layer_t_array_t *below = any_array_create_from_raw((void *[]){}, 0);
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *b = g_project->_->layers->buffer[i];
+		if (b == l) {
+			break;
+		}
+		if (slot_layer_is_layer(b) && b->paint_height) {
+			any_array_push(below, b);
+		}
+	}
+	if (below->length == 0) {
+		return NULL;
+	}
+	slot_layer_t *flat = layers_flatten(false, below);
+	return flat->texpaint_pack;
 }
 
 void layers_draw_mesh_materials() {
@@ -1340,9 +1399,8 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 			layers_make_temp_mask_img();
 			draw_begin(pipes_temp_mask_image, GPU_CLEAR_COLOR, 0xffffffff);
 			draw_end();
-			slot_layer_t *l1 = ALLOC_INIT(slot_layer_t, {.texpaint = pipes_temp_mask_image});
 			for (i32 i = 0; i < l1masks->length; ++i) {
-				layers_merge_layer(l1, layers_move_preview(l1masks->buffer[i]), false);
+				layers_merge_mask(pipes_temp_mask_image, layers_move_preview(l1masks->buffer[i]), l1, layers_expc);
 			}
 			mask = pipes_temp_mask_image;
 		}
@@ -1430,6 +1488,10 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 				}
 				if (l1->paint_met) {
 					layers_commands_merge_pack(pipes_get_merge_b(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, 101);
+				}
+				if (l1->paint_height) {
+					layers_commands_merge_pack(pipes_get_merge_a(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+					                           l1->paint_height_blend ? 103 : 101);
 				}
 			}
 		}

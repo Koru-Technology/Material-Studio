@@ -88,6 +88,12 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 	raw->paint_nor_blend    = true;
 	raw->paint_height       = true;
 	raw->paint_height_blend = true;
+	raw->height_blend           = false;
+	raw->height_blend_below     = false;
+	raw->height_blend_influence = 1.0;
+	raw->height_blend_sharpness = 16.0;
+	raw->height_blend_offset    = 0.0;
+	raw->height_blend_reach     = 0.03;
 	raw->paint_emis         = true;
 	raw->paint_subs         = true;
 	raw->decal_mat          = mat4_identity(); // Decal layer
@@ -300,6 +306,19 @@ void layers_apply_mask(slot_layer_t *l, slot_layer_t *m) {
 		return;
 	}
 
+	// Height blended mask: bake its edge against the height of the layer and the layers below
+	gpu_texture_t *mask_tex  = m->texpaint;
+	f32            mask_opac = m->mask_opacity;
+	if (m->height_blend) {
+		gpu_texture_t *below = m->height_blend_below ? layers_height_below(l) : NULL;
+		layers_make_temp_mask_img();
+		draw_begin(pipes_temp_mask_image, true, 0xffffffff);
+		draw_end();
+		layers_merge_mask(pipes_temp_mask_image, m, l, below);
+		mask_tex  = pipes_temp_mask_image;
+		mask_opac = 1.0;
+	}
+
 	layers_make_temp_img();
 
 	// Copy layer to temp
@@ -313,8 +332,8 @@ void layers_apply_mask(slot_layer_t *l, slot_layer_t *m) {
 	_gpu_begin(l->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_apply_mask);
 	gpu_set_texture(pipes_tex0_mask, layers_temp_image);
-	gpu_set_texture(pipes_texa_mask, m->texpaint);
-	gpu_set_float(pipes_opac_apply_mask, m->mask_opacity);
+	gpu_set_texture(pipes_texa_mask, mask_tex);
+	gpu_set_float(pipes_opac_apply_mask, mask_opac);
 	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
 	gpu_set_index_buffer(const_data_screen_aligned_ib);
 	gpu_draw();
@@ -402,6 +421,12 @@ static slot_layer_t *slot_layer_copy(slot_layer_t *raw) {
 	l->paint_nor_blend    = raw->paint_nor_blend;
 	l->paint_height       = raw->paint_height;
 	l->paint_height_blend = raw->paint_height_blend;
+	l->height_blend           = raw->height_blend;
+	l->height_blend_below     = raw->height_blend_below;
+	l->height_blend_influence = raw->height_blend_influence;
+	l->height_blend_sharpness = raw->height_blend_sharpness;
+	l->height_blend_offset    = raw->height_blend_offset;
+	l->height_blend_reach     = raw->height_blend_reach;
 	l->paint_emis         = raw->paint_emis;
 	l->paint_subs         = raw->paint_subs;
 

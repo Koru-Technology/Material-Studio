@@ -83,6 +83,8 @@ char *history_action_to_string(history_action_t action) {
 		return tr("Edit Swatch");
 	case HISTORY_ACTION_OBJECT_TRANSFORM:
 		return tr("Transform Object");
+	case HISTORY_ACTION_MASK_HEIGHT_BLEND:
+		return tr("Mask Height Blend");
 	}
 	return tr("Paint");
 }
@@ -181,6 +183,15 @@ void history_layer_object_clear(slot_layer_t *l) {
 	layers_update_fill_layers();
 }
 
+static void history_get_height_blend(slot_layer_t *l, f32 *out) {
+	out[0] = l->height_blend ? 1.0 : 0.0;
+	out[1] = l->height_blend_below ? 1.0 : 0.0;
+	out[2] = l->height_blend_influence;
+	out[3] = l->height_blend_sharpness;
+	out[4] = l->height_blend_offset;
+	out[5] = l->height_blend_reach;
+}
+
 void history_swap_layer_props(history_step_t *step) {
 	slot_layer_t *l = g_project->_->layers->buffer[step->layer];
 
@@ -226,6 +237,19 @@ void history_swap_layer_props(history_step_t *step) {
 		context_set_layer(l);
 		make_material_parse_paint_material(true);
 		sys_notify_on_next_frame(&history_update_fill_layer, l);
+	}
+	else if (step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
+		f32 t[6];
+		history_get_height_blend(l, t);
+		l->height_blend           = step->layer_height_blend[0] > 0.5;
+		l->height_blend_below     = step->layer_height_blend[1] > 0.5;
+		l->height_blend_influence = step->layer_height_blend[2];
+		l->height_blend_sharpness = step->layer_height_blend[3];
+		l->height_blend_offset    = step->layer_height_blend[4];
+		l->height_blend_reach     = step->layer_height_blend[5];
+		memcpy(step->layer_height_blend, t, sizeof(t));
+		context_set_layer(l);
+		make_material_parse_mesh_material();
 	}
 	else if (step->action == HISTORY_ACTION_LAYER_UV_TYPE) {
 		i32 t               = l->uv_type;
@@ -512,7 +536,8 @@ void history_undo() {
 			make_material_parse_mesh_material();
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
-		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE) {
+		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
+		         step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
 			history_swap_layer_props(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
@@ -790,7 +815,8 @@ void history_redo() {
 			make_material_parse_mesh_material();
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
-		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE) {
+		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
+		         step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
 			history_swap_layer_props(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
@@ -1141,6 +1167,12 @@ void history_layer_scale() {
 void history_layer_angle() {
 	history_step_t *step = history_push(HISTORY_ACTION_LAYER_ANGLE);
 	step->layer_angle    = g_context->layer->angle;
+}
+
+// Before changing the height blend settings of the current mask
+void history_mask_height_blend() {
+	history_step_t *step = history_push(HISTORY_ACTION_MASK_HEIGHT_BLEND);
+	history_get_height_blend(g_context->layer, step->layer_height_blend);
 }
 
 void history_layer_uv_type() {

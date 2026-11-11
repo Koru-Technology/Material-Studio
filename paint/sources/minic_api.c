@@ -698,6 +698,12 @@ void minic_register_builtins() {
 	MINIC_B(paint_height_blend);
 	MINIC_B(paint_emis);
 	MINIC_B(paint_subs);
+	MINIC_B(height_blend);
+	MINIC_B(height_blend_below);
+	MINIC_F(height_blend_influence);
+	MINIC_F(height_blend_sharpness);
+	MINIC_F(height_blend_offset);
+	MINIC_F(height_blend_reach);
 	MINIC_END();
 
 	MINIC_STRUCT(slot_material_t);

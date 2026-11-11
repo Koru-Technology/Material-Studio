@@ -7,8 +7,8 @@
 
 char *manifest_title           = "PiratePaint";
 char *manifest_version         = "1.1rc1";
-char *manifest_version_project = "23";
-char *manifest_version_config  = "9";
+char *manifest_version_project = "25";
+char *manifest_version_config  = "10";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -58,6 +58,13 @@ gpu_pipeline_t  *pipes_merge_a  = NULL;
 gpu_pipeline_t  *pipes_merge_mask;
 gpu_pipeline_t  *pipes_invert_mask;
 gpu_pipeline_t  *pipes_apply_mask;
+gpu_pipeline_t  *pipes_height_blend_mask;
+i32              pipes_opac_height_blend;
+i32              pipes_influence_height_blend;
+i32              pipes_sharpness_height_blend;
+i32              pipes_offset_height_blend;
+i32              pipes_below_height_blend;
+i32              pipes_reach_height_blend;
 gpu_pipeline_t  *pipes_colorid_to_mask;
 i32              pipes_tex0;
 i32              pipes_tex1;

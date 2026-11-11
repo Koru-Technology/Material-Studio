@@ -4,6 +4,7 @@
 i32   tab_layers_layer_name_edit   = -1;
 char *tab_layers_layer_name_prev   = NULL;
 bool  tab_layers_show_context_menu = false;
+slot_layer_t *tab_layers_menu_layer = NULL; // Layer long pressed and released in place (touch), its context menu opens
 bool  tab_layers_mini;
 
 bool  tab_layers_search_show  = false;
@@ -626,6 +627,64 @@ static bool tab_layers_channel_check(bool *value, char *text) {
 	return ui_item_changed();
 }
 
+// Height blend settings of a mask: the mask edge follows the height of its layer, like fur strands hanging over the layers below
+static void tab_layers_height_blend_changed(slot_layer_t *m) {
+	if (m->height_blend) {
+		make_material_height_used = true; // Track the height of the layers below
+	}
+	make_material_parse_mesh_material();
+	ui_menu_keep_open = true;
+	if (ui_view2d_show) {
+		ui_view2d_hwnd->redraws = 2;
+	}
+}
+
+static void tab_layers_height_blend_slider(slot_layer_t *m, f32 *value, char *label, f32 min, f32 max) {
+	ui_menu_align();
+	f32 v = *value;
+	ui_set_next_id((ui_id_t)value);
+	ui_slider(&v, label, min, max, true, max <= 0.1 ? 1000.0 : 100.0, true, UI_ALIGN_RIGHT, true);
+	if (ui_item_changed()) {
+		if (g_ui->input_started) {
+			context_set_layer(m);
+			history_mask_height_blend();
+		}
+		*value = v;
+		tab_layers_height_blend_changed(m);
+	}
+}
+
+static void tab_layers_draw_mask_height_blend(slot_layer_t *m) {
+	ui_menu_align();
+	bool on = m->height_blend;
+	ui_check(&on, tr("Height Blend"), "");
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("The mask edge follows the height of the layer, tall details like fur strands reach past it"));
+	}
+	if (ui_item_changed()) {
+		context_set_layer(m);
+		history_mask_height_blend();
+		m->height_blend = on;
+		tab_layers_height_blend_changed(m);
+	}
+	if (!m->height_blend) {
+		return;
+	}
+	tab_layers_height_blend_slider(m, &m->height_blend_reach, tr("Reach"), 0.0, 0.1);
+	tab_layers_height_blend_slider(m, &m->height_blend_influence, tr("Influence"), 0.0, 4.0);
+	tab_layers_height_blend_slider(m, &m->height_blend_sharpness, tr("Sharpness"), 1.0, 50.0);
+	tab_layers_height_blend_slider(m, &m->height_blend_offset, tr("Offset"), -1.0, 1.0);
+	ui_menu_align();
+	bool below = m->height_blend_below;
+	ui_check(&below, tr("Compare With Layers Below"), "");
+	if (ui_item_changed()) {
+		context_set_layer(m);
+		history_mask_height_blend();
+		m->height_blend_below = below;
+		tab_layers_height_blend_changed(m);
+	}
+}
+
 void tab_layers_draw_layer_context_menu_draw() {
 	slot_layer_t *l    = tab_layers_l;
 	bool          mini = tab_layers_mini;
@@ -747,6 +806,9 @@ void tab_layers_draw_layer_context_menu_draw() {
 		}
 		make_material_parse_mesh_material();
 		ui_menu_keep_open = true;
+	}
+	if (slot_layer_is_mask(l)) {
+		tab_layers_draw_mask_height_blend(l);
 	}
 	if (l->fill_material != NULL) {
 		ui_menu_align();
@@ -918,6 +980,11 @@ void tab_layers_draw_layer_slot(slot_layer_t *l, i32 i, bool mini) {
 
 	tab_layers_draw_layer_highlight(l, mini);
 
+	if (tab_layers_menu_layer == l) {
+		tab_layers_menu_layer = NULL;
+		context_set_layer(l);
+		tab_layers_show_context_menu = true;
+	}
 	if (tab_layers_show_context_menu) {
 		tab_layers_draw_layer_context_menu(l, mini);
 	}
@@ -1018,6 +1085,23 @@ void tab_layers_button_new_menu() {
 		slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
 		slot_layer_t         *m        = layers_new_mask(false, l, -1);
 		tab_layers_remap_all_layer_pointers(pointers);
+		sys_notify_on_next_frame(&tab_layers_button_new_layer_clear, m);
+		g_context->layer_preview_dirty = true;
+		history_new_white_mask();
+		sys_notify_on_next_frame(&tab_layers_button_new_update_fill_layers, NULL);
+	}
+	// White mask with height blending: paint black where the layer should go, tall details reach past the edge
+	if (ui_menu_button(tr("Height Blend Mask"), "", ICON_MASK_WHITE)) {
+		if (slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
+			context_set_layer(l->parent);
+		}
+		l = g_context->layer;
+
+		slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+		slot_layer_t         *m        = layers_new_mask(false, l, -1);
+		tab_layers_remap_all_layer_pointers(pointers);
+		m->height_blend           = true;
+		make_material_height_used = true;
 		sys_notify_on_next_frame(&tab_layers_button_new_layer_clear, m);
 		g_context->layer_preview_dirty = true;
 		history_new_white_mask();

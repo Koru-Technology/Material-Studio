@@ -599,6 +599,7 @@ typedef enum {
 	HISTORY_ACTION_REPLACE_SWATCHES,
 	HISTORY_ACTION_EDIT_SWATCH,
 	HISTORY_ACTION_OBJECT_TRANSFORM,
+	HISTORY_ACTION_MASK_HEIGHT_BLEND,
 } history_action_t;
 
 // Rounded corners of floating panels

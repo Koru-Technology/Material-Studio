@@ -88,6 +88,12 @@ typedef struct slot_layer {
 	bool                  path_curved;
 	bool                  path_text;
 	struct slot_material *path_material;
+	bool                  height_blend;           // Mask: the edge follows the height of its layer (fur strands over the layers below)
+	bool                  height_blend_below;     // Compare with the height of the layers below, otherwise with a flat level
+	f32                   height_blend_influence; // How far the height moves the mask edge
+	f32                   height_blend_sharpness;
+	f32                   height_blend_offset;
+	f32                   height_blend_reach; // Distance the mask edge is widened over (uv), strands reach that far with a hard brush
 } slot_layer_t;
 
 typedef struct slot_font {
@@ -197,6 +203,7 @@ typedef struct config {
 	bool                 library_cloud;      // Library tab shows the cloud materials
 	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
 	f32                  library_scroll;     // Scroll position of the Library tab
+	bool                 hide_builtin_materials; // Library tab hides the built-in procedural materials
 } config_t;
 
 typedef struct slot_material {
@@ -587,6 +594,7 @@ typedef struct history_step {
 	f32                          layer_scale;
 	f32                          layer_angle;
 	i32                          layer_uv_type;
+	f32                          layer_height_blend[6]; // Mask height blend: on, below, influence, sharpness, offset, reach
 	i32                          swatch;
 	struct swatch_color         *swatch_color;
 	struct swatch_color_t_array *swatch_colors;
@@ -765,6 +773,12 @@ typedef struct layer_data {
 	bool              path_curved;
 	i32               path_material;
 	bool              path_text;
+	bool              height_blend;
+	bool              height_blend_below;
+	f32               height_blend_influence;
+	f32               height_blend_sharpness;
+	f32               height_blend_offset;
+	f32               height_blend_reach;
 } layer_data_t;
 
 typedef struct timeline_layer_keyframe_data {

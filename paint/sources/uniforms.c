@@ -368,6 +368,10 @@ void uniforms_ext_cache_uv_island_map(void *_) {
 	util_uv_cache_uv_island_map();
 }
 
+void uniforms_ext_cache_dilate_map(void *_) {
+	util_uv_cache_dilate_map();
+}
+
 void uniforms_ext_cache_triangle_map(void *_) {
 	util_uv_cache_triangle_map();
 }
@@ -473,6 +477,14 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			sys_notify_on_next_frame(&uniforms_ext_cache_triangle_map, NULL);
 		}
 		return util_uv_trianglemap;
+	}
+	else if (string_equals(link, "_texdilatemap")) {
+		if (util_uv_dilatemap_cached) {
+			return util_uv_dilatemap;
+		}
+		sys_notify_on_next_frame(&uniforms_ext_cache_dilate_map, NULL);
+		render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
+		return rt->_image;
 	}
 	else if (string_equals(link, "_texuvislandmap")) {
 		sys_notify_on_next_frame(&uniforms_ext_cache_uv_island_map, NULL);

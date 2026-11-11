@@ -103,7 +103,8 @@ shader_out_t *parser_material_parse_shader(ui_node_t *node, ui_node_socket_t *so
 		// Opacity
 		sout->out_opacity = parser_material_parse_value_input(node->inputs->buffer[1], false);
 		// Height
-		if (parser_material_parse_height && parser_material_is_default_normal(parser_material_out_normaltan)) {
+		// Height is kept next to the normal map (like Substance): height blended masks, height export and the height relief need it
+		if (parser_material_parse_height) {
 			sout->out_height = parser_material_parse_value_input(node->inputs->buffer[7], false);
 		}
 	}

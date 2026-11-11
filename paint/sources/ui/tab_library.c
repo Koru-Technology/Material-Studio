@@ -78,6 +78,57 @@ static ui_state_t tab_library_image(gpu_texture_t *icon, f32 imgh, u32 tint) {
 	return state;
 }
 
+// Procedural materials (builtin_materials.c), one section per kind
+static void tab_library_draw_builtin(tab_library_grid_t *g) {
+	char *search = to_lower_case(tab_library_search);
+	i32   total  = builtin_material_count();
+	i32  *items  = malloc(sizeof(i32) * total);
+	for (i32 s = 0; s < builtin_material_section_count(); ++s) {
+		i32 shown = 0;
+		for (i32 i = 0; i < total; ++i) {
+			if (builtin_material_section(i) == s && string_index_of(to_lower_case(builtin_material_name(i)), search) >= 0) {
+				items[shown++] = i;
+			}
+		}
+		if (shown == 0) {
+			continue;
+		}
+		ui_text(builtin_material_section_name(s), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+		for (i32 row = 0; row * g->num < shown; ++row) {
+			if (tab_library_row_hidden(g)) {
+				g_ui->_y += g->row_h;
+				continue;
+			}
+			ui_row(g->ratios);
+			for (i32 j = 0; j < g->num; ++j) {
+				i32 k = row * g->num + j;
+				if (k >= shown) {
+					ui_end_element_of_size(g->imgh);
+					continue;
+				}
+				ui_state_t state = tab_library_image(builtin_material_icon(items[k]), g->imgh, 0xffffffff);
+				if (state == UI_STATE_RELEASED && !g_ui->is_scrolling) {
+					builtin_material_use(items[k]);
+				}
+				if (g_ui->is_hovered) {
+					ui_tooltip(builtin_material_name(items[k]));
+				}
+			}
+			ui_row(g->ratios);
+			for (i32 j = 0; j < g->num; ++j) {
+				i32 k = row * g->num + j;
+				if (k >= shown) {
+					ui_end_element_of_size(g->text_h);
+					continue;
+				}
+				ui_text(builtin_material_name(items[k]), UI_ALIGN_CENTER, 0x00000000);
+			}
+			g_ui->_y += 8 * UI_SCALE();
+		}
+	}
+	free(items);
+}
+
 static void tab_library_draw_local() {
 	ui_begin_sticky();
 	tab_library_draw_header();
@@ -87,6 +138,11 @@ static void tab_library_draw_local() {
 	}
 	ui_end_sticky();
 	ui_separator(3, false);
+
+	tab_library_grid_t g = tab_library_grid();
+	if (!g_config->hide_builtin_materials) {
+		tab_library_draw_builtin(&g);
+	}
 
 	// Ready items matching the search
 	i32  count   = library_entry_count();
@@ -99,7 +155,9 @@ static void tab_library_draw_local() {
 		}
 	}
 
-	tab_library_grid_t g = tab_library_grid();
+	if (!g_config->hide_builtin_materials && shown > 0) {
+		ui_text(tr("My Materials"), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+	}
 	for (i32 row = 0; row * g.num < shown; ++row) {
 		if (tab_library_row_hidden(&g)) {
 			g_ui->_y += g.row_h;

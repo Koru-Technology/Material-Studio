@@ -243,6 +243,7 @@
 #include "config.c"
 #include "library.c"
 #include "library_cloud.c"
+#include "builtin_materials.c"
 #include "console.c"
 #include "context.c"
 #include "history.c"

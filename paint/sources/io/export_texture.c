@@ -325,9 +325,8 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 			layers_make_temp_mask_img();
 			draw_begin(pipes_temp_mask_image, true, 0xffffffff);
 			draw_end();
-			slot_layer_t *l1 = ALLOC_INIT(slot_layer_t, {.texpaint = pipes_temp_mask_image});
 			for (i32 i = 0; i < l1masks->length; ++i) {
-				layers_merge_layer(l1, l1masks->buffer[i], false);
+				layers_merge_mask(pipes_temp_mask_image, l1masks->buffer[i], l1, layers_expc);
 			}
 			mask = pipes_temp_mask_image;
 		}
@@ -402,6 +401,9 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 					layers_commands_merge_pack(pipes_get_merge_g(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, 101);
 				if (l1->paint_met)
 					layers_commands_merge_pack(pipes_get_merge_b(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, 101);
+				if (l1->paint_height)
+					layers_commands_merge_pack(pipes_get_merge_a(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+					                           l1->paint_height_blend ? 103 : 101);
 			}
 		}
 	}

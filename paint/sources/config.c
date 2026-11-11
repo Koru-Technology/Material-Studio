@@ -147,6 +147,7 @@ void config_save() {
 	json_encode_bool("library_cloud", g_config->library_cloud);
 	json_encode_i32("library_cloud_type", g_config->library_cloud_type);
 	json_encode_f32("library_scroll", g_config->library_scroll);
+	json_encode_bool("hide_builtin_materials", g_config->hide_builtin_materials);
 	char *config_json = json_encode_end();
 
 	buffer_t *buffer = sys_string_to_buffer(config_json);
@@ -310,6 +311,7 @@ config_t *config_create_default() {
 	c->library_cloud      = false;
 	c->library_cloud_type = -1;
 	c->library_scroll     = 0.0;
+	c->hide_builtin_materials = false;
 	return c;
 }
 
@@ -420,14 +422,20 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->library_cloud         = armpack_map_get_i32(old, "library_cloud") > 0;
 	c->library_cloud_type    = armpack_map_get_i32(old, "library_cloud_type");
 	c->library_scroll        = armpack_map_get_f32(old, "library_scroll");
+	c->hide_builtin_materials = armpack_map_get_i32(old, "hide_builtin_materials") > 0;
 	return c;
+}
+
+config_t *config_from_version_9(any_map_t *old) {
+	armpack_map_set_i32(old, "hide_builtin_materials", false);
+	return config_from_map_to_config(old);
 }
 
 config_t *config_from_version_8(any_map_t *old) {
 	armpack_map_set_i32(old, "library_cloud", false);
 	armpack_map_set_i32(old, "library_cloud_type", -1);
 	armpack_map_set_f32(old, "library_scroll", 0.0);
-	return config_from_map_to_config(old);
+	return config_from_version_9(old);
 }
 
 config_t *config_from_version_7(any_map_t *old) {
@@ -495,6 +503,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_6,
 	    config_from_version_7,
 	    config_from_version_8,
+	    config_from_version_9,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {

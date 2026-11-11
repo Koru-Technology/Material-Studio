@@ -280,6 +280,12 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .path_tool          = l->path_tool,
 		                              .path_curved        = l->path_curved,
 		                              .path_text          = l->path_text,
+		                              .height_blend           = l->height_blend,
+		                              .height_blend_below     = l->height_blend_below,
+		                              .height_blend_influence = l->height_blend_influence,
+		                              .height_blend_sharpness = l->height_blend_sharpness,
+		                              .height_blend_offset    = l->height_blend_offset,
+		                              .height_blend_reach     = l->height_blend_reach,
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1});
 		any_array_push(ld, d);
 	}

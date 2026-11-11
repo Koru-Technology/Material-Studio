@@ -161,6 +161,24 @@ void pipes_init() {
 
 	{
 
+		pipes_height_blend_mask                  = gpu_create_pipeline();
+		pipes_height_blend_mask->vertex_shader   = sys_get_shader("mask_height_blend.vert");
+		pipes_height_blend_mask->fragment_shader = sys_get_shader("mask_height_blend.frag");
+		gpu_vertex_structure_t *vs               = ALLOC_INIT(gpu_vertex_structure_t, {0});
+		gpu_vertex_structure_add(vs, "pos", GPU_VERTEX_DATA_F32_2X);
+		pipes_height_blend_mask->input_layout = vs;
+		gpu_pipeline_compile(pipes_height_blend_mask);
+		pipes_offset                 = 0;
+		pipes_opac_height_blend      = pipes_get_constant_location("float");
+		pipes_influence_height_blend = pipes_get_constant_location("float");
+		pipes_sharpness_height_blend = pipes_get_constant_location("float");
+		pipes_offset_height_blend    = pipes_get_constant_location("float");
+		pipes_below_height_blend     = pipes_get_constant_location("float");
+		pipes_reach_height_blend     = pipes_get_constant_location("float");
+	}
+
+	{
+
 		pipes_merge_mask                  = gpu_create_pipeline();
 		pipes_merge_mask->vertex_shader   = sys_get_shader("mask_merge.vert");
 		pipes_merge_mask->fragment_shader = sys_get_shader("mask_merge.frag");

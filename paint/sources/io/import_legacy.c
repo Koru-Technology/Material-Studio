@@ -220,6 +220,12 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 			ld->path_curved        = armpack_map_get_i32(old, "path_curved") > 0;
 			ld->path_material      = ld->path_points != NULL ? armpack_map_get_i32(old, "path_material") : -1;
 			ld->path_text          = armpack_map_get_i32(old, "path_text") > 0;
+			ld->height_blend           = armpack_map_get_i32(old, "height_blend") > 0;
+			ld->height_blend_below     = armpack_map_get_i32(old, "height_blend_below") > 0;
+			ld->height_blend_influence = armpack_map_get_f32(old, "height_blend_influence");
+			ld->height_blend_sharpness = armpack_map_get_f32(old, "height_blend_sharpness");
+			ld->height_blend_offset    = armpack_map_get_f32(old, "height_blend_offset");
+			ld->height_blend_reach     = armpack_map_get_f32(old, "height_blend_reach");
 			any_array_push(project->layer_datas, ld);
 		}
 	}
@@ -322,9 +328,36 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 	return project;
 }
 
+project_t *import_arm_from_version_24(any_map_t *old) {
+	// Height blend reach
+	any_array_t *lds = any_map_get(old, "layer_datas");
+	if (lds != NULL) {
+		for (i32 i = 0; i < lds->length; ++i) {
+			armpack_map_set_f32(lds->buffer[i], "height_blend_reach", 0.03);
+		}
+	}
+	return import_arm_from_map_to_arm(old);
+}
+
+project_t *import_arm_from_version_23(any_map_t *old) {
+	// Height blended masks
+	any_array_t *lds = any_map_get(old, "layer_datas");
+	if (lds != NULL) {
+		for (i32 i = 0; i < lds->length; ++i) {
+			any_map_t *ld = lds->buffer[i];
+			armpack_map_set_i32(ld, "height_blend", 0);
+			armpack_map_set_i32(ld, "height_blend_below", 0);
+			armpack_map_set_f32(ld, "height_blend_influence", 1.0);
+			armpack_map_set_f32(ld, "height_blend_sharpness", 16.0);
+			armpack_map_set_f32(ld, "height_blend_offset", 0.0);
+		}
+	}
+	return import_arm_from_version_24(old);
+}
+
 project_t *import_arm_from_version_22(any_map_t *old) {
 	any_map_set(old, "mesh_groups", NULL);
-	return import_arm_from_map_to_arm(old);
+	return import_arm_from_version_23(old);
 }
 
 project_t *import_arm_from_version_21(any_map_t *old) {
@@ -537,7 +570,7 @@ project_t *import_arm_from_old(buffer_t *b) {
 	    import_arm_from_version_5,  import_arm_from_version_6,  import_arm_from_version_7,  import_arm_from_version_8,  import_arm_from_version_9,
 	    import_arm_from_version_10, import_arm_from_version_11, import_arm_from_version_12, import_arm_from_version_13, import_arm_from_version_14,
 	    import_arm_from_version_15, import_arm_from_version_16, import_arm_from_version_17, import_arm_from_version_18, import_arm_from_version_19,
-	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22,
+	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22, import_arm_from_version_23, import_arm_from_version_24,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (import_arm_is_version(b, i32_to_string(v))) {

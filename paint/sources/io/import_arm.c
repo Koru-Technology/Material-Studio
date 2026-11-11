@@ -1100,6 +1100,15 @@ void import_arm_run_project(char *path) {
 			l->paint_nor_blend    = ld->paint_nor_blend;
 			l->paint_height       = ld->paint_height;
 			l->paint_height_blend = ld->paint_height_blend;
+			l->height_blend           = ld->height_blend;
+			l->height_blend_below     = ld->height_blend_below;
+			l->height_blend_influence = ld->height_blend_influence;
+			l->height_blend_sharpness = ld->height_blend_sharpness;
+			l->height_blend_offset    = ld->height_blend_offset;
+			l->height_blend_reach     = ld->height_blend_reach;
+			if (l->height_blend) {
+				make_material_height_used = true; // The mask compares heights
+			}
 			l->paint_emis         = ld->paint_emis;
 			l->paint_subs         = ld->paint_subs;
 			l->path_points        = ld->path_points;

@@ -9,6 +9,8 @@ i32     base_drag_tint          = 0xffffffff;
 i32     base_drag_size          = -1;
 rect_t *base_drag_rect          = NULL;
 f32     base_drag_start         = 0.0;
+f32     base_drag_lift_x        = -1; // Touch position where a long pressed layer was lifted
+f32     base_drag_lift_y        = -1;
 f32     base_drop_x             = 0.0;
 f32     base_drop_y             = 0.0;
 i32     base_last_window_width  = 0;
@@ -330,8 +332,9 @@ void base_update(void *_) {
 	                base_drag_brush != NULL || base_drag_font != NULL || base_drag_sound != NULL || base_drag_mesh != NULL;
 
 	if (g_config->touch_ui) {
-		// Touch and hold to activate dragging
-		if (base_drag_start < 0.2) {
+		// Touch and hold to activate dragging, layers take a longer press so a slow tap still selects
+		f32 hold = base_drag_layer != NULL ? 0.4 : 0.2;
+		if (base_drag_start < hold) {
 			if (has_drag && mouse_down("left")) {
 				base_drag_start += sys_real_delta();
 			}
@@ -339,6 +342,13 @@ void base_update(void *_) {
 				base_drag_start = 0;
 			}
 			has_drag = false;
+		}
+		else if (base_drag_layer != NULL && !base_is_dragging && mouse_down("left")) {
+			// Long press lifts the layer: move to reorder, release in place for its context menu
+			base_is_dragging         = true;
+			base_drag_lift_x         = mouse_x;
+			base_drag_lift_y         = mouse_y;
+			g_ui->input_started_time = 0; // No touch-hold right click
 		}
 		if (mouse_released("left")) {
 			base_drag_start = 0;
@@ -430,9 +440,17 @@ void base_update(void *_) {
 				ui_nodes_accept_layer_drop(array_index_of(g_project->_->layers, base_drag_layer));
 			}
 			else if (context_in_layers() && base_is_dragging) {
-				slot_layer_move(base_drag_layer, g_context->drag_dest);
-				make_material_parse_mesh_material();
+				f32 dx = mouse_x - base_drag_lift_x;
+				f32 dy = mouse_y - base_drag_lift_y;
+				if (g_config->touch_ui && base_drag_lift_x >= 0 && math_sqrt(dx * dx + dy * dy) < 12 * UI_SCALE()) {
+					tab_layers_menu_layer = base_drag_layer;
+				}
+				else {
+					slot_layer_move(base_drag_layer, g_context->drag_dest);
+					make_material_parse_mesh_material();
+				}
 			}
+			base_drag_lift_x = -1;
 			base_drag_layer = NULL;
 		}
 		else if (base_drag_mesh != NULL) {
