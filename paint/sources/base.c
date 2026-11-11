@@ -23,6 +23,11 @@ void base_on_shutdown() {
 	config_save();
 }
 
+// iPadOS usually ends apps in the background without a shutdown event
+void base_on_background() {
+	config_save();
+}
+
 void base_on_foreground() {
 	library_rescan(); // Pick up materials added while away
 	g_context->foreground_event = true;
@@ -547,7 +552,7 @@ void base_init() {
 	base_last_window_height = iron_window_height();
 
 	sys_notify_on_drop_files(&base_on_drop_files);
-	sys_notify_on_app_state(&base_on_foreground, NULL, &base_on_shutdown);
+	sys_notify_on_app_state(&base_on_foreground, &base_on_background, &base_on_shutdown);
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
 	agent_init();
 

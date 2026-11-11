@@ -206,6 +206,26 @@ static void camera_zoom_action(bool modif_key) {
 		camera_redraws = 2;
 		f32 f          = mouse_wheel_delta * (-0.2) * ((camera_distance() / 4.0));
 		f *= camera_get_zoom_speed();
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+		// Pinch: towards the point between the fingers, it stays in place on the screen
+		if (mouse_down("right")) {
+			vec4_t look = vec4_norm(camera_object_look(camera));
+			ray_t *ray  = raycast_get_ray(mouse_view_x(), mouse_view_y(), camera);
+			vec4_t dir  = vec4_norm(ray->dir);
+			f32    d    = vec4_dot(dir, look);
+			if (d > 0.1) {
+				vec4_t move = vec4_mult(dir, f / d); // Same distance along the view as a centered zoom
+				move.w      = 0.0;
+				camera->base->transform->loc = vec4_add(camera->base->transform->loc, move);
+				transform_build_matrix(camera->base->transform);
+				// The orbit pivot shifts sideways with the camera
+				vec4_t side                    = vec4_sub(move, vec4_mult(look, f));
+				side.w                         = 0.0;
+				camera_origins[camera_index()] = vec4_add(camera_origins[camera_index()], side);
+				return;
+			}
+		}
+#endif
 		transform_move(camera->base->transform, camera_object_look(camera), f);
 	}
 }

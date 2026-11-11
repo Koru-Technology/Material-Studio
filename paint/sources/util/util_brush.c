@@ -3,8 +3,56 @@
 
 static bool util_brush_clone_source_down = false;
 
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+// A finger stroke starts right away, a second finger landing shortly after (pinch, two finger drag) undoes it
+#define UTIL_BRUSH_FINGER_CANCEL 0.35
+static f64             util_brush_finger_time    = 0;
+static bool            util_brush_finger_blocked = false;
+static history_step_t *util_brush_finger_step    = NULL; // Last history step before the finger stroke
+static bool            util_brush_finger_stroke  = false;
+
+// Returns false once a finger touch turned into a two finger gesture
+static bool util_brush_finger_allowed(bool paint_down) {
+	if (pen_down("tip") || pen_in_use) {
+		return true;
+	}
+	if (mouse_started("left")) {
+		util_brush_finger_time    = sys_time();
+		util_brush_finger_blocked = false;
+	}
+	if (mouse_started("right") || mouse_down("right")) {
+		// Second finger: undo the stroke the first one just started
+		if (util_brush_finger_stroke && sys_time() - util_brush_finger_time < UTIL_BRUSH_FINGER_CANCEL) {
+			history_step_t *last = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
+			if (last != NULL && last != util_brush_finger_step && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
+				history_undo();
+			}
+		}
+		util_brush_finger_stroke  = false;
+		util_brush_finger_blocked = true;
+	}
+	if (!paint_down) {
+		util_brush_finger_stroke = false;
+		return true;
+	}
+	if (util_brush_finger_blocked) {
+		return false;
+	}
+	if (g_context->brush_time == 0 && !util_brush_finger_stroke) {
+		util_brush_finger_stroke = true;
+		util_brush_finger_step   = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
+	}
+	return true;
+}
+#endif
+
 void util_brush_update() {
 	bool paint_down = keymap_shortcut(any_map_get(g_keymap, "action_paint"), SHORTCUT_TYPE_DOWN);
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+	if (!util_brush_finger_allowed(paint_down)) {
+		paint_down = false;
+	}
+#endif
 
 	bool set_clone_source =
 	    g_context->tool == TOOL_TYPE_CLONE &&

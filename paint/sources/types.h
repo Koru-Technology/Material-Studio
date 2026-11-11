@@ -194,6 +194,9 @@ typedef struct config {
 	bool                 reload_project;   // Open the last project on startup
 	bool                 show_scripts;     // Scripts tab
 	i32                  cloud_resolution; // Cloud materials texture size, 0 - 1K, 1 - 2K, 2 - 4K, 3 - 8K
+	bool                 library_cloud;      // Library tab shows the cloud materials
+	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
+	f32                  library_scroll;     // Scroll position of the Library tab
 } config_t;
 
 typedef struct slot_material {

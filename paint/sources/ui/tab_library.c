@@ -4,8 +4,7 @@
 // (library_cloud.c): previews only, tapping one adds it to the project
 
 static char *tab_library_search = "";
-static bool  tab_library_cloud  = false;
-static i32   tab_library_type   = 0; // Combo position: 0 - all, then the types that have items
+// Cloud view, its type and the scroll position are kept in the config (library_cloud, library_cloud_type, library_scroll)
 
 static bool tab_library_matches(library_entry_t *e) {
 	if (string_equals(tab_library_search, "")) {
@@ -20,15 +19,18 @@ static void tab_library_draw_header() {
 	ui_row(f32_array_create_from_raw_tmp((f32[]){0.82, 0.18}, 2));
 	tab_library_search = string_copy(ui_text_input(&tab_library_search, tr("Search"), UI_ALIGN_LEFT, true, true));
 	u32 col = g_theme->BUTTON_COL;
-	if (tab_library_cloud) {
+	if (g_config->library_cloud) {
 		g_theme->BUTTON_COL = g_theme->HIGHLIGHT_COL;
 	}
 	if (ui_icon_button("", ICON_CLOUD, UI_ALIGN_CENTER)) {
-		tab_library_cloud = !tab_library_cloud;
+		g_config->library_cloud             = !g_config->library_cloud;
+		g_ui->current_window->scroll_offset = 0;
+		g_ui->current_window->redraws       = 2;
+		config_save();
 	}
 	g_theme->BUTTON_COL = col;
 	if (g_ui->is_hovered) {
-		ui_tooltip(tab_library_cloud ? tr("Show my materials") : tr("Show the cloud materials"));
+		ui_tooltip(g_config->library_cloud ? tr("Show my materials") : tr("Show the cloud materials"));
 	}
 }
 
@@ -255,16 +257,20 @@ static void tab_library_draw_cloud() {
 
 	ui_begin_sticky();
 	tab_library_draw_header();
-	if (tab_library_type >= id_count) {
-		tab_library_type = 0;
+	// The type is remembered, its position in the combo depends on which types have items
+	i32 index = 0;
+	for (i32 k = 0; k < id_count; ++k) {
+		if (ids[k] == g_config->library_cloud_type) {
+			index = k;
+		}
 	}
-	ui_combo(&tab_library_type, names, tr("Type"), false, UI_ALIGN_LEFT, false);
-	// Another type picked: back to the top
-	static i32 last_type = 0;
-	if (tab_library_type != last_type) {
-		last_type                           = tab_library_type;
+	i32 picked = index;
+	ui_combo(&picked, names, tr("Type"), false, UI_ALIGN_LEFT, false);
+	if (picked != index) { // Another type picked: back to the top
+		g_config->library_cloud_type        = ids[picked];
 		g_ui->current_window->scroll_offset = 0;
 		g_ui->current_window->redraws       = 2;
+		config_save();
 	}
 	char *status = library_cloud_status();
 	if (!string_equals(status, "")) {
@@ -275,7 +281,7 @@ static void tab_library_draw_cloud() {
 
 	// Items are sorted by type, each type is a range of the matching items
 	tab_library_grid_t g    = tab_library_grid();
-	i32                only = ids[tab_library_type];
+	i32                only = ids[picked];
 	for (i32 t = 0; t < types; ++t) {
 		i32 n = starts[t + 1] - starts[t];
 		if (n == 0 || (only >= 0 && t != only)) {
@@ -291,5 +297,15 @@ void tab_library_draw(i32 *htab) {
 	if (!ui_tab(htab, tr("Library"), false, -1, false)) {
 		return;
 	}
-	tab_library_cloud ? tab_library_draw_cloud() : tab_library_draw_local();
+	// Scroll position of the last session, applied while the content shows up
+	static i32 restore = 2;
+	if (restore > 0) {
+		restore--;
+		g_ui->current_window->scroll_offset = g_config->library_scroll;
+		g_ui->current_window->redraws       = 2;
+	}
+	else {
+		g_config->library_scroll = g_ui->current_window->scroll_offset;
+	}
+	g_config->library_cloud ? tab_library_draw_cloud() : tab_library_draw_local();
 }

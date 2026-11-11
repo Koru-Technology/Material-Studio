@@ -391,7 +391,39 @@ void mouse_up_listener(i32 index, i32 x, i32 y) {
 	mouse_y                                = (f32)y;
 }
 
+#if defined(IRON_ANDROID) || defined(IRON_IOS)
+// Two fingers: the mouse sits between them, so a pinch does not drag the view along with one finger
+static bool mouse_touch_two = false;
+static f32  mouse_touch_x[2];
+static f32  mouse_touch_y[2];
+
+static void mouse_touch_mid(f32 *x, f32 *y) {
+	*x = (mouse_touch_x[0] + mouse_touch_x[1]) / 2.0f;
+	*y = (mouse_touch_y[0] + mouse_touch_y[1]) / 2.0f;
+}
+
+static void mouse_move_to(f32 x, f32 y) {
+	mouse_movement_x += x - mouse_last_x;
+	mouse_movement_y += y - mouse_last_y;
+	mouse_last_x = x;
+	mouse_last_y = y;
+	mouse_x      = x;
+	mouse_y      = y;
+	mouse_moved  = true;
+}
+#endif
+
 void mouse_move_listener(i32 x, i32 y, i32 movement_x, i32 movement_y) {
+#if defined(IRON_ANDROID) || defined(IRON_IOS)
+	if (mouse_touch_two) { // First finger moved
+		mouse_touch_x[0] = (f32)x;
+		mouse_touch_y[0] = (f32)y;
+		f32 mx, my;
+		mouse_touch_mid(&mx, &my);
+		mouse_move_to(mx, my);
+		return;
+	}
+#endif
 	if (mouse_last_x == -1.0f && mouse_last_y == -1.0f) { // First frame init
 		mouse_last_x = (f32)x;
 		mouse_last_y = (f32)y;
@@ -418,9 +450,20 @@ void mouse_wheel_listener(f32 delta) {
 
 #if defined(IRON_ANDROID) || defined(IRON_IOS)
 void mouse_on_touch_down(i32 index, i32 x, i32 y) {
-	if (index == 1) { // Two fingers down - right mouse button
+	if (index == 1) { // Two fingers down - right mouse button, placed between them
+		mouse_touch_x[0] = mouse_x;
+		mouse_touch_y[0] = mouse_y;
+		mouse_touch_x[1] = (f32)x;
+		mouse_touch_y[1] = (f32)y;
+		mouse_touch_two  = true;
+		f32 mx, my;
+		mouse_touch_mid(&mx, &my);
+		mouse_last_x                   = mx;
+		mouse_last_y                   = my;
 		_mouse_buttons_down->buffer[0] = false;
-		mouse_down_listener(1, (i32)mouse_x, (i32)mouse_y);
+		mouse_down_listener(1, (i32)mx, (i32)my);
+		mouse_x           = mx;
+		mouse_y           = my;
 		mouse_pinch_total = 0.0f;
 		mouse_pinch_dist  = 0.0f;
 	}
@@ -436,6 +479,15 @@ void mouse_on_touch_up(i32 index, i32 x, i32 y) {
 		mouse_pinch_dist   = 0.0f;
 		mouse_pinch_total  = 0.0f;
 		mouse_pinch_smooth = 0.0f;
+		// Back on the first finger, without a jump
+		if (mouse_touch_two) {
+			mouse_touch_two = false;
+			mouse_x = mouse_last_x = mouse_touch_x[0];
+			mouse_y = mouse_last_y = mouse_touch_y[0];
+		}
+	}
+	else if (index == 0) {
+		mouse_touch_two = false;
 	}
 	else if (index == 2) {
 		mouse_up_listener(2, (i32)mouse_x, (i32)mouse_y);
@@ -443,10 +495,19 @@ void mouse_on_touch_up(i32 index, i32 x, i32 y) {
 }
 
 void mouse_on_touch_move(i32 index, i32 x, i32 y) {
-	// Pinch to zoom - mouse wheel
+	// Pinch to zoom - mouse wheel, the mouse follows the middle of the fingers
 	if (index == 1) {
-		f32 dx           = mouse_x - (f32)x;
-		f32 dy           = mouse_y - (f32)y;
+		f32 dx = mouse_x - (f32)x;
+		f32 dy = mouse_y - (f32)y;
+		if (mouse_touch_two) {
+			mouse_touch_x[1] = (f32)x;
+			mouse_touch_y[1] = (f32)y;
+			dx               = mouse_touch_x[0] - mouse_touch_x[1];
+			dy               = mouse_touch_y[0] - mouse_touch_y[1];
+			f32 mx, my;
+			mouse_touch_mid(&mx, &my);
+			mouse_move_to(mx, my);
+		}
 		f32 new_distance = sqrtf(dx * dx + dy * dy);
 		if (mouse_pinch_dist == 0.0f) {
 			mouse_pinch_dist = new_distance;

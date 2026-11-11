@@ -794,6 +794,18 @@ static void cloud_job_free(cloud_job_t *job) {
 	free(job);
 }
 
+typedef struct cloud_import {
+	char *dir;
+	char *name;
+} cloud_import_t;
+
+// Next frame: the import renders the material preview, it can not run while the Library tab draws
+static void cloud_import_on_next_frame(void *data) {
+	cloud_import_t *imp = data;
+	import_folder_run_named(imp->dir, imp->name); // The strings may be kept by the material, they are not freed
+	free(imp);
+}
+
 static void cloud_job_end(bool ok) {
 	cloud_job_t *job = cloud_job;
 	cloud_job        = NULL;
@@ -805,7 +817,10 @@ static void cloud_job_end(bool ok) {
 		}
 		job->item->downloaded = job->res == g_config->cloud_resolution;
 		cloud_disk_usage      = -1;
-		import_folder_run_named(job->dir, job->name);
+		cloud_import_t *imp   = malloc(sizeof(cloud_import_t));
+		imp->dir              = string_copy(job->dir);
+		imp->name             = string_copy(job->name);
+		sys_notify_on_next_frame(cloud_import_on_next_frame, imp);
 	}
 	else {
 		cloud_remove_tree(job->dir);
