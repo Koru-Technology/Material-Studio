@@ -1549,6 +1549,7 @@ bool             library_cloud_item_busy(cloud_item_t *it);
 bool             library_cloud_item_downloaded(cloud_item_t *it);
 bool             library_cloud_item_matches(cloud_item_t *it, char *search);
 char            *library_cloud_item_source(cloud_item_t *it);
+bool             library_cloud_item_stylized(cloud_item_t *it);
 gpu_texture_t   *library_cloud_item_icon(cloud_item_t *it);
 i32              library_cloud_type_count();
 char            *library_cloud_type_name(i32 type);

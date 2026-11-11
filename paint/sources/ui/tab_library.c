@@ -1,6 +1,6 @@
 #include "../global.h"
 
-// Materials of the library folder (library.c), or with the cloud button the Poly Haven and ambientCG materials
+// Materials of the library folder (library.c), or with the cloud button the Poly Haven, ambientCG and FreeStylized materials
 // (library_cloud.c): previews only, tapping one adds it to the project
 
 static char *tab_library_search = "";
@@ -220,58 +220,137 @@ static void tab_library_draw_cloud_group(tab_library_grid_t *g, i32 *items, i32 
 	}
 }
 
+// Cloud groups: the stylized types, then the realistic ones
+#define TAB_LIBRARY_ALL           -1
+#define TAB_LIBRARY_ALL_STYLIZED  -2
+#define TAB_LIBRARY_ALL_REALISTIC -3
+
+static char *tab_library_style_name(bool stylized) {
+	return stylized ? tr("Stylized") : tr("Realistic");
+}
+
+#define TAB_LIBRARY_HEADING -100
+#define TAB_LIBRARY_MENU_MAX 64
+
+static char tab_library_menu_names[TAB_LIBRARY_MENU_MAX][128];
+static i32  tab_library_menu_ids[TAB_LIBRARY_MENU_MAX];
+static i32  tab_library_menu_count  = 0;
+static bool tab_library_type_picked = false;
+
+static void tab_library_menu_add(i32 id, char *name) {
+	if (tab_library_menu_count < TAB_LIBRARY_MENU_MAX) {
+		snprintf(tab_library_menu_names[tab_library_menu_count], 128, "%s", name);
+		tab_library_menu_ids[tab_library_menu_count++] = id;
+	}
+}
+
+static void tab_library_type_menu() {
+	for (i32 k = 0; k < tab_library_menu_count; ++k) {
+		i32 id = tab_library_menu_ids[k];
+		if (id == TAB_LIBRARY_HEADING) {
+			ui_menu_separator();
+			ui_menu_label(tab_library_menu_names[k], NULL);
+			continue;
+		}
+		bool current = id == g_config->library_cloud_type;
+		if (ui_menu_button(tab_library_menu_names[k], "", current ? ICON_CHECK : ICON_NONE) && !current) {
+			g_config->library_cloud_type = id;
+			tab_library_type_picked      = true;
+			config_save();
+			ui_dock_redraw(TAB_AREA_SIDEBAR1);
+		}
+	}
+}
+
 static void tab_library_draw_cloud() {
 	library_cloud_open();
 
-	// Items matching the search, counted per type
-	i32   count  = library_cloud_count();
-	i32   types  = library_cloud_type_count();
-	i32  *items  = malloc(sizeof(i32) * (count > 0 ? count : 1));
-	i32  *starts = calloc(types + 1, sizeof(i32));
-	i32   shown  = 0;
-	char *search = to_lower_case(tab_library_search);
-	bool  any    = !string_equals(search, "");
+	// Items matching the search, ordered by group (style, then type) and counted per group
+	i32   count   = library_cloud_count();
+	i32   types   = library_cloud_type_count();
+	i32   groups  = types * 2;
+	i32  *matches = malloc(sizeof(i32) * (count > 0 ? count : 1));
+	i32  *items   = malloc(sizeof(i32) * (count > 0 ? count : 1));
+	i32  *starts  = calloc(groups + 1, sizeof(i32));
+	i32  *fill    = calloc(groups, sizeof(i32));
+	i32   shown   = 0;
+	i32   styled  = 0;
+	char *search  = to_lower_case(tab_library_search);
+	bool  any     = !string_equals(search, "");
 	for (i32 i = 0; i < count; ++i) {
 		cloud_item_t *it = library_cloud_get(i);
 		if (!any || library_cloud_item_matches(it, search)) {
-			items[shown++] = i;
-			starts[library_cloud_item_type(it) + 1]++;
+			bool stylized     = library_cloud_item_stylized(it);
+			matches[shown++]  = i;
+			styled           += stylized ? 1 : 0;
+			starts[(stylized ? 0 : types) + library_cloud_item_type(it) + 1]++;
 		}
 	}
+	for (i32 g = 0; g < groups; ++g) {
+		starts[g + 1] += starts[g];
+	}
+	for (i32 k = 0; k < shown; ++k) { // Stable, the items keep their name order
+		cloud_item_t *it        = library_cloud_get(matches[k]);
+		i32           g         = (library_cloud_item_stylized(it) ? 0 : types) + library_cloud_item_type(it);
+		items[starts[g] + fill[g]++] = matches[k];
+	}
+	free(matches);
+	free(fill);
 
-	// Type combo: all, then the types with items
-	string_array_t *names = any_array_create(0);
-	i32             ids[32];
-	i32             id_count = 0;
-	any_array_push(names, string("%s (%d)", tr("All Types"), shown));
-	ids[id_count++] = -1;
-	for (i32 t = 0; t < types; ++t) {
-		if (starts[t + 1] > 0) {
-			any_array_push(names, string("%s (%d)", library_cloud_type_name(t), starts[t + 1]));
-			ids[id_count++] = t;
+	// Type menu: all, then a heading per style with its types. Kept for the menu, which draws outside of the tab
+	tab_library_menu_count = 0;
+	tab_library_menu_add(TAB_LIBRARY_ALL, string("%s (%d)", tr("All Types"), shown));
+	for (i32 s = 0; s < 2; ++s) {
+		bool stylized = s == 0;
+		i32  n        = stylized ? styled : shown - styled;
+		if (n == 0) {
+			continue;
+		}
+		tab_library_menu_add(TAB_LIBRARY_HEADING, tab_library_style_name(stylized));
+		tab_library_menu_add(stylized ? TAB_LIBRARY_ALL_STYLIZED : TAB_LIBRARY_ALL_REALISTIC, string("%s (%d)", tr("All"), n));
+		for (i32 t = 0; t < types; ++t) {
+			i32 g = s * types + t;
+			if (starts[g + 1] > starts[g]) {
+				tab_library_menu_add(g, string("%s (%d)", library_cloud_type_name(t), starts[g + 1] - starts[g]));
+			}
 		}
 	}
-	for (i32 t = 0; t < types; ++t) {
-		starts[t + 1] += starts[t];
+	// The remembered group, all when it has no items now
+	i32 only = TAB_LIBRARY_ALL;
+	for (i32 k = 0; k < tab_library_menu_count; ++k) {
+		if (tab_library_menu_ids[k] == g_config->library_cloud_type && tab_library_menu_ids[k] != TAB_LIBRARY_HEADING) {
+			only = g_config->library_cloud_type;
+		}
+	}
+	char *picked_name;
+	if (only >= 0) {
+		picked_name = string("%s %s (%d)", tab_library_style_name(only < types), library_cloud_type_name(only % types), starts[only + 1] - starts[only]);
+	}
+	else if (only == TAB_LIBRARY_ALL) {
+		picked_name = string("%s (%d)", tr("All Types"), shown);
+	}
+	else {
+		bool stylized = only == TAB_LIBRARY_ALL_STYLIZED;
+		picked_name   = string("%s (%d)", tab_library_style_name(stylized), stylized ? styled : shown - styled);
 	}
 
 	ui_begin_sticky();
 	tab_library_draw_header();
-	// The type is remembered, its position in the combo depends on which types have items
-	i32 index = 0;
-	for (i32 k = 0; k < id_count; ++k) {
-		if (ids[k] == g_config->library_cloud_type) {
-			index = k;
-		}
-	}
-	i32 picked = index;
-	ui_combo(&picked, names, tr("Type"), false, UI_ALIGN_LEFT, false);
-	if (picked != index) { // Another type picked: back to the top
-		g_config->library_cloud_type        = ids[picked];
+	if (tab_library_type_picked) { // Another group picked: back to the top
+		tab_library_type_picked             = false;
 		g_ui->current_window->scroll_offset = 0;
 		g_ui->current_window->redraws       = 2;
-		config_save();
 	}
+	// Looks like a combo, opens the menu under it
+	f32 by = g_ui->_y;
+	if (ui_button(picked_name, UI_ALIGN_LEFT, "")) {
+		i32 menu_w = math_floor(base_default_element_w * UI_SCALE() * 2.3);
+		ui_menu_draw(&tab_library_type_menu, iron_window_width() - menu_w, math_floor(g_ui->_window_y + g_ui->_y));
+	}
+	f32 ax = g_ui->_x + g_ui->_w - g_ui->arrow_offset_x - 8;
+	f32 ay = by + g_ui->arrow_offset_y + 3;
+	draw_set_color(g_theme->HOVER_COL);
+	draw_filled_triangle(ax, ay, ax + UI_ARROW_SIZE(), ay, ax + UI_ARROW_SIZE() / 2.0, ay + UI_ARROW_SIZE() / 2.0);
 	char *status = library_cloud_status();
 	if (!string_equals(status, "")) {
 		ui_text(status, UI_ALIGN_LEFT, 0x00000000);
@@ -279,15 +358,24 @@ static void tab_library_draw_cloud() {
 	ui_end_sticky();
 	ui_separator(3, false);
 
-	// Items are sorted by type, each type is a range of the matching items
-	tab_library_grid_t g    = tab_library_grid();
-	i32                only = ids[picked];
-	for (i32 t = 0; t < types; ++t) {
-		i32 n = starts[t + 1] - starts[t];
-		if (n == 0 || (only >= 0 && t != only)) {
+	// Each group is a range of the ordered items
+	tab_library_grid_t g = tab_library_grid();
+	for (i32 k = 0; k < groups; ++k) {
+		i32  n        = starts[k + 1] - starts[k];
+		bool stylized = k < types;
+		bool show     = only == TAB_LIBRARY_ALL || only == k || (only == TAB_LIBRARY_ALL_STYLIZED && stylized) ||
+		            (only == TAB_LIBRARY_ALL_REALISTIC && !stylized);
+		if (n == 0 || !show) {
 			continue;
 		}
-		tab_library_draw_cloud_group(&g, items + starts[t], n, only >= 0 ? NULL : library_cloud_type_name(t));
+		char *header = NULL;
+		if (only == TAB_LIBRARY_ALL) {
+			header = string("%s %s", tab_library_style_name(stylized), library_cloud_type_name(k % types));
+		}
+		else if (only < 0) {
+			header = library_cloud_type_name(k % types);
+		}
+		tab_library_draw_cloud_group(&g, items + starts[k], n, header);
 	}
 	free(items);
 	free(starts);

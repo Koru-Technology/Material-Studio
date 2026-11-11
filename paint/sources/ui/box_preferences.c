@@ -1202,7 +1202,7 @@ void box_preferences_library_tab() {
 	}
 
 	box_preferences_section(tr("Cloud"));
-	ui_text(tr("Materials from Poly Haven and ambientCG, shown with the cloud button of the Library tab."), UI_ALIGN_LEFT, 0x00000000);
+	ui_text(tr("Materials from Poly Haven, ambientCG and FreeStylized, shown with the cloud button of the Library tab."), UI_ALIGN_LEFT, 0x00000000);
 	string_array_t *sizes = any_array_create_from_raw_tmp((void *[]){"1K", "2K", "4K", "8K"}, 4);
 	i32             res   = g_config->cloud_resolution;
 	ui_combo(&res, sizes, tr("Texture Size"), true, UI_ALIGN_LEFT, false);

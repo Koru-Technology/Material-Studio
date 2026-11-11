@@ -1,8 +1,8 @@
-// Cloud materials: the Poly Haven and ambientCG catalogs, browsed in the Library tab.
+// Cloud materials: the Poly Haven, ambientCG and FreeStylized catalogs, browsed in the Library tab.
 // - Catalog: fetched once and cached in the save path, refreshed in the background after a week.
 // - Thumbnails: downloaded for the visible items only, decoded on a thread, the ones not seen for the longest are unloaded.
 // - Materials: tapping one downloads its textures at the size picked in Preferences > Library into the app storage,
-//   then adds it to the project like a folder import. ambientCG ships zips, they are extracted on a thread.
+//   then adds it to the project like a folder import. ambientCG and FreeStylized ship zips, they are extracted on a thread.
 
 #include "global.h"
 #define JSMN_HEADER
@@ -15,6 +15,8 @@
 
 #define CLOUD_PH                  0
 #define CLOUD_ACG                 1
+#define CLOUD_FS                  2 // FreeStylized
+#define CLOUD_FS_MAX_PAGES        20
 #define CLOUD_MAX_ICONS           400
 #define CLOUD_MAX_THUMB_DOWNLOADS 4
 #define CLOUD_CATALOG_MAX_AGE     (7 * 24 * 60 * 60)
@@ -25,6 +27,7 @@ struct cloud_item { // cloud_item_t, types.h
 	char          *id;
 	char          *name;
 	char          *search; // Lowercase name, id and tags
+	char          *thumb;  // Thumbnail url, FreeStylized only
 	i32            type;
 	bool           downloaded; // Textures are in the app storage at the current size
 	bool           busy;       // Waiting for or being downloaded
@@ -52,6 +55,9 @@ static char *cloud_res_names[] = {"1K", "2K", "4K", "8K"};
 
 static cloud_item_t **cloud_items = NULL; // Main thread, sorted by type then name
 static i32            cloud_count = 0;
+
+static char *cloud_source_dirs[]  = {"ph", "acg", "fs"};
+static char *cloud_source_names[] = {"Poly Haven", "ambientCG", "FreeStylized"};
 
 // ██████╗ ███████╗ ██████╗ ██╗   ██╗███████╗███████╗████████╗
 // Requests report to the main thread
@@ -200,6 +206,34 @@ static i32 cloud_type_acg(const char *id) {
 	return 13;
 }
 
+// FreeStylized category ids (wp-json/wp/v2/categories), the most telling first
+static i32 cloud_type_fs(const i32 *cats, i32 count, const char *slug) {
+	static const i32 table[][2] = {{8, 1},  {5, 3},   {17, 2},  {20, 2},  {21, 2},  {19, 0},  {13, 0},  {12, 0},   {15, 7},
+	                               {6, 7},  {11, 7},  {7, 4},   {16, 4},  {10, 5},  {9, 5},   {14, 5},  {117, 8},  {126, 10},
+	                               {121, 11}, {84, 1}};
+	bool ground = false;
+	bool indoor = false;
+	for (i32 c = 0; c < count; ++c) {
+		ground |= cats[c] == 9;
+		indoor |= cats[c] == 15;
+	}
+	for (i32 i = 0; i < (i32)(sizeof(table) / sizeof(table[0])); ++i) {
+		for (i32 c = 0; c < count; ++c) {
+			if (cats[c] == table[i][0]) {
+				// Ground tiles are paving stones
+				return table[i][0] == 11 && ground && !indoor ? 2 : table[i][1];
+			}
+		}
+	}
+	if (strncmp(slug, "rubber", 6) == 0) {
+		return 9;
+	}
+	if (strncmp(slug, "fur", 3) == 0) {
+		return 8;
+	}
+	return 13;
+}
+
 // ██████╗ █████╗ ████████╗ █████╗ ██╗      ██████╗  ██████╗
 // Parsed on a thread: plain C only
 
@@ -209,6 +243,8 @@ static char         *cloud_ph_json            = NULL;
 static char        **cloud_acg_pages          = NULL;
 static i32           cloud_acg_page_count     = 0;
 static i32           cloud_acg_total          = 0;
+static char        **cloud_fs_pages           = NULL;
+static i32           cloud_fs_page_count      = 0;
 static iron_thread_t cloud_parse_thread;
 static volatile i32  cloud_parse_state  = 0; // 0 - idle, 1 - running, 2 - finished
 static cloud_item_t **cloud_parsed      = NULL;
@@ -286,7 +322,7 @@ static jsmntok_t *cloud_tokens(const char *js, i32 *count) {
 	return t;
 }
 
-static void cloud_parsed_push(i32 source, char *id, char *name, char *search, i32 type) {
+static void cloud_parsed_push(i32 source, char *id, char *name, char *search, i32 type, char *thumb) {
 	if (cloud_parsed_count == cloud_parsed_cap) {
 		cloud_parsed_cap = cloud_parsed_cap == 0 ? 1024 : cloud_parsed_cap * 2;
 		cloud_parsed     = realloc(cloud_parsed, sizeof(cloud_item_t *) * cloud_parsed_cap);
@@ -297,6 +333,7 @@ static void cloud_parsed_push(i32 source, char *id, char *name, char *search, i3
 	it->name                           = name;
 	it->search                         = search;
 	it->type                           = type;
+	it->thumb                          = thumb;
 	cloud_parsed[cloud_parsed_count++] = it;
 }
 
@@ -372,7 +409,7 @@ static void cloud_parse_ph(const char *js) {
 		if (name == NULL) {
 			name = strdup(id);
 		}
-		cloud_parsed_push(CLOUD_PH, id, name, cloud_search_text(js, t, tags, name, id), type);
+		cloud_parsed_push(CLOUD_PH, id, name, cloud_search_text(js, t, tags, name, id), type, NULL);
 	}
 	free(t);
 }
@@ -418,7 +455,7 @@ static void cloud_parse_acg(const char *js) {
 				if (name == NULL) {
 					name = strdup(id);
 				}
-				cloud_parsed_push(CLOUD_ACG, id, name, cloud_search_text(js, t, tags, name, id), cloud_type_acg(id));
+				cloud_parsed_push(CLOUD_ACG, id, name, cloud_search_text(js, t, tags, name, id), cloud_type_acg(id), NULL);
 			}
 			else {
 				free(name);
@@ -426,6 +463,98 @@ static void cloud_parse_acg(const char *js) {
 			k = next;
 		}
 		break;
+	}
+	free(t);
+}
+
+// Object member of a json object by key, -1 when missing
+static i32 cloud_member(const char *js, jsmntok_t *t, i32 obj, const char *key) {
+	if (obj < 0 || t[obj].type != JSMN_OBJECT) {
+		return -1;
+	}
+	i32 k = obj + 1;
+	for (i32 f = 0; f < t[obj].size; ++f) {
+		if (cloud_tok_is(js, &t[k], key)) {
+			return k + 1;
+		}
+		k = cloud_skip(t, k + 1);
+	}
+	return -1;
+}
+
+// "Wood_Planks_26 (floor, wall, wooden, planks)": the name is "Wood Planks 26", the words in brackets are tags
+static char *cloud_fs_name(const char *title) {
+	char       *name = strdup(title);
+	char       *b    = strstr(name, " (");
+	if (b != NULL) {
+		*b = 0;
+	}
+	bool start = true;
+	for (char *c = name; *c != 0; ++c) {
+		if (*c == '_' || *c == '-') {
+			*c = ' ';
+		}
+		if (start && *c >= 'a' && *c <= 'z') {
+			*c = (char)(*c - 'a' + 'A');
+		}
+		start = *c == ' ';
+	}
+	return name;
+}
+
+// Pages of wp-json/wp/v2/material with the featured image embedded
+static void cloud_parse_fs(const char *js) {
+	i32        n = 0;
+	jsmntok_t *t = cloud_tokens(js, &n);
+	if (t == NULL || t[0].type != JSMN_ARRAY) {
+		free(t);
+		return;
+	}
+	i32 k = 1;
+	for (i32 e = 0; e < t[0].size; ++e) {
+		i32 obj = k;
+		k       = cloud_skip(t, k);
+		i32 slug_tok  = cloud_member(js, t, obj, "slug");
+		i32 title_tok = cloud_member(js, t, cloud_member(js, t, obj, "title"), "rendered");
+		i32 cats_tok  = cloud_member(js, t, obj, "categories");
+		if (slug_tok < 0 || t[slug_tok].type != JSMN_STRING) {
+			continue;
+		}
+		char *id    = cloud_tok_str(js, &t[slug_tok]);
+		char *title = title_tok >= 0 && t[title_tok].type == JSMN_STRING ? cloud_tok_str(js, &t[title_tok]) : strdup(id);
+		// &amp; and &#038; from the html title
+		for (char *a; (a = strstr(title, "&amp;")) != NULL || (a = strstr(title, "&#038;")) != NULL;) {
+			i32 len = a[1] == 'a' ? 5 : 6;
+			*a      = '&';
+			memmove(a + 1, a + len, strlen(a + len) + 1);
+		}
+		i32 cats[16];
+		i32 cat_count = 0;
+		if (cats_tok >= 0 && t[cats_tok].type == JSMN_ARRAY) {
+			for (i32 c = 0; c < t[cats_tok].size && cat_count < 16; ++c) {
+				cats[cat_count++] = atoi(js + t[cats_tok + 1 + c].start);
+			}
+		}
+		// _embedded["wp:featuredmedia"][0].media_details.sizes.thumbnail.source_url, else the full image
+		char *thumb = NULL;
+		i32   media = cloud_member(js, t, cloud_member(js, t, obj, "_embedded"), "wp:featuredmedia");
+		if (media >= 0 && t[media].type == JSMN_ARRAY && t[media].size > 0) {
+			i32 m   = media + 1;
+			i32 url = cloud_member(js, t, cloud_member(js, t, cloud_member(js, t, cloud_member(js, t, m, "media_details"), "sizes"), "thumbnail"), "source_url");
+			if (url < 0) {
+				url = cloud_member(js, t, m, "source_url");
+			}
+			if (url >= 0 && t[url].type == JSMN_STRING) {
+				thumb = cloud_tok_str(js, &t[url]);
+			}
+		}
+		char  *name   = cloud_fs_name(title);
+		size_t len    = strlen(title) + strlen(id) + 32;
+		char  *search = malloc(len);
+		snprintf(search, len, "%s %s stylized freestylized", title, id);
+		cloud_lower(search);
+		cloud_parsed_push(CLOUD_FS, id, name, search, cloud_type_fs(cats, cat_count, id), thumb);
+		free(title);
 	}
 	free(t);
 }
@@ -446,6 +575,9 @@ static void cloud_parse_run(void *_) {
 	for (i32 i = 0; i < cloud_acg_page_count; ++i) {
 		cloud_parse_acg(cloud_acg_pages[i]);
 	}
+	for (i32 i = 0; i < cloud_fs_page_count; ++i) {
+		cloud_parse_fs(cloud_fs_pages[i]);
+	}
 	qsort(cloud_parsed, cloud_parsed_count, sizeof(cloud_item_t *), cloud_compare);
 	cloud_parse_state = 2;
 }
@@ -454,6 +586,7 @@ static void cloud_item_free(cloud_item_t *it) {
 	free(it->id);
 	free(it->name);
 	free(it->search);
+	free(it->thumb);
 	if (it->icon != NULL) {
 		gpu_delete_texture(it->icon);
 	}
@@ -465,7 +598,7 @@ static char *cloud_catalog_path() {
 }
 
 static char *cloud_material_dir(cloud_item_t *it, i32 res) {
-	return string("%s/%s/%s_%s", cloud_dir(), it->source == CLOUD_PH ? "ph" : "acg", it->id, cloud_res_names[res]);
+	return string("%s/%s/%s_%s", cloud_dir(), cloud_source_dirs[it->source], it->id, cloud_res_names[res]);
 }
 
 static void cloud_update_downloaded() {
@@ -475,16 +608,16 @@ static void cloud_update_downloaded() {
 	}
 }
 
-// One line per item: source, id, type, name, search text
+// One line per item: source, id, type, name, search text, thumbnail url
 static void cloud_save_catalog() {
 	FILE *f = fopen(cloud_catalog_path(), "wb");
 	if (f == NULL) {
 		return;
 	}
-	fprintf(f, "v1\t%lld\n", (long long)time(NULL));
+	fprintf(f, "v2\t%lld\n", (long long)time(NULL));
 	for (i32 i = 0; i < cloud_count; ++i) {
 		cloud_item_t *it = cloud_items[i];
-		fprintf(f, "%d\t%s\t%d\t%s\t%s\n", it->source, it->id, it->type, it->name, it->search);
+		fprintf(f, "%d\t%s\t%d\t%s\t%s\t%s\n", it->source, it->id, it->type, it->name, it->search, it->thumb != NULL ? it->thumb : "");
 	}
 	fclose(f);
 }
@@ -512,15 +645,15 @@ static i64 cloud_load_catalog() {
 		}
 		if (first) {
 			first = false;
-			if (strncmp(line, "v1\t", 3) == 0) {
+			if (strncmp(line, "v2\t", 3) == 0) { // v1 had no FreeStylized, fetched again
 				stamp = atoll(line + 3);
 			}
 		}
 		else {
-			char *fields[5] = {0};
+			char *fields[6] = {0};
 			i32   n         = 0;
 			char *c         = line;
-			while (n < 5) {
+			while (n < 6) {
 				fields[n++] = c;
 				char *tab   = strchr(c, '\t');
 				if (tab == NULL) {
@@ -529,8 +662,10 @@ static i64 cloud_load_catalog() {
 				*tab = 0;
 				c    = tab + 1;
 			}
-			if (n == 5) {
-				cloud_parsed_push(atoi(fields[0]), strdup(fields[1]), strdup(fields[3]), strdup(fields[4]), atoi(fields[2]));
+			i32 source = n >= 5 ? atoi(fields[0]) : -1;
+			if (source >= CLOUD_PH && source <= CLOUD_FS) {
+				char *thumb = n == 6 && fields[5][0] != 0 ? strdup(fields[5]) : NULL;
+				cloud_parsed_push(source, strdup(fields[1]), strdup(fields[3]), strdup(fields[4]), atoi(fields[2]), thumb);
 			}
 		}
 		if (end == NULL) {
@@ -574,6 +709,7 @@ static void cloud_adopt_parsed() {
 }
 
 static void cloud_fetch_acg_page();
+static void cloud_fetch_fs_page();
 
 static void cloud_fetch_failed() {
 	if (!cloud_catalog_refreshing) {
@@ -585,7 +721,7 @@ static void cloud_fetch_failed() {
 }
 
 static void cloud_fetch_done() {
-	if (cloud_acg_total == 0 && cloud_ph_json == NULL) {
+	if (cloud_acg_total == 0 && cloud_ph_json == NULL && cloud_fs_page_count == 0) {
 		cloud_fetch_failed();
 		return;
 	}
@@ -599,7 +735,7 @@ static void cloud_fetch_done() {
 static void cloud_on_acg_page(int status, const char *body, void *data) {
 	if (status != 200 || body == NULL) {
 		cloud_free_body(body);
-		cloud_fetch_done(); // Keep what was fetched so far
+		cloud_fetch_fs_page(); // Keep what was fetched so far
 		return;
 	}
 	cloud_acg_pages                         = realloc(cloud_acg_pages, sizeof(char *) * (cloud_acg_page_count + 1));
@@ -610,7 +746,24 @@ static void cloud_on_acg_page(int status, const char *body, void *data) {
 	}
 	bool more = strstr(body, "\"id\"") != NULL && cloud_acg_page_count * 100 < cloud_acg_total;
 	cloud_free_body(body);
-	more ? cloud_fetch_acg_page() : cloud_fetch_done();
+	more ? cloud_fetch_acg_page() : cloud_fetch_fs_page();
+}
+
+// Pages until the one past the end, which answers 400
+static void cloud_on_fs_page(int status, const char *body, void *data) {
+	bool ok = status == 200 && body != NULL && strstr(body, "\"slug\"") != NULL;
+	if (ok) {
+		cloud_fs_pages                        = realloc(cloud_fs_pages, sizeof(char *) * (cloud_fs_page_count + 1));
+		cloud_fs_pages[cloud_fs_page_count++] = strdup(body);
+	}
+	cloud_free_body(body);
+	ok && cloud_fs_page_count < CLOUD_FS_MAX_PAGES ? cloud_fetch_fs_page() : cloud_fetch_done();
+}
+
+static void cloud_fetch_fs_page() {
+	char *url = string("https://freestylized.com/wp-json/wp/v2/material?per_page=100&page=%d&_embed=wp:featuredmedia&_fields=slug,title,categories,_links,_embedded",
+	                   cloud_fs_page_count + 1);
+	cloud_request(url, NULL, cloud_on_fs_page, NULL);
 }
 
 static void cloud_fetch_acg_page() {
@@ -639,6 +792,12 @@ static void cloud_fetch_catalog() {
 	cloud_acg_pages      = NULL;
 	cloud_acg_page_count = 0;
 	cloud_acg_total      = 0;
+	for (i32 i = 0; i < cloud_fs_page_count; ++i) {
+		free(cloud_fs_pages[i]);
+	}
+	free(cloud_fs_pages);
+	cloud_fs_pages      = NULL;
+	cloud_fs_page_count = 0;
 	if (cloud_catalog_state == 3) {
 		cloud_catalog_refreshing = true; // The current list stays until the new one is parsed
 	}
@@ -659,12 +818,15 @@ static iron_image_pixels_t cloud_icon_pixels = {0};
 static i32              cloud_icons         = 0;
 
 static char *cloud_thumb_path(cloud_item_t *it) {
-	return string("%s/thumbs/%s_%s.png", cloud_dir(), it->source == CLOUD_PH ? "ph" : "acg", it->id);
+	return string("%s/thumbs/%s_%s.png", cloud_dir(), cloud_source_dirs[it->source], it->id);
 }
 
 static char *cloud_thumb_url(cloud_item_t *it) {
 	if (it->source == CLOUD_PH) {
 		return string("https://cdn.polyhaven.com/asset_img/thumbs/%s.png?width=128&height=128&format=png", it->id);
+	}
+	if (it->source == CLOUD_FS) {
+		return it->thumb;
 	}
 	return string("https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/128-PNG/%s.png", it->id);
 }
@@ -698,6 +860,9 @@ gpu_texture_t *library_cloud_item_icon(cloud_item_t *it) {
 	if (it->icon_state == 0) {
 		if (iron_file_exists(cloud_thumb_path(it))) {
 			it->icon_state = 2;
+		}
+		else if (it->source == CLOUD_FS && it->thumb == NULL) {
+			it->icon_state = 5;
 		}
 		else if (cloud_thumb_downloads < CLOUD_MAX_THUMB_DOWNLOADS) {
 			iron_create_directory(string("%s/thumbs", cloud_dir()));
@@ -996,6 +1161,40 @@ static const char *cloud_acg_tag(const char *file) {
 	return NULL;
 }
 
+// FreeStylized: wood_planks_26_baseColor_1k.png, ground_tiles_01_ambient_occlusion_1k.png, fur_01_normal_gl_1k.png...
+static const char *cloud_fs_tag(const char *file) {
+	char key[512];
+	i32  n = 0;
+	for (const char *c = file; *c != 0 && *c != '.' && n < (i32)sizeof(key) - 1; ++c) {
+		if (isalnum((unsigned char)*c)) {
+			key[n++] = (char)tolower(*c);
+		}
+	}
+	key[n] = 0;
+	// The map name is at the end, before the size
+	static const char *pairs[][2] = {{"normaldx", NULL},          {"normalgl", "normal"},  {"ambientocclusion", "ao"}, {"roughness", "roughness"},
+	                                 {"metallic", "metallic"},    {"height", "height"},    {"opacity", "opacity"},     {"basecolor", "basecolor"},
+	                                 {"color", "basecolor"}};
+	for (i32 i = 0; i < (i32)(sizeof(pairs) / sizeof(pairs[0])); ++i) {
+		const char *at = NULL; // The last one, the id may hold the word too
+		for (const char *f = strstr(key, pairs[i][0]); f != NULL; f = strstr(f + 1, pairs[i][0])) {
+			at = f;
+		}
+		if (at == NULL) {
+			continue;
+		}
+		const char *rest = at + strlen(pairs[i][0]); // Only the size may follow: 1k, 2k, 4k
+		bool        tail = true;
+		for (; *rest != 0; ++rest) {
+			tail &= (*rest >= '0' && *rest <= '9') || *rest == 'k';
+		}
+		if (tail) {
+			return pairs[i][1];
+		}
+	}
+	return NULL;
+}
+
 static u32 cloud_u16(const unsigned char *p) {
 	return p[0] | (p[1] << 8);
 }
@@ -1005,7 +1204,7 @@ static u32 cloud_u32(const unsigned char *p) {
 }
 
 // Extracts the known maps of the zip through its central directory, stored or deflate entries
-static bool cloud_unzip(const char *zip_path, const char *dir, const char *id) {
+static bool cloud_unzip(const char *zip_path, const char *dir, const char *id, i32 source) {
 	FILE *f = fopen(zip_path, "rb");
 	if (f == NULL) {
 		return false;
@@ -1061,7 +1260,7 @@ static bool cloud_unzip(const char *zip_path, const char *dir, const char *id) {
 
 		const char *base = strrchr(name, '/');
 		base             = base != NULL ? base + 1 : name;
-		const char *tag  = cloud_acg_tag(base);
+		const char *tag  = source == CLOUD_FS ? cloud_fs_tag(base) : cloud_acg_tag(base);
 		const char *ext  = strrchr(base, '.');
 		if (tag == NULL || ext == NULL || (strcasecmp(ext, ".jpg") != 0 && strcasecmp(ext, ".png") != 0) || (method != 0 && method != 8)) {
 			continue;
@@ -1105,9 +1304,10 @@ static bool cloud_unzip(const char *zip_path, const char *dir, const char *id) {
 static char *cloud_zip_path   = NULL;
 static char *cloud_zip_dir    = NULL;
 static char *cloud_zip_id     = NULL;
+static i32   cloud_zip_source = CLOUD_ACG;
 
 static void cloud_zip_run(void *_) {
-	cloud_zip_ok = cloud_unzip(cloud_zip_path, cloud_zip_dir, cloud_zip_id);
+	cloud_zip_ok = cloud_unzip(cloud_zip_path, cloud_zip_dir, cloud_zip_id, cloud_zip_source);
 	remove(cloud_zip_path);
 	cloud_zip_state = 2;
 }
@@ -1122,7 +1322,7 @@ static void cloud_on_acg_zip(int status, const char *body, void *data) {
 	if (status != 200 || !cloud_file_starts_with(zip, magic, 4)) {
 		remove(zip);
 		// Not available in this size, try the next smaller one
-		if (job->res > 0) {
+		if (job->item->source == CLOUD_ACG && job->res > 0) {
 			cloud_remove_tree(job->dir);
 			job->res--;
 			free(job->dir);
@@ -1138,8 +1338,9 @@ static void cloud_on_acg_zip(int status, const char *body, void *data) {
 	free(cloud_zip_id);
 	cloud_zip_path  = strdup(zip);
 	cloud_zip_dir   = strdup(job->dir);
-	cloud_zip_id    = strdup(job->item->id);
-	cloud_zip_state = 1;
+	cloud_zip_id     = strdup(job->item->id);
+	cloud_zip_source = job->item->source;
+	cloud_zip_state  = 1;
 	iron_thread_init(&cloud_zip_thread, cloud_zip_run, NULL);
 }
 
@@ -1152,6 +1353,58 @@ static void cloud_acg_download() {
 	iron_create_directory(job->dir);
 	char *url = string("https://ambientcg.com/get?file=%s_%s-JPG.zip", job->item->id, cloud_res_names[job->res]);
 	cloud_request(url, string("%s/download.zip", job->dir), cloud_on_acg_zip, NULL);
+}
+
+// FreeStylized: the material page links the zips, .../Textures/2k/Wood_Planks_26_2k.zip, the wanted size or the closest smaller one
+static void cloud_on_fs_page_html(int status, const char *body, void *data) {
+	cloud_job_t *job      = cloud_job;
+	char        *best     = NULL;
+	i32          best_res = -1;
+	char        *smallest = NULL;
+	i32          small_res = 99;
+	if (status == 200 && body != NULL) {
+		for (const char *a = strstr(body, "https://pub-"); a != NULL; a = strstr(a + 1, "https://pub-")) {
+			const char *end = a;
+			while (*end != 0 && *end != '"' && *end != '\'' && *end != ' ' && *end != '<') {
+				end++;
+			}
+			i32 len = (i32)(end - a);
+			if (len < 5 || strncmp(end - 4, ".zip", 4) != 0) {
+				continue;
+			}
+			const char *dir = strstr(a, "/Textures/");
+			if (dir == NULL || dir > end) {
+				continue;
+			}
+			i32 k   = atoi(dir + 10); // 1, 2, 4, 8
+			i32 res = k == 1 ? 0 : k == 2 ? 1 : k == 4 ? 2 : k == 8 ? 3 : -1;
+			if (res < 0) {
+				continue;
+			}
+			if (res <= job->res && res > best_res) {
+				free(best);
+				best     = strndup(a, len);
+				best_res = res;
+			}
+			if (res < small_res) {
+				free(smallest);
+				smallest  = strndup(a, len);
+				small_res = res;
+			}
+		}
+	}
+	cloud_free_body(body);
+	if (best == NULL) {
+		best     = smallest;
+		smallest = NULL;
+	}
+	free(smallest);
+	if (best == NULL) {
+		cloud_job_end(false);
+		return;
+	}
+	cloud_request(best, string("%s/download.zip", job->dir), cloud_on_acg_zip, NULL);
+	free(best);
 }
 
 static void cloud_start_next() {
@@ -1181,6 +1434,10 @@ static void cloud_start_next() {
 	if (it->source == CLOUD_PH) {
 		iron_create_directory(job->dir);
 		cloud_request(string("https://api.polyhaven.com/files/%s", it->id), NULL, cloud_on_ph_files, NULL);
+	}
+	else if (it->source == CLOUD_FS) {
+		iron_create_directory(job->dir);
+		cloud_request(string("https://freestylized.com/material/%s/", it->id), NULL, cloud_on_fs_page_html, NULL);
 	}
 	else {
 		cloud_acg_download();
@@ -1282,7 +1539,12 @@ bool library_cloud_item_matches(cloud_item_t *it, char *search) {
 }
 
 char *library_cloud_item_source(cloud_item_t *it) {
-	return it->source == CLOUD_PH ? "Poly Haven" : "ambientCG";
+	return cloud_source_names[it->source];
+}
+
+// FreeStylized materials are stylized, the others realistic
+bool library_cloud_item_stylized(cloud_item_t *it) {
+	return it->source == CLOUD_FS;
 }
 
 i32 library_cloud_type_count() {
@@ -1336,7 +1598,7 @@ f32 library_cloud_item_progress(cloud_item_t *it) {
 	}
 	u64 written  = 0;
 	u64 expected = 0;
-	if (it->source == CLOUD_ACG) {
+	if (it->source != CLOUD_PH) { // One zip
 		return iron_net_progress(string("%s/download.zip", job->dir), &written, &expected) ? (f32)written / expected : 0.0;
 	}
 	if (job->total <= 0 || job->file_pos >= job->file_count) {
@@ -1365,6 +1627,7 @@ void library_cloud_clear_downloads() {
 	}
 	cloud_remove_tree(string("%s/ph", cloud_dir()));
 	cloud_remove_tree(string("%s/acg", cloud_dir()));
+	cloud_remove_tree(string("%s/fs", cloud_dir()));
 	cloud_disk_usage = -1;
 	cloud_update_downloaded();
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
