@@ -5,6 +5,7 @@
 #include "iron_system.h"
 #include <math.h>
 #include <stdbool.h>
+#include <string.h>
 
 f64 sys_time(void);
 i32 sys_x(void);
@@ -52,6 +53,11 @@ bool            pen_connected        = false;
 bool            pen_in_use           = false;
 f32             pen_last_x           = -1.0f;
 f32             pen_last_y           = -1.0f;
+f32             pen_altitude         = 1.5707963f;
+f32             pen_azimuth          = 0.0f;
+f32             pen_roll             = 0.0f;
+pen_sample_t    pen_samples[PEN_SAMPLES_MAX];
+i32             pen_sample_count     = 0;
 
 // Keyboard
 
@@ -544,6 +550,18 @@ void pen_end_frame(void) {
 	pen_movement_x                  = 0;
 	pen_movement_y                  = 0;
 	pen_in_use                      = false;
+	pen_sample_count                = 0;
+}
+
+void pen_sample_listener(f32 x, f32 y, f32 pressure, f32 altitude, f32 azimuth, f32 roll, f64 time) {
+	if (pen_sample_count == PEN_SAMPLES_MAX) { // Frame stalled, keep the newest
+		memmove(pen_samples, pen_samples + 1, sizeof(pen_sample_t) * (PEN_SAMPLES_MAX - 1));
+		pen_sample_count--;
+	}
+	pen_samples[pen_sample_count++] = (pen_sample_t){x, y, pressure, altitude, azimuth, roll, time};
+	pen_altitude                    = altitude;
+	pen_azimuth                     = azimuth;
+	pen_roll                        = roll;
 }
 
 void pen_reset(void) {
@@ -618,8 +636,8 @@ void pen_move_listener(i32 x, i32 y, f32 pressure) {
 		pen_last_x = (f32)x;
 		pen_last_y = (f32)y;
 	}
-	pen_movement_x = (f32)x - pen_last_x;
-	pen_movement_y = (f32)y - pen_last_y;
+	pen_movement_x += (f32)x - pen_last_x;
+	pen_movement_y += (f32)y - pen_last_y;
 	pen_last_x     = (f32)x;
 	pen_last_y     = (f32)y;
 	pen_x          = (f32)x;

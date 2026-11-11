@@ -48,7 +48,7 @@ static bool util_brush_finger_allowed(bool paint_down) {
 
 // Pen pressure through the curve of the preferences
 f32 util_brush_pen_pressure() {
-	f32 p = pen_pressure;
+	f32 p = util_brush_sample_pressure >= 0.0f ? util_brush_sample_pressure : pen_pressure;
 	p     = p < 0.0f ? 0.0f : p > 1.0f ? 1.0f : p;
 	f32 c = g_config->pressure_curve > 0.01f ? g_config->pressure_curve : 1.0f;
 	p     = powf(p, c);
@@ -121,13 +121,27 @@ void util_brush_update() {
 		if (pen_down("tip")) {
 			g_context->pen_painting_only = true;
 		}
-		else if (g_context->pen_painting_only) {
+		else if (context_finger_paint_blocked()) {
 			down = false;
 		}
 	}
 
 	if (g_context->tool == TOOL_TYPE_PARTICLE) {
 		down = false;
+	}
+
+	// A pencil stroke starts with its first sample, whose force is final, instead of the estimated force of the touch
+	static bool util_brush_pen_ready = false;
+	if (pen_down("tip")) {
+		if (pen_sample_count > 0) {
+			util_brush_pen_ready = true;
+		}
+		if (!util_brush_pen_ready && g_context->brush_time == 0) {
+			down = false;
+		}
+	}
+	else if (!pen_released("tip")) {
+		util_brush_pen_ready = false;
 	}
 
 	if (g_context->stencil_edit && context_is_stencil_editing()) { // Touches move the stencil
@@ -158,6 +172,7 @@ void util_brush_update() {
 					// First stamp of the stroke
 					g_context->brush_dab_x = -1.0;
 					g_context->brush_dab_y = -1.0;
+					render_path_paint_samples_reset();
 
 					// Draw line
 					if (context_is_ruler_paint()) {

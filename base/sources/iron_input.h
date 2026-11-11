@@ -72,6 +72,25 @@ extern bool            pen_connected;
 extern bool            pen_in_use;
 extern f32             pen_last_x;
 extern f32             pen_last_y;
+extern f32             pen_altitude; // Radians, pi/2 when perpendicular to the screen
+extern f32             pen_azimuth;  // Radians in screen space, 0 pointing right
+extern f32             pen_roll;     // Barrel roll in radians, 0 without support
+
+// Every pen sample since the last frame, in order, the backend may deliver several per frame (240 Hz Pencil)
+typedef struct pen_sample {
+	f32 x;
+	f32 y;
+	f32 pressure;
+	f32 altitude;
+	f32 azimuth;
+	f32 roll;
+	f64 time;
+} pen_sample_t;
+
+#define PEN_SAMPLES_MAX 256
+extern pen_sample_t pen_samples[PEN_SAMPLES_MAX];
+extern i32          pen_sample_count;
+void                pen_sample_listener(f32 x, f32 y, f32 pressure, f32 altitude, f32 azimuth, f32 roll, f64 time);
 
 void pen_end_frame(void);
 void pen_reset(void);

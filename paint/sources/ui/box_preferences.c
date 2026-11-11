@@ -678,6 +678,11 @@ void box_preferences_pen_tab() {
 	}
 
 	ui_end_element();
+	string_array_t *finger_combo = any_array_create_from_raw_tmp((void *[]){tr("Auto"), tr("Always"), tr("Never")}, 3);
+	ui_combo(&g_config->finger_paint, finger_combo, tr("Paint with Finger"), true, UI_ALIGN_LEFT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Auto: fingers paint until the pencil is used, then they only move the view"));
+	}
 	f32_array_t *row = f32_array_create_from_raw_tmp(
 	    (f32[]){
 	        1 / 4.0,
@@ -1167,9 +1172,11 @@ void box_preferences_show_box() {
 	if (ui_tab(&box_preferences_tab, tr("Viewport"), true, -1, false)) {
 		box_preferences_viewport_tab();
 	}
+#ifndef IRON_IOS
 	if (ui_tab(&box_preferences_tab, tr("Keymap"), true, -1, false)) {
 		box_preferences_keymap_tab();
 	}
+#endif
 #if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
 	if (ui_tab(&box_preferences_tab, tr("Neural"), true, -1, false)) {
 		box_preferences_neural_tab();

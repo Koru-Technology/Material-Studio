@@ -186,6 +186,9 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 			if (g_config->dyn_angle == 1 && (pen_down("tip") || pen_released("tip"))) {
 				angle += util_brush_pen_pressure() * math_pi(); // Pressure turns the brush up to half a turn
 			}
+			else if (g_config->dyn_angle == 2 && g_context->brush_time > 0) {
+				angle += g_context->brush_speed * math_pi(); // Faster strokes turn the brush further
+			}
 			else if (g_config->dyn_angle == 3 && g_context->brush_time > 0) {
 				angle += g_context->brush_stroke_angle; // Follows the stroke
 			}

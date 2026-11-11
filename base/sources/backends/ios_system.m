@@ -27,6 +27,7 @@ static char              sysid[512];
 static const char       *video_formats[]                 = {"mp4", NULL};
 static void (*resize_callback)(int x, int y, void *data) = NULL;
 static void *resize_callback_data                        = NULL;
+static void  pencil_flush(bool all);
 
 void iron_internal_call_resize_callback(int width, int height) {
 	if (resize_callback != NULL) {
@@ -51,6 +52,15 @@ static int add_touch(void *touch) {
 		}
 	}
 	return -1;
+}
+
+static void end_finger_touches(float x, float y) {
+	for (int i = 0; i < MAX_TOUCH_COUNT; ++i) {
+		if (touches[i] != NULL) {
+			iron_internal_surface_trigger_touch_end(i, x, y);
+			touches[i] = NULL;
+		}
+	}
 }
 
 static int remove_touch(void *touch) {
@@ -129,6 +139,7 @@ bool iron_internal_handle_messages(void) {
 	do {
 		result = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, TRUE);
 	} while (result == kCFRunLoopRunHandledSource);
+	pencil_flush(false); // Samples whose final force did not arrive in time
 	return true;
 }
 
@@ -257,6 +268,114 @@ static float ios_pencil_pressure(UITouch *touch) {
 	return p < 0.0001 ? 0.0001 : (p > 1.0 ? 1.0 : p); // Above 0, a pressure of 0 is hover
 }
 
+// The pencil has its own slot, it never counts as a finger. Fingers landing while it draws are ignored.
+static void *pencil_touch = NULL;
+static int   mouse_owner  = 0; // 0 nobody, 1 the first finger, 2 the pencil
+
+// Pencil samples wait here until their force is final (it is estimated first and refined a few ms later),
+// so the stroke does not start with a wrong pressure. A sample is sent anyway once it waited too long.
+typedef struct {
+	float x;
+	float y;
+	float pressure;
+	float altitude;
+	float azimuth;
+	float roll;
+	double time;
+	long   update_index; // -1 once final
+} pencil_sample_t;
+
+#define PENCIL_PENDING_MAX 256
+#define PENCIL_WAIT_MAX    0.05
+static pencil_sample_t pencil_pending[PENCIL_PENDING_MAX];
+static int             pencil_pending_count = 0;
+
+static void pencil_emit(pencil_sample_t *e) {
+	iron_internal_pen_trigger_sample(e->x, e->y, e->pressure, e->altitude, e->azimuth, e->roll, e->time);
+	iron_internal_pen_trigger_move((int)e->x, (int)e->y, e->pressure);
+	if (mouse_owner == 2) {
+		iron_internal_mouse_trigger_move((int)e->x, (int)e->y);
+		iron_internal_surface_trigger_move(0, (int)e->x, (int)e->y); // The ui follows touch 0 on ios, e.g. dragging a slider
+	}
+}
+
+static void pencil_flush(bool all) {
+	double now = CACurrentMediaTime();
+	int    n   = 0;
+	while (n < pencil_pending_count) {
+		pencil_sample_t *e = &pencil_pending[n];
+		if (!all && e->update_index >= 0 && now - e->time < PENCIL_WAIT_MAX) {
+			break; // Samples stay in order, the next ones wait too
+		}
+		pencil_emit(e);
+		n++;
+	}
+	if (n > 0) {
+		memmove(pencil_pending, pencil_pending + n, sizeof(pencil_sample_t) * (pencil_pending_count - n));
+		pencil_pending_count -= n;
+	}
+}
+
+static void pencil_read(UITouch *t, UIView *view, pencil_sample_t *e) {
+	CGPoint p = [t preciseLocationInView:view];
+	float   s = view.contentScaleFactor;
+	e->x      = p.x * s;
+	e->y      = p.y * s;
+	e->pressure = ios_pencil_pressure(t);
+	e->altitude = t.altitudeAngle;
+	e->azimuth  = [t azimuthAngleInView:view];
+	e->roll     = 0.0;
+	if (@available(iOS 17.5, *)) {
+		e->roll = t.rollAngle;
+	}
+	e->time = t.timestamp;
+}
+
+static void pencil_push(UITouch *t, UIView *view) {
+	if (pencil_pending_count == PENCIL_PENDING_MAX) {
+		pencil_flush(true);
+	}
+	pencil_sample_t *e = &pencil_pending[pencil_pending_count++];
+	pencil_read(t, view, e);
+	bool waiting    = (t.estimatedPropertiesExpectingUpdates & UITouchPropertyForce) && t.estimationUpdateIndex != nil;
+	e->update_index = waiting ? t.estimationUpdateIndex.longValue : -1;
+}
+
+// Every sample since the last event, the pencil reports up to 240 per second
+static void pencil_push_coalesced(UITouch *touch, UIEvent *event, UIView *view) {
+	NSArray<UITouch *> *all = event != nil ? [event coalescedTouchesForTouch:touch] : nil;
+	if (all == nil || all.count == 0) {
+		pencil_push(touch, view);
+		return;
+	}
+	for (UITouch *t in all) {
+		pencil_push(t, view);
+	}
+}
+
+static void pencil_update(UITouch *t, UIView *view) {
+	if (t.estimationUpdateIndex == nil) {
+		return;
+	}
+	long index = t.estimationUpdateIndex.longValue;
+	for (int i = 0; i < pencil_pending_count; ++i) {
+		pencil_sample_t *e = &pencil_pending[i];
+		if (e->update_index == index) {
+			float  x    = e->x;
+			float  y    = e->y;
+			double time = e->time;
+			pencil_read(t, view, e);
+			e->x    = x; // Only force and angles are refined
+			e->y    = y;
+			e->time = time;
+			if (!(t.estimatedPropertiesExpectingUpdates & UITouchPropertyForce)) {
+				e->update_index = -1;
+			}
+			return;
+		}
+	}
+}
+
 @implementation MyView
 
 + (Class)layerClass {
@@ -264,9 +383,20 @@ static float ios_pencil_pressure(UITouch *touch) {
 }
 
 - (void)hoverGesture:(UIHoverGestureRecognizer *)recognizer {
+	if (recognizer.state != UIGestureRecognizerStateBegan && recognizer.state != UIGestureRecognizerStateChanged) {
+		return;
+	}
 	CGPoint point = [recognizer locationInView:self];
 	float   x     = point.x * self.contentScaleFactor;
 	float   y     = point.y * self.contentScaleFactor;
+	if (@available(iOS 16.1, *)) {
+		if (recognizer.zOffset <= 0.0) { // Trackpad or mouse pointer, not a pencil above the screen
+			if (mouse_owner == 0) {
+				iron_internal_mouse_trigger_move(x, y);
+			}
+			return;
+		}
+	}
 	iron_internal_pen_trigger_move(x, y, 0.0); // Pencil hover
 }
 
@@ -303,43 +433,63 @@ static float ios_pencil_pressure(UITouch *touch) {
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
+	float sc = self.contentScaleFactor;
 	for (UITouch *touch in touches) {
+		CGPoint point = [touch locationInView:self];
+		float   x     = point.x * sc;
+		float   y     = point.y * sc;
+		if (touch.type == UITouchTypePencil) {
+			if (pencil_touch != NULL) {
+				continue;
+			}
+			pencil_touch = (__bridge void *)touch;
+			end_finger_touches(x, y); // Fingers resting on the screen stop counting, the pencil takes over the mouse
+			if (mouse_owner == 1) {
+				iron_internal_mouse_trigger_release(0, x, y);
+			}
+			mouse_owner          = 2;
+			pencil_pending_count = 0;
+			iron_internal_mouse_trigger_press(0, x, y);
+			iron_internal_surface_trigger_touch_start(0, x, y); // Free while the pencil draws, fingers are ignored
+			iron_internal_pen_trigger_press(x, y, ios_pencil_pressure(touch));
+			pencil_push_coalesced(touch, event, self);
+			pencil_flush(false);
+			continue;
+		}
+		if (pencil_touch != NULL) {
+			continue; // Palm or finger while drawing
+		}
 		int index = get_touch_index((__bridge void *)touch);
 		if (index == -1) {
 			index = add_touch((__bridge void *)touch);
 		}
 		if (index >= 0) {
-			CGPoint point = [touch locationInView:self];
-			float   x     = point.x * self.contentScaleFactor;
-			float   y     = point.y * self.contentScaleFactor;
-			if (index == 0) {
+			if (index == 0 && mouse_owner == 0) {
+				mouse_owner = 1;
 				iron_internal_mouse_trigger_press(event.buttonMask == UIEventButtonMaskSecondary ? 1 : 0, x, y);
 			}
 			iron_internal_surface_trigger_touch_start(index, x, y);
-			if (touch.type == UITouchTypePencil) {
-				iron_internal_pen_trigger_press(x, y, ios_pencil_pressure(touch));
-			}
 		}
 	}
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
+	float sc = self.contentScaleFactor;
 	for (UITouch *touch in touches) {
+		if ((__bridge void *)touch == pencil_touch) {
+			pencil_push_coalesced(touch, event, self);
+			pencil_flush(false);
+			continue;
+		}
 		int index = get_touch_index((__bridge void *)touch);
 		if (index >= 0) {
 			CGPoint point = [touch locationInView:self];
-			float   x     = point.x * self.contentScaleFactor;
-			float   y     = point.y * self.contentScaleFactor;
-			if (index == 0) {
+			float   x     = point.x * sc;
+			float   y     = point.y * sc;
+			if (index == 0 && mouse_owner == 1) {
 				iron_internal_mouse_trigger_move(x, y);
 			}
 			iron_internal_surface_trigger_move(index, x, y);
-			if (touch.type == UITouchTypePencil) {
-				if (!(touch.estimatedProperties & UITouchPropertyForce)) {
-					// usb-c pencil with no pressure
-					iron_internal_pen_trigger_move(x, y, ios_pencil_pressure(touch));
-				}
-			}
 		}
 	}
 }
@@ -347,48 +497,48 @@ static float ios_pencil_pressure(UITouch *touch) {
 - (void)touchesEstimatedPropertiesUpdated:(NSSet<UITouch *> *)touches {
 	for (UITouch *touch in touches) {
 		if (touch.type == UITouchTypePencil) {
-			CGPoint point = [touch locationInView:self];
-			float   x     = point.x * self.contentScaleFactor;
-			float   y     = point.y * self.contentScaleFactor;
-			// pencil with pressure
-			iron_internal_pen_trigger_move(x, y, ios_pencil_pressure(touch));
+			pencil_update(touch, self);
 		}
+	}
+	pencil_flush(false);
+}
+
+- (void)touch_finished:(UITouch *)touch event:(UIEvent *)event {
+	float   sc    = self.contentScaleFactor;
+	CGPoint point = [touch locationInView:self];
+	float   x     = point.x * sc;
+	float   y     = point.y * sc;
+	if ((__bridge void *)touch == pencil_touch) {
+		pencil_push_coalesced(touch, event, self);
+		pencil_flush(true);
+		pencil_touch = NULL;
+		iron_internal_pen_trigger_release(x, y, 0.0); // The stroke keeps the last pressure
+		if (mouse_owner == 2) {
+			iron_internal_mouse_trigger_release(0, x, y);
+			iron_internal_surface_trigger_touch_end(0, x, y);
+			mouse_owner = 0;
+		}
+		return;
+	}
+	int index = remove_touch((__bridge void *)touch);
+	if (index >= 0) {
+		if (index == 0 && mouse_owner == 1) {
+			iron_internal_mouse_trigger_release(event.buttonMask == UIEventButtonMaskSecondary ? 1 : 0, x, y);
+			mouse_owner = 0;
+		}
+		iron_internal_surface_trigger_touch_end(index, x, y);
 	}
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
 	for (UITouch *touch in touches) {
-		int index = remove_touch((__bridge void *)touch);
-		if (index >= 0) {
-			CGPoint point = [touch locationInView:self];
-			float   x     = point.x * self.contentScaleFactor;
-			float   y     = point.y * self.contentScaleFactor;
-			if (index == 0) {
-				iron_internal_mouse_trigger_release(event.buttonMask == UIEventButtonMaskSecondary ? 1 : 0, x, y);
-			}
-			iron_internal_surface_trigger_touch_end(index, x, y);
-			if (touch.type == UITouchTypePencil) {
-				iron_internal_pen_trigger_release(x, y, 0.0);
-			}
-		}
+		[self touch_finished:touch event:event];
 	}
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
 	for (UITouch *touch in touches) {
-		int index = remove_touch((__bridge void *)touch);
-		if (index >= 0) {
-			CGPoint point = [touch locationInView:self];
-			float   x     = point.x * self.contentScaleFactor;
-			float   y     = point.y * self.contentScaleFactor;
-			if (index == 0) {
-				iron_internal_mouse_trigger_release(event.buttonMask == UIEventButtonMaskSecondary ? 1 : 0, x, y);
-			}
-			iron_internal_surface_trigger_touch_end(index, x, y);
-			if (touch.type == UITouchTypePencil) {
-				iron_internal_pen_trigger_release(x, y, 0.0);
-			}
-		}
+		[self touch_finished:touch event:event];
 	}
 }
 

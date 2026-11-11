@@ -319,6 +319,7 @@ void        iron_eraser_set_press_callback(void (*value)(int /*x*/, int /*y*/, f
 void        iron_eraser_set_move_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
 void        iron_eraser_set_release_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
 void        iron_internal_pen_trigger_move(int x, int y, float pressure);
+void        iron_internal_pen_trigger_sample(float x, float y, float pressure, float altitude, float azimuth, float roll, double time);
 void        iron_internal_pen_trigger_press(int x, int y, float pressure);
 void        iron_internal_pen_trigger_release(int x, int y, float pressure);
 void        iron_internal_eraser_trigger_move(int x, int y, float pressure);

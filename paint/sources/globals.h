@@ -8,7 +8,7 @@
 char *manifest_title           = "Koru Surface";
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "26";
-char *manifest_version_config  = "14";
+char *manifest_version_config  = "15";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -271,6 +271,7 @@ bool                  args_player                       = false;
 bool                  args_background                   = false;
 bool                  agent_running                     = false;
 bool                  project_modified                  = false; // Changed since the last save, for auto save
+f32                   util_brush_sample_pressure        = -1.0;  // Pressure of the pen sample being drawn, -1 for the current pen pressure
 i32                   util_render_material_preview_size = 256;
 f32                   util_render_brush_wave_strip      = 0.25; // Wave preview height relative to its width
 i32                   util_render_node_preview_size     = 512;

@@ -224,6 +224,7 @@ typedef struct config {
 	i32                  rp_view_transform;    // 0 Filmic, 1 ACES, 2 AgX, 3 Standard
 	bool                 autosave;
 	i32                  autosave_interval; // Minutes
+	i32                  finger_paint;      // 0 auto (not once the pencil is used), 1 always, 2 never
 } config_t;
 
 typedef struct slot_material {

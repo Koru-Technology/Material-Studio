@@ -594,3 +594,8 @@ void context_set_render_path() {
 	sys_notify_on_next_frame(&context_set_render_path_on_next_frame, NULL);
 }
 
+
+// Fingers only navigate: always, or once the pencil was used in the automatic mode
+bool context_finger_paint_blocked() {
+	return g_config->finger_paint == 2 || (g_config->finger_paint == 0 && g_context->pen_painting_only);
+}

@@ -558,6 +558,10 @@ void iron_internal_pen_trigger_move(int x, int y, float pressure) {
 	}
 }
 
+void iron_internal_pen_trigger_sample(float x, float y, float pressure, float altitude, float azimuth, float roll, double time) {
+	pen_sample_listener(x, y, pressure, altitude, azimuth, roll, time);
+}
+
 void iron_internal_pen_trigger_release(int x, int y, float pressure) {
 	if (pen_release_callback != NULL) {
 		pen_release_callback(x, y, pressure);

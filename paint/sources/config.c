@@ -187,6 +187,7 @@ void config_save() {
 	json_encode_i32("rp_view_transform", g_config->rp_view_transform);
 	json_encode_bool("autosave", g_config->autosave);
 	json_encode_i32("autosave_interval", g_config->autosave_interval);
+	json_encode_i32("finger_paint", g_config->finger_paint);
 	char *config_json = json_encode_end();
 
 	buffer_t *buffer = sys_string_to_buffer(config_json);
@@ -372,6 +373,7 @@ config_t *config_create_default() {
 	c->rp_view_transform = 0;
 	c->autosave = true;
 	c->autosave_interval = 5;
+	c->finger_paint = 1;
 	return c;
 }
 
@@ -508,13 +510,19 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->rp_view_transform = armpack_map_get_i32(old, "rp_view_transform");
 	c->autosave = armpack_map_get_i32(old, "autosave") > 0;
 	c->autosave_interval = armpack_map_get_i32(old, "autosave_interval");
+	c->finger_paint = armpack_map_get_i32(old, "finger_paint");
 	return c;
+}
+
+config_t *config_from_version_14(any_map_t *old) {
+	armpack_map_set_i32(old, "finger_paint", 1);
+	return config_from_map_to_config(old);
 }
 
 config_t *config_from_version_13(any_map_t *old) {
 	armpack_map_set_i32(old, "autosave", 1);
 	armpack_map_set_i32(old, "autosave_interval", 5);
-	return config_from_map_to_config(old);
+	return config_from_version_14(old);
 }
 
 config_t *config_from_version_12(any_map_t *old) {
@@ -635,6 +643,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_11,
 	    config_from_version_12,
 	    config_from_version_13,
+	    config_from_version_14,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {

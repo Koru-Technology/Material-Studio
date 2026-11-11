@@ -1211,6 +1211,152 @@ void render_path_paint_commands_stamps() {
 	g_context->brush_dab_angle   = 0.0;
 }
 
+// Pen samples of the frame, drawn one by one so fast curves stay round and the pressure varies along the stroke.
+// Only for plain strokes, smoothing, rulers and snapping work on the frame position.
+typedef struct {
+	f32 x;
+	f32 y;
+	f32 p;
+} render_path_paint_point_t;
+
+#define RENDER_PATH_PAINT_POINTS_MAX 128
+
+bool render_path_paint_use_samples() {
+	tool_type_t tool = g_context->tool;
+	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_BLUR) {
+		return false;
+	}
+	if (pen_sample_count == 0 || !(pen_down("tip") || pen_released("tip")) || g_context->pdirty <= 0) {
+		return false;
+	}
+	bool in_2d = context_in_2d_view(VIEW_2D_TYPE_LAYER);
+	bool snap  = g_context->grid_snap_toggle || keymap_shortcut(any_map_get(g_keymap, "grid_snap"), SHORTCUT_TYPE_DOWN) ||
+	            (g_config->view2d_grid_snap && in_2d) || context_is_pixel_snap();
+	return g_context->brush_lazy_radius <= 0.0 && !context_is_ruler_paint() && !snap && !slot_layer_is_path(g_context->layer) &&
+	       g_context->layer->fill_material == NULL && !context_is_decal();
+}
+
+// Frame samples in paint space, the last one is the brush position
+static i32 render_path_paint_points(render_path_paint_point_t *out) {
+	f32 w     = (f32)base_paint_view_w();
+	f32 h     = (f32)base_paint_view_h();
+	i32 count = 0;
+	for (i32 i = 0; i < pen_sample_count; ++i) {
+		pen_sample_t *s = &pen_samples[i];
+		f32           x = base_paint_x(s->x);
+		f32           y = base_paint_y(s->y);
+		if (count > 0) {
+			f32 dx = (x - out[count - 1].x) * w;
+			f32 dy = (y - out[count - 1].y) * h;
+			if (dx * dx + dy * dy < 0.25) { // Closer than half a pixel
+				out[count - 1].p = s->pressure;
+				continue;
+			}
+		}
+		if (count == RENDER_PATH_PAINT_POINTS_MAX) { // Too many for a frame, keep every other one
+			for (i32 k = 0; k < count / 2; ++k) {
+				out[k] = out[k * 2 + 1];
+			}
+			count /= 2;
+		}
+		out[count++] = (render_path_paint_point_t){x, y, s->pressure};
+	}
+	if (count > 0) {
+		out[count - 1].x = g_context->paint_vec.x;
+		out[count - 1].y = g_context->paint_vec.y;
+	}
+	return count;
+}
+
+static bool                      render_path_paint_samples_started = false;
+static render_path_paint_point_t render_path_paint_samples_last;
+static f32                       render_path_paint_samples_carry = 0.0; // Distance since the last stamp
+
+void render_path_paint_samples_reset() {
+	render_path_paint_samples_started = false;
+}
+
+// One capsule per sample, from the previous one
+static void render_path_paint_commands_samples() {
+	render_path_paint_point_t pts[RENDER_PATH_PAINT_POINTS_MAX];
+	i32                       count = render_path_paint_points(pts);
+	if (!render_path_paint_samples_started) {
+		render_path_paint_samples_last    = pts[0];
+		render_path_paint_samples_started = true;
+	}
+	f32 cx = g_context->paint_vec.x;
+	f32 cy = g_context->paint_vec.y;
+	for (i32 i = 0; i < count; ++i) {
+		g_context->last_paint_vec_x = render_path_paint_samples_last.x;
+		g_context->last_paint_vec_y = render_path_paint_samples_last.y;
+		g_context->paint_vec.x      = pts[i].x;
+		g_context->paint_vec.y      = pts[i].y;
+		util_brush_sample_pressure  = pts[i].p;
+		render_path_paint_commands_symmetry();
+		render_path_paint_commands_paint(i == count - 1);
+		render_path_paint_samples_last = pts[i];
+	}
+	util_brush_sample_pressure = -1.0;
+	g_context->paint_vec.x     = cx;
+	g_context->paint_vec.y     = cy;
+}
+
+// Stamps every spacing along the samples, the pressure interpolated between them
+static void render_path_paint_commands_samples_stamps() {
+	render_path_paint_point_t pts[RENDER_PATH_PAINT_POINTS_MAX];
+	i32                       count    = render_path_paint_points(pts);
+	f32                       cx       = g_context->paint_vec.x;
+	f32                       cy       = g_context->paint_vec.y;
+	f32                       aspect   = base_paint_view_w() / (f32)base_paint_view_h();
+	f32                       diameter = util_layer_brush_screen_radius() * 2.0;
+	f32                       step     = math_max(g_context->brush_spacing * diameter, 0.0005);
+	i32                       stamps   = 0;
+	i32                       first    = 0;
+
+	if (g_context->brush_dab_x < 0.0 || !render_path_paint_samples_started) { // First stamp of the stroke
+		render_path_paint_stamp_seed = (u32)(pts[0].x * 100003.0) ^ (u32)(pts[0].y * 7919.0) ^ (u32)(sys_time() * 1000.0);
+		util_brush_sample_pressure   = pts[0].p;
+		render_path_paint_stamp(pts[0].x, pts[0].y, aspect, diameter, count == 1);
+		render_path_paint_samples_last    = pts[0];
+		render_path_paint_samples_carry   = 0.0;
+		render_path_paint_samples_started = true;
+		g_context->brush_dab_x            = pts[0].x;
+		g_context->brush_dab_y            = pts[0].y;
+		first                             = 1;
+	}
+
+	render_path_paint_point_t a = render_path_paint_samples_last;
+	for (i32 i = first; i < count && stamps < 256; ++i) {
+		render_path_paint_point_t b   = pts[i];
+		f32                       dx  = (b.x - a.x) * aspect;
+		f32                       dy  = b.y - a.y;
+		f32                       len = math_sqrt(dx * dx + dy * dy);
+		f32                       d   = step - render_path_paint_samples_carry; // Distance along the segment to the next stamp
+		while (d <= len && stamps < 256) {
+			f32 t                      = len > 0.0 ? d / len : 1.0;
+			util_brush_sample_pressure = a.p + (b.p - a.p) * t;
+			render_path_paint_stamp(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, aspect, diameter, false);
+			stamps++;
+			d += step;
+		}
+		render_path_paint_samples_carry = len - (d - step);
+		a                               = b;
+	}
+	render_path_paint_samples_last = a;
+	g_context->brush_dab_x         = a.x;
+	g_context->brush_dab_y         = a.y;
+	if (stamps > 0) {
+		render_path_paint_dilate(true, false);
+	}
+
+	util_brush_sample_pressure   = -1.0;
+	g_context->paint_vec.x       = cx;
+	g_context->paint_vec.y       = cy;
+	g_context->brush_dab_radius  = 1.0;
+	g_context->brush_dab_opacity = 1.0;
+	g_context->brush_dab_angle   = 0.0;
+}
+
 void render_path_paint_draw() {
 	if (!render_path_paint_paint_enabled()) {
 		return;
@@ -1222,8 +1368,9 @@ void render_path_paint_draw() {
 	}
 
 	if (history_undo_layers != NULL) {
-		bool stamps = render_path_paint_stamps();
-		if (!stamps) {
+		bool stamps  = render_path_paint_stamps();
+		bool samples = render_path_paint_use_samples();
+		if (!stamps && !samples) {
 			render_path_paint_commands_symmetry();
 		}
 
@@ -1303,8 +1450,14 @@ void render_path_paint_draw() {
 				render_path_paint_commands_paint(true);
 			}
 		}
+		else if (stamps && samples) { // Stamps along the pen samples
+			render_path_paint_commands_samples_stamps();
+		}
 		else if (stamps) { // Paint with stamps spaced along the stroke
 			render_path_paint_commands_stamps();
+		}
+		else if (samples) { // A capsule per pen sample
+			render_path_paint_commands_samples();
 		}
 		else { // Paint
 			render_path_paint_commands_paint(true);
