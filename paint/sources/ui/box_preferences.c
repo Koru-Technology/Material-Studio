@@ -10,10 +10,8 @@ i32              _box_preferences_i;
 f32              box_preferences_scale          = 0.0;
 char            *box_preferences_theme_search   = "";
 char            *box_preferences_keymap_search  = "";
-char            *box_preferences_plugins_search = "";
 char            *box_preferences_new_theme      = "new_theme";
 char            *box_preferences_new_keymap     = "new_keymap";
-char            *box_preferences_new_plugin     = "new_plugin";
 
 void box_preferences_set_scale() {
 	f32 scale = g_config->window_scale;
@@ -57,15 +55,8 @@ void box_preferences_interface_tab_restore_menu_import(char *path) {
 
 void box_preferences_interface_tab_restore_menu_confirm(void *_) {
 	g_theme->ELEMENT_H = base_default_element_h;
-	if (g_config->plugins != NULL) {
-		for (i32 i = 0; i < g_config->plugins->length; ++i) {
-			char *f = g_config->plugins->buffer[i];
-			plugin_stop(f);
-		}
-	}
 	config_restore();
 	box_preferences_set_scale();
-	box_preferences_files_plugin = NULL;
 	box_preferences_files_keymap = NULL;
 	make_material_parse_mesh_material();
 	make_material_parse_paint_material(true);
@@ -125,13 +116,13 @@ static void box_preferences_interface_layout() {
 		base_update_tools();
 	}
 
-	// Scripts and Plugins are shown by their own settings
+	// Scripts is shown by its own setting
 	box_preferences_section(tr("Tabs"));
 	static bool tab_visible[TAB_COUNT];
 	i32         column = 0;
 	for (i32 i = 0; i < TAB_COUNT; ++i) {
 		tab_draw_t *tab = ui_base_get_tab(i);
-		if (tab == NULL || i == TAB_SCRIPTS || i == TAB_PLUGINS) {
+		if (tab == NULL || i == TAB_SCRIPTS) {
 			continue;
 		}
 		if (column++ % 3 == 0) {
@@ -452,6 +443,17 @@ void box_preferences_theme_tab() {
 //  ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
 
 void box_preferences_usage_tab() {
+	ui_row2();
+	ui_check(&g_config->autosave, tr("Auto Save"), "");
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Save the project periodically and when the app is left"));
+	}
+	if (!g_config->autosave) {
+		g_ui->enabled = false;
+	}
+	ui_slider_int(&g_config->autosave_interval, tr("Interval (min)"), 1, 15, false, true, UI_ALIGN_RIGHT, true);
+	g_ui->enabled = true;
+
 	ui_slider_int(&g_config->undo_steps, tr("Undo Steps"), 1, 64, false, true, UI_ALIGN_RIGHT, true);
 	if (g_config->undo_steps < 1) {
 		g_config->undo_steps = 1;
@@ -1075,183 +1077,6 @@ void box_preferences_keymap_tab() {
 	}
 }
 
-// ██████╗ ██╗     ██╗   ██╗ ██████╗ ██╗███╗   ██╗███████╗
-// ██╔══██╗██║     ██║   ██║██╔════╝ ██║████╗  ██║██╔════╝
-// ██████╔╝██║     ██║   ██║██║  ███╗██║██╔██╗ ██║███████╗
-// ██╔═══╝ ██║     ██║   ██║██║   ██║██║██║╚██╗██║╚════██║
-// ██║     ███████╗╚██████╔╝╚██████╔╝██║██║ ╚████║███████║
-// ╚═╝     ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝
-
-void box_preferences_plugins_tab_plugin_menu_export(char *dest) {
-	if (!ends_with(ui_files_filename, ".c")) {
-		ui_files_filename = string("%s.c", ui_files_filename);
-	}
-	char *path = string("%s%splugins%s%s", path_data(), PATH_SEP, PATH_SEP, _box_preferences_f);
-	file_copy(path, string("%s%s%s", dest, PATH_SEP, ui_files_filename));
-}
-
-void box_preferences_plugins_tab_plugin_menu() {
-	char *path = string("%s%splugins%s%s", path_data(), PATH_SEP, PATH_SEP, _box_preferences_f);
-	if (ui_menu_button(tr("Edit in Text Editor"), "", ICON_NONE)) {
-		file_start(path);
-	}
-	if (ui_menu_button(tr("Edit in Script Tab"), "", ICON_NONE)) {
-		buffer_t *blob = data_get_blob(string("plugins/%s", _box_preferences_f));
-		tab_scripts_set(sys_buffer_to_string(blob));
-		data_delete_blob(string("plugins/%s", _box_preferences_f));
-		console_info(tr("Script opened"));
-		ui_base_show_tab(TAB_SCRIPTS);
-	}
-	if (ui_menu_button(tr("Export"), "", ICON_EXPORT)) {
-		ui_files_show("c", true, false, &box_preferences_plugins_tab_plugin_menu_export);
-	}
-	if (ui_menu_button(tr("Delete"), "", ICON_DELETE)) {
-		if (string_array_index_of(g_config->plugins, _box_preferences_f) >= 0) {
-			string_array_remove(g_config->plugins, _box_preferences_f);
-			plugin_stop(_box_preferences_f);
-		}
-		string_array_remove(box_preferences_files_plugin, _box_preferences_f);
-		iron_delete_file(path);
-	}
-}
-
-void box_preferences_plugins_tab_import(char *path) {
-	import_plugin_run(path);
-}
-
-void box_preferences_plugins_tab_new_box() {
-	ui_row2();
-	char *plugin_name = ui_text_input(&box_preferences_new_plugin, tr("Name"), UI_ALIGN_LEFT, true, false);
-	if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-		char *template = "\
-bool expanded = false;\n\
-void on_ui() {\n\
-	if (ui_panel(&expanded, \"New Plugin\", false, false, false)) {\n\
-		if (ui_button(\"Button\", UI_ALIGN_CENTER, \"\")) {\n\
-			console_info(\"Hello\");\n\
-		}\n\
-	}\n\
-}\n\
-void main() {\n\
-	void *plugin = plugin_create();\n\
-	plugin_notify_on_ui(plugin, on_ui);\n\
-}\n\
-";
-		if (!ends_with(plugin_name, ".c")) {
-			plugin_name = string("%s.c", plugin_name);
-		}
-		char *path = string("%s%splugins%s%s", path_data(), PATH_SEP, PATH_SEP, plugin_name);
-		iron_file_save_bytes(path, sys_string_to_buffer(template), 0);
-		box_preferences_files_plugin = NULL; // Refresh file list
-		ui_box_hide();
-		box_preferences_tab = PREFERENCES_TAB_PLUGINS;
-		box_preferences_show();
-	}
-}
-
-void box_preferences_plugins_tab() {
-	ui_begin_sticky();
-	f32_array_t *row = f32_array_create_from_raw_tmp(
-	    (f32[]){
-	        1 / 4.0,
-	        1 / 4.0,
-	    },
-	    2);
-	ui_row(row);
-	if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
-		ui_box_show_custom(&box_preferences_plugins_tab_new_box, 400, 200, NULL, true, tr("New Plugin"));
-	}
-	if (ui_icon_button(tr("Import"), ICON_IMPORT, UI_ALIGN_CENTER)) {
-		ui_files_show("c,zip", false, false, &box_preferences_plugins_tab_import);
-	}
-
-	if (!string_equals(box_preferences_plugins_search, "")) {
-		ui_row(f32_array_create_from_raw_tmp((f32[]){0.85, 0.15}, 2));
-	}
-	ui_text_input(&box_preferences_plugins_search, tr("Search"), UI_ALIGN_LEFT, true, true);
-	if (!string_equals(box_preferences_plugins_search, "") && (ui_button(tr("X"), UI_ALIGN_CENTER, "") || g_ui->is_escape_down)) {
-		box_preferences_plugins_search = "";
-	}
-
-	ui_end_sticky();
-
-	if (box_preferences_files_plugin == NULL) {
-		box_preferences_fetch_plugins();
-	}
-
-	char *plugin_search = to_lower_case(box_preferences_plugins_search);
-	if (g_config->plugins == NULL) {
-		g_config->plugins = any_array_create_from_raw((void *[]){}, 0);
-	}
-	for (i32 i = 0; i < box_preferences_files_plugin->length; ++i) {
-		char *f    = box_preferences_files_plugin->buffer[i];
-		bool  is_c = ends_with(f, ".c");
-		if (!is_c) {
-			continue;
-		}
-		char *tag = string_split(f, ".")->buffer[0];
-		if (!string_equals(plugin_search, "") && string_index_of(to_lower_case(tag), plugin_search) == -1) {
-			continue;
-		}
-		bool enabled = string_array_index_of(g_config->plugins, f) >= 0;
-		bool checked = enabled;
-		ui_check(&checked, tag, "");
-		if (checked != enabled) {
-			checked ? config_enable_plugin(f) : config_disable_plugin(f);
-			base_redraw_ui();
-		}
-		if (g_ui->is_hovered && g_ui->input_released_r) {
-			_box_preferences_f = string_copy(f);
-			ui_menu_draw(&box_preferences_plugins_tab_plugin_menu, -1, -1);
-		}
-	}
-}
-
-//  ██████╗██╗      ██████╗ ██╗   ██╗██████╗
-// ██╔════╝██║     ██╔═══██╗██║   ██║██╔══██╗
-// ██║     ██║     ██║   ██║██║   ██║██║  ██║
-// ██║     ██║     ██║   ██║██║   ██║██║  ██║
-// ╚██████╗███████╗╚██████╔╝╚██████╔╝██████╔╝
-//  ╚═════╝╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝
-
-void box_preferences_cloud_tab() {
-#ifndef IRON_WASM
-	account_init();
-	if (account_code != NULL) {
-		if (string_equals(account_code, "")) {
-			ui_text(tr("Signing in..."), UI_ALIGN_LEFT, 0x00000000);
-		}
-		else {
-			ui_text(tr("Continue in the browser."), UI_ALIGN_LEFT, 0x00000000);
-			ui_text(string_tmp("%.4s-%s", account_code, account_code + 4), UI_ALIGN_LEFT, 0x00000000);
-		}
-		ui_row2();
-		if (ui_icon_button(tr("Open Browser"), ICON_LINK, UI_ALIGN_CENTER) && !string_equals(account_code, "")) {
-			account_open_browser();
-		}
-		if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-			account_cancel();
-		}
-	}
-	else if (account_token == NULL) {
-		if (g_config->experimental) {
-			ui_text(tr("Sign in with armorpaint.org account."), UI_ALIGN_LEFT, 0x00000000);
-			if (ui_icon_button(tr("Sign In..."), ICON_CLOUD, UI_ALIGN_LEFT)) {
-				account_sign_in();
-			}
-		}
-	}
-	else {
-		ui_text(account_email != NULL ? string_tmp("%s %s", tr("Signed in as"), account_email) : tr("Signed in"), UI_ALIGN_LEFT, 0x00000000);
-		if (ui_icon_button(tr("Sign Out"), ICON_CLOSE, UI_ALIGN_LEFT)) {
-			account_sign_out();
-		}
-	}
-#endif
-
-	ui_text_input(&g_config->server, tr("Cloud Server"), UI_ALIGN_LEFT, true, false);
-}
-
 void box_preferences_library_tab() {
 	box_preferences_section(tr("Materials Folder"));
 	bool set = !string_equals(g_config->materials_folder, "");
@@ -1350,16 +1175,15 @@ void box_preferences_show_box() {
 		box_preferences_neural_tab();
 	}
 #endif
-	if (ui_tab(&box_preferences_tab, tr("Cloud"), true, -1, false)) {
-		box_preferences_cloud_tab();
-	}
-	if (ui_tab(&box_preferences_tab, tr("Plugins"), true, -1, false)) {
-		box_preferences_plugins_tab();
-	}
 }
 
 void box_preferences_show() {
 	ui_box_show_custom(&box_preferences_show_box, 720, 520, &box_preferences_show_on_hide, true, tr("Preferences"));
+}
+
+void box_preferences_show_tab(i32 tab) {
+	box_preferences_tab = tab;
+	box_preferences_show();
 }
 
 void box_preferences_fetch_themes() {
@@ -1378,10 +1202,6 @@ void box_preferences_fetch_keymaps() {
 		box_preferences_files_keymap->buffer[i] = substring(box_preferences_files_keymap->buffer[i], 0, string_length(s) - 5); // Strip .json
 	}
 	array_insert(box_preferences_files_keymap, 0, "default");
-}
-
-void box_preferences_fetch_plugins() {
-	box_preferences_files_plugin = file_read_directory(string("%s%splugins", path_data(), PATH_SEP));
 }
 
 i32 box_preferences_get_theme_index() {

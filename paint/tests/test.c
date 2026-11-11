@@ -1,6 +1,6 @@
 #include "global.h"
 
-char *tmp_root = "/tmp/armorpaint";
+char *tmp_root = "/tmp/korusurface";
 char *dir_textures;
 char *dir_project;
 char *dir_mesh;
@@ -1393,7 +1393,7 @@ void step_material_channels() {
 	script_layer_delete(l);
 }
 
-// 58 - Custom material node from a plugin category
+// 58 - Custom material node from a script category
 
 int   custom_node_calls = 0;
 char *custom_node_type  = "TEST_CUSTOM";
@@ -1470,7 +1470,7 @@ void step_viewport_shader() {
 		return;
 	}
 	check(viewport_shader_calls > 0, string("viewport shader called %d times", viewport_shader_calls));
-	check(ctx->viewport_mode == 17, "viewport shader switches to the plugin mode"); // VIEWPORT_MODE_PLUGIN
+	check(ctx->viewport_mode == 17, "viewport shader switches to the script mode"); // VIEWPORT_MODE_PLUGIN
 	context_set_viewport_shader(NULL);
 	check(ctx->viewport_mode == 0, "removing the viewport shader returns to lit");
 	script_layer_update(ctx->layer);

@@ -126,6 +126,8 @@ void        iron_internal_update_callback(void);
 void        iron_internal_foreground_callback(void);
 void        iron_internal_background_callback(void);
 void        iron_internal_shutdown_callback(void);
+void        iron_set_resign_active_callback(void (*callback)(void));
+void        iron_internal_resign_active_callback(void);
 void        iron_internal_drop_files_callback(char *);
 void        iron_internal_open_file_callback(char *);
 void        iron_set_open_file_callback(void (*callback)(char *));

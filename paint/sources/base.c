@@ -19,9 +19,16 @@ bool    base_start_arm_found    = false;
 i32     _base_material_count;
 
 void base_on_shutdown() {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
-	project_save(false);
+#ifdef IRON_ANDROID
+	project_save_now(); // project_save() would wait for a next frame that does not come
 #endif
+	// iOS saved when the app resigned active, the gpu can not read the layers back from the background
+	config_save();
+}
+
+// Home gesture or app switcher, save while the gpu can still read the layers back
+void base_on_resign_active() {
+	project_save_now();
 	config_save();
 }
 
@@ -183,7 +190,7 @@ static void base_handle_open_paths() {
 		return;
 	}
 	char *path = array_shift(base_open_paths);
-	if (!path_is_mesh(path) && !context_enable_import_plugin(path)) {
+	if (!path_is_mesh(path)) {
 		console_error(strings_unknown_asset_format());
 		return;
 	}
@@ -656,8 +663,10 @@ void base_init() {
 	sys_notify_on_drop_files(&base_on_drop_files);
 	iron_set_open_file_callback(&base_on_open_file);
 	sys_notify_on_app_state(&base_on_foreground, &base_on_background, &base_on_shutdown);
+	iron_set_resign_active_callback(&base_on_resign_active);
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
 	agent_init();
+	project_autosave_init();
 
 	g_font = data_get_font("font.ttf");
 
@@ -682,14 +691,6 @@ void base_init() {
 
 	ui_nodes_enum_texts    = base_combo_enum_texts;
 	ui_nodes_enum_textures = base_combo_enum_textures;
-
-	// Init plugins
-	if (g_config->plugins != NULL) {
-		for (i32 i = 0; i < g_config->plugins->length; ++i) {
-			char *plugin = g_config->plugins->buffer[i];
-			plugin_start(plugin);
-		}
-	}
 
 	if (!g_config->texture_filter) {
 		gpu_use_linear_sampling(false);

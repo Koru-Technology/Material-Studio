@@ -922,7 +922,7 @@ void render_path_paint_draw_cursor_decal(f32 mx, f32 my, f32 radius, f32 opacity
 void render_path_paint_commands_cursor() {
 	bool        decal_mask = context_is_decal_mask();
 	tool_type_t tool       = g_context->tool;
-	if (tool >= TOOL_TYPE_PLUGIN) {
+	if (tool == TOOL_TYPE_INPAINT) {
 		if (base_ui_enabled && !base_is_dragging && !base_paint_in_2d()) {
 			render_path_paint_draw_cursor(g_context->paint_vec.x, 1.0 - g_context->paint_vec.y, g_context->brush_radius / 3.4, 1.0, 1.0, 1.0);
 		}
@@ -975,8 +975,8 @@ bool render_path_paint_paint_enabled() {
 		return false;
 	}
 
-	if (g_context->tool >= TOOL_TYPE_PLUGIN) {
-		return false; // Plugin tools handle the strokes themselves
+	if (g_context->tool == TOOL_TYPE_INPAINT) {
+		return false; // Inpaint handles the strokes itself
 	}
 
 	if (g_context->tool == TOOL_TYPE_BAKE) {

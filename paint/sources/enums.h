@@ -269,7 +269,7 @@ typedef enum {
 	TOOL_TYPE_PATH      = 22,
 	TOOL_TYPE_CURVE     = 23,
 	TOOL_TYPE_BAKE      = 24, // Hidden, used by Bake Texture node
-	TOOL_TYPE_PLUGIN    = 25, // First tool added by plugins, see plugin_register_tool
+	TOOL_TYPE_INPAINT   = 25, // Repairs baked maps, see box_bake_maps.c
 } tool_type_t;
 
 typedef enum {
@@ -301,7 +301,7 @@ typedef enum {
 	TAB_SCRIPTS   = 2,
 	TAB_MATERIALS = 3,
 	TAB_BRUSHES   = 4,
-	TAB_PLUGINS   = 5,
+	TAB_PLUGINS   = 5, // Retired, kept as saved layouts store tab ids
 	TAB_BROWSER   = 6,
 	TAB_TEXTURES  = 7,
 	TAB_FONTS     = 8,
@@ -360,8 +360,6 @@ typedef enum {
 	PREFERENCES_TAB_VIEWPORT  = 6,
 	PREFERENCES_TAB_KEYMAP    = 7,
 	PREFERENCES_TAB_NEURAL    = 8,
-	PREFERENCES_TAB_CLOUD     = 9,
-	PREFERENCES_TAB_PLUGINS   = 10,
 } preferences_tab_t;
 
 typedef enum {

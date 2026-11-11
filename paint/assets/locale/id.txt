@@ -674,7 +674,7 @@ Masuk...
 Keluar
 Proses masuk kedaluwarsa, coba lagi
 Masuk untuk menyimpan proyek di awan.
-Masuk dengan akun armorpaint.org.
+
 Sudah masuk
 Masuk sebagai
 Sedang masuk...

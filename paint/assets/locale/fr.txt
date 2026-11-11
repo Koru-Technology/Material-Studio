@@ -674,7 +674,7 @@ Se connecter...
 Se déconnecter
 Connexion expirée, réessayez
 Connectez-vous pour stocker vos projets dans le cloud.
-Connectez-vous avec un compte armorpaint.org.
+
 Connecté
 Connecté en tant que
 Connexion en cours...

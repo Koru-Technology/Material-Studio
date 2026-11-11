@@ -1,4 +1,4 @@
-Welcome to the ArmorPaint development guide!
+Welcome to the Koru Surface development guide!
 
 > [!NOTE]  
-> For program usage, see [ArmorPaint manual](https://armorpaint.org/manual) instead.
+> For program usage, see the [manual](https://armorpaint.org/manual) instead.

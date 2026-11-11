@@ -425,6 +425,9 @@ void export_arm_run_project(char *path) {
 	buffer_t *buffer         = export_arm_encode_project(path);
 	export_arm_progress(0.9);
 	iron_file_save_bytes(path, buffer, buffer->length + 1);
+	if (string_equals(path, g_project->_->filepath)) {
+		project_modified = false;
+	}
 	array_free(buffer);
 	free(buffer);
 	export_arm_progress(1.0);

@@ -17,10 +17,8 @@ void import_texture_run_on_next_frame(import_texture_data_t *itd) {
 
 void import_texture_run(char *path, bool hdr_as_envmap) {
 	if (!path_is_texture(path)) {
-		if (!context_enable_import_plugin(path)) {
-			console_error(strings_unknown_asset_format());
-			return;
-		}
+		console_error(strings_unknown_asset_format());
+		return;
 	}
 
 	for (i32 i = 0; i < g_project->_->assets->length; ++i) {

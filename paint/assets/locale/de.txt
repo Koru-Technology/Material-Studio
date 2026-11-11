@@ -674,7 +674,7 @@ Anmelden...
 Abmelden
 Anmeldung abgelaufen, bitte erneut versuchen
 Melden Sie sich an, um Projekte in der Cloud zu speichern.
-Mit armorpaint.org-Konto anmelden.
+
 Angemeldet
 Angemeldet als
 Anmeldung läuft...
@@ -834,7 +834,7 @@ X-Ray
 XYZ
 Y
 Ja
-ArmorPaint ist auf dem neuesten Stand!
+Du bist auf dem neuesten Stand!
 Z
 Vergrößern
 Verkleinern

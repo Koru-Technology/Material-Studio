@@ -1237,7 +1237,7 @@ extern void (*iron_save_and_quit)(bool);
 bool _save_and_quit_callback_internal() {
 	bool      save  = false;
 	NSString *title = [window title];
-	bool      dirty = [title rangeOfString:@"* - ArmorPaint"].location != NSNotFound;
+	bool      dirty = [title rangeOfString:@"* - Koru Surface"].location != NSNotFound;
 	if (dirty) {
 		NSAlert *alert = [[NSAlert alloc] init];
 		[alert setMessageText:@"Project has been modified, save changes?"];

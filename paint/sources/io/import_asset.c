@@ -1,37 +1,7 @@
 
 #include "../global.h"
 
-f32  _import_asset_drop_x;
-f32  _import_asset_drop_y;
-bool _import_asset_show_box;
-bool _import_asset_hdr_as_envmap;
-void (*_import_asset_done)(void);
-
-void import_asset_run_cache_cloud_done(char *abs) {
-	if (abs == NULL) {
-		return;
-	}
-	import_asset_run(string_copy(abs), _import_asset_drop_x, _import_asset_drop_y, _import_asset_show_box, _import_asset_hdr_as_envmap, _import_asset_done);
-}
-
 void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hdr_as_envmap, void (*done)(void)) {
-	if (starts_with(path, "cloud")) {
-#ifdef IRON_ANDROID
-		console_toast(tr("Downloading"));
-#else
-		console_info(tr("Downloading"));
-#endif
-
-		_import_asset_drop_x        = drop_x;
-		_import_asset_drop_y        = drop_y;
-		_import_asset_show_box      = show_box;
-		_import_asset_hdr_as_envmap = hdr_as_envmap;
-		_import_asset_done          = done;
-		file_cache_cloud(path, &import_asset_run_cache_cloud_done, g_config->server);
-
-		return;
-	}
-
 	if (path_is_mesh(path)) {
 		show_box ? project_import_mesh_box(path, true, true, false, NULL) : import_mesh_run(path, true, true, false);
 		if (drop_x > 0) {
@@ -73,8 +43,15 @@ void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hd
 	else if (path_is_project(path)) {
 		import_arm_run_project(path);
 	}
-	else if (path_is_plugin(path)) {
-		import_plugin_run(path);
+	else if (path_is_script(path)) { // Opened in the Scripts tab
+		buffer_t *blob = data_get_blob(path);
+		if (blob != NULL) {
+			tab_scripts_set(sys_buffer_to_string(blob));
+			data_delete_blob(path);
+			g_config->show_scripts = true;
+			ui_base_show_tab(TAB_SCRIPTS);
+			console_info(tr("Script opened"));
+		}
 	}
 	else if (path_is_font(path)) {
 		import_font_run(path);
@@ -83,12 +60,7 @@ void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hd
 		import_folder_run(path);
 	}
 	else {
-		if (context_enable_import_plugin(path)) {
-			import_asset_run(path, drop_x, drop_y, show_box, true, NULL);
-		}
-		else {
-			console_error(strings_unknown_asset_format());
-		}
+		console_error(strings_unknown_asset_format());
 	}
 
 	if (done != NULL) {

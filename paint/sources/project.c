@@ -35,6 +35,84 @@ void project_save_on_next_frame(void *_) {
 	}
 }
 
+// Untitled projects are saved in the documents folder on mobile, false when a save dialog is needed
+static bool project_set_default_path() {
+#ifdef IRON_IOS
+	char *document_directory = iron_save_dialog("", "");
+	document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
+	char *title              = project_unique_title(sys_title());
+	g_project->_->filepath   = string("%s/%s.arm", document_directory, title);
+	sys_title_set(title);
+	return true;
+#elif defined(IRON_ANDROID)
+	g_project->_->filepath = string("%s/%s.arm", iron_internal_save_path(), sys_title());
+	return true;
+#else
+	return false;
+#endif
+}
+
+static bool project_autosave_busy() {
+	return agent_running || g_context->brush_time > 0 || box_bake_maps_running() || g_context->paint_object == NULL;
+}
+
+// Wall clock time of the first change since the last save, 0 when unchanged.
+// Updates stop while the app is idle, the time keeps running and the idle wake checks it.
+static f64 project_autosave_since = 0.0;
+
+static bool project_autosave_due() {
+	if (!g_config->autosave || !project_modified) {
+		project_autosave_since = 0.0;
+		return false;
+	}
+	if (project_autosave_since == 0.0) {
+		project_autosave_since = iron_time();
+	}
+	i32 minutes = g_config->autosave_interval < 1 ? 1 : g_config->autosave_interval;
+	return iron_time() - project_autosave_since >= minutes * 60.0;
+}
+
+// Saves modified projects every few minutes, from the update loop
+void project_autosave_update() {
+	if (!project_autosave_due() || project_autosave_busy()) {
+		return;
+	}
+#if !defined(IRON_IOS) && !defined(IRON_ANDROID)
+	if (string_equals(g_project->_->filepath, "")) {
+		return; // No surprise save dialog
+	}
+#endif
+	project_autosave_since = 0.0;
+	project_save(false);
+	console_info(tr("Auto saved"));
+}
+
+static bool (*project_idle_wake_next)(void) = NULL;
+
+static bool project_idle_wake(void) {
+	return project_autosave_due() || (project_idle_wake_next != NULL && project_idle_wake_next());
+}
+
+// Wakes the idle app up when an auto save is due
+void project_autosave_init() {
+	project_idle_wake_next = iron_idle_wake;
+	iron_idle_wake         = project_idle_wake;
+}
+
+// Saves right away instead of on the next frame, for when the app is about to be suspended or closed
+void project_save_now() {
+#ifndef IRON_WASM
+	if (!g_config->autosave || !project_modified || project_autosave_busy()) {
+		return;
+	}
+	if (string_equals(g_project->_->filepath, "") && !project_set_default_path()) {
+		return;
+	}
+	export_arm_run_project(g_project->_->filepath);
+	project_autosave_since = 0.0;
+#endif
+}
+
 void project_save(bool save_and_quit) {
 	if (agent_running) {
 		return;
@@ -47,17 +125,9 @@ void project_save(bool save_and_quit) {
 	}
 #endif
 
-	if (string_equals(g_project->_->filepath, "")) {
-#ifdef IRON_IOS
-		char *document_directory = iron_save_dialog("", "");
-		document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
-		g_project->_->filepath   = string("%s/%s.arm", document_directory, sys_title());
-#elif defined(IRON_ANDROID)
-		g_project->_->filepath = string("%s/%s.arm", iron_internal_save_path(), sys_title());
-#else
+	if (string_equals(g_project->_->filepath, "") && !project_set_default_path()) {
 		project_save_as(save_and_quit);
 		return;
-#endif
 	}
 
 #if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS) || defined(IRON_WASM)

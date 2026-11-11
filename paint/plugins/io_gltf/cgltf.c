@@ -568,7 +568,7 @@ void export_glb_run(char *path, any_array_t *paint_objects) {
 
 	// Build JSON string
 	json_buf_t j = {(char *)malloc(4096), 0, 4096};
-	json_buf_append(&j, "{\"asset\":{\"generator\":\"ArmorPaint\",\"version\":\"2.0\"},\"scene\":0,");
+	json_buf_append(&j, "{\"asset\":{\"generator\":\"Koru Surface\",\"version\":\"2.0\"},\"scene\":0,");
 
 	// scenes
 	json_buf_append(&j, "\"scenes\":[{\"name\":\"Scene\",\"nodes\":[");

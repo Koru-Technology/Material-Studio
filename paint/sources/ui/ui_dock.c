@@ -78,11 +78,8 @@ static i32 dock_collect_leaves(dock_node_t *n, dock_node_t **out, i32 count) {
 	return dock_collect_leaves(n->b, out, count);
 }
 
-// Tabs hidden whatever the layout says: Plugins without running plugins, Scripts unless enabled in the preferences
+// Tabs hidden whatever the layout says: Scripts unless enabled in the preferences
 static bool dock_tab_hidden(i32 id) {
-	if (id == TAB_PLUGINS) {
-		return g_plugins == NULL || g_plugins->keys->length == 0;
-	}
 	if (id == TAB_SCRIPTS) {
 		return !g_config->show_scripts;
 	}
@@ -354,7 +351,6 @@ void ui_dock_reset() {
 	dock_default_leaf(sidebar1, TAB_MATERIALS);
 	dock_default_leaf(sidebar1, TAB_LIBRARY);
 	dock_default_leaf(sidebar1, TAB_BRUSHES);
-	dock_default_leaf(sidebar1, TAB_PLUGINS);
 
 	f32 scale     = g_config->window_scale;
 	i32 sidebar_w = math_floor(ui_base_sidebar_default_w(g_config->large_asset_previews) * scale);
@@ -1270,9 +1266,9 @@ void ui_dock_update() {
 		return;
 	}
 
-	// Plugins started / stopped or Scripts toggled in the preferences
+	// Scripts toggled in the preferences
 	static i32 hidden_last = -1;
-	i32        hidden      = (dock_tab_hidden(TAB_PLUGINS) ? 1 : 0) | (dock_tab_hidden(TAB_SCRIPTS) ? 2 : 0);
+	i32        hidden      = dock_tab_hidden(TAB_SCRIPTS) ? 1 : 0;
 	if (hidden != hidden_last) {
 		bool first  = hidden_last == -1;
 		hidden_last = hidden;

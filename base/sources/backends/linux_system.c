@@ -1511,7 +1511,7 @@ bool _save_and_quit_callback_internal() {
 	XTextProperty text_prop;
 	XGetTextProperty(x11_ctx.display, x11_ctx.windows[0].window, &text_prop, NET_WM_NAME);
 	char *title = (char *)text_prop.value;
-	bool  dirty = strstr(title, "* - ArmorPaint") != NULL;
+	bool  dirty = strstr(title, "* - Koru Surface") != NULL;
 	// XFree(title);
 	if (dirty) {
 		iron_gtk_disable_setlocale();

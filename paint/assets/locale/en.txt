@@ -674,7 +674,7 @@ Sign In...
 Sign Out
 Sign in expired, try again
 Sign in to store projects in the cloud.
-Sign in with armorpaint.org account.
+
 Signed in
 Signed in as
 Signing in...

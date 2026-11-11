@@ -5,10 +5,10 @@
 #include "types.h"
 #include <iron.h>
 
-char *manifest_title           = "PiratePaint";
+char *manifest_title           = "Koru Surface";
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "26";
-char *manifest_version_config  = "13";
+char *manifest_version_config  = "14";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -20,7 +20,6 @@ any_map_t   *g_keymap;
 ui_t        *g_ui;
 draw_font_t *g_font;
 ui_theme_t  *g_theme;
-any_map_t   *g_plugins;
 
 any_map_t       *ui_nodes_custom_buttons;
 gpu_texture_t   *lut_image             = NULL;
@@ -271,6 +270,7 @@ bool                  parser_material_is_frag           = true;
 bool                  args_player                       = false;
 bool                  args_background                   = false;
 bool                  agent_running                     = false;
+bool                  project_modified                  = false; // Changed since the last save, for auto save
 i32                   util_render_material_preview_size = 256;
 f32                   util_render_brush_wave_strip      = 0.25; // Wave preview height relative to its width
 i32                   util_render_node_preview_size     = 512;
@@ -370,7 +370,6 @@ char           *console_capture = NULL;
 vec4_t          camera_origins[2];
 mat4_t          camera_views[2];
 i32             box_preferences_tab;
-string_array_t *box_preferences_files_plugin        = NULL;
 slot_layer_t   *render_path_paint_live_layer        = NULL;
 i32             render_path_paint_live_layer_drawn  = 0;
 bool            render_path_paint_live_layer_locked = false;
@@ -413,9 +412,6 @@ ui_node_t                   *neural_node_current;
 i32                          neural_node_downloading = 0;
 neural_node_model_t_array_t *neural_node_models      = NULL;
 
-char *account_token = NULL; // NULL when signed out
-char *account_email = NULL; // NULL until /auth/me answers
-char *account_code  = NULL; // Shown while signing in, "" until the server hands one out
 
 #ifdef IRON_DIRECT3D12
 char *render_path_raytrace_ext = ".cso";

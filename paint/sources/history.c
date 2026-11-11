@@ -416,6 +416,7 @@ void history_swap_canvas(history_step_t *step) {
 
 void history_undo() {
 	if (history_undos > 0) {
+		project_modified = true;
 		i32             active = history_steps->length - 1 - history_redos;
 		history_step_t *step   = history_steps->buffer[active];
 
@@ -699,6 +700,7 @@ void history_swap_active() {
 
 void history_redo() {
 	if (history_redos > 0) {
+		project_modified = true;
 		i32             active = history_steps->length - history_redos;
 		history_step_t *step   = history_steps->buffer[active];
 
@@ -891,6 +893,7 @@ void history_redo() {
 }
 
 void history_reset() {
+	project_modified = false;
 	if (history_steps != NULL) {
 		for (i32 i = 0; i < history_steps->length; ++i) {
 			history_step_free(history_steps->buffer[i]);
@@ -910,6 +913,7 @@ void history_reset() {
 }
 
 history_step_t *history_push(history_action_t action) {
+	project_modified = true;
 	char *name = history_action_to_string(action);
 #if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
 	char *filename = string_equals(g_project->_->filepath, "") ? ui_files_filename

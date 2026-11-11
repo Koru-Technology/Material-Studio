@@ -708,6 +708,16 @@ static void openSharedFile(NSURL *url) {
 }
 
 - (void)sceneWillResignActive:(UIScene *)scene {
+	// Extra time for the callback to finish (saving), the gpu is not available once in the background
+	UIApplication           *app  = [UIApplication sharedApplication];
+	__block UIBackgroundTaskIdentifier task = [app beginBackgroundTaskWithExpirationHandler:^{
+		[app endBackgroundTask:task];
+		task = UIBackgroundTaskInvalid;
+	}];
+	iron_internal_resign_active_callback();
+	if (task != UIBackgroundTaskInvalid) {
+		[app endBackgroundTask:task];
+	}
 }
 
 - (void)sceneWillEnterForeground:(UIScene *)scene {

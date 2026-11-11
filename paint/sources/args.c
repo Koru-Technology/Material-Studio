@@ -127,7 +127,7 @@ static i32   args_mcp_count = 0;
 static char *args_mcp_begin(char **error) {
 	char *s = args_request("begin", 5000);
 	if (s == NULL) {
-		*error = "ArmorPaint is not running";
+		*error = "Koru Surface is not running";
 		return NULL;
 	}
 	i32 nl = string_index_of(s, "\n");
@@ -183,7 +183,7 @@ static void args_mcp_call(any_map_t *m) {
 		error = string("Unknown tool '%s'", name);
 	}
 	if (text == NULL && error == NULL) {
-		error = "No response from ArmorPaint";
+		error = "No response from Koru Surface";
 	}
 
 	char *image = NULL;
@@ -247,7 +247,7 @@ static void args_mcp_tool_end(char *required) {
 static void args_mcp_list(void) {
 	json_encode_begin_object_key("result");
 	json_encode_begin_array("tools");
-	args_mcp_tool_begin("reference", "Call first. Starts a session from the project open in ArmorPaint and returns how to "
+	args_mcp_tool_begin("reference", "Call first. Starts a session from the project open in Koru Surface and returns how to "
 	                                 "work in steps and where the C scripting API reference is.");
 	args_mcp_tool_end(NULL);
 	args_mcp_tool_begin("step", "Runs a C script step that modifies the project. Returns the log and a screenshot. A "
@@ -308,7 +308,7 @@ void args_mcp() {
 			json_encode_end_object();
 			json_encode_end_object();
 			json_encode_begin_object_key("serverInfo");
-			json_encode_string("name", "armorpaint");
+			json_encode_string("name", "koru_surface");
 			json_encode_string("version", manifest_version);
 			json_encode_end_object();
 			json_encode_end_object();
@@ -395,7 +395,7 @@ void args_parse() {
 				args_background = true;
 			}
 			else if (string_equals(current_arg, "--help")) {
-				printf("Usage: armorpaint [options] [file]\n");
+				printf("Usage: korusurface [options] [file]\n");
 				printf("Options:\n");
 				printf("  --background                      Run without displaying the window\n");
 				printf("  --export-textures <type> <preset> <path>\n");

@@ -146,21 +146,7 @@ void box_append_draw() {
 	g_ui->enabled = true;
 }
 
-static void box_append_show_on_cache_cloud_done(char *abs) {
-	box_append_show(string_copy(abs));
-}
-
 void box_append_show(char *path) {
-	if (starts_with(path, "cloud")) {
-#ifdef IRON_ANDROID
-		console_toast(tr("Downloading"));
-#else
-		console_info(tr("Downloading"));
-#endif
-		file_cache_cloud(path, &box_append_show_on_cache_cloud_done, g_config->server);
-		return;
-	}
-
 	box_append_path    = string_copy(path);
 	buffer_t *b        = data_get_blob(path);
 	box_append_project = import_arm_decode_project(b);

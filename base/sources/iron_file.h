@@ -69,18 +69,7 @@ typedef struct file_download_data {
 	void (*done)(char *url);
 } file_download_data_t;
 
-typedef struct file_cache_cloud_data {
-	char dest[512];
-	char path[512];
-	void (*done)(char *dest);
-} file_cache_cloud_data_t;
-
-extern any_map_t *file_cloud;
-extern i32_map_t *file_cloud_sizes;
-
 any_array_t *file_read_directory(char *path);
 void         file_copy(char *src_path, char *dst_path);
 void         file_start(char *path);
 void         file_download_to(char *url, char *dst_path, void (*done)(char *url), i32 size);
-void         file_cache_cloud(char *path, void (*done)(char *dest), char *server);
-void         file_init_cloud(void (*done)(void), char *server);

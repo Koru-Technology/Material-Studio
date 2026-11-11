@@ -34,7 +34,6 @@ extern any_map_t      *data_cached_textures;
 void                   import_texture_run(char *path, bool hdr_as_envmap);
 any_array_t           *project_get_assets(void);
 void                   tab_textures_delete_texture(asset_t *asset);
-void                   bake_maps_init(void);
 
 int plugins_skinning_frame = -1;
 int plugins_split_by       = 0;
@@ -133,7 +132,6 @@ void plugins_init() {
 	any_map_set(import_mesh_importers, "fbx", import_fbx);
 	any_array_push(_path_mesh_formats, "fbx");
 
-	bake_maps_init();
 }
 
 #endif

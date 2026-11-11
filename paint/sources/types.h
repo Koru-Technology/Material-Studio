@@ -144,7 +144,6 @@ typedef struct config {
 	// Application
 	struct string_array *recent_projects; // Recently opened projects
 	struct string_array *bookmarks;       // Bookmarked folders in browser
-	struct string_array *plugins;         // List of enabled plugins
 	char                *keymap;          // Link to keymap file
 	char                *theme;           // Link to theme file
 	i32                  undo_steps;      // Number of undo steps to preserve
@@ -165,7 +164,6 @@ typedef struct config {
 	struct i32_array    *layout_tabs;     // Docked tabs
 	i32                  camera_pivot;    // Cursor, camera center
 	i32                  camera_controls; // Orbit, rotate, fly
-	char                *server;
 	i32                  viewport_mode;
 	i32                  pathtrace_mode;
 	i32                  pathtrace_frames;
@@ -224,6 +222,8 @@ typedef struct config {
 	i32                  brush_builtin;        // Built-in brush picked in the Brushes tab, -1 for none
 	bool                 hide_builtin_brushes; // Brushes tab hides the built-in brushes
 	i32                  rp_view_transform;    // 0 Filmic, 1 ACES, 2 AgX, 3 Standard
+	bool                 autosave;
+	i32                  autosave_interval; // Minutes
 } config_t;
 
 typedef struct slot_material {
@@ -861,28 +861,6 @@ typedef struct shader_out {
 	char *out_emission;
 	char *out_subsurface;
 } shader_out_t;
-
-typedef struct plugin {
-	void        *on_ui;
-	void        *on_draw;
-	void        *on_update;
-	void        *on_delete;
-	char        *version;
-	char        *name;
-	minic_ctx_t *ctx;
-} plugin_t;
-
-typedef struct plugin_tool {
-	plugin_t      *plugin;
-	char          *name;
-	char          *tooltip;
-	i32            icon;
-	void          *on_header;
-	void          *on_stroke;
-	void          *on_stroke_end;
-	gpu_texture_t *overlay; // Tinted over the mesh in the viewport while the tool is active
-	i32            overlay_color;
-} plugin_tool_t;
 
 typedef struct rect {
 	i32 x;

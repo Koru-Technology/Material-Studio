@@ -147,7 +147,6 @@ project_t *main() {
 	if (flags->with_plugins) {
 		add_define(project, "WITH_PLUGINS");
 		add_project(project, string("%s/plugins", flags->dirname));
-		add_cfiles(project, "sources/plugins/plugin_api.c");
 	}
 
 	if (flags->embed) {
@@ -189,9 +188,9 @@ project_t *main() {
 	if (flags->export_data_list) {
 		char *root   = flags->dirname;
 		char *dir    = string("%s/build", root);
-		char *format = "{\"/data/plugins\":\"%s\",\"/data/export_presets\":\"%s\",\"/data/keymap_presets\":\"%s\",\"/data/locale\":\"%s\",\"/data/"
+		char *format = "{\"/data/export_presets\":\"%s\",\"/data/keymap_presets\":\"%s\",\"/data/locale\":\"%s\",\"/data/"
 		               "meshes\":\"%s\",\"/data/themes\":\"%s\"}";
-		char *data   = string(format, fs_list_files(string("%s/assets/plugins", root)), fs_list_files(string("%s/assets/export_presets", root)),
+		char *data   = string(format, fs_list_files(string("%s/assets/export_presets", root)),
 		                      fs_list_files(string("%s/assets/keymap_presets", root)), fs_list_files(string("%s/assets/locale", root)),
 		                      fs_list_files(string("%s/assets/meshes", root)), fs_list_files("assets/themes"));
 		fs_ensuredir(dir);

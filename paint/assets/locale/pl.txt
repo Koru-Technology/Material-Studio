@@ -674,7 +674,7 @@ Zaloguj się...
 Wyloguj się
 Logowanie wygasło, spróbuj ponownie
 Zaloguj się, aby przechowywać projekty w chmurze.
-Zaloguj się kontem armorpaint.org.
+
 Zalogowano
 Zalogowano jako
 Logowanie...

@@ -594,19 +594,3 @@ void context_set_render_path() {
 	sys_notify_on_next_frame(&context_set_render_path_on_next_frame, NULL);
 }
 
-bool context_enable_import_plugin(char *file) {
-	// Return plugin name suitable for importing the specified file
-	if (box_preferences_files_plugin == NULL) {
-		box_preferences_fetch_plugins();
-	}
-	char *ext = path_ext(file);
-	for (i32 i = 0; i < box_preferences_files_plugin->length; ++i) {
-		char *f = box_preferences_files_plugin->buffer[i];
-		if (starts_with(f, "import_") && string_index_of(f, ext) >= 0) {
-			config_enable_plugin(f);
-			console_info(string("%s %s", f, tr("plugin enabled")));
-			return true;
-		}
-	}
-	return false;
-}

@@ -1,4 +1,4 @@
-[amake](https://github.com/armory3d/armorpaint/tree/main/base/tools/amake) is the armorpaint build tool (based on [kmake](https://github.com/Kode/kmake)). It consists of several parts:
+[amake](https://github.com/armory3d/armorpaint/tree/main/base/tools/amake) is the Koru Surface build tool (based on [kmake](https://github.com/Kode/kmake)). It consists of several parts:
 
 `aimage.c`: Converts common image formats like `.jpg` / `.png` / `.hdr` into a custom `.k` format, which is faster to load. `.k` is a simple format which contains an image header and lz4 compressed pixel data. It also handles processing the `icon.png` file into a custom OS defined format (`.ico` on Windows).
 

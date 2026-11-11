@@ -795,9 +795,8 @@ void ui_header_draw_tool_properties() {
 			}
 		}
 	}
-	else if (g_context->tool >= TOOL_TYPE_PLUGIN) {
-		plugin_tool_t *t = plugin_tool_get(g_context->tool);
-		plugin_tool_call(t, t->on_header);
+	else if (g_context->tool == TOOL_TYPE_INPAINT) {
+		box_bake_maps_inpaint_header();
 	}
 	else if (g_context->tool == TOOL_TYPE_SELECT) {
 		string_array_t *select_mode_combo = any_array_create_from_raw_tmp(

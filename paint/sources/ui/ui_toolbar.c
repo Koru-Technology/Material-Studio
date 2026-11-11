@@ -66,8 +66,12 @@ bool ui_toolbar_tool_visible(i32 tool) {
 	if (tool == TOOL_TYPE_BAKE) {
 		return false; // Used by the Bake Texture node only
 	}
-	if (tool >= TOOL_TYPE_PLUGIN) {
+	if (tool == TOOL_TYPE_INPAINT) {
+#ifdef WITH_PLUGINS
 		return g_config->tools == TOOLS_PAINT;
+#else
+		return false;
+#endif
 	}
 	if (g_config->tools == TOOLS_OBJECT) {
 		return tool == TOOL_TYPE_CURSOR || util_tool_is_object_tool(tool);
@@ -232,8 +236,8 @@ void ui_toolbar_draw_tool(i32 tool, gpu_texture_t *img, i32 icon_accent) {
 	i32  tile_x  = tile_y % 2 == 0 ? tool % 12 : (11 - (tool % 12));
 	i32  _y      = g_ui->_y;
 	i32  tile_i  = util_tool_is_object_tool(tool) ? ui_toolbar_object_tool_icons[tool - TOOL_TYPE_EMPTY] : tile_y * 12 + tile_x;
-	if (tool >= TOOL_TYPE_PLUGIN) {
-		tile_i = plugin_tool_get(tool)->icon;
+	if (tool == TOOL_TYPE_INPAINT) {
+		tile_i = ICON_ERASE;
 	}
 
 	char      *label       = string_equals(ui_toolbar_tool_names->buffer[tool], "ColorID") ? tr("ID") : tr(ui_toolbar_tool_names->buffer[tool]);

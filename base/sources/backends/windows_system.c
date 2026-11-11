@@ -1263,7 +1263,7 @@ bool _save_and_quit_callback_internal() {
 	bool    save = false;
 	wchar_t title[1024];
 	GetWindowTextW(iron_windows_window_handle(), title, sizeof(title));
-	bool dirty = wcsstr(title, L"* - ArmorPaint") != NULL;
+	bool dirty = wcsstr(title, L"* - Koru Surface") != NULL;
 	if (dirty) {
 		int res = MessageBox(iron_windows_window_handle(), L"Project has been modified, save changes?", L"Save Changes?", MB_YESNOCANCEL | MB_ICONEXCLAMATION);
 		if (res == IDYES) {

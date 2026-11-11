@@ -19,7 +19,7 @@
 #include "io/import_lut.c"
 #include "io/import_mesh.c"
 #include "io/import_obj.c"
-#include "io/import_plugin.c"
+#include "io/import_stl.c"
 #include "io/import_sound.c"
 #include "io/import_text.c"
 #include "io/import_texture.c"
@@ -169,6 +169,7 @@
 #include "slots/slot_sound.c"
 
 #include "ui/box_append.c"
+#include "ui/box_bake_maps.c"
 #include "ui/box_export.c"
 #include "ui/box_import_mesh.c"
 #include "ui/box_new_project.c"
@@ -183,7 +184,6 @@
 #include "ui/tab_materials.c"
 #include "ui/tab_library.c"
 #include "ui/tab_meshes.c"
-#include "ui/tab_plugins.c"
 #include "ui/tab_scripts.c"
 #include "ui/tab_sounds.c"
 #include "ui/tab_swatches.c"
@@ -234,7 +234,6 @@
 #include "util/util_uv.c"
 #include "util/util_uv_unwrap.c"
 
-#include "account.c"
 #include "agent.c"
 #include "args.c"
 #include "base.c"
@@ -258,7 +257,6 @@
 #include "parser_material.c"
 #include "pipes.c"
 #include "player.c"
-#include "plugin.c"
 #include "project.c"
 #include "resource.c"
 #include "strings.c"
@@ -302,8 +300,9 @@ void _kickstart() {
 	        _tr("ColorID"), _tr("Picker"), _tr("Material"), _tr("Cursor"),  _tr("Select"), _tr("Empty"), _tr("Plane"), _tr("Cube"),
 	        _tr("Sphere"),  _tr("Cone"),   _tr("Cylinder"), _tr("Capsule"), _tr("Torus"),  _tr("Text"),  _tr("Path"),  _tr("Curve"),
 	        _tr("Bake"), // Hidden, used by Bake Texture node
+	        _tr("Inpaint"),
 	    },
-	    25);
+	    26);
 
 	ui_toolbar_tooltip_extras = any_array_create_from_raw(
 	    (void *[]){
@@ -332,8 +331,9 @@ void _kickstart() {
 	        "",
 	        "",
 	        "",
+	        _tr("Paint over bake artifacts, the baked maps are repaired on release"),
 	    },
-	    25);
+	    26);
 
 	uniforms_ext_ortho_p    = mat4_ortho(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5);
 	import_mesh_importers   = any_map_create();
@@ -363,7 +363,6 @@ void _kickstart() {
 	ui_header_h                  = ui_header_default_h;
 	ui_header_handle             = ui_window_create();
 	ui_header_split_handle       = ui_window_create();
-	g_plugins                    = any_map_create();
 	parser_logic_custom_nodes    = any_map_create();
 	resource_bundled             = any_map_create();
 	ui_nodes_hwnd                = ui_window_create();
@@ -450,6 +449,7 @@ void _kickstart() {
 	plugins_init();
 #endif
 	util_skin_init();
+	import_stl_init();
 
 	base_init();
 

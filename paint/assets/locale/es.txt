@@ -674,7 +674,7 @@ Iniciar sesión...
 Cerrar sesión
 El inicio de sesión ha caducado, inténtalo de nuevo
 Inicia sesión para guardar proyectos en la nube.
-Inicia sesión con una cuenta de armorpaint.org.
+
 Sesión iniciada
 Sesión iniciada como
 Iniciando sesión...

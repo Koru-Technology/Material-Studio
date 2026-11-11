@@ -36,9 +36,9 @@ void AndroidFileDialogOpen() {
 }
 
 wchar_t *AndroidFileDialogSave() {
-	// iron_android_get_activity()->externalDataPath; // /storage/emulated/0/Android/data/org.armorpaint/files
-	mkdir("/storage/emulated/0/Pictures/ArmorPaint", 0777);
-	return L"/storage/emulated/0/Pictures/ArmorPaint/untitled";
+	// iron_android_get_activity()->externalDataPath; // /storage/emulated/0/Android/data/technology.koru.surface/files
+	mkdir("/storage/emulated/0/Pictures/KoruSurface", 0777);
+	return L"/storage/emulated/0/Pictures/KoruSurface/untitled";
 }
 
 // jstring android_permission_name(JNIEnv *env, const char *perm_name) {

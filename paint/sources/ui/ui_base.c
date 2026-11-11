@@ -185,15 +185,8 @@ void ui_base_update(void *_) {
 		util_particle_update();
 	}
 
-	string_array_t *keys = map_keys(g_plugins);
-	for (i32 i = 0; i < keys->length; ++i) {
-		plugin_t *p = any_map_get(g_plugins, keys->buffer[i]);
-		if (p->on_update != NULL) {
-			minic_ctx_call_fn(p->ctx, p->on_update, NULL, 0);
-		}
-	}
-	array_free(keys);
-	free(keys);
+	box_bake_maps_update();
+	project_autosave_update();
 
 	util_cursor_render(_);
 
@@ -247,7 +240,6 @@ void ui_base_init_tabs() {
 	_draw_callback_create(tab_materials_draw, TAB_MATERIALS, "Materials", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_library_draw, TAB_LIBRARY, "Library", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_brushes_draw, TAB_BRUSHES, "Brushes", TAB_AREA_SIDEBAR1);
-	_draw_callback_create(tab_plugins_draw, TAB_PLUGINS, "Plugins", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_browser_draw, TAB_BROWSER, "Browser", TAB_AREA_STATUS);
 	_draw_callback_create(tab_textures_draw, TAB_TEXTURES, "Textures", TAB_AREA_STATUS);
 	_draw_callback_create(tab_fonts_draw, TAB_FONTS, "Fonts", TAB_AREA_STATUS);

@@ -674,7 +674,7 @@ Bejelentkezés...
 Kijelentkezés
 A bejelentkezés lejárt, próbálja újra
 Jelentkezzen be a projektek felhőben való tárolásához.
-Jelentkezzen be armorpaint.org fiókkal.
+
 Bejelentkezve
 Bejelentkezve mint
 Bejelentkezés folyamatban...

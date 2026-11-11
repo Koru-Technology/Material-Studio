@@ -169,7 +169,7 @@ void util_brush_update() {
 						}
 					}
 
-					history_push_undo = g_context->tool < TOOL_TYPE_PLUGIN; // Plugin tools do not paint layers
+					history_push_undo = g_context->tool != TOOL_TYPE_INPAINT; // Inpaint repairs baked textures, not layers
 
 					if (g_context->tool == TOOL_TYPE_CLONE && g_context->clone_start_x >= 0.0) { // Clone delta
 						g_context->clone_delta_x = (g_context->clone_start_x - mx) / (float)ww;
@@ -186,9 +186,8 @@ void util_brush_update() {
 
 				util_brush_update_motion();
 				g_context->brush_time += sys_delta();
-				if (g_context->tool >= TOOL_TYPE_PLUGIN) {
-					plugin_tool_t *t = plugin_tool_get(g_context->tool);
-					plugin_tool_call(t, t->on_stroke);
+				if (g_context->tool == TOOL_TYPE_INPAINT) {
+					box_bake_maps_inpaint_stroke();
 				}
 				else {
 					brush_output_node_run();
@@ -205,9 +204,8 @@ void util_brush_update() {
 		g_context->brush_blend_dirty   = true; // Update brush mask
 		g_context->layer_preview_dirty = true; // Update layer preview
 
-		if (g_context->tool >= TOOL_TYPE_PLUGIN) {
-			plugin_tool_t *t = plugin_tool_get(g_context->tool);
-			plugin_tool_call(t, t->on_stroke_end);
+		if (g_context->tool == TOOL_TYPE_INPAINT) {
+			box_bake_maps_inpaint_stroke_end();
 		}
 
 		// New color id picked, update fill layer

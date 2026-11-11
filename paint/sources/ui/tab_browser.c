@@ -128,11 +128,6 @@ void tab_browser_draw_context_menu(char *file) {
 	ui_menu_draw(&tab_browser_draw_context_menu_draw, -1, -1);
 }
 
-void tab_browser_go_to_cloud() {
-	tab_browser_path         = "cloud";
-	tab_browser_scroll_reset = true;
-}
-
 void tab_browser_go_to_disk() {
 	tab_browser_scroll_reset = true;
 #ifdef IRON_ANDROID
@@ -148,9 +143,6 @@ static void tab_browser_go_up() {
 }
 
 void tab_browser_draw_side_menu() {
-	if (ui_menu_button(tr("Cloud"), "", ICON_CLOUD)) {
-		tab_browser_go_to_cloud();
-	}
 	if (ui_menu_button(tr("Disk"), "", ICON_STORAGE)) {
 		tab_browser_go_to_disk();
 	}
@@ -331,10 +323,6 @@ void tab_browser_draw(i32 *htab) {
 			g_ui->_x     = 0;
 			g_ui->_y     = _y - g_ui->current_window->scroll_offset;
 			g_ui->_w     = bookmarks_w;
-
-			if (ui_icon_button(tr("Cloud"), ICON_CLOUD, UI_ALIGN_LEFT)) {
-				tab_browser_go_to_cloud();
-			}
 
 			if (ui_icon_button(tr("Disk"), ICON_STORAGE, UI_ALIGN_LEFT)) {
 				tab_browser_go_to_disk();

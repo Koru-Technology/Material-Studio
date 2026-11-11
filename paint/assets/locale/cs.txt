@@ -674,7 +674,7 @@ Přihlásit se...
 Odhlásit se
 Přihlášení vypršelo, zkuste to znovu
 Přihlaste se pro ukládání projektů do cloudu.
-Přihlaste se účtem armorpaint.org.
+
 Přihlášeno
 Přihlášen jako
 Přihlašování...

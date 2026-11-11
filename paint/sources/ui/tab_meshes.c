@@ -1207,6 +1207,12 @@ void tab_meshes_draw_edit() {
 		ui_base_show_2d_view(VIEW_2D_TYPE_UVMAP);
 	}
 
+#ifdef WITH_PLUGINS
+	if (ui_menu_button(tr("Bake Mesh Maps..."), "", ICON_BAKE)) {
+		box_bake_maps_show();
+	}
+#endif
+
 	ui_menu_separator();
 
 	if (ui_menu_button(tr("Sort"), "", ICON_NONE)) {

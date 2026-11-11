@@ -295,7 +295,7 @@ bool path_is_project(char *path) {
 	return path_has_ext(path, "arm");
 }
 
-bool path_is_plugin(char *path) {
+bool path_is_script(char *path) {
 	return path_has_ext(path, "c");
 }
 
@@ -316,7 +316,7 @@ bool path_is_lut(char *path) {
 }
 
 bool path_is_known(char *path) {
-	return path_is_mesh(path) || path_is_texture(path) || path_is_sound(path) || path_is_font(path) || path_is_project(path) || path_is_plugin(path) ||
+	return path_is_mesh(path) || path_is_texture(path) || path_is_sound(path) || path_is_font(path) || path_is_project(path) || path_is_script(path) ||
 	       path_is_text(path) || path_is_ext_format(path) || path_is_lut(path);
 }
 

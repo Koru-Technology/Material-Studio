@@ -1,8 +1,8 @@
 #include "../base/tools/amake/amake.h"
 
 project_t *main() {
-	flags->name                = "PiratePaint";
-	flags->package             = "org.armorpaint";
+	flags->name                = "KoruSurface";
+	flags->package             = "technology.koru.surface";
 	flags->embed               = has_arg("--embed"); // !has_arg("--debug"); // clang 19
 	flags->with_physics        = true;
 	flags->with_d3dcompiler    = true;
@@ -39,11 +39,9 @@ project_t *main() {
 	add_assets(project, "assets/export_presets/*", "data/export_presets/{name}", 0);
 	add_assets(project, "assets/keymap_presets/*", "data/keymap_presets/{name}", 0);
 	add_assets(project, "assets/licenses/**", "data/licenses/{name}", 0);
-	add_assets(project, "assets/plugins/*", "data/plugins/{name}", 0);
 	add_assets(project, "assets/meshes/*", "data/meshes/{name}", ASSET_NOEMBED);
 	add_assets(project, "assets/meshes/default/*", "data/meshes/{name}", 0); // Embed default mesh
 	add_assets(project, "assets/locale/*", "data/locale/{name}", 0);
-	add_assets(project, "assets/readme/readme.txt", "{name}", 0);
 	if (with_tcc) {
 		add_define(project, "WITH_TCC");
 		add_cfiles(project, "../base/sources/libs/minic_tcc.c");

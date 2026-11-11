@@ -102,7 +102,6 @@ void config_save() {
 	json_encode_bool("texture_filter", g_config->texture_filter);
 	json_encode_string_array("recent_projects", g_config->recent_projects);
 	json_encode_string_array("bookmarks", g_config->bookmarks);
-	json_encode_string_array("plugins", g_config->plugins);
 	json_encode_string("keymap", g_config->keymap);
 	json_encode_string("theme", g_config->theme);
 	json_encode_i32("undo_steps", g_config->undo_steps);
@@ -128,7 +127,6 @@ void config_save() {
 	}
 	json_encode_i32("camera_pivot", g_config->camera_pivot);
 	json_encode_i32("camera_controls", g_config->camera_controls);
-	json_encode_string("server", g_config->server);
 	json_encode_i32("viewport_mode", g_config->viewport_mode);
 	json_encode_i32("pathtrace_mode", g_config->pathtrace_mode);
 	json_encode_i32("pathtrace_frames", g_config->pathtrace_frames);
@@ -187,6 +185,8 @@ void config_save() {
 	json_encode_i32("brush_builtin", g_config->brush_builtin);
 	json_encode_bool("hide_builtin_brushes", g_config->hide_builtin_brushes);
 	json_encode_i32("rp_view_transform", g_config->rp_view_transform);
+	json_encode_bool("autosave", g_config->autosave);
+	json_encode_i32("autosave_interval", g_config->autosave_interval);
 	char *config_json = json_encode_end();
 
 	buffer_t *buffer = sys_string_to_buffer(config_json);
@@ -256,14 +256,12 @@ config_t *config_create_default() {
 #endif
 	c->recent_projects = any_array_create_from_raw((void *[]){}, 0);
 	c->bookmarks       = any_array_create_from_raw((void *[]){}, 0);
-	c->plugins         = any_array_create_from_raw((void *[]){}, 0);
 #if defined(IRON_ANDROID) || defined(IRON_IOS)
 	c->keymap = "touch.json";
 #else
 	c->keymap = "default.json";
 #endif
 	c->theme  = "default.json";
-	c->server = "https://cloud.armory3d.com";
 #if defined(IRON_ANDROID) || defined(IRON_IOS)
 	c->undo_steps = 4;
 #else
@@ -372,6 +370,8 @@ config_t *config_create_default() {
 	c->brush_builtin = -1;
 	c->hide_builtin_brushes = false;
 	c->rp_view_transform = 0;
+	c->autosave = true;
+	c->autosave_interval = 5;
 	return c;
 }
 
@@ -427,7 +427,6 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->texture_filter        = armpack_map_get_i32(old, "texture_filter") > 0;
 	c->recent_projects       = any_map_get(old, "recent_projects");
 	c->bookmarks             = any_map_get(old, "bookmarks");
-	c->plugins               = any_map_get(old, "plugins");
 	c->keymap                = string_copy(any_map_get(old, "keymap"));
 	c->theme                 = string_copy(any_map_get(old, "theme"));
 	c->undo_steps            = armpack_map_get_i32(old, "undo_steps");
@@ -448,7 +447,6 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->layout_tabs           = any_map_get(old, "layout_tabs");
 	c->camera_pivot          = armpack_map_get_i32(old, "camera_pivot");
 	c->camera_controls       = armpack_map_get_i32(old, "camera_controls");
-	c->server                = string_copy(any_map_get(old, "server"));
 	c->viewport_mode         = armpack_map_get_i32(old, "viewport_mode");
 	c->pathtrace_mode        = armpack_map_get_i32(old, "pathtrace_mode");
 	c->pathtrace_frames      = armpack_map_get_i32(old, "pathtrace_frames");
@@ -508,12 +506,20 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->brush_builtin = armpack_map_get_i32(old, "brush_builtin");
 	c->hide_builtin_brushes = armpack_map_get_i32(old, "hide_builtin_brushes") > 0;
 	c->rp_view_transform = armpack_map_get_i32(old, "rp_view_transform");
+	c->autosave = armpack_map_get_i32(old, "autosave") > 0;
+	c->autosave_interval = armpack_map_get_i32(old, "autosave_interval");
 	return c;
+}
+
+config_t *config_from_version_13(any_map_t *old) {
+	armpack_map_set_i32(old, "autosave", 1);
+	armpack_map_set_i32(old, "autosave_interval", 5);
+	return config_from_map_to_config(old);
 }
 
 config_t *config_from_version_12(any_map_t *old) {
 	armpack_map_set_i32(old, "rp_view_transform", 0);
-	return config_from_map_to_config(old);
+	return config_from_version_13(old);
 }
 
 config_t *config_from_version_11(any_map_t *old) {
@@ -628,6 +634,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_10,
 	    config_from_version_11,
 	    config_from_version_12,
+	    config_from_version_13,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {
@@ -790,20 +797,6 @@ void config_load_theme(char *theme, bool tag_redraw) {
 	}
 	else {
 		g_theme->FULL_TABS = false;
-	}
-}
-
-void config_enable_plugin(char *f) {
-	if (string_array_index_of(g_config->plugins, f) == -1) {
-		any_array_push(g_config->plugins, f);
-		plugin_start(f);
-	}
-}
-
-void config_disable_plugin(char *f) {
-	if (string_array_index_of(g_config->plugins, f) > -1) {
-		string_array_remove(g_config->plugins, f);
-		plugin_stop(f);
 	}
 }
 

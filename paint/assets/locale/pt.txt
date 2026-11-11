@@ -674,7 +674,7 @@ Entrar...
 Sair
 Login expirado, tente novamente
 Entre para armazenar projetos na nuvem.
-Entre com uma conta armorpaint.org.
+
 Conectado
 Conectado como
 Entrando...

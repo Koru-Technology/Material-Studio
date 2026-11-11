@@ -184,6 +184,19 @@ void iron_internal_shutdown_callback(void) {
 	}
 }
 
+// The app is about to stop being active (home gesture, app switcher), the gpu can still be used
+static void (*resign_active_callback)(void) = NULL;
+
+void iron_set_resign_active_callback(void (*callback)(void)) {
+	resign_active_callback = callback;
+}
+
+void iron_internal_resign_active_callback(void) {
+	if (resign_active_callback != NULL) {
+		resign_active_callback();
+	}
+}
+
 // Files shared with the app, kept until the app listens for them (launched by sharing a file)
 static void (*open_file_callback)(char *) = NULL;
 static char *open_file_pending[8];

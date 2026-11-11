@@ -2,11 +2,10 @@
 #ifdef WITH_PLUGINS
 
 // Bake Mesh Maps plugin based on the work of Falkor.
-// Cpu baking onto the low poly uv layout, used by the Bake Maps plugin (assets/plugins/bake_maps.c).
+// Cpu baking onto the low poly uv layout, used by the Bake Mesh Maps dialog (sources/ui/box_bake_maps.c).
 // For each low poly texel the surface point is either the low poly itself, or the closest
 // high poly hit of a ray cast along the interpolated normal. Texels are split by rows
 // between worker threads so the interface keeps running while baking.
-// The functions are registered for scripts in bake_maps_init().
 
 #include "engine.h"
 #include "iron_array.h"
@@ -1484,24 +1483,11 @@ static void bake_maps_update_dist() {
 	}
 }
 
-static i32 bake_maps_arg_i(minic_val_t *a, int n, int i) {
-	return i < n ? (i32)minic_val_to_d(a[i]) : 0;
-}
-
-static f32 bake_maps_arg_f(minic_val_t *a, int n, int i) {
-	return i < n ? (f32)minic_val_to_d(a[i]) : 0.0;
-}
-
-static char *bake_maps_arg_s(minic_val_t *a, int n, int i) {
-	return i < n ? minic_val_to_ptr(a[i]) : NULL;
-}
-
 // int bake_maps_load_high(char *path): high poly triangle count, 0 when the file failed to load
-static minic_val_t bake_maps_load_high(minic_val_t *a, int n) {
-	char *path = bake_maps_arg_s(a, n, 0);
+i32 bake_maps_load_high(char *path) {
 	bake_rays_set_high_raw(NULL);
 	if (path == NULL || path[0] == '\0') {
-		return minic_val_int(0);
+		return 0;
 	}
 	raw_mesh_t_array_t *parts = bake_maps_parse_high(path);
 	bool                ok    = bake_rays_set_high_raw(parts);
@@ -1518,34 +1504,34 @@ static minic_val_t bake_maps_load_high(minic_val_t *a, int n) {
 	}
 	if (!ok) {
 		console_error(string("Failed to load high poly mesh: %s", path));
-		return minic_val_int(0);
+		return 0;
 	}
-	return minic_val_int(bake_rays_hp.count);
+	return bake_rays_hp.count;
 }
 
 // float bake_maps_high_fit(): size of the high poly relative to the low poly, 0 when the bounds do not overlap
-static minic_val_t bake_maps_high_fit(minic_val_t *a, int n) {
+f32 bake_maps_high_fit(void) {
 	if (bake_rays_hp.count == 0 || bake_rays_lp_count == 0) {
-		return minic_val_float(1.0);
+		return 1.0;
 	}
 	for (i32 k = 0; k < 3; ++k) {
 		if (bake_rays_hp_min[k] > bake_rays_lp_max[k] || bake_rays_hp_max[k] < bake_rays_lp_min[k]) {
-			return minic_val_float(0.0);
+			return 0.0;
 		}
 	}
 	f32 dl[3], dh[3];
 	bake_rays_v3_sub(dl, bake_rays_lp_max, bake_rays_lp_min);
 	bake_rays_v3_sub(dh, bake_rays_hp_max, bake_rays_hp_min);
 	f32 l = sqrtf(bake_rays_v3_dot(dl, dl));
-	return minic_val_float(l > 0.0 ? sqrtf(bake_rays_v3_dot(dh, dh)) / l : 1.0);
+	return l > 0.0 ? sqrtf(bake_rays_v3_dot(dh, dh)) / l : 1.0;
 }
 
 // int bake_maps_set_low(): reads the paint objects, low poly triangle count, 0 without uvs
-static minic_val_t bake_maps_set_low(minic_val_t *a, int n) {
+i32 bake_maps_set_low(void) {
 	bake_rays_free_images();
 	bool ok = bake_rays_set_low();
 	bake_maps_update_dist();
-	return minic_val_int(ok ? bake_rays_lp_count : 0);
+	return ok ? bake_rays_lp_count : 0;
 }
 
 // Identifies the paint objects the low poly was read from, to reread it after an import
@@ -1563,40 +1549,35 @@ static u64 bake_maps_paint_objects_key() {
 
 // void bake_maps_set_cage(float dist, bool average): ray search distance relative to the low poly size,
 // and rays along normals averaged over hard edges
-static minic_val_t bake_maps_set_cage(minic_val_t *a, int n) {
-	bake_maps_cage_dist = bake_maps_arg_f(a, n, 0);
-	bool average        = bake_maps_arg_i(a, n, 1) != 0;
+void bake_maps_set_cage(f32 dist, bool average) {
+	bake_maps_cage_dist = dist;
 	if (average != bake_rays_average) {
 		bake_rays_join();
 		bake_rays_average = average;
 		bake_rays_update_ray_normals();
 	}
 	bake_maps_update_dist();
-	return minic_val_int(0);
 }
 
 // void bake_maps_set_ao(float strength, float radius, float offset)
-static minic_val_t bake_maps_set_ao(minic_val_t *a, int n) {
-	bake_rays_settings.ao_strength = bake_maps_arg_f(a, n, 0);
-	bake_rays_settings.ray_max     = bake_maps_arg_f(a, n, 1) * 10.0;
-	bake_rays_settings.ray_min     = bake_maps_arg_f(a, n, 2) * 0.01;
-	return minic_val_int(0);
+void bake_maps_set_ao(f32 strength, f32 radius, f32 offset) {
+	bake_rays_settings.ao_strength = strength;
+	bake_rays_settings.ray_max     = radius * 10.0;
+	bake_rays_settings.ray_min     = offset * 0.01;
 }
 
 // void bake_maps_set_curvature(float strength, float radius, float offset, int smooth)
-static minic_val_t bake_maps_set_curvature(minic_val_t *a, int n) {
-	bake_rays_settings.curv_strength = bake_maps_arg_f(a, n, 0);
-	bake_rays_settings.curv_radius   = bake_maps_arg_f(a, n, 1);
-	bake_rays_settings.curv_offset   = bake_maps_arg_f(a, n, 2);
-	bake_rays_settings.curv_smooth   = bake_maps_arg_i(a, n, 3);
-	return minic_val_int(0);
+void bake_maps_set_curvature(f32 strength, f32 radius, f32 offset, i32 smooth) {
+	bake_rays_settings.curv_strength = strength;
+	bake_rays_settings.curv_radius   = radius;
+	bake_rays_settings.curv_offset   = offset;
+	bake_rays_settings.curv_smooth   = smooth;
 }
 
 // void bake_maps_set_cavity(float detail_texels, float contrast)
-static minic_val_t bake_maps_set_cavity(minic_val_t *a, int n) {
-	bake_rays_settings.cavity_texels   = bake_maps_arg_f(a, n, 0);
-	bake_rays_settings.cavity_contrast = bake_maps_arg_f(a, n, 1);
-	return minic_val_int(0);
+void bake_maps_set_cavity(f32 detail_texels, f32 contrast) {
+	bake_rays_settings.cavity_texels   = detail_texels;
+	bake_rays_settings.cavity_contrast = contrast;
 }
 
 // Low poly geometry, uv layout and occlusion bvh, kept for the following maps and the inpaint tool
@@ -1633,27 +1614,24 @@ static bool bake_rays_prepare_layout(i32 w, i32 h) {
 // starts one map on worker threads, type is a bake_type_t or 14 for cavity
 static bool bake_maps_gpu_last; // Defined with the gpu bake below
 
-static minic_val_t bake_maps_start(minic_val_t *a, int n) {
+bool bake_maps_start(i32 type, i32 rays, i32 axis, i32 up_axis, bool use_high_, i32 w, i32 h) {
 	bake_maps_gpu_last = false;
-	i32  type          = bake_maps_arg_i(a, n, 0);
-	bool use_high      = bake_maps_arg_i(a, n, 4) != 0 && bake_rays_hp.count > 0;
-	i32  w             = bake_maps_arg_i(a, n, 5);
-	i32  h             = bake_maps_arg_i(a, n, 6);
+	bool use_high      = use_high_ && bake_rays_hp.count > 0;
 	bake_rays_join();
 	if (w <= 0 || h <= 0) {
-		return minic_val_int(0);
+		return false;
 	}
 
 	if (!bake_rays_prepare_layout(w, h)) {
-		return minic_val_int(0);
+		return false;
 	}
 
 	bake_rays_job          = bake_rays_settings;
 	bake_rays_job.type     = type;
 	bake_rays_job.use_high = use_high;
-	bake_rays_job.rays     = bake_rays_imax(bake_maps_arg_i(a, n, 1), 1);
-	bake_rays_job.axis     = bake_maps_arg_i(a, n, 2);
-	bake_rays_job.up_y     = bake_maps_arg_i(a, n, 3) == BAKE_UP_AXIS_Y;
+	bake_rays_job.rays     = bake_rays_imax(rays, 1);
+	bake_rays_job.axis     = axis;
+	bake_rays_job.up_y     = up_axis == BAKE_UP_AXIS_Y;
 	if (type == BAKE_TYPE_MATERIALID) {
 		bake_rays_read_matid();
 	}
@@ -1687,7 +1665,7 @@ static minic_val_t bake_maps_start(minic_val_t *a, int n) {
 	for (i32 i = 0; i < threads; ++i) {
 		iron_thread_init(&bake_rays_threads[i], bake_rays_worker, NULL);
 	}
-	return minic_val_int(1);
+	return true;
 }
 
 // Raytraced maps can bake on the gpu through the core bake path (Bake Texture node), from the low poly
@@ -1733,20 +1711,20 @@ static void bake_maps_gpu_done(void *_) {
 }
 
 // bool bake_maps_gpu_supported(): raytraced maps can bake on the gpu
-static minic_val_t bake_maps_gpu_supported(minic_val_t *a, int n) {
-	return minic_val_int(gpu_raytrace_supported() ? 1 : 0);
+bool bake_maps_gpu_supported(void) {
+	return gpu_raytrace_supported() ? 1 : 0;
 }
 
 // int bake_maps_gpu_res(): gpu maps bake at the layer resolution
-static minic_val_t bake_maps_gpu_res(minic_val_t *a, int n) {
-	return minic_val_int(config_get_texture_res_x());
+i32 bake_maps_gpu_res(void) {
+	return config_get_texture_res_x();
 }
 
 // bool bake_maps_gpu_start(int type, int samples, float ao_strength, float ao_radius, float ao_offset):
 // starts a raytraced map (occlusion, bent normal, thickness) on the gpu, 64 rays per sample
-static minic_val_t bake_maps_gpu_start(minic_val_t *a, int n) {
+bool bake_maps_gpu_start(i32 type, i32 samples, f32 ao_strength, f32 ao_radius, f32 ao_offset) {
 	if (bake_texture_node_baking || bake_rays_working || !gpu_raytrace_supported()) {
-		return minic_val_int(0);
+		return false;
 	}
 	i32 w = config_get_texture_res_x();
 	i32 h = config_get_texture_res_y();
@@ -1769,50 +1747,50 @@ static minic_val_t bake_maps_gpu_start(minic_val_t *a, int n) {
 	bake_maps_gpu_saved_ao[0]   = g_context->bake_ao_strength;
 	bake_maps_gpu_saved_ao[1]   = g_context->bake_ao_radius;
 	bake_maps_gpu_saved_ao[2]   = g_context->bake_ao_offset;
-	bake_maps_gpu_samples       = bake_rays_imax(bake_maps_arg_i(a, n, 1), 1);
+	bake_maps_gpu_samples       = bake_rays_imax(samples, 1);
 	g_context->bake_samples     = bake_maps_gpu_samples;
-	g_context->bake_ao_strength = bake_maps_arg_f(a, n, 2);
-	g_context->bake_ao_radius   = bake_maps_arg_f(a, n, 3);
-	g_context->bake_ao_offset   = bake_maps_arg_f(a, n, 4);
+	g_context->bake_ao_strength = ao_strength;
+	g_context->bake_ao_radius   = ao_radius;
+	g_context->bake_ao_offset   = ao_offset;
 
 	bake_maps_gpu_cancelled = false;
 	bake_maps_gpu_last      = false;
 	bake_maps_gpu_running   = true;
-	if (!bake_to_target(bake_maps_gpu_rt, bake_maps_arg_i(a, n, 0), bake_maps_gpu_done, NULL)) {
+	if (!bake_to_target(bake_maps_gpu_rt, type, bake_maps_gpu_done, NULL)) {
 		bake_maps_gpu_running = false;
 		bake_maps_gpu_restore();
-		return minic_val_int(0);
+		return false;
 	}
-	return minic_val_int(1);
+	return true;
 }
 
 // float bake_maps_progress(): 0..1 for the current map
-static minic_val_t bake_maps_progress(minic_val_t *a, int n) {
+f32 bake_maps_progress(void) {
 	if (bake_maps_gpu_running) {
-		return minic_val_float(bake_rays_fmin(render_path_raytrace_bake_current_sample / (f32)bake_maps_gpu_samples, 1.0));
+		return bake_rays_fmin(render_path_raytrace_bake_current_sample / (f32)bake_maps_gpu_samples, 1.0);
 	}
 	if (!bake_rays_working || bake_rays_h == 0) {
-		return minic_val_float(1.0);
+		return 1.0;
 	}
 	iron_mutex_lock(&bake_rays_mutex);
 	f32 p = bake_rays_rows_done / (f32)bake_rays_h;
 	iron_mutex_unlock(&bake_rays_mutex);
-	return minic_val_float(p);
+	return p;
 }
 
 // bool bake_maps_step(): true once the current map is done, poll every update
-static minic_val_t bake_maps_step(minic_val_t *a, int n) {
+bool bake_maps_step(void) {
 	if (bake_maps_gpu_running) {
-		return minic_val_int(0);
+		return false;
 	}
 	if (!bake_rays_working) {
-		return minic_val_int(1);
+		return true;
 	}
 	iron_mutex_lock(&bake_rays_mutex);
 	bool done = bake_rays_rows_done >= bake_rays_h;
 	iron_mutex_unlock(&bake_rays_mutex);
 	if (!done) {
-		return minic_val_int(0);
+		return false;
 	}
 	bake_rays_join();
 	if (bake_rays_job.type == BAKE_TYPE_CURVATURE) {
@@ -1824,27 +1802,24 @@ static minic_val_t bake_maps_step(minic_val_t *a, int n) {
 		bake_rays_cavity_levels();
 	}
 	bake_rays_dilate(16);
-	return minic_val_int(1);
+	return true;
 }
 
 // void bake_maps_cancel()
-static minic_val_t bake_maps_cancel(minic_val_t *a, int n) {
+void bake_maps_cancel(void) {
 	if (bake_maps_gpu_running) {
 		bake_maps_gpu_cancelled = true;
 		g_context->pdirty       = 0; // The core bake finishes on the next update
 	}
 	bake_rays_cancelled = true;
 	bake_rays_join();
-	return minic_val_int(0);
 }
 
 // bool bake_maps_save(char *folder, char *file_name): writes the finished map as png and adds it to the
 // project textures, or reloads the texture when it is already there
-static minic_val_t bake_maps_save(minic_val_t *a, int n) {
-	char *folder    = bake_maps_arg_s(a, n, 0);
-	char *file_name = bake_maps_arg_s(a, n, 1);
+bool bake_maps_save(char *folder, char *file_name) {
 	if ((bake_maps_gpu_last ? bake_maps_gpu_out : bake_rays_out) == NULL || folder == NULL || file_name == NULL) {
-		return minic_val_int(0);
+		return false;
 	}
 	u8      *out    = bake_maps_gpu_last ? bake_maps_gpu_out : bake_rays_out;
 	i32      w      = bake_maps_gpu_last ? bake_maps_gpu_w : bake_rays_w;
@@ -1863,11 +1838,11 @@ static minic_val_t bake_maps_save(minic_val_t *a, int n) {
 	for (i32 i = 0; i < assets->length; ++i) {
 		if (string_equals(assets->buffer[i]->file, file)) {
 			project_reimport_texture(assets->buffer[i]);
-			return minic_val_int(1);
+			return true;
 		}
 	}
 	import_texture_run(file, false);
-	return minic_val_int(1);
+	return true;
 }
 
 static gpu_texture_t *bake_maps_preview_image = NULL;
@@ -1888,11 +1863,9 @@ static void bake_maps_free_preview() {
 // gpu_texture_t *bake_maps_preview(int w, int h, float yaw, float pitch, float zoom, bool show_low, bool show_high,
 // bool show_cage, bool show_miss, bool fast): software render of the low poly, high poly and cage,
 // the low poly is reread when the paint objects changed. Call it every frame, it renders only on changes.
-static minic_val_t bake_maps_preview(minic_val_t *a, int n) {
-	i32 w = bake_maps_arg_i(a, n, 0);
-	i32 h = bake_maps_arg_i(a, n, 1);
+gpu_texture_t *bake_maps_preview(i32 w, i32 h, f32 yaw, f32 pitch, f32 zoom, bool show_low, bool show_high, bool show_cage, bool show_miss, bool fast) {
 	if (w <= 0 || h <= 0) {
-		return minic_val_ptr(NULL);
+		return NULL;
 	}
 	if (bake_maps_preview_size != w * h) {
 		free(bake_maps_preview_pixels);
@@ -1907,30 +1880,29 @@ static minic_val_t bake_maps_preview(minic_val_t *a, int n) {
 
 	// Rendered again only when something changed, call it every frame
 	bool same = bake_maps_preview_image != NULL && bake_maps_preview_version == bake_rays_version;
+	f32 args[10] = {w, h, yaw, pitch, zoom, show_low, show_high, show_cage, show_miss, fast};
 	for (i32 i = 0; i < 10; ++i) {
-		f32 f                     = bake_maps_arg_f(a, n, i);
+		f32 f                     = args[i];
 		same                      = same && bake_maps_preview_args[i] == f;
 		bake_maps_preview_args[i] = f;
 	}
 	if (same) {
-		return minic_val_ptr(bake_maps_preview_image);
+		return bake_maps_preview_image;
 	}
 	bake_maps_preview_version = bake_rays_version;
 
-	bake_rays_preview(bake_maps_preview_pixels, w, h, bake_maps_arg_f(a, n, 2), bake_maps_arg_f(a, n, 3), bake_maps_arg_f(a, n, 4),
-	                  bake_maps_arg_i(a, n, 5) != 0, bake_maps_arg_i(a, n, 6) != 0, bake_maps_arg_i(a, n, 7) != 0, bake_maps_arg_i(a, n, 8) != 0,
-	                  bake_maps_arg_i(a, n, 9) != 0);
+	bake_rays_preview(bake_maps_preview_pixels, w, h, yaw, pitch, zoom, show_low, show_high, show_cage, show_miss, fast);
 	// The previous image may still be referenced by this frame, release it one call later
 	bake_maps_free_preview();
 	buffer_t b              = {.buffer = bake_maps_preview_pixels, .length = w * h * 4};
 	bake_maps_preview_image = gpu_create_texture_from_bytes(&b, w, h, GPU_TEXTURE_FORMAT_RGBA32);
-	return minic_val_ptr(bake_maps_preview_image);
+	return bake_maps_preview_image;
 }
 
 // float bake_maps_miss_ratio(): fraction of the sample rays missing the high poly
-static minic_val_t bake_maps_miss_ratio(minic_val_t *a, int n) {
+f32 bake_maps_miss_ratio(void) {
 	if (bake_rays_lp == NULL || bake_rays_lp_count == 0) {
-		return minic_val_float(0.0);
+		return 0.0;
 	}
 	bake_maps_update_dist();
 	bake_rays_update_miss();
@@ -1938,19 +1910,18 @@ static minic_val_t bake_maps_miss_ratio(minic_val_t *a, int n) {
 	for (i32 i = 0; i < bake_rays_lp_count; ++i) {
 		sum += bake_rays_lp_miss[i];
 	}
-	return minic_val_float(sum / bake_rays_lp_count);
+	return sum / bake_rays_lp_count;
 }
 
 // void bake_maps_end_images(): releases the baked images, geometry stays cached for the preview
-static minic_val_t bake_maps_end_images(minic_val_t *a, int n) {
+void bake_maps_end_images(void) {
 	bake_rays_join();
 	bake_rays_free_images();
 	bake_rays_free_bvh(&bake_rays_lpb);
-	return minic_val_int(0);
 }
 
 // void bake_maps_end(): releases everything, the high poly can take gigabytes
-static minic_val_t bake_maps_end(minic_val_t *a, int n) {
+void bake_maps_end(void) {
 	free(bake_maps_gpu_out);
 	bake_maps_gpu_out   = NULL;
 	bake_maps_gpu_w     = 0;
@@ -1968,7 +1939,6 @@ static minic_val_t bake_maps_end(minic_val_t *a, int n) {
 	bake_maps_preview_pixels = NULL;
 	bake_maps_preview_size   = 0;
 	bake_maps_free_preview();
-	return minic_val_int(0);
 }
 
 // Inpaint tool: a mask is painted on the mesh, then the masked texels of the baked maps are rebuilt
@@ -2160,8 +2130,7 @@ static f32 inpaint_radius() {
 }
 
 // bool bake_maps_inpaint_begin(char *path): uv layout at the resolution of the baked map, false without uvs
-static minic_val_t bake_maps_inpaint_begin(minic_val_t *a, int n) {
-	char    *path  = bake_maps_arg_s(a, n, 0);
+bool bake_maps_inpaint_begin(char *path) {
 	asset_t *asset = NULL;
 	for (i32 i = 0; path != NULL && i < g_project->_->assets->length; ++i) {
 		asset_t *as = g_project->_->assets->buffer[i];
@@ -2170,7 +2139,7 @@ static minic_val_t bake_maps_inpaint_begin(minic_val_t *a, int n) {
 		}
 	}
 	if (asset == NULL || bake_rays_working) {
-		return minic_val_int(0);
+		return false;
 	}
 	i32 w = asset->image->width;
 	i32 h = asset->image->height;
@@ -2180,7 +2149,7 @@ static minic_val_t bake_maps_inpaint_begin(minic_val_t *a, int n) {
 	}
 	bool same = bake_rays_texmap != NULL && bake_rays_w == w && bake_rays_h == h;
 	if (!bake_rays_prepare_layout(w, h)) {
-		return minic_val_int(0);
+		return false;
 	}
 	if (bake_rays_island == NULL) {
 		bake_rays_build_islands();
@@ -2190,14 +2159,14 @@ static minic_val_t bake_maps_inpaint_begin(minic_val_t *a, int n) {
 		inpaint_mask     = calloc(w * h, 1);
 		inpaint_has_mask = false;
 	}
-	return minic_val_int(1);
+	return true;
 }
 
 // void bake_maps_inpaint_stroke(): stamps the mask from the last mouse hit to the current one
-static minic_val_t bake_maps_inpaint_stroke(minic_val_t *a, int n) {
+void bake_maps_inpaint_stroke(void) {
 	f32 hit[3];
 	if (inpaint_mask == NULL || bake_rays_texmap == NULL || !inpaint_hit(hit)) {
-		return minic_val_int(0);
+		return;
 	}
 	f32 r = inpaint_radius();
 	if (inpaint_has_last) {
@@ -2216,13 +2185,12 @@ static minic_val_t bake_maps_inpaint_stroke(minic_val_t *a, int n) {
 	inpaint_has_last = true;
 	inpaint_has_mask = true;
 	inpaint_dirty    = true;
-	return minic_val_int(0);
 }
 
 // gpu_texture_t *bake_maps_inpaint_mask(): the painted mask in the red channel, for the viewport overlay
-static minic_val_t bake_maps_inpaint_mask(minic_val_t *a, int n) {
+gpu_texture_t *bake_maps_inpaint_mask(void) {
 	if (!inpaint_dirty && inpaint_preview != NULL) {
-		return minic_val_ptr(inpaint_preview);
+		return inpaint_preview;
 	}
 	i32 w  = inpaint_mask != NULL ? bake_rays_w : 1;
 	i32 h  = inpaint_mask != NULL ? bake_rays_h : 1;
@@ -2249,18 +2217,17 @@ static minic_val_t bake_maps_inpaint_mask(minic_val_t *a, int n) {
 	inpaint_preview     = gpu_create_texture_from_bytes(&b, pw, ph, GPU_TEXTURE_FORMAT_RGBA32);
 	free(p);
 	inpaint_dirty = false;
-	return minic_val_ptr(inpaint_preview);
+	return inpaint_preview;
 }
 
 // void bake_maps_inpaint_clear(): clears the mask, the next stroke starts a new line
-static minic_val_t bake_maps_inpaint_clear(minic_val_t *a, int n) {
+void bake_maps_inpaint_clear(void) {
 	if (inpaint_mask != NULL) {
 		memset(inpaint_mask, 0, bake_rays_w * bake_rays_h);
 	}
 	inpaint_has_mask = false;
 	inpaint_has_last = false;
 	inpaint_dirty    = true;
-	return minic_val_int(0);
 }
 
 // Fill
@@ -2510,12 +2477,9 @@ static void inpaint_normalize(inpaint_job_t *j, i32 *todo, i32 count) {
 
 // bool bake_maps_inpaint_apply(char *path, int mode, bool vector): rebuilds the masked texels of the png
 // and reloads its texture, mode 0 copies patches, 1 smooths, vector keeps normals unit length
-static minic_val_t bake_maps_inpaint_apply(minic_val_t *a, int n) {
-	char *path   = bake_maps_arg_s(a, n, 0);
-	i32   mode   = bake_maps_arg_i(a, n, 1);
-	bool  vector = bake_maps_arg_i(a, n, 2) != 0;
+bool bake_maps_inpaint_apply(char *path, i32 mode, bool vector) {
 	if (path == NULL || inpaint_mask == NULL || !inpaint_has_mask || bake_rays_texmap == NULL || bake_rays_island == NULL) {
-		return minic_val_int(0);
+		return false;
 	}
 	asset_t *asset = NULL;
 	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
@@ -2526,7 +2490,7 @@ static minic_val_t bake_maps_inpaint_apply(minic_val_t *a, int n) {
 	}
 	buffer_t *blob = iron_load_blob(path);
 	if (asset == NULL || blob == NULL) {
-		return minic_val_int(0);
+		return false;
 	}
 	i32 w = bake_rays_w, h = bake_rays_h;
 	i32 iw, ih, comp;
@@ -2537,7 +2501,7 @@ static minic_val_t bake_maps_inpaint_apply(minic_val_t *a, int n) {
 		if (px != NULL) {
 			stbi_image_free(px);
 		}
-		return minic_val_int(0);
+		return false;
 	}
 
 	i32  count = 0;
@@ -2587,11 +2551,11 @@ static minic_val_t bake_maps_inpaint_apply(minic_val_t *a, int n) {
 	free(todo);
 	free(isl);
 	stbi_image_free(px);
-	return minic_val_int(count > 0);
+	return count > 0;
 }
 
 // void bake_maps_inpaint_end(): releases the mask and its preview, the bake data stays until bake_maps_end
-static minic_val_t bake_maps_inpaint_end(minic_val_t *a, int n) {
+void bake_maps_inpaint_end(void) {
 	free(inpaint_mask);
 	inpaint_mask     = NULL;
 	inpaint_has_mask = false;
@@ -2602,7 +2566,6 @@ static minic_val_t bake_maps_inpaint_end(minic_val_t *a, int n) {
 	inpaint_preview_old = inpaint_preview; // Released on the next update or end
 	inpaint_preview     = NULL;
 	inpaint_dirty       = false;
-	return minic_val_int(0);
 }
 
 // Two column layout of the dialog, settings on the left and the preview on the right
@@ -2613,8 +2576,7 @@ static f32 bake_maps_column_bottom;
 
 // void bake_maps_ui_column(int column): 0 starts the left column, 1 the right column at the same height,
 // -1 continues below both at full width
-static minic_val_t bake_maps_ui_column(minic_val_t *a, int n) {
-	i32 column = bake_maps_arg_i(a, n, 0);
+void bake_maps_ui_column(i32 column) {
 	f32 gap    = 8 * UI_SCALE();
 	if (column == 0) {
 		bake_maps_column_x      = g_ui->_x;
@@ -2635,50 +2597,6 @@ static minic_val_t bake_maps_ui_column(minic_val_t *a, int n) {
 		g_ui->_y = bake_rays_fmax(bake_maps_column_bottom, g_ui->_y);
 		g_ui->_w = bake_maps_column_w;
 	}
-	return minic_val_int(0);
-}
-
-// void bake_maps_ui_section(char *text): section label with the separator background
-static minic_val_t bake_maps_ui_section(minic_val_t *a, int n) {
-	ui_text(bake_maps_arg_s(a, n, 0), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
-	return minic_val_int(0);
-}
-
-// void bake_maps_ui_enabled(bool enabled): disables the following elements, scripts can't set g_ui->enabled
-static minic_val_t bake_maps_ui_enabled(minic_val_t *a, int n) {
-	g_ui->enabled = bake_maps_arg_i(a, n, 0) != 0;
-	return minic_val_int(0);
-}
-
-void bake_maps_init() {
-	minic_register("bake_maps_load_high", "i(p)", bake_maps_load_high);
-	minic_register("bake_maps_high_fit", "f()", bake_maps_high_fit);
-	minic_register("bake_maps_set_low", "i()", bake_maps_set_low);
-	minic_register("bake_maps_set_cage", "v(f,b)", bake_maps_set_cage);
-	minic_register("bake_maps_set_ao", "v(f,f,f)", bake_maps_set_ao);
-	minic_register("bake_maps_set_curvature", "v(f,f,f,i)", bake_maps_set_curvature);
-	minic_register("bake_maps_set_cavity", "v(f,f)", bake_maps_set_cavity);
-	minic_register("bake_maps_start", "b(i,i,i,i,b,i,i)", bake_maps_start);
-	minic_register("bake_maps_gpu_supported", "b()", bake_maps_gpu_supported);
-	minic_register("bake_maps_gpu_res", "i()", bake_maps_gpu_res);
-	minic_register("bake_maps_gpu_start", "b(i,i,f,f,f)", bake_maps_gpu_start);
-	minic_register("bake_maps_progress", "f()", bake_maps_progress);
-	minic_register("bake_maps_step", "b()", bake_maps_step);
-	minic_register("bake_maps_cancel", "v()", bake_maps_cancel);
-	minic_register("bake_maps_save", "b(p,p)", bake_maps_save);
-	minic_register("bake_maps_preview", "p(i,i,f,f,f,b,b,b,b,b)", bake_maps_preview);
-	minic_register("bake_maps_miss_ratio", "f()", bake_maps_miss_ratio);
-	minic_register("bake_maps_end_images", "v()", bake_maps_end_images);
-	minic_register("bake_maps_end", "v()", bake_maps_end);
-	minic_register("bake_maps_ui_column", "v(i)", bake_maps_ui_column);
-	minic_register("bake_maps_ui_section", "v(p)", bake_maps_ui_section);
-	minic_register("bake_maps_ui_enabled", "v(b)", bake_maps_ui_enabled);
-	minic_register("bake_maps_inpaint_begin", "b(p)", bake_maps_inpaint_begin);
-	minic_register("bake_maps_inpaint_stroke", "v()", bake_maps_inpaint_stroke);
-	minic_register("bake_maps_inpaint_mask", "p()", bake_maps_inpaint_mask);
-	minic_register("bake_maps_inpaint_clear", "v()", bake_maps_inpaint_clear);
-	minic_register("bake_maps_inpaint_apply", "b(p,i,b)", bake_maps_inpaint_apply);
-	minic_register("bake_maps_inpaint_end", "v()", bake_maps_inpaint_end);
 }
 
 #endif

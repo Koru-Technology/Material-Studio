@@ -12,10 +12,8 @@ static mesh_object_t *import_mesh_appended = NULL;
 
 void import_mesh_run(char *path, bool _clear_layers, bool replace_existing, bool keep_camera) {
 	if (!path_is_mesh(path)) {
-		if (!context_enable_import_plugin(path)) {
-			console_error(strings_unknown_asset_format());
-			return;
-		}
+		console_error(strings_unknown_asset_format());
+		return;
 	}
 
 	import_mesh_clear_layers = _clear_layers;

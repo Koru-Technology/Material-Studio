@@ -21,7 +21,7 @@ static bool agent_mcp     = false;
 
 static char *agent_code_guide = "Reply with C code only in a ```c fence. " AGENT_RULES;
 
-static char *agent_qwen_guide = "Edit the ArmorPaint project in steps, each a C script that modifies the project. Reply with the "
+static char *agent_qwen_guide = "Edit the Koru Surface project in steps, each a C script that modifies the project. Reply with the "
                                 "next step only, in a ```c fence. " AGENT_RULES AGENT_SCRIPTS "To save a project script, start its fence "
                                 "with ```c scripts/<name>.c instead. To run a task script as the next step, reply 'Run: scripts/<name>.c' "
                                 "only. When finished, reply 'Done.'.\n";
@@ -310,7 +310,7 @@ static char *agent_exe(void) {
 }
 
 static char *agent_mcp_guide(char *dir) {
-	return string("Edit the ArmorPaint project '%s' in steps with the armorpaint tools, each step a C script that modifies the "
+	return string("Edit the Koru Surface project '%s' in steps with the Koru Surface tools, each step a C script that modifies the "
 	              "project. " AGENT_RULES AGENT_SCRIPTS "Run a step with the step tool, it returns the log and a screenshot. The step files are kept in '%s'.\n"
 	              "Start over from the original project with the restore tool, then replay the steps to keep.\n"
 	              "Project scripts are '%s/scripts/<name>.c', edit them as files. Run a task script like a step with the run tool.\n"
@@ -361,10 +361,10 @@ static string_array_t *agent_claude_args(char *dir, char *prompt) {
 	        "--add-dir",
 	        agent_project_dir(),
 	        "--mcp-config",
-	        string("{\"mcpServers\":{\"armorpaint\":{\"command\":\"%s\",\"args\":[\"--mcp\"]}}}", agent_exe()),
+	        string("{\"mcpServers\":{\"koru_surface\":{\"command\":\"%s\",\"args\":[\"--mcp\"]}}}", agent_exe()),
 	        "--strict-mcp-config",
 	        "--allowedTools",
-	        "mcp__armorpaint",
+	        "mcp__koru_surface",
 	        "--append-system-prompt-file",
 	        string("%s%sAGENTS.md", dir, PATH_SEP),
 	        prompt,
@@ -391,7 +391,7 @@ static string_array_t *agent_grok_args(char *dir, char *prompt) {
 	        "--allow",
 	        string("Edit(%s/**)", agent_project_dir()),
 	        "--allow",
-	        "mcp__armorpaint",
+	        "mcp__koru_surface",
 	        NULL,
 	    },
 	    16);
@@ -415,9 +415,9 @@ static string_array_t *agent_codex_args(char *dir, char *prompt) {
 	        "--output-last-message",
 	        agent_result_path(),
 	        "-c",
-	        string("mcp_servers.armorpaint.command=\"%s\"", agent_exe()),
+	        string("mcp_servers.koru_surface.command=\"%s\"", agent_exe()),
 	        "-c",
-	        "mcp_servers.armorpaint.args=[\"--mcp\"]",
+	        "mcp_servers.koru_surface.args=[\"--mcp\"]",
 	        prompt,
 	        NULL,
 	    },
@@ -955,7 +955,7 @@ static void agent_start(void *_) {
 	                                             : agent_codex_args(dir, agent_prompt);
 	if (agent_backend == CONSOLE_MODEL_GROK) {
 		agent_ensure_dir(agent_file(".grok"));
-		char *toml = string("[mcp_servers.armorpaint]\ncommand = \"%s\"\nargs = [\"--mcp\"]\n", agent_exe());
+		char *toml = string("[mcp_servers.koru_surface]\ncommand = \"%s\"\nargs = [\"--mcp\"]\n", agent_exe());
 		iron_file_save_bytes(agent_file(string(".grok%sconfig.toml", PATH_SEP)), sys_string_to_buffer(toml), 0);
 	}
 	agent_console = true;
@@ -970,7 +970,7 @@ static void agent_start(void *_) {
 
 static void agent_mcp_request(void *data) {
 	if (agent_running && !agent_console) {
-		agent_serve_respond("\nArmorPaint is busy with a console agent run\n");
+		agent_serve_respond("\nKoru Surface is busy with a console agent run\n");
 		return;
 	}
 	if (!agent_running) {
@@ -987,12 +987,12 @@ static void agent_mcp_request(void *data) {
 		return;
 	}
 	if (agent_console) {
-		agent_serve_respond(string("%s\nThe session was begun by ArmorPaint, the reference is in your instructions.\n", agent_dir));
+		agent_serve_respond(string("%s\nThe session was begun by Koru Surface, the reference is in your instructions.\n", agent_dir));
 		return;
 	}
 	if (string_equals(g_project->_->filepath, "")) {
 		agent_mcp = false;
-		agent_serve_respond("\nSave the project in ArmorPaint first\n");
+		agent_serve_respond("\nSave the project in Koru Surface first\n");
 		return;
 	}
 	agent_dir = string_copy(agent_work_dir());

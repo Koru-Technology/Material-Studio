@@ -910,7 +910,6 @@ void minic_register_builtins() {
 	MINIC_F(rp_supersample);
 	MINIC_F(rp_ssao);
 	MINIC_O(recent_projects, string_array_t);
-	MINIC_O(plugins, string_array_t);
 	MINIC_S(keymap);
 	MINIC_S(theme);
 	MINIC_I(undo_steps);
@@ -921,6 +920,8 @@ void minic_register_builtins() {
 	MINIC_I(material_live);
 	MINIC_I(tools);
 	MINIC_I(rp_view_transform);
+	MINIC_I(autosave);
+	MINIC_I(autosave_interval);
 	MINIC_END();
 
 	MINIC_STRUCT(context_t);
@@ -1131,7 +1132,7 @@ char *minic_api_header_generate(void) {
 
 	buffer_t sb;
 	string_buffer_init(&sb);
-	string_buffer_append(&sb, "// ArmorPaint script API\n\n");
+	string_buffer_append(&sb, "// Koru Surface script API\n\n");
 
 	// Structs
 	for (int i = 0; i < minic_struct_count; ++i) {

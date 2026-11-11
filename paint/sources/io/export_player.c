@@ -144,12 +144,12 @@ void export_player_run(char *path) {
 		iron_file_save_bytes(index_html, sys_string_to_buffer(export_player_index), 0);
 	}
 	else if (box_export_player_target == PLAYER_TARGET_WINDOWS) {
-		char *player_bin_src = string("%s%s%s", iron_internal_files_location(), PATH_SEP, "PiratePaint.exe");
+		char *player_bin_src = string("%s%s%s", iron_internal_files_location(), PATH_SEP, "KoruSurface.exe");
 		char *player_bin_to  = string("%s/player.exe", path_base);
 		file_copy(player_bin_src, player_bin_to);
 	}
 	else if (box_export_player_target == PLAYER_TARGET_LINUX) {
-		char *player_bin_src = string("%s%s%s", iron_internal_files_location(), PATH_SEP, "PiratePaint");
+		char *player_bin_src = string("%s%s%s", iron_internal_files_location(), PATH_SEP, "KoruSurface");
 		char *player_bin_to  = string("%s/player", path_base);
 		file_copy(player_bin_src, player_bin_to);
 	}

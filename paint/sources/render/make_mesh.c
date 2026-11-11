@@ -307,7 +307,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_add_texture(kong, "texuvmap", "_texuvmap");
 		}
 
-		if (plugin_tool_overlay() != NULL) {
+		if (box_bake_maps_inpaint_overlay() != NULL) {
 			texture_count++; // Added in the last pass
 		}
 
@@ -598,13 +598,12 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(kong, "if (texel2xmod == texel2ymod) { basecol = basecol * 0.9; }");
 		}
 
-		plugin_tool_t *overlay_tool = plugin_tool_overlay();
-		if (last_pass && overlay_tool != NULL) {
-			i32 c = overlay_tool->overlay_color;
-			node_shader_add_texture(kong, "texplugin_overlay", "_texplugin_overlay");
-			node_shader_write_frag(kong, string_tmp("float plugin_overlay = sample_lod(texplugin_overlay, sampler_linear, %s, 0.0).r * %f;", tex_coord_layer,
+		if (last_pass && box_bake_maps_inpaint_overlay() != NULL) {
+			i32 c = box_bake_maps_inpaint_color();
+			node_shader_add_texture(kong, "texinpaint_overlay", "_texinpaint_overlay");
+			node_shader_write_frag(kong, string_tmp("float inpaint_overlay = sample_lod(texinpaint_overlay, sampler_linear, %s, 0.0).r * %f;", tex_coord_layer,
 			                                        color_get_ab(c) / 255.0));
-			node_shader_write_frag(kong, string_tmp("basecol = lerp(basecol, float3(%f, %f, %f), plugin_overlay);", color_get_rb(c) / 255.0,
+			node_shader_write_frag(kong, string_tmp("basecol = lerp(basecol, float3(%f, %f, %f), inpaint_overlay);", color_get_rb(c) / 255.0,
 			                                        color_get_gb(c) / 255.0, color_get_bb(c) / 255.0));
 		}
 
