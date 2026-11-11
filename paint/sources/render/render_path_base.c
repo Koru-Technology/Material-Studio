@@ -307,6 +307,9 @@ void render_path_base_draw_bloom(char *source, char *target) {
 	}
 }
 
+// Ambient occlusion is computed at half resolution and upsampled by the deferred light pass
+#define RENDER_PATH_BASE_SSAO_SCALE 0.5
+
 void render_path_base_init_ssao() {
 	{
 		render_target_t *t = render_target_create();
@@ -314,7 +317,7 @@ void render_path_base_init_ssao() {
 		t->width           = 0;
 		t->height          = 0;
 		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling();
+		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
 		render_path_create_render_target(t);
 	}
 
@@ -324,7 +327,7 @@ void render_path_base_init_ssao() {
 		t->width           = 0;
 		t->height          = 0;
 		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling();
+		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
 		render_path_create_render_target(t);
 	}
 
@@ -334,7 +337,7 @@ void render_path_base_init_ssao() {
 		t->width           = 0;
 		t->height          = 0;
 		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling();
+		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
 		render_path_create_render_target(t);
 	}
 
@@ -362,9 +365,22 @@ char *render_path_base_ssao_target() {
 	return scene_camera->frame % 2 == 0 ? "singlea" : "singlec";
 }
 
+// Frames left to recompute ambient occlusion after painting, it reads the painted normals from gbuffer0
+static i32 render_path_base_ssao_paint_frames = 0;
+
 void render_path_base_draw_ssao() {
+	// The gbuffer of this frame predates this frame's dab, and the two ssao targets alternate per frame:
+	// keep updating for two frames after the last dab so both targets see the final normals
+	if (g_context->pdirty > 0) {
+		render_path_base_ssao_paint_frames = 3;
+	}
+	bool paint_dirty = render_path_base_ssao_paint_frames > 0;
+	if (paint_dirty) {
+		render_path_base_ssao_paint_frames--;
+	}
+
 	bool ssao = g_config->rp_ssao > 0.0 && g_context->camera_type == CAMERA_TYPE_PERSPECTIVE;
-	if (ssao && g_context->ddirty > -6 && _render_path_frame > 0) {
+	if (ssao && (g_context->ddirty > -6 || paint_dirty) && _render_path_frame > 0) {
 		if (any_map_get(render_path_render_targets, "singlea") == NULL) {
 			render_path_base_init_ssao();
 		}
