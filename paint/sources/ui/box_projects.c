@@ -40,6 +40,7 @@ static bool _box_projects_load_cancelled = false;
 void box_projects_load_on_next_frame(void *_) {
 	if (_box_projects_load_cancelled) {
 		_box_projects_load_cancelled = false;
+		base_startup_cover_done();
 		return;
 	}
 	if (--_box_projects_load_frames > 0) {
@@ -47,6 +48,7 @@ void box_projects_load_on_next_frame(void *_) {
 		return;
 	}
 	import_arm_run_project(_box_projects_load_path);
+	base_startup_cover_done();
 }
 
 // A project load that was asked for and has not started yet is dropped (a shared file opens instead)

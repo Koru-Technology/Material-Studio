@@ -114,6 +114,41 @@ void base_update_import_asset_done() {
 	}
 }
 
+// Black like the launch screen while the last project is reopened on startup, so the default cube and the
+// first frames of the loaded project are not seen
+static bool base_startup_cover        = false;
+static i32  base_startup_cover_frames = -1;  // Frames left once the project is loaded, -1 while loading
+static i32  base_startup_cover_max    = 600; // Gives up when the load never finishes
+
+bool base_startup_covering() {
+	return base_startup_cover;
+}
+
+void base_startup_cover_done() {
+	if (base_startup_cover && base_startup_cover_frames < 0) {
+		base_startup_cover_frames = 10;
+	}
+}
+
+static void base_draw_startup_cover() {
+	if (!base_startup_cover) {
+		return;
+	}
+	if (base_startup_cover_frames > 0) {
+		base_startup_cover_frames--;
+	}
+	if (base_startup_cover_frames == 0 || --base_startup_cover_max <= 0) {
+		base_startup_cover = false;
+		base_redraw_ui();
+		return;
+	}
+	draw_begin(NULL, false, 0);
+	draw_set_color(0xff000000);
+	draw_filled_rect(0, 0, iron_window_width(), iron_window_height());
+	draw_set_color(0xffffffff);
+	draw_end();
+}
+
 // ███████╗██╗  ██╗ █████╗ ██████╗ ███████╗██████╗
 // Models shared with the app from another one (share sheet, Open in) start a new project
 
@@ -585,6 +620,8 @@ void base_update(void *_) {
 		draw_end();
 	}
 
+	base_draw_startup_cover();
+
 #if defined(IRON_ANDROID) || defined(IRON_IOS)
 	// No mouse move events for touch, re-init last paint position on touch start
 	if (!mouse_down("left")) {
@@ -673,6 +710,7 @@ void base_init() {
 		}
 	}
 	if (reload != NULL) {
+		base_startup_cover = true;
 		box_projects_load(reload);
 	}
 	else if (g_config->splash_screen && has_projects) {

@@ -426,6 +426,8 @@ void                   render_path_lit_commands();
 void                   box_projects_show();
 void                   box_projects_load(char *path);
 void                   box_projects_cancel_load();
+void                   base_startup_cover_done();
+bool                   base_startup_covering();
 char                  *project_unique_title(char *name);
 void                   box_projects_recent_tab();
 bool                   box_projects_is_cloud_path(char *path);
