@@ -45,7 +45,6 @@ void tab_library_draw(i32 *htab) {
 	f32 imgh   = 64 * UI_SCALE();
 	i32 text_h = UI_ELEMENT_H() + UI_ELEMENT_OFFSET();
 	i32 row_h  = math_floor(imgh + text_h + 8 * UI_SCALE());
-	i32 tile   = UI_SCALE() > 1 ? 100 : 50;
 
 	f32_array_t *ar = f32_array_create_from_raw_tmp(NULL, num);
 	for (i32 i = 0; i < num; ++i) {
