@@ -17,7 +17,7 @@ bool   input_node_registered   = false;
 vec4_t input_node_coords       = (vec4_t){0.0, 0.0, 0.0, 1.0};
 
 static void input_node_grid_snap() {
-	bool snap_shortcut = keymap_shortcut(any_map_get(g_keymap, "grid_snap"), SHORTCUT_TYPE_DOWN);
+	bool snap_shortcut = g_context->grid_snap_toggle || keymap_shortcut(any_map_get(g_keymap, "grid_snap"), SHORTCUT_TYPE_DOWN);
 	bool in_2d         = context_in_2d_view(VIEW_2D_TYPE_LAYER);
 	bool in_3d         = context_in_3d_view();
 
@@ -150,8 +150,6 @@ void input_node_update(float_node_t *self) {
 			// Parse brush inputs once on next draw
 			g_context->painted = -1;
 		}
-		g_context->last_paint_x = -1;
-		g_context->last_paint_y = -1;
 	}
 
 	input_node_grid_snap();
@@ -160,10 +158,11 @@ void input_node_update(float_node_t *self) {
 }
 
 logic_node_value_t *input_node_get(input_node_t *self, i32 from) {
-	g_context->brush_lazy_radius = logic_node_input_get(self->base->inputs->buffer[0])->_f32;
+	// Smoothing of the tool options, or the lazy radius of the brush nodes when larger
+	g_context->brush_lazy_radius = math_max(logic_node_input_get(self->base->inputs->buffer[0])->_f32, g_context->brush_smoothing);
 	g_context->brush_lazy_step   = logic_node_input_get(self->base->inputs->buffer[1])->_f32;
 	if (from == 1) {
-		f32                 pressure = (pen_down("tip") || pen_released("tip")) ? pen_pressure * g_config->pressure_sensitivity : 1.0;
+		f32                 pressure = (pen_down("tip") || pen_released("tip")) ? util_brush_pen_pressure() : 1.0;
 		logic_node_value_t *v        = TMP_ALLOC_INIT(logic_node_value_t, {._f32 = pressure});
 		return v;
 	}

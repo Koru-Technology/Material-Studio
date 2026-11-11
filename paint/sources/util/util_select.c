@@ -14,7 +14,7 @@ static void util_select_uv_2d(f32 *u, f32 *v) {
 }
 
 static bool util_select_in_2d_view() {
-	if (!context_in_2d_view(VIEW_2D_TYPE_LAYER) || g_context->layer->texpaint_sculpt != NULL) {
+	if (!context_in_2d_view(VIEW_2D_TYPE_LAYER)) {
 		return false;
 	}
 	// Header

@@ -336,6 +336,9 @@ void camera_set_pivot_center_to_mouse() {
 }
 
 void camera_update(void *_) {
+	if (g_context->stencil_edit && context_is_stencil_editing()) { // Pinch scales the stencil
+		return;
+	}
 	if (!camera_wrap_mouse() || g_context->camera_controls == CAMERA_CONTROLS_NONE) {
 		return;
 	}

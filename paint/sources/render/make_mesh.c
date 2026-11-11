@@ -242,21 +242,6 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 	kong->frag_n   = true;
 	node_shader_add_function(kong, str_pack_float_int16);
 
-	{
-		slot_layer_t_array_t *sculpt_layers  = any_array_create_from_raw((void *[]){}, 0);
-		i32_array_t          *sculpt_indices = i32_array_create(0);
-		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-			slot_layer_t *l = g_project->_->layers->buffer[i];
-			if (l->texpaint_sculpt != NULL && slot_layer_is_visible(l)) {
-				any_array_push(sculpt_layers, l);
-				i32_array_push(sculpt_indices, i);
-			}
-		}
-		sculpt_make_mesh_run(kong, sculpt_layers, sculpt_indices);
-		array_delete(sculpt_layers);
-		array_delete(sculpt_indices);
-	}
-
 	if (g_context->colorid_viewport_mask && g_context->tool != TOOL_TYPE_COLORID) {
 		make_discard_color_id(kong, tex_coord_layer);
 	}
@@ -415,6 +400,9 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			char *tex_coord = l->uv_map == 1 ? "tex_coord1" : util_mesh_udim_layer(l) ? "tex_coord_atlas" : "tex_coord";
 			node_shader_add_texture(kong, string_tmp("texpaint%s", i32_to_string(l->id)), NULL);
 			node_shader_write_frag(kong, string_tmp("texpaint_sample = sample_lod(texpaint%s, sampler_linear, %s, 0.0);", i32_to_string(l->id), tex_coord));
+			if (g_project->linear_blending) { // Layers are stored gamma encoded, blended in linear
+				node_shader_write_frag(kong, "texpaint_sample.rgb = pow(max(texpaint_sample.rgb, float3(0.0, 0.0, 0.0)), float3(2.2, 2.2, 2.2));");
+			}
 			node_shader_write_frag(kong, "texpaint_opac = texpaint_sample.a;");
 
 			bool height_blended = make_mesh_layer_height_blended(l);
@@ -487,14 +475,35 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 				node_shader_write_frag(kong, string_tmp("texpaint_pack_sample = sample_lod(texpaint_pack%s, sampler_linear, %s, 0.0);", i32_to_string(l->id),
 				                                        tex_coord));
 
-				if (l->paint_occ) {
-					node_shader_write_frag(kong, "occlusion = lerp(occlusion, texpaint_pack_sample.r, texpaint_opac);");
+				bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l)) && l != g_project->_->layers->buffer[0];
+				if (pack_blend && (l->paint_occ || l->paint_rough || l->paint_met)) {
+					// The layer blend mode on occlusion, roughness and metallic
+					char *prev = string("pack_prev%d", l->id);
+					char *top  = string("pack_top%d", l->id);
+					node_shader_write_frag(kong, string_tmp("float3 %s = float3(occlusion, roughness, metallic);", prev));
+					node_shader_write_frag(kong, string_tmp("float3 %s = texpaint_pack_sample.rgb;", top));
+					char *res = string_copy(make_material_blend_mode(kong, slot_layer_get_blending(l), prev, top, "texpaint_opac"));
+					node_shader_write_frag(kong, string_tmp("%s = clamp(%s, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0));", prev, res));
+					if (l->paint_occ) {
+						node_shader_write_frag(kong, string_tmp("occlusion = %s.x;", prev));
+					}
+					if (l->paint_rough) {
+						node_shader_write_frag(kong, string_tmp("roughness = %s.y;", prev));
+					}
+					if (l->paint_met) {
+						node_shader_write_frag(kong, string_tmp("metallic = %s.z;", prev));
+					}
 				}
-				if (l->paint_rough) {
-					node_shader_write_frag(kong, "roughness = lerp(roughness, texpaint_pack_sample.g, texpaint_opac);");
-				}
-				if (l->paint_met) {
-					node_shader_write_frag(kong, "metallic = lerp(metallic, texpaint_pack_sample.b, texpaint_opac);");
+				else {
+					if (l->paint_occ) {
+						node_shader_write_frag(kong, "occlusion = lerp(occlusion, texpaint_pack_sample.r, texpaint_opac);");
+					}
+					if (l->paint_rough) {
+						node_shader_write_frag(kong, "roughness = lerp(roughness, texpaint_pack_sample.g, texpaint_opac);");
+					}
+					if (l->paint_met) {
+						node_shader_write_frag(kong, "metallic = lerp(metallic, texpaint_pack_sample.b, texpaint_opac);");
+					}
 				}
 				if (l->paint_height && make_material_height_used) {
 					if (!l->paint_height_blend) {
@@ -632,8 +641,14 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		node_shader_write_frag(kong, "n.y = -n.y;");
 		node_shader_write_frag(kong, "n = normalize(TBN * n);");
 
-		if (g_context->viewport_mode == VIEWPORT_MODE_LIT || g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE) {
-			node_shader_write_frag(kong, "basecol = pow(basecol, float3(2.2, 2.2, 2.2));");
+		bool lit = g_context->viewport_mode == VIEWPORT_MODE_LIT || g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE;
+		if (g_project->linear_blending && !lit) { // Back to gamma for the channel views
+			node_shader_write_frag(kong, "basecol = pow(max(basecol, float3(0.0, 0.0, 0.0)), float3(0.4545, 0.4545, 0.4545));");
+		}
+		if (lit) {
+			if (!g_project->linear_blending) {
+				node_shader_write_frag(kong, "basecol = pow(basecol, float3(2.2, 2.2, 2.2));");
+			}
 			node_shader_write_frag(kong, "basecol = max(basecol, float3(0.0, 0.0, 0.0));");
 
 			if (make_material_emis_used) {

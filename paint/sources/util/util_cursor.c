@@ -37,7 +37,7 @@ void util_cursor_render(void *_) {
 
 	if (g_context->brush_stencil_image != NULL && g_context->tool != TOOL_TYPE_PICKER && g_context->tool != TOOL_TYPE_COLORID) {
 		rect_t *r = ui_base_get_brush_stencil_rect();
-		if (!keymap_shortcut(any_map_get(g_keymap, "stencil_hide"), SHORTCUT_TYPE_DOWN)) {
+		if (!context_is_stencil_hidden()) {
 			draw_set_color(0x88ffffff);
 			f32 angle = g_context->brush_stencil_angle;
 			draw_set_transform(mat3_multmat(mat3_multmat(mat3_translation(0.5, 0.5), mat3_rotation(-angle)), mat3_translation(-0.5, -0.5)));
@@ -45,15 +45,16 @@ void util_cursor_render(void *_) {
 			draw_set_transform(mat3_nan());
 			draw_set_color(0xffffffff);
 		}
-		bool transform = keymap_shortcut(any_map_get(g_keymap, "stencil_transform"), SHORTCUT_TYPE_DOWN);
+		bool transform = context_is_stencil_editing();
 		if (transform) {
+			i32 h = util_stencil_handle_size();
 			// Outline
 			draw_rect(r->x, r->y, r->w, r->h, 1.0);
 			// Scale
-			draw_rect(r->x - 8, r->y - 8, 16, 16, 1.0);
-			draw_rect(r->x - 8 + r->w, r->y - 8, 16, 16, 1.0);
-			draw_rect(r->x - 8, r->y - 8 + r->h, 16, 16, 1.0);
-			draw_rect(r->x - 8 + r->w, r->y - 8 + r->h, 16, 16, 1.0);
+			draw_rect(r->x - h / 2, r->y - h / 2, h, h, 1.0);
+			draw_rect(r->x - h / 2 + r->w, r->y - h / 2, h, h, 1.0);
+			draw_rect(r->x - h / 2, r->y - h / 2 + r->h, h, h, 1.0);
+			draw_rect(r->x - h / 2 + r->w, r->y - h / 2 + r->h, h, h, 1.0);
 			// Rotate
 			f32 cosa = math_cos(-g_context->brush_stencil_angle);
 			f32 sina = math_sin(-g_context->brush_stencil_angle);
@@ -63,7 +64,7 @@ void util_cursor_render(void *_) {
 			f32 y    = ox * sina + oy * cosa;
 			x += r->x + r->w / 2.0;
 			y += r->y + r->h / 2.0;
-			draw_filled_circle(x, y, 8, 0);
+			draw_filled_circle(x, y, h / 2, 0);
 		}
 	}
 

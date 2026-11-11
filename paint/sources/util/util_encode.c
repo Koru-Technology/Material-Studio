@@ -207,7 +207,7 @@ buffer_t *util_encode_project(project_t *raw) {
 	buffer_t *encoded = buffer_create(size);
 
 	armpack_encode_start(encoded->buffer);
-	armpack_encode_map(46);
+	armpack_encode_map(47);
 
 	armpack_encode_string("version");
 	armpack_encode_string(raw->version);
@@ -637,6 +637,9 @@ buffer_t *util_encode_project(project_t *raw) {
 	else {
 		armpack_encode_null();
 	}
+
+	armpack_encode_string("linear_blending");
+	armpack_encode_bool(raw->linear_blending);
 
 	i32 ei          = armpack_encode_end();
 	encoded->length = ei;

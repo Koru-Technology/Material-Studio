@@ -27,7 +27,6 @@ void tab_materials_update_material() {
 	if (decal) {
 		util_render_make_decal_preview();
 	}
-	base_update_tools_nodes();
 }
 
 void tab_materials_draw_slots_duplicate(void *_) {
@@ -198,7 +197,7 @@ void tab_materials_draw_slots_menu() {
 	ui_check(&m->paint_opac, tr("Opacity"), "");
 	channels_changed |= ui_item_changed();
 
-	if (g_config->tools != TOOLS_SCULPT) {
+	{
 		ui_row2();
 		ui_check(&m->paint_nor, tr("Normal"), "");
 		channels_changed |= ui_item_changed();

@@ -731,7 +731,7 @@ void base_init() {
 		base_startup_cover = true;
 		box_projects_load(reload);
 	}
-	else if (g_config->splash_screen && has_projects) {
+	else if (g_config->splash_screen && has_projects && !args_use) { // Launched with a file or a script, show it right away
 		box_projects_show();
 	}
 
@@ -1168,29 +1168,7 @@ void base_apply_workspace() {
 	ui_dock_save();
 }
 
-void base_update_tools_create_sculpt_layer(void *_) {
-	if (history_undo_layers != NULL) {
-		sculpt_layers_create_sculpt_layer();
-		sys_remove_update(base_update_tools_create_sculpt_layer);
-	}
-}
-
-void base_update_tools_nodes() {
-	// Update Material Output nodes
-	bool pbr = g_config->tools != TOOLS_SCULPT;
-	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		ui_node_array_t *nodes = g_project->_->materials->buffer[i]->canvas->nodes;
-		for (i32 j = 0; j < nodes->length; ++j) {
-			if (string_equals(nodes->buffer[j]->type, "OUTPUT_MATERIAL_PBR")) {
-				nodes->buffer[j]->inputs->length          = pbr ? 9 : 2;
-				nodes->buffer[j]->inputs->buffer[0]->name = g_config->tools == TOOLS_SCULPT ? tr("Displacement") : tr("Base Color");
-			}
-		}
-	}
-}
-
 void base_update_tools() {
-	base_update_tools_nodes();
 	if (ui_toolbar_handle != NULL) {
 		ui_toolbar_handle->redraws = 2;
 	}
@@ -1202,32 +1180,11 @@ void base_update_tools() {
 		context_select_tool(TOOL_TYPE_BRUSH);
 	}
 
-	if (g_config->tools == TOOLS_SCULPT) {
-		if (g_context->tool != TOOL_TYPE_BRUSH && !ui_toolbar_tool_visible(g_context->tool)) {
-			context_select_tool(TOOL_TYPE_BRUSH);
-		}
-		slot_layer_t *first_sculpt = NULL;
-		for (i32 i = g_project->_->layers->length - 1; i >= 0; --i) {
-			if (g_project->_->layers->buffer[i]->texpaint_sculpt != NULL) {
-				first_sculpt = g_project->_->layers->buffer[i];
-				break;
-			}
-		}
-		if (first_sculpt == NULL) {
-			sys_remove_update(base_update_tools_create_sculpt_layer);
-			sys_notify_on_update(base_update_tools_create_sculpt_layer, NULL);
-		}
-		else {
-			context_set_layer(first_sculpt);
-		}
-	}
-	else {
-		for (i32 i = g_project->_->layers->length - 1; i >= 0; --i) {
-			slot_layer_t *l = g_project->_->layers->buffer[i];
-			if (l->texpaint_sculpt == NULL && slot_layer_is_layer(l)) {
-				context_set_layer(l);
-				break;
-			}
+	for (i32 i = g_project->_->layers->length - 1; i >= 0; --i) {
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		if (slot_layer_is_layer(l)) {
+			context_set_layer(l);
+			break;
 		}
 	}
 }

@@ -585,9 +585,6 @@ void util_mesh_transform_changed() {
 		util_mesh_merge(objects->length > 0 ? objects : NULL);
 		array_delete(objects);
 	}
-	if (g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE) {
-		sculpt_bake_to_mesh();
-	}
 	render_path_raytrace_ready = false;
 }
 

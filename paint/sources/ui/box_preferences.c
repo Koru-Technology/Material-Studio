@@ -112,11 +112,12 @@ static void box_preferences_interface_layout() {
 	ui_end_element();
 
 	box_preferences_section(tr("Tools"));
-	string_array_t *tools = any_array_create_from_raw_tmp((void *[]){tr("Paint"), tr("Sculpt"), tr("Object")}, 3);
-	bool            tools_changed = false;
-	ui_row3();
+	string_array_t *tools        = any_array_create_from_raw_tmp((void *[]){tr("Paint"), tr("Object")}, 2);
+	i32             tools_values[] = {TOOLS_PAINT, TOOLS_OBJECT};
+	bool            tools_changed  = false;
+	ui_row2();
 	for (i32 i = 0; i < tools->length; ++i) {
-		ui_radio((int *)&g_config->tools, i, tools->buffer[i], "");
+		ui_radio((int *)&g_config->tools, tools_values[i], tools->buffer[i], "");
 		tools_changed |= ui_item_changed();
 	}
 	if (tools_changed) {
@@ -604,14 +605,75 @@ void box_preferences_camera_tab() {
 // ██║     ███████╗██║ ╚████║
 // ╚═╝     ╚══════╝╚═╝  ╚═══╝
 
+// Pressure in, value out
+static void box_preferences_draw_pressure_curve() {
+	f32 w = g_ui->_w - 8 * UI_SCALE();
+	f32 h = 80 * UI_SCALE();
+	f32 x = g_ui->_x + 4 * UI_SCALE();
+	f32 y = g_ui->_y + 4 * UI_SCALE();
+	draw_set_color(g_theme->SEPARATOR_COL);
+	draw_filled_rect(x, y, w, h);
+	draw_set_color(g_theme->HIGHLIGHT_COL);
+	f32 sens   = g_config->pressure_sensitivity;
+	f32 px     = x;
+	f32 py     = y + h;
+	i32 steps  = 32;
+	f32 c      = g_config->pressure_curve > 0.01f ? g_config->pressure_curve : 1.0f;
+	for (i32 i = 0; i <= steps; ++i) {
+		f32 p  = i / (f32)steps;
+		f32 v  = (g_config->pressure_min + (1.0f - g_config->pressure_min) * powf(p, c)) * sens;
+		v      = v > 1.0f ? 1.0f : v;
+		f32 nx = x + p * w;
+		f32 ny = y + h - v * h;
+		if (i > 0) {
+			draw_line(px, py, nx, ny, 2.0);
+		}
+		px = nx;
+		py = ny;
+	}
+	draw_set_color(0xffffffff);
+	g_ui->_y += h + 8 * UI_SCALE();
+}
+
 void box_preferences_pen_tab() {
 	ui_text(tr("Pressure controls"), UI_ALIGN_LEFT, 0x00000000);
 
-	ui_slider(&g_config->pressure_sensitivity, tr("Sensitivity"), 0.0, 10.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-	ui_check(&g_config->pressure_radius, tr("Brush Radius"), "");
-	ui_check(&g_config->pressure_hardness, tr("Brush Hardness"), "");
-	ui_check(&g_config->pressure_opacity, tr("Brush Opacity"), "");
-	ui_check(&g_config->pressure_angle, tr("Brush Angle"), "");
+	ui_slider(&g_config->pressure_sensitivity, tr("Sensitivity"), 0.0, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+	ui_slider(&g_config->pressure_curve, tr("Curve"), 0.25, 4.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Below 1 a light touch already paints strongly, above 1 it takes a firm press"));
+	}
+	ui_row3();
+	if (ui_button(tr("Soft"), UI_ALIGN_CENTER, "")) {
+		g_config->pressure_curve = 0.5;
+	}
+	if (ui_button(tr("Linear"), UI_ALIGN_CENTER, "")) {
+		g_config->pressure_curve = 1.0;
+	}
+	if (ui_button(tr("Firm"), UI_ALIGN_CENTER, "")) {
+		g_config->pressure_curve = 2.0;
+	}
+	ui_slider(&g_config->pressure_min, tr("Minimum"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Share of the size, opacity and hardness kept at the lightest pressure"));
+	}
+	box_preferences_draw_pressure_curve();
+	// Brush dynamics: what drives each property
+	ui_text(tr("Brush Dynamics"), UI_ALIGN_LEFT, 0x00000000);
+	string_array_t *sources       = any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed")}, 3);
+	string_array_t *angle_sources = any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed"), tr("Direction")}, 4);
+	ui_combo(&g_config->dyn_size, sources, tr("Size"), true, UI_ALIGN_LEFT, true);
+	ui_combo(&g_config->dyn_opacity, sources, tr("Opacity"), true, UI_ALIGN_LEFT, true);
+	ui_combo(&g_config->dyn_flow, sources, tr("Flow"), true, UI_ALIGN_LEFT, true);
+	ui_combo(&g_config->dyn_hardness, sources, tr("Hardness"), true, UI_ALIGN_LEFT, true);
+	i32 dyn_angle = g_config->dyn_angle;
+	ui_combo(&g_config->dyn_angle, angle_sources, tr("Angle"), true, UI_ALIGN_LEFT, true);
+	if (dyn_angle != g_config->dyn_angle) {
+		make_material_parse_paint_material(true);
+	}
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Pressure turns the brush, Direction follows the stroke"));
+	}
 
 	ui_end_element();
 	f32_array_t *row = f32_array_create_from_raw_tmp(
@@ -735,6 +797,14 @@ void box_preferences_viewport_tab() {
 	post_changed |= ui_item_changed();
 
 	ui_row2();
+	string_array_t *transforms = any_array_create_from_raw_tmp((void *[]){"Filmic", "ACES", "AgX", tr("Standard")}, 4);
+	ui_combo(&g_config->rp_view_transform, transforms, tr("View Transform"), true, UI_ALIGN_LEFT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("How the lit viewport maps light to the screen: AgX and ACES keep bright colors from clipping, Standard clips"));
+	}
+	if (ui_item_changed()) {
+		g_context->ddirty = 2;
+	}
 	ui_slider(&g_config->rp_contrast, tr("Contrast"), 0.0, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 	post_changed |= ui_item_changed();
 	ui_slider(&g_config->rp_gamma, tr("Gamma"), 0.0, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
@@ -1199,6 +1269,12 @@ void box_preferences_library_tab() {
 	}
 	if (set && ui_icon_button(tr("Forget Folder"), ICON_CLOSE, UI_ALIGN_CENTER)) {
 		library_forget();
+	}
+
+	box_preferences_section(tr("Built-in Brushes"));
+	ui_check(&g_config->hide_builtin_brushes, tr("Hide Built-in Brushes"), "");
+	if (ui_item_changed()) {
+		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 
 	box_preferences_section(tr("Built-in Materials"));

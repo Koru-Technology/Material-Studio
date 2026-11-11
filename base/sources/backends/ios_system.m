@@ -248,6 +248,15 @@ int iron_window_display() {
 	return 0;
 }
 
+// Pencil force as 0..1, a pencil without pressure (usb-c) reports full pressure
+static float ios_pencil_pressure(UITouch *touch) {
+	if (touch.maximumPossibleForce <= 0.0) {
+		return 1.0;
+	}
+	float p = touch.force / touch.maximumPossibleForce;
+	return p < 0.0001 ? 0.0001 : (p > 1.0 ? 1.0 : p); // Above 0, a pressure of 0 is hover
+}
+
 @implementation MyView
 
 + (Class)layerClass {
@@ -308,7 +317,7 @@ int iron_window_display() {
 			}
 			iron_internal_surface_trigger_touch_start(index, x, y);
 			if (touch.type == UITouchTypePencil) {
-				iron_internal_pen_trigger_press(x, y, 0.0);
+				iron_internal_pen_trigger_press(x, y, ios_pencil_pressure(touch));
 			}
 		}
 	}
@@ -328,7 +337,7 @@ int iron_window_display() {
 			if (touch.type == UITouchTypePencil) {
 				if (!(touch.estimatedProperties & UITouchPropertyForce)) {
 					// usb-c pencil with no pressure
-					iron_internal_pen_trigger_move(x, y, touch.force);
+					iron_internal_pen_trigger_move(x, y, ios_pencil_pressure(touch));
 				}
 			}
 		}
@@ -342,7 +351,7 @@ int iron_window_display() {
 			float   x     = point.x * self.contentScaleFactor;
 			float   y     = point.y * self.contentScaleFactor;
 			// pencil with pressure
-			iron_internal_pen_trigger_move(x, y, touch.force);
+			iron_internal_pen_trigger_move(x, y, ios_pencil_pressure(touch));
 		}
 	}
 }
@@ -643,7 +652,19 @@ static void openSharedFile(NSURL *url) {
 
 - (void)mainLoop {
 	@autoreleasepool {
-		kickstart(0, NULL);
+		// Launch arguments (devicectl launch ... -- --script ~/Documents/x.c), "~/" is the app container
+		NSArray<NSString *> *args = [[NSProcessInfo processInfo] arguments];
+		int                  argc = (int)args.count;
+		char               **argv = calloc(argc + 1, sizeof(char *));
+		NSString            *home = NSHomeDirectory();
+		for (int i = 0; i < argc; ++i) {
+			NSString *a = args[i];
+			if ([a hasPrefix:@"~/"]) {
+				a = [home stringByAppendingPathComponent:[a substringFromIndex:2]];
+			}
+			argv[i] = strdup([a UTF8String]);
+		}
+		kickstart(argc, argv);
 	}
 }
 

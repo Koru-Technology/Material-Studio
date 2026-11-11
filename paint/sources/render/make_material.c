@@ -354,6 +354,11 @@ void make_material_parse_brush() {
 	parser_logic_parse(g_context->brush->canvas);
 }
 
+// Blend modes also apply to occlusion, roughness, metallic and height, except the hue, saturation, color and value modes
+bool make_material_blend_mode_channels(i32 blending) {
+	return blending != BLEND_TYPE_MIX && blending < BLEND_TYPE_HUE;
+}
+
 char *make_material_blend_mode(node_shader_t *kong, i32 blending, char *cola, char *colb, char *opac) {
 	if (blending == BLEND_TYPE_MIX) {
 		return string_tmp("lerp(%s, %s, %s)", cola, colb, opac);

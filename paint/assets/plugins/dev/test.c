@@ -10,9 +10,7 @@ char *file_project;
 char *file_screenshot;
 char *file_envmap;
 char *file_geom;
-char *file_sculpt;
 char *dir_lightmap;
-char *file_sculpt_obj;
 
 int step       = 0;
 int sub        = 0; // Frame counter of a step that repeats
@@ -1303,190 +1301,6 @@ void step_repaint_and_resave() {
 	check(1, "repaint and resave");
 }
 
-// Sculpt
-
-f32_array_t *sculpt_base;  // Vertex positions before sculpting
-f32_array_t *sculpt_prev;  // Positions after the previous stroke
-f32_array_t *sculpt_saved; // Positions in the saved project
-int          diff_moved  = 0;
-float        diff_max    = 0.0;
-float        diff_radial = 0.0; // Summed change of distance from the origin, the sphere center
-
-// Exports the mesh, the sculpt workflow writes the sculpted positions, and reads the vertex positions back
-f32_array_t *sculpt_positions() {
-	script_export_mesh(file_sculpt_obj);
-	buffer_t *b = script_load_blob(string("%s.obj", file_sculpt_obj));
-	if (b == NULL) {
-		return NULL;
-	}
-	any_array_t *lines = string_split(sys_buffer_to_string(b), "\n");
-	f32_array_t *pos   = f32_array_create(0);
-	for (int i = 0; i < lines->length; ++i) {
-		char *l = lines->buffer[i];
-		if (starts_with(l, "v ")) {
-			any_array_t *p = string_split(l, " ");
-			f32_array_push(pos, parse_float(p->buffer[1]));
-			f32_array_push(pos, parse_float(p->buffer[2]));
-			f32_array_push(pos, parse_float(p->buffer[3]));
-		}
-	}
-	return pos;
-}
-
-float vec_length(f32_array_t *a, int i) {
-	return sqrt(a->buffer[i] * a->buffer[i] + a->buffer[i + 1] * a->buffer[i + 1] + a->buffer[i + 2] * a->buffer[i + 2]);
-}
-
-// Compares two position sets into diff_moved, diff_max and diff_radial, false when the vertex counts differ
-int sculpt_diff(f32_array_t *a, f32_array_t *b) {
-	diff_moved  = 0;
-	diff_max    = 0.0;
-	diff_radial = 0.0;
-	if (a == NULL || b == NULL || a->length != b->length) {
-		return 0;
-	}
-	for (int i = 0; i < a->length; i += 3) {
-		float dx = a->buffer[i] - b->buffer[i];
-		float dy = a->buffer[i + 1] - b->buffer[i + 1];
-		float dz = a->buffer[i + 2] - b->buffer[i + 2];
-		float d  = sqrt(dx * dx + dy * dy + dz * dz);
-		if (d > 0.0001) {
-			diff_moved += 1;
-			diff_radial += vec_length(a, i) - vec_length(b, i);
-		}
-		if (d > diff_max) {
-			diff_max = d;
-		}
-	}
-	return 1;
-}
-
-void sculpt_stroke(int tool, float y) {
-	context_select_tool(tool);
-	for (int i = 0; i < 8; ++i) {
-		script_paint(0.4 + i * 0.025, y);
-	}
-	script_paint_end();
-}
-
-// 45 - Sculpt workflow on a dense sphere, the default cube has too few vertices
-
-void step_sculpt_setup() {
-	script_project_new();
-	object_t *cube   = context_main_object()->base;
-	object_t *sphere = script_shape_add("sphere");
-	script_object_remove(cube);
-	int ok = sphere != NULL && context_main_object()->base == sphere && index_count(sphere) > 10000;
-	check(ok, "sphere replaces the cube");
-
-	script_set_tools(TOOLS_SCULPT);
-	check(script_get_config()->tools == TOOLS_SCULPT, "sculpt workflow");
-}
-
-// 46 - Switching creates a sculpt layer on the next update
-
-void step_sculpt_layer() {
-	context_t *ctx = script_get_context();
-	check(ctx->layer->texpaint_sculpt != NULL, string("sculpt layer %s selected", ctx->layer->name));
-	sculpt_base = sculpt_positions();
-	sculpt_prev = sculpt_base;
-	check(sculpt_base != NULL && sculpt_base->length / 3 > 1000, "sculpted mesh exported");
-}
-
-// 47 - Draw pushes the surface out
-
-void step_sculpt_draw() {
-	context_t *ctx     = script_get_context();
-	ctx->brush_sculpt  = SCULPT_TYPE_DRAW;
-	ctx->brush_radius  = 0.5;
-	ctx->brush_opacity = 1.0;
-	sculpt_stroke(TOOL_TYPE_BRUSH, 0.5);
-	f32_array_t *now = sculpt_positions();
-	int          ok  = sculpt_diff(now, sculpt_prev) && diff_moved > 0 && diff_radial > 0.0;
-	check(ok, string("draw pushes %d vertices out (max %.4f)", diff_moved, diff_max));
-	sculpt_prev = now;
-}
-
-// 48 - Every sculpt brush mode moves the mesh, one mode per frame
-
-void step_sculpt_modes() {
-	context_t *ctx    = script_get_context();
-	ctx->brush_sculpt = sub;
-	sculpt_stroke(TOOL_TYPE_BRUSH, 0.45 + sub * 0.01);
-	f32_array_t *now = sculpt_positions();
-	if (!sculpt_diff(now, sculpt_prev) || diff_moved == 0) {
-		sweep_ok = 0;
-		printf("[test]   sculpt mode %d moved nothing", sub);
-	}
-	sculpt_prev = now;
-	if (sub < SCULPT_TYPE_PLATEAU) {
-		step_again = 1;
-		return;
-	}
-	ctx->brush_sculpt = SCULPT_TYPE_DRAW;
-	check(sweep_ok, "every sculpt mode moves the mesh");
-	sweep_ok = 1;
-}
-
-// 49 - Blur relaxes, the eraser pushes the surface in
-
-void step_sculpt_blur_eraser() {
-	context_t *ctx = script_get_context();
-	sculpt_stroke(TOOL_TYPE_BLUR, 0.5);
-	f32_array_t *now = sculpt_positions();
-	check(sculpt_diff(now, sculpt_prev) && diff_moved > 0, string("blur moves %d vertices", diff_moved));
-	sculpt_prev = now;
-
-	sculpt_stroke(TOOL_TYPE_ERASER, 0.5);
-	now = sculpt_positions();
-	check(sculpt_diff(now, sculpt_prev) && diff_moved > 0 && diff_radial < 0.0, string("eraser pushes %d vertices in", diff_moved));
-	sculpt_prev = now;
-	context_select_tool(TOOL_TYPE_BRUSH);
-}
-
-// 50 - Save the sculpted project
-
-void step_sculpt_save() {
-	sculpt_saved = sculpt_positions();
-	sculpt_diff(sculpt_saved, sculpt_base);
-	check(diff_moved > 0, string("%d vertices differ from the original", diff_moved));
-	project_filepath_set(file_sculpt);
-	project_save(false);
-}
-
-// 51 - A new project in the sculpt workflow, the open on the next frame used to crash on its deferred layer clear
-
-void step_sculpt_new() {
-	check(iron_file_exists(file_sculpt), "sculpt project saved");
-	script_project_new();
-	check(script_get_config()->tools == TOOLS_SCULPT, "new project keeps the sculpt workflow");
-}
-
-// 52 - Load the sculpted project
-
-void step_sculpt_load() {
-	script_project_open(file_sculpt);
-	check(1, "sculpt project loaded");
-}
-
-// 53 - The sculpt survived save and load
-
-void step_sculpt_verify() {
-	context_t *ctx = script_get_context();
-	check(ctx->layer->texpaint_sculpt != NULL, "sculpt layer after load");
-	int ok = sculpt_diff(sculpt_positions(), sculpt_saved) && diff_moved == 0;
-	check(ok, string("sculpt survived save and load (%d vertices moved)", diff_moved));
-}
-
-// 54 - Back to painting
-
-void step_sculpt_end() {
-	context_t *ctx = script_get_context();
-	script_set_tools(TOOLS_PAINT);
-	int ok = script_get_config()->tools == TOOLS_PAINT && ctx->layer->texpaint_sculpt == NULL;
-	check(ok, string("paint workflow, layer %s selected", ctx->layer->name));
-}
-
 // Extras on a fresh project
 
 slot_material_t *mat_blue;
@@ -2452,82 +2266,62 @@ void run_step(int s) {
 	else if (s == 44)
 		step_repaint_and_resave();
 	else if (s == 45)
-		step_sculpt_setup();
-	else if (s == 46)
-		step_sculpt_layer();
-	else if (s == 47)
-		step_sculpt_draw();
-	else if (s == 48)
-		step_sculpt_modes();
-	else if (s == 49)
-		step_sculpt_blur_eraser();
-	else if (s == 50)
-		step_sculpt_save();
-	else if (s == 51)
-		step_sculpt_new();
-	else if (s == 52)
-		step_sculpt_load();
-	else if (s == 53)
-		step_sculpt_verify();
-	else if (s == 54)
-		step_sculpt_end();
-	else if (s == 55)
 		step_blend_colors();
-	else if (s == 56)
+	else if (s == 46)
 		step_brush_opacity();
-	else if (s == 57)
+	else if (s == 47)
 		step_material_channels();
-	else if (s == 58)
+	else if (s == 48)
 		step_custom_node();
-	else if (s == 59)
+	else if (s == 49)
 		step_viewport_shader();
-	else if (s == 60)
+	else if (s == 50)
 		step_draw_target();
-	else if (s == 61)
+	else if (s == 51)
 		step_packed_assets();
-	else if (s == 62)
+	else if (s == 52)
 		step_custom_importers();
-	else if (s == 63)
+	else if (s == 53)
 		step_font_sound();
-	else if (s == 64)
+	else if (s == 54)
 		step_mesh_geo();
-	else if (s == 65)
+	else if (s == 55)
 		step_geom_more();
-	else if (s == 66)
+	else if (s == 56)
 		step_skin();
-	else if (s == 67)
+	else if (s == 57)
 		step_timer();
-	else if (s == 68)
+	else if (s == 58)
 		step_object_tools();
-	else if (s == 69)
+	else if (s == 59)
 		step_pick();
-	else if (s == 70)
+	else if (s == 60)
 		step_duplicate_merge();
-	else if (s == 71)
+	else if (s == 61)
 		step_message();
-	else if (s == 72)
+	else if (s == 62)
 		step_layer_duplicate();
-	else if (s == 73)
+	else if (s == 63)
 		step_layer_merge_down();
-	else if (s == 74)
+	else if (s == 64)
 		step_layer_mask_ops();
-	else if (s == 75)
+	else if (s == 65)
 		step_layer_fill_ops();
-	else if (s == 76)
+	else if (s == 66)
 		step_layer_merge_group();
-	else if (s == 77)
+	else if (s == 67)
 		step_layer_path();
-	else if (s == 78)
+	else if (s == 68)
 		step_layer_curve_text();
-	else if (s == 79)
+	else if (s == 69)
 		step_layer_paths_save();
-	else if (s == 80)
+	else if (s == 70)
 		step_layer_paths_load();
-	else if (s == 81)
+	else if (s == 71)
 		step_layer_paths_verify();
 }
 
-int step_count      = 82;
+int step_count      = 72;
 int expected_checks = 231;
 
 void next_frame() {
@@ -2573,9 +2367,7 @@ void main() {
 	file_screenshot = string("%s/test_screenshot.png", tmp_root);
 	file_envmap     = string("%s/test_envmap.hdr", tmp_root);
 	file_geom       = string("%s/test_geom.obj", dir_mesh);
-	file_sculpt     = string("%s/test_sculpt.arm", dir_project);
 	dir_lightmap    = string("%s/lightmap", tmp_root);
-	file_sculpt_obj = string("%s/test_sculpt", dir_mesh);
 	file_draw_png   = string("%s/test_draw.png", tmp_root);
 	file_draw_jpg   = string("%s/test_draw.jpg", tmp_root);
 	file_packed     = string("%s/test_packed.png", dir_checks);

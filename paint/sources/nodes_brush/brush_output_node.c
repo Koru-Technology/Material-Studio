@@ -57,7 +57,10 @@ void brush_output_node_parse_inputs() {
 	}
 	else {
 		g_context->brush_nodes_opacity = math_max(0.0, math_min(1.0, opac->_f32));
-		g_context->brush_mask_image    = NULL;
+		g_context->brush_mask_image    = builtin_brush_tip(); // Tip of the built-in brush, NULL for round
+		if (g_context->brush_mask_image != NULL) {
+			g_context->brush_mask_image_is_alpha = true;
+		}
 	}
 
 	g_context->brush_nodes_hardness = input5->_f32;
@@ -198,11 +201,6 @@ void brush_output_node_run() {
 
 	if (g_context->painted <= 1) {
 		g_context->pdirty = 1;
-		slot_layer_t *l   = g_context->layer;
-		if (l->texpaint_sculpt != NULL || (l->parent != NULL && l->parent->texpaint_sculpt != NULL)) {
-			g_context->ddirty = 2;
-		}
-		sculpt_push_undo = true;
 	}
 }
 

@@ -31,7 +31,7 @@ static void ui_header_pressure_seam(i32 x, i32 y, i32 w, i32 h, u32 color, bool 
 	}
 }
 
-static void ui_header_pressure_toggle(bool *value) {
+static void ui_header_pressure_toggle_bool(bool *value) {
 	if (!pen_connected) {
 		return;
 	}
@@ -79,6 +79,17 @@ static void ui_header_pressure_toggle(bool *value) {
 	}
 }
 
+// Pen pressure on or off for a brush property, the source of its dynamics
+static void ui_header_pressure_toggle(i32 *source) {
+	bool on = *source == 1;
+	bool v  = on;
+	ui_header_pressure_toggle_bool(&v);
+	if (v != on) {
+		*source = v ? 1 : 0;
+		config_save();
+	}
+}
+
 void ui_header_render_ui() {
 	if (g_config->touch_ui) {
 		ui_header_h = ui_header_default_h + 4;
@@ -114,6 +125,21 @@ void ui_header_render_ui() {
 }
 
 void ui_header_particle_menu_draw() {
+	string_array_t *presets = any_array_create_from_raw_tmp((void *[]){tr("Custom")}, 1);
+	for (i32 i = 0; i < util_particle_preset_count(); ++i) {
+		any_array_push(presets, util_particle_preset_name(i));
+	}
+	i32 preset = 0;
+	ui_combo(&preset, presets, tr("Preset"), true, UI_ALIGN_LEFT, true);
+	if (preset > 0) {
+		util_particle_apply_preset(preset - 1);
+	}
+	string_array_t *shapes = any_array_create_from_raw_tmp((void *[]){tr("Point"), tr("Disk"), tr("Ring"), tr("Line")}, 4);
+	ui_combo(&g_context->particle_shape, shapes, tr("Emitter"), true, UI_ALIGN_LEFT, true);
+	f32 count = g_context->particle_count;
+	ui_slider(&count, tr("Count"), 1.0, 8.0, true, 1.0, true, UI_ALIGN_RIGHT, true);
+	g_context->particle_count = (i32)(count + 0.5f);
+	ui_slider(&g_context->particle_rate, tr("Rate"), 0.5, 20.0, true, 10.0, true, UI_ALIGN_RIGHT, true);
 	ui_slider(&g_context->particle_lifetime, tr("Lifetime"), 0.0, 10.0, true, 1.0, true, UI_ALIGN_RIGHT, true);
 	ui_slider(&g_context->particle_spawn_distance, tr("Distance"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 	ui_slider(&g_context->particle_mass, tr("Mass"), 0.0, 3.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
@@ -171,7 +197,7 @@ void ui_header_draw_tool_properties_color_picker_base() {
 	ui_slider(&g_context->picked_color->opacity, tr("Opacity"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 	g_context->picked_color->opacity = math_max(0.0, math_min(1.0, g_context->picked_color->opacity));
 
-	if (g_config->tools != TOOLS_SCULPT) {
+	{
 		ui_row2();
 		ui_text(tr("Normal"), UI_ALIGN_LEFT, 0x00000000);
 		ui_state_t state = ui_swatch(g_context->picked_color->normal);
@@ -263,6 +289,101 @@ static void ui_header_crop_layers() {
 	g_context->select_active = false;
 	layers_on_resized();
 	ui_view2d_hwnd->redraws = 2;
+}
+
+// Toggles for what the keyboard modifiers do on desktop, so they work with a pen or a finger
+static void ui_header_draw_toggles() {
+	i32  t     = g_context->tool;
+	bool brush = t == TOOL_TYPE_BRUSH || t == TOOL_TYPE_ERASER || t == TOOL_TYPE_CLONE || t == TOOL_TYPE_BLUR;
+	if (brush) {
+		ui_check(&g_context->brush_straight_line, tr("Straight Line"), "");
+		if (g_ui->is_hovered) {
+			ui_tooltip(tr("Each stroke starts where the previous one ended, tap to draw straight lines"));
+		}
+	}
+	if (t == TOOL_TYPE_BRUSH || t == TOOL_TYPE_ERASER || context_is_decal()) {
+		ui_check(&g_context->brush_camera_align, tr("Camera Align"), "");
+		if (g_ui->is_hovered) {
+			ui_tooltip(tr("The brush faces the screen instead of following the surface"));
+		}
+	}
+	if (context_is_decal()) {
+		ui_check(&g_context->decal_mask_toggle, tr("Decal Mask"), "");
+		if (ui_item_changed()) {
+			make_material_parse_paint_material(true);
+		}
+	}
+	if (brush || context_is_decal()) {
+		ui_check(&g_context->grid_snap_toggle, tr("Grid Snap"), "");
+	}
+	if (g_context->brush_stencil_image != NULL) {
+		ui_check(&g_context->stencil_edit, tr("Edit Stencil"), "");
+		if (g_ui->is_hovered) {
+			ui_tooltip(tr("Drag to move the stencil, drag a corner to scale, the dot to rotate, pinch to scale"));
+		}
+		ui_check(&g_context->stencil_hide, tr("Hide Stencil"), "");
+	}
+}
+
+// Radial symmetry and the mirror center
+static void ui_header_draw_symmetry_extra(bool *changed) {
+	f32 radial = g_context->sym_radial;
+	ui_slider(&radial, tr("Radial"), 1.0, 16.0, true, 1.0, true, UI_ALIGN_RIGHT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Copies of the stroke turned around an axis of the object"));
+	}
+	i32 r = (i32)(radial + 0.5);
+	if (r < 1) {
+		r = 1;
+	}
+	if (r != g_context->sym_radial) {
+		g_context->sym_radial = r;
+		*changed              = true;
+	}
+	if (g_context->sym_radial > 1) {
+		string_array_t *axes = any_array_create_from_raw_tmp((void *[]){"X", "Y", "Z"}, 3);
+		ui_combo(&g_context->sym_radial_axis, axes, tr("Radial Axis"), true, UI_ALIGN_LEFT, true);
+	}
+	if (g_context->sym_x || g_context->sym_y || g_context->sym_z || g_context->sym_radial > 1) {
+		ui_check(&g_context->sym_center, tr("Mesh Center"), "");
+		if (g_ui->is_hovered) {
+			ui_tooltip(tr("Mirror and turn around the center of the mesh instead of the object origin"));
+		}
+	}
+}
+
+// Stroke: flow, stamps with spacing, scatter and jitter, smoothing, blur strength
+static void ui_header_draw_stroke_options(bool decal_mask) {
+	bool stamps = (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE) && !decal_mask;
+	if (stamps) {
+		ui_slider(&g_context->brush_flow, tr("Flow"), 0.01, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+		if (g_ui->is_hovered) {
+			ui_tooltip(tr("Paint added by each stamp, the stroke builds up to the opacity"));
+		}
+		ui_slider(&g_context->brush_spacing, tr("Spacing"), 0.0, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+		if (g_ui->is_hovered) {
+			ui_tooltip(tr("Distance between brush stamps in brush sizes, 0 paints a continuous stroke"));
+		}
+		if (g_context->brush_spacing > 0.0) {
+			ui_slider(&g_context->brush_scatter, tr("Scatter"), 0.0, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+			ui_slider(&g_context->brush_jitter_size, tr("Size Jitter"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+			bool had_angle = g_context->brush_jitter_angle > 0.0;
+			ui_slider(&g_context->brush_jitter_angle, tr("Angle Jitter"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+			if (ui_item_changed() && had_angle != (g_context->brush_jitter_angle > 0.0)) {
+				make_material_parse_paint_material(true); // Stamp rotation is compiled in only when used
+			}
+			ui_slider(&g_context->brush_jitter_opacity, tr("Opacity Jitter"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+		}
+	}
+	if (stamps || g_context->tool == TOOL_TYPE_BLUR) {
+		ui_slider(&g_context->brush_smoothing, tr("Smoothing"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+		if (g_ui->is_hovered) {
+			ui_tooltip(tr("The brush trails the pen on a string for steady lines"));
+		}
+	}
+	if (g_context->tool == TOOL_TYPE_BLUR) {
+		ui_slider(&g_context->brush_strength, tr("Strength"), 0.01, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+	}
 }
 
 void ui_header_draw_tool_properties() {
@@ -409,7 +530,7 @@ void ui_header_draw_tool_properties() {
 					map_free(vars);
 				}
 				if (!context_is_decal()) {
-					ui_header_pressure_toggle(&g_config->pressure_radius);
+					ui_header_pressure_toggle(&g_config->dyn_size);
 				}
 			}
 		}
@@ -441,9 +562,23 @@ void ui_header_draw_tool_properties() {
 				    vars));
 				map_free(vars);
 			}
-			ui_header_pressure_toggle(&g_config->pressure_angle);
+			{
+				i32 dyn_angle = g_config->dyn_angle;
+				ui_header_pressure_toggle(&g_config->dyn_angle);
+				if (dyn_angle != g_config->dyn_angle) {
+					make_material_parse_paint_material(true);
+				}
+			}
 
 			if (angle_changed) {
+				make_material_parse_paint_material(true);
+			}
+		}
+
+		// Eraser rotates its brush mask, clone rotates the source around the brush
+		if (g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE) {
+			ui_slider(&g_context->brush_angle, tr("Angle"), 0.0, 360.0, true, 1, true, UI_ALIGN_RIGHT, true);
+			if (ui_item_changed()) {
 				make_material_parse_paint_material(true);
 			}
 		}
@@ -459,16 +594,18 @@ void ui_header_draw_tool_properties() {
 			               vars));
 			map_free(vars);
 		}
-		ui_header_pressure_toggle(&g_config->pressure_opacity);
+		ui_header_pressure_toggle(&g_config->dyn_opacity);
 
 		if (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE || decal_mask ||
 		    g_context->tool == TOOL_TYPE_PARTICLE) {
 			ui_header_pressure_row();
 			ui_slider(&g_context->brush_hardness, tr("Hardness"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-			ui_header_pressure_toggle(&g_config->pressure_hardness);
+			ui_header_pressure_toggle(&g_config->dyn_hardness);
 		}
 
-		if (g_context->tool != TOOL_TYPE_ERASER && g_config->tools != TOOLS_SCULPT) {
+		ui_header_draw_stroke_options(decal_mask);
+
+		if (g_context->tool != TOOL_TYPE_ERASER) {
 			string_array_t *brush_blending_combo = any_array_create_from_raw_tmp(
 			    (void *[]){
 			        tr("Mix"),
@@ -497,7 +634,7 @@ void ui_header_draw_tool_properties() {
 			}
 		}
 
-		if ((g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL) && g_config->tools != TOOLS_SCULPT) {
+		if (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL) {
 			string_array_t *texcoord_combo = any_array_create_from_raw_tmp(
 			    (void *[]){
 			        tr("UV Map"),
@@ -553,7 +690,7 @@ void ui_header_draw_tool_properties() {
 			}
 		}
 
-		if (g_context->tool == TOOL_TYPE_BLUR && g_config->tools != TOOLS_SCULPT) {
+		if (g_context->tool == TOOL_TYPE_BLUR) {
 			string_array_t *blur_type_combo = any_array_create_from_raw_tmp(
 			    (void *[]){
 			        tr("Blur"),
@@ -592,6 +729,8 @@ void ui_header_draw_tool_properties() {
 			}
 		}
 		else {
+			ui_header_draw_toggles();
+
 			i32  _w           = g_ui->_w;
 			f32  sc           = UI_SCALE();
 			bool touch_header = (g_config->touch_ui && g_config->header_pinned);
@@ -648,6 +787,8 @@ void ui_header_draw_tool_properties() {
 				ui_check(&g_context->sym_z, string_tmp("%s %s", tr("Symmetry"), tr("Z")), "");
 				sym_changed |= ui_item_changed();
 			}
+
+			ui_header_draw_symmetry_extra(&sym_changed);
 
 			if (sym_changed) {
 				make_material_parse_paint_material(true);

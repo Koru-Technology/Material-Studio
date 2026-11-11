@@ -593,7 +593,9 @@ void pen_up_listener(i32 x, i32 y, f32 pressure) {
 	pen_buttons_released->buffer[0] = true;
 	pen_x                           = (f32)x;
 	pen_y                           = (f32)y;
-	pen_pressure                    = pressure;
+	if (pressure > 0.0f) { // Lifting the pen reports no pressure, the stroke ends with the last one
+		pen_pressure = pressure;
+	}
 
 #if !defined(IRON_ANDROID) && !defined(IRON_IOS)
 	mouse_up_listener(0, x, y);

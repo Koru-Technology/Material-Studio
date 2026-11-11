@@ -644,11 +644,6 @@ void history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask) {
 		// render_path_draw_shader("Scene/copy_pass/copyR8_pass");
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
 	}
-	else if (g_context->layer->texpaint_sculpt != NULL) {
-		render_path_set_target(string_tmp("texpaint_sculpt_undo%s", to_id_s), NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-		render_path_bind_target(string("texpaint_sculpt%s", from_id_s), "tex");
-		render_path_draw_shader("Scene/copy_pass/copyRGBA128_pass");
-	}
 	else {
 		string_array_t *additional = any_array_create_from_raw(
 		    (void *[]){

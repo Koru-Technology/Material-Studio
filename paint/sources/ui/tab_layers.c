@@ -584,12 +584,6 @@ void tab_layers_draw_layer_context_menu_apply(void *_) {
 	g_context->layers_preview_dirty = true;
 }
 
-void tab_layers_draw_layer_context_menu_apply_sculpt(void *_) {
-	slot_layer_t *l  = tab_layers_l;
-	g_context->layer = l;
-	slot_layer_apply_sculpt(l);
-}
-
 void tab_layers_draw_layer_context_menu_invert(void *_) {
 	slot_layer_t *l = tab_layers_l;
 	context_set_layer(l);
@@ -728,10 +722,6 @@ void tab_layers_draw_layer_context_menu_draw() {
 		}
 	}
 
-	if (slot_layer_is_layer(l) && l->texpaint_sculpt != NULL && ui_menu_button(tr("Apply Sculpt"), "", ICON_CHECK)) {
-		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_apply_sculpt, NULL);
-	}
-
 	g_ui->enabled = tab_layers_can_delete(l);
 	if (ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_delete, NULL);
@@ -766,7 +756,7 @@ void tab_layers_draw_layer_context_menu_draw() {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_duplicate, NULL);
 	}
 
-	if (!slot_layer_is_group(l) && !slot_layer_is_mask(l) && !slot_layer_is_filter(l) && l->texpaint_sculpt == NULL) {
+	if (!slot_layer_is_group(l) && !slot_layer_is_mask(l) && !slot_layer_is_filter(l)) {
 		ui_menu_align();
 		if (tab_layers_combo_blending(l, true)) {
 			ui_menu_keep_open = true;
@@ -876,7 +866,7 @@ void tab_layers_draw_layer_context_menu_draw() {
 		bool channels_changed = tab_layers_channel_check(&l->paint_base, tr("Base Color"));
 		channels_changed |= tab_layers_channel_check(&l->paint_opac, tr("Opacity"));
 
-		if (g_config->tools != TOOLS_SCULPT) {
+		{
 			ui_row2();
 			channels_changed |= tab_layers_channel_check(&l->paint_nor, tr("Normal"));
 			channels_changed |= tab_layers_channel_check(&l->paint_nor_blend, tr("Normal Blend"));
@@ -913,14 +903,6 @@ static bool tab_layers_slot_hidden(slot_layer_t *l) {
 	}
 
 	if (g_context->layer_filter > 0 && slot_layer_get_object_mask(l) > 0 && slot_layer_get_object_mask(l) != g_context->layer_filter) {
-		return true;
-	}
-
-	bool is_sculpt_layer = l->texpaint_sculpt != NULL;
-	if (g_config->tools == TOOLS_SCULPT && !is_sculpt_layer && !slot_layer_is_group(l) && !slot_layer_is_mask(l)) {
-		return true;
-	}
-	if (g_config->tools != TOOLS_SCULPT && is_sculpt_layer) {
 		return true;
 	}
 
@@ -1027,22 +1009,11 @@ void tab_layers_button_new_black_mask(slot_layer_t *m) {
 	slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 }
 
-void tab_layers_button_new_sculpt_layer(void *_) {
-	sculpt_layers_create_sculpt_layer();
-}
-
 void tab_layers_button_new_menu() {
 	slot_layer_t *l = g_context->layer;
-	if (g_config->tools == TOOLS_SCULPT) {
-		if (ui_menu_button(tr("Sculpt Layer"), "", ICON_PAINT)) {
-			sys_notify_on_next_frame(&tab_layers_button_new_sculpt_layer, NULL);
-		}
-	}
-	else {
-		if (ui_menu_button(tr("Paint Layer"), "", ICON_PAINT)) {
-			layers_new_layer(true, -1, NULL);
-			history_new_layer();
-		}
+	if (ui_menu_button(tr("Paint Layer"), "", ICON_PAINT)) {
+		layers_new_layer(true, -1, NULL);
+		history_new_layer();
 	}
 	if (ui_menu_button(tr("Fill Layer"), "", ICON_SPHERE)) {
 		layers_create_fill_layer(UV_TYPE_UVMAP, mat4_nan(), -1);
@@ -1296,6 +1267,19 @@ void tab_layers_draw_edit() {
 	if (g_ui->changed) {
 		ui_menu_keep_open = true;
 		ui_dock_redraw(TAB_AREA_SIDEBAR0);
+	}
+
+	ui_menu_align();
+	ui_check(&g_project->linear_blending, tr("Linear Blending"), "");
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Layers and strokes blend colors in linear space, as in Substance and Blender. Projects made before keep gamma blending"));
+	}
+	if (ui_item_changed()) {
+		make_material_parse_mesh_material();
+		make_material_parse_paint_material(true);
+		g_context->ddirty               = 2;
+		g_context->layers_preview_dirty = true;
+		ui_menu_keep_open               = true;
 	}
 }
 

@@ -28,19 +28,6 @@ node_shader_context_t *make_depth_run(material_t *data) {
 
 	node_shader_write_vert(kong, "output.pos = constants.VP * float4(output.wposition.xyz, 1.0);");
 
-	// {
-	// 	slot_layer_t_array_t *sculpt_layers  = any_array_create_from_raw((void *[]){}, 0);
-	// 	i32_array_t          *sculpt_indices = i32_array_create(0);
-	// 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-	// 		slot_layer_t *l = g_project->_->layers->buffer[i];
-	// 		if (l->texpaint_sculpt != NULL && slot_layer_is_visible(l)) {
-	// 			any_array_push(sculpt_layers, l);
-	// 			i32_array_push(sculpt_indices, i);
-	// 		}
-	// 	}
-	// 	sculpt_make_mesh_run(kong, sculpt_layers, sculpt_indices);
-	// }
-
 	con_depth->data->color_writes_red = u8_array_create_from_raw(
 	    (u8[]){
 	        false,

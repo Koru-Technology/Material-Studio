@@ -93,8 +93,7 @@ typedef enum {
 
 typedef enum {
 	TOOLS_PAINT  = 0,
-	TOOLS_SCULPT = 1,
-	TOOLS_OBJECT = 2,
+	TOOLS_OBJECT = 2, // 1 was sculpt, kept free so saved configs and scripts keep their values
 } tools_t;
 
 typedef enum {
@@ -137,21 +136,6 @@ typedef enum {
 	UV_TYPE_TRIPLANAR = 1,
 	UV_TYPE_PROJECT   = 2,
 } uv_type_t;
-
-typedef enum {
-	SCULPT_TYPE_DRAW    = 0,
-	SCULPT_TYPE_GRAB    = 1,
-	SCULPT_TYPE_INFLATE = 2,
-	SCULPT_TYPE_FLATTEN = 3,
-	SCULPT_TYPE_CLAY    = 4,
-	SCULPT_TYPE_PINCH   = 5,
-	SCULPT_TYPE_CREASE  = 6,
-	SCULPT_TYPE_CLOTH   = 7,
-	SCULPT_TYPE_TWIST   = 8,
-	SCULPT_TYPE_STRETCH = 9,
-	SCULPT_TYPE_TRIM    = 10,
-	SCULPT_TYPE_PLATEAU = 11,
-} sculpt_type_t;
 
 typedef enum {
 	BLEND_TYPE_MIX          = 0,

@@ -108,6 +108,9 @@ void context_init() {
 	g_context->particle_mass                = 1.0;
 	g_context->particle_random              = 0.1;
 	g_context->particle_spawn_distance      = 0.0;
+	g_context->particle_shape               = 0;
+	g_context->particle_count               = 1;
+	g_context->particle_rate                = 5.0;
 	g_context->layer_filter                 = 0;
 	g_context->gizmo_started                = false;
 	g_context->gizmo_offset                 = 0.0;
@@ -147,6 +150,22 @@ void context_init() {
 	g_context->brush_lazy_step              = 0.0;
 	g_context->brush_lazy_x                 = 0.0;
 	g_context->brush_lazy_y                 = 0.0;
+	g_context->brush_spacing                = 0.0;
+	g_context->brush_scatter                = 0.0;
+	g_context->brush_jitter_size            = 0.0;
+	g_context->brush_jitter_angle           = 0.0;
+	g_context->brush_jitter_opacity         = 0.0;
+	g_context->brush_flow                   = 1.0;
+	g_context->brush_smoothing              = 0.0;
+	g_context->brush_strength               = 0.5;
+	g_context->brush_dab_x                  = -1.0;
+	g_context->brush_dab_y                  = -1.0;
+	g_context->brush_dab_radius             = 1.0;
+	g_context->brush_dab_opacity            = 1.0;
+	g_context->brush_dab_angle              = 0.0;
+	g_context->brush_speed                  = 0.0;
+	g_context->brush_stroke_angle           = 0.0;
+	g_context->brush_builtin                = -1;
 	g_context->brush_paint                  = UV_TYPE_UVMAP;
 	g_context->brush_angle_reject_dot       = 0.5;
 	g_context->bake_type                    = BAKE_TYPE_CURVATURE;
@@ -165,6 +184,14 @@ void context_init() {
 	g_context->sym_x                        = false;
 	g_context->sym_y                        = false;
 	g_context->sym_z                        = false;
+	g_context->sym_radial                   = 1;
+	g_context->sym_radial_axis              = 2;
+	g_context->sym_center                   = false;
+	g_context->brush_straight_line          = false;
+	g_context->stencil_edit                 = false;
+	g_context->stencil_hide                 = false;
+	g_context->decal_mask_toggle            = false;
+	g_context->grid_snap_toggle             = false;
 	g_context->fill_type                    = FILL_TYPE_OBJECT;
 	g_context->blur_type                    = BLUR_TYPE_BLUR;
 	g_context->paint2d                      = false;
@@ -173,6 +200,20 @@ void context_init() {
 	g_context->color_picker_previous_tool   = TOOL_TYPE_BRUSH;
 	g_context->brush_radius                 = 0.5;
 	g_context->brush_hardness               = 1.0;
+	if (g_config != NULL && g_config->brush_radius > 0.0) { // Brush settings of the last session
+		g_context->brush_radius = g_config->brush_radius;
+		g_context->brush_opacity = g_config->brush_opacity;
+		g_context->brush_hardness = g_config->brush_hardness;
+		g_context->brush_flow = g_config->brush_flow;
+		g_context->brush_spacing = g_config->brush_spacing;
+		g_context->brush_scatter = g_config->brush_scatter;
+		g_context->brush_jitter_size = g_config->brush_jitter_size;
+		g_context->brush_jitter_angle = g_config->brush_jitter_angle;
+		g_context->brush_jitter_opacity = g_config->brush_jitter_opacity;
+		g_context->brush_smoothing = g_config->brush_smoothing;
+		g_context->brush_strength = g_config->brush_strength;
+		g_context->brush_builtin = g_config->brush_builtin;
+	}
 	g_context->project_type                 = -1;
 }
 
@@ -419,7 +460,23 @@ bool context_is_decal() {
 }
 
 bool context_is_decal_mask() {
-	return context_is_decal() && keymap_shortcut(any_map_get(g_keymap, "decal_mask"), SHORTCUT_TYPE_DOWN);
+	return context_is_decal() && (g_context->decal_mask_toggle || keymap_shortcut(any_map_get(g_keymap, "decal_mask"), SHORTCUT_TYPE_DOWN));
+}
+
+// Stencil transform by its key, or by the Edit Stencil toggle on touch
+bool context_is_stencil_editing() {
+	return g_context->brush_stencil_image != NULL &&
+	       (g_context->stencil_edit || keymap_shortcut(any_map_get(g_keymap, "stencil_transform"), SHORTCUT_TYPE_DOWN));
+}
+
+bool context_is_stencil_hidden() {
+	return g_context->stencil_hide || keymap_shortcut(any_map_get(g_keymap, "stencil_hide"), SHORTCUT_TYPE_DOWN);
+}
+
+// Stroke starting at the end of the previous one: ruler key held, or the Straight Line toggle
+bool context_is_ruler_paint() {
+	return keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "brush_ruler"), any_map_get(g_keymap, "action_paint")), SHORTCUT_TYPE_DOWN) ||
+	       (g_context->brush_straight_line && (mouse_down("left") || pen_down("tip")));
 }
 
 bool context_is_brush_camera_align() {
@@ -429,7 +486,8 @@ bool context_is_brush_camera_align() {
 
 bool context_is_decal_mask_paint() {
 	return context_is_decal() &&
-	       keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "decal_mask"), any_map_get(g_keymap, "action_paint")), SHORTCUT_TYPE_DOWN);
+	       (keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "decal_mask"), any_map_get(g_keymap, "action_paint")), SHORTCUT_TYPE_DOWN) ||
+	        (g_context->decal_mask_toggle && (mouse_down("left") || pen_down("tip"))));
 }
 
 bool context_is_decal_mask_paint_pass() {
@@ -446,8 +504,7 @@ void context_set_viewport_mode(viewport_mode_t mode) {
 		return;
 	}
 
-	viewport_mode_t prev_viewport_mode = g_context->viewport_mode;
-	g_context->viewport_mode           = mode;
+	g_context->viewport_mode = mode;
 
 	if (context_use_lit()) {
 		render_path_commands = render_path_lit_commands;
@@ -464,23 +521,6 @@ void context_set_viewport_mode(viewport_mode_t mode) {
 	// Bake in lit mode for now
 	if (g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE && g_context->tool == TOOL_TYPE_BAKE) {
 		g_context->viewport_mode = VIEWPORT_MODE_LIT;
-	}
-
-	bool has_sculpt = false;
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		if (g_project->_->layers->buffer[i]->texpaint_sculpt != NULL && slot_layer_is_visible(g_project->_->layers->buffer[i])) {
-			has_sculpt = true;
-			break;
-		}
-	}
-	if (has_sculpt) {
-		if (g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE) {
-			sculpt_bake_to_mesh();
-		}
-		else if (prev_viewport_mode == VIEWPORT_MODE_PATH_TRACE) {
-			// Restore un-sculpted mesh
-			util_mesh_merge(NULL);
-		}
 	}
 }
 

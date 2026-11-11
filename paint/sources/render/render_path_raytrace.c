@@ -262,16 +262,6 @@ gpu_texture_t *render_path_raytrace_update_env_cdf() {
 
 void render_path_raytrace_init() {}
 
-static bool render_path_raytrace_sculpt_visible() {
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->texpaint_sculpt != NULL && slot_layer_is_visible(l)) {
-			return true;
-		}
-	}
-	return false;
-}
-
 static i32 render_path_raytrace_override_slot(mesh_data_t *data) {
 	for (i32 i = 0; i < render_path_raytrace_override_count; ++i) {
 		if (render_path_raytrace_override_data[i] == data) {
@@ -320,7 +310,7 @@ static bool render_path_raytrace_override_targets(i32 count) {
 		t->name            = "raytrace_override_mask";
 		t->width           = width;
 		t->height          = height;
-		t->format          = "R8";
+		t->format          = "R16"; // Same format as the paint pass stroke mask
 		render_path_create_render_target(t);
 	}
 	while (render_path_raytrace_override_allocated < count) {
@@ -411,9 +401,6 @@ static bool render_path_raytrace_overrides_visible() {
 }
 
 static bool render_path_raytrace_overrides_changed() {
-	if (render_path_raytrace_sculpt_visible()) {
-		return false;
-	}
 	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 		mesh_object_t *po = g_project->_->paint_objects->buffer[i];
 		if (!po->base->visible) {
@@ -559,7 +546,7 @@ void render_path_raytrace_raytrace_init(char *shader_name, bool build) {
 	mesh_object_t *merged = g_context->merged_object;
 	bool           moving = render_path_raytrace_moving || tab_timeline_playing;
 	if (merged != NULL && merged->base->visible && !util_mesh_merged_stale &&
-	    (render_path_raytrace_sculpt_visible() || (!render_path_raytrace_overrides_visible() && !moving && !util_mesh_merged_partial()))) {
+	    (!render_path_raytrace_overrides_visible() && !moving && !util_mesh_merged_partial())) {
 		render_path_raytrace_override_count = 0;
 		transform_t *t                      = merged->base->transform;
 		t->scale_world                      = merged->data->scale_pos;

@@ -5,9 +5,6 @@ i32 uniforms_ext_i32_link(object_t *object, shader_data_t *mat, char *link) {
 	if (string_equals(link, "_bloom_current_mip")) {
 		return render_path_base_bloom_current_mip;
 	}
-	else if (string_equals(link, "_sculpt_vertex_offset")) {
-		return sculpt_object_vertex_offset(object->ext);
-	}
 	return INT_MAX;
 }
 
@@ -18,9 +15,9 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		f32  brush_decal_mask_radius = g_context->brush_decal_mask_radius;
 		brush_decal_mask_radius *= 2.0;
 		f32 radius = decal_mask ? brush_decal_mask_radius : g_context->brush_radius;
-		f32 val    = (radius * g_context->brush_nodes_radius) / 15.0;
-		if (g_config->pressure_radius && (pen_down("tip") || pen_released("tip")) && !decal && !slot_layer_is_path(g_context->layer)) {
-			val *= pen_pressure * g_config->pressure_sensitivity;
+		f32 val    = (radius * g_context->brush_nodes_radius * g_context->brush_dab_radius) / 15.0;
+		if (!decal) {
+			val *= util_brush_dynamic(g_config->dyn_size);
 		}
 		f32 scale2d = (900 / (float)base_h()) * g_config->window_scale;
 		if (!decal) {
@@ -51,7 +48,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_tonemap_strength")) {
 		bool tonemap = g_context->viewport_mode == VIEWPORT_MODE_LIT || g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE;
-		return tonemap ? 1.0 : 0.0;
+		return tonemap ? (f32)(g_config->rp_view_transform + 1) : 0.0; // 1 filmic, 2 aces, 3 agx, 4 standard
 	}
 	else if (string_equals(link, "_lut_size")) {
 		return lut_image != NULL ? (f32)lut_size : 0.0;
@@ -63,6 +60,13 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		f32 base = g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE ? 0.2 : 0.02;
 		return base * g_config->rp_bloom;
 	}
+	else if (string_equals(link, "_brush_flow")) {
+		bool stamps = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
+		return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_config->dyn_flow) : 1.0;
+	}
+	else if (string_equals(link, "_brush_strength")) {
+		return g_context->brush_strength;
+	}
 	else if (string_equals(link, "_brush_scale_x")) {
 		return 1 / (float)g_context->brush_scale_x;
 	}
@@ -70,10 +74,8 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		return g_context->picker_color_mask_tolerance;
 	}
 	else if (string_equals(link, "_brush_opacity")) {
-		f32 val = g_context->brush_opacity * g_context->brush_nodes_opacity;
-		if (g_config->pressure_opacity && (pen_down("tip") || pen_released("tip")) && !slot_layer_is_path(g_context->layer)) {
-			val *= pen_pressure * g_config->pressure_sensitivity;
-		}
+		f32 val = g_context->brush_opacity * g_context->brush_nodes_opacity * g_context->brush_dab_opacity;
+		val *= util_brush_dynamic(g_config->dyn_opacity);
 		return math_max(0.0, math_min(1.0, val));
 	}
 	else if (string_equals(link, "_brush_hardness")) {
@@ -82,13 +84,8 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 			return 1.0;
 		}
 		f32 val = fmaxf((g_context->brush_hardness * g_context->brush_nodes_hardness) - 0.02, 0.0);
-		if (g_config->pressure_hardness && (pen_down("tip") || pen_released("tip")) && !slot_layer_is_path(g_context->layer)) {
-			val *= pen_pressure * g_config->pressure_sensitivity;
-		}
+		val *= util_brush_dynamic(g_config->dyn_hardness);
 		val *= val;
-		if (g_config->tools == TOOLS_SCULPT) {
-			val *= 0.8;
-		}
 		return val;
 	}
 	else if (string_equals(link, "_brush_scale")) {
@@ -101,23 +98,6 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_object_id")) {
 		return array_index_of(g_project->_->paint_objects, object->ext);
-	}
-	else if (string_equals(link, "_sculpt_mask_offset")) {
-		i32 om = slot_layer_get_object_mask(g_context->layer);
-		if (om <= 0 || om > g_project->_->paint_objects->length) {
-			return 0;
-		}
-		return sculpt_object_texel_offset(om - 1);
-	}
-	else if (string_equals(link, "_sculpt_mask_count")) {
-		i32 om = slot_layer_get_object_mask(g_context->layer);
-		if (om <= 0 || om > g_project->_->paint_objects->length) {
-			return config_get_texture_res_x() * config_get_texture_res_y();
-		}
-		return sculpt_object_texel_count(om - 1);
-	}
-	else if (string_equals(link, "_sculpt_cloth_drag")) {
-		return sculpt_get_cloth_drag();
 	}
 	else if (string_equals(link, "_dilate_radius")) {
 		return util_uv_dilatemap != NULL ? g_config->dilate_radius : 0.0;
@@ -195,12 +175,20 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 	else if (string_equals(link, "_texpaint_size")) {
 		return (vec2_t){config_get_texture_res_x(), config_get_texture_res_y()};
 	}
+	else if (string_equals(link, "_brush_dab_angle")) {
+		return (vec2_t){math_cos(-g_context->brush_dab_angle), math_sin(-g_context->brush_dab_angle)};
+	}
 	else if (string_equals(link, "_brush_angle")) {
 		f32 brush_angle = g_context->brush_angle + g_context->brush_nodes_angle;
 		f32 angle       = g_context->layer->fill_material != NULL ? g_context->layer->angle : brush_angle;
 		angle *= (math_pi() / 180.0);
-		if (g_config->pressure_angle && (pen_down("tip") || pen_released("tip")) && !slot_layer_is_path(g_context->layer)) {
-			angle *= pen_pressure * g_config->pressure_sensitivity;
+		if (g_context->layer->fill_material == NULL && !slot_layer_is_path(g_context->layer)) {
+			if (g_config->dyn_angle == 1 && (pen_down("tip") || pen_released("tip"))) {
+				angle += util_brush_pen_pressure() * math_pi(); // Pressure turns the brush up to half a turn
+			}
+			else if (g_config->dyn_angle == 3 && g_context->brush_time > 0) {
+				angle += g_context->brush_stroke_angle; // Follows the stroke
+			}
 		}
 		return (vec2_t){math_cos(-angle), math_sin(-angle)};
 	}
@@ -304,7 +292,7 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 	}
 	else if (string_equals(link, "_envmap_data_world")) {
 		bool tonemap = g_context->viewport_mode == VIEWPORT_MODE_LIT || g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE;
-		return (vec4_t){g_context->envmap_angle, tonemap ? 0.0 : 1.0, 0.0, g_context->show_envmap ? scene_world->strength : 1.0};
+		return (vec4_t){g_context->envmap_angle, tonemap ? 0.0 : (f32)(g_config->rp_view_transform + 1), 0.0, g_context->show_envmap ? scene_world->strength : 1.0};
 	}
 	else if (string_equals(link, "_stencil_transform")) {
 		vec4_t v = (vec4_t){g_context->brush_stencil_x, g_context->brush_stencil_y, g_context->brush_stencil_scale, g_context->brush_stencil_angle};
@@ -326,32 +314,6 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 }
 
 mat4_t uniforms_ext_mat4_link(object_t *object, shader_data_t *mat, char *link) {
-	if (string_equals(link, "_sculpt_symmetry_reflect")) {
-		transform_t *t       = object->transform;
-		mat4_t       W       = t->world;
-		vec4_t       axes[3] = {
-            vec4_norm((vec4_t){W.m00, W.m10, W.m20, 0.0}),
-            vec4_norm((vec4_t){W.m01, W.m11, W.m21, 0.0}),
-            vec4_norm((vec4_t){W.m02, W.m12, W.m22, 0.0}),
-        };
-		f32    scale[3] = {t->scale.x, t->scale.y, t->scale.z};
-		mat4_t F        = mat4_identity();
-		for (i32 i = 0; i < 3; ++i) {
-			if (scale[i] < 0.0f) {
-				vec4_t a = axes[i];
-				F.m00 -= 2.0f * a.x * a.x;
-				F.m01 -= 2.0f * a.x * a.y;
-				F.m02 -= 2.0f * a.x * a.z;
-				F.m10 -= 2.0f * a.y * a.x;
-				F.m11 -= 2.0f * a.y * a.y;
-				F.m12 -= 2.0f * a.y * a.z;
-				F.m20 -= 2.0f * a.z * a.x;
-				F.m21 -= 2.0f * a.z * a.y;
-				F.m22 -= 2.0f * a.z * a.z;
-			}
-		}
-		return F;
-	}
 	if (string_equals(link, "_decal_layer_matrix")) { // Decal layer
 		mat4_t m            = mat4_inv(g_context->layer->decal_mat);
 		f32    parent_scale = object->parent != NULL ? object->parent->transform->scale.x : 1.0;
@@ -420,22 +382,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 	}
 	else if (string_equals(link, "_texpaint_pack_ref")) {
 		return _uniforms_ext_get_target("texpaint_pack_ref");
-	}
-	else if (string_equals(link, "_texpaint_sculpt_undo")) {
-		return _uniforms_ext_get_target("texpaint_sculpt_ref"); // Per-frame accumulation reference
-	}
-	else if (string_equals(link, "_texpaint_sculpt_stroke")) {
-		i32 i = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
-		return _uniforms_ext_get_target(string_tmp("texpaint_sculpt_undo%d", i));
-	}
-	else if (string_equals(link, "_sculpt_remap")) {
-		return sculpt_get_remap_texture();
-	}
-	else if (string_equals(link, "_sculpt_adj0")) {
-		return sculpt_get_adj_texture(0);
-	}
-	else if (string_equals(link, "_sculpt_adj1")) {
-		return sculpt_get_adj_texture(1);
 	}
 	else if (string_equals(link, "_texviewport")) {
 		gpu_texture_t *image = g_context->viewport_texture;
@@ -520,14 +466,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 	if (starts_with(link, "_texpaint_pack")) {
 		i32 tid = parse_int(link + string_length("_texpaint_pack"));
 		return tid < g_project->_->layers->length ? uniforms_layer_tex(g_project->_->layers->buffer[tid]->texpaint_pack) : NULL;
-	}
-	if (string_equals(link, "_texpaint_sculpt_base")) {
-		render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_sculpt_base");
-		return rt != NULL ? rt->_image : NULL;
-	}
-	if (starts_with(link, "_texpaint_sculpt")) {
-		i32 tid = parse_int(link + string_length("_texpaint_sculpt"));
-		return tid < g_project->_->layers->length ? g_project->_->layers->buffer[tid]->texpaint_sculpt : NULL;
 	}
 	if (starts_with(link, "_texpaint")) {
 		i32 tid = parse_int(link + string_length("_texpaint"));

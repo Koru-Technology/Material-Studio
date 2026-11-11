@@ -1,14 +1,20 @@
 
 #include "../global.h"
 
+// Corner and rotate handles, larger on touch
+i32 util_stencil_handle_size() {
+	return g_config->touch_ui ? math_floor(44 * UI_SCALE()) : 16;
+}
+
 void util_stencil_transform() {
-	if (g_context->brush_stencil_image != NULL && keymap_shortcut(any_map_get(g_keymap, "stencil_transform"), SHORTCUT_TYPE_DOWN)) {
+	if (context_is_stencil_editing()) {
 		rect_t *r = ui_base_get_brush_stencil_rect();
+		i32     h = util_stencil_handle_size();
 		if (mouse_started("left")) {
-			g_context->brush_stencil_scaling = ui_base_hit_rect(mouse_x, mouse_y, r->x - 8, r->y - 8, 16, 16) ||
-			                                   ui_base_hit_rect(mouse_x, mouse_y, r->x - 8, r->h + r->y - 8, 16, 16) ||
-			                                   ui_base_hit_rect(mouse_x, mouse_y, r->w + r->x - 8, r->y - 8, 16, 16) ||
-			                                   ui_base_hit_rect(mouse_x, mouse_y, r->w + r->x - 8, r->h + r->y - 8, 16, 16);
+			g_context->brush_stencil_scaling = ui_base_hit_rect(mouse_x, mouse_y, r->x - h / 2, r->y - h / 2, h, h) ||
+			                                   ui_base_hit_rect(mouse_x, mouse_y, r->x - h / 2, r->h + r->y - h / 2, h, h) ||
+			                                   ui_base_hit_rect(mouse_x, mouse_y, r->w + r->x - h / 2, r->y - h / 2, h, h) ||
+			                                   ui_base_hit_rect(mouse_x, mouse_y, r->w + r->x - h / 2, r->h + r->y - h / 2, h, h);
 			f32 cosa = math_cos(-g_context->brush_stencil_angle);
 			f32 sina = math_sin(-g_context->brush_stencil_angle);
 			f32 ox   = 0;
@@ -17,7 +23,7 @@ void util_stencil_transform() {
 			f32 y    = ox * sina + oy * cosa;
 			x += r->x + r->w / 2.0;
 			y += r->y + r->h / 2.0;
-			g_context->brush_stencil_rotating = ui_base_hit_rect(mouse_x, mouse_y, math_floor(x - 16), math_floor(y - 16), 32, 32);
+			g_context->brush_stencil_rotating = ui_base_hit_rect(mouse_x, mouse_y, math_floor(x - h), math_floor(y - h), h * 2, h * 2);
 		}
 		f32 _scale = g_context->brush_stencil_scale;
 		if (mouse_down("left")) {

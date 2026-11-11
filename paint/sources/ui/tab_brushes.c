@@ -29,7 +29,6 @@ void tab_brushes_draw_make_selected_preview(void *_) {
 	make_material_parse_brush();
 	brush_output_node_parse_inputs();
 	util_render_make_brush_preview();
-	// Skipped while sculpting, redrawing would request it again
 	if (g_context->brush->preview_ready) {
 		ui_dock_redraw(-1);
 	}
@@ -77,6 +76,60 @@ void tab_brushes_draw_context_menu() {
 void tab_brushes_draw_edit() {
 	if (ui_menu_button(tr("Import"), "", ICON_IMPORT)) {
 		project_import_brush();
+	}
+}
+
+// Built-in brushes: tip and stroke settings, tap to use
+static void tab_brushes_draw_builtin() {
+	ui_separator(3, false);
+	ui_text(tr("Built-in"), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+	f32 a     = ui_base_asset_scale();
+	i32 imgw  = math_floor(50 * a * UI_SCALE());
+	i32 slotw = math_floor((50 * a + 1) * UI_SCALE());
+	i32 num   = math_floor(g_ui->_window_w / (float)slotw);
+	if (num < 1) {
+		num = 1;
+	}
+	i32          count = builtin_brush_count();
+	f32_array_t *ratio = f32_array_create_from_raw_tmp(NULL, num);
+	for (i32 i = 0; i < num; ++i) {
+		ratio->buffer[i] = 1 / (float)num;
+	}
+	for (i32 row = 0; row * num < count; ++row) {
+		ui_row(ratio);
+		for (i32 j = 0; j < num; ++j) {
+			i32 i = row * num + j;
+			if (i >= count) {
+				ui_end_element_of_size(imgw);
+				continue;
+			}
+			if (g_context->brush_builtin == i) {
+				ui_rect_round(-1, -1, 50 * a + 2, 50 * a + 2, g_theme->HIGHLIGHT_COL, 2 * UI_SCALE());
+			}
+			gpu_texture_t *icon      = builtin_brush_icon(i);
+			g_ui->image_scroll_align = false;
+			ui_fill(0, 0, 50 * a, 50 * a, 0xff1b1b1b);
+			ui_state_t state         = ui_image(icon, 0xffffffff, imgw);
+			g_ui->image_scroll_align = true;
+			if (state == UI_STATE_RELEASED) {
+				builtin_brush_use(i);
+			}
+			if (g_ui->is_hovered) {
+				ui_tooltip(builtin_brush_name(i));
+			}
+		}
+		if (g_config->show_asset_names) {
+			ui_row(ratio);
+			for (i32 j = 0; j < num; ++j) {
+				i32 i = row * num + j;
+				if (i >= count) {
+					ui_end_element_of_size(UI_ELEMENT_H());
+					continue;
+				}
+				ui_text(builtin_brush_name(i), UI_ALIGN_CENTER, 0x00000000);
+			}
+		}
+		g_ui->_y += 4 * UI_SCALE();
 	}
 }
 
@@ -178,6 +231,12 @@ void tab_brushes_draw(i32 *htab) {
 				}
 
 				if (state == UI_STATE_STARTED) {
+					if (g_context->brush_builtin >= 0) { // A project brush replaces the built-in tip
+						g_context->brush_builtin = -1;
+						brush_output_node_parse_inputs();
+						g_context->brush->preview_ready = false;
+						config_save();
+					}
 					if (g_context->brush != g_project->_->brushes->buffer[i]) {
 						context_select_brush(i);
 					}
@@ -258,6 +317,10 @@ void tab_brushes_draw(i32 *htab) {
 					context_select_brush(i + 1);
 				}
 			}
+		}
+
+		if (!g_config->hide_builtin_brushes) {
+			tab_brushes_draw_builtin();
 		}
 
 		ui_node_params_draw(CANVAS_TYPE_BRUSH, &g_config->brush_params);

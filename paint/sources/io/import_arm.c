@@ -305,6 +305,28 @@ void import_arm_rename_group(char *name, char *new_name, slot_material_t_array_t
 	}
 }
 
+// Absolute path of a file referenced by a project. iOS moves the app container between installs, a path inside the old container is
+// moved into the current one
+char *import_arm_abs(char *file, char *base) {
+	char *abs = data_is_abs(file) ? file : string("%s%s", base, file);
+#ifdef IRON_IOS
+	char *marker = "/Containers/Data/Application/";
+	char *home   = getenv("HOME");
+	i32   at     = string_index_of(abs, marker);
+	if (home != NULL && at >= 0 && !iron_file_exists(abs)) {
+		char *rest  = abs + at + string_length(marker);
+		char *slash = strchr(rest, '/'); // After the container id
+		if (slash != NULL) {
+			char *moved = string("%s%s", home, slash);
+			if (iron_file_exists(moved)) {
+				return moved;
+			}
+		}
+	}
+#endif
+	return abs;
+}
+
 void import_arm_make_pink(char *abs) {
 	console_error(string("%s %s", strings_could_not_locate_texture(), abs));
 	u8_array_t *b       = u8_array_create(4);
@@ -615,7 +637,7 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 			file = string_copy(string_replace_all(file, "\\", "/"));
 #endif
 			// Convert image path from relative to absolute
-			char *abs = data_is_abs(file) ? file : string("%s%s", base, file);
+			char *abs = import_arm_abs(file, base);
 			if (project->packed_assets != NULL) {
 				abs = string_copy(path_normalize(abs));
 				import_arm_unpack_asset(project, abs, file, true);
@@ -730,14 +752,6 @@ void import_arm_run_swatches_from_project(project_t *project, char *path, bool r
 	data_delete_blob(path);
 }
 
-static void import_arm_sculpt_init(void *_) {
-	if (history_undo_layers == NULL) {
-		return;
-	}
-	sculpt_init();
-	sys_remove_update(import_arm_sculpt_init);
-}
-
 void import_arm_run_project(char *path) {
 	bool keep_script_trust       = import_arm_keep_script_trust;
 	bool was_trusted             = project_scripts_trusted;
@@ -841,7 +855,7 @@ void import_arm_run_project(char *path) {
 
 	char *base = path_base_dir(path);
 	if (g_project->envmap != NULL) {
-		g_project->envmap = data_is_abs(g_project->envmap) ? g_project->envmap : string("%s%s", base, g_project->envmap);
+		g_project->envmap = import_arm_abs(g_project->envmap, base);
 #ifdef IRON_WINDOWS
 		g_project->envmap = string_copy(string_replace_all(g_project->envmap, "/", "\\"));
 #else
@@ -873,7 +887,7 @@ void import_arm_run_project(char *path) {
 		file = string_copy(string_replace_all(file, "\\", "/"));
 #endif
 		// Convert image path from relative to absolute
-		char *abs = data_is_abs(file) ? file : string("%s%s", base, file);
+		char *abs = import_arm_abs(file, base);
 		if (g_project->packed_assets != NULL) {
 			abs                = string_copy(path_normalize(abs));
 			packed_asset_t *pa = import_arm_take_packed_asset(g_project, abs, file, false);
@@ -930,7 +944,7 @@ void import_arm_run_project(char *path) {
 			file = string_copy(string_replace_all(file, "\\", "/"));
 #endif
 			// Convert font path from relative to absolute
-			char *abs = data_is_abs(file) ? file : string("%s%s", base, file);
+			char *abs = import_arm_abs(file, base);
 			if (iron_file_exists(abs)) {
 				import_font_run(abs);
 			}
@@ -946,7 +960,7 @@ void import_arm_run_project(char *path) {
 			file = string_copy(string_replace_all(file, "\\", "/"));
 #endif
 			// Convert sound path from relative to absolute
-			char *abs = data_is_abs(file) ? file : string("%s%s", base, file);
+			char *abs = import_arm_abs(file, base);
 			if (g_project->packed_assets != NULL) {
 				abs = string_copy(path_normalize(abs));
 				import_arm_unpack_sound(g_project, abs, file, false);
@@ -989,7 +1003,7 @@ void import_arm_run_project(char *path) {
 
 	if (g_project->mesh_assets != NULL && g_project->mesh_assets->length > 0) {
 		char *file             = g_project->mesh_assets->buffer[0];
-		char *abs              = data_is_abs(file) ? file : string("%s%s", base, file);
+		char *abs              = import_arm_abs(file, base);
 		g_project->mesh_assets = any_array_create_from_raw(
 		    (void *[]){
 		        abs,
@@ -1018,6 +1032,11 @@ void import_arm_run_project(char *path) {
 			l->name = string_copy(ld->name);
 		}
 		l->visible = ld->visible;
+		if (ld->texpaint_sculpt != NULL) {
+			// Sculpting was removed: the layer is kept, empty and hidden, so masks and parents stay valid
+			l->visible = false;
+			l->name    = string("%s (sculpt)", l->name);
+		}
 		any_array_push(g_project->_->layers, l);
 		if (!is_group) {
 			gpu_texture_t *_texpaint      = NULL;
@@ -1058,23 +1077,6 @@ void import_arm_run_project(char *path) {
 				draw_set_pipeline(NULL);
 				draw_end();
 
-				if (ld->texpaint_sculpt != NULL) {
-					render_target_t *t = render_target_create();
-					t->name            = string("texpaint_sculpt%s", l->ext);
-					t->width           = ld->res;
-					t->height          = ld->res;
-					t->format          = "RGBA128";
-					l->texpaint_sculpt = render_path_create_render_target(t)->_image;
-
-					gpu_texture_t *_texpaint_sculpt =
-					    import_arm_texture_from_lz4(ld->texpaint_sculpt, ld->res, ld->res * ld->res * 4 * 4, GPU_TEXTURE_FORMAT_RGBA128, NULL);
-					draw_begin(l->texpaint_sculpt, false, 0);
-					draw_set_pipeline(pipes_copy128);
-					draw_image(_texpaint_sculpt, 0, 0);
-					draw_set_pipeline(NULL);
-					draw_end();
-					gpu_delete_texture(_texpaint_sculpt);
-				}
 			}
 
 			l->scale   = ld->uv_scale;
@@ -1217,14 +1219,6 @@ void import_arm_run_project(char *path) {
 		}
 	}
 
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		if (g_project->_->layers->buffer[i]->texpaint_sculpt != NULL) {
-			sys_remove_update(import_arm_sculpt_init);
-			sys_notify_on_update(import_arm_sculpt_init, NULL);
-			break;
-		}
-	}
-
 	ui_header_draw_progress(0.9);
 	if (g_project->mesh_materials != NULL) {
 		i32             mat_count = g_project->_->materials->length;
@@ -1338,7 +1332,7 @@ void import_arm_run_brush_from_project(project_t *project, char *path) {
 		file = string_copy(string_replace_all(file, "\\", "/"));
 #endif
 		// Convert image path from relative to absolute
-		char *abs = data_is_abs(file) ? file : string("%s%s", base, file);
+		char *abs = import_arm_abs(file, base);
 		if (project->packed_assets != NULL) {
 			abs = string_copy(path_normalize(abs));
 			import_arm_unpack_asset(project, abs, file, true);

@@ -204,6 +204,16 @@ float4 frag(vert_out input) {
 		float4 col1 = sample_lod(tex1, sampler_linear, input.tex, 0.0);
 		return float4(lerp(cola.rgb, col1.rgb, col0.a), (cola.a * col0.g + col1.a * col0.r) / col0.b);
 	}
+	if (constants.blending >= 300 && constants.blending < 400) { // Merging _pack, the layer blend mode on occlusion, roughness, metallic
+		float4 col1 = sample_lod(tex1, sampler_linear, input.tex, 0.0);
+		float4 b = blend_modes(constants.blending - 300, float4(col1.rgb, 1.0), cola, 1.0, str);
+		return float4(clamp(b.rgb, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), lerp(cola.a, col1.a, str));
+	}
+	if (constants.blending >= 400 && constants.blending < 500) { // Same with height blending
+		float4 col1 = sample_lod(tex1, sampler_linear, input.tex, 0.0);
+		float4 b = blend_modes(constants.blending - 400, float4(col1.rgb, 1.0), cola, 1.0, str);
+		return float4(clamp(b.rgb, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), cola.a + col1.a * str);
+	}
 	if (constants.blending == 101) { // Merging _nor and _pack
 		float4 col1 = sample_lod(tex1, sampler_linear, input.tex, 0.0);
 		return lerp(cola, col1, str);
@@ -237,16 +247,30 @@ float4 frag(vert_out input) {
 			col0.a);
 	}
 	float a = cola.a + str * (1.0 - cola.a);
-	int mode = constants.blending;
+	int code = constants.blending;
+	bool lin = false;
+	if (code >= 1000) { // Linear blending: colors blend in linear space and stay gamma encoded
+		lin = true;
+		code = code - 1000;
+		col0.rgb = pow(max(col0.rgb, float3(0.0, 0.0, 0.0)), float3(2.2, 2.2, 2.2));
+		cola.rgb = pow(max(cola.rgb, float3(0.0, 0.0, 0.0)), float3(2.2, 2.2, 2.2));
+	}
+	int mode = code;
 	if (mode >= 200) { // Merging layers, the result is composited later
 		if (a <= 0.0) {
+			if (lin) {
+				cola.rgb = pow(max(cola.rgb, float3(0.0, 0.0, 0.0)), float3(0.4545, 0.4545, 0.4545));
+			}
 			return cola;
 		}
 		mode = mode - 200;
 	}
 	float4 blended = blend_modes(mode, col0, cola, maskr, str);
-	if (constants.blending >= 200) {
-		return float4((blended.rgb * cola.a + col0.rgb * str * (1.0 - cola.a)) / a, a);
+	if (code >= 200) {
+		blended = float4((blended.rgb * cola.a + col0.rgb * str * (1.0 - cola.a)) / a, a);
+	}
+	if (lin) {
+		blended.rgb = pow(max(blended.rgb, float3(0.0, 0.0, 0.0)), float3(0.4545, 0.4545, 0.4545));
 	}
 	return blended;
 }

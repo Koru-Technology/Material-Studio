@@ -79,7 +79,6 @@ typedef struct slot_layer {
 	bool                  paint_emis;
 	bool                  paint_subs;
 	mat4_t                decal_mat; // Decal layer
-	struct gpu_texture   *texpaint_sculpt;
 	f32_array_t          *path_points;        // uv-space [x, y, ..]
 	f32_array_t          *path_points_world;  // world-space [x, y, z, ..]
 	f32_array_t          *path_points_camera; // [loc.xyzw, rot.xyzw, aspect, ..] at time of point placement
@@ -204,6 +203,27 @@ typedef struct config {
 	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
 	f32                  library_scroll;     // Scroll position of the Library tab
 	bool                 hide_builtin_materials; // Library tab hides the built-in procedural materials
+	f32                  brush_radius; // Brush settings kept across launches
+	f32                  brush_opacity;
+	f32                  brush_hardness;
+	f32                  brush_flow;
+	f32                  brush_spacing;
+	f32                  brush_scatter;
+	f32                  brush_jitter_size;
+	f32                  brush_jitter_angle;
+	f32                  brush_jitter_opacity;
+	f32                  brush_smoothing;
+	f32                  brush_strength;
+	f32                  pressure_curve; // Exponent applied to the pen pressure, below 1 soft, above 1 firm
+	f32                  pressure_min;   // Share of the size, opacity... kept at the lightest pressure
+	i32                  dyn_size;       // Brush dynamics, what drives each property: 0 off, 1 pen pressure, 2 stroke speed, 3 stroke direction (angle)
+	i32                  dyn_opacity;
+	i32                  dyn_flow;
+	i32                  dyn_hardness;
+	i32                  dyn_angle;
+	i32                  brush_builtin;        // Built-in brush picked in the Brushes tab, -1 for none
+	bool                 hide_builtin_brushes; // Brushes tab hides the built-in brushes
+	i32                  rp_view_transform;    // 0 Filmic, 1 ACES, 2 AgX, 3 Standard
 } config_t;
 
 typedef struct slot_material {
@@ -458,8 +478,23 @@ typedef struct context {
 	f32                         brush_lazy_step;
 	f32                         brush_lazy_x;
 	f32                         brush_lazy_y;
+	f32                         brush_spacing;        // Stamps along the stroke, distance in brush diameters, 0 for a continuous stroke
+	f32                         brush_scatter;        // Random offset of each stamp, in brush diameters
+	f32                         brush_jitter_size;    // Random size reduction of each stamp, 0-1
+	f32                         brush_jitter_angle;   // Random rotation of each stamp, 0-1 of a full turn
+	f32                         brush_jitter_opacity; // Random opacity reduction of each stamp, 0-1
+	f32                         brush_flow;           // Paint added by each stamp, builds up to the opacity, 1 paints the opacity at once
+	f32                         brush_smoothing;      // Stroke stabilizer, the brush trails the pen on a string
+	f32                         brush_strength;       // Blur and smudge strength
+	f32                         brush_dab_x;          // Last stamp of the stroke, -1 before the first one
+	f32                         brush_dab_y;
+	f32                         brush_dab_radius;  // Jitter of the stamp being drawn
+	f32                         brush_dab_opacity;
+	f32                         brush_dab_angle; // Radians
+	f32                         brush_speed;     // Smoothed stroke speed 0-1, for the brush dynamics
+	f32                         brush_stroke_angle; // Direction of the stroke, radians
+	i32                         brush_builtin;      // Built-in brush of the Brushes tab, its tip is the brush mask, -1 for none
 	uv_type_t                   brush_paint;
-	sculpt_type_t               brush_sculpt;
 	f32                         brush_angle_reject_dot;
 	bake_type_t                 bake_type;
 	bake_axis_t                 bake_axis;
@@ -477,6 +512,14 @@ typedef struct context {
 	bool                        sym_x;
 	bool                        sym_y;
 	bool                        sym_z;
+	i32                         sym_radial;      // Radial symmetry copies around sym_radial_axis, 1 for none
+	i32                         sym_radial_axis; // 0 X, 1 Y, 2 Z of the object
+	bool                        sym_center;      // Mirror around the mesh bounds center instead of the object origin
+	bool                        brush_straight_line; // Touch: a stroke starts at the end of the previous one, as with the ruler key
+	bool                        stencil_edit;        // Touch: drag, pinch and rotate the stencil instead of painting
+	bool                        stencil_hide;
+	bool                        decal_mask_toggle; // Touch: paint the decal mask, as with the decal mask key
+	bool                        grid_snap_toggle;
 	i32                         fill_type;
 	i32                         blur_type;
 	bool                        paint2d;
@@ -508,6 +551,7 @@ typedef struct context {
 		f32                  hit_nor_y;
 		f32                  hit_nor_z;
 		f32                  contact_time;
+		bool                 hit; // Touching the surface this frame
 		struct tween_anim   *timer;
 		struct physics_body *body;
 		struct object       *bullet;
@@ -522,6 +566,9 @@ typedef struct context {
 	f32             particle_mass;
 	f32             particle_random;
 	f32             particle_spawn_distance;
+	i32             particle_shape; // Emitter: 0 point, 1 disk, 2 ring, 3 line, spread over the brush radius
+	i32             particle_count; // Particles per emit
+	f32             particle_rate;  // Emits per second while held
 	struct any_map *keymap;
 } context_t;
 
@@ -708,6 +755,7 @@ typedef struct project {
 	struct i32_array                            *mesh_nodes_objects; // Object index for each mesh_nodes canvas
 	struct f32_array_t_array                    *mesh_paths;         // Path and curve tool points
 	struct ui_node_canvas_t_array               *mesh_groups;
+	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	project_runtime_t                           *_;
 } project_t;
 

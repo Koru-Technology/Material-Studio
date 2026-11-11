@@ -99,6 +99,7 @@ void render_path_base_init() {
 	render_path_load_shader("Scene/compositor_pass/compositor_pass");
 	render_path_load_shader("Scene/copy_pass/copy_pass");
 	render_path_load_shader("Scene/copy_pass/copyR8_pass");
+	render_path_load_shader("Scene/copy_pass/copyR16_pass");
 	render_path_load_shader("Scene/copy_pass/copyRGBA64_pass");
 	render_path_load_shader("Scene/copy_pass/copyRGBA128_pass");
 	render_path_load_shader("Scene/taa_pass/taa_pass");
@@ -235,12 +236,6 @@ void render_path_base_commands(void (*draw_commands)(void)) {
 	}
 
 	gpu_vertex_textures = false;
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->texpaint_sculpt != NULL) {
-			gpu_vertex_textures = true;
-		}
-	}
 
 	render_path_base_begin();
 	render_path_paint_begin();
@@ -695,7 +690,7 @@ void render_path_base_draw_gbuffer() {
 		render_path_base_draw_meshes(make_material_depth_scon, false);
 	}
 
-	bool hide     = keymap_shortcut(any_map_get(g_keymap, "stencil_hide"), SHORTCUT_TYPE_DOWN) || keyboard_down("control");
+	bool hide     = context_is_stencil_hidden() || keyboard_down("control");
 	bool is_decal = base_is_decal_layer();
 	if (is_decal && !hide) {
 		line_draw_color            = 0xff000000;

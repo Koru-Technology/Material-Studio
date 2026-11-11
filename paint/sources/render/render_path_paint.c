@@ -46,10 +46,10 @@ void render_path_paint_init() {
 
 	{
 		render_target_t *t = render_target_create();
-		t->name            = "texpaint_blend0";
+		t->name            = "texpaint_blend0"; // Stroke coverage, 16 bit so low flow builds up without banding
 		t->width           = config_get_texture_res_x();
 		t->height          = config_get_texture_res_y();
-		t->format          = "R8";
+		t->format          = "R16";
 		render_path_create_render_target(t);
 	}
 	{
@@ -57,7 +57,7 @@ void render_path_paint_init() {
 		t->name            = "texpaint_blend1";
 		t->width           = config_get_texture_res_x();
 		t->height          = config_get_texture_res_y();
-		t->format          = "R8";
+		t->format          = "R16";
 		render_path_create_render_target(t);
 	}
 	{
@@ -203,7 +203,7 @@ void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) 
 	// Paint pass per particle
 	i32 drawn = 0;
 	for (i32 _pi = 0; _pi < 32; ++_pi) {
-		if (g_context->particles[_pi].timer == NULL || g_context->particles[_pi].hit_x == 0) {
+		if (g_context->particles[_pi].timer == NULL || !g_context->particles[_pi].hit) {
 			continue;
 		}
 		g_context->particle_index      = _pi;
@@ -227,7 +227,7 @@ void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) 
 		if (drawn > 0) {
 			render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			render_path_bind_target("texpaint_blend0", "tex");
-			render_path_draw_shader("Scene/copy_pass/copyR8_pass");
+			render_path_draw_shader("Scene/copy_pass/copyR16_pass");
 		}
 		drawn++;
 
@@ -360,13 +360,6 @@ static mesh_object_t *render_path_paint_pick_object() {
 
 void render_path_paint_commands_paint(bool dilation) {
 	i32 tid = g_context->layer->id;
-
-	bool picking_tool = g_context->tool == TOOL_TYPE_COLORID || g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL ||
-	                    g_context->tool == TOOL_TYPE_CURSOR;
-	if (g_context->layer->texpaint_sculpt != NULL && !picking_tool && !g_context->material_preview) {
-		render_path_sculpt_commands();
-		return;
-	}
 
 	if (g_context->pdirty <= 0) {
 		return;
@@ -620,7 +613,7 @@ void render_path_paint_commands_paint(bool dilation) {
 
 		render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		render_path_bind_target("texpaint_blend0", "tex");
-		render_path_draw_shader("Scene/copy_pass/copyR8_pass");
+		render_path_draw_shader("Scene/copy_pass/copyR16_pass");
 		bool is_mask = slot_layer_is_mask(g_context->layer);
 
 		// Read texcoords from gbuffer
@@ -661,17 +654,6 @@ void render_path_paint_commands_paint(bool dilation) {
 			}
 			if (read_tc) {
 				render_path_bind_target("gbuffer2", "gbuffer2");
-			}
-			i32 sculpt_layer_count = 0;
-			for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-				slot_layer_t *sl = g_project->_->layers->buffer[i];
-				if (sl->texpaint_sculpt != NULL && slot_layer_is_visible(sl)) {
-					render_path_bind_target(string_tmp("texpaint_sculpt%d", sl->id), string_tmp("texpaint_sculpt%d", sl->id));
-					sculpt_layer_count++;
-				}
-			}
-			if (sculpt_layer_count > 1) {
-				render_path_bind_target("texpaint_sculpt_base", "texpaint_sculpt_base");
 			}
 			if (mesh_fill) {
 				render_path_paint_draw_fill_object();
@@ -741,51 +723,59 @@ void render_path_paint_use_live_layer(bool use) {
 	render_path_paint_live_layer_locked = use;
 }
 
+bool render_path_paint_symmetry_on() {
+	return g_context->sym_x || g_context->sym_y || g_context->sym_z || g_context->sym_radial > 1;
+}
+
+// Mirrored and radial copies of the stroke: the paint object is drawn transformed, texels whose transformed position falls in the brush get
+// painted. Copies turn around and mirror about the object origin or the center of the mesh bounds.
 void render_path_paint_commands_symmetry() {
-	if (g_context->sym_x || g_context->sym_y || g_context->sym_z) {
-		g_context->ddirty = 2;
-		transform_t *t    = g_context->paint_object->base->transform;
-		f32          sx   = t->scale.x;
-		f32          sy   = t->scale.y;
-		f32          sz   = t->scale.z;
-		if (g_context->sym_x) {
-			t->scale = (vec4_t){-sx, sy, sz, 1.0};
-			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
-		}
-		if (g_context->sym_y) {
-			t->scale = (vec4_t){sx, -sy, sz, 1.0};
-			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
-		}
-		if (g_context->sym_z) {
-			t->scale = (vec4_t){sx, sy, -sz, 1.0};
-			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
-		}
-		if (g_context->sym_x && g_context->sym_y) {
-			t->scale = (vec4_t){-sx, -sy, sz, 1.0};
-			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
-		}
-		if (g_context->sym_x && g_context->sym_z) {
-			t->scale = (vec4_t){-sx, sy, -sz, 1.0};
-			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
-		}
-		if (g_context->sym_y && g_context->sym_z) {
-			t->scale = (vec4_t){sx, -sy, -sz, 1.0};
-			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
-		}
-		if (g_context->sym_x && g_context->sym_y && g_context->sym_z) {
-			t->scale = (vec4_t){-sx, -sy, -sz, 1.0};
-			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
-		}
-		t->scale = (vec4_t){sx, sy, sz, 1.0};
-		transform_build_matrix(t);
+	if (!render_path_paint_symmetry_on()) {
+		return;
 	}
+	g_context->ddirty = 2;
+	transform_t *t    = g_context->paint_object->base->transform;
+	vec4_t       loc0 = t->loc;
+	quat_t       rot0 = t->rot;
+	vec4_t       s0   = t->scale;
+
+	vec4_t c = (vec4_t){0.0, 0.0, 0.0, 0.0};
+	if (g_context->sym_center && g_context->paint_object->data != NULL) {
+		vec4_t bmin;
+		vec4_t bmax;
+		mesh_data_calculate_aabb_min_max(g_context->paint_object->data, &bmin, &bmax);
+		c = (vec4_t){(bmin.x + bmax.x) * 0.5, (bmin.y + bmax.y) * 0.5, (bmin.z + bmax.z) * 0.5, 0.0};
+	}
+	vec4_t sc = (vec4_t){c.x * s0.x, c.y * s0.y, c.z * s0.z, 0.0}; // Center in scaled object space
+
+	i32    radial = g_context->sym_radial > 1 ? g_context->sym_radial : 1;
+	vec4_t axis   = g_context->sym_radial_axis == 0   ? (vec4_t){1.0, 0.0, 0.0, 0.0}
+	                : g_context->sym_radial_axis == 1 ? (vec4_t){0.0, 1.0, 0.0, 0.0}
+	                                                  : (vec4_t){0.0, 0.0, 1.0, 0.0};
+	for (i32 k = 0; k < radial; ++k) {
+		quat_t q = quat_from_axis_angle(axis, (math_pi() * 2.0 * k) / radial);
+		for (i32 m = 0; m < 8; ++m) { // Mirror axes, bit 0 x, 1 y, 2 z
+			if (((m & 1) && !g_context->sym_x) || ((m & 2) && !g_context->sym_y) || ((m & 4) && !g_context->sym_z)) {
+				continue;
+			}
+			if (k == 0 && m == 0) {
+				continue; // The stroke itself
+			}
+			vec4_t f = (vec4_t){(m & 1) ? -1.0 : 1.0, (m & 2) ? -1.0 : 1.0, (m & 4) ? -1.0 : 1.0, 0.0};
+			// v' = c + Q F (v - c): mirror then turn around the center
+			vec4_t fc  = vec4_apply_quat((vec4_t){f.x * sc.x, f.y * sc.y, f.z * sc.z, 0.0}, q);
+			vec4_t off = vec4_apply_quat((vec4_t){sc.x - fc.x, sc.y - fc.y, sc.z - fc.z, 0.0}, rot0);
+			t->loc     = (vec4_t){loc0.x + off.x, loc0.y + off.y, loc0.z + off.z, loc0.w};
+			t->rot     = quat_mult(rot0, q);
+			t->scale   = (vec4_t){s0.x * f.x, s0.y * f.y, s0.z * f.z, s0.w};
+			transform_build_matrix(t);
+			render_path_paint_commands_paint(false);
+		}
+	}
+	t->loc   = loc0;
+	t->rot   = rot0;
+	t->scale = s0;
+	transform_build_matrix(t);
 }
 
 void render_path_paint_commands_live_brush() {
@@ -1021,11 +1011,6 @@ void render_path_paint_begin() {
 		render_path_paint_live_layer_drawn--;
 	}
 
-	if (g_context->layer->texpaint_sculpt != NULL) {
-		render_path_sculpt_begin();
-		return;
-	}
-
 	if (!render_path_paint_dilated) {
 		render_path_paint_dilate(false, true);
 		render_path_paint_dilated = true;
@@ -1149,6 +1134,83 @@ void render_path_paint_clear_blend() {
 	}
 }
 
+// Brush stamps: spacing, scatter and jitter
+static u32 render_path_paint_stamp_seed = 1;
+
+static f32 render_path_paint_stamp_random() {
+	render_path_paint_stamp_seed = render_path_paint_stamp_seed * 1664525u + 1013904223u;
+	return (render_path_paint_stamp_seed >> 8) / 16777216.0f;
+}
+
+bool render_path_paint_stamps() {
+	bool tool = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
+	return tool && g_context->brush_spacing > 0.0 && !slot_layer_is_path(g_context->layer) && g_context->layer->fill_material == NULL &&
+	       !context_is_decal() && !context_is_pixel_snap();
+}
+
+static void render_path_paint_stamp(f32 x, f32 y, f32 aspect, f32 diameter, bool last) {
+	f32 scatter = g_context->brush_scatter;
+	if (scatter > 0.0) {
+		f32 a = render_path_paint_stamp_random() * math_pi() * 2.0;
+		f32 d = render_path_paint_stamp_random() * scatter * diameter;
+		x += math_cos(a) * d / aspect;
+		y += math_sin(a) * d;
+	}
+	g_context->brush_dab_radius  = 1.0 - g_context->brush_jitter_size * render_path_paint_stamp_random();
+	g_context->brush_dab_opacity = 1.0 - g_context->brush_jitter_opacity * render_path_paint_stamp_random();
+	g_context->brush_dab_angle   = (render_path_paint_stamp_random() * 2.0 - 1.0) * math_pi() * g_context->brush_jitter_angle;
+	g_context->paint_vec.x       = x;
+	g_context->paint_vec.y       = y;
+	g_context->last_paint_vec_x  = x;
+	g_context->last_paint_vec_y  = y;
+	render_path_paint_commands_symmetry();
+	render_path_paint_commands_paint(last);
+}
+
+// Stamps from the last one to the brush position, one every spacing; the remainder carries over to the next frame
+void render_path_paint_commands_stamps() {
+	if (g_context->pdirty <= 0) {
+		return;
+	}
+	f32 cx       = g_context->paint_vec.x;
+	f32 cy       = g_context->paint_vec.y;
+	f32 aspect   = base_paint_view_w() / (f32)base_paint_view_h();
+	f32 diameter = util_layer_brush_screen_radius() * 2.0;
+	f32 step     = math_max(g_context->brush_spacing * diameter, 0.0005);
+
+	if (g_context->brush_dab_x < 0.0) { // First stamp of the stroke
+		render_path_paint_stamp_seed = (u32)(cx * 100003.0) ^ (u32)(cy * 7919.0) ^ (u32)(sys_time() * 1000.0);
+		render_path_paint_stamp(cx, cy, aspect, diameter, true);
+		g_context->brush_dab_x = cx;
+		g_context->brush_dab_y = cy;
+	}
+	else {
+		f32 dx    = (cx - g_context->brush_dab_x) * aspect;
+		f32 dy    = cy - g_context->brush_dab_y;
+		f32 dist  = math_sqrt(dx * dx + dy * dy);
+		i32 count = (i32)(dist / step);
+		if (count > 64) { // Keep the frame responsive on a fast stroke, the rest follows on the next frames
+			count = 64;
+		}
+		f32 sx = g_context->brush_dab_x;
+		f32 sy = g_context->brush_dab_y;
+		for (i32 i = 1; i <= count; ++i) {
+			f32 t = (step * i) / dist;
+			f32 x = sx + (cx - sx) * t;
+			f32 y = sy + (cy - sy) * t;
+			render_path_paint_stamp(x, y, aspect, diameter, i == count);
+			g_context->brush_dab_x = x;
+			g_context->brush_dab_y = y;
+		}
+	}
+
+	g_context->paint_vec.x       = cx;
+	g_context->paint_vec.y       = cy;
+	g_context->brush_dab_radius  = 1.0;
+	g_context->brush_dab_opacity = 1.0;
+	g_context->brush_dab_angle   = 0.0;
+}
+
 void render_path_paint_draw() {
 	if (!render_path_paint_paint_enabled()) {
 		return;
@@ -1160,7 +1222,10 @@ void render_path_paint_draw() {
 	}
 
 	if (history_undo_layers != NULL) {
-		render_path_paint_commands_symmetry();
+		bool stamps = render_path_paint_stamps();
+		if (!stamps) {
+			render_path_paint_commands_symmetry();
+		}
 
 		if (g_context->pdirty > 0) {
 			render_path_paint_dilated = false;
@@ -1237,6 +1302,9 @@ void render_path_paint_draw() {
 			else {
 				render_path_paint_commands_paint(true);
 			}
+		}
+		else if (stamps) { // Paint with stamps spaced along the stroke
+			render_path_paint_commands_stamps();
 		}
 		else { // Paint
 			render_path_paint_commands_paint(true);
@@ -1391,11 +1459,6 @@ void render_path_paint_bind_layers() {
 			n = string_tmp("texpaint_nor%d", l->id);
 			render_path_bind_target(n, n);
 			n = string_tmp("texpaint_pack%d", l->id);
-			render_path_bind_target(n, n);
-		}
-
-		if (l->texpaint_sculpt != NULL) {
-			n = string_tmp("texpaint_sculpt%d", l->id);
 			render_path_bind_target(n, n);
 		}
 	}

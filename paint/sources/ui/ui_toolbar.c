@@ -69,11 +69,6 @@ bool ui_toolbar_tool_visible(i32 tool) {
 	if (tool >= TOOL_TYPE_PLUGIN) {
 		return g_config->tools == TOOLS_PAINT;
 	}
-	if (g_config->tools == TOOLS_SCULPT) {
-		// Brush is replaced by the sculpt mode icons
-		return tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_PARTICLE && tool != TOOL_TYPE_COLORID && tool != TOOL_TYPE_PICKER && tool != TOOL_TYPE_MATERIAL &&
-		       !util_tool_is_object_tool(tool);
-	}
 	if (g_config->tools == TOOLS_OBJECT) {
 		return tool == TOOL_TYPE_CURSOR || util_tool_is_object_tool(tool);
 	}
@@ -87,19 +82,11 @@ static i32 ui_toolbar_item_count() {
 			count++;
 		}
 	}
-	if (g_config->tools == TOOLS_SCULPT) {
-		count += SCULPT_TYPE_PLATEAU + 1;
-	}
 	return count;
 }
 
 void ui_toolbar_draw_tool_select_tool(void *_) {
 	context_select_tool(_ui_toolbar_i);
-}
-
-void ui_toolbar_draw_tool_select_sculpt(void *_) {
-	g_context->brush_sculpt = _ui_toolbar_i;
-	context_select_tool(TOOL_TYPE_BRUSH);
 }
 
 void ui_toolbar_tool_properties_menu_draw() {
@@ -223,42 +210,6 @@ static void ui_toolbar_handle_release(ui_state_t image_state, bool visible, i32 
 		}
 		ui_toolbar_last_tool = id;
 	}
-}
-
-void ui_toolbar_draw_sculpt_tool(sculpt_type_t mode, gpu_texture_t *img, i32 icon_accent) {
-	g_ui->_x += 2;
-	bool       visible     = ui_toolbar_input_visible();
-	bool       selected    = g_context->tool == TOOL_TYPE_BRUSH && g_context->brush_sculpt == mode;
-	string_array_t *names = any_array_create_from_raw_tmp(
-	    (void *[]){
-	        tr("Draw"),
-	        tr("Grab"),
-	        tr("Inflate"),
-	        tr("Flatten"),
-	        tr("Clay"),
-	        tr("Pinch"),
-	        tr("Crease"),
-	        tr("Cloth"),
-	        tr("Twist"),
-	        tr("Stretch"),
-	        tr("Trim"),
-	        tr("Plateau"),
-	    },
-	    12);
-	ui_state_t image_state = ui_toolbar_draw_icon(selected, visible, ICON_SCULPT_DRAW + mode, img, icon_accent, names->buffer[mode]);
-
-	if (image_state == UI_STATE_STARTED && visible) {
-		_ui_toolbar_i = mode;
-		sys_notify_on_next_frame(&ui_toolbar_draw_tool_select_sculpt, NULL);
-	}
-	// Sculpt modes get their own negative ids, so switching modes does not open the properties menu
-	ui_toolbar_handle_release(image_state, visible, -1 - mode);
-
-	if (g_ui->is_hovered) {
-		ui_tooltip(names->buffer[mode]);
-	}
-	g_ui->_x -= 2;
-	g_ui->_y += ui_toolbar_gap();
 }
 
 static u32 ui_toolbar_last_picker_mask_color = 0;
@@ -420,12 +371,7 @@ static void ui_toolbar_draw_window(ui_window_t *handle, i32 x, i32 y, i32 h) {
 			g_ui->_y += 2;
 		}
 
-		if (g_config->tools == TOOLS_SCULPT) {
-			for (i32 i = 0; i <= SCULPT_TYPE_PLATEAU; ++i) {
-				ui_toolbar_draw_sculpt_tool(i, img, icon_accent);
-			}
-		}
-		// The cursor leads the object tools, it is the last one of the paint and sculpt tools
+		// The cursor leads the object tools, it is the last one of the paint tools
 		bool cursor_last = g_config->tools != TOOLS_OBJECT;
 		for (i32 i = 0; i < ui_toolbar_tool_names->length; ++i) {
 			if (ui_toolbar_tool_visible(i) && !(cursor_last && i == TOOL_TYPE_CURSOR)) {

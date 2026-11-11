@@ -903,13 +903,13 @@ void ui_menubar_draw_tools() {
 	string_array_t *tools_items   = any_array_create_from_raw(
         (void *[]){
             tr("Paint"),
-            tr("Sculpt"),
             tr("Object"),
         },
-        3);
+        2);
+	i32 tools_values[] = {TOOLS_PAINT, TOOLS_OBJECT};
 
 	for (i32 i = 0; i < tools_items->length; ++i) {
-		ui_radio((int *)&g_config->tools, i, tools_items->buffer[i], "");
+		ui_radio((int *)&g_config->tools, tools_values[i], tools_items->buffer[i], "");
 		tools_changed |= ui_item_changed();
 	}
 

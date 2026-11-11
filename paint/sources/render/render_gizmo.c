@@ -240,7 +240,7 @@ void render_gizmo_render_rect() {
 
 void render_gizmo_render_bones() {
 	if (g_context->tool != TOOL_TYPE_CURSOR || base_player || g_context->paint2d || context_object_deselected() ||
-	    keymap_shortcut(any_map_get(g_keymap, "stencil_hide"), SHORTCUT_TYPE_DOWN)) {
+	    context_is_stencil_hidden()) {
 		return;
 	}
 	draw_scissor(base_x(), base_y(), base_w(), base_h());
@@ -324,7 +324,7 @@ void render_gizmo_update() {
 	bool is_decal  = base_is_decal_layer();
 
 	object_t *gizmo = g_context->gizmo;
-	bool      hide  = keymap_shortcut(any_map_get(g_keymap, "stencil_hide"), SHORTCUT_TYPE_DOWN);
+	bool      hide  = context_is_stencil_hidden();
 	gizmo->visible  = (is_object || is_decal) && !hide && !base_player;
 	if (!gizmo->visible) {
 		return;

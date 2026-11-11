@@ -10,7 +10,6 @@ typedef struct {
 	gpu_texture_t *texpaint;
 	gpu_texture_t *texpaint_nor;
 	gpu_texture_t *texpaint_pack;
-	gpu_texture_t *texpaint_sculpt;
 	f32_array_t   *path_points;
 	f32_array_t   *path_points_world;
 	f32_array_t   *path_points_camera;
@@ -64,7 +63,6 @@ static i32 tab_timeline_last_click_row   = -1;
 static i32 tab_timeline_pressed_id       = -1;
 
 static gpu_pipeline_t *tab_timeline_tween_pipe        = NULL;
-static gpu_pipeline_t *tab_timeline_tween_pipe_sculpt = NULL;
 static i32             tab_timeline_tween_tex0        = 0;
 static i32             tab_timeline_tween_tex1        = 0;
 static i32             tab_timeline_tween_factor      = 0;
@@ -260,38 +258,6 @@ static void tab_timeline_copy_tex(gpu_texture_t *dst, gpu_texture_t *src) {
 	draw_end();
 }
 
-// Sculpt textures hold one texel per welded vertex, so only same-sized textures map
-static bool tab_timeline_sculpt_matches(gpu_texture_t *a, gpu_texture_t *b) {
-	return a != NULL && b != NULL && a->width == b->width && a->height == b->height;
-}
-
-static void tab_timeline_copy_sculpt(gpu_texture_t *dst, gpu_texture_t *src) {
-	draw_begin(dst, false, 0);
-	draw_set_pipeline(pipes_copy128);
-	draw_image(src, 0, 0);
-	draw_set_pipeline(NULL);
-	draw_end();
-}
-
-static void tab_timeline_save_sculpt(gpu_texture_t **dst, slot_layer_t *l) {
-	if (l->texpaint_sculpt == NULL) {
-		return;
-	}
-	if (!tab_timeline_sculpt_matches(*dst, l->texpaint_sculpt)) {
-		if (*dst != NULL) {
-			gpu_delete_texture(*dst);
-		}
-		*dst = gpu_create_render_target(l->texpaint_sculpt->width, l->texpaint_sculpt->height, GPU_TEXTURE_FORMAT_RGBA128);
-	}
-	tab_timeline_copy_sculpt(*dst, l->texpaint_sculpt);
-}
-
-static void tab_timeline_load_sculpt(slot_layer_t *l, gpu_texture_t *src) {
-	if (tab_timeline_sculpt_matches(l->texpaint_sculpt, src)) {
-		tab_timeline_copy_sculpt(l->texpaint_sculpt, src);
-	}
-}
-
 static void tab_timeline_free_path_array(void *a) {
 	if (a != NULL) {
 		array_free(a);
@@ -309,7 +275,6 @@ static void tab_timeline_free_keyframe(tab_timeline_keyframe_t *kf) {
 	tab_timeline_delete_tex(kf->texpaint);
 	tab_timeline_delete_tex(kf->texpaint_nor);
 	tab_timeline_delete_tex(kf->texpaint_pack);
-	tab_timeline_delete_tex(kf->texpaint_sculpt);
 	tab_timeline_free_path_array(kf->path_points);
 	tab_timeline_free_path_array(kf->path_points_world);
 	tab_timeline_free_path_array(kf->path_points_camera);
@@ -405,13 +370,6 @@ static void tab_timeline_init_tween_pipe() {
 	gpu_vertex_structure_add(vs, "pos", GPU_VERTEX_DATA_F32_2X);
 	tab_timeline_tween_pipe->input_layout = vs;
 	gpu_pipeline_compile(tab_timeline_tween_pipe);
-	tab_timeline_tween_pipe_sculpt                         = gpu_create_pipeline();
-	tab_timeline_tween_pipe_sculpt->vertex_shader          = sys_get_shader("sculpt_tween.vert");
-	tab_timeline_tween_pipe_sculpt->fragment_shader        = sys_get_shader("sculpt_tween.frag");
-	tab_timeline_tween_pipe_sculpt->input_layout           = vs;
-	tab_timeline_tween_pipe_sculpt->color_attachment_count = 1;
-	tab_timeline_tween_pipe_sculpt->color_attachment[0]    = GPU_TEXTURE_FORMAT_RGBA128;
-	gpu_pipeline_compile(tab_timeline_tween_pipe_sculpt);
 	tab_timeline_tween_tex0   = 0;
 	tab_timeline_tween_tex1   = 1;
 	pipes_offset              = 0;
@@ -435,11 +393,6 @@ static void tab_timeline_tween_tex(gpu_texture_t *dst, gpu_texture_t *from, gpu_
 	tab_timeline_tween_tex_pipe(tab_timeline_tween_pipe, dst, from, to, t);
 }
 
-static void tab_timeline_tween_sculpt(gpu_texture_t *dst, gpu_texture_t *from, gpu_texture_t *to, f32 t) {
-	tab_timeline_init_tween_pipe();
-	tab_timeline_tween_tex_pipe(tab_timeline_tween_pipe_sculpt, dst, from, to, t);
-}
-
 static void tab_timeline_layers_dirty() {
 	g_context->ddirty               = 2;
 	g_context->rtdirty              = 1;
@@ -450,7 +403,6 @@ static void tab_timeline_save_layer(tab_timeline_keyframe_t *kf, slot_layer_t *l
 	tab_timeline_copy_tex(kf->texpaint, l->texpaint);
 	tab_timeline_copy_tex(kf->texpaint_nor, l->texpaint_nor);
 	tab_timeline_copy_tex(kf->texpaint_pack, l->texpaint_pack);
-	tab_timeline_save_sculpt(&kf->texpaint_sculpt, l);
 	tab_timeline_copy_path_points_from_layer(l, &kf->path_points, &kf->path_points_world, &kf->path_points_camera, &kf->path_points_parent);
 }
 
@@ -458,7 +410,6 @@ static void tab_timeline_load_layer(slot_layer_t *l, tab_timeline_keyframe_t *kf
 	tab_timeline_copy_tex(l->texpaint, kf->texpaint);
 	tab_timeline_copy_tex(l->texpaint_nor, kf->texpaint_nor);
 	tab_timeline_copy_tex(l->texpaint_pack, kf->texpaint_pack);
-	tab_timeline_load_sculpt(l, kf->texpaint_sculpt);
 	tab_timeline_copy_path_points_to_layer(l, kf->path_points, kf->path_points_world, kf->path_points_camera, kf->path_points_parent);
 }
 
@@ -523,9 +474,6 @@ static void tab_timeline_tween_from_keyframes(f32 frame_f) {
 		tab_timeline_tween_tex(l->texpaint, act->texpaint, nxt->texpaint, t);
 		tab_timeline_tween_tex(l->texpaint_nor, act->texpaint_nor, nxt->texpaint_nor, t);
 		tab_timeline_tween_tex(l->texpaint_pack, act->texpaint_pack, nxt->texpaint_pack, t);
-		if (tab_timeline_sculpt_matches(l->texpaint_sculpt, act->texpaint_sculpt) && tab_timeline_sculpt_matches(l->texpaint_sculpt, nxt->texpaint_sculpt)) {
-			tab_timeline_tween_sculpt(l->texpaint_sculpt, act->texpaint_sculpt, nxt->texpaint_sculpt, t);
-		}
 		any = true;
 	}
 	if (any) {
@@ -1164,7 +1112,7 @@ void tab_timeline_export(project_t *raw) {
 		                   .texpaint           = pixels ? tab_timeline_encode_tex(kf->texpaint) : NULL,
 		                   .texpaint_nor       = pixels ? tab_timeline_encode_tex(kf->texpaint_nor) : NULL,
 		                   .texpaint_pack      = pixels ? tab_timeline_encode_tex(kf->texpaint_pack) : NULL,
-		                   .texpaint_sculpt    = pixels && kf->texpaint_sculpt != NULL ? tab_timeline_encode_tex(kf->texpaint_sculpt) : NULL,
+		                   .texpaint_sculpt    = NULL, // Sculpting was removed
 		                   .path_points        = kf->path_points,
 		                   .path_points_world  = kf->path_points_world,
 		                   .path_points_camera = kf->path_points_camera,
@@ -1246,19 +1194,6 @@ static gpu_texture_t *tab_timeline_tex_from_buffer(buffer_t *buf, bool is_bgra) 
 	return rt;
 }
 
-static gpu_texture_t *tab_timeline_sculpt_from_buffer(buffer_t *buf) {
-	i32            w      = config_get_texture_res_x();
-	i32            h      = config_get_texture_res_y();
-	buffer_t      *pixels = lz4_decode(buf, w * h * 4 * 4);
-	gpu_texture_t *tmp    = gpu_create_texture_from_bytes_raw(pixels, w, h, GPU_TEXTURE_FORMAT_RGBA128);
-	array_free(pixels);
-	free(pixels);
-	gpu_texture_t *rt = gpu_create_render_target(w, h, GPU_TEXTURE_FORMAT_RGBA128);
-	tab_timeline_copy_sculpt(rt, tmp);
-	gpu_delete_texture(tmp);
-	return rt;
-}
-
 void tab_timeline_import(project_t *raw) {
 	tab_timeline_reset();
 
@@ -1276,7 +1211,6 @@ void tab_timeline_import(project_t *raw) {
 				kf->texpaint        = tab_timeline_tex_from_buffer(d->texpaint, raw->is_bgra);
 				kf->texpaint_nor    = d->texpaint_nor != NULL ? tab_timeline_tex_from_buffer(d->texpaint_nor, raw->is_bgra) : NULL;
 				kf->texpaint_pack   = d->texpaint_pack != NULL ? tab_timeline_tex_from_buffer(d->texpaint_pack, raw->is_bgra) : NULL;
-				kf->texpaint_sculpt = d->texpaint_sculpt != NULL ? tab_timeline_sculpt_from_buffer(d->texpaint_sculpt) : NULL;
 				if (kf->texpaint_nor == NULL || kf->texpaint_pack == NULL) {
 					tab_timeline_free_keyframe(kf);
 					continue;
@@ -1290,7 +1224,6 @@ void tab_timeline_import(project_t *raw) {
 				tab_timeline_copy_tex(kf->texpaint, l->texpaint);
 				tab_timeline_copy_tex(kf->texpaint_nor, l->texpaint_nor);
 				tab_timeline_copy_tex(kf->texpaint_pack, l->texpaint_pack);
-				tab_timeline_save_sculpt(&kf->texpaint_sculpt, l);
 			}
 			else {
 				continue;

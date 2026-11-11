@@ -77,9 +77,10 @@ static void ui_panels_draw_brush() {
 	}
 
 	bool has_radius = g_context->tool != TOOL_TYPE_FILL;
+	bool has_flow   = (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE) && !context_is_decal_mask();
 	i32  pad        = ui_panels_pad();
 	i32  slider_w   = math_floor(240 * UI_SCALE());
-	i32  sliders    = has_radius ? 2 : 1;
+	i32  sliders    = (has_radius ? 2 : 1) + (has_flow ? 1 : 0);
 	i32  w          = slider_w * sliders + pad * 2;
 	i32  max_w      = base_view_w() - ui_panels_history_h() * 2 - ui_panels_margin() * 2; // Clear of the undo / redo panel
 	if (w > max_w) {
@@ -92,10 +93,11 @@ static void ui_panels_draw_brush() {
 	// Redraw when the values change elsewhere (header, shortcuts)
 	static f32  last_radius  = -1;
 	static f32  last_opacity = -1;
+	static f32  last_flow    = -1;
 	static i32  last_tool    = -1;
 	bool        decal_mask   = context_is_decal_mask();
 	f32        *radius       = decal_mask ? &g_context->brush_decal_mask_radius : &g_context->brush_radius;
-	if (*radius != last_radius || g_context->brush_opacity != last_opacity || g_context->tool != last_tool) {
+	if (*radius != last_radius || g_context->brush_opacity != last_opacity || g_context->brush_flow != last_flow || g_context->tool != last_tool) {
 		ui_panels_brush_handle->redraws = 2;
 	}
 
@@ -104,14 +106,23 @@ static void ui_panels_draw_brush() {
 		g_ui->_y += pad;
 		g_ui->_w = w - pad * 2;
 		bool changed = false;
-		if (has_radius) {
+		if (sliders == 3) {
+			ui_row3();
+		}
+		else if (sliders == 2) {
 			ui_row2();
+		}
+		if (has_radius) {
 			ui_slider(radius, tr("Radius"), 0.01, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 			changed |= ui_item_changed();
 		}
 		ui_slider(&g_context->brush_opacity, tr("Opacity"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 		changed |= ui_item_changed();
 		g_context->brush_opacity = math_max(0.0, math_min(1.0, g_context->brush_opacity));
+		if (has_flow) {
+			ui_slider(&g_context->brush_flow, tr("Flow"), 0.01, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+			changed |= ui_item_changed();
+		}
 		if (changed) {
 			ui_header_handle->redraws = 2;
 		}
@@ -119,6 +130,7 @@ static void ui_panels_draw_brush() {
 
 	last_radius  = *radius;
 	last_opacity = g_context->brush_opacity;
+	last_flow    = g_context->brush_flow;
 	last_tool    = g_context->tool;
 }
 

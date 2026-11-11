@@ -143,7 +143,6 @@ void project_cleanup() {
 	util_mesh_remove_merged();
 	nodes_mesh_reset();
 	util_path_tool_reset();
-	sculpt_reset_objects();
 
 	if (g_project->_->paint_objects != NULL) {
 		for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
@@ -190,6 +189,7 @@ void project_new(bool reset_layers) {
 		g_project->_->filepath = "";
 	}
 	g_project->stages          = NULL;
+	g_project->linear_blending = true; // New projects blend colors in linear space
 	g_project->_->translucency = false;
 	project_scripts_trusted    = true;
 
@@ -494,9 +494,6 @@ void project_reskin_finish() {
 	else if (g_context->merged_object != NULL) {
 		if (!util_mesh_merge_refresh()) {
 			util_mesh_merge(NULL);
-		}
-		if (g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE) {
-			sculpt_bake_to_mesh();
 		}
 	}
 	g_context->ddirty          = 4;

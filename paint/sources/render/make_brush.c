@@ -104,11 +104,11 @@ void make_brush_run(node_shader_t *kong) {
 		node_shader_write_frag(kong, "float2 sb = constants.inplast.xy - constants.inp.xy;");
 		node_shader_write_frag(kong, "sb.x *= constants.aspect_ratio;");
 		node_shader_write_frag(kong, "sb = sb * ca_scale;");
-		node_shader_write_frag(kong, "float sh = clamp(dot(sa, sb) / dot(sb, sb), 0.0, 1.0);");
+		node_shader_write_frag(kong, "float sh = clamp(dot(sa, sb) / max(dot(sb, sb), 0.00000001), 0.0, 1.0);");
 		node_shader_write_frag(kong, "dist = length(sa - sb * sh) * 2.0 * constants.brush_radius;");
 		node_shader_write_frag(kong, "}");
 		node_shader_write_frag(kong, "else {");
-		node_shader_write_frag(kong, "float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);");
+		node_shader_write_frag(kong, "float h = clamp(dot(pa, ba) / max(dot(ba, ba), 0.00000001), 0.0, 1.0);"); // A stamp is a zero length capsule
 		node_shader_write_frag(kong, "dist = length(pa - ba * h);");
 		node_shader_write_frag(kong, "}");
 		node_shader_write_frag(kong, "if (dist > constants.brush_radius) { discard; }");

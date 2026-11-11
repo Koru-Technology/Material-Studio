@@ -7,8 +7,8 @@
 
 char *manifest_title           = "PiratePaint";
 char *manifest_version         = "1.1rc1";
-char *manifest_version_project = "25";
-char *manifest_version_config  = "10";
+char *manifest_version_project = "26";
+char *manifest_version_config  = "13";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -406,7 +406,6 @@ bool            render_path_raytrace_is_bake       = false;
 bool            render_path_raytrace_override_pass = false;
 bool            render_path_raytrace_moving        = false;
 
-bool sculpt_push_undo       = false;
 i32  ui_statusbar_default_h = 33;
 
 any_imap_t                  *neural_node_results;

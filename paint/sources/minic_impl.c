@@ -461,17 +461,14 @@ static void script_paint_begin_stroke(void) {
 	if (script_paint_active) {
 		return;
 	}
+	base_init_undo_layers(); // Allocated on the first stroke, a new project has none yet
 	make_material_parse_paint_material(false);
 	render_path_paint_clear_blend();
 	render_path_base_draw_gbuffer();
 
 	history_push_undo = true;
-	sculpt_push_undo  = true;
 	if (history_undo_layers != NULL) {
 		history_paint();
-	}
-	if (g_context->layer->texpaint_sculpt != NULL) {
-		render_path_sculpt_snapshot_gbuffer();
 	}
 
 	script_paint_active         = true;
@@ -511,7 +508,17 @@ static void script_paint_at(f32 x, f32 y) {
 	g_context->prev_paint_vec_y = prev_y;
 	g_context->pdirty           = 1;
 
-	render_path_paint_commands_paint(false);
+	if (render_path_paint_stamps()) { // Spacing, scatter and jitter as with the pen
+		if (script_paint_first) {
+			g_context->brush_dab_x = -1.0f;
+			g_context->brush_dab_y = -1.0f;
+		}
+		render_path_paint_commands_stamps();
+	}
+	else {
+		render_path_paint_commands_symmetry(); // Mirror and radial copies as with the pen
+		render_path_paint_commands_paint(false);
+	}
 
 	script_paint_first = false;
 
@@ -556,6 +563,8 @@ void script_paint_end(void) {
 	g_context->layer_preview_dirty = true;
 	g_context->prev_paint_vec_x    = -1.0f;
 	g_context->prev_paint_vec_y    = -1.0f;
+	g_context->brush_dab_x         = -1.0f;
+	g_context->brush_dab_y         = -1.0f;
 
 	script_paint_active = false;
 	script_paint_first  = true;
@@ -682,10 +691,6 @@ slot_layer_t *script_layer_new_fill(void) {
 	if (l != NULL) {
 		history_new_layer();
 		l->uv_type = UV_TYPE_UVMAP;
-		if (g_config->tools == TOOLS_SCULPT) {
-			sculpt_init();
-			sculpt_init_sculpt_texture(l);
-		}
 		history_to_fill_layer();
 		slot_layer_to_fill_layer(l);
 	}
@@ -1181,7 +1186,7 @@ void script_quit(void) {
 }
 
 void script_set_tools(i32 tools) {
-	if (tools < TOOLS_PAINT || tools > TOOLS_OBJECT || tools == g_config->tools) {
+	if ((tools != TOOLS_PAINT && tools != TOOLS_OBJECT) || tools == g_config->tools) {
 		return;
 	}
 	gpu_texture_t *current;
@@ -1939,8 +1944,6 @@ void script_material_update(void) {
 	if (context_is_decal()) {
 		util_render_make_decal_preview();
 	}
-	base_update_tools_nodes();
-
 	script_gpu_end(current, in_use);
 
 	if (ui_nodes_hwnd != NULL) {

@@ -157,10 +157,6 @@ buffer_t *export_arm_encode_project(char *path) {
 	tab_timeline_prepare_save();
 	tab_scripts_strip_trailing_whitespace();
 
-	tools_t _tools  = g_config->tools;
-	g_config->tools = TOOLS_PAINT;
-	base_update_tools_nodes();
-
 	ui_node_canvas_t_array_t *mnodes = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t  *m = g_project->_->materials->buffer[i];
@@ -171,9 +167,6 @@ buffer_t *export_arm_encode_project(char *path) {
 		}
 		any_array_push(mnodes, c);
 	}
-
-	g_config->tools = _tools;
-	base_update_tools_nodes();
 
 	ui_node_canvas_t_array_t *bnodes = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < g_project->_->brushes->length; ++i) {
@@ -261,7 +254,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .visible            = l->visible,
 		                              .texpaint_nor       = l->texpaint_nor != NULL ? lz4_encode(gpu_get_texture_pixels(l->texpaint_nor)) : NULL,
 		                              .texpaint_pack      = l->texpaint_pack != NULL ? lz4_encode(gpu_get_texture_pixels(l->texpaint_pack)) : NULL,
-		                              .texpaint_sculpt    = l->texpaint_sculpt != NULL ? lz4_encode(gpu_get_texture_pixels(l->texpaint_sculpt)) : NULL,
+		                              .texpaint_sculpt    = NULL, // Sculpting was removed, the field stays for file compatibility
 		                              .paint_base         = l->paint_base,
 		                              .paint_opac         = l->paint_opac,
 		                              .paint_occ          = l->paint_occ,

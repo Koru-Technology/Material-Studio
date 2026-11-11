@@ -5,7 +5,19 @@ void make_clone_run(node_shader_t *kong, char *tex_src, char *tex_nor_src, char 
 	node_shader_add_constant(kong, "float2 clone_delta", "_clone_delta");
 	// Screen pixels are coarser than texels, extend the source texcoord across the pixel with its screen derivative
 	// Pick the one-sided difference with the smaller step so uv seams and background do not leak in
-	node_shader_write_frag(kong, "float2 clone_px = (sp.xy + constants.clone_delta) * constants.gbuffer_size;");
+	if (g_context->brush_angle != 0.0) {
+		// Rotated clone: the source turns around the brush center
+		node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
+		node_shader_write_frag(kong, "float2 clone_rel = sp.xy - constants.inp.xy;");
+		node_shader_write_frag(kong, "clone_rel.x *= constants.aspect_ratio;");
+		node_shader_write_frag(kong, "clone_rel = float2(clone_rel.x * constants.brush_angle.x - clone_rel.y * constants.brush_angle.y, clone_rel.x * "
+		                             "constants.brush_angle.y + clone_rel.y * constants.brush_angle.x);");
+		node_shader_write_frag(kong, "clone_rel.x /= constants.aspect_ratio;");
+		node_shader_write_frag(kong, "float2 clone_px = (constants.inp.xy + clone_rel + constants.clone_delta) * constants.gbuffer_size;");
+	}
+	else {
+		node_shader_write_frag(kong, "float2 clone_px = (sp.xy + constants.clone_delta) * constants.gbuffer_size;");
+	}
 	node_shader_write_frag(kong, "float2 clone_max = constants.gbuffer_size - float2(1.0, 1.0);");
 	node_shader_write_frag(kong, "float2 clone_c = clamp(floor(clone_px), float2(0.0, 0.0), clone_max);");
 	node_shader_write_frag(kong, "float2 clone_f = clone_px - clone_c - float2(0.5, 0.5);");

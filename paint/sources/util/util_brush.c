@@ -46,6 +46,58 @@ static bool util_brush_finger_allowed(bool paint_down) {
 }
 #endif
 
+// Pen pressure through the curve of the preferences
+f32 util_brush_pen_pressure() {
+	f32 p = pen_pressure;
+	p     = p < 0.0f ? 0.0f : p > 1.0f ? 1.0f : p;
+	f32 c = g_config->pressure_curve > 0.01f ? g_config->pressure_curve : 1.0f;
+	p     = powf(p, c);
+	p     = g_config->pressure_min + (1.0f - g_config->pressure_min) * p;
+	return p * g_config->pressure_sensitivity;
+}
+
+// Factor applied to a brush property by its dynamics source, 1 when off
+f32 util_brush_dynamic(i32 source) {
+	if (slot_layer_is_path(g_context->layer)) {
+		return 1.0f;
+	}
+	if (source == 1) { // Pen pressure
+		return (pen_down("tip") || pen_released("tip")) ? util_brush_pen_pressure() : 1.0f;
+	}
+	if (source == 2) { // Fast strokes paint thinner and lighter
+		return g_config->pressure_min + (1.0f - g_config->pressure_min) * (1.0f - g_context->brush_speed);
+	}
+	return 1.0f;
+}
+
+// Stroke speed and direction for the dynamics
+static f32 util_brush_last_x = -1.0f;
+static f32 util_brush_last_y = -1.0f;
+
+static void util_brush_update_motion() {
+	f32 x = g_context->paint_vec.x;
+	f32 y = g_context->paint_vec.y;
+	if (g_context->brush_time == 0 || util_brush_last_x < 0.0f) {
+		util_brush_last_x     = x;
+		util_brush_last_y     = y;
+		g_context->brush_speed = 0.0f;
+		return;
+	}
+	f32 aspect = base_paint_view_w() / (f32)base_paint_view_h();
+	f32 dx     = (x - util_brush_last_x) * aspect;
+	f32 dy     = y - util_brush_last_y;
+	f32 d      = sqrtf(dx * dx + dy * dy);
+	f32 dt     = sys_delta() > 0.0f ? sys_delta() : 1.0f / 60.0f;
+	f32 s      = d / dt / 3.0f; // Three screen heights a second is full speed
+	s          = s > 1.0f ? 1.0f : s;
+	g_context->brush_speed += (s - g_context->brush_speed) * 0.3f;
+	if (d > 0.002f) {
+		g_context->brush_stroke_angle = atan2f(-dy, dx);
+		util_brush_last_x             = x;
+		util_brush_last_y             = y;
+	}
+}
+
 void util_brush_update() {
 	bool paint_down = keymap_shortcut(any_map_get(g_keymap, "action_paint"), SHORTCUT_TYPE_DOWN);
 #if defined(IRON_IOS) || defined(IRON_ANDROID)
@@ -78,6 +130,10 @@ void util_brush_update() {
 		down = false;
 	}
 
+	if (g_context->stencil_edit && context_is_stencil_editing()) { // Touches move the stencil
+		down = false;
+	}
+
 	if (g_context->tool == TOOL_TYPE_SELECT || util_tool_is_object_tool(g_context->tool)) {
 		down = false;
 	}
@@ -99,10 +155,18 @@ void util_brush_update() {
 				if (g_context->brush_time == 0 && !base_is_dragging && !base_is_resizing && !ui_dock_is_dragging() &&
 				    g_ui->combo_selected_id == 0) { // Paint started
 
+					// First stamp of the stroke
+					g_context->brush_dab_x = -1.0;
+					g_context->brush_dab_y = -1.0;
+
 					// Draw line
-					if (keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "brush_ruler"), any_map_get(g_keymap, "action_paint")), SHORTCUT_TYPE_DOWN)) {
+					if (context_is_ruler_paint()) {
 						g_context->last_paint_vec_x = g_context->last_paint_x;
 						g_context->last_paint_vec_y = g_context->last_paint_y;
+						if (g_context->last_paint_x >= 0.0) { // Stamps continue from the end of the previous stroke
+							g_context->brush_dab_x = g_context->last_paint_x;
+							g_context->brush_dab_y = g_context->last_paint_y;
+						}
 					}
 
 					history_push_undo = g_context->tool < TOOL_TYPE_PLUGIN; // Plugin tools do not paint layers
@@ -120,6 +184,7 @@ void util_brush_update() {
 					}
 				}
 
+				util_brush_update_motion();
 				g_context->brush_time += sys_delta();
 				if (g_context->tool >= TOOL_TYPE_PLUGIN) {
 					plugin_tool_t *t = plugin_tool_get(g_context->tool);
@@ -135,6 +200,8 @@ void util_brush_update() {
 		g_context->brush_time          = 0;
 		g_context->prev_paint_vec_x    = -1;
 		g_context->prev_paint_vec_y    = -1;
+		g_context->brush_dab_x         = -1;
+		g_context->brush_dab_y         = -1;
 		g_context->brush_blend_dirty   = true; // Update brush mask
 		g_context->layer_preview_dirty = true; // Update layer preview
 

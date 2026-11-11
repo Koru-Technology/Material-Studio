@@ -11,46 +11,8 @@ bool util_layer_is_path_point_dragging() {
 	return path_point_dragging >= 0;
 }
 
-// Sculpt rest pose kept while a point is dragged
-static gpu_texture_t *path_sculpt_rest = NULL;
-
-static void path_free_sculpt_rest() {
-	if (path_sculpt_rest != NULL) {
-		gpu_delete_texture(path_sculpt_rest);
-		path_sculpt_rest = NULL;
-	}
-}
-
-static void path_copy_sculpt(gpu_texture_t *dst, gpu_texture_t *src) {
-	draw_begin(dst, false, 0);
-	draw_set_pipeline(pipes_copy128);
-	draw_scaled_image(src, 0, 0, dst->width, dst->height);
-	draw_set_pipeline(NULL);
-	draw_end();
-}
-
 static void path_clear_layer(slot_layer_t *l) {
-	gpu_texture_t *sculpt = l->texpaint_sculpt;
-	if (sculpt == NULL || path_point_dragging < 0) {
-		path_free_sculpt_rest();
-		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-		return;
-	}
-
-	if (path_sculpt_rest != NULL && (path_sculpt_rest->width != sculpt->width || path_sculpt_rest->height != sculpt->height)) {
-		path_free_sculpt_rest();
-	}
-	if (path_sculpt_rest == NULL) {
-		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-		path_sculpt_rest = gpu_create_render_target(sculpt->width, sculpt->height, GPU_TEXTURE_FORMAT_RGBA128);
-		path_copy_sculpt(path_sculpt_rest, sculpt);
-	}
-	else {
-		l->texpaint_sculpt = NULL;
-		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-		l->texpaint_sculpt = sculpt;
-		path_copy_sculpt(sculpt, path_sculpt_rest);
-	}
+	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 }
 
 static void path_destroy_spheres() {
@@ -60,7 +22,6 @@ static void path_destroy_spheres() {
 	free(path_point_spheres);
 	path_point_spheres      = NULL;
 	path_point_sphere_count = 0;
-	path_free_sculpt_rest();
 }
 
 static bool project_to_screen(vec4_t wpos, f32 *sx, f32 *sy) {
@@ -195,9 +156,6 @@ static void path_set_camera(f32_array_t *points_camera, i32 num_camera, i32 ci) 
 		camera_object_build_proj(scene_camera, points_camera->buffer[ci * 9 + 8]);
 		camera_object_build_mat(scene_camera);
 		render_path_base_draw_gbuffer();
-		if (g_context->layer->texpaint_sculpt != NULL) {
-			render_path_sculpt_snapshot_gbuffer();
-		}
 	}
 }
 
@@ -1080,7 +1038,6 @@ void util_layer_update_path() {
 		}
 		path_layer_last_active = path_point_dragging;
 		path_point_dragging    = -1;
-		path_free_sculpt_rest();
 		g_context->layer_preview_dirty  = true;
 		g_context->layers_preview_dirty = true;
 	}

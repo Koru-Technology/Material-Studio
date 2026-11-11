@@ -324,8 +324,15 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 	project->mesh_nodes_objects = any_map_get(old, "mesh_nodes_objects");
 	project->mesh_paths         = any_map_get(old, "mesh_paths");
 	project->mesh_groups        = import_arm_get_node_canvas_array(old, "mesh_groups");
+	project->linear_blending    = armpack_map_get_i32(old, "linear_blending") > 0;
 
 	return project;
+}
+
+project_t *import_arm_from_version_25(any_map_t *old) {
+	// Projects from before keep blending in gamma space, so they look the same
+	armpack_map_set_i32(old, "linear_blending", 0);
+	return import_arm_from_map_to_arm(old);
 }
 
 project_t *import_arm_from_version_24(any_map_t *old) {
@@ -336,7 +343,7 @@ project_t *import_arm_from_version_24(any_map_t *old) {
 			armpack_map_set_f32(lds->buffer[i], "height_blend_reach", 0.03);
 		}
 	}
-	return import_arm_from_map_to_arm(old);
+	return import_arm_from_version_25(old);
 }
 
 project_t *import_arm_from_version_23(any_map_t *old) {
@@ -570,7 +577,7 @@ project_t *import_arm_from_old(buffer_t *b) {
 	    import_arm_from_version_5,  import_arm_from_version_6,  import_arm_from_version_7,  import_arm_from_version_8,  import_arm_from_version_9,
 	    import_arm_from_version_10, import_arm_from_version_11, import_arm_from_version_12, import_arm_from_version_13, import_arm_from_version_14,
 	    import_arm_from_version_15, import_arm_from_version_16, import_arm_from_version_17, import_arm_from_version_18, import_arm_from_version_19,
-	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22, import_arm_from_version_23, import_arm_from_version_24,
+	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22, import_arm_from_version_23, import_arm_from_version_24, import_arm_from_version_25,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (import_arm_is_version(b, i32_to_string(v))) {

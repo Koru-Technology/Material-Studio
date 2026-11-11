@@ -354,7 +354,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 			gpu_set_texture(pipes_texa, layers_temp_image);
 			gpu_set_float(pipes_opac, slot_layer_get_opacity(l1));
 			gpu_set_float(pipes_tex1w, empty->width);
-			gpu_set_int(pipes_blending, layers->length > 1 ? slot_layer_get_blending(l1) : 0);
+			gpu_set_int(pipes_blending, (layers->length > 1 ? slot_layer_get_blending(l1) : 0) + (g_project->linear_blending ? 1000 : 0));
 			gpu_set_vertex_buffer(const_data_screen_aligned_vb);
 			gpu_set_index_buffer(const_data_screen_aligned_ib);
 			gpu_draw();
@@ -390,17 +390,20 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 			draw_set_pipeline(NULL);
 			draw_end();
 
+			// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
+			bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
+			i32  pack_mode  = pack_blend ? 300 + slot_layer_get_blending(l1) : 101;
 			if (l1->paint_occ && l1->paint_rough && l1->paint_met && l1->paint_height) {
 				layers_commands_merge_pack(pipes_merge, layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
-				                           l1->paint_height_blend ? 103 : 101);
+				                           pack_blend ? (l1->paint_height_blend ? 400 : 300) + slot_layer_get_blending(l1) : l1->paint_height_blend ? 103 : 101);
 			}
 			else {
 				if (l1->paint_occ)
-					layers_commands_merge_pack(pipes_get_merge_r(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, 101);
+					layers_commands_merge_pack(pipes_get_merge_r(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 				if (l1->paint_rough)
-					layers_commands_merge_pack(pipes_get_merge_g(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, 101);
+					layers_commands_merge_pack(pipes_get_merge_g(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 				if (l1->paint_met)
-					layers_commands_merge_pack(pipes_get_merge_b(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, 101);
+					layers_commands_merge_pack(pipes_get_merge_b(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 				if (l1->paint_height)
 					layers_commands_merge_pack(pipes_get_merge_a(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
 					                           l1->paint_height_blend ? 103 : 101);
@@ -482,13 +485,13 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 			for (i32 i = 0; i < 4; ++i) {
 				char *c = t->channels->buffer[i];
 				if (string_equals(c, "base_r")) {
-					export_texture_copy_channel(pixpaint, 0, pix, i, bits, string_equals(t->color_space, "linear"));
+					export_texture_copy_channel(pixpaint, 0, pix, i, bits, true); // Base color is stored sRGB encoded already
 				}
 				else if (string_equals(c, "base_g")) {
-					export_texture_copy_channel(pixpaint, 1, pix, i, bits, string_equals(t->color_space, "linear"));
+					export_texture_copy_channel(pixpaint, 1, pix, i, bits, true); // Base color is stored sRGB encoded already
 				}
 				else if (string_equals(c, "base_b")) {
-					export_texture_copy_channel(pixpaint, 2, pix, i, bits, string_equals(t->color_space, "linear"));
+					export_texture_copy_channel(pixpaint, 2, pix, i, bits, true); // Base color is stored sRGB encoded already
 				}
 				else if (string_equals(c, "height")) {
 					export_texture_copy_channel(pixpaint_pack, 3, pix, i, bits, string_equals(t->color_space, "linear"));

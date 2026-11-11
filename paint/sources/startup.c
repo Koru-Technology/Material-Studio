@@ -1104,7 +1104,7 @@ scene_t *startup_get_scene(void) {
 		}
 		{
 			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copyR32_pass";
+			sc->name                         = "copyR16_pass";
 			sc->depth_write                  = false;
 			sc->compare_mode                 = "always";
 			sc->cull_mode                    = "none";
@@ -1112,7 +1112,7 @@ scene_t *startup_get_scene(void) {
 			sc->fragment_shader              = "copy_pass.frag";
 			sc->shader_from_source           = false;
 			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "R32";
+			sc->color_attachments->buffer[0] = "R16";
 			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
 			{
 				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));

@@ -441,10 +441,6 @@ void util_render_make_brush_preview() {
 		return;
 	}
 
-	if (g_config->tools == TOOLS_SCULPT) {
-		return;
-	}
-
 	gpu_texture_t *current = _draw_current;
 	bool           in_use  = gpu_in_use;
 	if (in_use)
@@ -563,7 +559,29 @@ void util_render_make_brush_preview() {
 
 	// Shallow sine wave, generated at runtime for the parameters panel
 	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-	g_context->brush_radius = 0.25;
+	g_context->brush_radius   = 0.25;
+	g_context->brush_hardness = _brush_hardness; // The stroke shows the brush as it paints
+
+	// Stamps as when painting, measured on the preview plane, without symmetry copies
+	bool stamps           = render_path_paint_stamps();
+	f32  _posx_picked     = g_context->posx_picked;
+	f32  _posy_picked     = g_context->posy_picked;
+	f32  _posz_picked     = g_context->posz_picked;
+	bool _sym_x           = g_context->sym_x;
+	bool _sym_y           = g_context->sym_y;
+	bool _sym_z           = g_context->sym_z;
+	i32  _sym_radial      = g_context->sym_radial;
+	g_context->sym_x      = false;
+	g_context->sym_y      = false;
+	g_context->sym_z      = false;
+	g_context->sym_radial = 1;
+	if (stamps) {
+		g_context->posx_picked = planeo->base->transform->loc.x;
+		g_context->posy_picked = planeo->base->transform->loc.y;
+		g_context->posz_picked = planeo->base->transform->loc.z;
+		g_context->brush_dab_x = -1.0;
+		g_context->brush_dab_y = -1.0;
+	}
 
 	// Lazy radius in screen space, the brush sits on the plane
 	f32 lazy_r = 0.0;
@@ -619,11 +637,26 @@ void util_render_make_brush_preview() {
 		g_context->last_paint_vec_y = sphere_mode ? by : ly;
 		g_context->paint_vec.x      = bx / aspect;
 		g_context->paint_vec.y      = by;
-		render_path_paint_commands_paint(false);
+		if (stamps) {
+			g_context->pdirty = 2;
+			render_path_paint_commands_stamps();
+		}
+		else {
+			render_path_paint_commands_paint(false);
+		}
 		lx = bx;
 		ly = by;
 	}
 	util_render_brush_preview_copy(l->texpaint, g_context->brush->image_wave, util_render_brush_wave_strip);
+	g_context->brush_dab_x = -1.0;
+	g_context->brush_dab_y = -1.0;
+	g_context->posx_picked = _posx_picked;
+	g_context->posy_picked = _posy_picked;
+	g_context->posz_picked = _posz_picked;
+	g_context->sym_x       = _sym_x;
+	g_context->sym_y       = _sym_y;
+	g_context->sym_z       = _sym_z;
+	g_context->sym_radial  = _sym_radial;
 
 	g_context->brush_radius     = _brush_radius;
 	g_context->brush_opacity    = _brush_opacity;

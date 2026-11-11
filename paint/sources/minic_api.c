@@ -589,10 +589,13 @@ void minic_register_builtins() {
 	           "GPU_TEXTURE_FORMAT_R16", "GPU_TEXTURE_FORMAT_R32", "GPU_TEXTURE_FORMAT_D32", "GPU_TEXTURE_FORMAT_RGBA32_BC7");
 	MINIC_ENUM("physics_shape_t", "PHYSICS_SHAPE_BOX", "PHYSICS_SHAPE_SPHERE", "PHYSICS_SHAPE_TERRAIN", "PHYSICS_SHAPE_MESH");
 	MINIC_ENUM("render_pass_stage_t", "RENDER_PASS_LIGHT", "RENDER_PASS_POST");
-	MINIC_ENUM("tools_t", "TOOLS_PAINT", "TOOLS_SCULPT", "TOOLS_OBJECT");
+	{
+		// 1 was sculpt
+		static const char *tools_names[]  = {"TOOLS_PAINT", "TOOLS_OBJECT"};
+		static const int   tools_values[] = {TOOLS_PAINT, TOOLS_OBJECT};
+		minic_register_enum("tools_t", tools_names, tools_values, 2);
+	}
 	MINIC_ENUM("platform_t", "PLATFORM_WINDOWS", "PLATFORM_LINUX", "PLATFORM_MACOS", "PLATFORM_IOS", "PLATFORM_ANDROID", "PLATFORM_WASM");
-	MINIC_ENUM("sculpt_type_t", "SCULPT_TYPE_DRAW", "SCULPT_TYPE_GRAB", "SCULPT_TYPE_INFLATE", "SCULPT_TYPE_FLATTEN", "SCULPT_TYPE_CLAY", "SCULPT_TYPE_PINCH",
-	           "SCULPT_TYPE_CREASE", "SCULPT_TYPE_CLOTH", "SCULPT_TYPE_TWIST", "SCULPT_TYPE_STRETCH", "SCULPT_TYPE_TRIM", "SCULPT_TYPE_PLATEAU");
 	MINIC_ENUM("tool_type_t", "TOOL_TYPE_BRUSH", "TOOL_TYPE_ERASER", "TOOL_TYPE_FILL", "TOOL_TYPE_DECAL", "TOOL_TYPE_TEXT", "TOOL_TYPE_CLONE", "TOOL_TYPE_BLUR",
 	           "TOOL_TYPE_PARTICLE", "TOOL_TYPE_COLORID", "TOOL_TYPE_PICKER", "TOOL_TYPE_MATERIAL", "TOOL_TYPE_CURSOR", "TOOL_TYPE_SELECT", "TOOL_TYPE_EMPTY",
 	           "TOOL_TYPE_PLANE", "TOOL_TYPE_CUBE", "TOOL_TYPE_SPHERE", "TOOL_TYPE_CONE", "TOOL_TYPE_CYLINDER", "TOOL_TYPE_CAPSULE", "TOOL_TYPE_TORUS",
@@ -686,7 +689,6 @@ void minic_register_builtins() {
 	MINIC_B(path_curved);
 	MINIC_B(path_text);
 	MINIC_O(path_material, slot_material_t);
-	MINIC_O(texpaint_sculpt, gpu_texture_t);
 	MINIC_B(paint_base);
 	MINIC_B(paint_opac);
 	MINIC_B(paint_occ);
@@ -918,6 +920,7 @@ void minic_register_builtins() {
 	MINIC_I(node_previews);
 	MINIC_I(material_live);
 	MINIC_I(tools);
+	MINIC_I(rp_view_transform);
 	MINIC_END();
 
 	MINIC_STRUCT(context_t);
@@ -933,10 +936,25 @@ void minic_register_builtins() {
 	MINIC_F(brush_hardness);
 	MINIC_F(brush_scale);
 	MINIC_F(brush_angle);
+	MINIC_F(brush_spacing);
+	MINIC_F(brush_scatter);
+	MINIC_F(brush_jitter_size);
+	MINIC_F(brush_jitter_angle);
+	MINIC_F(brush_jitter_opacity);
+	MINIC_F(brush_flow);
+	MINIC_F(brush_smoothing);
+	MINIC_F(brush_strength);
 	MINIC_I(brush_blending);
-	MINIC_I(brush_sculpt);
 	MINIC_I(viewport_mode);
 	MINIC_I(xray);
+	MINIC_B(sym_x);
+	MINIC_B(sym_y);
+	MINIC_B(sym_z);
+	MINIC_I(sym_radial);
+	MINIC_I(sym_radial_axis);
+	MINIC_B(sym_center);
+	MINIC_B(brush_straight_line);
+	MINIC_B(brush_camera_align);
 	MINIC_B(capturing_screenshot);
 	MINIC_F(envmap_angle);
 	MINIC_END();

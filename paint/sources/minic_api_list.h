@@ -757,6 +757,8 @@ X2(parser_material_parse_value_input, "p:char(p:ui_node_socket_t inp,i vector_as
 X0(context_main_object, "p:mesh_object_t()", p)
 X2(export_texture_run, "v(p:char path,i bake_material)", v, p, i)
 X1(context_select_tool, "v(i i)", v, i)
+X1(builtin_brush_use, "v(i i)", v, i)
+X1(ui_base_show_tab, "v(i id)", v, i)
 X3(gpu_create_render_target, "p:gpu_texture_t(i width,i height,i format)", p, i, i, i)
 X5(viewport_capture_screenshot_to, "v(p:gpu_texture_t target,f x,f y,f w,f h)", v, p, f, f, f, f)
 X1(viewport_save_texture, "v(p:gpu_texture_t screenshot)", v, p)

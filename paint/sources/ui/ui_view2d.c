@@ -297,7 +297,7 @@ static bool          _ui_view2d_moving     = false;
 static bool          _ui_view2d_move_apply = false;
 
 static bool ui_view2d_layer_movable(slot_layer_t *l) {
-	return (slot_layer_is_layer(l) || slot_layer_is_mask(l)) && l->fill_material == NULL && l->texpaint_sculpt == NULL;
+	return (slot_layer_is_layer(l) || slot_layer_is_mask(l)) && l->fill_material == NULL;
 }
 
 // Shift the texture contents, pixels moved out of the texture are discarded
@@ -452,8 +452,6 @@ void ui_view2d_update(void *_) {
 			ui_view2d_layer_touched = false;
 		}
 
-		bool sculpt_layer = g_context->layer->texpaint_sculpt != NULL;
-
 		bool over_toolbar = !base_view3d_show && mouse_x < ui_view2d_wx + ui_toolbar_x() + ui_toolbar_w(false);
 		if (ui_view2d_type == VIEW_2D_TYPE_LAYER && g_context->tool == TOOL_TYPE_CURSOR && mouse_started("left") && !over_toolbar &&
 		    ui_view2d_layer_movable(g_context->layer)) {
@@ -462,7 +460,7 @@ void ui_view2d_update(void *_) {
 		}
 
 		// The cursor tool moves the layer
-		if (ui_view2d_type == VIEW_2D_TYPE_LAYER && !ui_view2d_text_input_hover && !sculpt_layer && g_context->tool != TOOL_TYPE_CURSOR &&
+		if (ui_view2d_type == VIEW_2D_TYPE_LAYER && !ui_view2d_text_input_hover && g_context->tool != TOOL_TYPE_CURSOR &&
 		    (keymap_shortcut(any_map_get(g_keymap, "action_paint"), SHORTCUT_TYPE_DOWN) ||
 		     keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "brush_ruler"), any_map_get(g_keymap, "action_paint")), SHORTCUT_TYPE_DOWN) ||
 		     decal_mask || set_clone_source || g_config->brush_live)) {
