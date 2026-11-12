@@ -217,7 +217,7 @@ void tab_materials_draw_slots_menu() {
 }
 
 void tab_materials_draw_slots(bool mini) {
-	f32 a     = mini ? 1.0 : ui_base_asset_scale();
+	f32 a     = mini ? 1.0 : ui_base_asset_scale() * 1.5; // Spheres larger than the other assets, they show the material
 	i32 slotw = math_floor((50 * a + 1) * UI_SCALE() + g_config->window_scale * 2);
 	i32 num   = math_floor(g_ui->_window_w / (float)slotw);
 	if (num == 0) {
@@ -253,7 +253,7 @@ void tab_materials_draw_slots(bool mini) {
 				}
 				continue;
 			}
-			gpu_texture_t *img      = UI_SCALE() > 1 ? g_project->_->materials->buffer[i]->image : g_project->_->materials->buffer[i]->image_icon;
+			gpu_texture_t *img      = UI_SCALE() * a > 1 ? g_project->_->materials->buffer[i]->image : g_project->_->materials->buffer[i]->image_icon;
 			gpu_texture_t *img_full = g_project->_->materials->buffer[i]->image;
 
 			// Highligh selected

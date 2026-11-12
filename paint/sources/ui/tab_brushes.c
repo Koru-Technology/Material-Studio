@@ -217,8 +217,186 @@ static void tab_brushes_draw_builtin() {
 	}
 }
 
-// Brushes tab content, also shown on its own in the touch popover
+// Touch brush list: one brush per row, its name above its stroke, like a brush library.
+// Rows are the project brushes, then the built-in brushes. Their strokes render one per frame and are kept.
+
+static gpu_texture_t *tab_brushes_builtin_rows[64];
+static i32            tab_brushes_row_pending = -1; // Row whose stroke renders on the next frame
+
+static gpu_texture_t *tab_brushes_row_image(i32 r) {
+	i32 n = g_project->_->brushes->length;
+	return r < n ? g_project->_->brushes->buffer[r]->image_row : tab_brushes_builtin_rows[r - n];
+}
+
+static void tab_brushes_make_row_image(void *_) {
+	i32 r                   = tab_brushes_row_pending;
+	tab_brushes_row_pending = -1;
+	i32 n                   = g_project->_->brushes->length;
+	if (r < 0 || r >= n + builtin_brush_count() || r - n >= 64) {
+		return;
+	}
+
+	slot_brush_t *_brush          = g_context->brush;
+	i32           _builtin        = g_context->brush_builtin;
+	f32           _hardness       = g_context->brush_hardness;
+	f32           _spacing        = g_context->brush_spacing;
+	f32           _scatter        = g_context->brush_scatter;
+	f32           _jitter_size    = g_context->brush_jitter_size;
+	f32           _jitter_angle   = g_context->brush_jitter_angle;
+	f32           _jitter_opacity = g_context->brush_jitter_opacity;
+	f32           _flow           = g_context->brush_flow;
+	if (r < n) {
+		g_context->brush         = g_project->_->brushes->buffer[r];
+		g_context->brush_builtin = -1;
+	}
+	else {
+		builtin_brush_settings(r - n);
+	}
+	make_material_parse_brush();
+	brush_output_node_parse_inputs();
+	util_render_make_brush_preview();
+
+	gpu_texture_t  *src = g_context->brush->image_wave;
+	gpu_texture_t **dst = r < n ? &g_project->_->brushes->buffer[r]->image_row : &tab_brushes_builtin_rows[r - n];
+	if (src != NULL) {
+		if (*dst == NULL) {
+			*dst = gpu_create_render_target(src->width, src->height, GPU_TEXTURE_FORMAT_RGBA32);
+		}
+		gpu_texture_t *current = _draw_current;
+		bool           in_use  = gpu_in_use;
+		if (in_use)
+			draw_end();
+		draw_begin(*dst, true, 0x00000000);
+		draw_set_color(0xffffffff);
+		draw_image(src, 0, 0);
+		draw_end();
+		if (in_use)
+			draw_begin(current, false, 0);
+	}
+	g_context->brush->preview_ready = false; // Its previews show this row's stroke now, the parameters panel renders them again
+
+	g_context->brush                = _brush;
+	g_context->brush_builtin        = _builtin;
+	g_context->brush_hardness       = _hardness;
+	g_context->brush_spacing        = _spacing;
+	g_context->brush_scatter        = _scatter;
+	g_context->brush_jitter_size    = _jitter_size;
+	g_context->brush_jitter_angle   = _jitter_angle;
+	g_context->brush_jitter_opacity = _jitter_opacity;
+	g_context->brush_flow           = _flow;
+	make_material_parse_brush();
+	brush_output_node_parse_inputs();
+	ui_popovers_redraw(-1);
+}
+
+// A row: name above the stroke, the selected one highlighted
+static ui_state_t tab_brushes_row(char *name, gpu_texture_t *img, bool selected) {
+	f32 pad    = math_floor(10 * UI_SCALE());
+	f32 w      = g_ui->_w;
+	f32 wave_w = w - pad * 2;
+	f32 wave_h = math_floor(wave_w * util_render_brush_wave_strip);
+	f32 name_h = UI_ELEMENT_H();
+	f32 h      = pad / 2 + name_h + wave_h + pad / 2;
+
+	ui_state_t state = UI_STATE_IDLE;
+	if (ui_get_started(h)) {
+		state = UI_STATE_STARTED;
+	}
+	else if (ui_get_released(h)) {
+		state = UI_STATE_RELEASED;
+	}
+	else if (ui_get_hover(h)) {
+		state = UI_STATE_HOVERED;
+	}
+
+	if (ui_is_visible(h)) {
+		f32 x = g_ui->_x;
+		f32 y = g_ui->_y;
+		if (selected) {
+			draw_set_color(g_theme->HIGHLIGHT_COL);
+			ui_draw_rect(true, false, x, y, w, h);
+		}
+		draw_set_color(g_theme->TEXT_COL);
+		draw_set_font(g_ui->ops->font, g_ui->font_size);
+		f32 ty = y + pad / 2 + (name_h - draw_font_height(g_ui->ops->font, g_ui->font_size)) / 2.0;
+		draw_string(name, x + pad, ty);
+		if (img != NULL) {
+			draw_set_color(0xffffffff);
+			draw_scaled_image(img, x + pad, y + pad / 2 + name_h, wave_w, wave_h);
+		}
+	}
+	ui_end_element_of_size(h);
+	return state;
+}
+
+static void tab_brushes_select_project_brush(i32 i) {
+	if (g_context->brush_builtin >= 0) { // A project brush replaces the built-in tip
+		g_context->brush_builtin = -1;
+		brush_output_node_parse_inputs();
+		g_context->brush->preview_ready = false;
+		config_save();
+	}
+	if (g_context->brush != g_project->_->brushes->buffer[i]) {
+		context_select_brush(i);
+	}
+}
+
+static void tab_brushes_draw_rows() {
+	i32 n     = g_project->_->brushes->length;
+	i32 count = n + builtin_brush_count();
+	for (i32 r = 0; r < count; ++r) {
+		gpu_texture_t *img = tab_brushes_row_image(r);
+		if (img == NULL && tab_brushes_row_pending == -1) {
+			tab_brushes_row_pending = r;
+			sys_notify_on_next_frame(&tab_brushes_make_row_image, NULL);
+		}
+		if (r < n) {
+			slot_brush_t *b     = g_project->_->brushes->buffer[r];
+			bool          sel   = g_context->brush == b && g_context->brush_builtin < 0;
+			ui_state_t    state = tab_brushes_row(b->canvas->name, img, sel);
+			if (state == UI_STATE_RELEASED) {
+				tab_brushes_select_project_brush(r);
+				if (sys_time() - g_context->select_time < 0.4) {
+					ui_base_show_brush_nodes(); // Double tap
+				}
+				g_context->select_time = sys_time();
+			}
+			if (g_ui->is_hovered && g_ui->input_released_r) {
+				context_select_brush(r);
+				_tab_brushes_draw_i = r;
+				ui_menu_draw(&tab_brushes_draw_context_menu, -1, -1);
+			}
+		}
+		else {
+			i32 i = r - n;
+			if (tab_brushes_row(builtin_brush_name(i), img, g_context->brush_builtin == i) == UI_STATE_RELEASED) {
+				builtin_brush_use(i);
+			}
+		}
+	}
+}
+
+static void tab_brushes_new() {
+	g_context->brush = slot_brush_create(NULL);
+	any_array_push(g_project->_->brushes, g_context->brush);
+	make_material_parse_brush();
+	history_new_brush();
+	ui_nodes_hwnd->redraws = 2;
+}
+
+static void tab_brushes_draw_slots(bool popover);
+
+// Brushes tab content
 void tab_brushes_draw_content() {
+	tab_brushes_draw_slots(false);
+}
+
+// Touch popover, the only content so no tab above it: title with Nodes, Edit and + buttons
+void tab_brushes_draw_popover() {
+	tab_brushes_draw_slots(true);
+}
+
+static void tab_brushes_draw_slots(bool popover) {
 	// The parameters panel shows the stroke preview of the selected brush
 	if (!g_context->brush->preview_ready && !tab_brushes_preview_pending) {
 		tab_brushes_preview_pending = true;
@@ -226,29 +404,56 @@ void tab_brushes_draw_content() {
 	}
 
 	ui_begin_sticky();
-	f32_array_t *row = f32_array_create_from_raw_tmp(
-	    (f32[]){
-	        -64,
-	        -64,
-	        -64,
-	    },
-	    3);
-	ui_row(row);
-	if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
-		g_context->brush = slot_brush_create(NULL);
-		any_array_push(g_project->_->brushes, g_context->brush);
-		make_material_parse_brush();
-		history_new_brush();
-		ui_nodes_hwnd->redraws = 2;
+	if (popover) {
+		f32          button = UI_ELEMENT_H() / (f32)g_ui->_w;
+		f32_array_t *row    = f32_array_create_from_raw_tmp(
+            (f32[]){
+                1.0 - button * 3,
+                button,
+                button,
+                button,
+            },
+            4);
+		ui_row(row);
+		ui_text(tr("Brushes"), UI_ALIGN_LEFT, 0x00000000);
+		if (ui_icon_button("", ICON_NODES, UI_ALIGN_CENTER)) {
+			ui_base_show_brush_nodes();
+		}
+		if (ui_icon_button("", ICON_EDIT, UI_ALIGN_CENTER)) {
+			ui_menu_draw(&tab_brushes_draw_edit, -1, -1);
+		}
+		if (ui_icon_button("", ICON_PLUS, UI_ALIGN_CENTER)) {
+			tab_brushes_new();
+		}
 	}
-	if (ui_button(tr("Nodes"), UI_ALIGN_CENTER, "")) {
-		ui_base_show_brush_nodes();
-	}
-	if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
-		ui_menu_draw(&tab_brushes_draw_edit, -1, -1);
+	else {
+		f32_array_t *row = f32_array_create_from_raw_tmp(
+		    (f32[]){
+		        -64,
+		        -64,
+		        -64,
+		    },
+		    3);
+		ui_row(row);
+		if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
+			tab_brushes_new();
+		}
+		if (ui_button(tr("Nodes"), UI_ALIGN_CENTER, "")) {
+			ui_base_show_brush_nodes();
+		}
+		if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
+			ui_menu_draw(&tab_brushes_draw_edit, -1, -1);
+		}
 	}
 	ui_end_sticky();
 	ui_separator(3, false);
+
+	if (popover) {
+		tab_brushes_draw_rows();
+		tab_brushes_draw_presets();
+		ui_node_params_draw(CANVAS_TYPE_BRUSH, &g_config->brush_params);
+		return;
+	}
 
 	f32 a     = ui_base_asset_scale();
 	i32 slotw = math_floor((50 * a + 1) * UI_SCALE());

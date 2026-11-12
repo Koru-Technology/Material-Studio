@@ -258,6 +258,19 @@ gpu_texture_t *builtin_brush_tip() {
 	return builtin_tip_texture(builtin_brushes[i].tip);
 }
 
+// Sets the tip and stroke settings of built-in brush i, nothing else
+void builtin_brush_settings(i32 i) {
+	builtin_brush_t *b              = &builtin_brushes[i];
+	g_context->brush_builtin        = i;
+	g_context->brush_hardness       = b->hardness;
+	g_context->brush_spacing        = b->spacing;
+	g_context->brush_scatter        = b->scatter;
+	g_context->brush_jitter_size    = b->jitter_size;
+	g_context->brush_jitter_angle   = b->jitter_angle;
+	g_context->brush_jitter_opacity = b->jitter_opacity;
+	g_context->brush_flow           = b->flow;
+}
+
 void builtin_brush_use(i32 i) {
 	if (i < 0 || i >= BUILTIN_BRUSH_COUNT) {
 		return;

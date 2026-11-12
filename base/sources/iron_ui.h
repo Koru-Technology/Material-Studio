@@ -373,6 +373,7 @@ void ui_set_scale(float factor);
 
 bool  ui_get_hover(float elem_h);
 bool  ui_get_released(float elem_h);
+bool  ui_get_started(float elem_h);
 bool  ui_input_in_rect(float x, float y, float w, float h);
 void  ui_fill(float x, float y, float w, float h, uint32_t color);
 void  ui_rect(float x, float y, float w, float h, uint32_t color, float strength);

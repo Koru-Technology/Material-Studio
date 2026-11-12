@@ -180,7 +180,7 @@ static void ui_popovers_draw_bar() {
 		}
 		i32 step = g_ui->_x - cell_x; // Advance of one button
 
-		if (ui_popovers_icon(POPOVER_BRUSHES, ICON_BRUSH)) {
+		if (ui_popovers_icon(POPOVER_BRUSHES, ICON_PAINT)) {
 			ui_popovers_toggle(POPOVER_BRUSHES);
 		}
 		if (g_ui->is_hovered) {
@@ -262,10 +262,10 @@ static void ui_popovers_draw_popover() {
 	i32 inset = math_floor(4 * UI_SCALE());
 	if (ui_window(ui_popovers_handle, x + inset, y + inset, w - inset * 2, h - inset * 2, false)) {
 		if (ui_popovers_open == POPOVER_LAYERS) {
-			tab_layers_draw(htab);
+			tab_layers_draw_popover();
 		}
 		else if (ui_popovers_open == POPOVER_BRUSHES) {
-			tab_brushes_draw_content(); // The only tab, no tab name above it
+			tab_brushes_draw_popover();
 		}
 		else {
 			tab_materials_draw(htab);

@@ -182,78 +182,6 @@ void tab_layers_draw_layer_slot_full_delete_layer(void *_) {
 	tab_layers_delete_layer(g_context->layer);
 }
 
-void tab_layers_combo_object_layer_clear(slot_layer_t *l) {
-	g_context->material = l->fill_material;
-	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-	layers_update_fill_layers();
-}
-
-static string_array_t *tab_layers_object_items(char *first, i32_array_t *masks) {
-	string_array_t *ar = any_array_create_from_raw(
-	    (void *[]){
-	        first,
-	    },
-	    1);
-	i32_array_push(masks, 0);
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		if (p->data->index_array->length == 0) {
-			continue;
-		}
-		any_array_push(ar, p->base->name);
-		i32_array_push(masks, i + 1);
-	}
-	string_array_t *atlases = project_get_used_atlases();
-	if (atlases != NULL) {
-		for (i32 i = 0; i < atlases->length; ++i) {
-			char *a = atlases->buffer[i];
-			any_array_push(ar, a);
-			i32_array_push(masks, g_project->_->paint_objects->length + 1 + i);
-		}
-	}
-	return ar;
-}
-
-static bool tab_layers_object_combo(i32 *value, char *first, char *label, bool show_label) {
-	i32_array_t    *masks = i32_array_create(0);
-	string_array_t *ar    = tab_layers_object_items(first, masks);
-	i32             pos   = i32_array_index_of(masks, *value);
-	if (pos == -1) {
-		pos = 0;
-	}
-	ui_set_next_id((ui_id_t)value);
-	ui_combo(&pos, ar, label, show_label, UI_ALIGN_LEFT, true);
-	bool changed = ui_item_changed();
-	if (changed) {
-		*value = masks->buffer[pos];
-	}
-	array_free(ar);
-	free(ar);
-	array_free(masks);
-	free(masks);
-	return changed;
-}
-
-bool tab_layers_combo_object(slot_layer_t *l, bool label) {
-	i32  prev_object_mask = l->object_mask;
-	bool changed          = tab_layers_object_combo(&l->object_mask, tr("Shared"), tr("Object"), label);
-	if (changed) {
-		i32 new_object_mask = l->object_mask;
-		l->object_mask      = prev_object_mask;
-		context_set_layer(l);
-		history_layer_object();
-		l->object_mask = new_object_mask;
-		make_material_parse_mesh_material();
-		if (l->fill_material != NULL) {
-			sys_notify_on_next_frame(&tab_layers_combo_object_layer_clear, l);
-		}
-		else {
-			layers_set_object_mask();
-		}
-	}
-	return changed;
-}
-
 bool tab_layers_combo_blending(slot_layer_t *l, bool label) {
 	string_array_t *blending_combo = any_array_create_from_raw_tmp(
 	    (void *[]){
@@ -340,9 +268,8 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 	f32 uiy    = g_ui->_y;
 
 	bool has_children = tab_layers_has_children(l);
-	bool has_combos   = !slot_layer_is_group(l) && !slot_layer_is_mask(l) && !slot_layer_is_filter(l);
 
-	// Columns: eye | indent | icon | name | combo | expand arrow
+	// Columns: eye | indent | icon | name | expand arrow
 	i32 depth = 0;
 	for (slot_layer_t *p = l->parent; p != NULL; p = p->parent) {
 		++depth;
@@ -355,9 +282,7 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 	f32 name_x   = icon_x + icon_h + 8 * UI_SCALE();
 	f32 arrow_w  = 24 * UI_SCALE();
 	f32 arrow_x  = uix + uiw - arrow_w;
-	f32 combo_w  = uiw * 0.30;
-	f32 combo_x  = arrow_x - combo_w;
-	f32 name_end = has_combos ? combo_x : arrow_x;
+	f32 name_end = arrow_x;
 
 	// Draw eye icon
 	f32_array_t *row = f32_array_create_from_raw_tmp(
@@ -445,14 +370,6 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 			tab_layers_l         = g_context->layer;
 			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_duplicate, NULL);
 		}
-	}
-
-	// Object combo, blending is in the context menu
-	if (has_combos) {
-		g_ui->_x = combo_x;
-		g_ui->_y = uiy + center;
-		g_ui->_w = combo_w;
-		tab_layers_combo_object(l, false);
 	}
 
 	// Expand arrow, enlarged and centered in its column
@@ -822,11 +739,6 @@ void tab_layers_draw_layer_context_menu_draw() {
 			ui_menu_keep_open = true;
 		}
 
-		if (slot_layer_is_layer(l) && !slot_layer_is_filter(l)) {
-			if (tab_layers_combo_object(l, true)) {
-				ui_menu_keep_open = true;
-			}
-		}
 	}
 
 	if (ui_menu_button(tr("Export"), "", ICON_EXPORT)) {
@@ -1218,19 +1130,12 @@ void tab_layers_button_new(char *text) {
 	}
 }
 
-void tab_layers_combo_filter() {
-	if (tab_layers_object_combo(&g_context->layer_filter, tr("All"), tr("Filter"), false)) {
-		tab_layers_apply_filter(g_context->layer_filter);
-	}
-}
-
 void tab_layers_draw_mini(i32 *htab) {
 	ui_set_hovered_tab_name(tr("Layers"));
 
 	ui_begin_sticky();
 	ui_separator(5, true);
 
-	tab_layers_combo_filter();
 	tab_layers_button_2d_view();
 	tab_layers_button_new("");
 
@@ -1379,8 +1284,8 @@ void tab_layers_draw_edit() {
 	}
 }
 
-void tab_layers_draw_full(i32 *htab) {
-	if (ui_tab(htab, tr("Layers"), false, -1, false)) {
+static void tab_layers_draw_content(bool popover) {
+	{
 		bool in_window = ui_input_in_rect(g_ui->_window_x, g_ui->_window_y, g_ui->_window_w, g_ui->_window_h);
 
 		if (in_window && g_ui->is_ctrl_down && g_ui->is_key_pressed && g_ui->key_code == KEY_CODE_F) {
@@ -1391,31 +1296,38 @@ void tab_layers_draw_full(i32 *htab) {
 		}
 
 		ui_begin_sticky();
-		f32_array_t *row = f32_array_create_from_raw_tmp(
-		    (f32[]){
-		        -64,
-		        -64,
-		        -64,
-		        -88,
-		    },
-		    4);
-		bool popover = ui_popovers_enabled(); // Touch popover: no filter, the Edit items are in the layer menu
 		if (popover) {
-			row->length = 1; // 2D view is the floating button by the view cube
+			// Touch popover: title with a + button, no filter, the Edit items are in the layer menu, 2D view is the
+			// floating button by the view cube
 			if (g_context->layer_filter != 0) { // Nothing to pick it back with, all layers show
 				g_context->layer_filter = 0;
 				tab_layers_apply_filter(0);
 			}
+			f32          button = UI_ELEMENT_H() / (f32)g_ui->_w;
+			f32_array_t *row    = f32_array_create_from_raw_tmp(
+                (f32[]){
+                    1.0 - button,
+                    button,
+                },
+                2);
+			ui_row(row);
+			ui_text(tr("Layers"), UI_ALIGN_LEFT, 0x00000000);
+			tab_layers_button_new("");
 		}
-		ui_row(row);
-
-		tab_layers_button_new(tr("New"));
-		if (!popover) {
+		else {
+			f32_array_t *row = f32_array_create_from_raw_tmp(
+			    (f32[]){
+			        -64,
+			        -64,
+			        -64,
+			    },
+			    3);
+			ui_row(row);
+			tab_layers_button_new(tr("New"));
 			tab_layers_button_2d_view();
 			if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
 				ui_menu_draw(&tab_layers_draw_edit, -1, -1);
 			}
-			tab_layers_combo_filter();
 		}
 
 		if (tab_layers_search_show) {
@@ -1485,6 +1397,17 @@ void tab_layers_draw_full(i32 *htab) {
 			}
 		}
 	}
+}
+
+void tab_layers_draw_full(i32 *htab) {
+	if (ui_tab(htab, tr("Layers"), false, -1, false)) {
+		tab_layers_draw_content(ui_popovers_enabled());
+	}
+}
+
+// Touch popover, the only content so no tab above it
+void tab_layers_draw_popover() {
+	tab_layers_draw_content(true);
 }
 
 void tab_layers_draw(i32 *htab) {
