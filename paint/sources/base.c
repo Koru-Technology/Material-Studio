@@ -137,6 +137,11 @@ bool base_startup_covering() {
 	return base_startup_cover;
 }
 
+// The project reopened on startup has not loaded yet
+bool base_startup_loading() {
+	return base_startup_cover && base_startup_cover_frames < 0;
+}
+
 void base_startup_cover_done() {
 	if (base_startup_cover && base_startup_cover_frames < 0) {
 		base_startup_cover_frames = 10;
@@ -295,6 +300,7 @@ void base_init_undo_layers() {
 
 void base_update(void *_) {
 	util_pencil_update();
+	brush_previews_update();
 	ui_quick_menu_update();
 
 	if (g_project->_->translucency && any_map_get(render_path_render_targets, "main_paint") == NULL) {
@@ -624,6 +630,7 @@ void base_init() {
 	g_context->camera_controls = g_config->camera_controls;
 
 	library_init();
+	brush_previews_start(); // Read from disk while the project loads under the startup cover
 
 	bool  has_projects = g_config->recent_projects->length > 0;
 	char *reload       = NULL;

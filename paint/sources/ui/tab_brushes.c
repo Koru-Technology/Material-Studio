@@ -176,111 +176,8 @@ static void tab_brushes_draw_builtin() {
 	}
 }
 
-// Touch brush list: one brush per row, its name above its stroke, like a brush library.
-// Rows are the project brushes, then the built-in brushes. Their strokes render one per frame and are kept.
-
-static gpu_texture_t *tab_brushes_builtin_rows[64];
-static i32            tab_brushes_row_pending = -1; // Row whose stroke renders on the next frame
-static i32            tab_brushes_row_refresh = -1; // Rows from this one render again, the pen settings changed; -1 when current
-
-// The pen settings that shape the strokes: they are painted as a Pencil stroke
-typedef struct {
-	i32 dyn[5];
-	f32 curve;
-	f32 min;
-	f32 sensitivity;
-} tab_brushes_pen_t;
-
-static tab_brushes_pen_t tab_brushes_pen;
-static bool              tab_brushes_pen_set = false;
-
-static void tab_brushes_check_pen() {
-	tab_brushes_pen_t p;
-	memset(&p, 0, sizeof(p));
-	p.dyn[0]      = g_config->dyn_size;
-	p.dyn[1]      = g_config->dyn_opacity;
-	p.dyn[2]      = g_config->dyn_flow;
-	p.dyn[3]      = g_config->dyn_hardness;
-	p.dyn[4]      = g_config->dyn_angle;
-	p.curve       = g_config->pressure_curve;
-	p.min         = g_config->pressure_min;
-	p.sensitivity = g_config->pressure_sensitivity;
-	if (tab_brushes_pen_set && memcmp(&p, &tab_brushes_pen, sizeof(p)) != 0) {
-		tab_brushes_row_refresh         = 0;
-		g_context->brush->preview_ready = false; // The parameters panel stroke too
-	}
-	tab_brushes_pen     = p;
-	tab_brushes_pen_set = true;
-}
-
-static gpu_texture_t *tab_brushes_row_image(i32 r) {
-	i32 n = g_project->_->brushes->length;
-	return r < n ? g_project->_->brushes->buffer[r]->image_row : tab_brushes_builtin_rows[r - n];
-}
-
-static void tab_brushes_make_row_image(void *_) {
-	i32 r                   = tab_brushes_row_pending;
-	tab_brushes_row_pending = -1;
-	i32 n                   = g_project->_->brushes->length;
-	if (r < 0 || r >= n + builtin_brush_count() || r - n >= 64) {
-		return;
-	}
-
-	slot_brush_t *_brush          = g_context->brush;
-	i32           _builtin        = g_context->brush_builtin;
-	f32           _hardness       = g_context->brush_hardness;
-	f32           _spacing        = g_context->brush_spacing;
-	f32           _scatter        = g_context->brush_scatter;
-	f32           _jitter_size    = g_context->brush_jitter_size;
-	f32           _jitter_angle   = g_context->brush_jitter_angle;
-	f32           _jitter_opacity = g_context->brush_jitter_opacity;
-	f32           _flow           = g_context->brush_flow;
-	if (r < n) {
-		g_context->brush         = g_project->_->brushes->buffer[r];
-		g_context->brush_builtin = -1;
-	}
-	else {
-		builtin_brush_settings(r - n);
-	}
-	make_material_parse_brush();
-	brush_output_node_parse_inputs();
-	util_render_make_brush_preview();
-
-	gpu_texture_t  *src = g_context->brush->image_wave;
-	gpu_texture_t **dst = r < n ? &g_project->_->brushes->buffer[r]->image_row : &tab_brushes_builtin_rows[r - n];
-	if (src != NULL) {
-		if (*dst == NULL) {
-			*dst = gpu_create_render_target(src->width, src->height, GPU_TEXTURE_FORMAT_RGBA32);
-		}
-		gpu_texture_t *current = _draw_current;
-		bool           in_use  = gpu_in_use;
-		if (in_use)
-			draw_end();
-		draw_begin(*dst, true, 0x00000000);
-		draw_set_color(0xffffffff);
-		draw_image(src, 0, 0);
-		draw_end();
-		if (in_use)
-			draw_begin(current, false, 0);
-	}
-	g_context->brush->preview_ready = false; // Its previews show this row's stroke now, the parameters panel renders them again
-	if (tab_brushes_row_refresh >= 0 && r >= tab_brushes_row_refresh) {
-		tab_brushes_row_refresh = r + 1 < n + builtin_brush_count() ? r + 1 : -1;
-	}
-
-	g_context->brush                = _brush;
-	g_context->brush_builtin        = _builtin;
-	g_context->brush_hardness       = _hardness;
-	g_context->brush_spacing        = _spacing;
-	g_context->brush_scatter        = _scatter;
-	g_context->brush_jitter_size    = _jitter_size;
-	g_context->brush_jitter_angle   = _jitter_angle;
-	g_context->brush_jitter_opacity = _jitter_opacity;
-	g_context->brush_flow           = _flow;
-	make_material_parse_brush();
-	brush_output_node_parse_inputs();
-	ui_popovers_redraw(-1);
-}
+// Touch brush list: one built-in brush per row, its name above its stroke, like a brush library.
+// The strokes come from brush_previews.c, kept on disk.
 
 // A row: name above the stroke, the selected one highlighted. The height does not follow the width, a scrollbar
 // narrowing the list would change the height and the scrollbar would come and go every frame.
@@ -366,20 +263,6 @@ static ui_state_t tab_brushes_group_button(char *name, i32 icon, bool selected) 
 }
 
 static void tab_brushes_draw_rows() {
-	tab_brushes_check_pen();
-	i32 n     = g_project->_->brushes->length;
-	i32 count = n + builtin_brush_count();
-
-	// Strokes of all groups render one per frame and are kept
-	for (i32 r = n; r < count; ++r) {
-		gpu_texture_t *img   = tab_brushes_row_image(r);
-		bool           stale = img == NULL || (tab_brushes_row_refresh >= 0 && r >= tab_brushes_row_refresh);
-		if (stale && tab_brushes_row_pending == -1) {
-			tab_brushes_row_pending = r;
-			sys_notify_on_next_frame(&tab_brushes_make_row_image, NULL);
-		}
-	}
-
 	i32 groups = tab_brushes_group_count();
 	if (tab_brushes_group < 0 || tab_brushes_group >= groups) {
 		tab_brushes_group = g_context->brush_builtin >= 0 ? builtin_brush_group(g_context->brush_builtin) : 0;
@@ -407,7 +290,7 @@ static void tab_brushes_draw_rows() {
 		if (builtin_brush_group(i) != tab_brushes_group) {
 			continue;
 		}
-		if (tab_brushes_row(tr(builtin_brush_name(i)), tab_brushes_row_image(n + i), g_context->brush_builtin == i) == UI_STATE_RELEASED) {
+		if (tab_brushes_row(tr(builtin_brush_name(i)), brush_previews_row(i), g_context->brush_builtin == i) == UI_STATE_RELEASED) {
 			builtin_brush_use(i);
 		}
 	}

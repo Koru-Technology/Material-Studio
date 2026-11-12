@@ -281,6 +281,13 @@ gpu_texture_t *builtin_brush_icon(i32 i) {
 	return builtin_round_icons[i];
 }
 
+// Hash of what shapes the stroke of built-in brush i: its tip and stroke settings, see brush_previews.c
+u64 builtin_brush_hash(i32 i, u64 h) {
+	builtin_brush_t *b = &builtin_brushes[i];
+	f32 v[]            = {(f32)b->tip, b->hardness, b->spacing, b->scatter, b->jitter_size, b->jitter_angle, b->jitter_opacity, b->flow};
+	return brush_previews_hash(h, v, sizeof(v));
+}
+
 // Tip of the picked built-in brush, NULL for a round brush
 gpu_texture_t *builtin_brush_tip() {
 	i32 i = g_context->brush_builtin;

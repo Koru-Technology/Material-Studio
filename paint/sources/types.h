@@ -12,7 +12,6 @@ typedef struct slot_brush {
 	struct gpu_texture    *image; // 200px
 	struct gpu_texture    *image_icon;
 	struct gpu_texture    *image_wave; // Stroke preview, generated at runtime
-	struct gpu_texture    *image_row;  // Stroke of the brush alone (no built-in tip) in the touch brush list, generated at runtime
 	bool                   preview_ready;
 	i32                    id;
 } slot_brush_t;
