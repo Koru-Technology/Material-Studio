@@ -25,11 +25,6 @@ void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hd
 			ui_nodes_get_nodes()->nodes_drag = false;
 			ui_nodes_hwnd->redraws           = 2;
 		}
-
-		if (g_context->tool == TOOL_TYPE_COLORID && g_project->_->assets->length == 1) {
-			ui_header_handle->redraws = 2;
-			g_context->ddirty         = 2;
-		}
 	}
 	else if (path_is_text(path)) {
 		import_text_run(path);

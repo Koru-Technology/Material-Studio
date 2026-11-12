@@ -204,6 +204,8 @@ void pipes_init() {
 		gpu_pipeline_compile(pipes_colorid_to_mask);
 		pipes_texpaint_colorid = 0;
 		pipes_tex_colorid      = 1;
+		pipes_offset           = 0;
+		pipes_size_colorid     = pipes_get_constant_location("float2");
 	}
 
 	{

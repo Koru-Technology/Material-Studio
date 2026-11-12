@@ -1,13 +1,13 @@
 
-// Turn picked color id into mask
+// Picked ID map parts into a mask: white where the ID map has one of the picked colors, see ui_id_mask.c
 
 cbuffer constants {
-	float4 empty;
+	float2 size; // ID map size, it is read texel by texel so part edges are not blended
 };
 
 sampler sampler_linear;
 
-tex2d texpaint_colorid; // 1x1 picked color
+tex2d texpaint_colorid; // 16x1 picked colors, alpha 0 for free slots
 
 tex2d texcolorid;
 
@@ -29,10 +29,16 @@ vert_out vert(vert_in input) {
 }
 
 float4 frag(vert_out input) {
-	uint2 coord = uint2(uint(0.0), uint(0.0));
-	float4 colorid_c1 = texpaint_colorid[coord];
-	float4 colorid_c2 = sample_lod(texcolorid, sampler_linear, input.tex, 0.0);
-	if (colorid_c1.x != colorid_c2.x || colorid_c1.y != colorid_c2.y || colorid_c1.z != colorid_c2.z) {
+	float2 texel = min(input.tex * constants.size, constants.size - float2(1.0, 1.0));
+	float3 c = texcolorid[uint2(uint(texel.x), uint(texel.y))].rgb;
+	float hit = 0.0;
+	for (int i = 0; i < 16; i += 1) {
+		float4 s = texpaint_colorid[uint2(uint(i), uint(0))];
+		if (s.a > 0.5 && abs(s.r - c.r) < 0.02 && abs(s.g - c.g) < 0.02 && abs(s.b - c.b) < 0.02) {
+			hit = 1.0;
+		}
+	}
+	if (hit < 0.5) {
 		discard;
 	}
 	return float4(1.0, 1.0, 1.0, 1.0);

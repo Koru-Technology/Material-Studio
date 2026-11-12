@@ -455,13 +455,16 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		return overlay != NULL ? overlay : ((render_target_t *)any_map_get(render_path_render_targets, "empty_black"))->_image;
 	}
 	else if (string_equals(link, "_texcolorid")) {
-		if (g_project->_->assets->length == 0) {
+		asset_t *map = project_id_map_asset();
+		if (map == NULL) {
 			render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
 			return rt->_image;
 		}
-		else {
-			return project_get_image(g_project->_->assets->buffer[g_context->colorid]);
-		}
+		return project_get_image(map);
+	}
+	else if (string_equals(link, "_texcolorid_sel")) {
+		render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid_sel");
+		return rt->_image;
 	}
 	else if (string_equals(link, "_textexttool")) { // Opacity map for text
 		return g_context->text_tool_image;

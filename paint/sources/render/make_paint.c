@@ -401,12 +401,9 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		}
 	}
 
-	if (g_context->colorid_picked || face_fill || uv_island_fill) {
+	if (face_fill || uv_island_fill) {
 		node_shader_add_out(kong, "float2 tex_coord_pick");
 		node_shader_write_vert(kong, udim ? "output.tex_coord_pick = atlas_uv;" : "output.tex_coord_pick = input.tex;");
-		if (g_context->colorid_picked) {
-			make_discard_color_id(kong, "tex_coord_pick");
-		}
 		if (face_fill) {
 			make_discard_face(kong);
 		}

@@ -196,6 +196,7 @@
 #include "ui/ui_dock.c"
 #include "ui/ui_files.c"
 #include "ui/ui_header.c"
+#include "ui/ui_id_mask.c"
 #include "ui/ui_menu.c"
 #include "history_tiles.c"
 #include "ui/ui_quick_menu.c"
@@ -333,7 +334,7 @@ void _kickstart() {
 	        _tr("Hold {set_clone_source} to set source"),
 	        "",
 	        "",
-	        _tr("Color ID mask, click a color of the ID map to paint only there"),
+	        "",
 	        "",
 	        _tr("Shows the selected material on the active layer, click to read its values"),
 	        _tr("Select and transform objects"),

@@ -72,6 +72,14 @@ void render_path_paint_init() {
 	}
 	{
 		render_target_t *t = render_target_create();
+		t->name            = "texpaint_colorid_sel"; // Colors of the parts picked for an ID mask, see ui_id_mask.c
+		t->width           = 16;
+		t->height          = 1;
+		t->format          = "RGBA32";
+		render_path_create_render_target(t);
+	}
+	{
+		render_target_t *t = render_target_create();
 		t->name            = "texpaint_picker";
 		t->width           = 1;
 		t->height          = 1;
@@ -248,9 +256,6 @@ void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) 
 			render_path_bind_target("gbuffer0", "gbuffer0");
 		}
 		render_path_bind_target("texpaint_blend1", "paintmask");
-		if (g_context->colorid_picked) {
-			render_path_bind_target("texpaint_colorid", "texpaint_colorid");
-		}
 		render_path_paint_draw_target();
 	}
 }
@@ -661,11 +666,10 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		i32 i1 = 1;
 		i32 i2 = 2;
 #endif
-		g_context->colorid_picked_color = color_set_rb(g_context->colorid_picked_color, buffer_get_u8(a, i0));
-		g_context->colorid_picked_color = color_set_gb(g_context->colorid_picked_color, buffer_get_u8(a, i1));
-		g_context->colorid_picked_color = color_set_bb(g_context->colorid_picked_color, buffer_get_u8(a, i2));
-		ui_header_handle->redraws       = 2;
-		ui_toolbar_handle->redraws      = 1;
+		if (ui_id_mask_pick_pending) {
+			ui_id_mask_pick_pending = false;
+			ui_id_mask_toggle(((u32)buffer_get_u8(a, i0) << 16) | ((u32)buffer_get_u8(a, i1) << 8) | (u32)buffer_get_u8(a, i2));
+		}
 	}
 	else if (g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL) {
 		if (g_context->pick_pos_nor_tex) {
@@ -844,9 +848,6 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				render_path_bind_target("gbuffer0", "gbuffer0");
 			}
 			render_path_bind_target("texpaint_blend1", "paintmask");
-			if (g_context->colorid_picked) {
-				render_path_bind_target("texpaint_colorid", "texpaint_colorid");
-			}
 			if (read_tc) {
 				render_path_bind_target("gbuffer2", "gbuffer2");
 			}
@@ -1939,9 +1940,6 @@ void render_path_paint_bind_layers() {
 		}
 	}
 
-	if (g_context->colorid_viewport_mask) {
-		render_path_bind_target("texpaint_colorid", "texpaint_colorid");
-	}
 }
 
 void render_path_paint_unbind_layers() {

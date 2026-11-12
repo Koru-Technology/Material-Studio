@@ -16,7 +16,7 @@ void util_touch_update() {
 			// Allow rotating with both pen and touch, because hovering a pen prevents touch input on android
 			bool pen_only = false;
 #else
-			bool pen_only = context_finger_paint_blocked();
+			bool pen_only = context_finger_paint_blocked() && !ui_id_mask_active; // Fingers pick ID mask parts
 #endif
 			bool is_pen = pen_only && pen_down("tip");
 			// Mesh picked or placing a shape - disable rotate

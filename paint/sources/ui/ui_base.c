@@ -183,6 +183,7 @@ void ui_base_update(void *_) {
 		util_shortcut_brush();
 		util_shortcut_viewport();
 		ui_toolbar_update();
+		ui_id_mask_update();
 		util_particle_update();
 	}
 
@@ -220,6 +221,7 @@ void ui_base_update(void *_) {
 	ui_menubar_update_w();
 	ui_dock_render_ui();
 	ui_toolbar_render_ui();
+	ui_id_mask_render_ui();
 	ui_menubar_render_ui();
 	ui_header_render_ui();
 	ui_panels_render_ui();

@@ -248,20 +248,29 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 	kong->frag_n   = true;
 	node_shader_add_function(kong, str_pack_float_int16);
 
-	if (g_context->colorid_viewport_mask && g_context->tool != TOOL_TYPE_COLORID) {
-		make_discard_color_id(kong, tex_coord_layer);
-	}
-
 	if (g_context->picker_hide_other_materials && g_context->tool != TOOL_TYPE_PICKER) {
 		make_discard_material_id(kong, tex_coord_layer);
 	}
 
 	if (g_context->tool == TOOL_TYPE_COLORID) {
-		texture_count++;
+		// ID mask picking: the ID map unlit, the parts not picked are dimmed once any is picked
+		texture_count += 2;
 		node_shader_add_texture(kong, "texcolorid", "_texcolorid");
+		node_shader_add_texture(kong, "texcoloridsel", "_texcolorid_sel"); // 16x1 picked colors, alpha 0 for free slots
 		node_shader_write_frag(kong, "output[0] = float4(n.xy, 1.0, pack_f32_i16(0.0, uint(0)));");
-		node_shader_write_frag(kong,
-		                       string_tmp("float3 idcol = pow(sample_lod(texcolorid, sampler_linear, %s, 0.0).rgb, float3(2.2, 2.2, 2.2));", tex_coord_layer));
+		node_shader_write_frag(kong, string_tmp("float3 idraw = sample_lod(texcolorid, sampler_linear, %s, 0.0).rgb;", tex_coord_layer));
+		node_shader_write_frag(kong, "float idany = 0.0;");
+		node_shader_write_frag(kong, "float idhit = 0.0;");
+		node_shader_write_frag(kong, "for (int idi = 0; idi < 16; idi += 1) {");
+		node_shader_write_frag(kong, "	float4 idsel = texcoloridsel[uint2(uint(idi), uint(0))];");
+		node_shader_write_frag(kong, "	if (idsel.a > 0.5) {");
+		node_shader_write_frag(kong, "		idany = 1.0;");
+		node_shader_write_frag(kong, "		if (abs(idsel.r - idraw.r) < 0.02 && abs(idsel.g - idraw.g) < 0.02 && abs(idsel.b - idraw.b) < 0.02) { idhit = 1.0; }");
+		node_shader_write_frag(kong, "	}");
+		node_shader_write_frag(kong, "}");
+		node_shader_write_frag(kong, "float iddim = 1.0;");
+		node_shader_write_frag(kong, "if (idany > 0.5 && idhit < 0.5) { iddim = 0.15; }");
+		node_shader_write_frag(kong, "float3 idcol = pow(idraw, float3(2.2, 2.2, 2.2)) * iddim;");
 		node_shader_write_frag(kong, "output[1] = float4(idcol.rgb, 1.0);"); // occ
 	}
 	else {

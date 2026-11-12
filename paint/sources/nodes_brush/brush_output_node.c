@@ -131,6 +131,21 @@ void brush_output_node_run() {
 		return;
 	}
 
+	// ID mask picking: a tap on the mesh picks the part under it, once per tap, nothing is painted
+	if (g_context->tool == TOOL_TYPE_COLORID) {
+		bool blocked = !ui_id_mask_active || ui_id_mask_pressed || g_ui->is_hovered || base_is_dragging || base_is_resizing || ui_dock_is_dragging() ||
+		               g_ui->combo_selected_id != 0 || ui_quick_menu_blocking();
+		if (!blocked && (mouse_down("left") || pen_down("tip"))) {
+			ui_id_mask_pressed = true;
+			util_render_pick_pos_nor_tex();
+			if (util_render_picked_on_mesh()) {
+				ui_id_mask_pick_pending = true;
+				g_context->pdirty       = 1;
+			}
+		}
+		return;
+	}
+
 	bool picking_object = g_context->tool == TOOL_TYPE_CURSOR;
 
 	// Do not paint over fill layer
@@ -159,12 +174,6 @@ void brush_output_node_run() {
 
 	bool down    = mouse_down("left") || pen_down("tip");
 	bool started = mouse_started("left") || pen_started("tip");
-
-	// Set color pick
-	if (down && g_context->tool == TOOL_TYPE_COLORID && g_project->_->assets->length > 0) {
-		g_context->colorid_picked  = true;
-		ui_toolbar_handle->redraws = 1;
-	}
 
 	// Path layer - add path points only
 	if (!picking_object && slot_layer_is_path(g_context->layer) && !started) {

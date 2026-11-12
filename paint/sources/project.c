@@ -260,6 +260,7 @@ void project_new(bool reset_layers) {
 	}
 	g_project->stages          = NULL;
 	g_project->linear_blending = true; // New projects blend colors in linear space
+	g_project->id_map          = NULL;
 	g_project->_->translucency = false;
 	project_scripts_trusted    = true;
 

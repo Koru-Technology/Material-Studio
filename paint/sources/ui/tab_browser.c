@@ -35,13 +35,7 @@ void tab_browser_draw_set_as_color_id_map_on_next_frame(void *_) {
 	}
 
 	if (asset_index != -1) {
-		g_context->colorid         = asset_index;
-		g_context->colorid_picked  = false;
-		ui_toolbar_handle->redraws = 1;
-		if (g_context->tool == TOOL_TYPE_COLORID) {
-			ui_header_handle->redraws = 2;
-			g_context->ddirty         = 2;
-		}
+		project_set_id_map(g_project->_->assets->buffer[asset_index]);
 	}
 }
 
@@ -112,7 +106,7 @@ void tab_browser_draw_context_menu_draw() {
 		if (ui_menu_button(tr("Set as Mask"), "", ICON_MASK)) {
 			import_asset_run(file, -1.0, -1.0, true, true, &tab_browser_draw_set_as_mask);
 		}
-		if (ui_menu_button(tr("Set as Color ID Map"), "", ICON_COLOR_ID)) {
+		if (ui_menu_button(tr("Use as ID Map"), "", ICON_COLOR_ID)) {
 			import_asset_run(file, -1.0, -1.0, true, true, &tab_browser_draw_set_as_color_id_map);
 		}
 	}

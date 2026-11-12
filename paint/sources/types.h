@@ -384,9 +384,6 @@ typedef struct context {
 	bool                        selected_node_preview;
 	struct gpu_texture         *mask_preview_rgba32;
 	struct slot_layer          *mask_preview_last;
-	bool                        colorid_picked;
-	u32                         colorid_picked_color;
-	bool                        colorid_viewport_mask;
 	bool                        material_preview;
 	mat4_t                      saved_camera;
 	tool_type_t                 color_picker_previous_tool;
@@ -408,7 +405,6 @@ typedef struct context {
 	f32                         norz_picked;
 	bool                        draw_wireframe;
 	bool                        draw_texels;
-	i32                         colorid;
 	export_mode_t               layers_export;
 	struct gpu_texture         *decal_image;
 	bool                        decal_preview;
@@ -769,6 +765,7 @@ typedef struct project {
 	struct f32_array_t_array                    *mesh_paths;         // Path and curve tool points
 	struct ui_node_canvas_t_array               *mesh_groups;
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
+	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
 	project_runtime_t                           *_;
 } project_t;
 

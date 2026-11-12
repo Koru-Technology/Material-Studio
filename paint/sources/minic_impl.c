@@ -1263,6 +1263,14 @@ void script_project_open(char *path) {
 	g_context->ddirty = 2;
 }
 
+// The asset becomes the project's ID map if it is one, returns 1 then
+i32 script_set_id_map(i32 index) {
+	if (index < 0 || index >= g_project->_->assets->length) {
+		return 0;
+	}
+	return project_set_id_map(g_project->_->assets->buffer[index]) ? 1 : 0;
+}
+
 i32 script_asset_index(char *search) {
 	for (i32 i = g_project->_->assets->length - 1; i >= 0; --i) {
 		asset_t *a = g_project->_->assets->buffer[i];

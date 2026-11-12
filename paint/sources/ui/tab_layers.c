@@ -1189,6 +1189,12 @@ void tab_layers_button_new_menu() {
 		history_new_fill_mask();
 		sys_notify_on_next_frame(&tab_layers_button_new_update_fill_layers, NULL);
 	}
+	// Mask of the parts picked on the project's ID map
+	g_ui->enabled = !slot_layer_is_group(slot_layer_is_mask(l) || slot_layer_is_filter(l) ? l->parent : l);
+	if (ui_menu_button(tr("ID Mask..."), "", ICON_COLOR_ID)) {
+		ui_id_mask_begin();
+	}
+	g_ui->enabled = true;
 	if (ui_menu_button(tr("Filter"), "", ICON_FILTER)) {
 		if (slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
 			context_set_layer(l->parent);

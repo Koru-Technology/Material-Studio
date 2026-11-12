@@ -1208,7 +1208,7 @@ void base_update_tools() {
 	if (g_config->tools == TOOLS_OBJECT) {
 		context_select_tool(TOOL_TYPE_CURSOR);
 	}
-	else if (util_tool_is_object_tool(g_context->tool)) {
+	else if (util_tool_is_object_tool(g_context->tool) || g_context->tool == TOOL_TYPE_CURSOR || g_context->tool == TOOL_TYPE_SELECT) {
 		context_select_tool(TOOL_TYPE_BRUSH);
 	}
 

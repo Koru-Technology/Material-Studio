@@ -223,11 +223,6 @@ void util_shortcut_viewport() {
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_fill"), SHORTCUT_TYPE_STARTED)) {
 				context_select_tool(TOOL_TYPE_FILL);
 			}
-			else if (keymap_shortcut(any_map_get(g_keymap, "tool_colorid"), SHORTCUT_TYPE_STARTED)) {
-				if (ui_toolbar_tool_visible(TOOL_TYPE_COLORID)) {
-					context_select_tool(TOOL_TYPE_COLORID);
-				}
-			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_decal"), SHORTCUT_TYPE_STARTED)) {
 				context_select_tool(TOOL_TYPE_DECAL);
 			}
@@ -256,10 +251,14 @@ void util_shortcut_viewport() {
 				}
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_cursor"), SHORTCUT_TYPE_STARTED)) {
-				context_select_tool(TOOL_TYPE_CURSOR);
+				if (ui_toolbar_tool_visible(TOOL_TYPE_CURSOR)) {
+					context_select_tool(TOOL_TYPE_CURSOR);
+				}
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_select"), SHORTCUT_TYPE_STARTED)) {
-				context_select_tool(TOOL_TYPE_SELECT);
+				if (ui_toolbar_tool_visible(TOOL_TYPE_SELECT)) {
+					context_select_tool(TOOL_TYPE_SELECT);
+				}
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "swap_brush_eraser"), SHORTCUT_TYPE_STARTED)) {
 				context_select_tool(g_context->tool == TOOL_TYPE_BRUSH ? TOOL_TYPE_ERASER : TOOL_TYPE_BRUSH);

@@ -235,7 +235,7 @@ void util_brush_update() {
 		if (pen_down("tip")) {
 			g_context->pen_painting_only = true;
 		}
-		else if (context_finger_paint_blocked()) {
+		else if (context_finger_paint_blocked() && !ui_id_mask_active) { // Picking ID mask parts is not painting
 			down = false;
 		}
 	}
@@ -303,7 +303,8 @@ void util_brush_update() {
 						}
 					}
 
-					history_push_undo = g_context->tool != TOOL_TYPE_INPAINT; // Inpaint repairs baked textures, not layers
+					// Inpaint repairs baked textures, ID mask picking changes no layer
+					history_push_undo = g_context->tool != TOOL_TYPE_INPAINT && g_context->tool != TOOL_TYPE_COLORID;
 
 					if (g_context->tool == TOOL_TYPE_CLONE && g_context->clone_start_x >= 0.0) { // Clone delta
 						g_context->clone_delta_x = (g_context->clone_start_x - mx) / (float)ww;
@@ -340,11 +341,6 @@ void util_brush_update() {
 
 		if (g_context->tool == TOOL_TYPE_INPAINT) {
 			box_bake_maps_inpaint_stroke_end();
-		}
-
-		// New color id picked, update fill layer
-		if (g_context->tool == TOOL_TYPE_COLORID && g_context->layer->fill_material != NULL) {
-			sys_notify_on_next_frame(&ui_base_update_ui_on_next_frame, NULL);
 		}
 	}
 

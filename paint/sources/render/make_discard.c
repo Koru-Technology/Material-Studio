@@ -1,17 +1,6 @@
 
 #include "../global.h"
 
-void make_discard_color_id(node_shader_t *kong, char *tex_coord) {
-	node_shader_add_texture(kong, "texpaint_colorid", NULL);    // 1x1 picker
-	node_shader_add_texture(kong, "texcolorid", "_texcolorid"); // color map
-	// node_shader_write_frag(kong, "float3 colorid_c1 = texpaint_colorid[uint2(0, 0)].rgb;");
-	node_shader_write_frag(kong, "float4 colorid_c14 = texpaint_colorid[uint2(uint(0), uint(0))];");
-	node_shader_write_frag(kong, "float3 colorid_c1 = colorid_c14.rgb;");
-	node_shader_write_frag(kong, string_tmp("float3 colorid_c2 = sample_lod(texcolorid, sampler_linear, input.%s, 0.0).rgb;", tex_coord));
-	// node_shader_write_frag(kong, "if (any(colorid_c1 != colorid_c2)) { discard };");
-	node_shader_write_frag(kong, "if (colorid_c1.r != colorid_c2.r || colorid_c1.g != colorid_c2.g || colorid_c1.b != colorid_c2.b) { discard; }");
-}
-
 void make_discard_face(node_shader_t *kong) {
 	node_shader_add_texture(kong, "gbuffer2", NULL);
 	node_shader_add_texture(kong, "textrianglemap", "_textrianglemap");

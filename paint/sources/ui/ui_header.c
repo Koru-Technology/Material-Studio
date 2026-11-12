@@ -218,59 +218,6 @@ void ui_header_draw_tool_properties_color_picker_base() {
 	}
 }
 
-void ui_header_draw_tool_properties_colorid_write(void *_) {
-	render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid");
-	draw_begin(rt->_image, true, g_context->colorid_picked_color);
-	draw_end();
-}
-
-void ui_header_draw_tool_properties_color_picker_colorid() {
-	ui_fill(0, 0, g_ui->_w / (float)UI_SCALE(), g_theme->ELEMENT_H * 9, g_theme->SEPARATOR_COL);
-	g_ui->changed = false;
-	ui_color_wheel(&g_context->colorid_picked_color, &ui_header_color_state, false, -1, 10 * g_theme->ELEMENT_H * UI_SCALE(), false, NULL, NULL);
-	if (g_ui->changed) {
-		g_context->colorid_picked_color = color_set_ab(g_context->colorid_picked_color, 255);
-		sys_notify_on_next_frame(&ui_header_draw_tool_properties_colorid_write, NULL);
-		g_context->ddirty          = 2;
-		ui_header_handle->redraws  = 2;
-		ui_toolbar_handle->redraws = 1;
-		ui_menu_keep_open          = true;
-	}
-}
-
-void ui_header_draw_tool_properties_to_mask(slot_layer_t *m) {
-	_gpu_begin(m->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	gpu_set_pipeline(pipes_colorid_to_mask);
-	render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid");
-	gpu_set_texture(pipes_texpaint_colorid, rt->_image);
-	gpu_set_texture(pipes_tex_colorid, project_get_image(g_project->_->assets->buffer[g_context->colorid]));
-	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
-	gpu_set_index_buffer(const_data_screen_aligned_ib);
-	gpu_draw();
-	gpu_end();
-	g_context->colorid_picked      = false;
-	ui_toolbar_handle->redraws     = 1;
-	ui_header_handle->redraws      = 1;
-	g_context->layer_preview_dirty = true;
-	layers_update_fill_layers();
-}
-
-void ui_header_draw_tool_properties_import(char *path) {
-	import_asset_run(path, -1.0, -1.0, true, false, NULL);
-	g_context->colorid = g_project->_->assets->length - 1;
-	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
-		asset_t *a = g_project->_->assets->buffer[i];
-		// Already imported
-		if (string_equals(a->file, path)) {
-			g_context->colorid = array_index_of(g_project->_->assets, a);
-		}
-	}
-	g_context->ddirty          = 2;
-	g_context->colorid_picked  = false;
-	ui_toolbar_handle->redraws = 1;
-	ui_dock_redraw(2);
-}
-
 static void ui_header_crop_layers() {
 	i32 res_x = config_get_texture_res_x();
 	i32 res_y = config_get_texture_res_y();
@@ -391,56 +338,7 @@ static void ui_header_draw_stroke_options(bool decal_mask) {
 }
 
 void ui_header_draw_tool_properties() {
-	if (g_context->tool == TOOL_TYPE_COLORID) {
-		if (g_context->colorid_picked) {
-			ui_swatch(g_context->colorid_picked_color);
-			if (g_ui->is_hovered && g_ui->input_released && g_ui->combo_selected_id == 0) {
-				ui_menu_draw(&ui_header_draw_tool_properties_color_picker_colorid, -1, -1);
-			}
-		}
-		g_ui->enabled = g_context->colorid_picked;
-		if (ui_icon_button(tr("Clear"), ICON_ERASE, UI_ALIGN_CENTER)) {
-			g_context->colorid_picked        = false;
-			g_context->colorid_viewport_mask = false;
-			ui_toolbar_handle->redraws       = 1;
-		}
-		g_ui->enabled = true;
-		if (g_project->_->assets->length > 0) {
-			ui_combo(&g_context->colorid, base_combo_enum_texts("TEX_IMAGE"), tr("Color ID"), false, UI_ALIGN_LEFT, true);
-			bool colorid_changed = ui_item_changed();
-			if (ui_widget_id(&g_context->colorid, UI_ID_COMBO) == g_ui->combo_selected_id) {
-				g_ui->combo_selected_images = base_combo_enum_textures("TEX_IMAGE");
-			}
-			if (colorid_changed) {
-				g_context->ddirty          = 2;
-				g_context->colorid_picked  = false;
-				ui_toolbar_handle->redraws = 1;
-			}
-			ui_image(project_get_image(g_project->_->assets->buffer[g_context->colorid]), 0xffffffff, -1.0);
-			if (g_ui->is_hovered) {
-				ui_tooltip_image(project_get_image(g_project->_->assets->buffer[g_context->colorid]), 256);
-			}
-		}
-		if (ui_icon_button(tr("Import"), ICON_FOLDER_OPEN, UI_ALIGN_CENTER)) {
-			ui_files_show(string_array_join(path_texture_formats(), ","), false, true, &ui_header_draw_tool_properties_import);
-		}
-		g_ui->enabled = g_context->colorid_picked;
-		if (ui_icon_button(tr("To Mask"), ICON_MASK, UI_ALIGN_CENTER)) {
-			if (slot_layer_is_mask(g_context->layer)) {
-				context_set_layer(g_context->layer->parent);
-			}
-			slot_layer_t *m = layers_new_mask(false, g_context->layer, -1);
-			sys_notify_on_next_frame(&ui_header_draw_tool_properties_to_mask, m);
-			history_new_white_mask();
-		}
-		g_ui->enabled = true;
-
-		ui_check(&g_context->colorid_viewport_mask, tr("Viewport Mask"), "");
-		if (ui_item_changed()) {
-			make_material_parse_mesh_material();
-		}
-	}
-	else if (g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL) {
+	if (g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL) {
 
 		ui_state_t state = ui_swatch(color_set_ab(g_context->picked_color->base, 255));
 		if (state == UI_STATE_STARTED) {

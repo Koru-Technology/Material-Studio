@@ -7,7 +7,7 @@
 
 char *manifest_title           = "Koru Surface";
 char *manifest_version         = "1.1rc1";
-char *manifest_version_project = "27";
+char *manifest_version_project = "28";
 char *manifest_version_config  = "16";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
@@ -79,6 +79,7 @@ i32              pipes_tex0_merge_mask;
 i32              pipes_texa_merge_mask;
 i32              pipes_tex_colorid;
 i32              pipes_texpaint_colorid;
+i32              pipes_size_colorid;
 i32              pipes_opac_merge_mask;
 i32              pipes_blending_merge_mask;
 gpu_texture_t   *pipes_temp_mask_image = NULL;
@@ -170,6 +171,7 @@ i32                     ui_toolbar_default_w = 36;
 ui_window_t            *ui_toolbar_handle;
 ui_window_t            *ui_toolbar_split_handle;
 string_array_t         *ui_toolbar_tool_names;
+string_array_t         *ui_toolbar_tool_labels;
 f32                     util_path_tool_radius      = 0.03;
 f32                     util_text_tool_size        = 0.5;
 f32                     util_text_tool_depth       = 0.1;
@@ -294,6 +296,9 @@ extern i32            path_layer_last_active;
 extern float          util_uv_unwrap_margin;
 i32                   ui_header_default_h = 30;
 i32                   ui_header_h;
+bool                  ui_id_mask_active       = false; // Picking the parts of an ID mask, see ui_id_mask.c
+bool                  ui_id_mask_pick_pending = false; // A tap waits for the ID map color under it, see render_path_paint
+bool                  ui_id_mask_pressed      = false; // The press already picked, one pick per tap
 ui_window_t          *ui_header_handle;
 ui_window_t          *ui_header_split_handle;
 any_map_t            *parser_logic_custom_nodes;

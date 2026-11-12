@@ -85,9 +85,6 @@ void context_init() {
 	g_context->norz_picked                  = 0.0;
 	g_context->draw_wireframe               = false;
 	g_context->draw_texels                  = false;
-	g_context->colorid                      = 0;
-	g_context->colorid_picked               = false;
-	g_context->colorid_picked_color         = 0xff000000;
 	g_context->layers_export                = EXPORT_MODE_VISIBLE;
 	g_context->decal_preview                = false;
 	g_context->decal_x                      = 0.0;

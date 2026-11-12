@@ -20,6 +20,10 @@ void tab_textures_draw_to_mask(void *_) {
 	layers_create_image_mask(_tab_textures_draw_asset);
 }
 
+void tab_textures_draw_use_as_id_map(void *asset) {
+	project_set_id_map(asset);
+}
+
 void tab_textures_draw_export_on_next_frame2(gpu_texture_t *target) {
 	char *path = _tab_textures_draw_path;
 	char *f    = ui_files_filename;
@@ -95,12 +99,7 @@ void tab_textures_delete_texture(asset_t *asset) {
 	}
 	ui_dock_redraw(TAB_AREA_STATUS);
 
-	if (g_context->tool == TOOL_TYPE_COLORID && index == g_context->colorid) {
-		ui_header_handle->redraws  = 2;
-		g_context->ddirty          = 2;
-		g_context->colorid_picked  = false;
-		ui_toolbar_handle->redraws = 1;
-	}
+	project_id_map_removed(asset);
 
 	if (data_get_texture(asset->file) == scene_world->_->envmap) {
 		project_set_default_envmap();
@@ -159,14 +158,8 @@ void tab_textures_draw_context_menu() {
 	if (ui_menu_button(tr("Set as Envmap"), "", ICON_LANDSCAPE)) {
 		sys_notify_on_next_frame(&tab_textures_draw_set_as_envmap, NULL);
 	}
-	if (ui_menu_button(tr("Set as Color ID Map"), "", ICON_COLOR_ID)) {
-		g_context->colorid         = _tab_textures_draw_i;
-		g_context->colorid_picked  = false;
-		ui_toolbar_handle->redraws = 1;
-		if (g_context->tool == TOOL_TYPE_COLORID) {
-			ui_header_handle->redraws = 2;
-			g_context->ddirty         = 2;
-		}
+	if (ui_menu_button(tr("Use as ID Map"), "", ICON_COLOR_ID)) {
+		sys_notify_on_next_frame(&tab_textures_draw_use_as_id_map, _tab_textures_draw_asset);
 	}
 	if (ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
 		tab_textures_delete_texture(_tab_textures_draw_asset);
@@ -190,11 +183,10 @@ bool tab_textures_nodes_use_texture(ui_node_t_array_t *nodes, i32 index) {
 }
 
 bool tab_textures_is_texture_used(i32 index) {
-	if (index == g_context->colorid) {
+	asset_t *asset = g_project->_->assets->buffer[index];
+	if (g_project->id_map != NULL && string_equals(g_project->id_map, asset->name)) {
 		return true;
 	}
-
-	asset_t *asset = g_project->_->assets->buffer[index];
 	if (g_project->envmap != NULL && string_equals(g_project->envmap, asset->file)) {
 		return true;
 	}
@@ -290,10 +282,6 @@ static void tab_textures_sort_by_name() {
 	for (i32 i = 0; i < mesh_canvases->length; ++i) {
 		tab_textures_apply_node_indices(mesh_canvases->buffer[i]->nodes, new_indices);
 	}
-	if (g_context->colorid >= 0 && g_context->colorid < new_indices->length) {
-		g_context->colorid = new_indices->buffer[g_context->colorid];
-	}
-
 	array_delete(new_indices);
 	array_delete(old_order);
 	ui_dock_redraw(TAB_AREA_STATUS);
@@ -582,15 +570,6 @@ void tab_textures_accept_asset_drop(asset_t *asset) {
 		ui_node_canvas_t_array_t *mesh_canvases = nodes_mesh_canvases();
 		for (i32 i = 0; i < mesh_canvases->length; ++i) {
 			tab_textures_remap_node_indices(mesh_canvases->buffer[i]->nodes, asset_pos, new_pos);
-		}
-		if (g_context->colorid == asset_pos) {
-			g_context->colorid = new_pos;
-		}
-		else if (new_pos > asset_pos && g_context->colorid > asset_pos && g_context->colorid <= new_pos) {
-			g_context->colorid--;
-		}
-		else if (new_pos < asset_pos && g_context->colorid >= new_pos && g_context->colorid < asset_pos) {
-			g_context->colorid++;
 		}
 	}
 }
