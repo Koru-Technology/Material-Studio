@@ -142,72 +142,14 @@ i32 util_encode_layer_data_size(layer_data_t_array_t *datas) {
 	return size;
 }
 
-i32 util_encode_timeline_layers_size(timeline_layer_keyframe_data_t_array_t *datas) {
-	if (datas == NULL) {
-		return 0;
-	}
-	i32 size = 0;
-	for (i32 i = 0; i < datas->length; ++i) {
-		buffer_t *tp = datas->buffer[i]->texpaint;
-		if (tp != NULL) {
-			size += tp->length;
-		}
-		buffer_t *tp_nor = datas->buffer[i]->texpaint_nor;
-		if (tp_nor != NULL) {
-			size += tp_nor->length;
-		}
-		buffer_t *tp_pack = datas->buffer[i]->texpaint_pack;
-		if (tp_pack != NULL) {
-			size += tp_pack->length;
-		}
-		buffer_t *tp_sculpt = datas->buffer[i]->texpaint_sculpt;
-		if (tp_sculpt != NULL) {
-			size += tp_sculpt->length;
-		}
-		f32_array_t *pp = datas->buffer[i]->path_points;
-		if (pp != NULL) {
-			size += pp->length * 4;
-		}
-		f32_array_t *ppw = datas->buffer[i]->path_points_world;
-		if (ppw != NULL) {
-			size += ppw->length * 4;
-		}
-		f32_array_t *ppc = datas->buffer[i]->path_points_camera;
-		if (ppc != NULL) {
-			size += ppc->length * 4;
-		}
-		i32_array_t *ppp = datas->buffer[i]->path_points_parent;
-		if (ppp != NULL) {
-			size += ppp->length * 4;
-		}
-	}
-	return size;
-}
-
-i32 util_encode_timeline_meshes_size(timeline_mesh_keyframe_data_t_array_t *datas) {
-	if (datas == NULL) {
-		return 0;
-	}
-	i32 size = 0;
-	for (i32 i = 0; i < datas->length; ++i) {
-		f32_array_t *transform = datas->buffer[i]->transform;
-		if (transform != NULL) {
-			size += transform->length * 4;
-		}
-	}
-	return size;
-}
-
 buffer_t *util_encode_project(project_t *raw) {
 	i32 size = 32 * 1024 * 1024 + util_encode_layer_data_size(raw->layer_datas) + util_encode_mesh_data_size(raw->mesh_datas) +
 	           util_encode_packed_assets_size(raw->packed_assets) + util_encode_buffers_size(raw->brush_icons) + util_encode_buffers_size(raw->material_icons) +
-	           util_encode_buffers_size(raw->mesh_icons) + util_encode_buffers_size(raw->mesh_skins) + util_encode_f32_arrays_size(raw->mesh_transforms) +
-	           util_encode_f32_arrays_size(raw->mesh_paths) + util_encode_timeline_layers_size(raw->timeline_layers) +
-	           util_encode_timeline_meshes_size(raw->timeline_meshes);
+	           util_encode_buffers_size(raw->mesh_icons) + util_encode_f32_arrays_size(raw->mesh_transforms);
 	buffer_t *encoded = buffer_create(size);
 
 	armpack_encode_start(encoded->buffer);
-	armpack_encode_map(48);
+	armpack_encode_map(32);
 
 	armpack_encode_string("version");
 	armpack_encode_string(raw->version);
@@ -368,8 +310,6 @@ buffer_t *util_encode_project(project_t *raw) {
 
 	armpack_encode_string("font_assets");
 	armpack_encode_array_string(raw->font_assets);
-	armpack_encode_string("sound_assets");
-	armpack_encode_array_string(raw->sound_assets);
 
 	armpack_encode_string("layer_datas");
 	if (raw->layer_datas != NULL) {
@@ -495,153 +435,13 @@ buffer_t *util_encode_project(project_t *raw) {
 		armpack_encode_null();
 	}
 
-	armpack_encode_string("mesh_materials");
-	armpack_encode_array_i32(raw->mesh_materials);
-
 	armpack_encode_string("mesh_parents");
 	armpack_encode_array_i32(raw->mesh_parents);
-
-	armpack_encode_string("mesh_physics_shapes");
-	armpack_encode_array_i32(raw->mesh_physics_shapes);
-
-	armpack_encode_string("mesh_physics_masses");
-	armpack_encode_array_f32(raw->mesh_physics_masses);
-
-	armpack_encode_string("mesh_skins");
-	if (raw->mesh_skins != NULL) {
-		armpack_encode_array(raw->mesh_skins->length);
-		for (i32 i = 0; i < raw->mesh_skins->length; ++i) {
-			armpack_encode_array_u8(raw->mesh_skins->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
 
 	armpack_encode_string("atlas_objects");
 	armpack_encode_array_i32(raw->atlas_objects);
 	armpack_encode_string("atlas_names");
 	armpack_encode_array_string(raw->atlas_names);
-	armpack_encode_string("script_datas");
-	armpack_encode_array_string(raw->script_datas);
-	armpack_encode_string("script_names");
-	armpack_encode_array_string(raw->script_names);
-
-	armpack_encode_string("timeline_frame_rate");
-	armpack_encode_i32(raw->timeline_frame_rate);
-	armpack_encode_string("timeline_max_frames");
-	armpack_encode_i32(raw->timeline_max_frames);
-
-	armpack_encode_string("timeline_layers");
-	if (raw->timeline_layers != NULL) {
-		armpack_encode_array(raw->timeline_layers->length);
-		for (i32 i = 0; i < raw->timeline_layers->length; ++i) {
-			armpack_encode_map(11);
-			armpack_encode_string("frame");
-			armpack_encode_i32(raw->timeline_layers->buffer[i]->frame);
-			armpack_encode_string("layer_index");
-			armpack_encode_i32(raw->timeline_layers->buffer[i]->layer_index);
-			armpack_encode_string("texpaint");
-			armpack_encode_array_u8(raw->timeline_layers->buffer[i]->texpaint);
-			armpack_encode_string("texpaint_nor");
-			armpack_encode_array_u8(raw->timeline_layers->buffer[i]->texpaint_nor);
-			armpack_encode_string("texpaint_pack");
-			armpack_encode_array_u8(raw->timeline_layers->buffer[i]->texpaint_pack);
-			armpack_encode_string("texpaint_sculpt");
-			armpack_encode_array_u8(raw->timeline_layers->buffer[i]->texpaint_sculpt);
-			armpack_encode_string("path_points");
-			armpack_encode_array_f32(raw->timeline_layers->buffer[i]->path_points);
-			armpack_encode_string("path_points_world");
-			armpack_encode_array_f32(raw->timeline_layers->buffer[i]->path_points_world);
-			armpack_encode_string("path_points_camera");
-			armpack_encode_array_f32(raw->timeline_layers->buffer[i]->path_points_camera);
-			armpack_encode_string("path_points_parent");
-			armpack_encode_array_i32(raw->timeline_layers->buffer[i]->path_points_parent);
-			armpack_encode_string("tween");
-			armpack_encode_bool(raw->timeline_layers->buffer[i]->tween);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("timeline_meshes");
-	if (raw->timeline_meshes != NULL) {
-		armpack_encode_array(raw->timeline_meshes->length);
-		for (i32 i = 0; i < raw->timeline_meshes->length; ++i) {
-			armpack_encode_map(5);
-			armpack_encode_string("stage_index");
-			armpack_encode_i32(raw->timeline_meshes->buffer[i]->stage_index);
-			armpack_encode_string("frame");
-			armpack_encode_i32(raw->timeline_meshes->buffer[i]->frame);
-			armpack_encode_string("mesh_index");
-			armpack_encode_i32(raw->timeline_meshes->buffer[i]->mesh_index);
-			armpack_encode_string("transform");
-			armpack_encode_array_f32(raw->timeline_meshes->buffer[i]->transform);
-			armpack_encode_string("tween");
-			armpack_encode_bool(raw->timeline_meshes->buffer[i]->tween);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("stages");
-	if (raw->stages != NULL) {
-		armpack_encode_array(raw->stages->length);
-		for (i32 i = 0; i < raw->stages->length; ++i) {
-			armpack_encode_map(5);
-			armpack_encode_string("name");
-			armpack_encode_string(raw->stages->buffer[i]->name);
-			armpack_encode_string("objects");
-			armpack_encode_array_string(raw->stages->buffer[i]->objects);
-			armpack_encode_string("layers");
-			armpack_encode_array_string(raw->stages->buffer[i]->layers);
-			armpack_encode_string("hidden");
-			armpack_encode_array_string(raw->stages->buffer[i]->hidden);
-			armpack_encode_string("nested_mesh");
-			armpack_encode_string(raw->stages->buffer[i]->nested_mesh);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("mesh_nodes");
-	if (raw->mesh_nodes != NULL) {
-		armpack_encode_array(raw->mesh_nodes->length);
-		for (i32 i = 0; i < raw->mesh_nodes->length; ++i) {
-			util_encode_node_canvas(raw->mesh_nodes->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-	armpack_encode_string("mesh_nodes_objects");
-	armpack_encode_array_i32(raw->mesh_nodes_objects);
-
-	armpack_encode_string("mesh_paths");
-	if (raw->mesh_paths != NULL) {
-		armpack_encode_array(raw->mesh_paths->length);
-		for (i32 i = 0; i < raw->mesh_paths->length; ++i) {
-			armpack_encode_array_f32(raw->mesh_paths->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("mesh_groups");
-	if (raw->mesh_groups != NULL) {
-		armpack_encode_array(raw->mesh_groups->length);
-		for (i32 i = 0; i < raw->mesh_groups->length; ++i) {
-			util_encode_node_canvas(raw->mesh_groups->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
 	armpack_encode_string("linear_blending");
 	armpack_encode_bool(raw->linear_blending);
 	armpack_encode_string("id_map");

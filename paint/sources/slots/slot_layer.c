@@ -168,7 +168,6 @@ void slot_layer_delete(slot_layer_t *raw) {
 
 	i32 lpos = array_index_of(g_project->_->layers, raw);
 	array_remove(g_project->_->layers, raw);
-	tab_timeline_sync();
 	// Undo can remove base layer and then restore it from undo layers
 	if (g_project->_->layers->length > 0) {
 		context_set_layer(g_project->_->layers->buffer[lpos > 0 ? lpos - 1 : 0]);
@@ -428,7 +427,6 @@ static slot_layer_t *slot_layer_copy(slot_layer_t *raw) {
 slot_layer_t *slot_layer_duplicate(slot_layer_t *raw) {
 	slot_layer_t *l = slot_layer_copy(raw);
 	array_insert(g_project->_->layers, array_index_of(g_project->_->layers, raw) + 1, l);
-	tab_stages_add_layer(l->name);
 	return l;
 }
 

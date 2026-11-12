@@ -40,27 +40,6 @@ static bool box_append_material_exists(i32 i) {
 	return c != NULL && import_arm_material_name_index(c->name) >= 0;
 }
 
-static i32 box_append_mesh_material_index(i32 mesh_i) {
-	if (box_append_project == NULL || box_append_project->mesh_materials == NULL) {
-		return -1;
-	}
-	if (mesh_i < 0 || mesh_i >= box_append_project->mesh_materials->length) {
-		return -1;
-	}
-	return box_append_project->mesh_materials->buffer[mesh_i];
-}
-
-static void box_append_select_mesh_material(i32 mesh_i) {
-	i32 mat_i = box_append_mesh_material_index(mesh_i);
-	if (mat_i < 0 || box_append_material_selected == NULL || mat_i >= box_append_material_selected->length) {
-		return;
-	}
-	if (box_append_material_exists(mat_i)) {
-		return;
-	}
-	box_append_material_selected->buffer[mat_i] = 1;
-}
-
 static char *box_append_mesh_name(mesh_data_t *raw, i32 i) {
 	if (raw == NULL || raw->name == NULL || string_equals(raw->name, "")) {
 		return string("%s %s", tr("Mesh"), i32_to_string(i + 1));
@@ -108,9 +87,6 @@ void box_append_draw() {
 			g_ui->enabled = true;
 			if (!exists && ui_item_changed()) {
 				box_append_mesh_selected->buffer[i] = selected ? 1 : 0;
-				if (selected) {
-					box_append_select_mesh_material(i);
-				}
 			}
 		}
 	}

@@ -854,7 +854,6 @@ void util_layer_add_path_point(slot_layer_t *l, f32 screen_x, f32 screen_y) {
 	// A curve control point is not painted until its anchor is added
 	if (!l->path_curved || new_index % 2 == 0) {
 		path_repaint(l);
-		nodes_mesh_layer_changed(l);
 	}
 
 	for (i32 j = 0; j < path_point_sphere_count; j++) {
@@ -875,7 +874,6 @@ void util_layer_repaint_path(slot_layer_t *l) {
 	for (i32 j = 0; j < path_point_sphere_count; j++) {
 		path_point_spheres[j]->visible = true;
 	}
-	nodes_mesh_layer_changed(l); // Mesh layer mask nodes, rebuilt once the drag ends
 }
 
 static void path_point_move(slot_layer_t *l, i32 idx, f32 new_x, f32 new_y) {
@@ -984,8 +982,7 @@ void util_layer_update_path() {
 		return;
 	}
 
-	bool object_tool = g_context->tool == TOOL_TYPE_PATH || g_context->tool == TOOL_TYPE_CURVE; // Removes its own points
-	if (keyboard_started("delete") && !g_ui->is_typing && context_in_3d_view() && !object_tool) {
+	if (keyboard_started("delete") && !g_ui->is_typing && context_in_3d_view()) {
 		util_layer_remove_path_point(l);
 	}
 

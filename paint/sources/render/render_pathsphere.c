@@ -111,33 +111,7 @@ static void create_pathsphere_object() {
 	render_pathsphere_obj->base->visible = false;
 }
 
-// Points of the path and curve object tools
-void render_pathsphere_tool() {
-	if (base_player || g_context->capturing_screenshot || g_context->paint2d) {
-		return;
-	}
-	i32     count;
-	i32     active;
-	vec4_t *points = util_path_tool_get_points(&count, &active);
-	if (count == 0) {
-		return;
-	}
-	if (render_pathsphere_obj == NULL) {
-		create_pathsphere_object();
-	}
-	for (i32 i = 0; i < count; i++) {
-		f32 scale = util_path_tool_point_scale(points[i]) * (i == active ? 1.5f : 1.0f);
-
-		render_pathsphere_obj->base->transform->loc   = points[i];
-		render_pathsphere_obj->base->transform->scale = (vec4_t){scale, scale, scale, 1.0};
-		transform_build_matrix(render_pathsphere_obj->base->transform);
-		mesh_object_draw(render_pathsphere_obj, render_path_base_own_scon(render_pathsphere_obj), NULL);
-	}
-}
-
 void render_pathsphere() {
-	render_pathsphere_tool();
-
 	if (base_player || g_context->capturing_screenshot || g_context->paint2d) {
 		return;
 	}

@@ -83,9 +83,6 @@ static bool dock_tab_hidden(i32 id) {
 	if (ui_popovers_enabled() && ui_popovers_has_tab(id)) {
 		return true;
 	}
-	if (id == TAB_SCRIPTS) {
-		return !g_config->show_scripts;
-	}
 	return false;
 }
 
@@ -341,14 +338,10 @@ void ui_dock_reset() {
 	dock_default_leaf(status, TAB_BROWSER);
 	dock_default_leaf(status, TAB_TEXTURES);
 	dock_default_leaf(status, TAB_FONTS);
-	dock_default_leaf(status, TAB_SOUNDS);
 	dock_default_leaf(status, TAB_SWATCHES);
-	dock_default_leaf(status, TAB_TIMELINE);
 	dock_default_leaf(status, TAB_CONSOLE);
 	dock_node_t *sidebar0 = dock_leaf_create();
 	dock_default_leaf(sidebar0, TAB_LAYERS);
-	dock_default_leaf(sidebar0, TAB_MESHES);
-	dock_default_leaf(sidebar0, TAB_SCRIPTS);
 	dock_default_leaf(sidebar0, TAB_DEBUG);
 	dock_node_t *sidebar1 = dock_leaf_create();
 	dock_default_leaf(sidebar1, TAB_MATERIALS);
@@ -1293,25 +1286,6 @@ void ui_dock_update() {
 		return;
 	}
 
-	// Scripts toggled in the preferences
-	static i32 hidden_last = -1;
-	i32        hidden      = dock_tab_hidden(TAB_SCRIPTS) ? 1 : 0;
-	if (hidden != hidden_last) {
-		bool first  = hidden_last == -1;
-		hidden_last = hidden;
-		if (!first) {
-			dock_node_t *leaves[DOCK_MAX_LEAVES];
-			i32          count = dock_collect_leaves(ui_dock_root, leaves, 0);
-			for (i32 i = 0; i < count; ++i) {
-				dock_leaf_clamp_active(leaves[i]);
-				if (leaves[i]->hwnd != NULL) {
-					leaves[i]->hwnd->redraws = 2;
-				}
-			}
-			ui_dock_layout();
-			base_redraw_ui();
-		}
-	}
 
 	// Tab dropped on the tab names
 	if (ui_dock_drop_to != NULL) {

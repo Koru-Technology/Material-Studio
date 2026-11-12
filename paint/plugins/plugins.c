@@ -13,10 +13,7 @@ void     *io_exr_parse(char *buf, size_t len);
 void     *io_psd_parse(uint8_t *buf, size_t len, const char *filename);
 void     *io_tiff_parse(uint8_t *buf, size_t len);
 void     *io_gltf_parse(char *buf, size_t size, const char *path);
-buffer_t *io_gltf_skin_blob(char *buf, size_t size, const char *path);
-void     *util_skin_raw_mesh(buffer_t *blob);
 void     *io_fbx_parse(char *buf, size_t size);
-void     *io_fbx_parse_skinned(char *buf, size_t size);
 
 typedef struct asset {
 	i32   id;
@@ -35,8 +32,7 @@ void                   import_texture_run(char *path, bool hdr_as_envmap);
 any_array_t           *project_get_assets(void);
 void                   tab_textures_delete_texture(asset_t *asset);
 
-int plugins_skinning_frame = -1;
-int plugins_split_by       = 0;
+int plugins_split_by = 0;
 
 void io_psd_import_layer(char *file_name, char *layer_name, void *tex) {
 	char *path = string("%s.%s.png", file_name, layer_name);
@@ -89,13 +85,6 @@ static void *import_gltf_glb(char *path) {
 	if (b == NULL) {
 		return NULL;
 	}
-	if (plugins_skinning_frame != -1) {
-		buffer_t *blob = io_gltf_skin_blob((char *)b->buffer, b->length, path);
-		if (blob != NULL) {
-			data_delete_blob(path);
-			return util_skin_raw_mesh(blob);
-		}
-	}
 	void *res = io_gltf_parse((char *)b->buffer, b->length, path);
 	data_delete_blob(path);
 	return res;
@@ -106,7 +95,7 @@ static void *import_fbx(char *path) {
 	if (b == NULL) {
 		return NULL;
 	}
-	void *res = plugins_skinning_frame == -1 ? io_fbx_parse((char *)b->buffer, b->length) : io_fbx_parse_skinned((char *)b->buffer, b->length);
+	void *res = io_fbx_parse((char *)b->buffer, b->length);
 	data_delete_blob(path);
 	return res;
 }

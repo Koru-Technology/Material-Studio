@@ -17,15 +17,15 @@ void ui_nodes_get_linked_nodes(ui_node_t_array_t *linked_nodes, ui_node_t *n, ui
 }
 
 node_group_t_array_t *ui_nodes_groups() {
-	return ui_nodes_canvas_type == CANVAS_TYPE_MESH ? g_project->_->mesh_groups : g_project->_->material_groups;
+	return g_project->_->material_groups;
 }
 
 node_group_t *ui_nodes_find_group(char *group_name) {
-	return ui_nodes_canvas_type == CANVAS_TYPE_MESH ? nodes_mesh_get_group(group_name) : project_get_material_group_by_name(group_name);
+	return project_get_material_group_by_name(group_name);
 }
 
 bool ui_nodes_group_in_use(node_group_t *group) {
-	return ui_nodes_canvas_type == CANVAS_TYPE_MESH ? nodes_mesh_group_in_use(group) : project_is_material_group_in_use(group);
+	return project_is_material_group_in_use(group);
 }
 
 bool ui_nodes_contains_node_group_recursive(node_group_t *group, char *group_name) {
@@ -85,7 +85,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 		img = g_context->brush->image;
 	}
 	else if (string_equals(n->type, "TEX_IMAGE") &&
-	         (n->inputs->length == 0 || ui_nodes_canvas_type == CANVAS_TYPE_MESH || parser_material_get_input_link(n->inputs->buffer[0]) == NULL)) {
+	         (n->inputs->length == 0 || parser_material_get_input_link(n->inputs->buffer[0]) == NULL)) {
 		i32 i = n->buttons->buffer[0]->default_value->buffer[0];
 		if (i >= 0 && i < g_project->_->assets->length) { // 9999 - Texture deleted
 			img = project_get_image(g_project->_->assets->buffer[i]);
@@ -158,22 +158,14 @@ i32 ui_nodes_get_node_y() {
 }
 
 node_list_t_array_t *ui_nodes_get_node_list() {
-	return ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? nodes_material_list : ui_nodes_canvas_type == CANVAS_TYPE_MESH ? nodes_mesh_list : nodes_brush_list;
+	return ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? nodes_material_list : nodes_brush_list;
 }
 
 string_array_t *ui_nodes_get_categories() {
-	return ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? nodes_material_categories
-	       : ui_nodes_canvas_type == CANVAS_TYPE_MESH   ? nodes_mesh_categories
-	                                                    : nodes_brush_categories;
+	return ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? nodes_material_categories : nodes_brush_categories;
 }
 
 ui_node_canvas_t *ui_nodes_get_canvas(bool groups) {
-	if (ui_nodes_canvas_type == CANVAS_TYPE_MESH) {
-		if (groups && ui_nodes_group_stack->length > 0) {
-			return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->canvas;
-		}
-		return nodes_mesh_get(g_context->paint_object, true)->canvas;
-	}
 	if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
 		if (groups && ui_nodes_group_stack->length > 0) {
 			return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->canvas;
@@ -188,12 +180,6 @@ ui_node_canvas_t *ui_nodes_get_canvas(bool groups) {
 }
 
 ui_nodes_t *ui_nodes_get_nodes() {
-	if (ui_nodes_canvas_type == CANVAS_TYPE_MESH) {
-		if (ui_nodes_group_stack->length > 0) {
-			return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->nodes;
-		}
-		return nodes_mesh_get(g_context->paint_object, true)->nodes;
-	}
 	if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
 		if (ui_nodes_group_stack->length > 0) {
 			return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->nodes;
@@ -291,22 +277,7 @@ void ui_viewnodes_on_canvas_cut(void *_) {
 }
 
 void ui_nodes_recompile() {
-	nodes_mesh_refresh();
 
-	if (ui_nodes_canvas_type == CANVAS_TYPE_MESH) {
-		// Meshes are rebuilt once the change is done
-		if (ui_nodes_recompile_mat_final) {
-			if (ui_nodes_group_stack->length > 0) {
-				nodes_mesh_update_all();
-			}
-			else {
-				nodes_mesh_update(g_context->paint_object, false);
-			}
-		}
-		ui_nodes_recompile_mat       = false;
-		ui_nodes_recompile_mat_final = false;
-		return;
-	}
 
 	if (ui_nodes_recompile_mat) {
 		if (ui_nodes_canvas_type == CANVAS_TYPE_BRUSH) {
@@ -352,7 +323,6 @@ void ui_nodes_recompile() {
 				layers_update_path_layers();
 				util_render_make_material_preview();
 			}
-			tab_meshes_refresh_overrides(g_context->material);
 		}
 
 		bool decal = context_is_decal();
@@ -366,7 +336,7 @@ void ui_nodes_recompile() {
 }
 
 ui_node_t *ui_nodes_make_group_node(ui_node_canvas_t *group_canvas, ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
-	ui_node_t *def = ui_nodes_canvas_type == CANVAS_TYPE_MESH ? nodes_mesh_group_def : nodes_material_group->buffer[0];
+	ui_node_t *def = nodes_material_group->buffer[0];
 	return ui_nodes_make_group_node_from(def, group_canvas, nodes, canvas);
 }
 
@@ -520,4 +490,14 @@ ui_node_t *ui_nodes_make_node(ui_node_t *n, ui_nodes_t *nodes, ui_node_canvas_t 
 	}
 	ui_nodes_node_changed = node;
 	return node;
+}
+
+ui_node_link_t *util_nodes_link(ui_node_canvas_t *c, ui_node_t *node, i32 socket) {
+	for (i32 i = 0; i < c->links->length; ++i) {
+		ui_node_link_t *l = c->links->buffer[i];
+		if (l->to_id == node->id && l->to_socket == socket) {
+			return l;
+		}
+	}
+	return NULL;
 }

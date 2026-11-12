@@ -671,7 +671,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			ui_id_mask_toggle(((u32)buffer_get_u8(a, i0) << 16) | ((u32)buffer_get_u8(a, i1) << 8) | (u32)buffer_get_u8(a, i2));
 		}
 	}
-	else if (g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL) {
+	else if (g_context->tool == TOOL_TYPE_PICKER) {
 		if (g_context->pick_pos_nor_tex) {
 			if (g_context->paint2d) {
 				string_array_t *additional = any_array_create_from_raw(
@@ -731,58 +731,14 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				    3);
 				render_path_set_target("texpaint_picker", additional, NULL, GPU_CLEAR_NONE, 0, 0.0);
 				render_path_bind_target("gbuffer2", "gbuffer2");
-				bool use_live_layer = g_context->tool == TOOL_TYPE_MATERIAL;
-				if (use_live_layer) {
-					render_path_paint_use_live_layer(true);
-				}
 				render_path_bind_target(string_tmp("texpaint%d", tid), "texpaint");
 				render_path_bind_target(string_tmp("texpaint_nor%d", tid), "texpaint_nor");
 				render_path_bind_target(string_tmp("texpaint_pack%d", tid), "texpaint_pack");
 				render_path_paint_draw_fullscreen_triangle();
-				if (use_live_layer) {
-					render_path_paint_use_live_layer(false);
-				}
 			}
 			ui_header_handle->redraws = 2;
 			ui_dock_redraw(2);
 			render_path_paint_picker_read(is_mask);
-		}
-	}
-	else if (g_context->tool == TOOL_TYPE_CURSOR) {
-		if (g_context->pick_object_id) {
-			mesh_object_t *o   = render_path_paint_pick_object();
-			bool           hit = o != NULL;
-			if (hit) {
-				if (keyboard_down("shift")) {
-					// Added to the selection, the clicked mesh becomes the active one
-					tab_meshes_add_objects(any_array_create_from_raw((void *[]){o}, 1));
-					g_context->paint_object = o;
-				}
-				else {
-					// Only the clicked mesh stays selected
-					g_context->paint_object = o;
-					tab_meshes_select_objects(any_array_create_from_raw((void *[]){o}, 1));
-				}
-				context_deselected_uid    = -1;
-				ui_header_handle->redraws = 2;
-				tab_meshes_reveal_slot(g_context->paint_object);
-
-				// g_context->layer->object_mask = index + 1;
-				// context_set_layer(g_context->layer);
-				// make_material_parse_mesh_material();
-				// layers_set_object_mask();
-
-				base_redraw_status();
-			}
-			if (!hit && !keyboard_down("shift")) {
-				// Nothing to outline, the mesh stays selected in the meshes tab
-				context_deselected_uid = g_context->paint_object->base->uid;
-				g_context->ddirty      = 2;
-			}
-
-			g_context->pick_object_id = false;
-			make_material_parse_paint_material(false);
-			render_path_base_draw_gbuffer();
 		}
 	}
 	else {
@@ -1208,10 +1164,6 @@ void render_path_paint_commands_cursor() {
 }
 
 bool render_path_paint_paint_enabled() {
-	if (args_player) {
-		return false;
-	}
-
 	if (g_context->tool == TOOL_TYPE_INPAINT) {
 		return false; // Inpaint handles the strokes itself
 	}
@@ -1224,7 +1176,7 @@ bool render_path_paint_paint_enabled() {
 		return true;
 	}
 
-	bool fill_layer = g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER && g_context->tool != TOOL_TYPE_MATERIAL &&
+	bool fill_layer = g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER &&
 	                  g_context->tool != TOOL_TYPE_COLORID;
 	bool group_layer = slot_layer_is_group(g_context->layer);
 
@@ -1921,9 +1873,8 @@ void render_path_paint_restore_plane_mesh() {
 }
 
 void render_path_paint_bind_layers() {
-	bool is_live          = g_config->brush_live && render_path_paint_live_layer_drawn > 0;
-	bool is_material_tool = g_context->tool == TOOL_TYPE_MATERIAL;
-	if (is_live || is_material_tool) {
+	bool is_live = g_config->brush_live && render_path_paint_live_layer_drawn > 0;
+	if (is_live) {
 		render_path_paint_use_live_layer(true);
 	}
 
@@ -1943,14 +1894,13 @@ void render_path_paint_bind_layers() {
 }
 
 void render_path_paint_unbind_layers() {
-	bool is_live          = g_config->brush_live && render_path_paint_live_layer_drawn > 0;
-	bool is_material_tool = g_context->tool == TOOL_TYPE_MATERIAL;
-	if (is_live || is_material_tool) {
+	bool is_live = g_config->brush_live && render_path_paint_live_layer_drawn > 0;
+	if (is_live) {
 		render_path_paint_use_live_layer(false);
 	}
 }
 
-// The live layer is three full size textures, only the material tool and live brush need it all the time.
+// The live layer is three full size textures, only the live brush needs it all the time.
 // For the brush preview it is created when needed and freed after a while.
 static f64 render_path_paint_live_last_use = 0.0;
 
@@ -1962,7 +1912,7 @@ void render_path_paint_live_layer_release_idle() {
 	if (render_path_paint_live_layer == NULL || render_path_paint_live_layer_locked) {
 		return;
 	}
-	if (g_context->tool == TOOL_TYPE_MATERIAL || g_config->brush_live) {
+	if (g_config->brush_live) {
 		render_path_paint_live_last_use = iron_time();
 		return;
 	}

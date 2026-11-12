@@ -7,8 +7,8 @@
 
 char *manifest_title           = "Koru Surface";
 char *manifest_version         = "1.1rc1";
-char *manifest_version_project = "28";
-char *manifest_version_config  = "16";
+char *manifest_version_project = "29";
+char *manifest_version_config  = "17";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -160,8 +160,6 @@ slot_material_t *base_drag_material = NULL;
 slot_layer_t    *base_drag_layer    = NULL;
 slot_brush_t    *base_drag_brush    = NULL;
 slot_font_t     *base_drag_font     = NULL;
-slot_sound_t    *base_drag_sound    = NULL;
-mesh_object_t   *base_drag_mesh     = NULL;
 bool             base_player        = false;
 bool             base_player_lock   = false;
 
@@ -172,10 +170,6 @@ ui_window_t            *ui_toolbar_handle;
 ui_window_t            *ui_toolbar_split_handle;
 string_array_t         *ui_toolbar_tool_names;
 string_array_t         *ui_toolbar_tool_labels;
-f32                     util_path_tool_radius      = 0.03;
-f32                     util_text_tool_size        = 0.5;
-f32                     util_text_tool_depth       = 0.1;
-f32                     util_shape_tool_segments[] = {0, 1, 0, 128, 64, 64, 32, 64}; // From TOOL_TYPE_EMPTY to TOOL_TYPE_TORUS
 string_array_t         *ui_toolbar_tooltip_extras;
 mat4_t                  uniforms_ext_ortho_p;
 i32                     box_projects_tab_index;
@@ -186,12 +180,6 @@ i32                     history_undos       = 0;     // Undos available
 i32                     history_redos       = 0;     // Redos available
 bool                    history_push_undo   = false; // Store undo on next paint
 slot_layer_t_array_t   *history_undo_layers = NULL;
-char                   *tab_scripts_text    = "";
-i32                     tab_scripts_line; // Active line of the script text area
-bool                    tab_scripts_minimap_dirty = true;
-extern int              tab_stages_selected;
-extern bool             tab_timeline_playing;
-extern i32              tab_timeline_selected_frame;
 any_map_t              *import_mesh_importers;
 i32                     ui_menubar_default_w = 395;
 ui_window_t            *ui_menubar_hwnd;
@@ -211,6 +199,7 @@ i32                       render_path_base_bloom_current_mip = 0;
 f32                       render_path_base_bloom_sample_scale;
 bool                      render_path_base_buf_swapped = false;
 string_array_t           *project_default_mesh_list    = NULL;
+char                     *project_new_template         = NULL; // Template mesh of the next new project when set, see script_project_new_template()
 gpu_pipeline_t           *ui_view2d_pipe;
 i32                       ui_view2d_channel_loc;
 view_2d_type_t            ui_view2d_type = VIEW_2D_TYPE_LAYER;
@@ -226,9 +215,6 @@ f32                       ui_view2d_pan_scale        = 1.0;
 f32                       ui_view2d_rotation         = 0.0; // Radians the layer is turned on screen, clockwise, see ui_view2d_rotation_allowed
 bool                      ui_view2d_twisting         = false;
 bool                      ui_view2d_tiled_show       = false;
-sound_t                  *ui_view2d_sound_playing    = NULL;
-bool                      player_running             = false;
-bool                      player_in_editor           = false;
 bool                      viewport_recording         = false;
 gpu_texture_t            *viewport_video_frame       = NULL;
 i32                       viewport_video_w           = 0;
@@ -238,7 +224,6 @@ bool                      viewport_video_stepped     = false; // Frames are enco
 f64                       viewport_video_time        = -1.0;
 f32                       viewport_video_vignette    = 0.0;
 f32                       viewport_video_grain       = 0.0;
-bool                      node_shader_dump_to_script = false;
 node_shader_context_t    *parser_material_con;
 node_shader_t            *parser_material_kong;
 string_array_t           *parser_material_parsed;
@@ -267,13 +252,8 @@ ui_node_canvas_t     *parser_material_start_group           = NULL;
 ui_node_t_array_t    *parser_material_start_parents         = NULL;
 ui_node_t            *parser_material_start_node            = NULL;
 char                 *parser_material_out_normaltan; // Raw tangent space normal parsed from normal map
-any_map_t            *parser_material_script_links      = NULL;
-bool                  project_scripts_trusted           = true;
-bool                  import_arm_keep_script_trust      = false;
 bool                  parser_material_is_frag           = true;
-bool                  args_player                       = false;
 bool                  args_background                   = false;
-bool                  agent_running                     = false;
 bool                  project_modified                  = false; // Changed since the last save, for auto save
 f32                   util_brush_sample_pressure        = -1.0;  // Pressure of the pen sample being drawn, -1 for the current pen pressure
 f32                   util_brush_sample_altitude        = -1.0;  // Angles of the pen sample being drawn, -1 for the current pen angles
@@ -343,28 +323,6 @@ ui_node_t_array_t    *nodes_material_utilities;
 ui_node_t_array_t    *nodes_material_neural;
 ui_node_t_array_t    *nodes_material_group;
 node_list_t_array_t  *nodes_material_list   = NULL;
-string_array_t       *nodes_mesh_categories = NULL;
-ui_node_t_array_t    *nodes_mesh_input;
-ui_node_t_array_t    *nodes_mesh_modifier;
-ui_node_t_array_t    *nodes_mesh_combine;
-ui_node_t_array_t    *nodes_mesh_utilities;
-ui_node_t_array_t    *nodes_mesh_group;
-ui_node_t            *nodes_mesh_group_def;
-node_list_t_array_t  *nodes_mesh_list = NULL;
-ui_node_t            *nodes_mesh_input_def;
-ui_node_t            *nodes_mesh_output_def;
-any_map_t            *nodes_mesh_node_evals;
-any_map_t            *nodes_mesh_node_vectors;
-i32                   context_deselected_uid = -1; // Paint object with no outline and gizmo in the viewport
-ui_node_canvas_t     *nodes_mesh_eval_canvas;
-mesh_nodes_t         *nodes_mesh_eval_slot;
-mesh_object_t        *nodes_mesh_eval_object;
-bool                  nodes_mesh_eval_unwrap;
-i32                   nodes_mesh_vector_socket; // Output socket of the node evaluated by nodes_mesh_vector
-i32                   nodes_mesh_eval_socket;
-u32                   nodes_mesh_eval_group_key = 0;
-bool                  nodes_mesh_script_running = false;
-bool                  nodes_mesh_eval_reads_frame;
 i32                   make_mesh_layer_pass_count = 1;
 
 i32             ui_sidebar_default_w_mini  = 56;
@@ -393,7 +351,6 @@ bool            ui_box_click_to_hide  = true;
 i32             ui_box_modalw         = 400;
 i32             ui_box_modalh         = 170;
 char           *tab_layers_layer_name = "";
-char           *tab_meshes_mesh_name  = "";
 slot_layer_t   *tab_layers_l;
 paint_tex_t     tab_layers_preview_tex           = PAINT_TEX_BASE;
 gpu_texture_t  *util_uv_uvmap                    = NULL;

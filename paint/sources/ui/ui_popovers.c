@@ -27,7 +27,7 @@ bool ui_popovers_enabled() {
 
 // Sidebar tabs the popovers hold, the dock leaves them out
 bool ui_popovers_has_tab(i32 id) {
-	return id == TAB_LAYERS || id == TAB_MESHES || id == TAB_SCRIPTS || id == TAB_DEBUG || id == TAB_MATERIALS || id == TAB_LIBRARY ||
+	return id == TAB_LAYERS || id == TAB_DEBUG || id == TAB_MATERIALS || id == TAB_LIBRARY ||
 	       id == TAB_BRUSHES || id == TAB_SMART;
 }
 
@@ -263,10 +263,6 @@ static void ui_popovers_draw_popover() {
 	if (ui_window(ui_popovers_handle, x + inset, y + inset, w - inset * 2, h - inset * 2, false)) {
 		if (ui_popovers_open == POPOVER_LAYERS) {
 			tab_layers_draw(htab);
-			tab_meshes_draw(htab);
-			if (g_config->show_scripts) {
-				tab_scripts_draw(htab);
-			}
 		}
 		else if (ui_popovers_open == POPOVER_BRUSHES) {
 			tab_brushes_draw_content(); // The only tab, no tab name above it

@@ -1,8 +1,6 @@
 
 #include "../global.h"
 
-char *tab_console_input      = "";
-i32   tab_console_input_line = 0;
 
 void tab_console_draw_export_on_file_picked(char *path) {
 	char *str = string_array_join(console_last_traces, "\n");
@@ -17,70 +15,8 @@ void tab_console_draw_export_on_file_picked(char *path) {
 	iron_file_save_bytes(path, sys_string_to_buffer(str), 0);
 }
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-
-void tab_console_run_button_on_next_frame(void *_) {
-	box_preferences_tab = PREFERENCES_TAB_NEURAL;
-	box_preferences_show();
-}
-
-static bool tab_console_model_found() {
-	if (g_config->console_model != CONSOLE_MODEL_QWEN) {
-		return true;
-	}
-	char *url       = box_preferneces_model_url_from_name("Qwen");
-	char *file_name = box_preferences_file_name_from_url(url);
-	return box_preferences_model_exists(file_name);
-}
-
-static bool tab_console_busy() {
-	return iron_exec_async_done == 0 || agent_running;
-}
-
-bool tab_console_run_button(bool press_run) {
-	bool found = tab_console_model_found();
-
-	if (tab_console_busy()) {
-		ui_icon_button(tr("Processing..."), ICON_STOP, UI_ALIGN_CENTER);
-	}
-	else if (!found && ui_icon_button(tr("Setup"), ICON_COG, UI_ALIGN_CENTER)) {
-		sys_notify_on_next_frame(&tab_console_run_button_on_next_frame, NULL);
-	}
-	else if (found && (ui_icon_button(tr("Run"), ICON_PLAY, UI_ALIGN_CENTER) || press_run)) {
-		tab_console_run_prompt(tab_console_input);
-		tab_console_input = "";
-		return true;
-	}
-	return false;
-}
-
-#endif
-
-void tab_console_run_prompt(char *input) {
-	char *prompt = string_replace_all(input, "\n", " ");
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-	if (tab_console_busy()) {
-		return;
-	}
-	if (!tab_console_model_found()) {
-		sys_notify_on_next_frame(&tab_console_run_button_on_next_frame, NULL);
-		return;
-	}
-	console_log(string(">%s", prompt));
-	agent_run(prompt);
-#else
-	console_log(string(">%s", prompt));
-	minic_ctx_free(minic_eval(string("float main() { %s }", prompt)));
-#endif
-}
-
 void tab_console_draw(i32 *htab) {
 	char *title = tr("Console");
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-	if (tab_console_busy()) {
-		title = tr("Processing...");
-	}
-#endif
 	if (console_message_timer > 0) {
 		title = string_tmp("%s        ", console_message);
 	}
@@ -109,8 +45,6 @@ void tab_console_draw(i32 *htab) {
 
 		if (ui_icon_button(tr("Clear"), ICON_ERASE, UI_ALIGN_CENTER)) {
 			console_last_traces = any_array_create_from_raw((void *[]){}, 0);
-			tab_console_input   = "";
-			agent_clear();
 		}
 		if (ui_icon_button(tr("Export"), ICON_EXPORT, UI_ALIGN_CENTER)) {
 			ui_files_show("txt", true, false, &tab_console_draw_export_on_file_picked);
@@ -169,40 +103,7 @@ void tab_console_draw(i32 *htab) {
 
 		g_theme->ELEMENT_OFFSET = _element_offset;
 
-		f32 _input_x = g_ui->_x;
-		f32 _input_y = g_ui->_y;
-		f32 _input_w = g_ui->_w;
-		f32 input_w  = _input_w * 0.9;
-
-		g_ui->_w          = input_w;
-		ui_id_t input_id  = ui_widget_id(&tab_console_input, UI_ID_TEXT);
-		bool    press_run = g_ui->text_selected_id == input_id && g_ui->is_key_pressed && g_ui->key_code == KEY_CODE_RETURN;
-		ui_text_area(&tab_console_input, &tab_console_input_line, UI_ALIGN_LEFT, true, "", true);
-		if (press_run && g_ui->text_selected_id == input_id) {
-			ui_deselect_text(g_ui);
-			g_ui->submit_text_id = 0;
-		}
-		press_run   = press_run && tab_console_input[0] != '\0';
-		f32 input_y = g_ui->_y;
-
 		ui_set_font(g_ui, _font);
 		g_ui->font_size = _font_size;
-
-		g_ui->_x = _input_x + input_w;
-		g_ui->_y = _input_y;
-		g_ui->_w = _input_w - input_w;
-
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-		tab_console_run_button(press_run);
-#else
-		if (ui_icon_button(tr("Run"), ICON_PLAY, UI_ALIGN_CENTER) || press_run) {
-			tab_console_run_prompt(tab_console_input);
-			tab_console_input = "";
-		}
-#endif
-
-		g_ui->_x = _input_x;
-		g_ui->_w = _input_w;
-		g_ui->_y = input_y > g_ui->_y ? input_y : g_ui->_y;
 	}
 }

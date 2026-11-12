@@ -64,10 +64,7 @@ void next() {
 	frame = 0;
 	context_t *ctx = script_get_context();
 	if (step == 0) {
-		any_array_t *objects = util_mesh_get_hierarchy(ctx->paint_object);
-		for (int i = 0; i < 5; ++i) {
-			util_mesh_subdivide(objects);
-		}
+		script_project_new_template("sphere_2048"); // Dense enough to split into chunks
 		step = 1;
 	}
 	else if (step >= 1 && step <= 4) {

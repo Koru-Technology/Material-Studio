@@ -92,37 +92,13 @@ static void box_preferences_interface_layout() {
 	if (ui_button(tr("Nodes"), UI_ALIGN_CENTER, "")) {
 		box_preferences_workspace(WORKSPACE_PRESET_NODES);
 	}
-	ui_row3();
-	if (ui_button(tr("Scripts"), UI_ALIGN_CENTER, "")) {
-		box_preferences_workspace(WORKSPACE_PRESET_SCRIPT);
-	}
-	if (ui_button(tr("Player"), UI_ALIGN_CENTER, "")) {
-		ui_box_hide();
-		sys_notify_on_next_frame(player_start, NULL);
-	}
-	ui_end_element();
 
-	box_preferences_section(tr("Tools"));
-	string_array_t *tools        = any_array_create_from_raw_tmp((void *[]){tr("Paint"), tr("Object")}, 2);
-	i32             tools_values[] = {TOOLS_PAINT, TOOLS_OBJECT};
-	bool            tools_changed  = false;
-	ui_row2();
-	for (i32 i = 0; i < tools->length; ++i) {
-		ui_radio((int *)&g_config->tools, tools_values[i], tools->buffer[i], "");
-		tools_changed |= ui_item_changed();
-	}
-	if (tools_changed) {
-		config_save();
-		base_update_tools();
-	}
-
-	// Scripts is shown by its own setting
 	box_preferences_section(tr("Tabs"));
 	static bool tab_visible[TAB_COUNT];
 	i32         column = 0;
 	for (i32 i = 0; i < TAB_COUNT; ++i) {
 		tab_draw_t *tab = ui_base_get_tab(i);
-		if (tab == NULL || i == TAB_SCRIPTS) {
+		if (tab == NULL) {
 			continue;
 		}
 		if (column++ % 3 == 0) {
@@ -245,15 +221,9 @@ void box_preferences_interface_tab() {
 
 	ui_check(&g_config->splash_screen, tr("Splash Screen"), "");
 	ui_check(&g_config->reload_project, tr("Reload Project on Startup"), "");
-	ui_check(&g_config->show_scripts, tr("Scripts Tab"), "");
 
 	ui_check(&g_config->grid_snap, tr("Grid Snap"), "");
 	ui_nodes_grid_snap = g_config->grid_snap;
-
-	ui_check(&g_config->auto_run_scripts, tr("Auto Run Scripts"), "");
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Run script nodes when opening a project without asking"));
-	}
 
 	ui_check(&g_config->experimental, tr("Experimental Features"), "");
 
@@ -1032,16 +1002,6 @@ void box_preferences_model_panel(neural_node_model_t *m) {
 }
 
 void box_preferences_neural_tab() {
-	string_array_t *console_model_combo = any_array_create_from_raw_tmp(
-	    (void *[]){
-	        "Qwen",
-	        "Claude",
-	        "Grok",
-	        "Codex",
-	    },
-	    4);
-	ui_combo(&g_config->console_model, console_model_combo, tr("Console Model"), true, UI_ALIGN_LEFT, true);
-
 	i32             neural_res       = g_config->neural_res == 2048 ? 2 : (g_config->neural_res == 1024 ? 1 : 0);
 	string_array_t *neural_res_combo = any_array_create_from_raw_tmp(
 	    (void *[]){
@@ -1077,9 +1037,7 @@ void box_preferences_neural_tab() {
 		file_start(neural_node_dir());
 	}
 
-	if (g_config->console_model == 0) {
-		ui_text(tr("All processing is done locally on device"), UI_ALIGN_LEFT, 0x00000000);
-	}
+	ui_text(tr("All processing is done locally on device"), UI_ALIGN_LEFT, 0x00000000);
 }
 
 // ██╗  ██╗███████╗██╗   ██╗███╗   ███╗ █████╗ ██████╗

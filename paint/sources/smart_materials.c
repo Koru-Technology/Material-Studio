@@ -323,7 +323,6 @@ slot_layer_t *smart_materials_insert(char *name) {
 		i32 mat          = smart_materials_i32(m, p, "material", -1);
 		l->fill_material = mat >= 0 && mat < mats ? materials[mat] : NULL;
 		l->object_mask   = 0;
-		tab_stages_add_layer(l->name);
 	}
 
 	// Pixels: fill layers and masks from their material, painted masks black, paint layers empty

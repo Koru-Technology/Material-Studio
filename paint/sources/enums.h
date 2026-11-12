@@ -88,13 +88,7 @@ typedef enum {
 	WORKSPACE_PRESET_VIEW_3D = 0,
 	WORKSPACE_PRESET_VIEW_2D = 1,
 	WORKSPACE_PRESET_NODES   = 2,
-	WORKSPACE_PRESET_SCRIPT  = 3,
 } workspace_preset_t;
-
-typedef enum {
-	TOOLS_PAINT  = 0,
-	TOOLS_OBJECT = 2, // 1 was sculpt, kept free so saved configs and scripts keep their values
-} tools_t;
 
 typedef enum {
 	PLATFORM_WINDOWS = 0,
@@ -209,8 +203,6 @@ typedef enum {
 	VIEW_2D_TYPE_NODE  = 1,
 	VIEW_2D_TYPE_FONT  = 2,
 	VIEW_2D_TYPE_LAYER = 3,
-	VIEW_2D_TYPE_UVMAP = 4,
-	VIEW_2D_TYPE_SOUND = 5,
 } view_2d_type_t;
 
 typedef enum {
@@ -278,12 +270,6 @@ typedef enum {
 } blur_type_t;
 
 typedef enum {
-	SELECT_MODE_RECTANGLE = 0,
-	SELECT_MODE_ELLIPSE   = 1,
-	SELECT_MODE_POLYGON   = 2,
-} select_mode_t;
-
-typedef enum {
 	CLONE_LAYERS_SELECTED = 0,
 	CLONE_LAYERS_VISIBLE  = 1,
 } clone_layers_t;
@@ -343,13 +329,6 @@ typedef enum {
 	TEXTURE_RES_RES16384 = 3,
 	TEXTURE_RES_CUSTOM   = 4,
 } texture_res_t;
-
-typedef enum {
-	CONSOLE_MODEL_QWEN   = 0,
-	CONSOLE_MODEL_CLAUDE = 1,
-	CONSOLE_MODEL_GROK   = 2,
-	CONSOLE_MODEL_CODEX  = 3,
-} console_model_t;
 
 typedef enum {
 	PREFERENCES_TAB_INTERFACE = 0,
@@ -583,7 +562,6 @@ typedef enum {
 	HISTORY_ACTION_DUPLICATE_SWATCH,
 	HISTORY_ACTION_REPLACE_SWATCHES,
 	HISTORY_ACTION_EDIT_SWATCH,
-	HISTORY_ACTION_OBJECT_TRANSFORM,
 	HISTORY_ACTION_MASK_HEIGHT_BLEND,
 } history_action_t;
 

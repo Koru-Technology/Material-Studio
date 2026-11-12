@@ -115,7 +115,6 @@ void config_save() {
 	json_encode_bool("show_asset_names", g_config->show_asset_names);
 	json_encode_bool("material_params", g_config->material_params);
 	json_encode_bool("brush_params", g_config->brush_params);
-	json_encode_bool("mesh_params", g_config->mesh_params);
 	json_encode_bool("touch_ui", g_config->touch_ui);
 	json_encode_bool("splash_screen", g_config->splash_screen);
 	json_encode_bool("header_pinned", g_config->header_pinned);
@@ -145,11 +144,8 @@ void config_save() {
 	json_encode_i32("dilate_radius", g_config->dilate_radius);
 	json_encode_string("blender", g_config->blender);
 	json_encode_bool("grid_snap", g_config->grid_snap);
-	json_encode_bool("auto_run_scripts", g_config->auto_run_scripts);
 	json_encode_bool("experimental", g_config->experimental);
 	json_encode_i32("neural_res", g_config->neural_res);
-	json_encode_i32("console_model", g_config->console_model);
-	json_encode_i32("tools", g_config->tools);
 	json_encode_bool("view2d_grid_show", g_config->view2d_grid_show);
 	json_encode_i32("view2d_grid_cell", g_config->view2d_grid_cell);
 	json_encode_bool("view2d_grid_snap", g_config->view2d_grid_snap);
@@ -158,7 +154,6 @@ void config_save() {
 	json_encode_bool("tooltips", g_config->tooltips);
 	json_encode_string("materials_folder", g_config->materials_folder);
 	json_encode_bool("reload_project", g_config->reload_project);
-	json_encode_bool("show_scripts", g_config->show_scripts);
 	json_encode_i32("cloud_resolution", g_config->cloud_resolution);
 	json_encode_bool("library_cloud", g_config->library_cloud);
 	json_encode_i32("library_cloud_type", g_config->library_cloud_type);
@@ -332,7 +327,6 @@ config_t *config_create_default() {
 	c->material_params = true;
 	c->brush_params    = true;
 #endif
-	c->mesh_params      = false;
 	c->dilate_radius    = 2;
 	c->blender          = "";
 	c->pathtrace_mode   = PATHTRACE_MODE_FAST;
@@ -349,18 +343,10 @@ config_t *config_create_default() {
 	c->large_asset_previews = true;
 	c->tooltips             = true;
 #endif
-#ifdef NDEBUG
-	c->auto_run_scripts = false;
-#else
-	c->auto_run_scripts = true;
-#endif
-	c->experimental  = false;
-	c->neural_res    = 512;
-	c->console_model = CONSOLE_MODEL_QWEN;
-	c->tools            = TOOLS_PAINT;
+	c->experimental     = false;
+	c->neural_res       = 512;
 	c->materials_folder = "";
 	c->reload_project   = true;
-	c->show_scripts     = false;
 	c->cloud_resolution   = 1;
 	c->library_cloud      = false;
 	c->library_cloud_type = -1;
@@ -408,10 +394,6 @@ void config_init() {
 	}
 	else {
 		g_config->sha = string_copy(config_get_sha());
-	}
-
-	if (g_config->tools != TOOLS_PAINT && g_config->tools != TOOLS_OBJECT) {
-		g_config->tools = TOOLS_PAINT; // Sculpt mode was removed
 	}
 
 	ui_touch_control = g_config->touch_ui;
@@ -467,7 +449,6 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->show_asset_names      = armpack_map_get_i32(old, "show_asset_names") > 0;
 	c->material_params       = armpack_map_get_i32(old, "material_params") > 0;
 	c->brush_params          = armpack_map_get_i32(old, "brush_params") > 0;
-	c->mesh_params           = armpack_map_get_i32(old, "mesh_params") > 0;
 	c->touch_ui              = armpack_map_get_i32(old, "touch_ui") > 0;
 	c->splash_screen         = armpack_map_get_i32(old, "splash_screen") > 0;
 	c->header_pinned         = armpack_map_get_i32(old, "header_pinned") > 0;
@@ -492,11 +473,8 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->dilate_radius         = armpack_map_get_i32(old, "dilate_radius");
 	c->blender               = string_copy(any_map_get(old, "blender"));
 	c->grid_snap             = armpack_map_get_i32(old, "grid_snap") > 0;
-	c->auto_run_scripts      = armpack_map_get_i32(old, "auto_run_scripts") > 0;
 	c->experimental          = armpack_map_get_i32(old, "experimental") > 0;
 	c->neural_res            = armpack_map_get_i32(old, "neural_res");
-	c->console_model         = armpack_map_get_i32(old, "console_model");
-	c->tools                 = armpack_map_get_i32(old, "tools");
 	c->view2d_grid_show      = armpack_map_get_i32(old, "view2d_grid_show") > 0;
 	c->view2d_grid_cell      = armpack_map_get_i32(old, "view2d_grid_cell");
 	c->view2d_grid_snap      = armpack_map_get_i32(old, "view2d_grid_snap") > 0;
@@ -506,7 +484,6 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	char *materials_folder   = any_map_get(old, "materials_folder");
 	c->materials_folder      = string_copy(materials_folder != NULL ? materials_folder : "");
 	c->reload_project        = armpack_map_get_i32(old, "reload_project") > 0;
-	c->show_scripts          = armpack_map_get_i32(old, "show_scripts") > 0;
 	c->cloud_resolution      = armpack_map_get_i32(old, "cloud_resolution");
 	c->library_cloud         = armpack_map_get_i32(old, "library_cloud") > 0;
 	c->library_cloud_type    = armpack_map_get_i32(old, "library_cloud_type");
@@ -544,6 +521,11 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	return c;
 }
 
+// Object mode, scripts and the console agent were removed, their keys are dropped
+config_t *config_from_version_16(any_map_t *old) {
+	return config_from_map_to_config(old);
+}
+
 config_t *config_from_version_15(any_map_t *old) {
 	config_t *def = config_create_default();
 	armpack_map_set_i32(old, "tilt_shading", def->tilt_shading);
@@ -551,7 +533,7 @@ config_t *config_from_version_15(any_map_t *old) {
 	armpack_map_set_i32(old, "pencil_squeeze", def->pencil_squeeze);
 	any_map_set(old, "quick_menu_slots", def->quick_menu_slots);
 	armpack_map_set_i32(old, "undo_memory_mb", def->undo_memory_mb);
-	return config_from_map_to_config(old);
+	return config_from_version_16(old);
 }
 
 config_t *config_from_version_14(any_map_t *old) {
@@ -619,7 +601,6 @@ config_t *config_from_version_7(any_map_t *old) {
 }
 
 config_t *config_from_version_6(any_map_t *old) {
-	armpack_map_set_i32(old, "show_scripts", false);
 	return config_from_version_7(old);
 }
 
@@ -649,10 +630,7 @@ config_t *config_from_version_1(any_map_t *old) {
 	config_t *def = config_create_default();
 	armpack_map_set_i32(old, "material_params", def->material_params);
 	armpack_map_set_i32(old, "brush_params", def->brush_params);
-	armpack_map_set_i32(old, "mesh_params", def->mesh_params);
 	armpack_map_set_i32(old, "header_pinned", def->header_pinned);
-	armpack_map_set_i32(old, "auto_run_scripts", def->auto_run_scripts);
-	armpack_map_set_i32(old, "tools", def->tools);
 	armpack_map_set_i32(old, "pixel_snap", def->pixel_snap);
 	any_map_set(old, "layout_tabs", def->layout_tabs);
 	armpack_map_set_f32(old, "rp_vignette", def->rp_vignette);
@@ -685,6 +663,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_13,
 	    config_from_version_14,
 	    config_from_version_15,
+	    config_from_version_16,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {

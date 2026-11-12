@@ -262,10 +262,6 @@ void util_brush_update() {
 		down = false;
 	}
 
-	if (g_context->tool == TOOL_TYPE_SELECT || util_tool_is_object_tool(g_context->tool)) {
-		down = false;
-	}
-
 	if (down) {
 		i32 mx = mouse_x - base_paint_view_x();
 		i32 my = mouse_y - base_paint_view_y();

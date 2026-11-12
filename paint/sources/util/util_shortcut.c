@@ -55,9 +55,6 @@ void util_shortcut_global() {
 			if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
 				ui_base_show_material_nodes();
 			}
-			else if (ui_nodes_canvas_type == CANVAS_TYPE_MESH) {
-				ui_base_show_mesh_nodes();
-			}
 			else {
 				ui_base_show_brush_nodes();
 			}
@@ -120,9 +117,6 @@ void util_shortcut_global() {
 		if (allow) {
 			ui_base_toggle_distract_free();
 		}
-	}
-	if (keyboard_started("f5") && !base_player) {
-		base_run_in_player();
 	}
 
 #ifdef IRON_LINUX
@@ -211,10 +205,7 @@ void util_shortcut_viewport() {
 	if (context_in_paint_area() && !is_typing) {
 
 		if (!mouse_down("right")) { // Fly mode off
-			if (g_config->tools == TOOLS_OBJECT) {
-				// Cursor tool only
-			}
-			else if (keymap_shortcut(any_map_get(g_keymap, "tool_brush"), SHORTCUT_TYPE_STARTED)) {
+			if (keymap_shortcut(any_map_get(g_keymap, "tool_brush"), SHORTCUT_TYPE_STARTED)) {
 				context_select_tool(TOOL_TYPE_BRUSH);
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_eraser"), SHORTCUT_TYPE_STARTED)) {
@@ -243,21 +234,6 @@ void util_shortcut_viewport() {
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_picker"), SHORTCUT_TYPE_STARTED)) {
 				if (ui_toolbar_tool_visible(TOOL_TYPE_PICKER)) {
 					context_select_tool(TOOL_TYPE_PICKER);
-				}
-			}
-			else if (keymap_shortcut(any_map_get(g_keymap, "tool_material"), SHORTCUT_TYPE_STARTED)) {
-				if (ui_toolbar_tool_visible(TOOL_TYPE_MATERIAL)) {
-					context_select_tool(TOOL_TYPE_MATERIAL);
-				}
-			}
-			else if (keymap_shortcut(any_map_get(g_keymap, "tool_cursor"), SHORTCUT_TYPE_STARTED)) {
-				if (ui_toolbar_tool_visible(TOOL_TYPE_CURSOR)) {
-					context_select_tool(TOOL_TYPE_CURSOR);
-				}
-			}
-			else if (keymap_shortcut(any_map_get(g_keymap, "tool_select"), SHORTCUT_TYPE_STARTED)) {
-				if (ui_toolbar_tool_visible(TOOL_TYPE_SELECT)) {
-					context_select_tool(TOOL_TYPE_SELECT);
 				}
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "swap_brush_eraser"), SHORTCUT_TYPE_STARTED)) {

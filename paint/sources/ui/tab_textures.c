@@ -133,11 +133,6 @@ void tab_textures_delete_texture(asset_t *asset) {
 		slot_brush_t *b = g_project->_->brushes->buffer[i];
 		tab_textures_update_texture_pointers(b->canvas->nodes, index);
 	}
-
-	ui_node_canvas_t_array_t *mesh_canvases = nodes_mesh_canvases();
-	for (i32 i = 0; i < mesh_canvases->length; ++i) {
-		tab_textures_update_texture_pointers(mesh_canvases->buffer[i]->nodes, index);
-	}
 }
 
 void tab_textures_draw_context_menu() {
@@ -212,13 +207,6 @@ bool tab_textures_is_texture_used(i32 index) {
 		}
 	}
 
-	ui_node_canvas_t_array_t *mesh_canvases = nodes_mesh_canvases();
-	for (i32 i = 0; i < mesh_canvases->length; ++i) {
-		if (tab_textures_nodes_use_texture(mesh_canvases->buffer[i]->nodes, index)) {
-			return true;
-		}
-	}
-
 	return false;
 }
 
@@ -277,10 +265,6 @@ static void tab_textures_sort_by_name() {
 	}
 	for (i32 i = 0; i < g_project->_->brushes->length; ++i) {
 		tab_textures_apply_node_indices(g_project->_->brushes->buffer[i]->canvas->nodes, new_indices);
-	}
-	ui_node_canvas_t_array_t *mesh_canvases = nodes_mesh_canvases();
-	for (i32 i = 0; i < mesh_canvases->length; ++i) {
-		tab_textures_apply_node_indices(mesh_canvases->buffer[i]->nodes, new_indices);
 	}
 	array_delete(new_indices);
 	array_delete(old_order);
@@ -566,10 +550,6 @@ void tab_textures_accept_asset_drop(asset_t *asset) {
 		}
 		for (i32 i = 0; i < g_project->_->brushes->length; ++i) {
 			tab_textures_remap_node_indices(g_project->_->brushes->buffer[i]->canvas->nodes, asset_pos, new_pos);
-		}
-		ui_node_canvas_t_array_t *mesh_canvases = nodes_mesh_canvases();
-		for (i32 i = 0; i < mesh_canvases->length; ++i) {
-			tab_textures_remap_node_indices(mesh_canvases->buffer[i]->nodes, asset_pos, new_pos);
 		}
 	}
 }

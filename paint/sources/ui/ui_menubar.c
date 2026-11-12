@@ -248,7 +248,6 @@ char *ui_menubar_viewport_mode_to_string(viewport_mode_t m) {
 }
 
 static void ui_menubar_delete_unused(void *_) {
-	tab_stages_delete_unused();
 	tab_materials_delete_unused();
 	tab_textures_delete_unused();
 }
@@ -261,7 +260,7 @@ static void ui_menubar_draw_import_export_items() {
 	if (ui_menu_button(tr("Save As..."), any_map_get(g_keymap, "file_save_as"), ICON_SAVE_AS)) {
 		project_save_as(false);
 	}
-	// Textures, fonts and sounds go into the project file instead of being referenced by path
+	// Textures and fonts go into the project file instead of being referenced by path
 	g_ui->changed = false;
 	ui_menu_align();
 	ui_check(&g_context->pack_assets_on_save, tr("Pack Assets"), "");
@@ -296,6 +295,14 @@ static void ui_menubar_draw_import_export_items() {
 	}
 	if (ui_menu_button(tr("Font..."), "", ICON_FONT)) {
 		project_import_asset("ttf,ttc,otf", true);
+	}
+	ui_menu_separator();
+	ui_menu_label(tr("Mesh"), NULL);
+	if (ui_menu_button(tr("Reimport Mesh"), any_map_get(g_keymap, "file_reimport_mesh"), ICON_SYNC)) {
+		project_reimport_mesh();
+	}
+	if (ui_menu_button(tr("Bake Mesh Maps..."), "", ICON_BAKE)) {
+		box_bake_maps_show();
 	}
 	ui_menu_separator();
 	ui_menu_label(tr("Export"), NULL);
@@ -404,9 +411,6 @@ void ui_menubar_draw_category_items() {
 			if (ui_menu_button(tr("Mesh..."), "", ICON_CUBE)) {
 				g_context->export_mesh_index = 0; // All
 				box_export_show_mesh();
-			}
-			if (ui_menu_button(tr("Player..."), "", ICON_PLAY)) {
-				box_export_show_player();
 			}
 			ui_menu_sub_end();
 		}
@@ -600,16 +604,6 @@ void ui_menubar_draw_category_items() {
 			g_ui->changed = false; // Close menu
 		}
 
-		if (ui_menu_button(tr("Run in Player"), "f5", ICON_PLAY)) {
-			base_run_in_player();
-			g_ui->changed = false; // Close menu
-		}
-#ifdef IRON_WASM
-		if (g_config->experimental && ui_menu_button(tr("Share Player Link"), "", ICON_LINK)) {
-			base_share_player();
-			g_ui->changed = false; // Close menu
-		}
-#endif
 
 		context_update_envmap();
 
@@ -864,12 +858,6 @@ void ui_menubar_draw_category_items() {
 			if (ui_menu_button(tr("Nodes"), "", ICON_NONE)) {
 				base_set_workspace(WORKSPACE_PRESET_NODES);
 			}
-			if (ui_menu_button(tr("Scripts"), "", ICON_NONE)) {
-				base_set_workspace(WORKSPACE_PRESET_SCRIPT);
-			}
-			if (ui_menu_button(tr("Player"), "", ICON_NONE)) {
-				sys_notify_on_next_frame(player_start, NULL);
-			}
 			ui_menu_sub_end();
 		}
 		if (ui_menu_sub_button(tr("Tabs"))) {
@@ -895,32 +883,6 @@ void ui_menubar_draw_category_items() {
 			}
 			ui_menu_sub_end();
 		}
-
-		ui_menu_separator();
-		ui_menubar_draw_tools();
-	}
-}
-
-void ui_menubar_draw_tools() {
-	ui_menu_align();
-	ui_menu_label(tr("Tools"), NULL);
-	bool            tools_changed = false;
-	string_array_t *tools_items   = any_array_create_from_raw(
-        (void *[]){
-            tr("Paint"),
-            tr("Object"),
-        },
-        2);
-	i32 tools_values[] = {TOOLS_PAINT, TOOLS_OBJECT};
-
-	for (i32 i = 0; i < tools_items->length; ++i) {
-		ui_radio((int *)&g_config->tools, tools_values[i], tools_items->buffer[i], "");
-		tools_changed |= ui_item_changed();
-	}
-
-	if (tools_changed) {
-		config_save();
-		base_update_tools();
 	}
 }
 

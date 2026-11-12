@@ -364,7 +364,7 @@ static void render_path_raytrace_update_overrides() {
 	i32          count = 0;
 	for (i32 i = 0; i < g_project->_->paint_objects->length && count < OVERRIDE_MAX; ++i) {
 		mesh_object_t *po  = g_project->_->paint_objects->buffer[i];
-		i32            mat = tab_meshes_get_linked_override(po);
+		i32            mat = -1 /* No per-mesh material overrides */;
 		if (!po->base->visible || mat < 0) {
 			continue;
 		}
@@ -393,7 +393,7 @@ static void render_path_raytrace_update_overrides() {
 static bool render_path_raytrace_overrides_visible() {
 	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 		mesh_object_t *po = g_project->_->paint_objects->buffer[i];
-		if (po->base->visible && tab_meshes_get_linked_override(po) >= 0) {
+		if (po->base->visible && -1 /* No per-mesh material overrides */ >= 0) {
 			return true;
 		}
 	}
@@ -406,7 +406,7 @@ static bool render_path_raytrace_overrides_changed() {
 		if (!po->base->visible) {
 			continue;
 		}
-		i32 mat  = tab_meshes_get_linked_override(po);
+		i32 mat  = -1 /* No per-mesh material overrides */;
 		i32 slot = render_path_raytrace_override_slot(po->data);
 		if (mat < 0 ? slot >= 0 : (slot < 0 || render_path_raytrace_override_material[slot] != mat)) {
 			return true;
@@ -544,7 +544,7 @@ void render_path_raytrace_raytrace_init(char *shader_name, bool build) {
 	_gpu_raytrace_as_init();
 
 	mesh_object_t *merged = g_context->merged_object;
-	bool           moving = render_path_raytrace_moving || tab_timeline_playing;
+	bool           moving = render_path_raytrace_moving;
 	if (merged != NULL && merged->base->visible && !util_mesh_merged_stale &&
 	    (!render_path_raytrace_overrides_visible() && !moving && !util_mesh_merged_partial())) {
 		render_path_raytrace_override_count = 0;

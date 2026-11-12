@@ -285,10 +285,6 @@ void layers_enable_translucency() {
 }
 
 bool layers_is_fill_material() {
-	if (g_context->tool == TOOL_TYPE_MATERIAL) {
-		return true;
-	}
-
 	slot_material_t *m = g_context->material;
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
@@ -308,38 +304,6 @@ void layers_update_fill_layers() {
 	tool_type_t    _tool      = g_context->tool;
 	i32            _fill_type = g_context->fill_type;
 	gpu_texture_t *current    = NULL;
-
-	if (g_context->tool == TOOL_TYPE_MATERIAL) {
-		if (render_path_paint_live_layer == NULL) {
-			render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
-		}
-		render_path_paint_live_layer_used();
-
-		current     = _draw_current;
-		bool in_use = gpu_in_use;
-		if (in_use)
-			draw_end();
-
-		g_context->tool      = TOOL_TYPE_FILL;
-		g_context->fill_type = FILL_TYPE_OBJECT;
-		render_path_paint_set_plane_mesh();
-		make_material_parse_paint_material(false);
-		g_context->pdirty = 1;
-		render_path_paint_use_live_layer(true);
-		render_path_paint_commands_paint(false);
-		render_path_paint_dilate(true, true);
-		render_path_paint_use_live_layer(false);
-		g_context->tool      = _tool;
-		g_context->fill_type = _fill_type;
-		g_context->pdirty    = 0;
-		render_path_paint_restore_plane_mesh();
-		make_material_parse_paint_material(true);
-		ui_view2d_hwnd->redraws = 2;
-
-		if (in_use)
-			draw_begin(current, false, 0);
-		return;
-	}
 
 	bool has_fill_layer = false;
 	bool has_fill_mask  = false;
@@ -434,7 +398,7 @@ void layers_update_path_layers() {
 }
 
 bool layers_tool_paints_fill_layer(tool_type_t tool) {
-	return tool == TOOL_TYPE_BAKE || tool == TOOL_TYPE_PICKER || tool == TOOL_TYPE_MATERIAL || tool == TOOL_TYPE_COLORID;
+	return tool == TOOL_TYPE_BAKE || tool == TOOL_TYPE_PICKER || tool == TOOL_TYPE_COLORID;
 }
 
 void layers_update_fill_layer(bool parse_paint) {
@@ -507,7 +471,6 @@ void layers_refresh_fill_layer_later(slot_layer_t *l) {
 
 void layers_update_linked_layers() {
 	render_path_base_redraw(); // The 3D view shows the change
-	nodes_mesh_layer_changed(g_context->layer);
 	slot_material_t *_material  = g_context->material;
 	bool             any_linked = false;
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
@@ -534,47 +497,6 @@ void layers_update_linked_layers() {
 	}
 }
 
-static i32 layers_filled_frame = -1;
-
-// Refill the layers and masks of materials with a shader node reading the timeline frame when the frame changes,
-// on playback, scrubbing or script_timeline_set_frame()
-void layers_update_frame_fill_layers() {
-	if (tab_timeline_selected_frame == layers_filled_frame || bake_texture_node_baking) {
-		return;
-	}
-	bool first          = layers_filled_frame < 0;
-	layers_filled_frame = tab_timeline_selected_frame;
-	if (first) {
-		// Layers were filled at this frame already
-		return;
-	}
-	slot_material_t *_material = g_context->material;
-	tool_type_t      _tool     = g_context->tool;
-	bool             any_frame = false;
-	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		slot_material_t *m         = g_project->_->materials->buffer[i];
-		bool             has_frame = false;
-		for (i32 j = 0; j < m->canvas->nodes->length; ++j) {
-			ui_node_t *node = m->canvas->nodes->buffer[j];
-			if (string_equals(node->type, "SHADER_GPU") && shader_node_reads_frame(node)) {
-				has_frame = true;
-				break;
-			}
-		}
-		if (!has_frame) {
-			continue;
-		}
-		any_frame           = true;
-		g_context->material = m;
-		g_context->tool     = TOOL_TYPE_FILL;
-		layers_update_fill_layers();
-		g_context->tool = _tool;
-	}
-	g_context->material = _material;
-	if (any_frame) {
-		make_material_parse_paint_material(false);
-	}
-}
 
 void layers_set_object_mask() {
 	string_array_t *ar = any_array_create_from_raw(
@@ -696,7 +618,6 @@ slot_layer_t *layers_new_layer(bool clear, i32 position, slot_layer_t *parent) {
 		sys_notify_on_next_frame(&layers_new_layer_clear, l);
 	}
 
-	tab_stages_add_layer(l->name);
 
 	g_context->layer_preview_dirty = true;
 	return l;
@@ -720,7 +641,6 @@ slot_layer_t *layers_new_mask(bool clear, slot_layer_t *parent, i32 position) {
 	if (clear) {
 		sys_notify_on_next_frame(&layers_new_mask_clear, l);
 	}
-	tab_stages_add_layer(l->name);
 	g_context->layer_preview_dirty = true;
 	return l;
 }
@@ -769,7 +689,6 @@ slot_layer_t *layers_new_group() {
 	slot_layer_t *l = slot_layer_create("", LAYER_SLOT_TYPE_GROUP, NULL);
 	any_array_push(g_project->_->layers, l);
 	context_set_layer(l);
-	tab_stages_add_layer(l->name);
 	return l;
 }
 
@@ -786,7 +705,6 @@ slot_layer_t *layers_new_path_layer(bool curved) {
 	l->path_curved        = curved;
 	l->path_material      = g_context->material;
 	char *name            = string_copy(slot_layer_unique_name(l, string_tmp(curved ? "Curve %d" : "Path %d", l->id + 1)));
-	tab_stages_rename_layer(l->name, name);
 	l->name = name;
 
 	return l;
@@ -800,7 +718,6 @@ slot_layer_t *layers_new_text_layer() {
 	l->path_text = true;
 	l->path_tool = TOOL_TYPE_TEXT;
 	char *name   = string_copy(slot_layer_unique_name(l, string_tmp("Text %d", l->id + 1)));
-	tab_stages_rename_layer(l->name, name);
 	l->name = name;
 	return l;
 }
@@ -1266,31 +1183,6 @@ gpu_texture_t *layers_height_below(slot_layer_t *l) {
 	return flat->texpaint_pack;
 }
 
-void layers_draw_mesh_materials() {
-	bool any = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		if (tab_meshes_get_override(g_project->_->paint_objects->buffer[i]) >= 0) {
-			any = true;
-			break;
-		}
-	}
-	if (!any) {
-		return;
-	}
-
-	string_array_t *additional = any_array_create_from_raw(
-	    (void *[]){
-	        "expb",
-	        "expc",
-	        "texpaint_blend0",
-	    },
-	    3);
-	render_path_set_target("expa", additional, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	render_path_bind_target("main", "gbufferD");
-	render_path_bind_target("texpaint_blend1", "paintmask");
-	render_path_base_draw_overrides(NULL);
-}
-
 static gpu_texture_t *layers_udim_a    = NULL;
 static gpu_texture_t *layers_udim_b    = NULL;
 static gpu_texture_t *layers_udim_c    = NULL;
@@ -1520,10 +1412,6 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 		}
 	}
 
-	if (util_mesh_udim_active()) {
-		layers_draw_mesh_materials();
-	}
-
 	slot_layer_t *l0 = ALLOC_INIT(slot_layer_t, {.texpaint = layers_expa, .texpaint_nor = layers_expb, .texpaint_pack = layers_expc});
 
 	// Merge height map into normal map
@@ -1598,10 +1486,6 @@ void tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers) {
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
 		tab_layers_remap_layer_pointers(m->canvas->nodes, tab_layers_fill_layer_map(old_layers));
-	}
-	ui_node_canvas_t_array_t *mesh_canvases = nodes_mesh_canvases();
-	for (i32 i = 0; i < mesh_canvases->length; ++i) {
-		tab_layers_remap_layer_pointers(mesh_canvases->buffer[i]->nodes, tab_layers_fill_layer_map(old_layers));
 	}
 }
 

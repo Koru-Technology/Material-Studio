@@ -29,24 +29,11 @@ void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hd
 	else if (path_is_text(path)) {
 		import_text_run(path);
 	}
-	else if (path_is_sound(path)) {
-		import_sound_run(path);
-	}
 	else if (path_is_lut(path)) {
 		box_preferences_lut_picked(path);
 	}
 	else if (path_is_project(path)) {
 		import_arm_run_project(path);
-	}
-	else if (path_is_script(path)) { // Opened in the Scripts tab
-		buffer_t *blob = data_get_blob(path);
-		if (blob != NULL) {
-			tab_scripts_set(sys_buffer_to_string(blob));
-			data_delete_blob(path);
-			g_config->show_scripts = true;
-			ui_base_show_tab(TAB_SCRIPTS);
-			console_info(tr("Script opened"));
-		}
 	}
 	else if (path_is_font(path)) {
 		import_font_run(path);

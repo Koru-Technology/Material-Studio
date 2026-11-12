@@ -127,10 +127,6 @@ void brush_output_node_run() {
 		return;
 	}
 
-	if (args_player) {
-		return;
-	}
-
 	// ID mask picking: a tap on the mesh picks the part under it, once per tap, nothing is painted
 	if (g_context->tool == TOOL_TYPE_COLORID) {
 		bool blocked = !ui_id_mask_active || ui_id_mask_pressed || g_ui->is_hovered || base_is_dragging || base_is_resizing || ui_dock_is_dragging() ||
@@ -149,7 +145,7 @@ void brush_output_node_run() {
 	bool picking_object = g_context->tool == TOOL_TYPE_CURSOR;
 
 	// Do not paint over fill layer
-	if (!picking_object && g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER && g_context->tool != TOOL_TYPE_MATERIAL &&
+	if (!picking_object && g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER &&
 	    g_context->tool != TOOL_TYPE_COLORID) {
 		return;
 	}

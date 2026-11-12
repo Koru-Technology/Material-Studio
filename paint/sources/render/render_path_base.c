@@ -214,10 +214,7 @@ void render_path_base_draw_split(void (*draw_commands)(void)) {
 
 		render_path_base_draw_gbuffer();
 
-		bool use_live_layer = g_context->tool == TOOL_TYPE_MATERIAL;
-		bool path_trace     = render_path_base_path_trace();
-        path_trace ? render_path_raytrace_draw(use_live_layer) : draw_commands();
-		render_path_base_draw_outline();
+		render_path_base_path_trace() ? render_path_raytrace_draw(false) : draw_commands();
 
 		g_context->view_index = g_context->view_index == 0 ? 1 : 0;
 		transform_set_matrix(cam->base->transform, camera_views[g_context->view_index]);
@@ -258,7 +255,7 @@ static bool render_path_base_can_reuse() {
 	if (render_path_base_presented == NULL || g_context->ddirty > -8 || g_context->pdirty > 0 || g_context->brush_time > 0) {
 		return false;
 	}
-	if (base_is_split() || g_context->split_view || viewport_recording || args_player || player_in_editor || tab_timeline_playing) {
+	if (base_is_split() || g_context->split_view || viewport_recording) {
 		return false;
 	}
 	if (g_config->brush_live || context_is_decal() || g_context->tool == TOOL_TYPE_PARTICLE || g_context->paint2d) {
@@ -298,7 +295,6 @@ void render_path_base_commands(void (*draw_commands)(void)) {
 
 	if (!render_path_base_path_trace() && render_path_base_can_reuse()) {
 		render_path_base_present_last();
-		render_path_base_draw_outline();
 		render_path_paint_commands_cursor();
 		render_path_paint_end();
 		render_path_base_end();
@@ -310,9 +306,7 @@ void render_path_base_commands(void (*draw_commands)(void)) {
 	render_path_paint_draw();
 
 	if (render_path_base_path_trace()) {
-		bool use_live_layer = g_context->tool == TOOL_TYPE_MATERIAL;
-		render_path_raytrace_draw(use_live_layer);
-		render_path_base_draw_outline();
+		render_path_raytrace_draw(false);
 		g_context->last_paint_vec_x = g_context->paint_vec.x;
 		g_context->last_paint_vec_y = g_context->paint_vec.y;
 		g_context->foreground_event = false;
@@ -321,7 +315,6 @@ void render_path_base_commands(void (*draw_commands)(void)) {
 	}
 
 	draw_commands();
-	render_path_base_draw_outline();
 	render_path_paint_commands_cursor();
 	render_path_paint_end();
 	render_path_base_end();
@@ -471,12 +464,12 @@ void render_path_base_draw_ssao() {
 }
 
 bool render_path_base_gbuffer_uv() {
-	return !args_player || g_project->_->layers->length > 1;
+	return true;
 }
 
 void render_path_base_draw_deferred_light() {
 	bool merge = !render_pass_any();
-	render_path_set_target("buf", NULL, "main", GPU_CLEAR_DONT_LOAD_COLOR | (merge && args_player ? GPU_CLEAR_DONT_STORE_DEPTH : 0), 0, 0.0);
+	render_path_set_target("buf", NULL, "main", GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
 	render_path_bind_target("gbuffer0", "gbuffer0");
 	render_path_bind_target("gbuffer1", "gbuffer1");
 	bool ssao = g_config->rp_ssao > 0.0 && g_context->camera_type == CAMERA_TYPE_PERSPECTIVE;
@@ -533,7 +526,7 @@ void render_path_base_draw_taa(char *bufa, char *bufb) {
 	}
 	render_path_base_taa_prev_vp = mat4_mult_mat(scene_camera->v, scene_camera->no_jitter_p);
 
-	render_path_set_target("", NULL, NULL, args_player ? GPU_CLEAR_DONT_LOAD_COLOR : GPU_CLEAR_NONE, 0, 0.0);
+	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	render_path_bind_target(bufb, "tex");
 	render_path_base_presented = bufb;
 	if (render_path_base_ssaa4()) {
@@ -636,93 +629,6 @@ static void render_path_base_draw_layer_pass(i32 layer_pass) {
 	// Objects with an overridden material have only the base mesh shader,
 	// draw them in the last pass so they end up in the final gbuffer
 	render_path_base_draw_meshes(render_path_base_mesh_scon(layer_pass), layer_pass == make_mesh_layer_pass_count - 1);
-}
-
-static gpu_pipeline_t *render_path_base_outline_mask_pipe(mesh_data_t *data) {
-	// Vertex layout differs for meshes with a second uv set or vertex colors
-	static gpu_pipeline_t  *pipes[8];
-	static i32              pipes_count = 0;
-	gpu_vertex_structure_t *structure   = &data->_->structure;
-	for (i32 i = 0; i < pipes_count; ++i) {
-		gpu_vertex_structure_t *vs    = pipes[i]->input_layout;
-		bool                    match = vs->size == structure->size;
-		for (i32 j = 0; match && j < vs->size; ++j) {
-			match = vs->elements[j].data == structure->elements[j].data;
-		}
-		if (match) {
-			return pipes[i];
-		}
-	}
-	if (pipes_count == 8) {
-		return NULL;
-	}
-	gpu_pipeline_t *pipe         = gpu_create_pipeline();
-	pipe->vertex_shader          = sys_get_shader("outline_mask.vert");
-	pipe->fragment_shader        = sys_get_shader("outline_mask.frag");
-	gpu_vertex_structure_t *vs   = ALLOC_INIT(gpu_vertex_structure_t, {0});
-	*vs                          = *structure;
-	pipe->input_layout           = vs;
-	pipe->color_attachment_count = 1;
-	pipe->color_attachment[0]    = GPU_TEXTURE_FORMAT_R8;
-	gpu_pipeline_compile(pipe);
-	pipes[pipes_count++] = pipe;
-	return pipe;
-}
-
-void render_path_base_draw_outline() {
-	if (g_context->tool != TOOL_TYPE_CURSOR || base_player || g_context->capturing_screenshot || g_context->paint2d || context_object_deselected()) {
-		return;
-	}
-
-	render_target_t *mask = any_map_get(render_path_render_targets, "outline_mask");
-	if (mask == NULL) {
-		mask         = render_target_create();
-		mask->name   = "outline_mask";
-		mask->width  = 0;
-		mask->height = 0;
-		mask->format = "R8";
-		mask->scale  = render_path_base_get_super_sampling();
-		render_path_create_render_target(mask);
-		mask = any_map_get(render_path_render_targets, "outline_mask");
-	}
-
-	// Silhouette of the selected meshes, not jittered to keep the outline stable
-	camera_object_t *cam   = scene_camera;
-	mat4_t           vp    = mat4_mult_mat(cam->v, cam->no_jitter_p);
-	bool             drawn = false;
-	render_path_set_target("outline_mask", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *o = g_project->_->paint_objects->buffer[i];
-		if (!o->base->visible || (o != g_context->paint_object && !tab_meshes_is_selected(o))) {
-			continue;
-		}
-		gpu_pipeline_t *pipe = render_path_base_outline_mask_pipe(o->data);
-		if (pipe == NULL) {
-			continue;
-		}
-		gpu_set_pipeline(pipe);
-		gpu_set_mat4(0, mat4_mult_mat(o->base->transform->world_unpack, vp));
-		gpu_set_vertex_buffer(o->data->_->vertex_buffer);
-		gpu_set_index_buffer(o->data->_->index_buffer);
-		gpu_draw();
-		drawn = true;
-	}
-	render_path_end();
-	if (!drawn) {
-		return;
-	}
-
-	i32 col = g_theme->HIGHLIGHT_COL;
-	f32 r   = math_max(2.0 * UI_SCALE(), 1.5);
-	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	gpu_set_pipeline(pipes_outline);
-	gpu_set_texture(pipes_outline_tex, mask->_image);
-	gpu_set_float4(pipes_outline_color, color_get_rb(col) / 255.0, color_get_gb(col) / 255.0, color_get_bb(col) / 255.0, 1.0);
-	gpu_set_float2(pipes_outline_tex_step, r / (float)sys_w(), r / (float)sys_h());
-	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
-	gpu_set_index_buffer(const_data_screen_aligned_ib);
-	gpu_draw();
-	render_path_end();
 }
 
 void render_path_base_draw_gbuffer() {

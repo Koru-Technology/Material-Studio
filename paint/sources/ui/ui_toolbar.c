@@ -36,26 +36,15 @@ static i32 ui_toolbar_side() {
 }
 
 typedef enum {
-	TOOL_GROUP_TRANSFORM, // Move, object mode only
-	TOOL_GROUP_PAINT,     // Lay down paint
-	TOOL_GROUP_SAMPLE,    // Read from the mesh
-	TOOL_GROUP_RETOUCH,   // Rework what is painted
-	TOOL_GROUP_PROJECT,   // Stamp images and text
-	TOOL_GROUP_SHAPE,     // Object tools that add meshes
-	TOOL_GROUP_PATH,      // Object tools that draw paths
+	TOOL_GROUP_PAINT,   // Lay down paint
+	TOOL_GROUP_SAMPLE,  // Read from the mesh
+	TOOL_GROUP_RETOUCH, // Rework what is painted
+	TOOL_GROUP_PROJECT, // Stamp images and text
 } tool_group_t;
 
 static tool_group_t ui_toolbar_tool_group(i32 tool) {
 	switch (tool) {
-	case TOOL_TYPE_CURSOR:
-		return TOOL_GROUP_TRANSFORM;
-	case TOOL_TYPE_BRUSH:
-	case TOOL_TYPE_ERASER:
-	case TOOL_TYPE_FILL:
-	case TOOL_TYPE_PARTICLE:
-		return TOOL_GROUP_PAINT;
 	case TOOL_TYPE_PICKER:
-	case TOOL_TYPE_MATERIAL:
 		return TOOL_GROUP_SAMPLE;
 	case TOOL_TYPE_CLONE:
 	case TOOL_TYPE_BLUR:
@@ -64,36 +53,27 @@ static tool_group_t ui_toolbar_tool_group(i32 tool) {
 	case TOOL_TYPE_DECAL:
 	case TOOL_TYPE_TEXT:
 		return TOOL_GROUP_PROJECT;
-	case TOOL_TYPE_PATH:
-	case TOOL_TYPE_CURVE:
-		return TOOL_GROUP_PATH;
 	default:
-		return TOOL_GROUP_SHAPE;
+		return TOOL_GROUP_PAINT;
 	}
 }
 
 // Toolbar order, tools of a group stay together
 static i32 ui_toolbar_order[] = {
-    TOOL_TYPE_CURSOR,                                                                             // Transform
-    TOOL_TYPE_BRUSH,  TOOL_TYPE_ERASER,  TOOL_TYPE_FILL,     TOOL_TYPE_PARTICLE,                  // Paint
-    TOOL_TYPE_PICKER, TOOL_TYPE_MATERIAL,                                                         // Sample
-    TOOL_TYPE_CLONE,  TOOL_TYPE_BLUR,    TOOL_TYPE_INPAINT,                                       // Retouch
-    TOOL_TYPE_DECAL,  TOOL_TYPE_TEXT,                                                             // Project
-    TOOL_TYPE_EMPTY,  TOOL_TYPE_PLANE,   TOOL_TYPE_CUBE,     TOOL_TYPE_SPHERE,    TOOL_TYPE_CONE, // Shape
-    TOOL_TYPE_CYLINDER, TOOL_TYPE_CAPSULE, TOOL_TYPE_TORUS,  TOOL_TYPE_TEXT_MESH,
-    TOOL_TYPE_PATH,   TOOL_TYPE_CURVE,                                                            // Path
+    TOOL_TYPE_BRUSH, TOOL_TYPE_ERASER, TOOL_TYPE_FILL,    TOOL_TYPE_PARTICLE, // Paint
+    TOOL_TYPE_PICKER,                                                         // Sample
+    TOOL_TYPE_CLONE, TOOL_TYPE_BLUR,   TOOL_TYPE_INPAINT,                     // Retouch
+    TOOL_TYPE_DECAL, TOOL_TYPE_TEXT,                                          // Project
 };
+#define UI_TOOLBAR_ORDER_COUNT (i32)(sizeof(ui_toolbar_order) / sizeof(ui_toolbar_order[0]))
 
 // Tools of a group share a hue
 static u32 ui_toolbar_item_color(i32 tool) {
 	static const f32 hues[] = {
-	    0.08f, // Transform: orange
 	    0.58f, // Paint: blue
 	    0.80f, // Sample: violet
 	    0.33f, // Retouch: green
 	    0.50f, // Project: cyan
-	    0.15f, // Shape: yellow
-	    0.95f, // Path: pink
 	};
 	f32 h = hues[ui_toolbar_tool_group(tool)] * 6.0f;
 	f32 s = 0.55f;
@@ -115,29 +95,21 @@ static u32 ui_toolbar_item_color(i32 tool) {
 	return 0xff000000 | ((u32)(r * 255) << 16) | ((u32)(g * 255) << 8) | (u32)(b * 255);
 }
 
-// From TOOL_TYPE_EMPTY to TOOL_TYPE_CURVE
-static i32 ui_toolbar_object_tool_icons[] = {ICON_EMPTY,   ICON_PLANE, ICON_CUBE,   ICON_UVSPHERE, ICON_CONE, ICON_CYLINDER,
-                                             ICON_CAPSULE, ICON_TORUS, ICON_TEXT3D, ICON_PATH,     ICON_CURVE};
-
 bool ui_toolbar_tool_visible(i32 tool) {
-	if (tool == TOOL_TYPE_BAKE) {
-		return false; // Used by the Bake Texture node only
-	}
-	if (tool == TOOL_TYPE_COLORID) {
-		return false; // Used while picking the parts of an ID mask only, see ui_id_mask.c
-	}
 	if (tool == TOOL_TYPE_INPAINT) {
 #ifdef WITH_PLUGINS
-		return g_config->tools == TOOLS_PAINT;
+		return true;
 #else
 		return false;
 #endif
 	}
-	if (g_config->tools == TOOLS_OBJECT) {
-		return tool == TOOL_TYPE_CURSOR || util_tool_is_object_tool(tool);
+	// Hidden tools (Bake, ColorID) are not in the order
+	for (i32 i = 0; i < UI_TOOLBAR_ORDER_COUNT; ++i) {
+		if (ui_toolbar_order[i] == tool) {
+			return true;
+		}
 	}
-	// Paint mode stays on painting, no object or selection tools
-	return !util_tool_is_object_tool(tool) && tool != TOOL_TYPE_CURSOR && tool != TOOL_TYPE_SELECT;
+	return false;
 }
 
 static i32 ui_toolbar_item_count() {
@@ -186,7 +158,7 @@ static bool _ui_toolbar_right_click = false;
 void ui_toolbar_update() {
 	if (mouse_started("right")) {
 		_ui_toolbar_right_click = context_is_floating_toolbar() && context_in_paint_area() && !g_config->touch_ui && !base_player && !ui_menu_show &&
-		                          !ui_box_show && !g_ui->is_typing && g_context->tool != TOOL_TYPE_PATH && g_context->tool != TOOL_TYPE_CURVE;
+		                          !ui_box_show && !g_ui->is_typing;
 	}
 	else if (mouse_down("right") && mouse_moved) {
 		_ui_toolbar_right_click = false;
@@ -296,7 +268,7 @@ void ui_toolbar_draw_tool(i32 tool, gpu_texture_t *img, i32 icon_accent) {
 	i32  tile_y  = math_floor(tool / 12.0);
 	i32  tile_x  = tile_y % 2 == 0 ? tool % 12 : (11 - (tool % 12));
 	i32  _y      = g_ui->_y;
-	i32  tile_i  = util_tool_is_object_tool(tool) ? ui_toolbar_object_tool_icons[tool - TOOL_TYPE_EMPTY] : tile_y * 12 + tile_x;
+	i32  tile_i  = tile_y * 12 + tile_x;
 	if (tool == TOOL_TYPE_INPAINT) {
 		tile_i = ICON_ERASE;
 	}
@@ -323,8 +295,7 @@ void ui_toolbar_draw_tool(i32 tool, gpu_texture_t *img, i32 icon_accent) {
 			*c = tolower(*c);
 		}
 		char *key = any_map_get(g_keymap, key_name);
-		// Object tools have no shortcuts, the 3D text one shares its keymap id with the paint tool
-		if (key != NULL && !string_equals(key, "") && !util_tool_is_object_tool(tool)) {
+		if (key != NULL && !string_equals(key, "")) {
 			tooltip = string_tmp("%s (%s)", tooltip, key);
 		}
 		char *extra = ui_toolbar_tooltip_extras->buffer[tool];
@@ -394,8 +365,6 @@ void ui_toolbar_header_menu_draw() {
 	if (ui_menu_button(tr("Toggle Header"), "", ICON_PROPERTIES)) {
 		g_config->header_pinned = false;
 	}
-	ui_menu_separator();
-	ui_menubar_draw_tools();
 }
 
 static void ui_toolbar_draw_window(ui_window_t *handle, i32 x, i32 y, i32 h) {
@@ -430,7 +399,7 @@ static void ui_toolbar_draw_window(ui_window_t *handle, i32 x, i32 y, i32 h) {
 			g_ui->_y += 2;
 		}
 
-		for (i32 i = 0; i < sizeof(ui_toolbar_order) / sizeof(ui_toolbar_order[0]); ++i) {
+		for (i32 i = 0; i < UI_TOOLBAR_ORDER_COUNT; ++i) {
 			if (ui_toolbar_tool_visible(ui_toolbar_order[i])) {
 				ui_toolbar_draw_tool(ui_toolbar_order[i], img, icon_accent);
 			}

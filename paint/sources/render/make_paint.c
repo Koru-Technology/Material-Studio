@@ -89,7 +89,7 @@ string_array_t *make_paint_color_attachments() {
 		    2);
 		return res;
 	}
-	if (g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL) {
+	if (g_context->tool == TOOL_TYPE_PICKER) {
 		string_array_t *res = any_array_create_from_raw(
 		    (void *[]){
 		        "RGBA32",
@@ -264,7 +264,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		make_bake_set_color_writes(con_paint);
 	}
 
-	if (g_context->tool == TOOL_TYPE_COLORID || g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL ||
+	if (g_context->tool == TOOL_TYPE_COLORID || g_context->tool == TOOL_TYPE_PICKER ||
 	    g_context->tool == TOOL_TYPE_CURSOR) {
 		make_picking_run(kong);
 		con_paint->data->shader_from_source = true;
@@ -301,11 +301,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_vert(kong, string_tmp("output.blur_uv = %s;", tuv));
 	}
 
-	if (g_context->select_active && g_context->select_2d) {
-		node_shader_add_out(kong, "float2 select_uv");
-		node_shader_write_vert(kong, string_tmp("output.select_uv = %s;", tuv));
-	}
-
 	if (context_is_pixel_snap()) {
 		node_shader_add_out(kong, "float2 pixel_uv");
 		node_shader_write_vert(kong, string_tmp("output.pixel_uv = %s;", tuv));
@@ -340,13 +335,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	node_shader_write_frag(kong, "bsp.x *= constants.aspect_ratio;");
 	node_shader_write_frag(kong, "bsp = bsp * 0.5 + 0.5;");
 
-	// Select tool mask
-	if (g_context->select_active && g_context->select_2d) {
-		util_select_shader_mask(kong, "input.select_uv");
-	}
-	else if (g_context->select_active) {
-		util_select_shader_mask(kong, "sp.xy");
-	}
 
 	node_shader_add_texture(kong, "gbufferD", NULL);
 

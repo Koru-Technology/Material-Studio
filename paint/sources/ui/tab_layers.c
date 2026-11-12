@@ -175,7 +175,6 @@ void tab_layers_delete_layer(slot_layer_t *l) {
 
 	g_context->ddirty = 2;
 	tab_layers_remap_all_layer_pointers(pointers);
-	tab_stages_prune();
 	base_redraw_status();
 }
 
@@ -407,7 +406,6 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 		}
 		l->name = new_name;
 		if (commit && tab_layers_layer_name_prev != NULL && !string_equals(tab_layers_layer_name_prev, l->name)) {
-			tab_stages_rename_layer(tab_layers_layer_name_prev, l->name);
 			history_layer_name(l, tab_layers_layer_name_prev);
 		}
 	}
@@ -994,11 +992,6 @@ void tab_layers_draw_layer_context_menu(slot_layer_t *l, bool mini) {
 }
 
 static bool tab_layers_slot_hidden(slot_layer_t *l) {
-	stage_t *stage = tab_stages_get_stage();
-	if (stage != NULL && string_array_index_of(stage->layers, l->name) < 0) {
-		return true;
-	}
-
 	if (g_context->layer_filter > 0 && slot_layer_get_object_mask(l) > 0 && slot_layer_get_object_mask(l) != g_context->layer_filter) {
 		return true;
 	}

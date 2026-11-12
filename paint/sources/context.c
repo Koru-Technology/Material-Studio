@@ -284,22 +284,6 @@ void context_select_font(i32 i) {
 	context_set_font(g_project->_->fonts->buffer[i]);
 }
 
-void context_set_sound(slot_sound_t *s) {
-	if (array_index_of(g_project->_->sounds, s) == -1) {
-		return;
-	}
-	g_context->sound = s;
-	ui_dock_redraw(TAB_AREA_STATUS);
-	ui_view2d_hwnd->redraws = 2;
-}
-
-void context_select_sound(i32 i) {
-	if (g_project->_->sounds->length <= i) {
-		return;
-	}
-	context_set_sound(g_project->_->sounds->buffer[i]);
-}
-
 void context_select_layer(i32 i) {
 	if (g_project->_->layers->length <= i) {
 		return;
@@ -353,9 +337,6 @@ void context_init_tool() {
 		}
 		util_render_make_decal_preview();
 	}
-	else if (g_context->tool == TOOL_TYPE_MATERIAL) {
-		layers_update_fill_layers();
-	}
 }
 
 void context_select_paint_object(mesh_object_t *o) {
@@ -364,11 +345,6 @@ void context_select_paint_object(mesh_object_t *o) {
 	util_uv_uvmap_cached       = false;
 	util_uv_trianglemap_cached = false;
 	util_uv_dilatemap_cached   = false;
-}
-
-// Cursor tool clicked on empty space, the paint object stays selected in the meshes tab
-bool context_object_deselected() {
-	return g_context->paint_object != NULL && context_deselected_uid == g_context->paint_object->base->uid;
 }
 
 mesh_object_t *context_main_object() {
@@ -407,11 +383,6 @@ bool context_in_materials() {
 	return string_equals(tab, tr("Materials"));
 }
 
-bool context_in_meshes() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Meshes"));
-}
-
 bool context_in_swatches() {
 	char *tab = ui_hovered_tab_name();
 	return string_equals(tab, tr("Swatches"));
@@ -425,11 +396,6 @@ bool context_in_brushes() {
 bool context_in_fonts() {
 	char *tab = ui_hovered_tab_name();
 	return string_equals(tab, tr("Fonts"));
-}
-
-bool context_in_sounds() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Sounds"));
 }
 
 bool context_in_textures() {

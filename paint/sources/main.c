@@ -5,7 +5,6 @@
 #include "io/export_exr.c"
 #include "io/export_mesh.c"
 #include "io/export_obj.c"
-#include "io/export_player.c"
 #include "io/export_texture.c"
 #include "io/import_arm.c"
 #include "io/import_asset.c"
@@ -20,7 +19,6 @@
 #include "io/import_mesh.c"
 #include "io/import_obj.c"
 #include "io/import_stl.c"
-#include "io/import_sound.c"
 #include "io/import_text.c"
 #include "io/import_texture.c"
 #include "io/import_theme.c"
@@ -84,13 +82,10 @@
 #include "nodes_material/rgb_curves_node.c"
 #include "nodes_material/rgb_node.c"
 #include "nodes_material/rgb_to_bw_node.c"
-#include "nodes_material/script_node.c"
 #include "nodes_material/separate_color_node.c"
 #include "nodes_material/separate_xyz_node.c"
-#include "nodes_material/shader_node.c"
 #include "nodes_material/text_texture_node.c"
 #include "nodes_material/texture_coordinate_node.c"
-#include "nodes_material/tilesheet_animation_node.c"
 #include "nodes_material/tilesheet_node.c"
 #include "nodes_material/uv_map_node.c"
 #include "nodes_material/value_node.c"
@@ -103,27 +98,6 @@
 #include "nodes_material/wave_texture_node.c"
 #include "nodes_material/wireframe_node.c"
 
-#include "nodes_mesh/mesh_array_node.c"
-#include "nodes_mesh/mesh_bevel_node.c"
-#include "nodes_mesh/mesh_boolean_node.c"
-#include "nodes_mesh/mesh_decimate_node.c"
-#include "nodes_mesh/mesh_displace_node.c"
-#include "nodes_mesh/mesh_group_node.c"
-#include "nodes_mesh/mesh_image_node.c"
-#include "nodes_mesh/mesh_input_node.c"
-#include "nodes_mesh/mesh_join_node.c"
-#include "nodes_mesh/mesh_layer_mask_node.c"
-#include "nodes_mesh/mesh_math_node.c"
-#include "nodes_mesh/mesh_mirror_node.c"
-#include "nodes_mesh/mesh_object_node.c"
-#include "nodes_mesh/mesh_output_node.c"
-#include "nodes_mesh/mesh_script_node.c"
-#include "nodes_mesh/mesh_shape_node.c"
-#include "nodes_mesh/mesh_smooth_node.c"
-#include "nodes_mesh/mesh_subdivide_node.c"
-#include "nodes_mesh/mesh_transform_node.c"
-#include "nodes_mesh/mesh_value_node.c"
-#include "nodes_mesh/mesh_vector_node.c"
 
 #include "nodes_neural/edit_image_node.c"
 #include "nodes_neural/image_to_pbr_node.c"
@@ -167,7 +141,6 @@
 #include "slots/slot_font.c"
 #include "slots/slot_layer.c"
 #include "slots/slot_material.c"
-#include "slots/slot_sound.c"
 
 #include "ui/box_append.c"
 #include "ui/box_bake_maps.c"
@@ -185,12 +158,8 @@
 #include "ui/tab_materials.c"
 #include "ui/tab_library.c"
 #include "ui/tab_smart_materials.c"
-#include "ui/tab_meshes.c"
-#include "ui/tab_scripts.c"
-#include "ui/tab_sounds.c"
 #include "ui/tab_swatches.c"
 #include "ui/tab_textures.c"
-#include "ui/tab_timeline.c"
 #include "ui/ui_base.c"
 #include "ui/ui_box.c"
 #include "ui/ui_dock.c"
@@ -209,31 +178,21 @@
 #include "ui/ui_toolbar.c"
 #include "ui/ui_view2d.c"
 
-#include "util/edit_uvmap.c"
 #include "util/util_brush.c"
 #include "util/util_clone.c"
-#include "util/util_csg.c"
 #include "util/util_cursor.c"
-#include "util/util_draw.c"
 #include "util/util_encode.c"
 #include "util/util_env.c"
-#include "util/util_geom.c"
 #include "util/util_layer.c"
 #include "util/util_mesh.c"
 #include "util/util_nodes.c"
 #include "util/util_particle.c"
 #include "util/util_path.c"
-#include "util/util_path_tool.c"
-#include "util/util_physics.c"
+#include "util/util_primitives.c"
 #include "util/util_raycast.c"
 #include "util/util_render.c"
-#include "util/util_select.c"
-#include "util/util_shape_tool.c"
 #include "util/util_shortcut.c"
-#include "util/util_skin.c"
-#include "util/util_stage.c"
 #include "util/util_stencil.c"
-#include "util/util_text_tool.c"
 #include "util/util_texture.c"
 #include "util/util_touch.c"
 #include "util/util_pencil.c"
@@ -241,7 +200,6 @@
 #include "util/util_uv.c"
 #include "util/util_uv_unwrap.c"
 
-#include "agent.c"
 #include "args.c"
 #include "base.c"
 #include "camera.c"
@@ -261,11 +219,9 @@
 #include "node_shader.c"
 #include "nodes_brush.c"
 #include "nodes_material.c"
-#include "nodes_mesh.c"
 #include "parser_logic.c"
 #include "parser_material.c"
 #include "pipes.c"
-#include "player.c"
 #include "project.c"
 #include "resource.c"
 #include "strings.c"
@@ -369,12 +325,10 @@ void _kickstart() {
 	g_project->_->assets          = any_array_create_from_raw((void *[]){}, 0);
 	g_project->mesh_assets        = any_array_create_from_raw((void *[]){}, 0);
 	g_project->_->material_groups = any_array_create_from_raw((void *[]){}, 0);
-	g_project->_->mesh_groups     = any_array_create(0);
 	g_project->_->materials       = any_array_create_from_raw((void *[]){}, 0);
 	g_project->_->brushes         = any_array_create_from_raw((void *[]){}, 0);
 	g_project->_->layers          = any_array_create_from_raw((void *[]){}, 0);
 	g_project->_->fonts           = any_array_create_from_raw((void *[]){}, 0);
-	g_project->_->sounds          = any_array_create_from_raw((void *[]){}, 0);
 
 	ui_view2d_hwnd               = ui_window_create();
 	parser_material_node_values  = any_map_create();
@@ -438,9 +392,6 @@ void _kickstart() {
 	sys_on_y      = base_y;
 
 	iron_set_app_name(manifest_title); // Used to locate external application data folder
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-	args_mcp();
-#endif
 	config_load();
 	config_init();
 	context_init();
@@ -468,7 +419,6 @@ void _kickstart() {
 #ifdef WITH_PLUGINS
 	plugins_init();
 #endif
-	util_skin_init();
 	import_stl_init();
 
 	base_init();

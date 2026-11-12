@@ -218,27 +218,6 @@ void ui_header_draw_tool_properties_color_picker_base() {
 	}
 }
 
-static void ui_header_crop_layers() {
-	i32 res_x = config_get_texture_res_x();
-	i32 res_y = config_get_texture_res_y();
-	i32 x1    = math_round(g_context->select_x1 * res_x);
-	i32 y1    = math_round(g_context->select_y1 * res_y);
-	i32 x2    = math_round(g_context->select_x2 * res_x);
-	i32 y2    = math_round(g_context->select_y2 * res_y);
-	if (x2 - x1 < 1 || y2 - y1 < 1) {
-		return;
-	}
-	layers_crop              = true;
-	layers_crop_x            = x1;
-	layers_crop_y            = y1;
-	base_res                 = TEXTURE_RES_CUSTOM;
-	base_res_x               = x2 - x1;
-	base_res_y               = y2 - y1;
-	g_context->select_active = false;
-	layers_on_resized();
-	ui_view2d_hwnd->redraws = 2;
-}
-
 // Toggles for what the keyboard modifiers do on desktop, so they work with a pen or a finger
 static void ui_header_draw_toggles() {
 	i32  t     = g_context->tool;
@@ -338,7 +317,7 @@ static void ui_header_draw_stroke_options(bool decal_mask) {
 }
 
 void ui_header_draw_tool_properties() {
-	if (g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL) {
+	if (g_context->tool == TOOL_TYPE_PICKER) {
 
 		ui_state_t state = ui_swatch(color_set_ab(g_context->picked_color->base, 255));
 		if (state == UI_STATE_STARTED) {
@@ -735,80 +714,6 @@ void ui_header_draw_tool_properties() {
 	else if (g_context->tool == TOOL_TYPE_INPAINT) {
 		box_bake_maps_inpaint_header();
 	}
-	else if (g_context->tool == TOOL_TYPE_SELECT) {
-		string_array_t *select_mode_combo = any_array_create_from_raw_tmp(
-		    (void *[]){
-		        tr("Rectangle"),
-		        tr("Ellipse"),
-		        tr("Polygon"),
-		    },
-		    3);
-		i32 select_mode = g_context->select_mode;
-		ui_combo(&select_mode, select_mode_combo, tr("Mode"), false, UI_ALIGN_LEFT, true);
-		if (ui_item_changed()) {
-			util_select_set_mode(select_mode);
-		}
-		g_ui->enabled = g_context->select_active;
-		if (ui_icon_button(tr("Clear"), ICON_ERASE, UI_ALIGN_CENTER)) {
-			g_context->select_active = false;
-			make_material_parse_paint_material(false);
-			ui_view2d_hwnd->redraws = 2;
-		}
-		g_ui->enabled = g_context->select_active && g_context->select_2d;
-		if (ui_icon_button(tr("Crop"), ICON_CROP, UI_ALIGN_CENTER)) {
-			ui_header_crop_layers();
-		}
-		g_ui->enabled = true;
-	}
-
-	if (util_shape_tool_has_segments(g_context->tool)) {
-		f32 *segments = &util_shape_tool_segments[g_context->tool - TOOL_TYPE_EMPTY];
-		ui_slider(segments, tr("Segments"), g_context->tool == TOOL_TYPE_PLANE ? 1.0 : 3.0, 256.0, true, 1.0, true, UI_ALIGN_RIGHT, true);
-	}
-
-	if (g_context->tool == TOOL_TYPE_TEXT_MESH) {
-		if (g_context->text_tool_text == NULL) {
-			g_context->text_tool_text = "";
-		}
-		ui_id_t text_id = ui_widget_id(&g_context->text_tool_text, UI_ID_TEXT);
-		i32     w       = g_ui->_w;
-		if (g_ui->text_selected_id == text_id || g_ui->submit_text_id == text_id) {
-			g_ui->_w *= 3;
-		}
-		ui_text_input(&g_context->text_tool_text, "", UI_ALIGN_LEFT, true, true);
-		g_ui->_w = w;
-		ui_slider(&util_text_tool_size, tr("Size"), 0.05, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-		ui_slider(&util_text_tool_depth, tr("Depth"), 0.01, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-	}
-
-	if (g_context->tool == TOOL_TYPE_PATH || g_context->tool == TOOL_TYPE_CURVE) {
-		ui_slider(&util_path_tool_radius, tr("Radius"), 0.01, 0.5, true, 100.0, true, UI_ALIGN_RIGHT, true);
-	}
-
-	if (g_context->tool == TOOL_TYPE_CURSOR) {
-		mesh_object_t *o = g_context->paint_object != NULL ? g_context->paint_object : context_main_object();
-		if (o != NULL && o->base != NULL && o->base->transform != NULL) {
-			i32 _w = g_ui->_w;
-			f32 sc = UI_SCALE();
-
-			g_ui->_w = math_floor(34 * sc);
-			ui_text("Loc", UI_ALIGN_LEFT, 0x00000000);
-			g_ui->_w = math_floor(48 * sc);
-			tab_meshes_draw_transform_loc(o, "header");
-
-			g_ui->_w = math_floor(34 * sc);
-			ui_text("Rot", UI_ALIGN_LEFT, 0x00000000);
-			g_ui->_w = math_floor(48 * sc);
-			tab_meshes_draw_transform_rot(o, "header");
-
-			g_ui->_w = math_floor(40 * sc);
-			ui_text("Scale", UI_ALIGN_LEFT, 0x00000000);
-			g_ui->_w = math_floor(48 * sc);
-			tab_meshes_draw_transform_scale(o, "header");
-
-			g_ui->_w = _w;
-		}
-	}
 }
 
 void ui_header_draw_progress(f32 progress) {
@@ -832,7 +737,7 @@ void ui_header_draw_progress(f32 progress) {
 		draw_begin(NULL, true, 0xff000000);
 	}
 	else {
-		draw_begin(NULL, args_player || first_frame, 0xff202020);
+		draw_begin(NULL, first_frame, 0xff202020);
 	}
 	draw_set_color(g_theme->BUTTON_COL);
 	draw_filled_rect(bx, by, bw, bh);

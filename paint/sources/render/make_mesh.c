@@ -347,12 +347,8 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		make_mesh_layer_pass_count             = 1;
 		slot_layer_t_array_t *layers           = any_array_create_from_raw((void *[]){}, 0);
 		i32                   start_count      = texture_count;
-		bool                  is_material_tool = g_context->tool == TOOL_TYPE_MATERIAL;
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 			slot_layer_t *l = g_project->_->layers->buffer[i];
-			if (is_material_tool && l != g_context->layer) {
-				continue;
-			}
 			if (!slot_layer_is_visible(l)) {
 				continue;
 			}

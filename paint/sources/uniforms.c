@@ -161,23 +161,8 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	else if (string_equals(link, "_ssao_frame")) {
 		return scene_camera->frame % 2 == 0 ? 0.0 : 0.5;
 	}
-	else if (string_equals(link, "_timeline_frame")) {
-		return (f32)tab_timeline_selected_frame;
-	}
 	else if (string_equals(link, "_path_length")) {
 		return util_layer_path_length();
-	}
-	if (parser_material_script_links != NULL && link[0] == '_') {
-		char *script = any_map_get(parser_material_script_links, link + 1);
-		if (script != NULL) {
-			f32 result = 0.0;
-			if (project_scripts_trusted && !string_equals(script, "")) {
-				minic_ctx_t *_ctx = minic_eval(string_tmp("float main() { return %s; }", script));
-				result            = minic_ctx_result(_ctx);
-				minic_ctx_free(_ctx);
-			}
-			return result;
-		}
 	}
 	return NAN;
 }
@@ -356,9 +341,6 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 		vec4_t v = (vec4_t){g_context->decal_x, g_context->decal_y, decal_mask ? 1 : 0, val};
 		return v;
 	}
-	else if (string_equals(link, "_select_mask")) {
-		return (vec4_t){g_context->select_x1, g_context->select_y1, g_context->select_x2, g_context->select_y2};
-	}
 
 	return render_pass_get_vec4(link);
 }
@@ -475,9 +457,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 	}
 	else if (string_equals(link, "_texbrushmask")) {
 		return g_context->brush_mask_image;
-	}
-	else if (string_equals(link, "_texselectmask")) {
-		return g_context->select_mask_image;
 	}
 	else if (string_equals(link, "_texbrushstencil")) {
 		return g_context->brush_stencil_image;

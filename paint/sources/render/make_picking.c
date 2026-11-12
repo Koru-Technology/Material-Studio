@@ -35,7 +35,7 @@ void make_picking_run(node_shader_t *kong) {
 		node_shader_write_frag(kong, "float3 idcol = sample_lod(texcolorid, sampler_linear, tex_coord_inp, 0.0).rgb;");
 		node_shader_write_frag(kong, "output = float4(idcol, 1.0);");
 	}
-	else if (g_context->tool == TOOL_TYPE_PICKER || g_context->tool == TOOL_TYPE_MATERIAL) {
+	else if (g_context->tool == TOOL_TYPE_PICKER) {
 		if (g_context->pick_pos_nor_tex) {
 			kong->frag_out = "float4[2]";
 			node_shader_add_texture(kong, "gbufferD", NULL);

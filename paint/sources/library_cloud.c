@@ -7,6 +7,7 @@
 #include "global.h"
 #define JSMN_HEADER
 #include <dirent.h>
+#include <unistd.h>
 #include <iron_thread.h>
 #include <jsmn.h>
 #include <sinfl.h>

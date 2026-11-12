@@ -7,7 +7,6 @@ bool  _project_import_mesh_box_clear_layers;
 bool  _project_import_mesh_box_keep_camera;
 void (*_project_import_mesh_box_done)(void);
 
-extern int plugins_skinning_frame;
 extern int plugins_split_by;
 
 void project_import_mesh_box_menu() {
@@ -49,19 +48,6 @@ void project_import_mesh_box_draw() {
 
 	if (path_has_ext(path, "blend")) {
 		import_blend_mesh_ui();
-	}
-
-	if (path_has_ext(path, "fbx") || path_has_ext(path, "gltf") || path_has_ext(path, "glb")) {
-		static bool skinning = false;
-		static f32  frame    = 0.0;
-		ui_row2();
-		ui_check(&skinning, tr("Apply Skinning"), "");
-		g_ui->enabled          = skinning;
-		plugins_skinning_frame = ui_slider(&frame, tr("Frame"), 1, 99, false, 1, true, UI_ALIGN_RIGHT, true);
-		g_ui->enabled          = true;
-		if (!skinning) {
-			plugins_skinning_frame = -1;
-		}
 	}
 
 	f32_array_t *row = f32_array_create_from_raw_tmp(

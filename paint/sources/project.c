@@ -53,7 +53,7 @@ static bool project_set_default_path() {
 }
 
 static bool project_autosave_busy() {
-	return agent_running || g_context->brush_time > 0 || box_bake_maps_running() || g_context->paint_object == NULL;
+	return g_context->brush_time > 0 || box_bake_maps_running() || g_context->paint_object == NULL;
 }
 
 // Wall clock time of the first change since the last save, 0 when unchanged.
@@ -114,10 +114,6 @@ void project_save_now() {
 }
 
 void project_save(bool save_and_quit) {
-	if (agent_running) {
-		return;
-	}
-
 #ifdef IRON_WASM
 	if (!box_projects_is_cloud_path(g_project->_->filepath) && !starts_with(g_project->_->filepath, "/files/")) {
 		box_projects_cloud_save_show(save_and_quit);
@@ -211,8 +207,6 @@ void project_save_as(bool save_and_quit) {
 void project_cleanup() {
 	render_path_raytrace_bake_lightmap_cancel();
 	util_mesh_remove_merged();
-	nodes_mesh_reset();
-	util_path_tool_reset();
 
 	if (g_project->_->paint_objects != NULL) {
 		for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
@@ -231,12 +225,7 @@ void project_cleanup() {
 		data_delete_texture(a->file);
 	}
 
-	ui_view2d_stop_sound();
-	for (i32 i = 0; i < g_project->_->sounds->length; ++i) {
-		data_delete_sound(g_project->_->sounds->buffer[i]->file);
-	}
 
-	util_physics_clear();
 }
 
 void project_new_on_next_frame(void *_) {
@@ -258,11 +247,9 @@ void project_new(bool reset_layers) {
 		project_cleanup();
 		g_project->_->filepath = "";
 	}
-	g_project->stages          = NULL;
 	g_project->linear_blending = true; // New projects blend colors in linear space
 	g_project->id_map          = NULL;
 	g_project->_->translucency = false;
-	project_scripts_trusted    = true;
 
 	if (g_project->_->layers->length == 0) {
 		any_array_push(g_project->_->layers, slot_layer_create("", LAYER_SLOT_TYPE_LAYER, NULL));
@@ -275,7 +262,9 @@ void project_new(bool reset_layers) {
 	g_project->mesh_assets         = any_array_create_from_raw((void *[]){}, 0);
 
 	bool  no_default = project_default_mesh_list == NULL || g_context->project_type == -1;
-	char *mesh_name  = no_default ? "cube_bevel" : project_default_mesh_list->buffer[g_context->project_type];
+	char *mesh_name  = project_new_template != NULL ? project_new_template
+	                   : no_default                 ? "cube_bevel"
+	                                                : project_default_mesh_list->buffer[g_context->project_type];
 
 	mesh_data_t *md = util_shape_make_data(mesh_name);
 	if (md != NULL) {
@@ -318,7 +307,6 @@ void project_new(bool reset_layers) {
 		slot_material_unload(array_pop(g_project->_->materials));
 	}
 	any_array_push(g_project->_->materials, slot_material_create(m, NULL));
-	tab_meshes_reset_overrides();
 
 	g_context->picker_material_mask        = false;
 	g_context->picker_color_mask           = false;
@@ -327,7 +315,6 @@ void project_new(bool reset_layers) {
 	ui_nodes_hwnd->redraws                 = 2;
 	ui_nodes_group_stack                   = any_array_create_from_raw((void *[]){}, 0);
 	g_project->_->material_groups          = any_array_create_from_raw((void *[]){}, 0);
-	g_project->_->mesh_groups              = any_array_create(0);
 	g_project->_->brushes                  = any_array_create_from_raw((void *[]){}, 0);
 	any_array_push(g_project->_->brushes, slot_brush_create(NULL));
 	g_context->brush    = g_project->_->brushes->buffer[0];
@@ -337,14 +324,11 @@ void project_new(bool reset_layers) {
 	    },
 	    1);
 	g_context->font      = g_project->_->fonts->buffer[0];
-	g_project->_->sounds = any_array_create_from_raw((void *[]){}, 0);
-	g_context->sound     = NULL;
 	project_set_default_swatches();
 	g_context->swatch                = g_project->swatches->buffer[0];
 	g_context->picked_color          = project_make_swatch(0xffffffff);
 	g_context->color_picker_callback = NULL;
 	history_reset();
-	tab_timeline_reset();
 
 	make_material_parse_paint_material(true);
 	make_material_parse_brush();
@@ -374,8 +358,6 @@ void project_new(bool reset_layers) {
 	if (in_use)
 		draw_begin(current, false, 0);
 
-	tab_stages_init();
-	tab_meshes_reset_preview_map();
 	base_update_tools();
 	project_set_default_envmap();
 	context_select_tool(TOOL_TYPE_BRUSH);
@@ -385,7 +367,6 @@ void project_new(bool reset_layers) {
 	viewport_reset();
 	viewport_scale_to_bounds(1.8);
 	render_path_raytrace_ready = false;
-	tab_scripts_minimap_dirty  = true;
 
 	sys_notify_on_next_frame(&project_new_on_next_frame, NULL);
 }
@@ -488,87 +469,6 @@ void project_reimport_mesh() {
 	else {
 		project_import_asset(NULL, true);
 	}
-}
-
-// culled is from the last drawn frame, path tracing and split view see beyond it
-static bool project_skin_in_view(mesh_object_t *o) {
-	return !scene_camera->data->frustum_culling || !o->culled || g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE || base_is_split();
-}
-
-bool project_reskin_object(mesh_object_t *o, i32 frame) {
-	mesh_data_t *md = o->data;
-	if (md->_->skin_blob == NULL) {
-		return false;
-	}
-
-	// Each mesh loops over its own animation length
-	i32 frames     = util_skin_frame_count(md->_->skin_blob);
-	i32 mesh_frame = frames > 0 ? frame % frames : frame;
-	if (mesh_frame == md->_->skin_frame) {
-		md->_->skin_pending = false;
-		return false;
-	}
-
-	// Skip skinning culled meshes, project_reskin_pending() poses them once back in view
-	if (!project_skin_in_view(o)) {
-		md->_->skin_pending       = true;
-		md->_->skin_pending_frame = mesh_frame;
-		return false;
-	}
-	md->_->skin_pending = false;
-
-	vertex_array_t *pos = mesh_data_get_vertex_array(md, "pos");
-	vertex_array_t *nor = mesh_data_get_vertex_array(md, "nor");
-	if (!util_skin_apply(md->_->skin_blob, mesh_frame, pos->values, nor->values, &md->scale_pos)) {
-		return false;
-	}
-
-	md->_->skin_frame = mesh_frame;
-	mesh_data_build_vertices(md->_->vertex_buffer, md->vertex_arrays);
-	return true;
-}
-
-// Poses the skinned meshes at a frame
-bool project_reskin_mesh(int frame) {
-	bool any = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *o = g_project->_->paint_objects->buffer[i];
-		if (o->base->visible && project_reskin_object(o, frame)) {
-			any = true;
-		}
-	}
-	if (!any) {
-		return false;
-	}
-	project_reskin_finish();
-	return true;
-}
-
-// Poses the meshes whose skinning was skipped while culled
-void project_reskin_pending() {
-	bool any = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *o = g_project->_->paint_objects->buffer[i];
-		if (o->data->_->skin_pending && o->base->visible && project_reskin_object(o, o->data->_->skin_pending_frame)) {
-			any = true;
-		}
-	}
-	if (any) {
-		project_reskin_finish();
-	}
-}
-
-void project_reskin_finish() {
-	if (g_context->merged_object != NULL && base_player) {
-		util_mesh_merged_stale = true;
-	}
-	else if (g_context->merged_object != NULL) {
-		if (!util_mesh_merge_refresh()) {
-			util_mesh_merge(NULL);
-		}
-	}
-	g_context->ddirty          = 4;
-	render_path_raytrace_ready = false;
 }
 
 void project_unwrap_mesh_box_draw() {

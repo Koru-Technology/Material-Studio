@@ -5,7 +5,6 @@ bool import_mesh_clear_layers  = true;
 bool import_mesh_needs_unwrap  = false;
 bool import_mesh_no_reset      = false;
 bool import_mesh_no_scale      = false;
-bool import_mesh_keep_timeline = false;
 bool import_mesh_append        = false;
 
 static mesh_object_t *import_mesh_appended = NULL;
@@ -76,7 +75,6 @@ static mesh_object_t *import_mesh_make_root() {
 	md->name          = name;
 	mesh_object_t *mo = scene_add_mesh_object(md, g_context->paint_object->material, NULL);
 	mo->base->name    = name;
-	tab_stages_add_object(name);
 	return mo;
 }
 
@@ -153,7 +151,6 @@ void import_mesh_finish_import(void *_) {
 	ui_view2d_hwnd->redraws    = 2;
 	render_path_raytrace_ready = false;
 	g_context->paint_body      = NULL;
-	tab_meshes_reset_preview_map();
 	base_update_tools();
 
 	if (import_mesh_needs_unwrap) {
@@ -234,8 +231,6 @@ void import_mesh_make_mesh(raw_mesh_t *mesh) {
 	mesh_data_t *raw = import_mesh_raw_mesh(mesh);
 
 	mesh_data_t *md    = mesh_data_create(raw);
-	md->_->skin_blob   = mesh->blob;
-	md->_->skin_frame  = -1;
 	md->_->owns_arrays = true;
 
 	g_context->paint_object = context_main_object();
@@ -245,7 +240,6 @@ void import_mesh_make_mesh(raw_mesh_t *mesh) {
 		viewport_reset();
 	}
 
-	nodes_mesh_reset();
 	util_mesh_remove_objects(g_project->_->paint_objects, g_context->paint_object);
 
 	char *handle = g_context->paint_object->data->_->handle;
@@ -263,10 +257,6 @@ void import_mesh_make_mesh(raw_mesh_t *mesh) {
         },
         1);
 	array_delete(old_paint_objects);
-
-	if (!import_mesh_keep_timeline) {
-		tab_timeline_reset();
-	}
 
 	g_context->ddirty = 4;
 
@@ -287,9 +277,7 @@ void import_mesh_make_mesh(raw_mesh_t *mesh) {
 		history_reset();
 	}
 
-	g_project->stages                      = NULL;
 	g_context->paint_object->base->visible = true;
-	tab_stages_init();
 
 	// Wait for add_mesh calls to finish
 	sys_notify_on_next_frame(&import_mesh_finish_import, NULL);
@@ -304,8 +292,6 @@ void import_mesh_add_mesh(raw_mesh_t *mesh) {
 	mesh_data_t *raw = import_mesh_raw_mesh(mesh);
 
 	mesh_data_t *md    = mesh_data_create(raw);
-	md->_->skin_blob   = mesh->blob;
-	md->_->skin_frame  = -1;
 	md->_->owns_arrays = true;
 
 	object_t      *parent = import_mesh_append ? NULL : g_context->paint_object->base;
@@ -320,7 +306,6 @@ void import_mesh_add_mesh(raw_mesh_t *mesh) {
 	}
 
 	any_array_push(g_project->_->paint_objects, object);
-	tab_stages_add_object(object->base->name);
 	if (import_mesh_append && import_mesh_appended == NULL) {
 		import_mesh_appended = object;
 	}

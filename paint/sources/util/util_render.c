@@ -868,10 +868,6 @@ void util_render_make_node_preview(ui_node_canvas_t *canvas, ui_node_t *node, gp
 }
 
 void util_render_pick_pos_nor_tex() {
-	if (args_player) {
-		return;
-	}
-
 	g_context->pick_pos_nor_tex = true;
 	g_context->pdirty           = 1;
 	tool_type_t _tool           = g_context->tool;
@@ -893,10 +889,6 @@ void util_render_pick_pos_nor_tex() {
 
 // Background pixels reconstruct to the far plane
 bool util_render_picked_on_mesh() {
-	if (args_player) {
-		return false;
-	}
-
 	camera_object_t *cam = scene_camera;
 	vec4_t loc = (vec4_t){transform_world_x(cam->base->transform), transform_world_y(cam->base->transform), transform_world_z(cam->base->transform), 0.0};
 	vec4_t p   = (vec4_t){g_context->posx_picked, g_context->posy_picked, g_context->posz_picked, 0.0};

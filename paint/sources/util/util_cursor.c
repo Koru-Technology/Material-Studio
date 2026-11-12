@@ -25,10 +25,6 @@ void util_cursor_render(void *_) {
 		return;
 	}
 
-	if (g_context->tool == TOOL_TYPE_MATERIAL) {
-		return;
-	}
-
 	draw_begin(NULL, false, 0);
 	draw_set_color(0xffffffff);
 
@@ -142,11 +138,6 @@ void util_cursor_render(void *_) {
 		f32 radius = g_context->brush_lazy_radius * util_layer_brush_screen_radius() * 3.0 * 2.0 * sys_h();
 		util_cursor_draw_2d(mx, my, radius * 0.46, 0xff666666);
 	}
-	render_gizmo_render_bones();
-	render_gizmo_render_rect();
-	util_shape_tool_render();
-	util_text_tool_render();
-	util_path_tool_render();
 	util_brush_render_hold_loupe();
 	draw_end();
 }

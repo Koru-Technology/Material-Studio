@@ -9,8 +9,6 @@ char *dir_checks;
 char *file_project;
 char *file_screenshot;
 char *file_envmap;
-char *file_geom;
-char *dir_lightmap;
 
 int step       = 0;
 int sub        = 0; // Frame counter of a step that repeats
@@ -24,12 +22,11 @@ slot_layer_t    *layer_red;
 slot_layer_t    *layer_group;
 slot_layer_t    *layer_fill;
 ui_node_t       *fill_rgb;
-object_t        *shape_box;
 int              export_count = 0;
 char            *export_name  = NULL;
 int              saved_layers = 0;
 
-char        *material_node_types = "ATTRIBUTE,RGB,NEW_GEOMETRY,LAYER,LAYER_MASK,MATERIAL,OBJECT_INFO,PICKER,TEX_COORD,TILESHEET_ANIM,TILESHEET,UVMAP,"
+char        *material_node_types = "ATTRIBUTE,RGB,NEW_GEOMETRY,LAYER,LAYER_MASK,MATERIAL,OBJECT_INFO,PICKER,TEX_COORD,TILESHEET,UVMAP,"
                                    "VALUE,WIREFRAME,TEX_BRICK,TEX_CHECKER,BAKE_CURVATURE,TEX_GABOR,TEX_GRADIENT,TEX_IMAGE,TEX_MAGIC,TEX_NOISE,"
                                    "TEX_TEXT,TEX_VORONOI,TEX_WAVE,BLUR,BRIGHTCONTRAST,COLMASK,VALTORGB,COMBINE_COLOR,GAMMA,HUE_SAT,INVERT_COLOR,"
                                    "MIX_RGB,QUANTIZE,CURVE_RGB,RGBTOBW,REPLACECOL,SEPARATE_COLOR,DIRECT_WARP,BUMP,CLAMP,COMBXYZ,FLOAT_CURVE,"
@@ -173,12 +170,12 @@ int pixels_variety(buffer_t *pixels) {
 	return hi - lo;
 }
 
-// 0 - Tools
+// Tools
 
 void step_tools() {
 	context_t *ctx = script_get_context();
 	int        ok  = 1;
-	for (int i = 0; i < 14; ++i) {
+	for (int i = 0; i < TOOL_TYPE_MATERIAL; ++i) { // The paint tools, the ones after are hidden or removed
 		context_select_tool(i);
 		if (ctx->tool != i) {
 			ok = 0;
@@ -188,7 +185,7 @@ void step_tools() {
 	context_select_tool(TOOL_TYPE_BRUSH);
 }
 
-// 1 - Script runtime: strings, arrays, maps, json, armpack
+// Script runtime: strings, arrays, maps, json, armpack
 
 void step_runtime() {
 	char *s = string("%s-%d-%.1f", "abc", 42, 1.5);
@@ -232,7 +229,7 @@ void step_runtime() {
 	check(ok, "json and armpack round trip");
 }
 
-// 2 - Project state is reachable
+// Project state is reachable
 
 void step_project_state() {
 	context_t *ctx = script_get_context();
@@ -244,7 +241,7 @@ void step_project_state() {
 	check(ok, "paint object, material and layer");
 }
 
-// 3 - Brush stroke
+// Brush stroke
 
 void step_paint_brush() {
 	context_t *ctx = script_get_context();
@@ -268,7 +265,7 @@ void step_paint_brush() {
 	check(1, "brush strokes");
 }
 
-// 4 - One stroke per brush blending mode, one mode per frame
+// One stroke per brush blending mode, one mode per frame
 
 void step_paint_blending() {
 	context_t *ctx      = script_get_context();
@@ -290,7 +287,7 @@ void step_paint_blending() {
 	check(1, "stroke with every blending mode");
 }
 
-// 5 - One stroke per paint tool, one tool per frame
+// One stroke per paint tool, one tool per frame
 
 void step_paint_tools() {
 	context_t *ctx = script_get_context();
@@ -311,7 +308,7 @@ void step_paint_tools() {
 	sweep_ok = 1;
 }
 
-// 6 - Eraser and world-space painting
+// Eraser and world-space painting
 
 void step_paint_eraser() {
 	context_select_tool(TOOL_TYPE_ERASER);
@@ -327,14 +324,14 @@ void step_paint_eraser() {
 	check(1, "eraser and world-space strokes");
 }
 
-// 7 - Fill
+// Fill
 
 void step_fill() {
 	script_fill_layer();
 	check(1, "fill layer");
 }
 
-// 8 - Material nodes
+// Material nodes
 
 void step_material_create() {
 	mat_noise = script_material_create("test_noise");
@@ -385,7 +382,7 @@ void step_material_create() {
 	check(ok, "material node lookup");
 }
 
-// 9 - Material edit, assign, delete
+// Material edit, assign, delete
 
 void step_material_edit() {
 	ui_node_t *mix = script_material_get_node("MIX_RGB");
@@ -399,13 +396,6 @@ void step_material_edit() {
 	script_material_update();
 	check(1, "material node disconnect and remove");
 
-	mesh_object_t *mo = context_main_object();
-	if (mo != NULL) {
-		script_object_set_material(mo->base, mat_noise);
-		// An override material leaves the object out of the paint mesh, clear it so later steps can paint
-		script_object_set_material(mo->base, NULL);
-	}
-
 	slot_material_t *tmp = script_material_create("test_temp");
 	script_material_delete(tmp);
 	int ok = 0;
@@ -417,7 +407,7 @@ void step_material_edit() {
 	script_material_set(mat_noise);
 }
 
-// 10 - Every material node type compiles into the paint shader and paints, one type per frame
+// Every material node type compiles into the paint shader and paints, one type per frame
 
 void step_material_nodes() {
 	if (sub == 0) {
@@ -453,68 +443,7 @@ void step_material_nodes() {
 	script_material_set(mat_noise);
 }
 
-// 11 - Shader node with a custom input, then one text writing several outputs
-
-void step_shader_node_outputs() {
-	slot_material_t *m  = script_material_create("test_shader_outputs");
-	ui_node_t       *sh = script_material_create_node_at("SHADER_GPU", -400.0, 0.0);
-	if (sh == NULL) {
-		check(0, "shader node outputs");
-		return;
-	}
-	// Early exit inside an if, the text ends with its own return
-	script_material_set_text(
-	    sh, 0,
-	    "if (tex_coord.x < -1.0) {\nreturn output;\n}\noutput.color = float3(0.0, 1.0, 0.0);\noutput.value = 1.0;\noutput.height = 0.5;\nreturn output;");
-	int ok = sh->outputs->length == 1; // Color only by default
-	script_material_add_output(sh, "VALUE", NULL);
-	script_material_add_output(sh, "VALUE", "Height");
-	ui_node_socket_t *value  = sh->outputs->length == 3 ? sh->outputs->buffer[1] : NULL;
-	ui_node_socket_t *height = sh->outputs->length == 3 ? sh->outputs->buffer[2] : NULL;
-	ok                       = ok && value != NULL && string_equals(value->name, "Value") && string_equals(height->name, "Height");
-	ui_node_t *out           = script_material_get_node("OUTPUT_MATERIAL_PBR");
-	script_material_connect(sh, 0, out, 0); // Base Color
-	script_material_connect(sh, 1, out, 3); // Roughness
-	script_material_connect(sh, 2, out, 7); // Height
-	script_material_update();
-	slot_layer_t *l     = script_layer_new_fill();
-	float         green = pixels_fraction(export_base_pixels(), 0, 255, 0, 40);
-	float         rough = pixels_fraction(export_channel_pixels("_rough"), 255, 255, 255, 20);
-	check(ok && green > 0.5 && rough > 0.5, string("shader node outputs (%.2f green, %.2f rough)", green, rough));
-	script_layer_delete(l);
-	script_material_delete(m);
-	script_material_set(mat_noise);
-}
-
-void step_shader_node() {
-	if (sub == 1) {
-		step_shader_node_outputs();
-		return;
-	}
-	ui_node_t *sh = script_material_create_node_at("SHADER_GPU", -400.0, 200.0);
-	if (sh == NULL) {
-		check(0, "shader node");
-		return;
-	}
-	script_material_set_text(
-	    sh, 0,
-	    "float2 c = frac(tex_coord * 8.0);\noutput.color = lerp(float3(1.0, 0.8, 0.2), float3(0.1, 0.1, 0.3), step(dot_size, length(c - float2(0.5, 0.5))));");
-	script_material_add_input(sh, "VALUE", "Dot Size");
-	script_material_set_float(sh, 1, 0, 0.3);
-	int ok = sh->inputs->length == 1;
-	script_material_connect(sh, 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
-	script_material_update();
-	script_paint(0.3, 0.6);
-	script_paint(0.35, 0.65);
-	script_paint_end();
-	script_material_remove_node(sh);
-	script_material_connect(script_material_get_node("MIX_RGB"), 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
-	script_material_update();
-	check(ok, "shader node with input");
-	step_again = 1;
-}
-
-// 12 - Color layer
+// Color layer
 
 void step_layer_color() {
 	context_t *ctx   = script_get_context();
@@ -530,14 +459,14 @@ void step_layer_color() {
 	check(ok, "color layer created and named");
 }
 
-// 13 - The color layer shows up in the exported base color
+// The color layer shows up in the exported base color
 
 void step_layer_export() {
 	float f = pixels_fraction(export_base_pixels(), 255, 0, 0, 40);
 	check(f > 0.5, string("red layer exported (%.2f red)", f));
 }
 
-// 14 - A hidden layer is not exported
+// A hidden layer is not exported
 
 void step_layer_hidden() {
 	layer_red->visible = 0;
@@ -548,7 +477,7 @@ void step_layer_hidden() {
 	script_layer_update(layer_red);
 }
 
-// 15 - Black mask hides the layer, white mask keeps it
+// Black mask hides the layer, white mask keeps it
 
 void step_layer_masks() {
 	int           count = script_layer_count();
@@ -567,7 +496,7 @@ void step_layer_masks() {
 	check(ok && f > 0.5, string("white mask keeps layer (%.2f red)", f));
 }
 
-// 16 - Groups
+// Groups
 
 void step_layer_group() {
 	layer_group = script_layer_new_group(layer_red);
@@ -598,7 +527,7 @@ void step_layer_group() {
 	check(script_layer_count() == count - 1 && script_layer_get("test_loose") == NULL, "layer deleted");
 }
 
-// 17 - Fill layer with a flat green material
+// Fill layer with a flat green material
 
 void step_layer_fill() {
 	mat_fill = script_material_create("test_fill");
@@ -619,7 +548,7 @@ void step_layer_fill() {
 	check(f > 0.5, string("fill layer exported (%.2f green)", f));
 }
 
-// 18 - Editing the fill material refills the layer, object mask
+// Editing the fill material refills the layer, object mask
 
 void step_layer_refill() {
 	script_material_set_color(fill_rgb, 0, 0, 0.0, 0.0, 1.0, 1.0);
@@ -639,7 +568,7 @@ void step_layer_refill() {
 	script_material_set(mat_noise);
 }
 
-// 19 - Half opacity mixes the layer with the ones below
+// Half opacity mixes the layer with the ones below
 
 void step_layer_opacity() {
 	layer_red->mask_opacity = 0.5;
@@ -656,7 +585,7 @@ void step_layer_opacity() {
 	script_layer_set(script_layer_at(0));
 }
 
-// 20 - A stroke lands in the texture and the eraser takes it out again
+// A stroke lands in the texture and the eraser takes it out again
 
 void stroke_across(int tool) {
 	context_select_tool(tool);
@@ -689,7 +618,7 @@ void step_paint_pixels() {
 	export_name = NULL;
 }
 
-// 21 - A material reading the layer it paints (Layer node) reads black, it can not sample its own render target
+// A material reading the layer it paints (Layer node) reads black, it can not sample its own render target
 
 void step_paint_self() {
 	context_t *ctx     = script_get_context();
@@ -728,297 +657,7 @@ void step_paint_self() {
 	export_name = NULL;
 }
 
-// 22 - Shapes and object duplication
-
-void step_shapes() {
-	string_array_t *shapes = script_shape_list();
-	int             ok     = 0;
-	if (shapes != NULL) {
-		if (shapes->length > 0) {
-			ok = 1;
-		}
-	}
-	check(ok, "shape list");
-	if (!ok) {
-		return;
-	}
-
-	object_t *o = script_shape_add(shapes->buffer[0]);
-	ok          = 0;
-	if (o != NULL) {
-		ok = 1;
-	}
-	check(ok, "shape added");
-	if (!ok) {
-		return;
-	}
-
-	object_t *dup = script_object_duplicate(o);
-	ok            = 0;
-	if (dup != NULL) {
-		ok = 1;
-	}
-	check(ok, "object duplicated");
-
-	script_object_set_material(o, mat_noise);
-	script_physics_set_shape(o, PHYSICS_SHAPE_BOX);
-	script_physics_set_mass(o, 1.0);
-	script_physics_apply_impulse(o, 0.0, 0.0, 1.0);
-	script_physics_set_velocity(o, 0.0, 0.0, 0.0);
-	script_physics_sync_transform(o);
-	check(1, "physics body");
-
-	o->transform->dim.z    = 0.7; // Box size comes from the transform dim
-	o->transform->has_dim  = true;
-	o->transform->measured = false;
-	script_physics_set_shape(o, PHYSICS_SHAPE_BOX);
-	physics_body_t *body = script_physics_get_body(o);
-	check(body != NULL && fabs(body->dimz - 0.7 * o->transform->scale.z) < 0.001, "physics dim");
-}
-
-// 23 - Every shape, rename, transform, parent, clone and remove
-
-void step_objects() {
-	string_array_t *shapes = script_shape_list();
-	int             ok     = 1;
-	for (int i = 0; i < shapes->length; ++i) {
-		char *name = shapes->buffer[i];
-		if (string_equals(name, "empty")) {
-			continue;
-		}
-		object_t *o = script_shape_add(name);
-		if (o == NULL) {
-			ok = 0;
-			printf("[test]   shape %s not added", name);
-			continue;
-		}
-		if (index_count(o) == 0) {
-			ok = 0;
-			printf("[test]   shape %s has no triangles", name);
-		}
-		script_object_remove(o);
-		if (script_get_object(o->name) == o) {
-			ok = 0;
-			printf("[test]   shape %s not removed", name);
-		}
-	}
-	check(ok, string("add and remove %d shapes", shapes->length));
-
-	shape_box = script_shape_add("cube");
-	script_object_set_name(shape_box, "test_box");
-	check(shape_box != NULL && script_get_object("test_box") == shape_box, "object renamed");
-
-	shape_box->transform->loc.x = 2.0;
-	shape_box->transform->loc.z = 0.5;
-	transform_build_matrix(shape_box->transform);
-	ok = fabs(transform_world_x(shape_box->transform) - 2.0) < 0.001 && fabs(transform_world_z(shape_box->transform) - 0.5) < 0.001;
-	check(ok, "object transform");
-
-	object_t *clone = script_object_clone("test_box");
-	ok              = clone != NULL && clone != shape_box && index_count(clone) == index_count(shape_box);
-	check(ok, "object cloned by name");
-	if (clone != NULL) {
-		script_object_set_name(clone, "test_box_child");
-		object_set_parent(clone, shape_box);
-		ok = clone->parent == shape_box && array_index_of(shape_box->children, clone) >= 0;
-		check(ok, "object parented");
-		object_set_parent(clone, NULL);
-		script_object_remove(clone);
-		check(script_get_object("test_box_child") == NULL, "object removed");
-	}
-}
-
-// 24 - Mesh modifiers
-
-void step_mesh_modifiers() {
-	any_array_t *objects = util_mesh_get_hierarchy(shape_box->ext);
-	int          before  = index_count(shape_box);
-	util_mesh_subdivide(objects);
-	int subdivided = index_count(shape_box);
-	check(subdivided > before, string("subdivide %d -> %d indices", before, subdivided));
-
-	util_mesh_smooth(objects);
-	check(index_count(shape_box) == subdivided, "smooth keeps topology");
-
-	util_mesh_decimate(objects, 0.5);
-	int decimated = index_count(shape_box);
-	check(decimated > 0 && decimated < subdivided, string("decimate %d -> %d indices", subdivided, decimated));
-
-	util_mesh_bevel(objects, 0.05);
-	check(index_count(shape_box) > decimated, string("bevel %d -> %d indices", decimated, index_count(shape_box)));
-
-	util_mesh_uv_unwrap(objects);
-	check(index_count(shape_box) > 0, "uv unwrap");
-
-	script_object_origin_to_geometry(shape_box);
-	check(1, "origin to geometry");
-}
-
-// 25 - Mesh nodes build the object from a generated shape
-
-int mesh_nodes_original = 0;
-
-void step_mesh_nodes() {
-	object_t      *o    = script_shape_add("sphere");
-	mesh_object_t *mo   = o->ext;
-	mesh_nodes_original = index_count(o);
-	script_object_set_name(o, "test_nodes_sphere");
-
-	ui_node_t *shape = script_mesh_create_node_at(mo, "MESH_SHAPE", 0.0, 0.0);
-	ui_node_t *subd  = script_mesh_create_node_at(mo, "MESH_SUBDIVIDE", 200.0, 0.0);
-	ui_node_t *out   = script_mesh_get_node(mo, "MESH_OUTPUT");
-	int        ok    = shape != NULL && subd != NULL && out != NULL && script_mesh_get_node(mo, "MESH_INPUT") != NULL;
-	check(ok, "mesh nodes created");
-	if (!ok) {
-		return;
-	}
-	script_material_set_button(shape, 0, 0.0); // Box
-	script_mesh_connect(mo, shape, 0, subd, 0);
-	script_material_set_float(subd, 1, 1, 1.0);
-	script_mesh_connect(mo, subd, 0, out, 0);
-	script_mesh_update(mo);
-	int box = index_count(o);
-	check(box > 0 && box != mesh_nodes_original, string("mesh nodes output %d -> %d indices", mesh_nodes_original, box));
-
-	ui_node_t *bool_node = script_mesh_create_node_at(mo, "MESH_BOOLEAN", 400.0, 0.0);
-	ui_node_t *torus     = script_mesh_create_node_at(mo, "MESH_SHAPE", 200.0, 200.0);
-	script_material_set_button(torus, 0, 4.0);     // Torus
-	script_material_set_button(bool_node, 0, 1.0); // Difference
-	script_mesh_connect(mo, subd, 0, bool_node, 0);
-	script_mesh_connect(mo, torus, 0, bool_node, 1);
-	script_mesh_connect(mo, bool_node, 0, out, 0);
-	script_mesh_update(mo);
-	check(index_count(o) > 0 && index_count(o) != box, string("mesh boolean %d -> %d indices", box, index_count(o)));
-}
-
-// 26 - Mesh script node
-
-void step_mesh_script() {
-	object_t      *o  = script_get_object("test_nodes_sphere");
-	mesh_object_t *mo = o->ext;
-	ui_node_t     *sc = script_mesh_create_node_at(mo, "MESH_SCRIPT", 300.0, 100.0);
-	if (sc == NULL) {
-		check(0, "mesh script node");
-		return;
-	}
-	script_material_set_text(sc, 0,
-	                         "void main() {\nmesh_geo_t *g = mesh_geo_shape(5, 1.0, 1.0, 1.0, 1);\nint n = (int)mesh_geo_input_value(\"Count\");\n"
-	                         "g = mesh_geo_array(g, n, 1.2, 0.0, 0.0, false);\nmesh_geo_output(g);\n}\n");
-	script_mesh_add_input(mo, sc, "VALUE", "Count");
-	script_material_set_float(sc, 1, 1, 3.0);
-	script_mesh_connect(mo, script_mesh_get_node(mo, "MESH_INPUT"), 0, sc, 0);
-	script_mesh_connect(mo, sc, 0, script_mesh_get_node(mo, "MESH_OUTPUT"), 0);
-	script_mesh_update(mo);
-	int planes = index_count(o);
-	check(sc->inputs->length == 2 && planes == 18, string("mesh script node: 3 planes, %d indices", planes));
-
-	script_material_set_float(sc, 1, 1, 5.0);
-	script_mesh_update(mo);
-	check(index_count(o) == 30, string("mesh script node input: 5 planes, %d indices", index_count(o)));
-
-	// Group shared by two group nodes with their own Count
-	char *grp = "test_mesh_group";
-	check(script_mesh_group_create(grp) && !script_mesh_group_create(grp), "mesh group created once");
-	ui_node_t *gin  = script_mesh_group_get_node(grp, "GROUP_INPUT");
-	ui_node_t *gout = script_mesh_group_get_node(grp, "GROUP_OUTPUT");
-	script_mesh_group_add_input(grp, gin, "VALUE", "Count");
-	ui_node_t *gs = script_mesh_group_create_node_at(grp, "MESH_SCRIPT", 250.0, 200.0);
-	script_material_set_text(gs, 0,
-	                         "void main() {\nmesh_geo_t *g = mesh_geo_shape(5, 1.0, 1.0, 1.0, 1);\nint n = (int)mesh_geo_input_value(\"Count\");\n"
-	                         "g = mesh_geo_array(g, n, 1.2, 0.0, 0.0, false);\nmesh_geo_output(g);\n}\n");
-	script_mesh_group_add_input(grp, gs, "VALUE", "Count");
-	script_mesh_group_connect(grp, gin, 0, gs, 0);
-	script_mesh_group_connect(grp, gin, 1, gs, 1);
-	script_mesh_group_connect(grp, gs, 0, gout, 0);
-	ui_node_t *g1   = script_mesh_create_group_node_at(mo, grp, 300.0, 0.0);
-	ui_node_t *g2   = script_mesh_create_group_node_at(mo, grp, 300.0, 200.0);
-	ui_node_t *join = script_mesh_create_node_at(mo, "MESH_JOIN", 500.0, 100.0);
-	int ok = gin != NULL && gout != NULL && gs != NULL && g1 != NULL && g2 != NULL && join != NULL && g1->inputs->length == 2 && gin->outputs->length == 2;
-	check(ok, "mesh group nodes created");
-	if (ok) {
-		script_material_set_float(g1, 1, 1, 2.0);
-		script_material_set_float(g2, 1, 1, 4.0);
-		script_mesh_connect(mo, script_mesh_get_node(mo, "MESH_INPUT"), 0, g1, 0);
-		script_mesh_connect(mo, script_mesh_get_node(mo, "MESH_INPUT"), 0, g2, 0);
-		script_mesh_connect(mo, g1, 0, join, 0);
-		script_mesh_connect(mo, g2, 0, join, 1);
-		script_mesh_connect(mo, join, 0, script_mesh_get_node(mo, "MESH_OUTPUT"), 0);
-		script_mesh_update(mo);
-		check(index_count(o) == 36, string("mesh group instances: 2 + 4 planes, %d indices", index_count(o)));
-
-		script_material_set_text(gs, 0,
-		                         "void main() {\nmesh_geo_t *g = mesh_geo_shape(5, 1.0, 1.0, 1.0, 1);\nint n = (int)mesh_geo_input_value(\"Count\") + 1;\n"
-		                         "g = mesh_geo_array(g, n, 1.2, 0.0, 0.0, false);\nmesh_geo_output(g);\n}\n");
-		script_mesh_group_update(grp);
-		check(index_count(o) == 48, string("mesh group edit rebuilds: 3 + 5 planes, %d indices", index_count(o)));
-
-		char *outer = "test_mesh_group_outer";
-		script_mesh_group_create(outer);
-		ui_node_t *nested = script_mesh_group_create_group_node_at(outer, grp, 200.0, 200.0);
-		ui_node_t *loop   = script_mesh_group_create_group_node_at(grp, outer, 200.0, 400.0);
-		check(nested != NULL && loop == NULL, "mesh group nesting, recursion rejected");
-		check(!script_mesh_group_remove(grp), "mesh group in use not removed");
-		script_mesh_group_remove_node(outer, nested);
-		check(script_mesh_group_get_node(outer, "GROUP") == NULL && script_mesh_group_remove(outer), "unused mesh group removed");
-	}
-
-	// Back to the original mesh
-	script_mesh_connect(mo, script_mesh_get_node(mo, "MESH_INPUT"), 0, script_mesh_get_node(mo, "MESH_OUTPUT"), 0);
-	script_mesh_update(mo);
-	check(index_count(o) == mesh_nodes_original, "mesh nodes bypassed");
-}
-
-// 27 - Procedural geometry export and import
-
-void step_geom() {
-	geom_t *box = geom_box(-0.2, -0.2, 0.0, 0.2, 0.2, 0.4);
-	geom_t *tor = geom_torus(0.0, 0.0, 0.6, 0.3, 0.08, 24, 8);
-	geom_rotate(tor, 0, 90.0, 0.0, 0.0, 0.6);
-	int     count  = geom_vertex_count(box) + geom_vertex_count(tor);
-	geom_t *merged = geom_merge(box, tor);
-	geom_unwrap(merged, 0.01);
-	check(geom_vertex_count(merged) == count, string("geom merge (%d vertices)", count));
-
-	geom_export_add(merged, "test_geom", 0);
-	geom_export_write_obj(file_geom);
-	check(iron_file_exists(file_geom), "geom obj written");
-
-	script_append_mesh(file_geom);
-	object_t *o = script_get_object("test_geom");
-	check(o != NULL && index_count(o) > 0, "geom obj appended");
-
-	script_append_mesh_obj("o test_tri\nv 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 0 1\nf 1/1 2/2 3/3\n");
-	o = script_get_object("test_tri");
-	check(o != NULL && index_count(o) == 3, "obj text appended");
-}
-
-// 28 - Stages and timeline
-
-void step_stages_timeline() {
-	script_stage_create("test_stage_a");
-	script_stage_add_object("test_stage_a", "test_box");
-	script_stage_create("test_stage_b");
-	script_stage_set_hidden("test_stage_b", "test_box", 1);
-	script_set_stage("test_stage_b");
-	int ok = script_get_stage() != NULL && string_equals(script_get_stage(), "test_stage_b");
-	script_set_stage("test_stage_a");
-	ok = ok && string_equals(script_get_stage(), "test_stage_a");
-	check(ok, "stages created and switched");
-
-	script_timeline_set_frame(12);
-	ok = script_timeline_get_frame() == 12;
-	script_timeline_add_keyframe("test_box", 12);
-	shape_box->transform->loc.x = 3.0;
-	transform_build_matrix(shape_box->transform);
-	script_timeline_add_keyframe("test_box", 24);
-	script_timeline_set_frame(0);
-	ok = ok && script_timeline_get_frame() == 0;
-	script_timeline_resume();
-	script_timeline_pause();
-	check(ok, "timeline frames and keyframes");
-}
-
-// 29 - Generated envmap, applied on the next frame
+// Generated envmap, applied on the next frame
 
 void step_envmap_write() {
 	env_begin(128, 64, 0.1, 0.12, 0.15);
@@ -1041,93 +680,9 @@ void step_envmap() {
 	script_show_envmap(1);
 }
 
-// 30 - Lightmap bakes run over many frames, the scene changes under them while they run
-
-int bakes_done          = 0;
 int viewport_path_trace = 16; // VIEWPORT_MODE_PATH_TRACE
 
-void on_bake_done() {
-	bakes_done += 1;
-}
-
-char *lightmap_path(char *name) {
-	return string("%s/%s.png", dir_lightmap, name);
-}
-
-void step_bake_lightmap() {
-	if (sub == 0) {
-		string_array_t *names = string_split("box,torus,main", ",");
-		for (int i = 0; i < names->length; ++i) {
-			char *path = lightmap_path(names->buffer[i]);
-			if (iron_file_exists(path)) {
-				iron_delete_file(path);
-			}
-		}
-		object_t *torus = script_shape_add("torus");
-		script_object_set_name(torus, "test_bake_torus");
-		bakes_done = 0;
-		script_bake_lightmap(shape_box, 128, 32, 2.0, lightmap_path("box"), on_bake_done);
-		script_bake_lightmap(torus, 128, 32, 2.0, lightmap_path("torus"), on_bake_done);
-		script_bake_lightmap(context_main_object()->base, 128, 32, 2.0, lightmap_path("main"), on_bake_done);
-		check(script_bake_lightmap_busy(), "lightmap bakes queued");
-	}
-	else if (sub == 2) {
-		// The viewport path tracer shares the raytrace pipeline with the bake
-		context_set_viewport_mode(viewport_path_trace);
-	}
-	else if (sub == 3) {
-		// Frees mesh buffers the bake scene points to, the torus job is dropped
-		script_object_remove(script_get_object("test_bake_torus"));
-	}
-	else if (sub == 4) {
-		util_mesh_subdivide(util_mesh_get_hierarchy(shape_box->ext));
-	}
-	if (script_bake_lightmap_busy() && sub < 600) {
-		step_again = 1;
-		return;
-	}
-	check(!script_bake_lightmap_busy(), string("lightmap bakes finished in %d frames", sub));
-	check(bakes_done == 2, string("done called for the remaining bakes (%d of 2)", bakes_done));
-	check(script_get_context()->viewport_mode == viewport_path_trace, "viewport mode kept during the bake");
-	context_set_viewport_mode(0);
-
-	int ok = iron_file_exists(lightmap_path("box")) && iron_file_exists(lightmap_path("main")) && !iron_file_exists(lightmap_path("torus"));
-	check(ok, "lightmaps written for the objects left");
-	script_import_asset(lightmap_path("box"), false);
-	gpu_texture_t *tex    = script_get_texture("box.png");
-	buffer_t      *pixels = script_get_texture_pixels(tex);
-	int            lit    = pixels != NULL && pixels_fraction(pixels, 0, 0, 0, 8) < 0.9;
-	check(tex != NULL && tex->width == 128 && lit && pixels_variety(pixels) > 10, string("box lightmap is lit (%d)", pixels_variety(pixels)));
-	script_texture_delete("box.png");
-}
-
-// 31 - Cancel drops queued bakes without calling done
-
-void step_bake_cancel() {
-	if (sub == 0) {
-		bakes_done = 0;
-		script_bake_lightmap(shape_box, 64, 64, 2.0, lightmap_path("cancel0"), on_bake_done);
-		script_bake_lightmap(shape_box, 64, 64, 2.0, lightmap_path("cancel1"), on_bake_done);
-		step_again = 1;
-		return;
-	}
-	if (sub < 3) {
-		step_again = 1; // Let the first job start
-		return;
-	}
-	if (sub == 3) {
-		script_bake_lightmap_cancel();
-		check(!script_bake_lightmap_busy(), "lightmap bakes cancelled");
-	}
-	if (sub < 6) {
-		step_again = 1;
-		return;
-	}
-	int ok = bakes_done == 0 && !iron_file_exists(lightmap_path("cancel0")) && !iron_file_exists(lightmap_path("cancel1"));
-	check(ok, "cancelled bakes write nothing");
-}
-
-// 32 - Every viewport mode, one per frame, path trace last for a few frames
+// Every viewport mode, one per frame, path trace last for a few frames
 
 void step_viewport_modes() {
 	context_t *ctx  = script_get_context();
@@ -1148,7 +703,7 @@ void step_viewport_modes() {
 	sweep_ok = 1;
 }
 
-// 33 - Screenshot, waits for the file
+// Screenshot, waits for the file
 
 void step_screenshot() {
 	if (sub == 0) {
@@ -1169,14 +724,14 @@ void step_screenshot() {
 	script_texture_delete("test_screenshot.png");
 }
 
-// 34 - Export textures
+// Export textures
 
 void step_export_textures() {
 	export_texture_run(dir_textures, false);
 	check(dir_file_count(dir_textures) > 0, "textures exported");
 }
 
-// 35 - Export mesh and material
+// Export mesh and material
 
 void step_export_mesh() {
 	script_export_mesh(string("%s/test_mesh", dir_mesh));
@@ -1186,7 +741,7 @@ void step_export_mesh() {
 	check(iron_file_exists(string("%s/test_material.arm", dir_material)), "material exported");
 }
 
-// 36 - Save project
+// Save project
 
 void step_save() {
 	saved_layers = script_layer_count();
@@ -1195,13 +750,13 @@ void step_save() {
 	check(string_equals(project_filepath_get(), file_project), "project filepath set");
 }
 
-// 37 - Saved file is on disk
+// Saved file is on disk
 
 void step_verify_save() {
 	check(iron_file_exists(file_project), "project saved");
 }
 
-// 38 - New project
+// New project
 
 void step_new_project() {
 	script_project_new();
@@ -1210,17 +765,17 @@ void step_new_project() {
 		ok = 1;
 	}
 	check(ok, "new project");
-	check(script_layer_get("test_red") == NULL && script_get_object("test_box") == NULL, "new project is empty");
+	check(script_layer_get("test_red") == NULL, "new project is empty");
 }
 
-// 39 - Load the saved project back
+// Load the saved project back
 
 void step_load() {
 	script_project_open(file_project);
 	check(1, "project loaded");
 }
 
-// 40 - Loaded content is there
+// Loaded content is there
 
 void step_verify_load() {
 	int ok = 0;
@@ -1244,17 +799,11 @@ void step_verify_load() {
 	ok = fill != NULL && fill->fill_material != NULL && script_get_material("test_fill") != NULL;
 	check(ok, "fill layer material survived");
 
-	check(script_get_object("test_box") != NULL && script_get_object("test_geom") != NULL, "objects survived");
-	ui_node_t *gin = script_mesh_group_get_node("test_mesh_group", "GROUP_INPUT");
-	check(gin != NULL && gin->outputs->length == 2 && script_mesh_group_get_node("test_mesh_group", "MESH_SCRIPT") != NULL, "mesh group survived");
-	script_set_stage("test_stage_b");
-	ok = script_get_stage() != NULL && string_equals(script_get_stage(), "test_stage_b");
-	check(ok, "stages survived");
 	project_t *prj = script_get_project();
 	check(prj->envmap != NULL && ends_with(prj->envmap, "test_envmap.hdr"), "envmap survived");
 }
 
-// 41 - Import one of the exported textures back in
+// Import one of the exported textures back in
 
 void step_import_texture() {
 	any_array_t *files = file_read_directory(dir_textures);
@@ -1275,7 +824,7 @@ void step_import_texture() {
 	check(ok, "texture imported, deleted and reimported");
 }
 
-// 42 - Import the exported mesh
+// Import the exported mesh
 
 void step_import_mesh() {
 	char *path = string("%s/test_mesh.obj", dir_mesh);
@@ -1283,14 +832,14 @@ void step_import_mesh() {
 	check(1, "mesh imported");
 }
 
-// 43 - Import the exported material
+// Import the exported material
 
 void step_import_material() {
 	script_import_asset(string("%s/test_material.arm", dir_material), false);
 	check(1, "material imported");
 }
 
-// 44 - Paint once more on the reloaded project, then save over it
+// Paint once more on the reloaded project, then save over it
 
 void step_repaint_and_resave() {
 	context_select_tool(TOOL_TYPE_BRUSH);
@@ -1330,7 +879,7 @@ float blend_fraction(int blending, float opacity, int r, int g, int b) {
 	return f;
 }
 
-// 55 - Blending modes give the expected colors: blue painted over red
+// Blending modes give the expected colors: blue painted over red
 
 void step_blend_colors() {
 	script_project_new();
@@ -1360,7 +909,7 @@ void step_blend_colors() {
 	}
 }
 
-// 56 - Half brush opacity mixes the stroke with the layer
+// Half brush opacity mixes the stroke with the layer
 
 void step_brush_opacity() {
 	float half = blend_fraction(0, 0.5, 186, 0, 186); // Linear blending, new projects mix in linear space
@@ -1369,7 +918,7 @@ void step_brush_opacity() {
 	check(blue < 0.005, string("half opacity stroke is not blue (%.3f)", blue));
 }
 
-// 57 - Material channel toggles: a stroke without base color and roughness changes nothing, roughness alone paints only roughness
+// Material channel toggles: a stroke without base color and roughness changes nothing, roughness alone paints only roughness
 
 void step_material_channels() {
 	slot_layer_t *l       = script_layer_new_color(0xffff0000, 1.0, 0.0, 0.0);
@@ -1393,7 +942,7 @@ void step_material_channels() {
 	script_layer_delete(l);
 }
 
-// 58 - Custom material node from a script category
+// Custom material node from a script category
 
 int   custom_node_calls = 0;
 char *custom_node_type  = "TEST_CUSTOM";
@@ -1448,7 +997,7 @@ void step_custom_node() {
 	script_material_set(mat_blue);
 }
 
-// 59 - Custom viewport shader is called when the viewport shader is rebuilt
+// Custom viewport shader is called when the viewport shader is rebuilt
 
 int viewport_shader_calls = 0;
 
@@ -1479,7 +1028,7 @@ void step_viewport_shader() {
 	check(viewport_shader_calls == calls, "viewport shader removed");
 }
 
-// 60 - Draw into a render target, read it back, write it as png and jpg and import both
+// Draw into a render target, read it back, write it as png and jpg and import both
 
 char *file_draw_png;
 char *file_draw_jpg;
@@ -1512,7 +1061,7 @@ void step_draw_target() {
 	}
 }
 
-// 61 - Packed assets
+// Packed assets
 
 char *file_packed;
 
@@ -1529,7 +1078,7 @@ void step_packed_assets() {
 	check(removed == 2 && script_get_texture("test_draw.png") == NULL && script_get_texture("test_draw.jpg") == NULL, string("assets removed (%d)", removed));
 }
 
-// 62 - Custom mesh, texture and text importers
+// Custom mesh, texture and text importers
 
 int   text_imports    = 0;
 int   texture_imports = 0;
@@ -1600,181 +1149,20 @@ void step_custom_importers() {
 	script_unregister_text("ttxt");
 	script_import_asset(text_path, false); // Unknown format now, shows a message box
 	check(text_imports == 1, "custom text importer unregistered");
-	if (o != NULL) {
-		script_object_remove(o);
-	}
 	script_assets_remove("test.ttex");
 }
 
-// 63 - Font and sound import
+// Font import
 
 char *file_font;
-char *file_sound;
 
-void write_wav(char *path) {
-	int       samples = 4410;
-	buffer_t *b       = buffer_create(44 + samples * 2);
-	char     *tags    = "RIFFWAVEfmt data";
-	for (int i = 0; i < 4; ++i) {
-		buffer_set_u8(b, i, char_code_at(tags, i));
-		buffer_set_u8(b, 8 + i, char_code_at(tags, 4 + i));
-		buffer_set_u8(b, 12 + i, char_code_at(tags, 8 + i));
-		buffer_set_u8(b, 36 + i, char_code_at(tags, 12 + i));
-	}
-	buffer_set_u32(b, 4, 36 + samples * 2);
-	buffer_set_u32(b, 16, 16);
-	buffer_set_u16(b, 20, 1); // PCM
-	buffer_set_u16(b, 22, 1); // Mono
-	buffer_set_u32(b, 24, 44100);
-	buffer_set_u32(b, 28, 44100 * 2);
-	buffer_set_u16(b, 32, 2);
-	buffer_set_u16(b, 34, 16);
-	buffer_set_u32(b, 40, samples * 2);
-	for (int i = 0; i < samples; ++i) {
-		buffer_set_i16(b, 44 + i * 2, (int)(sin(i * 0.06) * 8000.0));
-	}
-	iron_file_save_bytes(path, b, b->length);
-}
-
-void step_font_sound() {
+void step_font() {
 	file_copy(string("%s/font_mono.ttf", data_path()), file_font);
 	check(iron_file_exists(file_font), "font copied");
 	script_import_asset(file_font, false);
 	check(1, "font imported");
-
-	write_wav(file_sound);
-	script_import_asset(file_sound, false);
-	check(script_get_sound("test_sound.wav") != NULL, "sound imported");
-	check(script_sound_remove("test_sound.wav") && script_get_sound("test_sound.wav") == NULL, "sound removed");
 }
 
-// 64 - Mesh geometry functions outside a mesh script node
-
-void step_mesh_geo() {
-	mesh_geo_t *box   = mesh_geo_shape(0, 1.0, 1.0, 1.0, 8);
-	mesh_geo_t *plane = mesh_geo_shape(5, 1.0, 1.0, 1.0, 8);
-	mesh_geo_t *ball  = mesh_geo_shape(1, 1.0, 1.0, 1.0, 24);
-	int         ok    = box->index_count == 36 && plane->index_count == 6 && ball->index_count > 1000;
-	check(ok, string("mesh geo shapes (%d, %d, %d indices)", box->index_count, plane->index_count, ball->index_count));
-	ok = 1;
-	for (int s = 0; s < 6; ++s) {
-		mesh_geo_t *g = mesh_geo_shape(s, 1.0, 2.0, 1.0, 12);
-		if (g->index_count == 0 || g->index_count % 3 != 0) {
-			ok = 0;
-		}
-	}
-	check(ok, "every mesh geo shape");
-
-	mesh_geo_t *moved = mesh_geo_transform(box, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0);
-	float       cx    = 0.0;
-	for (int i = 0; i < moved->vertex_count; ++i) {
-		cx += moved->pos[i * 3];
-	}
-	cx /= moved->vertex_count;
-	check(moved->vertex_count == box->vertex_count && fabs(cx - 1.0) < 0.01, string("mesh geo transform (center x %.3f)", cx));
-
-	mesh_geo_t *arr = mesh_geo_array(plane, 4, 1.5, 0.0, 0.0, false);
-	check(arr->index_count == plane->index_count * 4, "mesh geo array");
-	check(mesh_geo_join(box, plane)->index_count == 42, "mesh geo join");
-	check(mesh_geo_mirror(box, 0)->index_count >= box->index_count, "mesh geo mirror");
-	check(mesh_geo_copy(ball)->vertex_count == ball->vertex_count, "mesh geo copy");
-
-	mesh_geo_t *sub = mesh_geo_subdivide(box, 2);
-	check(sub->index_count > box->index_count * 4, string("mesh geo subdivide (%d)", sub->index_count));
-	check(mesh_geo_smooth(sub, 2)->index_count == sub->index_count, "mesh geo smooth");
-	int dec = mesh_geo_decimate(ball, 0.5)->index_count;
-	check(dec > 0 && dec < ball->index_count, string("mesh geo decimate %d -> %d", ball->index_count, dec));
-	check(mesh_geo_bevel(box, 0.1)->index_count > box->index_count, "mesh geo bevel");
-	check(mesh_geo_normals(ball, true)->index_count == ball->index_count, "mesh geo normals");
-
-	mesh_geo_t *small = mesh_geo_transform(ball, 0.5, 0.5, 0.5, 0.0, 0.0, 0.0, 0.6, 0.6, 0.6);
-	mesh_geo_t *diff  = mesh_geo_boolean(box, small, MESH_BOOLEAN_DIFFERENCE);
-	mesh_geo_t *inter = mesh_geo_boolean(box, small, MESH_BOOLEAN_INTERSECT);
-	ok                = diff->index_count > 0 && inter->index_count > 0 && diff->index_count != box->index_count;
-	check(ok, string("mesh geo boolean (%d difference, %d intersect)", diff->index_count, inter->index_count));
-
-	mesh_geo_t  *dst  = mesh_geo_create(box->vertex_count * 2, box->index_count * 2);
-	f32_array_t *m    = f32_array_create(12);
-	m->buffer[0]      = 1.0;
-	m->buffer[4]      = 1.0;
-	m->buffer[8]      = 1.0;
-	m->buffer[9]      = 3.0;
-	dst->vertex_count = 0;
-	dst->index_count  = 0;
-	ok                = mesh_geo_append(dst, box, m->buffer) && mesh_geo_append(dst, box, m->buffer) && !mesh_geo_append(dst, box, m->buffer);
-	check(ok && dst->index_count == box->index_count * 2, string("mesh geo append (%d indices)", dst->index_count));
-}
-
-// 65 - Procedural geom: primitives, sdf, tubes, atlas
-
-char *file_atlas;
-char *file_skin;
-
-void step_geom_more() {
-	geom_t *grid = geom_grid(-1.0, -1.0, 1.0, 1.0, 4, 4);
-	geom_t *cyl  = geom_cylinder(0.0, 0.0, 0.0, 0.5, 1.0, 16);
-	geom_t *ell  = geom_ellipsoid(0.0, 0.0, 0.0, 0.5, 0.3, 0.2, 16, 8);
-	int     ok   = geom_vertex_count(grid) > 0 && geom_vertex_count(cyl) > 0 && geom_vertex_count(ell) > 0;
-	check(ok, string("geom primitives (%d, %d, %d vertices)", geom_vertex_count(grid), geom_vertex_count(cyl), geom_vertex_count(ell)));
-
-	geom_t *c  = geom_copy(cyl);
-	float   z0 = geom_vertex_get(c, 0, 2);
-	geom_translate(c, 0.0, 0.0, 2.0);
-	geom_scale(c, 2.0);
-	float z1 = geom_vertex_get(c, 0, 2);
-	check(geom_vertex_count(c) == geom_vertex_count(cyl) && fabs(geom_vertex_get(cyl, 0, 2) - z0) < 0.0001 && fabs(z1 - z0) > 1.0,
-	      string("geom copy, translate, scale (z %.2f -> %.2f)", z0, z1));
-	geom_vertex_set(c, 0, 1.0, 2.0, 3.0);
-	check(fabs(geom_vertex_get(c, 0, 1) - 2.0) < 0.0001, "geom vertex set");
-	geom_flip(c);
-	geom_basis(c, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
-
-	geom_t *half = geom_copy(ell);
-	geom_keep(half, 2, 0.0, 10.0);
-	check(geom_vertex_count(half) < geom_vertex_count(ell) && geom_vertex_count(half) > 0,
-	      string("geom keep (%d of %d)", geom_vertex_count(half), geom_vertex_count(ell)));
-
-	geom_sdf_begin(0.05);
-	geom_sdf_box(-0.3, -0.3, -0.3, 0.3, 0.3, 0.3, 0.05, 0);
-	geom_sdf_ellipsoid(0.0, 0.0, 0.3, 0.3, 0.3, 0.3, 1); // Subtract
-	geom_sdf_transform(2, 45.0, 0.0, 0.0, 0.4);
-	geom_sdf_cylinder(0.0, 0.0, 0.0, 0.1, 0.4, 2, 0.0, 0);
-	geom_sdf_capsule(-0.4, 0.0, 0.0, 0.4, 0.0, 0.0, 0.05, 0.1, 0);
-	geom_sdf_torus(0.0, 0.0, -0.3, 0.3, 0.05, 1.0, 0);
-	geom_t *sdf = geom_sdf_end(1);
-	check(sdf != NULL && geom_vertex_count(sdf) > 100, string("geom sdf (%d vertices)", geom_vertex_count(sdf)));
-	geom_clay(sdf, 0.01, 4.0, 1.0, 0.5);
-	geom_displace(sdf, 2.0, 0.01, 8.0, 0.005);
-
-	geom_tube_begin();
-	geom_tube_point(0.0, 0.0, 0.0, 0.1);
-	geom_tube_point(0.0, 0.5, 0.3, 0.08);
-	geom_tube_point(0.2, 1.0, 0.4, 0.05);
-	geom_t *tube = geom_tube_end(8, 6, 1.0, 4, 1);
-	check(tube != NULL && geom_vertex_count(tube) > 24, string("geom tube (%d vertices)", geom_vertex_count(tube)));
-
-	// Two colored parts in a texture atlas
-	geom_part(sdf, 1);
-	geom_part(tube, 2);
-	geom_t *parts = geom_merge(sdf, tube); // geom_copy drops the parts
-	geom_unwrap(parts, 0.01);
-	geom_palette(0, 0, 0, 0);
-	geom_palette(1, 255, 0, 0);
-	geom_palette(2, 0, 0, 255);
-	if (iron_file_exists(file_atlas)) {
-		iron_delete_file(file_atlas);
-	}
-	geom_atlas(parts, 128, 1, file_atlas);
-	check(iron_file_exists(file_atlas), "geom atlas written");
-	script_import_asset(file_atlas, false);
-	buffer_t *pixels = script_get_texture_pixels(script_get_texture("test_atlas.png"));
-	float     red    = pixels_fraction(pixels, 255, 0, 0, 30);
-	float     blue   = pixels_fraction(pixels, 0, 0, 255, 30);
-	check(red > 0.01 && blue > 0.001, string("geom atlas has both parts (%.3f red, %.3f blue)", red, blue));
-	script_assets_remove("test_atlas");
-}
-
-// 66 - Skinned mesh: bones, weights and a clip, written as .skin, imported and reskinned
 
 float mesh_max_x(object_t *o) {
 	mesh_object_t  *mo = o->ext;
@@ -1789,65 +1177,7 @@ float mesh_max_x(object_t *o) {
 	return mx;
 }
 
-void step_skin() {
-	// A vertical bar with two bones, the upper one bends
-	geom_t *g = geom_cylinder(0.0, 0.0, 0.5, 0.05, 1.0, 12);
-	geom_unwrap(g, 0.01);
-	skel_begin();
-	int b0 = skel_bone(-1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, -1.0, 0.0);
-	int b1 = skel_bone(b0, 0.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0);
-	for (int v = 0; v < geom_vertex_count(g); ++v) {
-		if (geom_vertex_get(g, v, 2) > 0.5) {
-			geom_weights(g, v, b1, 1.0, b0, 0.0, b0, 0.0);
-		}
-		else {
-			geom_weights(g, v, b0, 1.0, b1, 0.0, b1, 0.0);
-		}
-	}
-	skel_clip_begin();
-	for (int f = 0; f < 4; ++f) {
-		skel_pose(b1, f * 25.0, f * 25.0, 0.0, 0.0, 0.0, 0.0);
-		skel_frame();
-	}
-	if (iron_file_exists(file_skin)) {
-		iron_delete_file(file_skin);
-	}
-	int ok = skel_write(g, "test_skin", file_skin);
-	check(ok && iron_file_exists(file_skin), "skin written");
-	script_append_mesh_skinned(file_skin);
-	object_t *skinned = script_get_object("test_skin");
-	check(skinned != NULL && index_count(skinned) > 0, "skinned mesh appended");
-	if (skinned == NULL) {
-		return;
-	}
-	project_reskin_mesh(0);
-	float x0 = mesh_max_x(skinned);
-	ok       = project_reskin_mesh(3);
-	float x3 = mesh_max_x(skinned);
-	check(ok && fabs(x3 - x0) > 0.1, string("reskin bends the mesh (max x %.3f -> %.3f)", x0, x3));
-	script_clip_play(skinned, 0, 3);
-	script_clip_set_frame(skinned, 2);
-	check(1, "clip play and set frame");
-	script_object_remove(skinned);
-}
-
-// 70 - Duplicate and merge paint objects
-
-void step_duplicate_merge() {
-	context_t     *ctx    = script_get_context();
-	mesh_object_t *before = ctx->paint_object;
-	int            count  = index_count(before->base);
-	util_mesh_duplicate();
-	mesh_object_t *dup = ctx->paint_object;
-	check(dup != before && index_count(dup->base) == count, "paint object duplicated");
-	dup->base->transform->loc.x = 3.0;
-	transform_build_matrix(dup->base->transform);
-	util_mesh_merge_geometry();
-	mesh_object_t *main = context_main_object();
-	check(index_count(main->base) == count * 2, string("paint objects merged (%d -> %d indices)", count, index_count(main->base)));
-}
-
-// 67 - Timers fire after their delay
+// Timers fire after their delay
 
 int timer_fired = 0;
 
@@ -1868,26 +1198,10 @@ void step_timer() {
 	check(timer_fired == 1, string("timer fired after %d frames", sub));
 }
 
-// 68, 69 - Object workflow tools, camera controls, picking
+// Camera controls
 
-void step_object_tools() {
+void step_camera_controls() {
 	context_t *ctx = script_get_context();
-	script_set_tools(TOOLS_OBJECT);
-	check(script_get_config()->tools == TOOLS_OBJECT, "object workflow");
-	int ok = 1;
-	for (int i = TOOL_TYPE_CURSOR; i <= TOOL_TYPE_BAKE; ++i) {
-		context_select_tool(i);
-		if (ctx->tool != i) {
-			ok = 0;
-			printf("[test]   tool %d not selected", i);
-		}
-	}
-	check(ok, "select object workflow tools");
-	context_select_tool(TOOL_TYPE_CURSOR);
-	script_set_tools(TOOLS_PAINT);
-	context_select_tool(TOOL_TYPE_BRUSH);
-	check(script_get_config()->tools == TOOLS_PAINT, "back to paint workflow");
-
 	for (int i = 0; i < 3; ++i) {
 		context_set_camera_controls(i);
 	}
@@ -1896,16 +1210,10 @@ void step_object_tools() {
 	ctx->xray         = 1;
 	ctx->ddirty       = 2;
 	check(1, "camera controls, envmap angle and xray");
+	ctx->xray = 0; // Later steps paint the front faces only
 }
 
-void step_pick() {
-	// Scripts can't move the cursor (mouse_x is a read-only copy), so this only runs the pick at the real cursor
-	script_get_context()->xray = 0;
-	script_pick_object();
-	check(1, "pick object at the cursor");
-}
-
-// 71 - Messages
+// Messages
 
 void step_message() {
 	script_show_message("test message", 0.2);
@@ -1929,7 +1237,7 @@ float base_fraction(int color) {
 	return pixels_fraction(export_base_pixels(), (color >> 16) & 255, (color >> 8) & 255, color & 255, 40);
 }
 
-// 72 - Duplicate keeps the content, layer blending mode
+// Duplicate keeps the content, layer blending mode
 
 void step_layer_duplicate() {
 	script_project_new();
@@ -1965,7 +1273,7 @@ void step_layer_duplicate() {
 	check(black > 0.5 && red_again > 0.5, string("layer blending multiply (%.2f black, then %.2f red)", black, red_again));
 }
 
-// 73 - Merge down keeps what is shown, clear empties the layer
+// Merge down keeps what is shown, clear empties the layer
 
 void step_layer_merge_down() {
 	slot_layer_t *red  = script_layer_get("test_red");
@@ -1989,7 +1297,7 @@ void step_layer_merge_down() {
 	script_layer_delete(merged);
 }
 
-// 74 - Invert and apply masks
+// Invert and apply masks
 
 void step_layer_mask_ops() {
 	slot_layer_t *red   = script_layer_new_color(0xffff0000, 1.0, 0.5, 0.0);
@@ -2030,7 +1338,7 @@ void step_layer_mask_ops() {
 	script_material_set(mat_blue);
 }
 
-// 75 - Paint layer to fill layer and back
+// Paint layer to fill layer and back
 
 void step_layer_fill_ops() {
 	slot_material_t *green = flat_material("test_green", 0.0, 1.0, 0.0);
@@ -2059,7 +1367,7 @@ void step_layer_fill_ops() {
 	script_material_set(mat_blue);
 }
 
-// 76 - Merge a group into one layer
+// Merge a group into one layer
 
 void step_layer_merge_group() {
 	slot_layer_t *blue  = script_layer_new_color(0xff0000ff, 1.0, 0.5, 0.0);
@@ -2084,7 +1392,7 @@ void step_layer_merge_group() {
 	export_name = NULL;
 }
 
-// 77 - Path layer: points paint a line with the current material, clear removes the points
+// Path layer: points paint a line with the current material, clear removes the points
 
 char *file_paths;
 
@@ -2122,7 +1430,7 @@ void step_layer_path() {
 	script_layer_delete(p);
 }
 
-// 78 - Curve and text layers
+// Curve and text layers
 
 void step_layer_curve_text() {
 	slot_layer_t *c  = script_layer_new_path(true);
@@ -2146,7 +1454,7 @@ void step_layer_curve_text() {
 	check(script_layer_new_text("") == NULL && layer_names_unique(), "empty text refused, names unique");
 }
 
-// 79, 80, 81 - Path layers survive save and load
+// Path layers survive save and load
 
 void step_layer_paths_save() {
 	project_filepath_set(file_paths);
@@ -2200,132 +1508,101 @@ void run_step(int s) {
 	else if (s == 10)
 		step_material_nodes();
 	else if (s == 11)
-		step_shader_node();
-	else if (s == 12)
 		step_layer_color();
-	else if (s == 13)
+	else if (s == 12)
 		step_layer_export();
-	else if (s == 14)
+	else if (s == 13)
 		step_layer_hidden();
-	else if (s == 15)
+	else if (s == 14)
 		step_layer_masks();
-	else if (s == 16)
+	else if (s == 15)
 		step_layer_group();
-	else if (s == 17)
+	else if (s == 16)
 		step_layer_fill();
-	else if (s == 18)
+	else if (s == 17)
 		step_layer_refill();
-	else if (s == 19)
+	else if (s == 18)
 		step_layer_opacity();
-	else if (s == 20)
+	else if (s == 19)
 		step_paint_pixels();
-	else if (s == 21)
+	else if (s == 20)
 		step_paint_self();
-	else if (s == 22)
-		step_shapes();
-	else if (s == 23)
-		step_objects();
-	else if (s == 24)
-		step_mesh_modifiers();
-	else if (s == 25)
-		step_mesh_nodes();
-	else if (s == 26)
-		step_mesh_script();
-	else if (s == 27)
-		step_geom();
-	else if (s == 28)
-		step_stages_timeline();
-	else if (s == 29)
+	else if (s == 21)
 		step_envmap();
-	else if (s == 30)
-		step_bake_lightmap();
-	else if (s == 31)
-		step_bake_cancel();
-	else if (s == 32)
+	else if (s == 22)
 		step_viewport_modes();
-	else if (s == 33)
+	else if (s == 23)
 		step_screenshot();
-	else if (s == 34)
+	else if (s == 24)
 		step_export_textures();
-	else if (s == 35)
+	else if (s == 25)
 		step_export_mesh();
-	else if (s == 36)
+	else if (s == 26)
 		step_save();
-	else if (s == 37)
+	else if (s == 27)
 		step_verify_save();
-	else if (s == 38)
+	else if (s == 28)
 		step_new_project();
-	else if (s == 39)
+	else if (s == 29)
 		step_load();
-	else if (s == 40)
+	else if (s == 30)
 		step_verify_load();
-	else if (s == 41)
+	else if (s == 31)
 		step_import_texture();
-	else if (s == 42)
+	else if (s == 32)
 		step_import_mesh();
-	else if (s == 43)
+	else if (s == 33)
 		step_import_material();
-	else if (s == 44)
+	else if (s == 34)
 		step_repaint_and_resave();
-	else if (s == 45)
+	else if (s == 35)
 		step_blend_colors();
-	else if (s == 46)
+	else if (s == 36)
 		step_brush_opacity();
-	else if (s == 47)
+	else if (s == 37)
 		step_material_channels();
-	else if (s == 48)
+	else if (s == 38)
 		step_custom_node();
-	else if (s == 49)
+	else if (s == 39)
 		step_viewport_shader();
-	else if (s == 50)
+	else if (s == 40)
 		step_draw_target();
-	else if (s == 51)
+	else if (s == 41)
 		step_packed_assets();
-	else if (s == 52)
+	else if (s == 42)
 		step_custom_importers();
-	else if (s == 53)
-		step_font_sound();
-	else if (s == 54)
-		step_mesh_geo();
-	else if (s == 55)
-		step_geom_more();
-	else if (s == 56)
-		step_skin();
-	else if (s == 57)
+	else if (s == 43)
+		step_font();
+	else if (s == 44)
 		step_timer();
-	else if (s == 58)
-		step_object_tools();
-	else if (s == 59)
-		step_pick();
-	else if (s == 60)
-		step_duplicate_merge();
-	else if (s == 61)
+	else if (s == 45)
+		step_camera_controls();
+	else if (s == 46)
 		step_message();
-	else if (s == 62)
+	else if (s == 47)
 		step_layer_duplicate();
-	else if (s == 63)
+	else if (s == 48)
 		step_layer_merge_down();
-	else if (s == 64)
+	else if (s == 49)
 		step_layer_mask_ops();
-	else if (s == 65)
+	else if (s == 50)
 		step_layer_fill_ops();
-	else if (s == 66)
+	else if (s == 51)
 		step_layer_merge_group();
-	else if (s == 67)
+	else if (s == 52)
 		step_layer_path();
-	else if (s == 68)
+	else if (s == 53)
 		step_layer_curve_text();
-	else if (s == 69)
+	else if (s == 54)
 		step_layer_paths_save();
-	else if (s == 70)
+	else if (s == 55)
 		step_layer_paths_load();
-	else if (s == 71)
+	else if (s == 56)
 		step_layer_paths_verify();
 }
 
-int close_frames    = 0;
-int step_count      = 72;
-int expected_checks = 217;
+int step_count      = 57;
+int expected_checks = 133;
 
 void next_frame() {
 	if (sub == 0) {
@@ -2345,17 +1622,6 @@ void next_frame() {
 		script_notify_on_next_frame(next_frame);
 		return;
 	}
-
-	// The loaded project asks to trust its scripts, the dialog closes like its buttons close it and leaves the app usable
-	if (close_frames == 0 && script_box_shown()) {
-		ui_box_hide();
-	}
-	if (close_frames < 40 && script_box_shown()) {
-		close_frames += 1;
-		script_notify_on_next_frame(next_frame);
-		return;
-	}
-	check(!script_box_shown(), string("dialog closes (%d frames)", close_frames));
 
 	if (checks != expected_checks) {
 		failures += 1;
@@ -2388,16 +1654,11 @@ void main() {
 	file_project    = string("%s/test_project.arm", dir_project);
 	file_screenshot = string("%s/test_screenshot.png", tmp_root);
 	file_envmap     = string("%s/test_envmap.hdr", tmp_root);
-	file_geom       = string("%s/test_geom.obj", dir_mesh);
-	dir_lightmap    = string("%s/lightmap", tmp_root);
 	file_draw_png   = string("%s/test_draw.png", tmp_root);
 	file_draw_jpg   = string("%s/test_draw.jpg", tmp_root);
 	file_packed     = string("%s/test_packed.png", dir_checks);
 	dir_custom      = string("%s/custom", tmp_root);
 	file_font       = string("%s/test_font.ttf", tmp_root);
-	file_sound      = string("%s/test_sound.wav", tmp_root);
-	file_atlas      = string("%s/test_atlas.png", tmp_root);
-	file_skin       = string("%s/test_skin.skin", dir_mesh);
 	file_paths      = string("%s/test_paths.arm", dir_project);
 
 	iron_create_directory(tmp_root);
@@ -2406,7 +1667,6 @@ void main() {
 	iron_create_directory(dir_mesh);
 	iron_create_directory(dir_material);
 	iron_create_directory(dir_checks);
-	iron_create_directory(dir_lightmap);
 	iron_create_directory(dir_custom);
 
 	printf("[test] output directory %s", tmp_root);

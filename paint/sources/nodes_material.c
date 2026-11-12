@@ -15,10 +15,7 @@ void nodes_material_init() {
 	material_node_init();
 	object_info_node_init();
 	picker_node_init();
-	script_node_init();
-	shader_node_init();
 	texture_coordinate_node_init();
-	tilesheet_animation_node_init();
 	tilesheet_node_init();
 	uv_map_node_init();
 	value_node_init();

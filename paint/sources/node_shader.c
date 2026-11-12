@@ -256,11 +256,6 @@ char *node_shader_get(node_shader_t *raw) {
 	string_buffer_free(&raw->frag_normal);
 	string_buffer_free(&raw->frag_attribs);
 
-	if (node_shader_dump_to_script) {
-		node_shader_dump_to_script = false;
-		tab_scripts_set(string_buffer_get(&out));
-	}
-
 	return string_buffer_get(&out);
 }
 

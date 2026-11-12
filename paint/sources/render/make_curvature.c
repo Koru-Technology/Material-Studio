@@ -584,7 +584,7 @@ static void make_curvature_dilate(f32 *out, u8 *mask, i32 w, i32 h, i32 passes, 
 
 // Input value, followed through group inputs to the group node sockets and taken from a linked Value node
 static f32 make_curvature_input(ui_node_t *node, i32 socket, ui_node_canvas_t *canvas, ui_node_t_array_t *parents, i32 depth) {
-	ui_node_link_t *l    = nodes_mesh_link(canvas, node, socket);
+	ui_node_link_t *l    = util_nodes_link(canvas, node, socket);
 	ui_node_t      *from = l != NULL ? ui_get_node(canvas->nodes, l->from_id) : NULL;
 	if (from != NULL && string_equals(from->type, "GROUP_INPUT") && depth > 0) {
 		ui_node_t    *parent = parents->buffer[depth - 1];

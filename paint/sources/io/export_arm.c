@@ -122,26 +122,6 @@ string_array_t *export_arm_fonts_to_files(char *project_path, slot_font_t_array_
 	return font_files;
 }
 
-string_array_t *export_arm_sounds_to_files(char *project_path, slot_sound_t_array_t *sounds) {
-	string_array_t *sound_files = any_array_create_from_raw((void *[]){}, 0);
-	for (i32 i = 0; i < sounds->length; ++i) {
-		slot_sound_t *f = sounds->buffer[i];
-#ifdef IRON_IOS
-		bool same_drive = false;
-#else
-		bool same_drive = char_at(project_path, 0)[0] == char_at(f->file, 0)[0];
-#endif
-		// Convert sound path from absolute to relative
-		if (same_drive) {
-			any_array_push(sound_files, path_to_relative(project_path, f->file));
-		}
-		else {
-			any_array_push(sound_files, f->file);
-		}
-	}
-	return sound_files;
-}
-
 static bool export_arm_show_progress = false;
 
 static void export_arm_progress(f32 progress) {
@@ -161,8 +141,6 @@ buffer_t *export_arm_encode_project(char *path) {
 	// Path is where the project is imported from, asset paths are relative to it
 
 	export_arm_progress(0.0);
-	tab_timeline_prepare_save();
-	tab_scripts_strip_trailing_whitespace();
 
 	ui_node_canvas_t_array_t *mnodes = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
@@ -222,8 +200,6 @@ buffer_t *export_arm_encode_project(char *path) {
 		}
 	}
 
-	nodes_mesh_export_begin();
-
 	mesh_data_t_array_t *md = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 		mesh_object_t *p      = g_project->_->paint_objects->buffer[i];
@@ -234,7 +210,6 @@ buffer_t *export_arm_encode_project(char *path) {
 	char           *relative_to   = string_equals(g_project->_->filepath, "") ? path : g_project->_->filepath;
 	string_array_t *texture_files = export_arm_assets_to_files(relative_to, g_project->_->assets);
 	string_array_t *font_files    = export_arm_fonts_to_files(relative_to, g_project->_->fonts);
-	string_array_t *sound_files   = export_arm_sounds_to_files(relative_to, g_project->_->sounds);
 	string_array_t *mesh_files    = export_arm_meshes_to_files(relative_to);
 
 	i32 bits_pos = base_bits;
@@ -334,25 +309,6 @@ buffer_t *export_arm_encode_project(char *path) {
 		any_array_push(mesh_transforms, ar);
 	}
 	g_project->mesh_transforms = mesh_transforms;
-	util_path_tool_export();
-
-	// Source mesh bytes
-	// Meshes with no skin data store an empty buffer
-	buffer_t_array_t *mesh_skins = any_array_create_from_raw((void *[]){}, 0);
-	bool              has_skins  = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		buffer_t *blob = g_project->_->paint_objects->buffer[i]->data->_->skin_blob;
-		any_array_push(mesh_skins, blob != NULL ? blob : buffer_create(0));
-		has_skins = has_skins || blob != NULL;
-	}
-	g_project->mesh_skins = has_skins ? mesh_skins : NULL;
-
-	if (g_project->mesh_materials != NULL) {
-		g_project->mesh_materials = i32_array_create(g_project->_->paint_objects->length);
-		for (i32 i = 0; i < g_project->mesh_materials->length; ++i) {
-			g_project->mesh_materials->buffer[i] = tab_meshes_get_override(g_project->_->paint_objects->buffer[i]);
-		}
-	}
 
 	if (g_project->mesh_parents != NULL) {
 		g_project->mesh_parents = i32_array_create(g_project->_->paint_objects->length);
@@ -370,24 +326,11 @@ buffer_t *export_arm_encode_project(char *path) {
 		}
 	}
 
-	if (g_project->mesh_physics_shapes != NULL) {
-		g_project->mesh_physics_shapes = i32_array_create(g_project->_->paint_objects->length);
-		g_project->mesh_physics_masses = f32_array_create(g_project->_->paint_objects->length);
-		for (i32 i = 0; i < g_project->mesh_physics_shapes->length; ++i) {
-			object_t *o                               = g_project->_->paint_objects->buffer[i]->base;
-			g_project->mesh_physics_shapes->buffer[i] = util_physics_get_shape(o); // -1 = no physics
-			g_project->mesh_physics_masses->buffer[i] = util_physics_get_mass(o);
-		}
-	}
-
 	g_project->material_nodes = mnodes;
 	g_project->brush_nodes    = bnodes;
 	g_project->layer_datas    = ld;
 	g_project->font_assets    = font_files;
-	g_project->sound_assets   = sound_files;
 	g_project->mesh_assets    = mesh_files;
-
-	tab_timeline_export(g_project);
 
 #ifdef IRON_BGRA
 	g_project->is_bgra = true;
@@ -400,14 +343,12 @@ buffer_t *export_arm_encode_project(char *path) {
 	pack_assets = true;
 #endif
 	export_arm_progress(0.7);
-	if (pack_assets) { // Pack textures and sounds
+	if (pack_assets) {
 		export_arm_pack_assets(g_project, g_project->_->assets);
-		export_arm_pack_sounds(g_project, g_project->_->sounds);
 	}
 
 	export_arm_progress(0.8);
 	buffer_t *buffer = util_encode_project(g_project);
-	nodes_mesh_export_end();
 
 	for (i32 i = 0; i < ld->length; ++i) {
 		layer_data_t *d = ld->buffer[i];
@@ -424,8 +365,6 @@ buffer_t *export_arm_encode_project(char *path) {
 	array_free(ld);
 	free(ld);
 	g_project->layer_datas = NULL;
-	tab_timeline_export_free(g_project);
-	tab_timeline_finish_save();
 	return buffer;
 }
 
@@ -749,24 +688,6 @@ void export_arm_pack_assets(project_t *raw, asset_t_array_t *assets) {
 	for (i32 i = 0; i < temp_images->length; ++i) {
 		gpu_texture_t *image = temp_images->buffer[i];
 		gpu_delete_texture(image);
-	}
-}
-
-void export_arm_pack_sounds(project_t *raw, slot_sound_t_array_t *sounds) {
-	if (raw->packed_assets == NULL) {
-		raw->packed_assets = any_array_create_from_raw((void *[]){}, 0);
-	}
-	for (i32 i = 0; i < sounds->length; ++i) {
-		slot_sound_t *s = sounds->buffer[i];
-		if (project_packed_asset_exists(raw->packed_assets, s->file)) {
-			continue;
-		}
-		buffer_t *bytes = iron_load_blob(s->file);
-		if (bytes == NULL) {
-			continue;
-		}
-		packed_asset_t *pa = ALLOC_INIT(packed_asset_t, {.name = s->file, .bytes = bytes});
-		any_array_push(raw->packed_assets, pa);
 	}
 }
 

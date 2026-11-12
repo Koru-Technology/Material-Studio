@@ -104,14 +104,6 @@ typedef struct slot_font {
 	char               *file;
 } slot_font_t;
 
-typedef struct slot_sound {
-	struct gpu_texture *image; // 200px
-	i32                 id;
-	sound_t            *sound;
-	char               *name;
-	char               *file;
-} slot_sound_t;
-
 typedef struct config {
 	char *version;
 	char *sha; // Commit id
@@ -157,7 +149,6 @@ typedef struct config {
 	bool                 show_asset_names;
 	bool                 material_params;
 	bool                 brush_params;
-	bool                 mesh_params;
 	bool                 touch_ui;
 	bool                 splash_screen;
 	bool                 header_pinned;   // Tool properties in the header, floating toolbar otherwise
@@ -182,11 +173,8 @@ typedef struct config {
 	i32                  dilate_radius;
 	char                *blender;
 	bool                 grid_snap;
-	bool                 auto_run_scripts;
 	bool                 experimental;
 	i32                  neural_res;
-	i32                  console_model;
-	tools_t              tools;
 	bool                 view2d_grid_show;
 	i32                  view2d_grid_cell;
 	bool                 view2d_grid_snap;
@@ -195,7 +183,6 @@ typedef struct config {
 	bool                 tooltips;
 	char                *materials_folder; // Library root, "" when not set
 	bool                 reload_project;   // Open the last project on startup
-	bool                 show_scripts;     // Scripts tab
 	i32                  cloud_resolution; // Cloud materials texture size, 0 - 1K, 1 - 2K, 2 - 4K, 3 - 8K
 	bool                 library_cloud;      // Library tab shows the cloud materials
 	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
@@ -372,7 +359,6 @@ typedef struct context {
 	struct slot_layer          *layer;
 	struct slot_brush          *brush;
 	struct slot_font           *font;
-	struct slot_sound          *sound;
 	tool_type_t                 tool;
 	bool                        layer_preview_dirty;
 	bool                        layers_preview_dirty;
@@ -411,21 +397,6 @@ typedef struct context {
 	f32                         decal_x;
 	f32                         decal_y;
 	bool                        brush_camera_align;
-	bool                        select_active; // Select tool
-	bool                        select_dragging;
-	bool                        select_2d;
-	f32                         select_start_x;
-	f32                         select_start_y;
-	f32                         select_x1;
-	f32                         select_y1;
-	f32                         select_x2;
-	f32                         select_y2;
-	select_mode_t               select_mode;
-	f32_array_t                *select_points;
-	f32                         select_cursor_x;
-	f32                         select_cursor_y;
-	f64                         select_click_time;
-	struct gpu_texture         *select_mask_image;
 	bool                        write_icon_on_export;
 	struct gpu_texture         *text_tool_image;
 	char                       *text_tool_text;
@@ -695,22 +666,12 @@ typedef struct node_group {
 } node_group_t;
 
 typedef struct {
-	char           *name;
-	string_array_t *objects;
-	string_array_t *layers;
-	string_array_t *hidden;
-	char           *nested_mesh;
-} stage_t;
-
-typedef struct {
 	struct asset_t_array         *assets;
 	struct slot_material_t_array *materials;
 	struct slot_brush_t_array    *brushes;
 	struct slot_layer_t_array    *layers;
 	struct slot_font_t_array     *fonts;
-	struct slot_sound_t_array    *sounds;
 	struct node_group_t_array    *material_groups;
-	struct node_group_t_array    *mesh_groups;
 	char                         *filepath;
 	i32                           next_asset_id;
 	struct mesh_object_t_array   *paint_objects;
@@ -740,30 +701,14 @@ typedef struct project {
 	struct buffer_t_array                       *material_icons;
 	struct material_data2_t_array               *material_datas;
 	struct string_array                         *font_assets;
-	struct string_array                         *sound_assets;
 	struct layer_data_t_array                   *layer_datas;
 	struct mesh_data_t_array                    *mesh_datas;
 	struct string_array                         *mesh_assets;
 	struct buffer_t_array                       *mesh_icons;
 	struct f32_array_t_array                    *mesh_transforms;
-	struct i32_array                            *mesh_materials;
 	struct i32_array                            *mesh_parents;
-	struct i32_array                            *mesh_physics_shapes; // -1 = no physics
-	struct f32_array                            *mesh_physics_masses;
-	struct buffer_t_array                       *mesh_skins; // NULL = no skin
 	struct i32_array                            *atlas_objects;
 	struct string_array                         *atlas_names;
-	struct string_array                         *script_datas;
-	struct string_array                         *script_names;
-	i32                                          timeline_frame_rate;
-	i32                                          timeline_max_frames;
-	struct timeline_layer_keyframe_data_t_array *timeline_layers;
-	struct timeline_mesh_keyframe_data_t_array  *timeline_meshes;
-	struct stage_t_array                        *stages;
-	struct ui_node_canvas_t_array               *mesh_nodes;
-	struct i32_array                            *mesh_nodes_objects; // Object index for each mesh_nodes canvas
-	struct f32_array_t_array                    *mesh_paths;         // Path and curve tool points
-	struct ui_node_canvas_t_array               *mesh_groups;
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
 	project_runtime_t                           *_;
@@ -838,28 +783,6 @@ typedef struct layer_data {
 	f32               height_blend_offset;
 	f32               height_blend_reach;
 } layer_data_t;
-
-typedef struct timeline_layer_keyframe_data {
-	i32               frame;
-	i32               layer_index;
-	struct buffer    *texpaint;
-	struct buffer    *texpaint_nor;
-	struct buffer    *texpaint_pack;
-	struct buffer    *texpaint_sculpt;
-	struct f32_array *path_points;
-	struct f32_array *path_points_world;
-	struct f32_array *path_points_camera;
-	struct i32_array *path_points_parent;
-	bool              tween;
-} timeline_layer_keyframe_data_t;
-
-typedef struct timeline_mesh_keyframe_data {
-	i32               stage_index;
-	i32               frame;
-	i32               mesh_index;
-	struct f32_array *transform;
-	bool              tween;
-} timeline_mesh_keyframe_data_t;
 
 typedef struct shader_out {
 	char *out_basecol;
@@ -974,12 +897,6 @@ typedef struct slot_font_t_array {
 	int           capacity;
 } slot_font_t_array_t;
 
-typedef struct slot_sound_t_array {
-	slot_sound_t **buffer;
-	int            length;
-	int            capacity;
-} slot_sound_t_array_t;
-
 typedef struct slot_layer_t_array {
 	slot_layer_t **buffer;
 	int            length;
@@ -1076,18 +993,6 @@ typedef struct layer_data_t_array {
 	int            capacity;
 } layer_data_t_array_t;
 
-typedef struct timeline_layer_keyframe_data_t_array {
-	timeline_layer_keyframe_data_t **buffer;
-	int                              length;
-	int                              capacity;
-} timeline_layer_keyframe_data_t_array_t;
-
-typedef struct timeline_mesh_keyframe_data_t_array {
-	timeline_mesh_keyframe_data_t **buffer;
-	int                             length;
-	int                             capacity;
-} timeline_mesh_keyframe_data_t_array_t;
-
 typedef struct material_data2 {
 	bool paint_base;
 	bool paint_opac;
@@ -1125,12 +1030,6 @@ typedef struct swatch_color_t_array {
 	int              length;
 	int              capacity;
 } swatch_color_t_array_t;
-
-typedef struct stage_t_array {
-	stage_t **buffer;
-	int       length;
-	int       capacity;
-} stage_t_array_t;
 
 // Per node ui state of the custom node editors (ui_nodes_editor_state())
 typedef struct ui_nodes_editor_state {

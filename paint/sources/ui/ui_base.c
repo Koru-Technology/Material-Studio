@@ -171,10 +171,6 @@ void ui_base_update(void *_) {
 		util_layer_update_path();
 		util_touch_update();
 		util_stencil_transform();
-		util_select_update();
-		util_shape_tool_update();
-		util_text_tool_update();
-		util_path_tool_update();
 		util_layer_check_path_grab();
 		util_brush_update();
 		util_layer_update_preview();
@@ -240,8 +236,6 @@ tab_draw_t *_draw_callback_create(void (*f)(i32 *), i32 id, char *name, i32 area
 
 void ui_base_init_tabs() {
 	_draw_callback_create(tab_layers_draw, TAB_LAYERS, "Layers", TAB_AREA_SIDEBAR0);
-	_draw_callback_create(tab_meshes_draw, TAB_MESHES, "Meshes", TAB_AREA_SIDEBAR0);
-	_draw_callback_create(tab_scripts_draw, TAB_SCRIPTS, "Scripts", TAB_AREA_SIDEBAR0);
 	_draw_callback_create(tab_materials_draw, TAB_MATERIALS, "Materials", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_library_draw, TAB_LIBRARY, "Library", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_smart_materials_draw, TAB_SMART, "Smart", TAB_AREA_SIDEBAR1);
@@ -249,9 +243,7 @@ void ui_base_init_tabs() {
 	_draw_callback_create(tab_browser_draw, TAB_BROWSER, "Browser", TAB_AREA_STATUS);
 	_draw_callback_create(tab_textures_draw, TAB_TEXTURES, "Textures", TAB_AREA_STATUS);
 	_draw_callback_create(tab_fonts_draw, TAB_FONTS, "Fonts", TAB_AREA_STATUS);
-	_draw_callback_create(tab_sounds_draw, TAB_SOUNDS, "Sounds", TAB_AREA_STATUS);
 	_draw_callback_create(tab_swatches_draw, TAB_SWATCHES, "Swatches", TAB_AREA_STATUS);
-	_draw_callback_create(tab_timeline_draw, TAB_TIMELINE, "Timeline", TAB_AREA_STATUS);
 	_draw_callback_create(tab_console_draw, TAB_CONSOLE, "Console", TAB_AREA_STATUS);
 #ifndef NDEBUG
 	_draw_callback_create(tab_debug_draw, TAB_DEBUG, "Debug", TAB_AREA_SIDEBAR0)->closed_default = true;
@@ -263,25 +255,13 @@ void ui_base_init_tabs() {
 
 #ifdef IRON_IOS
 	if (config_is_iphone()) {
-		ui_base_all_tabs[TAB_TIMELINE]->closed_default = true;
 		ui_base_all_tabs[TAB_SWATCHES]->closed_default = true;
-		ui_base_all_tabs[TAB_SOUNDS]->closed_default   = true;
 	}
 #endif
 
-#ifdef IRON_ANDROID
-	if (iron_window_width() <= 1080) {
-		ui_base_all_tabs[TAB_TIMELINE]->closed_default = true;
-		ui_base_all_tabs[TAB_SOUNDS]->closed_default   = true;
-	}
-#endif
 }
 
 void ui_base_toggle_distract_free() {
-	if (player_in_editor) {
-		player_stop();
-		return;
-	}
 	if (base_player_lock) {
 		return;
 	}
@@ -328,10 +308,6 @@ void ui_base_show_material_nodes() {
 
 void ui_base_show_brush_nodes() {
 	ui_base_show_nodes(CANVAS_TYPE_BRUSH);
-}
-
-void ui_base_show_mesh_nodes() {
-	ui_base_show_nodes(CANVAS_TYPE_MESH);
 }
 
 void ui_base_show_2d_view(view_2d_type_t type) {

@@ -1,160 +1,13 @@
 
 #include "global.h"
 
-static i32 script_stage_index(char *name) {
-	if (g_project->stages == NULL || name == NULL) {
-		return -1;
-	}
-	for (i32 i = 0; i < g_project->stages->length; ++i) {
-		if (string_equals(g_project->stages->buffer[i]->name, name)) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-void script_set_stage(char *name) {
-	i32 i = script_stage_index(name);
-	if (i >= 0) {
-		tab_stages_selected = i;
-		tab_stages_apply(g_project->stages->buffer[i]);
-	}
-}
-
-void script_stage_create(char *name) {
-	if (name == NULL || script_stage_index(name) >= 0) {
-		return;
-	}
-	if (g_project->stages == NULL) {
-		g_project->stages = any_array_create_from_raw((void *[]){}, 0);
-	}
-	stage_t *s = tab_stages_create_stage(string_copy(name));
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		string_array_push(s->layers, g_project->_->layers->buffer[i]->name);
-	}
-	any_array_push(g_project->stages, s);
-}
-
-void script_stage_add_object(char *stage, char *object) {
-	i32 i = script_stage_index(stage);
-	if (i < 0 || object == NULL) {
-		return;
-	}
-	stage_t *s = g_project->stages->buffer[i];
-	if (string_array_index_of(s->objects, object) < 0) {
-		string_array_push(s->objects, string_copy(object));
-	}
-}
-
-void script_stage_remove_object(char *stage, char *object) {
-	i32 i = script_stage_index(stage);
-	if (i < 0 || object == NULL) {
-		return;
-	}
-	stage_t *s   = g_project->stages->buffer[i];
-	i32      idx = string_array_index_of(s->objects, object);
-	if (idx >= 0) {
-		array_splice(s->objects, idx, 1);
-	}
-	tab_stages_set_hidden(s, object, false);
-}
-
-void script_stage_set_hidden(char *stage, char *object, bool hidden) {
-	i32 i = script_stage_index(stage);
-	if (i >= 0 && object != NULL) {
-		tab_stages_set_hidden(g_project->stages->buffer[i], string_copy(object), hidden);
-	}
-}
-
 void script_show_envmap(bool b) {
 	g_context->show_envmap = b;
 	context_load_envmap();
 	g_context->ddirty = 2;
 }
 
-char *script_get_stage() {
-	stage_t *s = tab_stages_get_stage();
-	return s != NULL ? s->name : NULL;
-}
-
-void script_set_tilesheet_anim(object_t *o, char *anim) {
-	mesh_object_t *mo = (mesh_object_t *)o->ext;
-
-	// Locate the material slot
-	i32 slot_index = tab_meshes_get_override(mo);
-	if (slot_index < 0) {
-		for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-			if (g_project->_->materials->buffer[i]->data == mo->material) {
-				slot_index = i;
-				break;
-			}
-		}
-	}
-
-	slot_material_t *slot = g_project->_->materials->buffer[slot_index];
-
-	// Locate the tilesheet animation node
-	for (i32 i = 0; i < slot->canvas->nodes->length; ++i) {
-		ui_node_t *node = slot->canvas->nodes->buffer[i];
-		if (!string_equals(node->type, "TILESHEET_ANIM")) {
-			continue;
-		}
-
-		ui_node_button_t *enum_but = node->buttons->buffer[4];
-		char             *texts    = u8_array_to_string(enum_but->data);
-		string_array_t   *names    = string_split(texts, "\n");
-		i32               match    = -1;
-		for (i32 j = 0; j < (i32)names->length; ++j) {
-			if (string_equals(names->buffer[j], anim)) {
-				match = j;
-				break;
-			}
-		}
-		string_split_free(names);
-		free(texts);
-		if (match == -1) {
-			continue;
-		}
-
-		enum_but->default_value->buffer[0] = (f32)match;
-		make_material_parse_paint_material(true);
-
-		// Material override
-		for (i32 k = 0; k < g_project->_->paint_objects->length; ++k) {
-			mesh_object_t *po = g_project->_->paint_objects->buffer[k];
-			if (tab_meshes_get_override(po) == slot_index) {
-				tab_meshes_set_override(po, slot_index);
-				g_context->ddirty = 2;
-			}
-		}
-		return;
-	}
-}
-
 static transform_t *_script_tween_transform = NULL;
-
-static void script_tween_done(void) {
-	_script_tween_transform = NULL;
-}
-
-static void script_tween_tick(void) {
-	_script_tween_transform->dirty = true;
-}
-
-void script_tween_to(object_t *o, vec4_t to, f32 speed) {
-	if (_script_tween_transform != NULL) {
-		return;
-	}
-
-	transform_t *t          = o->transform;
-	_script_tween_transform = t;
-	f32    duration         = vec4_dist(t->loc, to) / speed;
-	ease_t ease             = EASE_LINEAR;
-	tween_to(
-	    ALLOC_INIT(tween_anim_t, {.target = &t->loc.x, .to = to.x, .duration = duration, .ease = ease, .tick = script_tween_tick, .done = script_tween_done}));
-	tween_to(ALLOC_INIT(tween_anim_t, {.target = &t->loc.y, .to = to.y, .duration = duration, .ease = ease}));
-	tween_to(ALLOC_INIT(tween_anim_t, {.target = &t->loc.z, .to = to.z, .duration = duration, .ease = ease}));
-}
 
 static void script_timer_done(void *fn) {
 	minic_call_fn(fn, NULL, 0);
@@ -310,27 +163,6 @@ slot_material_t *script_get_material(char *s) {
 	return NULL;
 }
 
-sound_t *script_get_sound(char *s) {
-	for (int i = 0; i < g_project->_->sounds->length; ++i) {
-		if (string_equals(g_project->_->sounds->buffer[i]->name, s)) {
-			return g_project->_->sounds->buffer[i]->sound;
-		}
-	}
-	return NULL;
-}
-
-i32 script_sound_remove(char *s) {
-	for (int i = 0; i < g_project->_->sounds->length; ++i) {
-		slot_sound_t *sound = g_project->_->sounds->buffer[i];
-		if (string_equals(sound->name, s)) {
-			data_delete_sound(sound->file);
-			array_splice(g_project->_->sounds, i, 1);
-			return 1;
-		}
-	}
-	return 0;
-}
-
 gpu_texture_t *script_get_texture(char *s) {
 	for (int i = 0; i < g_project->_->assets->length; ++i) {
 		if (string_equals(g_project->_->assets->buffer[i]->name, s)) {
@@ -357,7 +189,7 @@ static bool script_paint_active = false;
 static bool script_paint_first  = true;
 
 static bool script_paint_allowed(void) {
-	if (args_player || g_context == NULL || g_context->layer == NULL || g_context->material == NULL) {
+	if (g_context == NULL || g_context->layer == NULL || g_context->material == NULL) {
 		return false;
 	}
 	if (!script_paint_active && layers_fill_paint_tool(g_context->tool)) {
@@ -366,7 +198,7 @@ static bool script_paint_allowed(void) {
 	if (slot_layer_is_group(g_context->layer)) {
 		return false;
 	}
-	if (g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER && g_context->tool != TOOL_TYPE_MATERIAL &&
+	if (g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER &&
 	    g_context->tool != TOOL_TYPE_COLORID) {
 		return false;
 	}
@@ -731,9 +563,7 @@ void script_layer_set_name(slot_layer_t *l, char *name) {
 	if (!script_layer_valid(l) || name == NULL || name[0] == '\0') {
 		return;
 	}
-	char *old_name = l->name;
-	l->name        = string_copy(slot_layer_unique_name(l, name));
-	tab_stages_rename_layer(old_name, l->name);
+	l->name = string_copy(slot_layer_unique_name(l, name));
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
@@ -1053,7 +883,7 @@ slot_layer_t *script_layer_new_text(char *text) {
 
 bool script_layer_add_path_point(slot_layer_t *l, f32 x, f32 y) {
 	// x, y in 0..1 viewport space like script_paint(), a curve takes anchor, control, anchor, control, ...
-	if (args_player || !script_layer_valid(l) || !slot_layer_is_path(l)) {
+	if (!script_layer_valid(l) || !slot_layer_is_path(l)) {
 		return false;
 	}
 	gpu_texture_t *current;
@@ -1076,7 +906,7 @@ bool script_layer_add_path_point(slot_layer_t *l, f32 x, f32 y) {
 
 void script_layer_repaint_path(slot_layer_t *l) {
 	// Repaints with the current path material, after its nodes or the path points changed
-	if (args_player || !script_layer_valid(l) || !slot_layer_is_path(l)) {
+	if (!script_layer_valid(l) || !slot_layer_is_path(l)) {
 		return;
 	}
 	gpu_texture_t *current;
@@ -1084,27 +914,6 @@ void script_layer_repaint_path(slot_layer_t *l) {
 	script_gpu_begin(&current, &in_use);
 	util_layer_repaint_path(l);
 	script_layer_op_end(current, in_use);
-}
-
-static void script_bake_lightmap_done(void *fn) {
-	if (fn != NULL) {
-		minic_call_fn(fn, NULL, 0);
-	}
-}
-
-void script_bake_lightmap(object_t *o, i32 res, i32 samples, f32 range, char *path, void *done) {
-	if (o == NULL || o->ext == NULL || !string_equals(o->ext_type, "mesh_object_t") || path == NULL) {
-		return;
-	}
-	render_path_raytrace_bake_lightmap(o->ext, res, samples, range, path, script_bake_lightmap_done, done);
-}
-
-bool script_bake_lightmap_busy(void) {
-	return render_path_raytrace_bake_lightmap_busy();
-}
-
-void script_bake_lightmap_cancel(void) {
-	render_path_raytrace_bake_lightmap_cancel();
 }
 
 // Brush settings of the session: taken before a --script runs and put back when it quits, scripts change them freely
@@ -1219,20 +1028,6 @@ void script_quit(void) {
 	iron_stop();
 }
 
-void script_set_tools(i32 tools) {
-	if ((tools != TOOLS_PAINT && tools != TOOLS_OBJECT) || tools == g_config->tools) {
-		return;
-	}
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
-	base_init_undo_layers();
-	g_config->tools = tools;
-	base_update_tools();
-	script_gpu_end(current, in_use);
-	g_context->ddirty = 2;
-}
-
 void script_project_new(void) {
 	gpu_texture_t *current;
 	bool           in_use;
@@ -1240,6 +1035,13 @@ void script_project_new(void) {
 	project_new(true);
 	script_gpu_end(current, in_use);
 	g_context->ddirty = 2;
+}
+
+// New project on a template mesh by name, cube_bevel, sphere_2048, ...
+void script_project_new_template(char *name) {
+	project_new_template = name;
+	script_project_new();
+	project_new_template = NULL;
 }
 
 static char *script_resolve_path(char *path) {
@@ -1318,14 +1120,6 @@ void script_append_mesh(char *path) {
 	script_append_mesh_finish(first);
 	script_gpu_end(current, in_use);
 	g_context->ddirty = 2;
-}
-
-extern int plugins_skinning_frame;
-
-void script_append_mesh_skinned(char *glb_path) {
-	plugins_skinning_frame = 0;
-	script_append_mesh(glb_path);
-	plugins_skinning_frame = -1;
 }
 
 buffer_t *script_load_blob(char *path) {
@@ -1487,42 +1281,11 @@ void script_material_set(slot_material_t *m) {
 	script_gpu_end(current, in_use);
 }
 
-static slot_material_t *script_object_material_slot = NULL;
 static shader_data_t   *script_object_material_data = NULL;
-
-static void script_object_material_reset(void) {
-	script_object_material_slot = NULL;
-	script_object_material_data = NULL;
-}
-
-void script_object_set_material(object_t *o, slot_material_t *m) {
-	if (o == NULL || g_project == NULL || g_project->_ == NULL || g_project->_->materials == NULL) {
-		return;
-	}
-	if (!string_equals(o->ext_type, "mesh_object_t")) {
-		return;
-	}
-	i32 index = m != NULL ? array_index_of(g_project->_->materials, m) : -1;
-	if (index >= 0 && m != script_object_material_slot) {
-		script_object_material_reset();
-		script_object_material_slot = m;
-		script_object_material_data = make_mesh_preview_viewport(m);
-	}
-	bool was_paintable = tab_meshes_get_linked_override(o->ext) < 0;
-	tab_meshes_set_override_data(o->ext, index, index >= 0 ? script_object_material_data : NULL);
-	if (was_paintable != (tab_meshes_get_linked_override(o->ext) < 0)) {
-		util_mesh_visibility_changed();
-	}
-	g_project->mesh_materials = i32_array_create(0);
-	g_context->ddirty         = 2;
-}
 
 void script_material_delete(slot_material_t *m) {
 	if (m == NULL || g_project == NULL || g_project->_ == NULL || g_project->_->materials == NULL) {
 		return;
-	}
-	if (m == script_object_material_slot) {
-		script_object_material_reset();
 	}
 	if (g_project->_->materials->length <= 1) {
 		return;
@@ -1643,28 +1406,6 @@ void script_material_remove_node(ui_node_t *node) {
 	}
 }
 
-void script_material_add_input(ui_node_t *node, char *type, char *name) {
-	ui_node_canvas_t *canvas = script_material_canvas();
-	if (canvas == NULL || node == NULL || type == NULL || !string_equals(node->type, "SHADER_GPU")) {
-		return;
-	}
-	nodes_mesh_script_add_socket(canvas, node, type, name);
-	if (ui_nodes_hwnd != NULL) {
-		ui_nodes_hwnd->redraws = 2;
-	}
-}
-
-void script_material_add_output(ui_node_t *node, char *type, char *name) {
-	ui_node_canvas_t *canvas = script_material_canvas();
-	if (canvas == NULL || node == NULL || type == NULL || !string_equals(node->type, "SHADER_GPU")) {
-		return;
-	}
-	nodes_mesh_script_add_socket_to(canvas, node, type, name, true);
-	if (ui_nodes_hwnd != NULL) {
-		ui_nodes_hwnd->redraws = 2;
-	}
-}
-
 static ui_node_socket_t *script_material_socket(ui_node_t *node, bool is_input, i32 socket) {
 	if (node == NULL) {
 		return NULL;
@@ -1734,248 +1475,10 @@ void script_material_set_text(ui_node_t *node, i32 button, char *text) {
 	}
 }
 
-static ui_node_canvas_t *script_mesh_canvas(mesh_object_t *o) {
-	if (o == NULL || g_project == NULL || array_index_of(g_project->_->paint_objects, o) < 0) {
-		return NULL;
-	}
-	return nodes_mesh_get(o, true)->canvas;
-}
-
-static void script_mesh_redraw(void) {
-	if (ui_nodes_hwnd != NULL) {
-		ui_nodes_hwnd->redraws = 2;
-	}
-}
-
-ui_node_t *script_mesh_create_node_at(mesh_object_t *o, char *type, f32 x, f32 y) {
-	if (type == NULL || script_mesh_canvas(o) == NULL) {
-		return NULL;
-	}
-	ui_node_t *node = nodes_mesh_create_node(o, type);
-	if (node != NULL) {
-		node->x = x;
-		node->y = y;
-	}
-	script_mesh_redraw();
-	return node;
-}
-
-ui_node_t *script_mesh_get_node(mesh_object_t *o, char *type) {
-	ui_node_canvas_t *canvas = script_mesh_canvas(o);
-	for (i32 i = 0; canvas != NULL && type != NULL && i < canvas->nodes->length; ++i) {
-		if (string_equals(canvas->nodes->buffer[i]->type, type)) {
-			return canvas->nodes->buffer[i];
-		}
-	}
-	return NULL;
-}
-
-void script_mesh_connect(mesh_object_t *o, ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket) {
-	ui_node_canvas_t *canvas = script_mesh_canvas(o);
-	if (canvas == NULL || from == NULL || to == NULL) {
-		return;
-	}
-	if (from_socket < 0 || from_socket >= from->outputs->length || to_socket < 0 || to_socket >= to->inputs->length) {
-		return;
-	}
-	script_material_remove_links_to(canvas, to->id, to_socket);
-	any_array_push(canvas->links, project_create_node_link(canvas->links, from->id, from_socket, to->id, to_socket));
-	script_mesh_redraw();
-}
-
-void script_mesh_disconnect(mesh_object_t *o, ui_node_t *to, i32 to_socket) {
-	ui_node_canvas_t *canvas = script_mesh_canvas(o);
-	if (canvas == NULL || to == NULL) {
-		return;
-	}
-	script_material_remove_links_to(canvas, to->id, to_socket);
-	script_mesh_redraw();
-}
-
-void script_mesh_remove_node(mesh_object_t *o, ui_node_t *node) {
-	ui_node_canvas_t *canvas = script_mesh_canvas(o);
-	if (canvas == NULL || node == NULL || string_equals(node->type, "MESH_OUTPUT")) {
-		return;
-	}
-	ui_remove_node(node, canvas);
-	script_mesh_redraw();
-}
-
-void script_mesh_add_input(mesh_object_t *o, ui_node_t *node, char *type, char *name) {
-	ui_node_canvas_t *canvas = script_mesh_canvas(o);
-	if (canvas == NULL || node == NULL || type == NULL || !string_equals(node->type, "MESH_SCRIPT")) {
-		return;
-	}
-	nodes_mesh_script_add_socket(canvas, node, type, name);
-	script_mesh_redraw();
-}
-
-void script_mesh_update(mesh_object_t *o) {
-	if (script_mesh_canvas(o) == NULL) {
-		return;
-	}
-	nodes_mesh_update(o, false);
-	script_mesh_redraw();
-}
-
-static node_group_t *script_mesh_group(char *name) {
-	if (name == NULL || g_project == NULL) {
-		return NULL;
-	}
-	return nodes_mesh_get_group(name);
-}
-
-i32 script_mesh_group_create(char *name) {
-	if (name == NULL || string_equals(name, "") || g_project == NULL || nodes_mesh_get_group(name) != NULL) {
-		return 0;
-	}
-	nodes_mesh_init();
-	ui_node_canvas_t *c = mesh_group_canvas(string_copy(name));
-	any_array_push(g_project->_->mesh_groups, ALLOC_INIT(node_group_t, {.canvas = c, .nodes = ui_nodes_create()}));
-	script_mesh_redraw();
-	return 1;
-}
-
-i32 script_mesh_group_remove(char *name) {
-	node_group_t *g = script_mesh_group(name);
-	if (g == NULL || nodes_mesh_group_in_use(g)) {
-		return 0;
-	}
-	array_remove(g_project->_->mesh_groups, g);
-	array_remove(ui_nodes_group_stack, g);
-	script_mesh_redraw();
-	return 1;
-}
-
-ui_node_t *script_mesh_group_create_node_at(char *group, char *type, f32 x, f32 y) {
-	node_group_t *g = script_mesh_group(group);
-	if (g == NULL || type == NULL || string_equals(type, "GROUP_INPUT") || string_equals(type, "GROUP_OUTPUT")) {
-		return NULL;
-	}
-	ui_node_t *node = nodes_mesh_create_node_in(g->canvas, g->nodes, type);
-	if (node != NULL) {
-		node->x = x;
-		node->y = y;
-	}
-	script_mesh_redraw();
-	return node;
-}
-
-ui_node_t *script_mesh_group_get_node(char *group, char *type) {
-	node_group_t *g = script_mesh_group(group);
-	for (i32 i = 0; g != NULL && type != NULL && i < g->canvas->nodes->length; ++i) {
-		if (string_equals(g->canvas->nodes->buffer[i]->type, type)) {
-			return g->canvas->nodes->buffer[i];
-		}
-	}
-	return NULL;
-}
-
-static void script_mesh_connect_in(ui_node_canvas_t *canvas, ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket) {
-	if (canvas == NULL || from == NULL || to == NULL || array_index_of(canvas->nodes, from) < 0 || array_index_of(canvas->nodes, to) < 0) {
-		return;
-	}
-	if (from_socket < 0 || from_socket >= from->outputs->length || to_socket < 0 || to_socket >= to->inputs->length) {
-		return;
-	}
-	script_material_remove_links_to(canvas, to->id, to_socket);
-	any_array_push(canvas->links, project_create_node_link(canvas->links, from->id, from_socket, to->id, to_socket));
-	script_mesh_redraw();
-}
-
-void script_mesh_group_connect(char *group, ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket) {
-	node_group_t *g = script_mesh_group(group);
-	script_mesh_connect_in(g != NULL ? g->canvas : NULL, from, from_socket, to, to_socket);
-}
-
-void script_mesh_group_disconnect(char *group, ui_node_t *to, i32 to_socket) {
-	node_group_t *g = script_mesh_group(group);
-	if (g == NULL || to == NULL) {
-		return;
-	}
-	script_material_remove_links_to(g->canvas, to->id, to_socket);
-	script_mesh_redraw();
-}
-
-void script_mesh_group_remove_node(char *group, ui_node_t *node) {
-	node_group_t *g = script_mesh_group(group);
-	if (g == NULL || node == NULL || array_index_of(g->canvas->nodes, node) < 0 || string_equals(node->type, "GROUP_INPUT") ||
-	    string_equals(node->type, "GROUP_OUTPUT")) {
-		return;
-	}
-	ui_remove_node(node, g->canvas);
-	script_mesh_redraw();
-}
-
-void script_mesh_group_add_input(char *group, ui_node_t *node, char *type, char *name) {
-	node_group_t *g = script_mesh_group(group);
-	if (g == NULL || node == NULL || type == NULL || array_index_of(g->canvas->nodes, node) < 0) {
-		return;
-	}
-	if (string_equals(node->type, "MESH_SCRIPT")) {
-		nodes_mesh_script_add_socket(g->canvas, node, type, name);
-		script_mesh_redraw();
-		return;
-	}
-	bool is_input = string_equals(node->type, "GROUP_INPUT");
-	if (!is_input && !string_equals(node->type, "GROUP_OUTPUT")) {
-		return;
-	}
-	if (!string_equals(type, "MESH") && !string_equals(type, "VECTOR")) {
-		type = "VALUE";
-	}
-	if (name == NULL || string_equals(name, "")) {
-		name = string_equals(type, "MESH") ? _tr("Mesh") : nodes_material_get_socket_name(type);
-	}
-	any_array_push(is_input ? node->outputs : node->inputs, mesh_group_socket(node, string_copy(name), type, g->canvas));
-	ui_node_canvas_t_array_t *canvases = nodes_mesh_canvases();
-	for (i32 i = 0; i < canvases->length; ++i) {
-		nodes_material_sync_group_sockets(canvases->buffer[i], g->canvas->name, node);
-	}
-	array_delete(canvases);
-	script_mesh_redraw();
-}
-
-static ui_node_t *script_mesh_add_group_node(ui_node_canvas_t *canvas, ui_nodes_t *nodes, node_group_t *g, f32 x, f32 y) {
-	ui_node_t *node = ui_nodes_make_group_node_from(nodes_mesh_group_def, g->canvas, nodes, canvas);
-	node->x         = x;
-	node->y         = y;
-	any_array_push(canvas->nodes, node);
-	script_mesh_redraw();
-	return node;
-}
-
-ui_node_t *script_mesh_create_group_node_at(mesh_object_t *o, char *group, f32 x, f32 y) {
-	node_group_t *g = script_mesh_group(group);
-	if (g == NULL || script_mesh_canvas(o) == NULL) {
-		return NULL;
-	}
-	mesh_nodes_t *slot = nodes_mesh_get(o, true);
-	return script_mesh_add_group_node(slot->canvas, slot->nodes, g, x, y);
-}
-
-ui_node_t *script_mesh_group_create_group_node_at(char *parent, char *group, f32 x, f32 y) {
-	node_group_t *p = script_mesh_group(parent);
-	node_group_t *g = script_mesh_group(group);
-	if (p == NULL || g == NULL || nodes_mesh_group_contains(g, p->canvas->name, 0)) {
-		return NULL;
-	}
-	return script_mesh_add_group_node(p->canvas, p->nodes, g, x, y);
-}
-
-void script_mesh_group_update(char *group) {
-	if (script_mesh_group(group) == NULL) {
-		return;
-	}
-	nodes_mesh_update_all();
-	script_mesh_redraw();
-}
-
 void script_material_update(void) {
 	if (g_context == NULL || g_context->material == NULL) {
 		return;
 	}
-	script_object_material_reset();
 
 	gpu_texture_t *current;
 	bool           in_use;
@@ -1997,296 +1500,6 @@ void script_material_update(void) {
 	ui_dock_redraw(1);
 	g_context->ddirty  = 2;
 	g_context->rtdirty = 1;
-}
-
-string_array_t *script_shape_list(void) {
-	project_fetch_default_meshes();
-	return project_default_mesh_list;
-}
-
-object_t *script_shape_add(char *name) {
-	if (name == NULL || string_array_index_of(script_shape_list(), name) < 0) {
-		return NULL;
-	}
-	if (g_project == NULL || g_project->_ == NULL || g_project->_->paint_objects == NULL || g_project->_->paint_objects->length == 0) {
-		return NULL;
-	}
-
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
-	mesh_object_t *mo = tab_meshes_append_shape(name);
-	script_gpu_end(current, in_use);
-
-	if (mo == NULL) {
-		return NULL;
-	}
-
-	tab_meshes_reset_preview_map();
-	g_context->ddirty = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-	return mo->base;
-}
-
-object_t *script_object_duplicate(object_t *o) {
-	if (o == NULL || !string_equals(o->ext_type, "mesh_object_t")) {
-		return NULL;
-	}
-
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
-	mesh_object_t *dup = util_mesh_duplicate_object(o->ext);
-	script_gpu_end(current, in_use);
-
-	g_context->ddirty = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-	return dup->base;
-}
-
-object_t *script_object_clone(char *name) {
-	return script_object_duplicate(script_get_object(name));
-}
-
-void script_object_remove(object_t *o) {
-	if (o == NULL || !string_equals(o->ext_type, "mesh_object_t")) {
-		return;
-	}
-	if (g_project->_->paint_objects->length < 2 || array_index_of(g_project->_->paint_objects, o->ext) < 0) {
-		return;
-	}
-
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
-	tab_meshes_draw_context_menu_delete(o->ext);
-	script_gpu_end(current, in_use);
-
-	tab_meshes_reset_preview_map();
-	g_context->ddirty = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-}
-
-void script_object_origin_to_geometry(object_t *o) {
-	if (o == NULL || !string_equals(o->ext_type, "mesh_object_t") || array_index_of(g_project->_->paint_objects, o->ext) < 0) {
-		return;
-	}
-
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
-	util_mesh_origin_to_geometry(util_mesh_get_hierarchy(o->ext));
-	script_gpu_end(current, in_use);
-	g_context->ddirty = 2;
-}
-
-void script_object_set_name(object_t *o, char *name) {
-	if (o == NULL || name == NULL) {
-		return;
-	}
-
-	if (o->ext != NULL && string_equals(o->ext_type, "mesh_object_t")) {
-		mesh_object_t *mo = o->ext;
-		if (array_index_of(g_project->_->paint_objects, mo) >= 0) {
-			name = util_mesh_unique_name(mo, name);
-		}
-		util_mesh_rename(mo, name);
-	}
-	else {
-		char *new_name = string_copy(name);
-		tab_stages_rename_object(o->name, new_name);
-		o->name = new_name;
-	}
-
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-}
-
-static physics_body_t *script_physics_body(object_t *o) {
-	return o != NULL && o->_ != NULL ? o->_->body : NULL;
-}
-
-void script_physics_set_shape(object_t *o, i32 shape) {
-	if (o == NULL) {
-		return;
-	}
-
-	bool dynamic = shape == PHYSICS_SHAPE_BOX || shape == PHYSICS_SHAPE_SPHERE;
-	util_physics_set(o, shape, shape < 0 ? 0.0 : (dynamic ? 1.0 : 0.0));
-	g_project->mesh_physics_shapes = i32_array_create(0);
-}
-
-void script_physics_set_mass(object_t *o, f32 mass) {
-	if (o == NULL) {
-		return;
-	}
-	util_physics_set_mass(o, mass);
-	g_project->mesh_physics_shapes = i32_array_create(0);
-}
-
-void script_physics_apply_impulse(object_t *o, f32 x, f32 y, f32 z) {
-	physics_body_t *body = script_physics_body(o);
-	if (body != NULL) {
-		physics_body_apply_impulse(body->_body, (vec4_t){x, y, z, 0.0});
-	}
-}
-
-void script_physics_set_velocity(object_t *o, f32 x, f32 y, f32 z) {
-	physics_body_t *body = script_physics_body(o);
-	if (body != NULL) {
-		physics_body_set_velocity(body->_body, x, y, z);
-	}
-}
-
-void script_physics_sync_transform(object_t *o) {
-	physics_body_t *body = script_physics_body(o);
-	if (body != NULL) {
-		physics_body_sync_transform(body);
-	}
-}
-
-physics_body_t *script_physics_get_body(object_t *o) {
-	return script_physics_body(o);
-}
-
-vec4_t script_physics_get_pos(object_t *o) {
-	vec4_t          pos  = {0.0, 0.0, 0.0, 1.0};
-	physics_body_t *body = script_physics_body(o);
-	if (body != NULL) {
-		physics_body_get_pos(body->_body, &pos);
-	}
-	return pos;
-}
-
-vec4_t script_physics_get_velocity(object_t *o) {
-	vec4_t          vel  = {0.0, 0.0, 0.0, 0.0};
-	physics_body_t *body = script_physics_body(o);
-	if (body != NULL) {
-		physics_body_get_velocity(body->_body, &vel);
-	}
-	return vel;
-}
-
-void script_physics_set_rotation(object_t *o, quat_t rot) {
-	physics_body_t *body = script_physics_body(o);
-	if (body != NULL) {
-		physics_body_set_rotation(body, rot);
-	}
-}
-
-static bool script_pick_hit(object_t *o, ray_t *ray, f32 margin, f32 *out_t) {
-	if (o->ext == NULL || !string_equals(o->ext_type, "mesh_object_t")) {
-		return false;
-	}
-	mesh_data_t *data = ((mesh_object_t *)o->ext)->data;
-	if (data == NULL) {
-		return false;
-	}
-
-	vec4_t min;
-	vec4_t max;
-	mesh_data_calculate_aabb_min_max(data, &min, &max);
-
-	vec4_t scale = o->transform->scale;
-	vec4_t grow  = (vec4_t){scale.x != 0.0 ? margin / math_abs(scale.x) : 0.0, scale.y != 0.0 ? margin / math_abs(scale.y) : 0.0,
-                           scale.z != 0.0 ? margin / math_abs(scale.z) : 0.0, 0.0};
-	min = (vec4_t){min.x - grow.x, min.y - grow.y, min.z - grow.z, 0.0};
-	max = (vec4_t){max.x + grow.x, max.y + grow.y, max.z + grow.z, 0.0};
-
-	mat4_t inv    = mat4_inv(o->transform->world);
-	vec4_t origin = vec4_apply_mat4((vec4_t){ray->origin.x, ray->origin.y, ray->origin.z, 1.0}, inv);
-	vec4_t dir    = vec4_apply_mat4((vec4_t){ray->dir.x, ray->dir.y, ray->dir.z, 0.0}, inv);
-
-	f32 t0         = -10000.0;
-	f32 t1         = 10000.0;
-	f32 o_axis[3]  = {origin.x, origin.y, origin.z};
-	f32 d_axis[3]  = {dir.x, dir.y, dir.z};
-	f32 lo_axis[3] = {min.x, min.y, min.z};
-	f32 hi_axis[3] = {max.x, max.y, max.z};
-
-	for (i32 i = 0; i < 3; ++i) {
-		if (math_abs(d_axis[i]) < 1e-9) {
-			if (o_axis[i] < lo_axis[i] || o_axis[i] > hi_axis[i]) {
-				return false;
-			}
-			continue;
-		}
-
-		f32 ta = (lo_axis[i] - o_axis[i]) / d_axis[i];
-		f32 tb = (hi_axis[i] - o_axis[i]) / d_axis[i];
-		if (ta > tb) {
-			f32 tmp = ta;
-			ta      = tb;
-			tb      = tmp;
-		}
-		if (ta > t0) {
-			t0 = ta;
-		}
-		if (tb < t1) {
-			t1 = tb;
-		}
-		if (t0 > t1) {
-			return false;
-		}
-	}
-
-	if (t1 < 0.0) {
-		return false;
-	}
-	*out_t = t0 >= 0.0 ? t0 : t1;
-	return true;
-}
-
-object_t *script_pick_object() {
-	if (g_project == NULL || g_project->_ == NULL || g_project->_->paint_objects == NULL) {
-		return NULL;
-	}
-
-	ray_t *ray = raycast_get_ray(mouse_view_x(), mouse_view_y(), scene_camera);
-	if (ray == NULL) {
-		return NULL;
-	}
-
-	object_t *hit    = NULL;
-	f32       best_t = 10000.0;
-
-	mesh_object_t_array_t *objects = g_project->_->paint_objects;
-	for (i32 i = 0; i < objects->length; ++i) {
-		object_t *o = objects->buffer[i]->base;
-		f32       t;
-		if (o->visible && script_pick_hit(o, ray, 0.02, &t) && t < best_t) {
-			best_t = t;
-			hit    = o;
-		}
-	}
-	return hit;
-}
-
-// Where the mouse ray hits the terrain body, nan on a miss
-vec4_t script_pick_terrain() {
-	vec4_t hit = vec4_nan();
-	ray_t *ray = raycast_get_ray(mouse_view_x(), mouse_view_y(), scene_camera);
-	if (ray == NULL || !physics_terrain_raycast(ray->origin, ray->dir, &hit)) {
-		return vec4_nan();
-	}
-	return hit;
-}
-
-// Where the ray from origin along dir hits the terrain body, nan on a miss
-vec4_t script_physics_terrain_raycast(vec4_t origin, vec4_t dir) {
-	vec4_t hit = vec4_nan();
-	if (!physics_terrain_raycast(origin, dir, &hit)) {
-		return vec4_nan();
-	}
-	return hit;
-}
-
-// Where the ray from origin along dir first hits a static box body within max_dist, nan on a miss
-vec4_t script_physics_box_raycast(vec4_t origin, vec4_t dir, f32 max_dist) {
-	vec4_t hit = vec4_nan();
-	if (!physics_box_raycast(origin, dir, max_dist, &hit)) {
-		return vec4_nan();
-	}
-	return hit;
 }
 
 typedef struct script_click {
@@ -2570,81 +1783,6 @@ void script_show_message(char *text, f32 seconds) {
 static f32   _script_fade_opacity = 0.0f;
 static char *_script_fade_stage   = NULL;
 
-static void script_fade_draw(void *_) {
-	draw_begin(NULL, false, 0);
-	draw_set_color((u32)(_script_fade_opacity * 255.0f) << 24);
-	draw_filled_rect(0, 0, iron_window_width(), iron_window_height());
-	draw_end();
-}
-
-static void script_fade_in_done(void *_) {
-	sys_remove_update(script_fade_draw);
-	_script_fade_stage = NULL;
-}
-
-static void script_fade_out_done(void *_) {
-	script_set_stage(_script_fade_stage);
-	tween_reset();
-	tween_to(ALLOC_INIT(tween_anim_t, {.target = &_script_fade_opacity, .to = 0.0f, .duration = 1.0f, .ease = EASE_LINEAR, .done = script_fade_in_done}));
-}
-
-void script_fade_to_stage(char *stage) {
-	if (_script_fade_stage != NULL) {
-		return; // Fade in progress
-	}
-	_script_fade_stage = string_copy(stage);
-
-	_script_fade_opacity = 0.0f;
-	sys_notify_on_update(script_fade_draw, NULL);
-
-	// Fade to black, set the stage, then fade back in
-	tween_to(ALLOC_INIT(tween_anim_t, {.target = &_script_fade_opacity, .to = 1.0f, .duration = 1.0f, .ease = EASE_LINEAR, .done = script_fade_out_done}));
-}
-
-void script_timeline_resume(void) {
-	tab_timeline_resume();
-}
-
-void script_timeline_pause(void) {
-	tab_timeline_pause();
-}
-
-i32 script_timeline_get_frame(void) {
-	if (nodes_mesh_script_running) {
-		nodes_mesh_eval_reads_frame = true;
-	}
-	return tab_timeline_selected_frame;
-}
-
-void script_timeline_set_frame(i32 frame) {
-	tab_timeline_set_frame(frame);
-}
-
-void script_clip_play(object_t *o, i32 start, i32 end) {
-	if (o != NULL && o->ext_type != NULL && string_equals(o->ext_type, "mesh_object_t")) {
-		tab_timeline_clip_play(o->ext, start, end);
-	}
-}
-
-// Frames in the skinned mesh clip, 0 without one
-i32 script_clip_frame_count(object_t *o) {
-	if (o == NULL || o->ext_type == NULL || !string_equals(o->ext_type, "mesh_object_t")) {
-		return 0;
-	}
-	mesh_object_t *mo = o->ext;
-	return util_skin_frame_count(mo->data->_->skin_blob);
-}
-
-void script_clip_set_frame(object_t *o, i32 frame) {
-	if (o != NULL && o->ext_type != NULL && string_equals(o->ext_type, "mesh_object_t")) {
-		tab_timeline_clip_set_frame(o->ext, frame);
-	}
-}
-
-void script_timeline_add_keyframe(char *name, i32 frame) {
-	tab_timeline_add_named_keyframe(name, frame);
-}
-
 typedef struct particle {
 	float frame;
 	float x;
@@ -2691,27 +1829,6 @@ void script_draw_particles(gpu_texture_t *texture, float x, float y, float w, fl
 	}
 }
 
-void script_reset_runtime(void) {
-	script_stop();
-	render_pass_remove_all();
-	tween_reset();
-	sys_remove_update(script_message_draw);
-	_script_message = NULL;
-	sys_remove_update(script_fade_draw);
-	_script_fade_stage   = NULL;
-	_script_fade_opacity = 0.0f;
-	memset(particles, 0, sizeof(particles));
-	_script_tween_transform = NULL;
-#ifdef IRON_AUDIO
-	if (data_cached_sounds != NULL) {
-		string_array_t *keys = map_keys(data_cached_sounds);
-		for (i32 i = 0; i < keys->length; ++i) {
-			audio_stop(any_map_get(data_cached_sounds, keys->buffer[i]));
-		}
-	}
-#endif
-}
-
 typedef struct script_screenshot_request {
 	char *path;
 	i32   frames;
@@ -2730,9 +1847,6 @@ static void script_screenshot_end_frame(void *_) {
 
 	draw_begin(NULL, false, 0);
 	draw_image(_script_screenshot_target, 0, 0);
-	if (agent_running) {
-		agent_draw_overlay();
-	}
 	draw_end();
 
 	buffer_t *pixels = gpu_get_texture_pixels(_script_screenshot_target);

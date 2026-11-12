@@ -176,8 +176,7 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 		}
 	}
 
-	project->font_assets  = any_map_get(old, "font_assets");
-	project->sound_assets = any_map_get(old, "sound_assets");
+	project->font_assets = any_map_get(old, "font_assets");
 
 	any_array_t *lds = any_map_get(old, "layer_datas");
 	if (lds != NULL) {
@@ -256,85 +255,26 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 		}
 	}
 
-	project->mesh_assets         = any_map_get(old, "mesh_assets");
-	project->mesh_icons          = any_map_get(old, "mesh_icons");
-	project->mesh_transforms     = any_map_get(old, "mesh_transforms");
-	project->mesh_materials      = any_map_get(old, "mesh_materials");
-	project->mesh_parents        = any_map_get(old, "mesh_parents");
-	project->mesh_physics_shapes = any_map_get(old, "mesh_physics_shapes");
-	project->mesh_physics_masses = any_map_get(old, "mesh_physics_masses");
-	project->mesh_skins          = any_map_get(old, "mesh_skins");
-	project->atlas_objects       = any_map_get(old, "atlas_objects");
-	project->atlas_names         = any_map_get(old, "atlas_names");
-	project->script_datas        = any_map_get(old, "script_datas");
-	project->script_names        = any_map_get(old, "script_names");
-	project->timeline_frame_rate = armpack_map_get_i32(old, "timeline_frame_rate");
-	project->timeline_max_frames = armpack_map_get_i32(old, "timeline_max_frames");
-
-	any_array_t *tls = any_map_get(old, "timeline_layers");
-	if (tls != NULL) {
-		project->timeline_layers = any_array_create_from_raw((void *[]){}, 0);
-		for (i32 i = 0; i < tls->length; ++i) {
-			any_map_t                      *old = tls->buffer[i];
-			timeline_layer_keyframe_data_t *d   = ALLOC_INIT(timeline_layer_keyframe_data_t, {0});
-			d->frame                            = armpack_map_get_i32(old, "frame");
-			d->layer_index                      = armpack_map_get_i32(old, "layer_index");
-			d->texpaint                         = any_map_get(old, "texpaint");
-			d->texpaint_nor                     = any_map_get(old, "texpaint_nor");
-			d->texpaint_pack                    = any_map_get(old, "texpaint_pack");
-			d->texpaint_sculpt                  = any_map_get(old, "texpaint_sculpt");
-			d->path_points                      = any_map_get(old, "path_points");
-			d->path_points_world                = any_map_get(old, "path_points_world");
-			d->path_points_camera               = any_map_get(old, "path_points_camera");
-			d->path_points_parent               = any_map_get(old, "path_points_parent");
-			d->tween                            = armpack_map_get_i32(old, "tween") > 0;
-			any_array_push(project->timeline_layers, d);
-		}
-	}
-
-	any_array_t *tms = any_map_get(old, "timeline_meshes");
-	if (tms != NULL) {
-		project->timeline_meshes = any_array_create_from_raw((void *[]){}, 0);
-		for (i32 i = 0; i < tms->length; ++i) {
-			any_map_t                     *old = tms->buffer[i];
-			timeline_mesh_keyframe_data_t *d   = ALLOC_INIT(timeline_mesh_keyframe_data_t, {0});
-			d->frame                           = armpack_map_get_i32(old, "frame");
-			d->mesh_index                      = armpack_map_get_i32(old, "mesh_index");
-			d->stage_index                     = armpack_map_get_i32(old, "stage_index");
-			d->transform                       = any_map_get(old, "transform");
-			d->tween                           = armpack_map_get_i32(old, "tween") > 0;
-			any_array_push(project->timeline_meshes, d);
-		}
-	}
-
-	any_array_t *stages = any_map_get(old, "stages");
-	if (stages != NULL) {
-		project->stages = any_array_create_from_raw((void *[]){}, 0);
-		for (i32 i = 0; i < stages->length; ++i) {
-			any_map_t *old = stages->buffer[i];
-			stage_t   *d   = ALLOC_INIT(stage_t, {0});
-			d->name        = any_map_get(old, "name");
-			d->objects     = any_map_get(old, "objects");
-			d->layers      = any_map_get(old, "layers");
-			d->hidden      = any_map_get(old, "hidden");
-			d->nested_mesh = any_map_get(old, "nested_mesh");
-			any_array_push(project->stages, d);
-		}
-	}
-
-	project->mesh_nodes         = import_arm_get_node_canvas_array(old, "mesh_nodes");
-	project->mesh_nodes_objects = any_map_get(old, "mesh_nodes_objects");
-	project->mesh_paths         = any_map_get(old, "mesh_paths");
-	project->mesh_groups        = import_arm_get_node_canvas_array(old, "mesh_groups");
-	project->linear_blending    = armpack_map_get_i32(old, "linear_blending") > 0;
-	project->id_map             = string_copy(any_map_get(old, "id_map"));
+	project->mesh_assets     = any_map_get(old, "mesh_assets");
+	project->mesh_icons      = any_map_get(old, "mesh_icons");
+	project->mesh_transforms = any_map_get(old, "mesh_transforms");
+	project->mesh_parents    = any_map_get(old, "mesh_parents");
+	project->atlas_objects   = any_map_get(old, "atlas_objects");
+	project->atlas_names     = any_map_get(old, "atlas_names");
+	project->linear_blending = armpack_map_get_i32(old, "linear_blending") > 0;
+	project->id_map          = string_copy(any_map_get(old, "id_map"));
 
 	return project;
 }
 
+// Scene data (per-mesh materials, physics, skins, scripts, timeline, stages, mesh nodes, sounds) was removed, its keys are dropped
+project_t *import_arm_from_version_28(any_map_t *old) {
+	return import_arm_from_map_to_arm(old);
+}
+
 project_t *import_arm_from_version_27(any_map_t *old) {
 	// Projects from before have no ID map
-	return import_arm_from_map_to_arm(old);
+	return import_arm_from_version_28(old);
 }
 
 project_t *import_arm_from_version_26(any_map_t *old) {
@@ -598,7 +538,7 @@ project_t *import_arm_from_old(buffer_t *b) {
 	    import_arm_from_version_10, import_arm_from_version_11, import_arm_from_version_12, import_arm_from_version_13, import_arm_from_version_14,
 	    import_arm_from_version_15, import_arm_from_version_16, import_arm_from_version_17, import_arm_from_version_18, import_arm_from_version_19,
 	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22, import_arm_from_version_23, import_arm_from_version_24, import_arm_from_version_25,
-	    import_arm_from_version_26, import_arm_from_version_27,
+	    import_arm_from_version_26, import_arm_from_version_27, import_arm_from_version_28,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (import_arm_is_version(b, i32_to_string(v))) {

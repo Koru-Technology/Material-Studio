@@ -51,7 +51,6 @@ void parser_material_init() {
 
 	parser_material_out_normaltan = "float3(0.5, 0.5, 1.0)";
 
-	parser_material_script_links      = NULL;
 	parser_material_parsing_basecolor = false;
 }
 

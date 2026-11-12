@@ -165,7 +165,6 @@ shader_data_t *make_mesh_preview_viewport(slot_material_t *slot) {
 	tool_type_t    _tool                 = g_context->tool;
 	i32            _fill_type            = g_context->fill_type;
 	slot_layer_t  *_layer                = g_context->layer;
-	bool           _select_active        = g_context->select_active;
 	bool           _picker_material_mask = g_context->picker_material_mask;
 	bool           _picker_color_mask    = g_context->picker_color_mask;
 	gpu_texture_t *_brush_stencil_image  = g_context->brush_stencil_image;
@@ -174,7 +173,6 @@ shader_data_t *make_mesh_preview_viewport(slot_material_t *slot) {
 	g_context->tool                      = TOOL_TYPE_FILL;
 	g_context->fill_type                 = FILL_TYPE_OBJECT;
 	g_context->layer                     = ALLOC_INIT(slot_layer_t, {.fill_material = slot, .uv_type = UV_TYPE_UVMAP, .scale = 1.0, .visible = true});
-	g_context->select_active             = false;
 	g_context->picker_material_mask      = false;
 	g_context->picker_color_mask         = false;
 	g_context->brush_stencil_image       = NULL;
@@ -189,7 +187,6 @@ shader_data_t *make_mesh_preview_viewport(slot_material_t *slot) {
 	g_context->fill_type = _fill_type;
 	free(g_context->layer);
 	g_context->layer                = _layer;
-	g_context->select_active        = _select_active;
 	g_context->picker_material_mask = _picker_material_mask;
 	g_context->picker_color_mask    = _picker_color_mask;
 	g_context->brush_stencil_image  = _brush_stencil_image;

@@ -87,8 +87,6 @@ char *history_action_to_string(history_action_t action) {
 		return tr("Replace Swatches");
 	case HISTORY_ACTION_EDIT_SWATCH:
 		return tr("Edit Swatch");
-	case HISTORY_ACTION_OBJECT_TRANSFORM:
-		return tr("Transform Object");
 	case HISTORY_ACTION_MASK_HEIGHT_BLEND:
 		return tr("Mask Height Blend");
 	}
@@ -185,14 +183,12 @@ static void history_swap_merge(history_step_t *step, bool undo) {
 	if (step->action == HISTORY_ACTION_DELETE_LAYER) {
 		tab_layers_remap_all_layer_pointers(pointers);
 		for (i32 i = 0; i < saved->length; ++i) {
-			tab_stages_add_layer(saved->buffer[i]->name);
 		}
 	}
 
 	i32 top = step->merge_start + saved->length - 1;
 	context_set_layer(layers->buffer[undo ? step->layer : top >= 0 ? top : 0]);
 	g_context->layers_preview_dirty = true;
-	tab_timeline_sync();
 }
 
 static void history_swap_order(history_step_t *step) {
@@ -242,7 +238,6 @@ void history_swap_layer_props(history_step_t *step) {
 	}
 	else if (step->action == HISTORY_ACTION_LAYER_NAME) {
 		char *t = l->name;
-		tab_stages_rename_layer(l->name, step->layer_name);
 		l->name          = step->layer_name;
 		step->layer_name = t;
 		context_set_layer(l);
@@ -363,34 +358,8 @@ void history_swap_swatch(history_step_t *step) {
 	ui_header_handle->redraws = 2;
 }
 
-void history_swap_object_transform(history_step_t *step) {
-	object_t    *o = g_project->_->paint_objects->buffer[step->object]->base;
-	transform_t *t = o->transform;
-
-	vec4_t loc         = t->loc;
-	quat_t rot         = t->rot;
-	vec4_t scale       = t->scale;
-	t->loc             = step->object_loc;
-	t->rot             = step->object_rot;
-	t->scale           = step->object_scale;
-	step->object_loc   = loc;
-	step->object_rot   = rot;
-	step->object_scale = scale;
-
-	transform_build_matrix(t);
-	transform_compute_dim(t);
-
-	physics_body_t *pb = o->_->body;
-	if (pb != NULL) {
-		physics_body_sync_transform(pb);
-	}
-	util_mesh_transform_changed();
-	context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
-	ui_header_handle->redraws = 2;
-}
-
 static node_group_t_array_t *history_groups(history_step_t *step) {
-	return step->canvas_type == CANVAS_TYPE_MESH ? g_project->_->mesh_groups : g_project->_->material_groups;
+	return g_project->_->material_groups;
 }
 
 ui_node_canvas_t *history_get_canvas(history_step_t *step) {
@@ -417,31 +386,6 @@ void history_swap_canvas(history_step_t *step) {
 		history_set_canvas(step, step->canvas);
 		step->canvas        = _canvas;
 		g_context->material = g_project->_->materials->buffer[step->material];
-	}
-	else if (step->canvas_type == CANVAS_TYPE_MESH && step->canvas_group >= 0) {
-		node_group_t     *g       = g_project->_->mesh_groups->buffer[step->canvas_group];
-		ui_node_canvas_t *_canvas = history_get_canvas(step);
-		history_set_canvas(step, step->canvas);
-		step->canvas                        = _canvas;
-		g->nodes->nodes_selected_id->length = 0;
-		nodes_mesh_update_all();
-		ui_nodes_hwnd->redraws = 2;
-		return;
-	}
-	else if (step->canvas_type == CANVAS_TYPE_MESH) {
-		if (step->object < 0 || step->object >= g_project->_->paint_objects->length) {
-			return;
-		}
-		mesh_object_t    *o                    = g_project->_->paint_objects->buffer[step->object];
-		mesh_nodes_t     *slot                 = nodes_mesh_get(o, true);
-		ui_node_canvas_t *_canvas              = slot->canvas;
-		slot->canvas                           = step->canvas;
-		step->canvas                           = _canvas;
-		g_context->paint_object                = o;
-		slot->nodes->nodes_selected_id->length = 0;
-		nodes_mesh_update(o, false);
-		ui_nodes_hwnd->redraws = 2;
-		return;
 	}
 	else {
 		ui_node_canvas_t *_canvas                          = g_project->_->brushes->buffer[step->brush]->canvas;
@@ -611,9 +555,6 @@ void history_undo() {
 		else if (step->action == HISTORY_ACTION_EDIT_SWATCH) {
 			history_swap_swatch(step);
 		}
-		else if (step->action == HISTORY_ACTION_OBJECT_TRANSFORM) {
-			history_swap_object_transform(step);
-		}
 		else if (step->action == HISTORY_ACTION_DELETE_NODE_GROUP) {
 			node_group_t *ng = ALLOC_INIT(node_group_t, {.canvas = NULL, .nodes = ui_nodes_create()});
 			array_insert(history_groups(step), step->canvas_group, ng);
@@ -670,7 +611,6 @@ void history_undo() {
 			ui_menubar_menu_handle->redraws = 2;
 		}
 	}
-	nodes_mesh_request_refresh(); // Layer masks used by mesh nodes
 	base_redraw_status();
 }
 
@@ -900,9 +840,6 @@ void history_redo() {
 		else if (step->action == HISTORY_ACTION_EDIT_SWATCH) {
 			history_swap_swatch(step);
 		}
-		else if (step->action == HISTORY_ACTION_OBJECT_TRANSFORM) {
-			history_swap_object_transform(step);
-		}
 		else if (step->action == HISTORY_ACTION_DELETE_NODE_GROUP) {
 			history_swap_canvas(step);
 			array_remove(history_groups(step), history_groups(step)->buffer[step->canvas_group]);
@@ -960,7 +897,6 @@ void history_redo() {
 			ui_menubar_menu_handle->redraws = 2;
 		}
 	}
-	nodes_mesh_request_refresh(); // Layer masks used by mesh nodes
 	base_redraw_status();
 }
 
@@ -1129,7 +1065,6 @@ history_step_t *history_delete_layer(slot_layer_t *l) {
 	for (i32 i = 0; i < step->merge_layers->length; ++i) {
 		array_remove(layers, step->merge_layers->buffer[i]);
 	}
-	tab_timeline_sync();
 	context_set_layer(layers->buffer[start > 0 ? start - 1 : 0]);
 	return step;
 }
@@ -1299,20 +1234,6 @@ void history_duplicate_brush() {
 	step->canvas         = util_clone_canvas(g_context->brush->canvas);
 }
 
-void history_object_transform(mesh_object_t *o, vec4_t loc, quat_t rot, vec4_t scale) {
-	if (array_index_of(g_project->_->paint_objects, o) == -1) {
-		return;
-	}
-	mesh_object_t *prev     = g_context->paint_object;
-	g_context->paint_object = o;
-	history_step_t *step    = history_push(HISTORY_ACTION_OBJECT_TRANSFORM);
-	g_context->paint_object = prev;
-
-	step->object_loc   = loc;
-	step->object_rot   = rot;
-	step->object_scale = scale;
-}
-
 void history_new_swatch() {
 	history_step_t *step = history_push(HISTORY_ACTION_NEW_SWATCH);
 	step->swatch         = array_index_of(g_project->swatches, g_context->swatch);
@@ -1366,7 +1287,7 @@ void history_duplicate_material() {
 
 void history_delete_material_group(node_group_t *group) {
 	history_step_t *step = history_push(HISTORY_ACTION_DELETE_NODE_GROUP);
-	step->canvas_type    = ui_nodes_canvas_type == CANVAS_TYPE_MESH ? CANVAS_TYPE_MESH : CANVAS_TYPE_MATERIAL;
+	step->canvas_type    = CANVAS_TYPE_MATERIAL;
 	step->canvas_group   = array_index_of(history_groups(step), group);
 	step->canvas         = util_clone_canvas(group->canvas);
 }

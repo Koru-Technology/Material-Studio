@@ -86,8 +86,6 @@ typedef struct mesh_data_runtime {
 	gpu_buffer_t          *vertex_buffer;
 	gpu_buffer_t          *index_buffer;
 	gpu_vertex_structure_t structure;
-	buffer_t              *skin_blob;          // Skinned animation
-	i32                    skin_frame;         // Frame the vertices are posed at, -1 = unknown
 	i32                    skin_pending_frame; // Frame to pose at once back in view
 	bool                   skin_pending;
 	bool                   owns_arrays;

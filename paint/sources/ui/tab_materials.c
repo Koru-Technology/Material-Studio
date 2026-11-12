@@ -13,10 +13,6 @@ void tab_materials_button_nodes() {
 	}
 }
 
-void tab_materials_draw_slots_update_fill_layers(void *_) {
-	layers_update_fill_layers();
-}
-
 void tab_materials_update_material() {
 	ui_header_handle->redraws = 2;
 	ui_nodes_hwnd->redraws    = 2;
@@ -58,7 +54,6 @@ void tab_materials_update_material_pointers(ui_node_t_array_t *nodes, i32 delete
 }
 
 static void tab_materials_on_material_removed(slot_material_t *m, i32 deleted) {
-	tab_meshes_on_material_deleted(deleted);
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		tab_materials_update_material_pointers(g_project->_->materials->buffer[i]->canvas->nodes, deleted);
 	}
@@ -112,12 +107,6 @@ static bool tab_materials_is_used(i32 index) {
 	}
 	for (i32 i = 0; i < g_project->_->material_groups->length; ++i) {
 		if (tab_materials_nodes_link_material(g_project->_->material_groups->buffer[i]->canvas->nodes, index)) {
-			return true;
-		}
-	}
-	// Override material in meshes tab
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		if (tab_meshes_get_override(g_project->_->paint_objects->buffer[i]) == index) {
 			return true;
 		}
 	}
@@ -188,11 +177,6 @@ void tab_materials_draw_slots_menu() {
 
 	if (g_project->_->materials->length > 1 && ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
 		tab_materials_delete_material(m);
-	}
-
-	if (g_config->experimental && ui_menu_button(tr("Inspect as Script"), "", ICON_SEARCH)) {
-		node_shader_dump_to_script = true;
-		context_select_material(i);
 	}
 
 	ui_menu_separator();
@@ -323,9 +307,6 @@ void tab_materials_draw_slots(bool mini) {
 			if (state == UI_STATE_STARTED && g_ui->input_y > g_ui->_window_y) {
 				if (g_context->material != g_project->_->materials->buffer[i]) {
 					context_select_material(i);
-					if (g_context->tool == TOOL_TYPE_MATERIAL) {
-						sys_notify_on_next_frame(&tab_materials_draw_slots_update_fill_layers, NULL);
-					}
 				}
 				base_drag_off_x    = -(mouse_x - uix - g_ui->_window_x - 3);
 				base_drag_off_y    = -(mouse_y - uiy - g_ui->_window_y + 1);
@@ -487,7 +468,6 @@ void tab_materials_accept_material_drop(slot_material_t *material) {
 		array_remove(g_project->_->materials, material);
 		i32 new_pos = tab_materials_drag_pos - mat_pos > 0 ? tab_materials_drag_pos - 1 : tab_materials_drag_pos;
 		array_insert(g_project->_->materials, new_pos, material);
-		tab_meshes_on_material_reordered(mat_pos, new_pos);
 	}
 }
 
@@ -514,7 +494,6 @@ void tab_materials_apply_picked_color(swatch_color_t *swatch) {
 	if (layers_is_path_material()) {
 		layers_update_path_layers();
 	}
-	tab_meshes_refresh_overrides(g_context->material);
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 

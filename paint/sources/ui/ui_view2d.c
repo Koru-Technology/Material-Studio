@@ -63,75 +63,6 @@ ui_node_t *ui_view2d_get_selected_node() {
 	return ui_get_node(c->nodes, nodes->nodes_selected_id->buffer[0]);
 }
 
-void ui_view2d_play_sound() {
-	ui_view2d_stop_sound();
-	if (g_context->sound == NULL || g_context->sound->sound == NULL) {
-		return;
-	}
-#ifdef IRON_AUDIO
-	audio_play(g_context->sound->sound, false);
-#endif
-	ui_view2d_sound_playing = g_context->sound->sound;
-}
-
-void ui_view2d_stop_sound() {
-	if (ui_view2d_sound_playing == NULL) {
-		return;
-	}
-#ifdef IRON_AUDIO
-	audio_stop(ui_view2d_sound_playing);
-#endif
-	ui_view2d_sound_playing = NULL;
-}
-
-bool ui_view2d_sound_is_playing() {
-#ifdef IRON_AUDIO
-	if (ui_view2d_sound_playing != NULL && !audio_is_playing(ui_view2d_sound_playing)) {
-		ui_view2d_sound_playing = NULL;
-	}
-#endif
-	return ui_view2d_sound_playing != NULL;
-}
-
-#ifdef IRON_AUDIO
-void ui_view2d_draw_waveform(iron_a1_sound_t *sound, i32 x, i32 y, i32 w, i32 h) {
-	draw_set_color(g_theme->WINDOW_BG_COL);
-	draw_filled_rect(x, y, w, h);
-	f32 mid = y + h / 2.0;
-	draw_set_color(g_theme->BUTTON_COL);
-	draw_filled_rect(x, math_floor(mid), w, 1);
-
-	if (sound != NULL && sound->size > 0 && w > 0) {
-		i32 px0 = x < 0 ? -x : 0;
-		i32 px1 = x + w > ui_view2d_ww ? ui_view2d_ww - x : w;
-		draw_set_color(g_theme->HIGHLIGHT_COL);
-		for (i32 px = px0; px < px1; ++px) {
-			i32 s0 = (i64)px * sound->size / w;
-			i32 s1 = (i64)(px + 1) * sound->size / w;
-			if (s1 <= s0) {
-				s1 = s0 + 1;
-			}
-			i32 step = (s1 - s0) / 128 + 1;
-			i32 lo   = 0;
-			i32 hi   = 0;
-			for (i32 s = s0; s < s1; s += step) {
-				i32 v = (sound->left[s] + sound->right[s]) / 2;
-				if (v < lo) {
-					lo = v;
-				}
-				if (v > hi) {
-					hi = v;
-				}
-			}
-			f32 top = mid - hi / 32768.0 * h / 2.0;
-			f32 bot = mid - lo / 32768.0 * h / 2.0;
-			draw_filled_rect(x + px, top, 1, bot - top < 1 ? 1 : bot - top);
-		}
-	}
-	draw_set_color(0xffffffff);
-}
-#endif
-
 void ui_view2d_draw_edit() {
 	if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
 		ui_check(&ui_view2d_uvmap_show, tr("UV Map"), "");
@@ -141,38 +72,36 @@ void ui_view2d_draw_edit() {
 		}
 	}
 
-	if (ui_view2d_type != VIEW_2D_TYPE_SOUND) {
-		ui_check(&ui_view2d_tiled_show, tr("Tiled"), "");
-		if (ui_item_changed()) {
-			ui_view2d_hwnd->redraws = 2;
-			ui_menu_keep_open       = true;
-		}
-
-		ui_menu_separator();
-
-		ui_check(&g_config->view2d_grid_snap, tr("Grid Snap"), any_map_get(g_keymap, "grid_snap"));
-		if (ui_item_changed()) {
-			ui_menu_keep_open = true;
-		}
-
-		ui_check(&g_config->view2d_grid_show, tr("Show Grid"), "");
-		if (ui_item_changed()) {
-			ui_view2d_hwnd->redraws = 2;
-			ui_menu_keep_open       = true;
-		}
-
-		ui_slider_int(&g_config->view2d_grid_cell, tr("Grid Cell"), 1.0, 256.0, true, true, UI_ALIGN_RIGHT, true);
-		bool cell_changed = ui_item_changed();
-		if (g_ui->is_hovered) {
-			ui_tooltip(tr("Cell size in pixels"));
-		}
-		if (cell_changed) {
-			ui_view2d_hwnd->redraws = 2;
-			ui_menu_keep_open       = true;
-		}
-
-		ui_menu_separator();
+	ui_check(&ui_view2d_tiled_show, tr("Tiled"), "");
+	if (ui_item_changed()) {
+		ui_view2d_hwnd->redraws = 2;
+		ui_menu_keep_open       = true;
 	}
+
+	ui_menu_separator();
+
+	ui_check(&g_config->view2d_grid_snap, tr("Grid Snap"), any_map_get(g_keymap, "grid_snap"));
+	if (ui_item_changed()) {
+		ui_menu_keep_open = true;
+	}
+
+	ui_check(&g_config->view2d_grid_show, tr("Show Grid"), "");
+	if (ui_item_changed()) {
+		ui_view2d_hwnd->redraws = 2;
+		ui_menu_keep_open       = true;
+	}
+
+	ui_slider_int(&g_config->view2d_grid_cell, tr("Grid Cell"), 1.0, 256.0, true, true, UI_ALIGN_RIGHT, true);
+	bool cell_changed = ui_item_changed();
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Cell size in pixels"));
+	}
+	if (cell_changed) {
+		ui_view2d_hwnd->redraws = 2;
+		ui_menu_keep_open       = true;
+	}
+
+	ui_menu_separator();
 
 	if (ui_menu_button(tr("Zoom to Fit"), "", ICON_NONE)) {
 		ui_view2d_pan_x         = 0.0;
@@ -181,24 +110,11 @@ void ui_view2d_draw_edit() {
 		ui_view2d_hwnd->redraws = 2;
 	}
 
-	if (ui_view2d_type != VIEW_2D_TYPE_SOUND) {
-		g_ui->enabled = ui_view2d_tex != NULL;
-		if (ui_menu_button(tr("Capture Output"), "", ICON_PHOTO)) {
-			sys_notify_on_next_frame(&ui_view2d_capture_output, NULL);
-		}
-		g_ui->enabled = true;
+	g_ui->enabled = ui_view2d_tex != NULL;
+	if (ui_menu_button(tr("Capture Output"), "", ICON_PHOTO)) {
+		sys_notify_on_next_frame(&ui_view2d_capture_output, NULL);
 	}
-
-#ifdef IRON_AUDIO
-	if (ui_view2d_type == VIEW_2D_TYPE_SOUND && g_context->sound != NULL && g_context->sound->sound != NULL) {
-		iron_a1_sound_t *sound = g_context->sound->sound;
-		ui_menu_separator();
-		g_ui->enabled = false;
-		ui_text(string_tmp("%.2fs", sound->size / (float)sound->samples_per_second), UI_ALIGN_LEFT, 0x00000000);
-		ui_text(string_tmp("%d Hz, %d ch, %d bit", (int)sound->samples_per_second, sound->channel_count, sound->bits_per_sample), UI_ALIGN_LEFT, 0x00000000);
-		g_ui->enabled = true;
-	}
-#endif
+	g_ui->enabled = true;
 
 	if (ui_view2d_tex != NULL) {
 		ui_menu_separator();
@@ -214,12 +130,10 @@ void ui_view2d_draw_edit() {
 		g_ui->enabled = true;
 	}
 
-	char *view_type = ui_view2d_type == VIEW_2D_TYPE_ASSET   ? tr("Asset")
-	                  : ui_view2d_type == VIEW_2D_TYPE_NODE  ? tr("Node")
-	                  : ui_view2d_type == VIEW_2D_TYPE_FONT  ? tr("Font")
-	                  : ui_view2d_type == VIEW_2D_TYPE_UVMAP ? tr("UVMap")
-	                  : ui_view2d_type == VIEW_2D_TYPE_SOUND ? tr("Sound")
-	                                                         : tr("Layer");
+	char *view_type = ui_view2d_type == VIEW_2D_TYPE_ASSET  ? tr("Asset")
+	                  : ui_view2d_type == VIEW_2D_TYPE_NODE ? tr("Node")
+	                  : ui_view2d_type == VIEW_2D_TYPE_FONT ? tr("Font")
+	                                                        : tr("Layer");
 
 	if (ui_view2d_type == VIEW_2D_TYPE_NODE) {
 		ui_node_t *sel = ui_view2d_get_selected_node();
@@ -233,12 +147,10 @@ void ui_view2d_draw_edit() {
 	g_ui->enabled = true;
 }
 
-// Twisting with two fingers turns the layer while painting. Selections, the uv map, pixel snapping and moving layers
-// work on the upright image, the view turns back for them.
+// Twisting with two fingers turns the layer while painting. The uv map and pixel snapping work on the upright image,
+// the view turns back for them.
 bool ui_view2d_rotation_allowed() {
-	tool_type_t tool = g_context->tool;
-	return ui_view2d_type == VIEW_2D_TYPE_LAYER && tool != TOOL_TYPE_SELECT && tool != TOOL_TYPE_CURSOR && !ui_view2d_uvmap_show &&
-	       !context_is_pixel_snap() && !g_config->view2d_grid_snap;
+	return ui_view2d_type == VIEW_2D_TYPE_LAYER && !ui_view2d_uvmap_show && !context_is_pixel_snap() && !g_config->view2d_grid_snap;
 }
 
 // Center of the shown image the rotation turns around, relative to the window
@@ -546,7 +458,7 @@ void ui_view2d_update(void *_) {
 				ui_view2d_pan_y += 5;
 			}
 
-			if (!g_context->paint2d && g_config->touch_ui && g_ui->input_down && ui_view2d_type != VIEW_2D_TYPE_UVMAP) {
+			if (!g_context->paint2d && g_config->touch_ui && g_ui->input_down) {
 				ui_view2d_pan_x += g_ui->input_dx;
 				ui_view2d_pan_y += g_ui->input_dy;
 			}
@@ -588,12 +500,9 @@ void ui_view2d_update(void *_) {
 	if (g_context->pdirty >= 0) {
 		ui_view2d_hwnd->redraws = 2; // Paint was active
 	}
-	if (ui_view2d_type == VIEW_2D_TYPE_SOUND && ui_view2d_sound_playing != NULL) {
-		ui_view2d_hwnd->redraws = 2;
-	}
 
 	// Ensure UV map is drawn
-	if (ui_view2d_uvmap_show || ui_view2d_type == VIEW_2D_TYPE_UVMAP) {
+	if (ui_view2d_uvmap_show) {
 		util_uv_cache_uv_map();
 	}
 
@@ -633,13 +542,10 @@ void ui_view2d_update(void *_) {
 				}
 			}
 		}
-		else if (ui_view2d_type == VIEW_2D_TYPE_LAYER || ui_view2d_type == VIEW_2D_TYPE_UVMAP) {
+		else if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
 			slot_layer_t *layer = l;
 
 			if (g_config->brush_live && render_path_paint_live_layer_drawn > 0) {
-				layer = render_path_paint_live_layer;
-			}
-			if (g_context->tool == TOOL_TYPE_MATERIAL) {
 				layer = render_path_paint_live_layer;
 			}
 
@@ -683,14 +589,6 @@ void ui_view2d_update(void *_) {
 		else if (ui_view2d_type == VIEW_2D_TYPE_FONT) {
 			tex = g_context->font->image;
 		}
-#ifdef IRON_AUDIO
-		else if (ui_view2d_type == VIEW_2D_TYPE_SOUND && g_context->sound != NULL) {
-			i32 apph = ui_view2d_wh + ui_view2d_top();
-			i32 sw   = ui_view2d_ww * 0.9 * ui_view2d_pan_scale;
-			i32 sh   = fmin(ui_view2d_ww, ui_view2d_wh) * 0.5;
-			ui_view2d_draw_waveform(g_context->sound->sound, ui_view2d_ww / 2.0 - sw / 2.0 + ui_view2d_pan_x, apph / 2.0 - sh / 2.0 + ui_view2d_pan_y, sw, sh);
-		}
-#endif
 
 		_ui_view2d_tex_w = tex != NULL ? tex->width : 0;
 
@@ -754,43 +652,6 @@ void ui_view2d_update(void *_) {
 		// UV map
 		if (ui_view2d_type == VIEW_2D_TYPE_LAYER && ui_view2d_uvmap_show) {
 			draw_scaled_image(util_uv_uvmap, tx, ty, tw, th);
-		}
-
-		if (ui_view2d_type == VIEW_2D_TYPE_UVMAP) {
-			draw_scaled_image(util_uv_uvmap, tx, ty, tw, th);
-			edit_uvmap_update();
-		}
-
-		// Select tool rectangle, snapped to layer pixels
-		if (ui_view2d_type == VIEW_2D_TYPE_LAYER && g_context->select_2d && (g_context->select_active || g_context->select_dragging)) {
-			draw_set_color(g_context->select_dragging ? 0xffffffff : 0xaaffffff);
-			f32 sx = tx + g_context->select_x1 * tw;
-			f32 sy = ty + g_context->select_y1 * th;
-			f32 sw = (g_context->select_x2 - g_context->select_x1) * tw;
-			f32 sh = (g_context->select_y2 - g_context->select_y1) * th;
-			if (g_context->select_mode == SELECT_MODE_POLYGON) {
-				util_draw_select_shape(tx, ty, tw, th);
-			}
-			else {
-				util_draw_select_shape(sx, sy, sw, sh);
-			}
-
-			// Selected layer pixels
-			if (g_context->select_dragging && g_context->select_mode != SELECT_MODE_POLYGON) {
-				i32   px   = math_round((g_context->select_x2 - g_context->select_x1) * config_get_texture_res_x());
-				i32   py   = math_round((g_context->select_y2 - g_context->select_y1) * config_get_texture_res_y());
-				char *text = string_tmp("%d x %d", px, py);
-				draw_set_font(g_font, g_ui->font_size);
-				f32 lw = draw_string_width(g_font, g_ui->font_size, text) + 8 * UI_SCALE();
-				f32 lh = draw_font_height(g_font, g_ui->font_size) + 4 * UI_SCALE();
-				f32 lx = math_floor(sx + sw / 2.0 - lw / 2.0);
-				f32 ly = math_floor(sy + sh / 2.0 - lh / 2.0);
-				draw_set_color(0xff000000);
-				draw_filled_rect(lx, ly, lw, lh);
-				draw_set_color(0xffffffff);
-				draw_string(text, lx + 4 * UI_SCALE(), ly + 2 * UI_SCALE());
-			}
-			draw_set_color(0xffffffff);
 		}
 
 		// Pixel grid
@@ -877,9 +738,6 @@ void ui_view2d_update(void *_) {
 				else if (ui_view2d_type == VIEW_2D_TYPE_FONT) {
 					text = g_context->font->name;
 				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_SOUND && g_context->sound != NULL) {
-					text = g_context->sound->name;
-				}
 
 				g_ui->_w = math_floor(math_min(draw_string_width(g_font, g_ui->font_size, text) + 15 * UI_SCALE(), 100 * UI_SCALE()));
 
@@ -917,17 +775,12 @@ void ui_view2d_update(void *_) {
 						char *name = string_equals(l->name, "") ? ui_view2d_layer_name_prev : l->name;
 						l->name    = string_copy(slot_layer_unique_name(l, name));
 						if (!string_equals(ui_view2d_layer_name_prev, l->name)) {
-							tab_stages_rename_layer(ui_view2d_layer_name_prev, l->name);
 							history_layer_name(l, ui_view2d_layer_name_prev);
 						}
 					}
 				}
 				else if (ui_view2d_type == VIEW_2D_TYPE_FONT) {
 					ui_text_input(&g_context->font->name, "", UI_ALIGN_LEFT, true, false);
-					name_changed = ui_item_changed();
-				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_SOUND && g_context->sound != NULL) {
-					ui_text_input(&g_context->sound->name, "", UI_ALIGN_LEFT, true, false);
 					name_changed = ui_item_changed();
 				}
 
@@ -968,24 +821,6 @@ void ui_view2d_update(void *_) {
 					g_ui->_x += ew + 3;
 					g_ui->_y = 2 + start_y;
 				}
-			}
-
-			if (ui_view2d_type == VIEW_2D_TYPE_SOUND) {
-				g_ui->_w = math_floor(ew * 0.7 + 3);
-				if (ui_view2d_sound_is_playing()) {
-					if (ui_icon_button(tr("Stop"), ICON_STOP, UI_ALIGN_CENTER)) {
-						ui_view2d_stop_sound();
-					}
-				}
-				else {
-					g_ui->enabled = g_context->sound != NULL && g_context->sound->sound != NULL;
-					if (ui_icon_button(tr("Play"), ICON_PLAY, UI_ALIGN_CENTER)) {
-						ui_view2d_play_sound();
-					}
-					g_ui->enabled = true;
-				}
-				g_ui->_x += ew * 0.7 + 3;
-				g_ui->_y = 2 + start_y;
 			}
 
 			// Zoom slider

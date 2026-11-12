@@ -3,7 +3,6 @@
 
 static ui_node_canvas_t *ui_node_params_canvas   = NULL;  // Canvas before the edit, for undo
 static i32               ui_node_params_type     = 0;     // Canvas type of the pending edit
-static mesh_object_t    *ui_node_params_object   = NULL;  // Object of the pending mesh edit
 static bool              ui_node_params_pending  = false; // Edited, recompile once the input is released
 static bool              ui_node_params_live     = false; // Edited this frame, refresh the preview
 static bool              ui_node_params_hooked   = false;
@@ -14,20 +13,15 @@ static ui_color_state_t  ui_node_params_color_state;
 static f32               ui_node_params_heights[3]; // Parameters height of the last frame per canvas type
 
 static ui_node_canvas_t *ui_node_params_get_canvas(i32 canvas_type) {
-	if (canvas_type == CANVAS_TYPE_MESH) {
-		mesh_nodes_t *slot = nodes_mesh_get(g_context->paint_object, true);
-		return slot != NULL ? slot->canvas : NULL;
-	}
 	return canvas_type == CANVAS_TYPE_BRUSH ? g_context->brush->canvas : g_context->material->canvas;
 }
 
 // Edited node, first match in order of priority
 static ui_node_t *ui_node_params_source(i32 canvas_type) {
-	char  *material_types[] = {"GROUP", "SHADER_GPU", "OUTPUT_MATERIAL_PBR"};
+	char  *material_types[] = {"GROUP", "OUTPUT_MATERIAL_PBR"};
 	char  *brush_types[]    = {"brush_output_node"};
-	char  *mesh_types[]     = {"GROUP", "MESH_SCRIPT", "MESH_OUTPUT"};
-	char **types            = canvas_type == CANVAS_TYPE_BRUSH ? brush_types : canvas_type == CANVAS_TYPE_MESH ? mesh_types : material_types;
-	i32    count            = canvas_type == CANVAS_TYPE_BRUSH ? 1 : 3;
+	char **types            = canvas_type == CANVAS_TYPE_BRUSH ? brush_types : material_types;
+	i32    count            = canvas_type == CANVAS_TYPE_BRUSH ? 1 : 2;
 
 	ui_node_canvas_t *canvas = ui_node_params_get_canvas(canvas_type);
 	if (canvas == NULL) {
@@ -58,7 +52,6 @@ static void ui_node_params_begin(i32 canvas_type) {
 	if (g_ui->input_started || g_ui->is_key_pressed) {
 		ui_node_params_canvas = util_clone_canvas(ui_node_params_get_canvas(canvas_type));
 		ui_node_params_type   = canvas_type;
-		ui_node_params_object = g_context->paint_object;
 	}
 	g_ui->changed = false;
 }
@@ -77,7 +70,7 @@ static void ui_node_params_update(void *_) {
 	// Instant preview while dragging
 	if (ui_node_params_live) {
 		ui_node_params_live = false;
-		if (g_config->material_live && ui_node_params_type != CANVAS_TYPE_MESH) {
+		if (g_config->material_live) {
 			if (ui_node_params_type == CANVAS_TYPE_BRUSH) {
 				ui_node_params_update_brush();
 			}
@@ -102,13 +95,7 @@ static void ui_node_params_update(void *_) {
 	if (ui_node_params_canvas != NULL) {
 		history_edit_nodes(ui_node_params_canvas, ui_node_params_type, -1);
 	}
-	if (ui_node_params_type == CANVAS_TYPE_MESH) {
-		// Meshes are rebuilt once the change is done
-		if (array_index_of(g_project->_->paint_objects, ui_node_params_object) != -1) {
-			nodes_mesh_update(ui_node_params_object, false);
-		}
-	}
-	else if (ui_node_params_type == CANVAS_TYPE_BRUSH) {
+	if (ui_node_params_type == CANVAS_TYPE_BRUSH) {
 		ui_node_params_update_brush();
 		make_material_parse_paint_material(false);
 	}
@@ -121,7 +108,6 @@ static void ui_node_params_update(void *_) {
 			layers_update_path_layers();
 		}
 		util_render_make_material_preview();
-		tab_meshes_refresh_overrides(g_context->material);
 		if (context_is_decal()) {
 			util_render_make_decal_preview();
 		}
@@ -174,9 +160,6 @@ static asset_t *ui_node_params_tex_image_asset(ui_node_t *node) {
 }
 
 static ui_node_t *ui_node_params_create_tex_image(i32 canvas_type, ui_node_canvas_t *canvas) {
-	if (canvas_type == CANVAS_TYPE_MESH) {
-		return nodes_mesh_create_node(g_context->paint_object, "TEX_IMAGE");
-	}
 	if (canvas_type == CANVAS_TYPE_BRUSH) {
 		return nodes_brush_create_node("TEX_IMAGE");
 	}
@@ -211,7 +194,6 @@ static void ui_node_params_set_texture(i32 index) {
 		return;
 	}
 	ui_node_params_canvas = util_clone_canvas(canvas);
-	ui_node_params_object = g_context->paint_object;
 
 	if (index == -1) {
 		array_remove(canvas->links, link);

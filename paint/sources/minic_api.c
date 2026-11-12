@@ -293,13 +293,6 @@ static float minic_arg_float(minic_val_t *a, int c, int i) {
 	X(V4, transform_up, "s:vec4_t(p:transform_t raw)", transform_up(AP(0)))                                                                 \
 	X(V4, raycast_aabb_mouse, "s:vec4_t(p:object_t object)", raycast_aabb_mouse((object_t *)AP(0)))                                         \
 	X(I, point_in_aabb, "b(p:object_t object,s:vec4_t point)", point_in_aabb((object_t *)AP(0), V4(1)))                                     \
-	X(VOID, script_tween_to, "v(p:object_t o,s:vec4_t to,f speed)", script_tween_to((object_t *)AP(0), V4(1), AF(2)))                       \
-	X(V4, script_physics_get_pos, "s:vec4_t(p:object_t o)", script_physics_get_pos((object_t *)AP(0)))                                      \
-	X(V4, script_physics_get_velocity, "s:vec4_t(p:object_t o)", script_physics_get_velocity((object_t *)AP(0)))                            \
-	X(VOID, script_physics_set_rotation, "v(p:object_t o,s:quat_t rot)", script_physics_set_rotation((object_t *)AP(0), QT(1)))             \
-	X(V4, script_pick_terrain, "s:vec4_t()", script_pick_terrain())                                                                         \
-	X(V4, script_physics_terrain_raycast, "s:vec4_t(s:vec4_t origin,s:vec4_t dir)", script_physics_terrain_raycast(V4(0), V4(1)))           \
-	X(V4, script_physics_box_raycast, "s:vec4_t(s:vec4_t origin,s:vec4_t dir,f max_dist)", script_physics_box_raycast(V4(0), V4(1), AF(2))) \
 	X(V4, camera_object_look_world, "s:vec4_t(p:camera_object_t raw)", camera_object_look_world(AP(0)))                                     \
 	X(VOID, line_draw_render, "v(s:mat4_t matrix)", line_draw_render(M4(0)))                                                                \
 	X(VOID, line_draw_bounds, "v(s:mat4_t mat,s:vec4_t dim)", line_draw_bounds(M4(0), V4(1)))                                               \
@@ -587,14 +580,7 @@ void minic_register_builtins() {
 
 	MINIC_ENUM("gpu_texture_format_t", "GPU_TEXTURE_FORMAT_RGBA32", "GPU_TEXTURE_FORMAT_RGBA64", "GPU_TEXTURE_FORMAT_RGBA128", "GPU_TEXTURE_FORMAT_R8",
 	           "GPU_TEXTURE_FORMAT_R16", "GPU_TEXTURE_FORMAT_R32", "GPU_TEXTURE_FORMAT_D32", "GPU_TEXTURE_FORMAT_RGBA32_BC7");
-	MINIC_ENUM("physics_shape_t", "PHYSICS_SHAPE_BOX", "PHYSICS_SHAPE_SPHERE", "PHYSICS_SHAPE_TERRAIN", "PHYSICS_SHAPE_MESH");
 	MINIC_ENUM("render_pass_stage_t", "RENDER_PASS_LIGHT", "RENDER_PASS_POST");
-	{
-		// 1 was sculpt
-		static const char *tools_names[]  = {"TOOLS_PAINT", "TOOLS_OBJECT"};
-		static const int   tools_values[] = {TOOLS_PAINT, TOOLS_OBJECT};
-		minic_register_enum("tools_t", tools_names, tools_values, 2);
-	}
 	MINIC_ENUM("platform_t", "PLATFORM_WINDOWS", "PLATFORM_LINUX", "PLATFORM_MACOS", "PLATFORM_IOS", "PLATFORM_ANDROID", "PLATFORM_WASM");
 	MINIC_ENUM("tool_type_t", "TOOL_TYPE_BRUSH", "TOOL_TYPE_ERASER", "TOOL_TYPE_FILL", "TOOL_TYPE_DECAL", "TOOL_TYPE_TEXT", "TOOL_TYPE_CLONE", "TOOL_TYPE_BLUR",
 	           "TOOL_TYPE_PARTICLE", "TOOL_TYPE_COLORID", "TOOL_TYPE_PICKER", "TOOL_TYPE_MATERIAL", "TOOL_TYPE_CURSOR", "TOOL_TYPE_SELECT", "TOOL_TYPE_EMPTY",
@@ -923,7 +909,6 @@ void minic_register_builtins() {
 	MINIC_I(brush_live);
 	MINIC_I(node_previews);
 	MINIC_I(material_live);
-	MINIC_I(tools);
 	MINIC_I(rp_view_transform);
 	MINIC_I(autosave);
 	MINIC_I(autosave_interval);
@@ -989,8 +974,6 @@ void minic_register_builtins() {
 	MINIC_O(font_assets, string_array_t);
 	MINIC_P(layer_datas);
 	MINIC_P(mesh_datas);
-	MINIC_O(script_datas, string_array_t);
-	MINIC_O(script_names, string_array_t);
 	MINIC_END();
 
 	// iron_math wrappers
