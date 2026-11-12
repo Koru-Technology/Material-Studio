@@ -1,4 +1,5 @@
 #include "ios_system.h"
+#import <CoreText/CoreText.h>
 #import <Foundation/Foundation.h>
 #ifdef IRON_AUDIO
 #import <AVFoundation/AVFoundation.h>
@@ -1335,3 +1336,24 @@ volatile int iron_exec_async_done        = 1;
 char        *iron_exec_async_output_file = NULL;
 
 void iron_exec_async(const char *path, char *argv[]) {}
+
+// File of the system UI font (SF on Apple platforms), NULL when it can not be found
+const char *iron_system_font_path(void) {
+	static char path[1024] = {0};
+	static bool looked     = false;
+	if (!looked) {
+		looked         = true;
+		CTFontRef font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 0.0, NULL);
+		if (font != NULL) {
+			CFURLRef url = (CFURLRef)CTFontCopyAttribute(font, kCTFontURLAttribute);
+			if (url != NULL) {
+				if (!CFURLGetFileSystemRepresentation(url, true, (UInt8 *)path, sizeof(path))) {
+					path[0] = 0;
+				}
+				CFRelease(url);
+			}
+			CFRelease(font);
+		}
+	}
+	return path[0] != 0 ? path : NULL;
+}

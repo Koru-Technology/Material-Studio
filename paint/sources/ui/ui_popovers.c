@@ -21,6 +21,29 @@ static i32          ui_popovers_rect[4]    = {0, 0, 0, 0}; // Bar and popover, l
 static i32          ui_popovers_pop_rect[4] = {0, 0, 0, 0};
 static i32          ui_popovers_content_h[4] = {0, 0, 0, 0}; // Height each popover's content took last frame, it fits it
 
+// Opening fades and grows the popover in from the bar, closing fades and shrinks it out
+#define UI_POPOVERS_ANIM_TIME 0.18
+static popover_t ui_popovers_drawn      = POPOVER_NONE; // Popover drawn, the closing one while it shrinks out
+static f64       ui_popovers_anim_start = 0.0;
+static bool      ui_popovers_closing    = false;
+
+static void ui_popovers_set_open(popover_t p) {
+	popover_t old    = ui_popovers_open;
+	ui_popovers_open = p;
+	if (p == old) {
+		return;
+	}
+	ui_popovers_anim_start = iron_time();
+	if (p != POPOVER_NONE) {
+		ui_popovers_drawn   = p;
+		ui_popovers_closing = false;
+	}
+	else {
+		ui_popovers_drawn   = old;
+		ui_popovers_closing = true;
+	}
+}
+
 bool ui_popovers_enabled() {
 	return g_config->touch_ui;
 }
@@ -77,6 +100,36 @@ i32 ui_popovers_current() {
 	return ui_popovers_open;
 }
 
+// Popover title: large and left aligned, with an optional + button at the right end of its row. True when + is tapped.
+bool ui_popovers_title(char *title, bool plus) {
+	draw_font_t *font = g_ui->ops->font;
+	i32          size = g_ui->font_size * 4;
+	f32          th   = draw_font_height(font, size);
+	f32          h    = math_floor(th + 8 * UI_SCALE());
+	f32          x    = g_ui->_x;
+	f32          y    = g_ui->_y;
+	f32          w    = g_ui->_w;
+	if (ui_is_visible(h)) {
+		draw_set_color(g_theme->TEXT_COL);
+		draw_set_font(font, size);
+		draw_string(title, x + 6 * UI_SCALE(), y + (h - th) / 2.0);
+		draw_set_font(font, g_ui->font_size);
+	}
+	bool pressed = false;
+	if (plus) {
+		f32 bw   = math_floor(UI_ELEMENT_H() * 1.4);
+		g_ui->_x = x + w - bw;
+		g_ui->_y = y + (h - UI_ELEMENT_H()) / 2.0;
+		g_ui->_w = bw;
+		pressed  = ui_icon_button("", ICON_PLUS, UI_ALIGN_CENTER);
+		g_ui->_x = x;
+		g_ui->_w = w;
+	}
+	g_ui->_y = y;
+	ui_end_element_of_size(h);
+	return pressed;
+}
+
 // Rectangle of the open popover, 0 x, 1 y, 2 w, 3 h (w is 0 when none is shown), for scripts
 i32 ui_popovers_rect_get(i32 i) {
 	return i >= 0 && i < 4 ? ui_popovers_pop_rect[i] : 0;
@@ -89,14 +142,14 @@ bool ui_menu_shown() {
 
 // Opens popover p (1 layers, 2 brushes, 3 materials), 0 closes
 void ui_popovers_show(i32 p) {
-	ui_popovers_open = p >= POPOVER_NONE && p <= POPOVER_MATERIALS ? (popover_t)p : POPOVER_NONE;
+	ui_popovers_set_open(p >= POPOVER_NONE && p <= POPOVER_MATERIALS ? (popover_t)p : POPOVER_NONE);
 	ui_popovers_redraw(-1);
 	base_redraw_ui();
 }
 
 void ui_popovers_close() {
 	if (ui_popovers_open != POPOVER_NONE) {
-		ui_popovers_open = POPOVER_NONE;
+		ui_popovers_set_open(POPOVER_NONE);
 		if (ui_popovers_bar_handle != NULL) {
 			ui_popovers_bar_handle->redraws = 2;
 		}
@@ -105,7 +158,7 @@ void ui_popovers_close() {
 }
 
 static void ui_popovers_toggle(popover_t p) {
-	ui_popovers_open = ui_popovers_open == p ? POPOVER_NONE : p;
+	ui_popovers_set_open(ui_popovers_open == p ? POPOVER_NONE : p);
 	ui_popovers_redraw(-1);
 }
 
@@ -140,22 +193,9 @@ static void ui_popovers_icon_rect(i32 *x, i32 *size) {
 	*x     = math_floor(g_ui->_x + g_ui->button_offset_y + UI_SCROLL_W() / 2.0);
 }
 
-// Rounded highlight around the icon of the open popover's button, window coordinates
-static void ui_popovers_highlight(popover_t p) {
-	if (ui_popovers_open != p) {
-		return;
-	}
-	i32 x, size;
-	ui_popovers_icon_rect(&x, &size);
-	i32 pad = math_floor(4 * UI_SCALE());
-	draw_set_color(g_theme->HIGHLIGHT_COL);
-	ui_base_fill_round(x - pad, g_ui->_y - pad, size + pad * 2, size + pad * 2, 6 * UI_SCALE());
-	draw_set_color(0xffffffff);
-}
-
+// The icon of the open popover's button turns the highlight color
 static bool ui_popovers_icon(popover_t p, i32 icon) {
-	ui_popovers_highlight(p);
-	return ui_menubar_icon_button(icon);
+	return ui_menubar_icon_button_select(icon, ui_popovers_open == p);
 }
 
 static void ui_popovers_draw_bar() {
@@ -204,17 +244,30 @@ static void ui_popovers_draw_bar() {
 			// Same size and place as the icons, a little smaller as the icon glyphs leave a margin
 			i32 cx = g_ui->_x;
 			i32 cy = g_ui->_y;
-			ui_popovers_highlight(POPOVER_MATERIALS);
 			i32 ix, size;
 			ui_popovers_icon_rect(&ix, &size);
-			i32 inset                = math_floor(2 * UI_SCALE());
-			i32 _w                   = g_ui->_w;
+			i32       inset          = math_floor(2 * UI_SCALE());
+			i32       _w             = g_ui->_w;
+			uintptr_t key            = ui_bounce_here(-1);
+			f32       bounce         = ui_bounce_scale(key);
 			g_ui->_x                 = ix + inset;
 			g_ui->_y                 = cy + inset;
 			g_ui->_w                 = size - inset * 2;
 			g_ui->image_scroll_align = false;
-			tapped                   = ui_image(sphere, 0xffffffff, size - inset * 2) == UI_STATE_RELEASED;
+			ui_image_draw_scale      = bounce;
+			ui_state_t state         = ui_image(sphere, 0xffffffff, size - inset * 2);
+			ui_image_draw_scale      = 1.0;
 			g_ui->image_scroll_align = true;
+			tapped                   = state == UI_STATE_RELEASED;
+			if (state == UI_STATE_STARTED) {
+				ui_bounce_start(key);
+			}
+			if (ui_popovers_open == POPOVER_MATERIALS) { // A ring in the highlight color, the sphere keeps its colors
+				f32 r = (size / 2.0 + inset) * bounce;
+				draw_set_color(g_theme->HIGHLIGHT_COL);
+				draw_circle(ix + size / 2.0, cy + size / 2.0, r, 48, 2.5 * UI_SCALE());
+				draw_set_color(0xffffffff);
+			}
 			g_ui->_x                 = cx + step;
 			g_ui->_y                 = cy;
 			g_ui->_w                 = _w;
@@ -238,19 +291,102 @@ static void ui_popovers_draw_bar() {
 	ui_end_window();
 }
 
+// Frosted glass: the 3D view under the popover, halved down a few times and scaled back up, smooth filtering blurs it
+
+#define UI_POPOVERS_BLUR_LEVELS 4
+static gpu_texture_t *ui_popovers_blur[UI_POPOVERS_BLUR_LEVELS];
+static i32            ui_popovers_blur_count = -1; // Image of the view the blur was made from
+
+static gpu_texture_t *ui_popovers_blur_level(i32 i, i32 w, i32 h) {
+	w = w < 1 ? 1 : w;
+	h = h < 1 ? 1 : h;
+	if (ui_popovers_blur[i] == NULL || ui_popovers_blur[i]->width != w || ui_popovers_blur[i]->height != h) {
+		if (ui_popovers_blur[i] != NULL) {
+			gpu_delete_texture(ui_popovers_blur[i]);
+		}
+		ui_popovers_blur[i]    = gpu_create_render_target(w, h, GPU_TEXTURE_FORMAT_RGBA32);
+		ui_popovers_blur_count = -1;
+	}
+	return ui_popovers_blur[i];
+}
+
+// Blurred view under the rectangle, NULL when the 3D view is not behind it. *changed tells whether it was made again.
+static gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *changed) {
+	*changed = false;
+	i32            count;
+	gpu_texture_t *src = render_path_base_presented_image(&count);
+	if (src == NULL || !base_view3d_show || sys_w() <= 0 || sys_h() <= 0) {
+		return NULL;
+	}
+	gpu_texture_t *levels[UI_POPOVERS_BLUR_LEVELS];
+	for (i32 i = 0; i < UI_POPOVERS_BLUR_LEVELS; ++i) {
+		levels[i] = ui_popovers_blur_level(i, w >> (i + 1), h >> (i + 1));
+	}
+	if (count == ui_popovers_blur_count) {
+		return levels[1];
+	}
+	ui_popovers_blur_count = count;
+	*changed               = true;
+
+	f32 kx = src->width / (f32)sys_w();
+	f32 ky = src->height / (f32)sys_h();
+
+	gpu_texture_t *current = _draw_current;
+	bool           in_use  = gpu_in_use;
+	if (in_use) {
+		draw_end();
+	}
+	draw_begin(levels[0], true, 0xff000000);
+	draw_set_color(0xffffffff);
+	draw_scaled_sub_image(src, (x - sys_x()) * kx, (y - sys_y()) * ky, w * kx, h * ky, 0, 0, levels[0]->width, levels[0]->height);
+	draw_end();
+	for (i32 i = 1; i < UI_POPOVERS_BLUR_LEVELS; ++i) { // Down
+		draw_begin(levels[i], true, 0xff000000);
+		draw_set_color(0xffffffff);
+		draw_scaled_image(levels[i - 1], 0, 0, levels[i]->width, levels[i]->height);
+		draw_end();
+	}
+	for (i32 i = UI_POPOVERS_BLUR_LEVELS - 2; i >= 1; --i) { // Back up to a quarter of the size
+		draw_begin(levels[i], true, 0xff000000);
+		draw_set_color(0xffffffff);
+		draw_scaled_image(levels[i + 1], 0, 0, levels[i]->width, levels[i]->height);
+		draw_end();
+	}
+	if (in_use) {
+		draw_begin(current, false, 0);
+	}
+	return levels[1];
+}
+
 static void ui_popovers_draw_popover() {
-	if (ui_popovers_open == POPOVER_NONE) {
+	// Animation: 0 hidden, 1 shown
+	f64 t = (iron_time() - ui_popovers_anim_start) / UI_POPOVERS_ANIM_TIME;
+	t     = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
+	if (ui_popovers_closing && t >= 1.0) {
+		ui_popovers_closing = false;
+		ui_popovers_drawn   = POPOVER_NONE;
+	}
+	if (ui_popovers_drawn == POPOVER_NONE) {
 		ui_popovers_pop_rect[2] = 0;
 		return;
 	}
+	f32 k = ui_popovers_closing ? 1.0 - t * t : 1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t); // Ease out in, ease in out
+	if (t < 1.0) {
+		base_redraw_ui(); // Every frame until it is done
+		iron_delay_idle_sleep();
+	}
+	popover_t shown = ui_popovers_drawn;
 	i32 margin = ui_popovers_margin();
 	i32 w      = math_floor(ui_base_sidebar_full_w(g_config->large_asset_previews) * g_config->window_scale);
+	if (shown == POPOVER_BRUSHES) {
+		w = math_floor(w * 1.5); // Groups beside the brushes
+	}
 	i32 x      = iron_window_width() - w - margin;
 	i32 y      = ui_popovers_top() + ui_popovers_bar_h() + margin / 2;
 	// As tall as its content (the layers popover grows with the layers), at most half of the screen
 	i32 max_h = math_floor((iron_window_height() - ui_popovers_top()) * 0.5);
 	i32 min_h = math_floor(UI_ELEMENT_H() * 4);
-	i32 h     = ui_popovers_content_h[ui_popovers_open] > 0 ? ui_popovers_content_h[ui_popovers_open] : max_h;
+	i32 h     = ui_popovers_content_h[shown] > 0 ? ui_popovers_content_h[shown] : max_h;
 	h         = h < min_h ? min_h : h > max_h ? max_h : h;
 	if (w > iron_window_width() - margin * 2) {
 		w = iron_window_width() - margin * 2;
@@ -258,23 +394,44 @@ static void ui_popovers_draw_popover() {
 	}
 	ui_popovers_pop_rect[0] = x;
 	ui_popovers_pop_rect[1] = y;
-	ui_popovers_pop_rect[2] = w;
+	ui_popovers_pop_rect[2] = ui_popovers_closing ? 0 : w; // A closing popover takes no input
 	ui_popovers_pop_rect[3] = h;
 
-	i32 *htab = &ui_popovers_tab[ui_popovers_open];
+	i32 *htab = &ui_popovers_tab[shown];
 
-	// Background: rounded on all corners with the shadow around it
+	bool input = g_ui->input_enabled;
+	if (ui_popovers_closing) {
+		g_ui->input_enabled = false;
+	}
+
+	// Background: rounded on all corners with the shadow around it, frosted glass over the 3D view
+	bool backdrop_changed  = false;
+	ui_base_panel_backdrop = ui_popovers_backdrop(x, y, w, h, &backdrop_changed);
+	if (backdrop_changed) {
+		ui_popovers_back_handle->redraws = 2;
+	}
 	if (ui_base_panel_window(ui_popovers_back_handle, x, y, w, h, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR, true)) {
 	}
+	ui_base_panel_backdrop = NULL;
+	// Faded and grown from the corner under the bar. Set once the popover's window has begun: beginning it ends the window
+	// drawn before, which is composited then and must not fade.
+	ui_window_composite_alpha = k;
+	ui_window_composite_scale = 0.9 + 0.1 * k;
+	ui_window_composite_ox    = x + w;
+	ui_window_composite_oy    = y;
 	ui_end_window();
 
 	// Content inset so its square edges (tab strip, rows) stay inside the rounded corners
 	i32 inset = math_floor(4 * UI_SCALE());
-	if (ui_window(ui_popovers_handle, x + inset, y + inset, w - inset * 2, h - inset * 2, false)) {
-		if (ui_popovers_open == POPOVER_LAYERS) {
+	u32 window_bg          = g_theme->WINDOW_BG_COL;
+	g_theme->WINDOW_BG_COL = 0x00000000; // The panel shows through
+	bool content           = ui_window(ui_popovers_handle, x + inset, y + inset, w - inset * 2, h - inset * 2, false);
+	g_theme->WINDOW_BG_COL = window_bg;
+	if (content) {
+		if (shown == POPOVER_LAYERS) {
 			tab_layers_draw_popover();
 		}
-		else if (ui_popovers_open == POPOVER_BRUSHES) {
+		else if (shown == POPOVER_BRUSHES) {
 			tab_brushes_draw_popover();
 		}
 		else {
@@ -283,7 +440,7 @@ static void ui_popovers_draw_popover() {
 			tab_smart_materials_draw(htab);
 		}
 		i32 content = math_floor(g_ui->_y - ui_popovers_handle->scroll_offset + inset * 2 + 4 * UI_SCALE());
-		i32 *last   = &ui_popovers_content_h[ui_popovers_open];
+		i32 *last   = &ui_popovers_content_h[shown];
 		if (content < *last - 1 || content > *last + 1) {
 			*last                            = content;
 			ui_popovers_handle->redraws      = 2;
@@ -292,6 +449,10 @@ static void ui_popovers_draw_popover() {
 	}
 	// Tabs are picked and the scrollbar is drawn when the window ends
 	ui_end_window();
+
+	ui_window_composite_alpha = 1.0;
+	ui_window_composite_scale = 1.0;
+	g_ui->input_enabled       = input;
 }
 
 void ui_popovers_render_ui() {

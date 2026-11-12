@@ -293,28 +293,6 @@ void base_init_undo_layers() {
 	}
 }
 
-static void base_draw_console_lines() {
-	// Show last console lines in distract free mode
-	f32 scale = UI_SCALE();
-	draw_begin(NULL, false, 0);
-	draw_set_font(g_font, math_floor(UI_FONT_SIZE()));
-	draw_set_color(g_theme->TEXT_COL);
-	f32 line_h = draw_font_height(draw_font, draw_font_size) * 1.2;
-	f32 x      = 10 * scale;
-	f32 y      = iron_window_height() - 10 * scale - line_h;
-	i32 n      = 0;
-	for (i32 i = console_last_traces->length - 1; i >= 0 && n < 5; --i) {
-		any_array_t *parts = string_split(console_last_traces->buffer[i], "\n");
-		for (i32 j = parts->length - 1; j >= 0 && n < 5; --j) {
-			draw_string(parts->buffer[j], x, y - n * line_h);
-			n++;
-		}
-		string_split_free(parts);
-	}
-	draw_set_color(0xffffffff);
-	draw_end();
-}
-
 void base_update(void *_) {
 	util_pencil_update();
 	ui_quick_menu_update();
@@ -540,9 +518,6 @@ void base_update(void *_) {
 	if (viewport_recording) {
 		viewport_capture_video_draw();
 	}
-	if (!ui_base_show && !base_player_lock && gpu_framebuffer_redirect == NULL) {
-		base_draw_console_lines();
-	}
 	ui_nodes_render_popup();
 	if (ui_box_show) {
 		ui_box_render();
@@ -571,6 +546,25 @@ bool base_pointer_hidden(float x, float y) {
 	return cursor && base_ui_enabled && !ui_quick_menu_show && x >= sys_x() && x < sys_x() + sys_w() && y >= sys_y() && y < sys_y() + sys_h();
 }
 
+// UI font: the system's on Apple platforms (SF), the bundled Roboto elsewhere or when it can not be read
+char *base_ui_font_file() {
+#if defined(IRON_MACOS) || defined(IRON_IOS)
+	static char *system_font = NULL;
+	static bool  looked      = false;
+	if (!looked) {
+		looked         = true;
+		const char *p  = iron_system_font_path();
+		if (p != NULL && iron_file_exists((char *)p)) {
+			system_font = string_copy((char *)p);
+		}
+	}
+	if (system_font != NULL) {
+		return system_font;
+	}
+#endif
+	return "font.ttf";
+}
+
 void base_init() {
 	base_last_window_width  = iron_window_width();
 	base_last_window_height = iron_window_height();
@@ -585,7 +579,7 @@ void base_init() {
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
 	project_autosave_init();
 
-	g_font = data_get_font("font.ttf");
+	g_font = data_get_font(base_ui_font_file());
 
 	config_load_theme(g_config->theme, false);
 	base_default_element_w = g_theme->ELEMENT_W;
@@ -598,8 +592,8 @@ void base_init() {
 	sys_title_set(tr("untitled"));
 #endif
 
-	// Baked font for fast startup
-	if (string_equals(g_config->locale, "en")) {
+	// Baked font for fast startup, it is the bundled one
+	if (string_equals(g_config->locale, "en") && string_equals(base_ui_font_file(), "font.ttf")) {
 		draw_font_13(g_font);
 	}
 	else {

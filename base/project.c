@@ -69,6 +69,7 @@ project_t *main() {
 		add_cfiles(project, "sources/backends/apple_thread.*");
 		add_cfiles(project, "sources/backends/metal_gpu.*");
 		add_cfiles(project, "sources/backends/data/mac.plist");
+		add_lib(project, "CoreText");
 		add_define(project, "IRON_METAL");
 	}
 	else if (platform == PLATFORM_IOS) {
@@ -79,6 +80,7 @@ project_t *main() {
 		add_cfiles(project, "sources/backends/data/ios.plist");
 		add_cfiles(project, "sources/backends/ios_file_dialog.m");
 		add_cfiles(project, "sources/backends/ios_folder.m");
+		add_lib(project, "CoreText");
 		if (flags->with_audio) {
 			add_cfiles(project, "sources/backends/ios_audio.m");
 			add_lib(project, "AudioToolbox");

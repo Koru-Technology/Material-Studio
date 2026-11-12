@@ -225,7 +225,18 @@ void render_path_base_draw_split(void (*draw_commands)(void)) {
 
 // The 3D image is reused while nothing that affects it changes, a frame then only presents it again.
 // Anything changing the view sets ddirty, render_path_base_redraw() covers changes that do not.
-static char *render_path_base_presented = NULL; // Target the last image was presented from
+static char *render_path_base_presented       = NULL; // Target the last image was presented from
+static i32   render_path_base_presented_count = 0;    // Images presented, a new one changes it
+
+// Last image of the 3D view and a count that changes with every new image, NULL before the first
+gpu_texture_t *render_path_base_presented_image(i32 *count) {
+	*count = render_path_base_presented_count;
+	if (render_path_base_presented == NULL) {
+		return NULL;
+	}
+	render_target_t *rt = any_map_get(render_path_render_targets, render_path_base_presented);
+	return rt != NULL ? rt->_image : NULL;
+}
 static i32   render_path_base_redraw_frames = 0;
 
 void render_path_base_redraw() {
@@ -529,6 +540,7 @@ void render_path_base_draw_taa(char *bufa, char *bufb) {
 	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	render_path_bind_target(bufb, "tex");
 	render_path_base_presented = bufb;
+	render_path_base_presented_count++;
 	if (render_path_base_ssaa4()) {
 		render_path_draw_shader("Scene/supersample_resolve/supersample_resolveRGBA64");
 	}

@@ -2131,8 +2131,18 @@ void ui_end_window() {
 
 	// Draw window texture
 	draw_begin(NULL, false, 0);
-	draw_set_color(0xffffffff);
-	draw_image(&handle->texture, current->_window_x, current->_window_y);
+	float    alpha = ui_window_composite_alpha < 0.0f ? 0.0f : ui_window_composite_alpha > 1.0f ? 1.0f : ui_window_composite_alpha;
+	uint32_t a     = (uint32_t)(alpha * 255.0f + 0.5f);
+	draw_set_color((a << 24) | 0x00ffffff);
+	if (ui_window_composite_scale != 1.0f) {
+		float s = ui_window_composite_scale;
+		float x = ui_window_composite_ox + (current->_window_x - ui_window_composite_ox) * s;
+		float y = ui_window_composite_oy + (current->_window_y - ui_window_composite_oy) * s;
+		draw_scaled_image(&handle->texture, x, y, handle->texture.width * s, handle->texture.height * s);
+	}
+	else {
+		draw_image(&handle->texture, current->_window_x, current->_window_y);
+	}
 	if (handle->redraws <= 0) {
 		handle->redraws--;
 	}
@@ -2395,6 +2405,12 @@ bool ui_panel(bool *value, char *text, bool is_tree, bool filled, bool align_rig
 	return (*value);
 }
 
+float ui_image_draw_scale       = 1.0f; // Images draw scaled about their center, the layout and input keep their size
+float ui_window_composite_alpha = 1.0f; // Windows are drawn to the screen faded and scaled about the origin
+float ui_window_composite_scale = 1.0f;
+float ui_window_composite_ox    = 0.0f;
+float ui_window_composite_oy    = 0.0f;
+
 int ui_sub_image(gpu_texture_t *image, uint32_t tint, int h, int sx, int sy, int sw, int sh) {
 	current->item_changed = false;
 	float iw              = (sw > 0 ? sw : image->width) * UI_SCALE();
@@ -2438,11 +2454,21 @@ int ui_sub_image(gpu_texture_t *image, uint32_t tint, int h, int sx, int sy, int
 	if (!current->enabled) {
 		ui_fade_color(0.25);
 	}
+	float dx = x;
+	float dy = current->_y;
+	float dw = w;
+	float dh = h;
+	if (ui_image_draw_scale != 1.0f) {
+		dx += w * (1.0f - ui_image_draw_scale) / 2.0f;
+		dy += h * (1.0f - ui_image_draw_scale) / 2.0f;
+		dw *= ui_image_draw_scale;
+		dh *= ui_image_draw_scale;
+	}
 	if (sw > 0) { // Source rect specified
-		draw_scaled_sub_image(image, sx, sy, sw, sh, x, current->_y, w, h);
+		draw_scaled_sub_image(image, sx, sy, sw, sh, dx, dy, dw, dh);
 	}
 	else {
-		draw_scaled_image(image, x, current->_y, w, h);
+		draw_scaled_image(image, dx, dy, dw, dh);
 	}
 
 	ui_end_element_of_size(h);

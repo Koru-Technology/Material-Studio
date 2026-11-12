@@ -55,111 +55,70 @@ void tab_brushes_delete_brush(slot_brush_t *b) {
 	ui_dock_redraw(1);
 }
 
-void tab_brushes_draw_context_menu() {
-	i32 i = _tab_brushes_draw_i;
-	// let b: slot_brush_t = brushes[i];
+static i32   tab_brushes_box_tab     = 0;
+static char *tab_brushes_rename_text = "";
 
-	if (ui_menu_button(tr("Export"), "", ICON_EXPORT)) {
-		context_select_brush(i);
-		box_export_show_brush();
+static slot_brush_t *tab_brushes_menu_brush() {
+	i32 i = _tab_brushes_draw_i;
+	return i >= 0 && i < g_project->_->brushes->length ? g_project->_->brushes->buffer[i] : NULL;
+}
+
+static void tab_brushes_rename_box() {
+	if (ui_tab(&tab_brushes_box_tab, tr("Rename Brush"), false, -1, false)) {
+		ui_row2();
+		char *name = ui_text_input(&tab_brushes_rename_text, tr("Name"), UI_ALIGN_LEFT, true, false);
+		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
+			slot_brush_t *b = tab_brushes_menu_brush();
+			if (b != NULL && !string_equals(name, "") && !string_equals(name, b->canvas->name)) {
+				b->canvas->name = string_copy(slot_brush_unique_name(b->canvas, name));
+			}
+			ui_box_hide();
+			ui_popovers_redraw(-1);
+			ui_dock_redraw(TAB_AREA_SIDEBAR1);
+		}
+	}
+}
+
+static void tab_brushes_delete_box() {
+	slot_brush_t *b = tab_brushes_menu_brush();
+	if (ui_tab(&tab_brushes_box_tab, tr("Delete Brush"), false, -1, false)) {
+		ui_text(string_tmp("%s \"%s\"?", tr("Delete"), b != NULL ? b->canvas->name : ""), UI_ALIGN_LEFT, 0x00000000);
+		ui_row2();
+		if (ui_button(tr("Cancel"), UI_ALIGN_CENTER, "")) {
+			ui_box_hide();
+		}
+		if (ui_button(tr("Delete"), UI_ALIGN_CENTER, "")) {
+			if (b != NULL && g_project->_->brushes->length > 1) {
+				tab_brushes_delete_brush(b);
+			}
+			ui_box_hide();
+			ui_popovers_redraw(-1);
+		}
+	}
+}
+
+void tab_brushes_draw_context_menu() {
+	slot_brush_t *b = tab_brushes_menu_brush();
+	if (b == NULL) {
+		return;
+	}
+
+	if (ui_menu_button(tr("Rename"), "", ICON_EDIT)) {
+		tab_brushes_rename_text = string_copy(b->canvas->name);
+		ui_box_show_custom(&tab_brushes_rename_box, 400, 200, NULL, true, "");
 	}
 
 	if (ui_menu_button(tr("Duplicate"), "ctrl+d", ICON_DUPLICATE)) {
 		sys_notify_on_next_frame(&tab_brushes_draw_duplicate, NULL);
 	}
 
+	if (!ui_popovers_enabled() && ui_menu_button(tr("Export"), "", ICON_EXPORT)) {
+		context_select_brush(_tab_brushes_draw_i);
+		box_export_show_brush();
+	}
+
 	if (g_project->_->brushes->length > 1 && ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
-		tab_brushes_delete_brush(g_project->_->brushes->buffer[i]);
-	}
-}
-
-void tab_brushes_draw_edit() {
-	if (ui_menu_button(tr("Import"), "", ICON_IMPORT)) {
-		project_import_brush();
-	}
-}
-
-// Brush presets: the tool, brush settings and material saved by name, kept across projects
-
-static i32   tab_brushes_preset_i    = -1; // Preset being renamed, -1 while saving a new one
-static char *tab_brushes_preset_name = "";
-
-static i32 tab_brushes_preset_tab = 0;
-
-// Saving exports the material and applying may bring one in, they run when the frame starts, not while the UI is drawn
-
-static void tab_brushes_preset_add_next(void *name) {
-	brush_presets_add(name);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-}
-
-static void tab_brushes_preset_apply_next(void *name) {
-	brush_presets_apply(brush_presets_find(name));
-}
-
-static void tab_brushes_preset_name_box() {
-	if (ui_tab(&tab_brushes_preset_tab, tab_brushes_preset_i < 0 ? tr("Save Preset") : tr("Rename Preset"), false, -1, false)) {
-		ui_row2();
-		char *name = ui_text_input(&tab_brushes_preset_name, tr("Name"), UI_ALIGN_LEFT, true, false);
-		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-			if (tab_brushes_preset_i < 0) {
-				sys_notify_on_next_frame(&tab_brushes_preset_add_next, string_copy(name));
-			}
-			else {
-				brush_presets_rename(tab_brushes_preset_i, name);
-			}
-			ui_box_hide();
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
-		}
-	}
-}
-
-static void tab_brushes_preset_save() {
-	tab_brushes_preset_i = -1;
-	char *material       = g_context->material != NULL ? g_context->material->canvas->name : tr("Brush");
-	char *name           = string_copy(material);
-	for (i32 n = 2; brush_presets_find(name) >= 0; ++n) {
-		name = string("%s %d", material, n);
-	}
-	tab_brushes_preset_name = name;
-	ui_box_show_custom(&tab_brushes_preset_name_box, 400, 200, NULL, true, "");
-}
-
-static void tab_brushes_preset_menu() {
-	i32 i = tab_brushes_preset_i;
-	if (ui_menu_button(tr("Update"), "", ICON_SAVE)) {
-		sys_notify_on_next_frame(&tab_brushes_preset_add_next, string_copy(brush_presets_name(i))); // Same name, the current settings
-	}
-	if (ui_menu_button(tr("Rename"), "", ICON_EDIT)) {
-		tab_brushes_preset_name = string_copy(brush_presets_name(i));
-		ui_box_show_custom(&tab_brushes_preset_name_box, 400, 200, NULL, true, "");
-	}
-	if (ui_menu_button(tr("Delete"), "", ICON_DELETE)) {
-		brush_presets_delete(i);
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	}
-}
-
-static void tab_brushes_draw_presets() {
-	ui_separator(3, false);
-	ui_row2();
-	ui_text(tr("Presets"), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
-	if (ui_icon_button(tr("Save"), ICON_PLUS, UI_ALIGN_CENTER)) {
-		tab_brushes_preset_save();
-	}
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Saves the tool, the brush settings and the material"));
-	}
-	i32 count = brush_presets_count();
-	for (i32 i = 0; i < count; ++i) {
-		char *name = brush_presets_name(i);
-		if (ui_button(name, UI_ALIGN_LEFT, "")) {
-			sys_notify_on_next_frame(&tab_brushes_preset_apply_next, string_copy(name));
-		}
-		if (g_ui->is_hovered && g_ui->input_released_r) {
-			tab_brushes_preset_i = i;
-			ui_menu_draw(&tab_brushes_preset_menu, -1, -1);
-		}
+		ui_box_show_custom(&tab_brushes_delete_box, 400, 200, NULL, true, "");
 	}
 }
 
@@ -323,12 +282,13 @@ static void tab_brushes_make_row_image(void *_) {
 	ui_popovers_redraw(-1);
 }
 
-// A row: name above the stroke, the selected one highlighted
+// A row: name above the stroke, the selected one highlighted. The height does not follow the width, a scrollbar
+// narrowing the list would change the height and the scrollbar would come and go every frame.
 static ui_state_t tab_brushes_row(char *name, gpu_texture_t *img, bool selected) {
 	f32 pad    = math_floor(10 * UI_SCALE());
 	f32 w      = g_ui->_w;
 	f32 wave_w = w - pad * 2;
-	f32 wave_h = math_floor(wave_w * util_render_brush_wave_strip);
+	f32 wave_h = math_floor(UI_ELEMENT_H() * 1.8);
 	f32 name_h = UI_ELEMENT_H();
 	f32 h      = pad / 2 + name_h + wave_h + pad / 2;
 
@@ -354,62 +314,108 @@ static ui_state_t tab_brushes_row(char *name, gpu_texture_t *img, bool selected)
 		draw_set_font(g_ui->ops->font, g_ui->font_size);
 		f32 ty = y + pad / 2 + (name_h - draw_font_height(g_ui->ops->font, g_ui->font_size)) / 2.0;
 		draw_string(name, x + pad, ty);
-		if (img != NULL) {
+		if (img != NULL && wave_w > 0) {
+			// The strip keeps its aspect, its middle band fills the row
+			f32 band = (wave_h / wave_w) / util_render_brush_wave_strip;
+			f32 sh   = img->height * (band < 1.0 ? band : 1.0);
+			f32 sy   = (img->height - sh) / 2.0;
 			draw_set_color(0xffffffff);
-			draw_scaled_image(img, x + pad, y + pad / 2 + name_h, wave_w, wave_h);
+			draw_scaled_sub_image(img, 0, sy, img->width, sh, x + pad, y + pad / 2 + name_h, wave_w, wave_h);
 		}
 	}
 	ui_end_element_of_size(h);
 	return state;
 }
 
-static void tab_brushes_select_project_brush(i32 i) {
-	if (g_context->brush_builtin >= 0) { // A project brush replaces the built-in tip
-		g_context->brush_builtin = -1;
-		brush_output_node_parse_inputs();
-		g_context->brush->preview_ready = false;
-		config_save();
+static i32 tab_brushes_group = -1; // Group shown in the touch brush list, -1 picks the group of the selected brush
+
+static i32 tab_brushes_group_count() {
+	return builtin_brush_group_count();
+}
+
+// A group in the list on the left: icon and name on a rounded button, the shown group highlighted
+static ui_state_t tab_brushes_group_button(char *name, i32 icon, bool selected) {
+	f32 h   = math_floor(UI_ELEMENT_H() * 1.6);
+	f32 gap = math_floor(6 * UI_SCALE());
+
+	ui_state_t state = UI_STATE_IDLE;
+	if (ui_get_released(h)) {
+		state = UI_STATE_RELEASED;
 	}
-	if (g_context->brush != g_project->_->brushes->buffer[i]) {
-		context_select_brush(i);
+	else if (ui_get_hover(h)) {
+		state = UI_STATE_HOVERED;
 	}
+
+	if (ui_is_visible(h)) {
+		f32 x = g_ui->_x;
+		f32 y = g_ui->_y;
+		f32 w = g_ui->_w;
+		draw_set_color(selected ? g_theme->HIGHLIGHT_COL : g_theme->BUTTON_COL);
+		ui_draw_rect(true, false, x, y, w, h);
+		f32            size = math_floor(UI_ELEMENT_H() * 0.8);
+		f32            pad  = math_floor(10 * UI_SCALE());
+		gpu_texture_t *img  = resource_get("icons.k");
+		rect_t        *r    = resource_tile50(img, icon);
+		draw_set_color(g_theme->TEXT_COL);
+		draw_scaled_sub_image(img, r->x, r->y, r->w, r->h, x + pad, y + (h - size) / 2.0, size, size);
+		draw_set_font(g_ui->ops->font, g_ui->font_size);
+		draw_string(name, x + pad * 2 + size, y + (h - draw_font_height(g_ui->ops->font, g_ui->font_size)) / 2.0);
+	}
+	ui_end_element_of_size(h + gap);
+	return state;
 }
 
 static void tab_brushes_draw_rows() {
 	tab_brushes_check_pen();
 	i32 n     = g_project->_->brushes->length;
 	i32 count = n + builtin_brush_count();
-	for (i32 r = 0; r < count; ++r) {
+
+	// Strokes of all groups render one per frame and are kept
+	for (i32 r = n; r < count; ++r) {
 		gpu_texture_t *img   = tab_brushes_row_image(r);
 		bool           stale = img == NULL || (tab_brushes_row_refresh >= 0 && r >= tab_brushes_row_refresh);
 		if (stale && tab_brushes_row_pending == -1) {
 			tab_brushes_row_pending = r;
 			sys_notify_on_next_frame(&tab_brushes_make_row_image, NULL);
 		}
-		if (r < n) {
-			slot_brush_t *b     = g_project->_->brushes->buffer[r];
-			bool          sel   = g_context->brush == b && g_context->brush_builtin < 0;
-			ui_state_t    state = tab_brushes_row(b->canvas->name, img, sel);
-			if (state == UI_STATE_RELEASED) {
-				tab_brushes_select_project_brush(r);
-				if (sys_time() - g_context->select_time < 0.4) {
-					ui_base_show_brush_nodes(); // Double tap
-				}
-				g_context->select_time = sys_time();
-			}
-			if (g_ui->is_hovered && g_ui->input_released_r) {
-				context_select_brush(r);
-				_tab_brushes_draw_i = r;
-				ui_menu_draw(&tab_brushes_draw_context_menu, -1, -1);
-			}
-		}
-		else {
-			i32 i = r - n;
-			if (tab_brushes_row(builtin_brush_name(i), img, g_context->brush_builtin == i) == UI_STATE_RELEASED) {
-				builtin_brush_use(i);
-			}
+	}
+
+	i32 groups = tab_brushes_group_count();
+	if (tab_brushes_group < 0 || tab_brushes_group >= groups) {
+		tab_brushes_group = g_context->brush_builtin >= 0 ? builtin_brush_group(g_context->brush_builtin) : 0;
+	}
+
+	// Groups on the left, the brushes of the shown group on the right
+	f32 x      = g_ui->_x;
+	f32 y      = g_ui->_y;
+	f32 w      = g_ui->_w;
+	f32 gap    = math_floor(10 * UI_SCALE());
+	f32 left_w = math_floor(w * 0.36);
+
+	g_ui->_w = left_w;
+	for (i32 g = 0; g < groups; ++g) {
+		if (tab_brushes_group_button(tr(builtin_brush_group_name(g)), builtin_brush_group_icon(g), g == tab_brushes_group) == UI_STATE_RELEASED) {
+			tab_brushes_group = g;
 		}
 	}
+	f32 left_end = g_ui->_y;
+
+	g_ui->_x = x + left_w + gap;
+	g_ui->_y = y;
+	g_ui->_w = w - left_w - gap;
+	for (i32 i = 0; i < builtin_brush_count(); ++i) {
+		if (builtin_brush_group(i) != tab_brushes_group) {
+			continue;
+		}
+		if (tab_brushes_row(tr(builtin_brush_name(i)), tab_brushes_row_image(n + i), g_context->brush_builtin == i) == UI_STATE_RELEASED) {
+			builtin_brush_use(i);
+		}
+	}
+	f32 right_end = g_ui->_y;
+
+	g_ui->_x = x;
+	g_ui->_w = w;
+	g_ui->_y = left_end > right_end ? left_end : right_end;
 }
 
 static void tab_brushes_new() {
@@ -442,35 +448,15 @@ static void tab_brushes_draw_slots(bool popover) {
 
 	ui_begin_sticky();
 	if (popover) {
-		f32          button = UI_ELEMENT_H() / (f32)g_ui->_w;
-		f32_array_t *row    = f32_array_create_from_raw_tmp(
-            (f32[]){
-                1.0 - button * 3,
-                button,
-                button,
-                button,
-            },
-            4);
-		ui_row(row);
-		ui_text(tr("Brushes"), UI_ALIGN_LEFT, 0x00000000);
-		if (ui_icon_button("", ICON_NODES, UI_ALIGN_CENTER)) {
-			ui_base_show_brush_nodes();
-		}
-		if (ui_icon_button("", ICON_EDIT, UI_ALIGN_CENTER)) {
-			ui_menu_draw(&tab_brushes_draw_edit, -1, -1);
-		}
-		if (ui_icon_button("", ICON_PLUS, UI_ALIGN_CENTER)) {
-			tab_brushes_new();
-		}
+		ui_popovers_title(tr("Brushes"), false);
 	}
 	else {
 		f32_array_t *row = f32_array_create_from_raw_tmp(
 		    (f32[]){
 		        -64,
 		        -64,
-		        -64,
 		    },
-		    3);
+		    2);
 		ui_row(row);
 		if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
 			tab_brushes_new();
@@ -478,17 +464,12 @@ static void tab_brushes_draw_slots(bool popover) {
 		if (ui_button(tr("Nodes"), UI_ALIGN_CENTER, "")) {
 			ui_base_show_brush_nodes();
 		}
-		if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
-			ui_menu_draw(&tab_brushes_draw_edit, -1, -1);
-		}
 	}
 	ui_end_sticky();
 	ui_separator(3, false);
 
 	if (popover) {
 		tab_brushes_draw_rows();
-		tab_brushes_draw_presets();
-		ui_node_params_draw(CANVAS_TYPE_BRUSH, &g_config->brush_params);
 		return;
 	}
 
@@ -645,7 +626,6 @@ static void tab_brushes_draw_slots(bool popover) {
 		}
 	}
 
-	tab_brushes_draw_presets();
 
 	if (!g_config->hide_builtin_brushes) {
 		tab_brushes_draw_builtin();

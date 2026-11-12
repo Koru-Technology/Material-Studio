@@ -94,6 +94,9 @@ void        iron_set_app_name(const char *name);
 void        iron_load_url(const char *url);
 const char *iron_system_id(void);
 const char *iron_language(void);
+#if defined(IRON_MACOS) || defined(IRON_IOS)
+const char *iron_system_font_path(void);
+#endif
 
 double              iron_frequency(void);
 uint64_t            iron_timestamp(void);

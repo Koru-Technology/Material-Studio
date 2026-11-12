@@ -112,7 +112,7 @@ void translator_load_translations_on_cjk_downloaded(char *url) {
 		g_config->locale = "en";
 		translator_extended_glyphs();
 		translator_translations = any_map_create();
-		translator_init_font(false, "font.ttf", 1.0);
+		translator_init_font(false, base_ui_font_file(), 1.0);
 	}
 	else {
 		translator_init_font(true, _translator_load_translations_cjk_font_path, 1.4);
@@ -222,7 +222,7 @@ void translator_load_translations(char *new_locale) {
 		}
 	}
 	else {
-		translator_init_font(false, "font.ttf", 1.0);
+		translator_init_font(false, base_ui_font_file(), 1.0);
 	}
 }
 

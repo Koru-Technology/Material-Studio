@@ -977,29 +977,16 @@ void ui_menubar_render_ui() {
 		if (g_config->touch_ui) {
 			g_ui->_w = item_w;
 
-			i32 size = math_floor(g_ui->_w / (float)UI_SCALE());
-			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_IMPORT_EXPORT) {
-				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
-			}
-			if (ui_menubar_icon_button(ICON_FILE)) {
+			if (ui_menubar_icon_button_select(ICON_FILE, ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_IMPORT_EXPORT)) {
 				ui_menubar_show_menu(MENUBAR_CATEGORY_IMPORT_EXPORT);
 			}
-			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_VIEWPORT) {
-				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
-			}
-			if (ui_menubar_icon_button(ICON_IMAGE)) {
+			if (ui_menubar_icon_button_select(ICON_IMAGE, ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_VIEWPORT)) {
 				ui_menubar_show_menu(MENUBAR_CATEGORY_VIEWPORT);
 			}
-			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_MODE) {
-				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
-			}
-			if (ui_menubar_icon_button(ICON_SUN)) {
+			if (ui_menubar_icon_button_select(ICON_SUN, ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_MODE)) {
 				ui_menubar_show_menu(MENUBAR_CATEGORY_MODE);
 			}
-			if (ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_CAMERA) {
-				ui_fill(0, -6, size, size - 4, g_theme->HIGHLIGHT_COL);
-			}
-			if (ui_menubar_icon_button(ICON_CAMERA)) {
+			if (ui_menubar_icon_button_select(ICON_CAMERA, ui_menu_show && ui_menubar_category == MENUBAR_CATEGORY_CAMERA)) {
 				ui_menubar_show_menu(MENUBAR_CATEGORY_CAMERA);
 			}
 			// Workspace, tools and tabs are in the preferences
@@ -1069,11 +1056,56 @@ void ui_menubar_render_ui() {
 	}
 }
 
-bool ui_menubar_icon_button(i32 i) {
+// A tapped button gives a little bounce: pressed in, then springing back past its size and settling
+static uintptr_t ui_bounce_key  = 0;
+static f64       ui_bounce_time = 0.0;
+
+// Key of the button at the current place in the current window
+uintptr_t ui_bounce_here(i32 id) {
+	return (uintptr_t)g_ui->current_window + (uintptr_t)((i32)g_ui->_x * 131 + (i32)g_ui->_y * 7 + id * 31);
+}
+
+f32 ui_bounce_scale(uintptr_t key) {
+	if (key != ui_bounce_key) {
+		return 1.0;
+	}
+	f64 t = iron_time() - ui_bounce_time;
+	if (t > 0.5) {
+		ui_bounce_key = 0;
+		return 1.0;
+	}
+	if (g_ui->current_window != NULL) {
+		g_ui->current_window->redraws = 2; // Next frame too
+	}
+	iron_delay_idle_sleep();
+	return 1.0 - 0.2 * exp(-9.0 * t) * cos(22.0 * t);
+}
+
+void ui_bounce_start(uintptr_t key) {
+	ui_bounce_key  = key;
+	ui_bounce_time = iron_time();
+	if (g_ui->current_window != NULL) {
+		g_ui->current_window->redraws = 2;
+	}
+}
+
+// Icon button of the bars: the icon turns the highlight color when selected, a tap bounces it
+bool ui_menubar_icon_button_select(i32 i, bool selected) {
 	u32            col         = g_theme->WINDOW_BG_COL;
 	bool           light       = col > 0xff666666;
 	i32            icon_accent = light ? 0xff666666 : 0xffaaaaaa;
 	gpu_texture_t *img         = resource_get("icons.k");
 	rect_t        *rect        = resource_tile50(img, i);
-	return ui_sub_image(img, icon_accent, -1.0, rect->x, rect->y, rect->w, rect->h) == UI_STATE_RELEASED;
+	uintptr_t      key         = ui_bounce_here(i);
+	ui_image_draw_scale        = ui_bounce_scale(key);
+	ui_state_t state           = ui_sub_image(img, selected ? g_theme->HIGHLIGHT_COL : icon_accent, -1.0, rect->x, rect->y, rect->w, rect->h);
+	ui_image_draw_scale        = 1.0;
+	if (state == UI_STATE_STARTED) {
+		ui_bounce_start(key);
+	}
+	return state == UI_STATE_RELEASED;
+}
+
+bool ui_menubar_icon_button(i32 i) {
+	return ui_menubar_icon_button_select(i, false);
 }

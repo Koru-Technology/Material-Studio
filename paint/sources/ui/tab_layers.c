@@ -1303,16 +1303,9 @@ static void tab_layers_draw_content(bool popover) {
 				g_context->layer_filter = 0;
 				tab_layers_apply_filter(0);
 			}
-			f32          button = UI_ELEMENT_H() / (f32)g_ui->_w;
-			f32_array_t *row    = f32_array_create_from_raw_tmp(
-                (f32[]){
-                    1.0 - button,
-                    button,
-                },
-                2);
-			ui_row(row);
-			ui_text(tr("Layers"), UI_ALIGN_LEFT, 0x00000000);
-			tab_layers_button_new("");
+			if (ui_popovers_title(tr("Layers"), true)) {
+				ui_menu_draw(&tab_layers_button_new_menu, -1, -1);
+			}
 		}
 		else {
 			f32_array_t *row = f32_array_create_from_raw_tmp(

@@ -318,9 +318,11 @@ void project_new(bool reset_layers) {
 	g_project->_->brushes                  = any_array_create_from_raw((void *[]){}, 0);
 	any_array_push(g_project->_->brushes, slot_brush_create(NULL));
 	g_context->brush    = g_project->_->brushes->buffer[0];
+	draw_font_t *default_font = data_get_font("font.ttf"); // Text layers keep the bundled font, the same on every platform
+	draw_font_init(default_font);
 	g_project->_->fonts = any_array_create_from_raw(
 	    (void *[]){
-	        slot_font_create("default.ttf", g_font, ""),
+	        slot_font_create("default.ttf", default_font, ""),
 	    },
 	    1);
 	g_context->font      = g_project->_->fonts->buffer[0];

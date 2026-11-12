@@ -189,11 +189,19 @@ void ui_base_update(void *_) {
 	util_cursor_render(_);
 
 	if (!ui_base_show && g_config->touch_ui) {
-		g_ui->input_enabled = true;
+		// Distract free: a button where the top left bar was takes the ui back, the inverse of the one that hid it
+		g_ui->input_enabled       = true;
 		ui_begin(g_ui);
 		static ui_window_t window = {0};
-		if (ui_window(&window, 0, 0, 150, math_floor(UI_ELEMENT_H() + UI_ELEMENT_OFFSET() + 1), false)) {
-			if (ui_button(tr("Close"), UI_ALIGN_CENTER, "")) {
+		i32                pad    = math_floor(10 * UI_SCALE());
+		i32                side   = math_floor(7 * UI_SCALE());
+		i32                xpad   = math_floor(3 * UI_SCALE());
+		i32                item_w = ui_toolbar_w(false);
+		if (ui_base_panel_window(&window, 0, 0, item_w + xpad * 2, ui_header_h + pad + side, UI_BASE_CORNER_BR, false)) {
+			g_ui->_y += pad;
+			g_ui->_x += xpad;
+			g_ui->_w = item_w;
+			if (ui_menubar_icon_button(ICON_FULLSCREEN_EXIT)) {
 				ui_base_toggle_distract_free();
 			}
 		}
@@ -448,6 +456,27 @@ static void ui_base_panel_update_grab() {
 }
 
 // Window holding a panel of size w x h, the window is larger by the shadow on the right (or left) and bottom
+gpu_texture_t *ui_base_panel_backdrop = NULL; // Frosted glass: blurred image of what is under the next panel window, NULL for an opaque one
+
+// The backdrop inside the rounded panel: the rows of the rounded ends one at a time, the middle at once
+static void ui_base_draw_backdrop(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h, f32 r, i32 corners) {
+	f32 su = img->width / w;
+	f32 sv = img->height / h;
+	i32 ri = (i32)r;
+	draw_set_color(0xffffffff);
+	for (i32 i = 0; i < ri; ++i) {
+		f32 c  = r - i - 0.5f;
+		f32 d  = r - sqrtf(r * r - c * c);
+		f32 lt = (corners & UI_BASE_CORNER_TL) ? d : 0;
+		f32 rt = (corners & UI_BASE_CORNER_TR) ? d : 0;
+		f32 lb = (corners & UI_BASE_CORNER_BL) ? d : 0;
+		f32 rb = (corners & UI_BASE_CORNER_BR) ? d : 0;
+		draw_scaled_sub_image(img, lt * su, i * sv, (w - lt - rt) * su, sv, x + lt, y + i, w - lt - rt, 1);
+		draw_scaled_sub_image(img, lb * su, (h - 1 - i) * sv, (w - lb - rb) * su, sv, x + lb, y + h - 1 - i, w - lb - rb, 1);
+	}
+	draw_scaled_sub_image(img, 0, ri * sv, img->width, (h - ri * 2) * sv, x, y + ri, w, h - ri * 2);
+}
+
 bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 corners, bool shadow_left) {
 	ui_base_panel_add_rect(x, y, w, h);
 	i32 s      = ui_base_panel_shadow();
@@ -467,7 +496,13 @@ bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 c
 		draw_set_color(0x0c000000);
 		ui_base_fill_round_rect(px - i, i / 2 - i, w + i * 2, h + i * 2, r + i, corners);
 	}
-	draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker
+	if (ui_base_panel_backdrop != NULL) {
+		ui_base_draw_backdrop(ui_base_panel_backdrop, px, 0, w, h, r, corners);
+		draw_set_color((g_theme->WINDOW_BG_COL & 0x00ffffff) | 0xb0000000); // Tinted glass over it
+	}
+	else {
+		draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker
+	}
 	ui_base_fill_round_rect(px, 0, w, h, r, corners);
 	draw_set_color(0xffffffff);
 

@@ -208,7 +208,6 @@
 #include "library_cloud.c"
 #include "builtin_materials.c"
 #include "builtin_brushes.c"
-#include "brush_presets.c"
 #include "smart_materials.c"
 #include "console.c"
 #include "context.c"
