@@ -543,6 +543,23 @@ any_array_t *file_read_directory(char *path) {
 }
 
 void file_copy(char *src_path, char *dst_path) {
+#ifdef IRON_IOS
+	// No shell on ios, copy the bytes directly (relative sources resolve to the app bundle)
+	iron_file_reader_t reader;
+	if (!iron_file_reader_open(&reader, src_path, IRON_FILE_TYPE_ASSET)) {
+		return;
+	}
+	size_t size = iron_file_reader_size(&reader);
+	void  *data = malloc(size > 0 ? size : 1);
+	size_t read = iron_file_reader_read(&reader, data, size);
+	iron_file_reader_close(&reader);
+	FILE *f = fopen(dst_path, "wb");
+	if (f != NULL) {
+		fwrite(data, 1, read, f);
+		fclose(f);
+	}
+	free(data);
+#else
 	char cmd[1024];
 	strcpy(cmd, file_cmd_copy);
 	strcat(cmd, " \"");
@@ -551,6 +568,7 @@ void file_copy(char *src_path, char *dst_path) {
 	strcat(cmd, dst_path);
 	strcat(cmd, "\"");
 	iron_sys_command(cmd);
+#endif
 }
 
 void file_start(char *path) {

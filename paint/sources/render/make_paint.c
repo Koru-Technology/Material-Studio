@@ -152,8 +152,45 @@ node_shader_context_t *make_paint_run(material_t *data) {
 	return make_paint_run_context(data, "paint");
 }
 
+static node_shader_context_t *make_paint_run_context_internal(material_t *data, char *context_id, bool is_atlas);
+
+// The paint shader being generated paints a batch of dabs per draw, the render path asks the shader in use (render_path_paint_batched)
+bool make_paint_batched = false;
+
+bool make_paint_batching = true; // Off for comparisons, see make_paint_set_batching
+
+bool make_paint_is_batched() {
+	return render_path_paint_batched();
+}
+
+void make_paint_set_batching(bool on) {
+	make_paint_batching = on;
+	make_material_parse_paint_material(true);
+}
+
+static bool make_paint_batch_eligible() {
+	if (!make_paint_batching) {
+		return false;
+	}
+	tool_type_t tool = g_context->tool;
+	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER) {
+		return false;
+	}
+	if (g_context->pick_pos_nor_tex || g_context->layer == NULL || g_context->layer->fill_material != NULL || slot_layer_is_path(g_context->layer)) {
+		return false;
+	}
+	// The rest keeps one draw per dab
+	return !render_path_paint_symmetry_on() && !context_is_decal() && !context_is_pixel_snap() && !g_context->xray && !g_context->brush_camera_align &&
+	       !g_context->brush_directional && g_context->brush_stencil_image == NULL;
+}
+
 node_shader_context_t *make_paint_run_context(material_t *data, char *context_id) {
-	bool is_atlas = string_equals(context_id, "atlas");
+	bool is_atlas      = string_equals(context_id, "atlas");
+	make_paint_batched = !is_atlas && make_paint_batch_eligible();
+	return make_paint_run_context_internal(data, context_id, is_atlas);
+}
+
+static node_shader_context_t *make_paint_run_context_internal(material_t *data, char *context_id, bool is_atlas) {
 	shader_context_t      *props     = ALLOC_INIT(shader_context_t, {.name            = context_id,
 	                                                                 .depth_write     = false,
 	                                                                 .compare_mode    = "always",
@@ -334,11 +371,12 @@ node_shader_context_t *make_paint_run_context(material_t *data, char *context_id
 			}
 		}
 
-		if (depth_reject && !particle) {
-			node_shader_write_frag(kong, "if (sp.z > sample_lod(gbufferD, sampler_linear, sp.xy, 0.0).r - 0.00008) { discard; }");
+		if (make_paint_batched) {
+			make_brush_run_batched(kong, depth_reject);
 		}
-
-		make_brush_run(kong);
+		else {
+			make_brush_run(kong, depth_reject && !particle);
+		}
 	}
 	else { // Fill, Bake
 		node_shader_write_frag(kong, "float dist = 0.0;");
@@ -449,7 +487,7 @@ node_shader_context_t *make_paint_run_context(material_t *data, char *context_id
 			}
 		}
 
-		if (g_context->layer->fill_material == NULL) {
+		if (g_context->layer->fill_material == NULL && !make_paint_batched) { // Batched: the opacity of each dab
 			node_shader_write_frag(kong, "opacity *= constants.brush_opacity;");
 		}
 
@@ -507,7 +545,7 @@ node_shader_context_t *make_paint_run_context(material_t *data, char *context_id
 		}
 	}
 
-	if (g_context->brush_mask_image != NULL && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER)) {
+	if (g_context->brush_mask_image != NULL && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER) && !make_paint_batched) {
 		// Project mask onto mesh surface
 		node_shader_add_texture(kong, "texbrushmask", "_texbrushmask");
 		node_shader_add_function(kong, str_octahedron_wrap);
@@ -567,6 +605,18 @@ node_shader_context_t *make_paint_run_context(material_t *data, char *context_id
 		}
 	}
 
+	if (make_paint_batched) { // Coverage of every dab, see make_brush_run_batched_coverage
+		kong->frag_wvpposition = true;
+		node_shader_write_frag(kong,
+		                       "float2 sample_tc = float2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
+		node_shader_write_frag(kong, "sample_tc.y = 1.0 - sample_tc.y;");
+		node_shader_add_texture(kong, "paintmask", NULL);
+		node_shader_write_frag(kong, "float sample_mask = sample_lod(paintmask, sampler_linear, sample_tc, 0.0).r;");
+		node_shader_write_frag(kong, "float cov = sample_mask;");
+		make_brush_run_batched_coverage(kong);
+		node_shader_write_frag(kong, "float str = cov;");
+	}
+	else {
 	node_shader_write_frag(kong, string_tmp("if (opacity <= float(%s)) { discard; }", f32_to_string(g_config->brush_alpha_discard)));
 
 	if (g_context->tool == TOOL_TYPE_PARTICLE) { // Particle mask
@@ -600,6 +650,7 @@ node_shader_context_t *make_paint_run_context(material_t *data, char *context_id
 		node_shader_write_frag(kong, "if (constants.brush_flow < 1.0) { str = min(sample_mask + str * constants.brush_flow, base_str); }");
 		node_shader_write_frag(kong, "else { str = base_str + str * (1.0 - base_str) * 0.1; }");
 	}
+	} // Not batched
 
 	node_shader_add_texture(kong, tex_src, tex_src_link);
 	node_shader_write_frag(kong, string_tmp("float4 sample_undo = sample_lod(%s, sampler_linear, sample_tc, 0.0);", tex_src));

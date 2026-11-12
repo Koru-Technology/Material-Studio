@@ -191,9 +191,12 @@ void translator_load_translations(char *new_locale) {
 			// Assume cjk in the > 1119 range
 			if (codepoint > 1119 && !draw_font_has_glyph(codepoint)) {
 				cjk = true;
-				draw_font_add_glyph(codepoint);
+				draw_font_add_glyph_later(codepoint); // Built once below, not for every glyph
 			}
 		}
+	}
+	if (cjk) {
+		draw_font_build_glyphs();
 	}
 	array_free(keys);
 	free(keys);

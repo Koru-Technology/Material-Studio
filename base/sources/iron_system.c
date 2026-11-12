@@ -184,6 +184,19 @@ void iron_internal_shutdown_callback(void) {
 	}
 }
 
+// The system is low on memory, caches that are rebuilt on demand can go
+static void (*memory_warning_callback)(void) = NULL;
+
+void iron_set_memory_warning_callback(void (*callback)(void)) {
+	memory_warning_callback = callback;
+}
+
+void iron_internal_memory_warning_callback(void) {
+	if (memory_warning_callback != NULL) {
+		memory_warning_callback();
+	}
+}
+
 // The app is about to stop being active (home gesture, app switcher), the gpu can still be used
 static void (*resign_active_callback)(void) = NULL;
 

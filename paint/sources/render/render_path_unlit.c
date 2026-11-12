@@ -9,12 +9,7 @@ void render_path_unlit_draw() {
 	render_path_bind_target("gbuffer1", "tex");
 	render_path_draw_shader("Scene/compositor_pass/compositor_pass");
 
-	render_path_set_target("buf", NULL, "main", GPU_CLEAR_NONE, 0, 0.0);
-	render_grid();
-	render_path_set_target("buf", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	render_envsphere();
-	render_pathsphere_tool();
-	render_gizmo_draw();
+	render_path_draw_overlays("buf");
 
 	render_path_base_draw_taa("buf", "gbuffer1");
 }

@@ -20,7 +20,11 @@
 #define GPU_MAX_VERTEX_ELEMENTS      16
 #define GPU_MAX_TEXTURES             16
 #define GPU_CONSTANT_BUFFER_SIZE     512
+#ifdef IRON_METAL
+#define GPU_CONSTANT_BUFFER_MULTIPLE 8192 // Draws per two frames before a cpu-gpu wait, 4 MB of constants, painting issues many
+#else
 #define GPU_CONSTANT_BUFFER_MULTIPLE 2048
+#endif
 #ifdef IRON_VULKAN
 #define GPU_FRAMEBUFFER_COUNT 16
 #elif defined(IRON_WASM)

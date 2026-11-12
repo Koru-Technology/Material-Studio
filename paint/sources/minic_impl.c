@@ -229,6 +229,11 @@ void ui_box_show_custom2(void *commands, i32 mw, i32 mh, void *on_hide, char *ti
 	ui_box_show_custom(_ui_box_show_custom_commands, mw, mh, _ui_box_show_custom_on_hide, true, title);
 }
 
+// Writable folder of the app, scripts keep their files there on ios where /tmp is not accessible
+char *script_save_path() {
+	return (char *)iron_internal_save_path();
+}
+
 char *project_filepath_get() {
 #ifdef IRON_WINDOWS
 	return string_replace_all(g_project->_->filepath, "\\", "/");
@@ -2176,6 +2181,22 @@ void script_mouse_click(i32 x, i32 y, i32 button) {
 	c->y              = y;
 	c->button         = button;
 	sys_notify_on_next_frame(script_mouse_click_down, c);
+}
+
+// Raw mouse events at window pixel x, y, for strokes that go through the live input path
+void script_mouse_press(i32 x, i32 y, i32 button) {
+	iron_internal_mouse_trigger_move(x, y);
+	ui_mouse_move(g_ui, x, y, 0, 0);
+	iron_internal_mouse_trigger_press(button, x, y);
+}
+
+void script_mouse_move(i32 x, i32 y) {
+	iron_internal_mouse_trigger_move(x, y);
+	ui_mouse_move(g_ui, x, y, 0, 0);
+}
+
+void script_mouse_release(i32 x, i32 y, i32 button) {
+	iron_internal_mouse_trigger_release(button, x, y);
 }
 
 static void script_key_press_up(void *data) {

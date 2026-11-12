@@ -96,6 +96,7 @@ void make_material_delete_context(shader_context_t *c) {
 }
 
 void make_material_parse_mesh_material() {
+	render_path_base_redraw(); // The 3D view shows the change
 	if (make_material_mesh_scons == NULL) {
 		make_material_mesh_scons = any_array_create(0);
 	}

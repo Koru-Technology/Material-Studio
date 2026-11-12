@@ -52,6 +52,8 @@ void     draw_font_destroy(draw_font_t *font);
 void     draw_font_13(draw_font_t *font);
 bool     draw_font_has_glyph(int glyph);
 void     draw_font_add_glyph(int glyph);
+void     draw_font_add_glyph_later(int glyph);
+void     draw_font_build_glyphs(void);
 void     draw_font_init_glyphs(int from, int to);
 int      draw_font_count(draw_font_t *font);
 int      draw_font_height(draw_font_t *font, int font_size);

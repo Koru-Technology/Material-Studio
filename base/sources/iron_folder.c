@@ -28,6 +28,16 @@ static char *iron_folder_join(const char *a, const char *b) {
 	return s;
 }
 
+void iron_folder_list_free(iron_dir_entry_t *entries, int count) {
+	if (entries == NULL) {
+		return;
+	}
+	for (int i = 0; i < count; ++i) {
+		free(entries[i].name);
+	}
+	free(entries);
+}
+
 double iron_folder_mtime(const char *path) {
 	struct stat st;
 	if (stat(path, &st) != 0) {

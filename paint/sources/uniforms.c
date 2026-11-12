@@ -113,6 +113,9 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		vec4_t sc = mat4_get_scale(g_context->layer->decal_mat);
 		return sc.z * 0.5;
 	}
+	else if (string_equals(link, "_paint_dab_count")) {
+		return render_path_paint_batch_drawn;
+	}
 	else if (string_equals(link, "_brush_camera_align")) {
 		return context_is_brush_camera_align() ? 1.0f : 0.0f;
 	}
@@ -405,6 +408,10 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 	}
 	else if (string_equals(link, "_textexttool")) { // Opacity map for text
 		return g_context->text_tool_image;
+	}
+	else if (string_equals(link, "_texpaintdabs")) {
+		gpu_texture_t *t = render_path_paint_batch_texture;
+		return t != NULL ? t : ((render_target_t *)any_map_get(render_path_render_targets, "empty_black"))->_image;
 	}
 	else if (string_equals(link, "_texbrushmask")) {
 		return g_context->brush_mask_image;

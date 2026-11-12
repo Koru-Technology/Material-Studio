@@ -1,6 +1,16 @@
 
 #include "../global.h"
 
+// Deleted textures are only freed at the end of the frame, loading a project would hold the old layers,
+// the new ones and their upload copies at once
+static void import_arm_free_deleted() {
+	if (gpu_in_use || !gpu_cleanup_pending()) {
+		return;
+	}
+	gpu_execute_and_wait();
+	gpu_cleanup();
+}
+
 static i32 import_arm_progress_unpacked = 0;
 
 void import_arm_run_project_on_next_frame(void *_) {
@@ -1022,6 +1032,7 @@ void import_arm_run_project(char *path) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_unload(l);
 	}
+	import_arm_free_deleted(); // The old layers go before the new ones are allocated
 	g_project->_->layers = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
 		layer_data_t *ld       = g_project->layer_datas->buffer[i];
@@ -1128,6 +1139,7 @@ void import_arm_run_project(char *path) {
 			if (_texpaint_pack != NULL) {
 				gpu_delete_texture(_texpaint_pack);
 			}
+			import_arm_free_deleted(); // Upload textures of one layer at a time
 		}
 	}
 

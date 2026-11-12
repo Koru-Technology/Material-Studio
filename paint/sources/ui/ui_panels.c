@@ -38,7 +38,13 @@ static void ui_panels_draw_history() {
 		ui_panels_history_handle         = ui_window_create();
 		ui_panels_history_handle->layout = UI_LAYOUT_HORIZONTAL;
 	}
-	ui_panels_history_handle->redraws = 2; // Follows the history
+	static i32 last_undos = -1;
+	static i32 last_redos = -1;
+	if (history_undos != last_undos || history_redos != last_redos) { // Follows the history
+		last_undos                        = history_undos;
+		last_redos                        = history_redos;
+		ui_panels_history_handle->redraws = 2;
+	}
 
 	i32 item_w = ui_toolbar_w(false);
 	i32 pad    = ui_panels_pad();
@@ -264,7 +270,12 @@ static void ui_panels_draw_view_cube(i32 x, i32 y) {
 		hwnd = ui_window_create();
 	}
 	ui_view_cube_init();
-	hwnd->redraws = 2; // Turns with the camera
+	static quat_t last_rot = {0};
+	quat_t        rot      = scene_camera->base->transform->rot;
+	if (rot.x != last_rot.x || rot.y != last_rot.y || rot.z != last_rot.z || rot.w != last_rot.w) { // Turns with the camera
+		last_rot      = rot;
+		hwnd->redraws = 2;
+	}
 
 	i32    size  = ui_view_cube_size();
 	f32    half  = size / 2.0;

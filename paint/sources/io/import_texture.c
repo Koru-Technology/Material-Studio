@@ -11,6 +11,7 @@ gpu_texture_t *import_texture_default_importer(char *path) {
 }
 
 void import_texture_run_on_next_frame(import_texture_data_t *itd) {
+	render_path_base_redraw(); // The 3D view shows the change
 	import_envmap_run(itd->path, itd->image);
 	free(itd);
 }

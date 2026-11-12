@@ -29,6 +29,8 @@ static bool render_path_paint_uses_gbuffer0() {
 }
 
 bool             render_path_paint_dilated               = true;
+static bool      render_path_paint_dilate_base_pending   = false; // Base dilation deferred during a stroke
+static i32       render_path_paint_dilate_frame          = 0;
 mesh_object_t   *render_path_paint_painto                = NULL;
 mesh_object_t   *render_path_paint_planeo                = NULL;
 u8_array_t      *render_path_paint_visibles              = NULL;
@@ -262,10 +264,36 @@ static void render_path_paint_ref_target(char *name, char *format) {
 	}
 }
 
+// Frees the full size scratch targets, they are created again when needed
+void render_path_paint_release_scratch() {
+	char *names[] = {"texpaint_ref", "texpaint_nor_ref", "texpaint_pack_ref"};
+	for (i32 i = 0; i < 3; ++i) {
+		render_target_t *rt = any_map_get(render_path_render_targets, names[i]);
+		if (rt != NULL) {
+			gpu_delete_texture(rt->_image);
+			map_delete(render_path_render_targets, names[i]);
+		}
+	}
+	if (layers_temp_image != NULL) {
+		gpu_delete_texture(layers_temp_image);
+		map_delete(render_path_render_targets, "temptex0");
+		layers_temp_image = NULL;
+	}
+}
+
+static i32 render_path_paint_ref_frame = -1; // Blur snapshot once per frame, the dabs of a frame blur the same source
+static i32 render_path_paint_ref_tid   = -1;
+
 static void render_path_paint_ref_snapshot(i32 tid, bool is_mask) {
+	if (render_path_paint_ref_frame == render_path_paint_dilate_frame && render_path_paint_ref_tid == tid &&
+	    any_map_get(render_path_render_targets, "texpaint_ref") != NULL) {
+		return;
+	}
+	render_path_paint_ref_frame = render_path_paint_dilate_frame;
+	render_path_paint_ref_tid   = tid;
 	if (is_mask) {
 		render_path_paint_ref_target("texpaint_ref", "RGBA32");
-		render_path_set_target("texpaint_ref", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		render_path_set_target("texpaint_ref", NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
 		render_path_bind_target(string_tmp("texpaint%d", tid), "tex");
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
 		return;
@@ -280,7 +308,7 @@ static void render_path_paint_ref_snapshot(i32 tid, bool is_mask) {
 	        "texpaint_pack_ref",
 	    },
 	    2);
-	render_path_set_target("texpaint_ref", additional, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	render_path_set_target("texpaint_ref", additional, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
 	render_path_bind_target(string_tmp("texpaint%d", tid), "tex0");
 	render_path_bind_target(string_tmp("texpaint_nor%d", tid), "tex1");
 	render_path_bind_target(string_tmp("texpaint_pack%d", tid), "tex2");
@@ -358,7 +386,99 @@ static mesh_object_t *render_path_paint_pick_object() {
 	return NULL;
 }
 
+f32    uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link);
+vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link);
+vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link);
+
+// Dabs painted by one draw when the paint shader is batched (render_path_paint_batched): the stamps or samples of a frame
+// are collected, uploaded as a small texture and painted at once instead of a full size pass each.
+#define RENDER_PATH_PAINT_BATCH_MAX 64
+
+static f32     render_path_paint_batch[RENDER_PATH_PAINT_BATCH_MAX * 12];
+static i32     render_path_paint_batch_count  = 0;
+static bool    render_path_paint_batch_ready  = false; // Uploaded for the next paint draw
+gpu_texture_t *render_path_paint_batch_texture = NULL;
+f32            render_path_paint_batch_drawn   = 0.0; // Dabs in the texture
+
+// Whether the paint shader in use paints batches of dabs. Asked of the shader itself, not make_paint_batched: previews build
+// other paint shaders and restore the saved one (make_material_restore_paint_material), which leaves that flag stale.
+bool render_path_paint_batched() {
+	shader_context_t *scon = make_material_paint_scon;
+	if (scon == NULL || scon->texture_units == NULL) {
+		return false;
+	}
+	for (i32 i = 0; i < scon->texture_units->length; ++i) {
+		char *link = scon->texture_units->buffer[i]->link;
+		if (link != NULL && string_equals(link, "_texpaintdabs")) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Adds a dab from the current brush state, as the uniforms of a single draw would see it
+void render_path_paint_batch_add() {
+	if (render_path_paint_batch_count == RENDER_PATH_PAINT_BATCH_MAX) {
+		render_path_paint_batch_flush(false);
+	}
+	vec4_t inp   = uniforms_ext_vec4_link(NULL, NULL, "_input_brush");
+	vec4_t last  = uniforms_ext_vec4_link(NULL, NULL, "_input_brush_last");
+	vec2_t angle = uniforms_ext_vec2_link(NULL, NULL, "_brush_angle");
+	vec2_t dab   = uniforms_ext_vec2_link(NULL, NULL, "_brush_dab_angle");
+	f32   *d     = &render_path_paint_batch[render_path_paint_batch_count * 12];
+	d[0]         = inp.x;
+	d[1]         = inp.y;
+	d[2]         = last.x;
+	d[3]         = last.y;
+	d[4]         = uniforms_ext_f32_link(NULL, NULL, "_brush_radius");
+	d[5]         = uniforms_ext_f32_link(NULL, NULL, "_brush_opacity");
+	d[6]         = uniforms_ext_f32_link(NULL, NULL, "_brush_hardness");
+	d[7]         = uniforms_ext_f32_link(NULL, NULL, "_brush_flow");
+	d[8]         = angle.x * dab.x - angle.y * dab.y; // Both rotations of the mask
+	d[9]         = angle.x * dab.y + angle.y * dab.x;
+	d[10]        = 0.0;
+	d[11]        = 0.0;
+	render_path_paint_batch_count++;
+}
+
+static void render_path_paint_batch_upload() {
+	if (render_path_paint_batch_texture != NULL) {
+		gpu_delete_texture(render_path_paint_batch_texture); // Freed after the frame
+	}
+	buffer_t b                      = {.buffer = (u8 *)render_path_paint_batch, .length = render_path_paint_batch_count * 12 * sizeof(f32)};
+	render_path_paint_batch_texture = gpu_create_texture_from_bytes(&b, render_path_paint_batch_count * 3, 1, GPU_TEXTURE_FORMAT_RGBA128);
+	render_path_paint_batch_drawn   = render_path_paint_batch_count;
+	render_path_paint_batch_count   = 0;
+	render_path_paint_batch_ready   = true;
+}
+
+// Paints the collected dabs
+void render_path_paint_batch_flush(bool dilation) {
+	if (render_path_paint_batch_count == 0) {
+		return;
+	}
+	render_path_paint_batch_upload();
+	render_path_paint_commands_paint(dilation);
+}
+
+static void render_path_paint_commands_paint_internal(bool dilation);
+
 void render_path_paint_commands_paint(bool dilation) {
+	if (g_context->pdirty <= 0) {
+		render_path_paint_batch_count = 0;
+		render_path_paint_batch_ready = false;
+		return;
+	}
+	if (render_path_paint_batched() && !render_path_paint_batch_ready) { // Single draw, from the current brush state
+		render_path_paint_batch_count = 0;
+		render_path_paint_batch_add();
+		render_path_paint_batch_upload();
+	}
+	render_path_paint_commands_paint_internal(dilation);
+	render_path_paint_batch_ready = false;
+}
+
+static void render_path_paint_commands_paint_internal(bool dilation) {
 	i32 tid = g_context->layer->id;
 
 	if (g_context->pdirty <= 0) {
@@ -611,7 +731,7 @@ void render_path_paint_commands_paint(bool dilation) {
 			render_path_set_target(texpaint, NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
 		}
 
-		render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0); // Overwritten whole
 		render_path_bind_target("texpaint_blend0", "tex");
 		render_path_draw_shader("Scene/copy_pass/copyR16_pass");
 		bool is_mask = slot_layer_is_mask(g_context->layer);
@@ -684,9 +804,24 @@ void render_path_paint_commands_paint(bool dilation) {
 		}
 
 		if (dilation) {
-			render_path_paint_dilate(true, false);
+			render_path_paint_dilate_after_paint();
 		}
 	}
+}
+
+// Map keys stay allocated, a name is kept once instead of allocating it on every call
+static char *render_path_paint_key(char *format, i32 id) {
+	static any_map_t *keys = NULL;
+	if (keys == NULL) {
+		keys = any_map_create();
+	}
+	char *tmp = string_tmp(format, id);
+	char *key = any_map_get(keys, tmp);
+	if (key == NULL) {
+		key = string_copy(tmp);
+		any_map_set(keys, key, key);
+	}
+	return key;
 }
 
 void render_path_paint_use_live_layer(bool use) {
@@ -699,25 +834,25 @@ void render_path_paint_use_live_layer(bool use) {
 		_render_path_paint_texpaint_pack_undo = any_map_get(render_path_render_targets, string_tmp("texpaint_pack_undo%d", hid));
 		_render_path_paint_texpaint_nor       = any_map_get(render_path_render_targets, string_tmp("texpaint_nor%d", tid));
 		_render_path_paint_texpaint_pack      = any_map_get(render_path_render_targets, string_tmp("texpaint_pack%d", tid));
-		any_map_set(render_path_render_targets, string("texpaint_undo%d", hid), any_map_get(render_path_render_targets, string_tmp("texpaint%d", tid)));
-		any_map_set(render_path_render_targets, string("texpaint%d", tid), any_map_get(render_path_render_targets, "texpaint_live"));
+		any_map_set(render_path_render_targets, render_path_paint_key("texpaint_undo%d", hid), any_map_get(render_path_render_targets, string_tmp("texpaint%d", tid)));
+		any_map_set(render_path_render_targets, render_path_paint_key("texpaint%d", tid), any_map_get(render_path_render_targets, "texpaint_live"));
 		if (slot_layer_is_layer(g_context->layer)) {
-			any_map_set(render_path_render_targets, string("texpaint_nor_undo%d", hid),
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor_undo%d", hid),
 			            any_map_get(render_path_render_targets, string_tmp("texpaint_nor%d", tid)));
-			any_map_set(render_path_render_targets, string("texpaint_pack_undo%d", hid),
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack_undo%d", hid),
 			            any_map_get(render_path_render_targets, string_tmp("texpaint_pack%d", tid)));
-			any_map_set(render_path_render_targets, string("texpaint_nor%d", tid), any_map_get(render_path_render_targets, "texpaint_nor_live"));
-			any_map_set(render_path_render_targets, string("texpaint_pack%d", tid), any_map_get(render_path_render_targets, "texpaint_pack_live"));
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor%d", tid), any_map_get(render_path_render_targets, "texpaint_nor_live"));
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack%d", tid), any_map_get(render_path_render_targets, "texpaint_pack_live"));
 		}
 	}
 	else {
-		any_map_set(render_path_render_targets, string("texpaint%d", tid), _render_path_paint_texpaint);
-		any_map_set(render_path_render_targets, string("texpaint_undo%d", hid), _render_path_paint_texpaint_undo);
+		any_map_set(render_path_render_targets, render_path_paint_key("texpaint%d", tid), _render_path_paint_texpaint);
+		any_map_set(render_path_render_targets, render_path_paint_key("texpaint_undo%d", hid), _render_path_paint_texpaint_undo);
 		if (slot_layer_is_layer(g_context->layer)) {
-			any_map_set(render_path_render_targets, string("texpaint_nor_undo%d", hid), _render_path_paint_texpaint_nor_undo);
-			any_map_set(render_path_render_targets, string("texpaint_pack_undo%d", hid), _render_path_paint_texpaint_pack_undo);
-			any_map_set(render_path_render_targets, string("texpaint_nor%d", tid), _render_path_paint_texpaint_nor);
-			any_map_set(render_path_render_targets, string("texpaint_pack%d", tid), _render_path_paint_texpaint_pack);
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor_undo%d", hid), _render_path_paint_texpaint_nor_undo);
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack_undo%d", hid), _render_path_paint_texpaint_pack_undo);
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor%d", tid), _render_path_paint_texpaint_nor);
+			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack%d", tid), _render_path_paint_texpaint_pack);
 		}
 	}
 	render_path_paint_live_layer_locked = use;
@@ -730,7 +865,7 @@ bool render_path_paint_symmetry_on() {
 // Mirrored and radial copies of the stroke: the paint object is drawn transformed, texels whose transformed position falls in the brush get
 // painted. Copies turn around and mirror about the object origin or the center of the mesh bounds.
 void render_path_paint_commands_symmetry() {
-	if (!render_path_paint_symmetry_on()) {
+	if (!render_path_paint_symmetry_on() || g_context->pdirty <= 0) { // The mirrored copies only draw while painting
 		return;
 	}
 	g_context->ddirty = 2;
@@ -741,10 +876,21 @@ void render_path_paint_commands_symmetry() {
 
 	vec4_t c = (vec4_t){0.0, 0.0, 0.0, 0.0};
 	if (g_context->sym_center && g_context->paint_object->data != NULL) {
-		vec4_t bmin;
-		vec4_t bmax;
-		mesh_data_calculate_aabb_min_max(g_context->paint_object->data, &bmin, &bmax);
-		c = (vec4_t){(bmin.x + bmax.x) * 0.5, (bmin.y + bmax.y) * 0.5, (bmin.z + bmax.z) * 0.5, 0.0};
+		// Bounds of the mesh, cached, scanning every vertex for every draw is slow on dense meshes
+		static mesh_data_t *cached_data   = NULL;
+		static i32          cached_length = -1;
+		static vec4_t       cached_center;
+		mesh_data_t        *data   = g_context->paint_object->data;
+		i32                 length = data->vertex_arrays != NULL && data->vertex_arrays->length > 0 ? data->vertex_arrays->buffer[0]->values->length : 0;
+		if (data != cached_data || length != cached_length) {
+			vec4_t bmin;
+			vec4_t bmax;
+			mesh_data_calculate_aabb_min_max(data, &bmin, &bmax);
+			cached_center = (vec4_t){(bmin.x + bmax.x) * 0.5, (bmin.y + bmax.y) * 0.5, (bmin.z + bmax.z) * 0.5, 0.0};
+			cached_data   = data;
+			cached_length = length;
+		}
+		c = cached_center;
 	}
 	vec4_t sc = (vec4_t){c.x * s0.x, c.y * s0.y, c.z * s0.z, 0.0}; // Center in scaled object space
 
@@ -792,6 +938,7 @@ void render_path_paint_commands_live_brush() {
 	if (render_path_paint_live_layer == NULL) {
 		render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
 	}
+	render_path_paint_live_layer_used();
 
 	i32 tid = g_context->layer->id;
 	if (slot_layer_is_mask(g_context->layer)) {
@@ -1011,9 +1158,17 @@ void render_path_paint_begin() {
 		render_path_paint_live_layer_drawn--;
 	}
 
-	if (!render_path_paint_dilated) {
-		render_path_paint_dilate(false, true);
-		render_path_paint_dilated = true;
+	render_path_paint_live_layer_release_idle();
+
+	// Dilation fills the gutter around uv islands, six full size passes: during a stroke only every few frames,
+	// always once the stroke ended
+	render_path_paint_dilate_frame++;
+	bool stroke = g_context->brush_time > 0;
+	bool due    = !stroke || render_path_paint_dilate_frame % 6 == 0;
+	if (due && (!render_path_paint_dilated || render_path_paint_dilate_base_pending)) {
+		render_path_paint_dilate(render_path_paint_dilate_base_pending, !render_path_paint_dilated);
+		render_path_paint_dilated             = true;
+		render_path_paint_dilate_base_pending = false;
 	}
 
 	if (!render_path_paint_paint_enabled()) {
@@ -1163,6 +1318,10 @@ static void render_path_paint_stamp(f32 x, f32 y, f32 aspect, f32 diameter, bool
 	g_context->paint_vec.y       = y;
 	g_context->last_paint_vec_x  = x;
 	g_context->last_paint_vec_y  = y;
+	if (render_path_paint_batched()) { // Painted with the other stamps of the frame by render_path_paint_batch_flush
+		render_path_paint_batch_add();
+		return;
+	}
 	render_path_paint_commands_symmetry();
 	render_path_paint_commands_paint(last);
 }
@@ -1202,6 +1361,9 @@ void render_path_paint_commands_stamps() {
 			g_context->brush_dab_x = x;
 			g_context->brush_dab_y = y;
 		}
+	}
+	if (render_path_paint_batched()) {
+		render_path_paint_batch_flush(true);
 	}
 
 	g_context->paint_vec.x       = cx;
@@ -1260,6 +1422,24 @@ static i32 render_path_paint_points(render_path_paint_point_t *out) {
 			count /= 2;
 		}
 		out[count++] = (render_path_paint_point_t){x, y, s->pressure};
+		// Drop the middle of three points when it adds nothing: within a third of a pixel of the line and the pressure about linear,
+		// each point is a draw over the whole layer
+		if (count >= 3) {
+			render_path_paint_point_t *a  = &out[count - 3];
+			render_path_paint_point_t *b  = &out[count - 2];
+			render_path_paint_point_t *c  = &out[count - 1];
+			f32                        ax = a->x * w, ay = a->y * h, bx = b->x * w, by = b->y * h, cx = c->x * w, cy = c->y * h;
+			f32                        lx = cx - ax, ly = cy - ay;
+			f32                        ll = lx * lx + ly * ly;
+			f32                        t  = ll > 0.0 ? ((bx - ax) * lx + (by - ay) * ly) / ll : 0.0;
+			t                             = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
+			f32 dx = ax + lx * t - bx, dy = ay + ly * t - by;
+			f32 dp = a->p + (c->p - a->p) * t - b->p;
+			if (dx * dx + dy * dy < 0.11 && dp < 0.02 && dp > -0.02) {
+				*b = *c;
+				count--;
+			}
+		}
 	}
 	if (count > 0) {
 		out[count - 1].x = g_context->paint_vec.x;
@@ -1292,9 +1472,17 @@ static void render_path_paint_commands_samples() {
 		g_context->paint_vec.x      = pts[i].x;
 		g_context->paint_vec.y      = pts[i].y;
 		util_brush_sample_pressure  = pts[i].p;
-		render_path_paint_commands_symmetry();
-		render_path_paint_commands_paint(i == count - 1);
+		if (render_path_paint_batched()) {
+			render_path_paint_batch_add();
+		}
+		else {
+			render_path_paint_commands_symmetry();
+			render_path_paint_commands_paint(i == count - 1);
+		}
 		render_path_paint_samples_last = pts[i];
+	}
+	if (render_path_paint_batched()) {
+		render_path_paint_batch_flush(true);
 	}
 	util_brush_sample_pressure = -1.0;
 	g_context->paint_vec.x     = cx;
@@ -1345,8 +1533,11 @@ static void render_path_paint_commands_samples_stamps() {
 	render_path_paint_samples_last = a;
 	g_context->brush_dab_x         = a.x;
 	g_context->brush_dab_y         = a.y;
+	if (render_path_paint_batched()) {
+		render_path_paint_batch_flush(false);
+	}
 	if (stamps > 0) {
-		render_path_paint_dilate(true, false);
+		render_path_paint_dilate_after_paint();
 	}
 
 	util_brush_sample_pressure   = -1.0;
@@ -1629,6 +1820,38 @@ void render_path_paint_unbind_layers() {
 	}
 }
 
+// The live layer is three full size textures, only the material tool and live brush need it all the time.
+// For the brush preview it is created when needed and freed after a while.
+static f64 render_path_paint_live_last_use = 0.0;
+
+void render_path_paint_live_layer_used() {
+	render_path_paint_live_last_use = iron_time();
+}
+
+void render_path_paint_live_layer_release_idle() {
+	if (render_path_paint_live_layer == NULL || render_path_paint_live_layer_locked) {
+		return;
+	}
+	if (g_context->tool == TOOL_TYPE_MATERIAL || g_config->brush_live) {
+		render_path_paint_live_last_use = iron_time();
+		return;
+	}
+	if (iron_time() - render_path_paint_live_last_use > 5.0) {
+		slot_layer_unload(render_path_paint_live_layer);
+		render_path_paint_live_layer       = NULL;
+		render_path_paint_live_layer_drawn = 0;
+	}
+}
+
+// Base dilation after painting, deferred to render_path_paint_begin while a stroke is in progress
+void render_path_paint_dilate_after_paint() {
+	if (g_context->brush_time > 0) {
+		render_path_paint_dilate_base_pending = true;
+		return;
+	}
+	render_path_paint_dilate(true, false);
+}
+
 void render_path_paint_dilate(bool base, bool nor_pack) {
 	if (g_config->dilate_radius > 0 && !g_context->paint2d) {
 		util_uv_cache_dilate_map();
@@ -1640,7 +1863,7 @@ void render_path_paint_dilate(bool base, bool nor_pack) {
 		char *dilate_pass = string_equals(format, "RGBA64") ? "dilateRGBA64_pass" : string_equals(format, "RGBA128") ? "dilateRGBA128_pass" : "dilate_pass";
 
 		if (base) {
-			render_path_set_target("temptex0", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+			render_path_set_target("temptex0", NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0); // Overwritten whole
 			render_path_bind_target(string_tmp("texpaint%d", tid), "tex");
 			render_path_draw_shader(string_tmp("Scene/copy_pass/%s", copy_pass));
 			render_path_set_target(string_tmp("texpaint%d", tid), NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
@@ -1648,13 +1871,13 @@ void render_path_paint_dilate(bool base, bool nor_pack) {
 			render_path_draw_shader(string_tmp("Scene/dilate_pass/%s", dilate_pass));
 		}
 		if (nor_pack && !slot_layer_is_mask(g_context->layer)) {
-			render_path_set_target("temptex0", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+			render_path_set_target("temptex0", NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0); // Overwritten whole
 			render_path_bind_target(string_tmp("texpaint_nor%d", tid), "tex");
 			render_path_draw_shader(string_tmp("Scene/copy_pass/%s", copy_pass));
 			render_path_set_target(string_tmp("texpaint_nor%d", tid), NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			render_path_bind_target("temptex0", "tex");
 			render_path_draw_shader(string_tmp("Scene/dilate_pass/%s", dilate_pass));
-			render_path_set_target("temptex0", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+			render_path_set_target("temptex0", NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0); // Overwritten whole
 			render_path_bind_target(string_tmp("texpaint_pack%d", tid), "tex");
 			render_path_draw_shader(string_tmp("Scene/copy_pass/%s", copy_pass));
 			render_path_set_target(string_tmp("texpaint_pack%d", tid), NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);

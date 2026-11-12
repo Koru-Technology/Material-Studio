@@ -559,9 +559,9 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 	}
 
 	// Release staging memory allocated in gpu_get_texture_pixels()
-	// texpaint->pixels = NULL;
-	// texpaint_nor->pixels = NULL;
-	// texpaint_pack->pixels = NULL;
+	gpu_release_texture_pixels(texpaint);
+	gpu_release_texture_pixels(texpaint_nor);
+	gpu_release_texture_pixels(texpaint_pack);
 }
 
 static void export_texture_bake_material_add_texture(char *file) {

@@ -422,6 +422,12 @@ static void pencil_update(UITouch *t, UIView *view) {
 	layer.backgroundColor = nil;
 
 	[self addGestureRecognizer:[[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(hoverGesture:)]];
+	[[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
+	                                                  object:nil
+	                                                   queue:[NSOperationQueue mainQueue]
+	                                              usingBlock:^(NSNotification *note) {
+		                                              iron_internal_memory_warning_callback();
+	                                              }];
 	return self;
 }
 

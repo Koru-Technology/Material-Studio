@@ -226,6 +226,62 @@ void render_path_base_draw_split(void (*draw_commands)(void)) {
 	}
 }
 
+// The 3D image is reused while nothing that affects it changes, a frame then only presents it again.
+// Anything changing the view sets ddirty, render_path_base_redraw() covers changes that do not.
+static char *render_path_base_presented = NULL; // Target the last image was presented from
+static i32   render_path_base_redraw_frames = 0;
+
+void render_path_base_redraw() {
+	render_path_base_redraw_frames = 8; // Lets ssao and taa settle
+}
+
+static bool render_path_base_input_in_view() {
+	bool down = mouse_down("left") || mouse_down("right") || mouse_down("middle") || pen_down("tip") || mouse_released("left") ||
+	            mouse_released("right") || mouse_released("middle") || pen_released("tip") || mouse_wheel_delta != 0.0;
+	if (!down) {
+		return false;
+	}
+	f32 x = mouse_x;
+	f32 y = mouse_y;
+	return x >= sys_x() && x < sys_x() + sys_w() && y >= sys_y() && y < sys_y() + sys_h();
+}
+
+static bool render_path_base_can_reuse() {
+	if (ui_frame_changed) { // A value changed in the ui, it may show in the view
+		ui_frame_changed = false;
+		render_path_base_redraw();
+	}
+	if (render_path_base_redraw_frames > 0) {
+		render_path_base_redraw_frames--;
+		return false;
+	}
+	if (render_path_base_presented == NULL || g_context->ddirty > -8 || g_context->pdirty > 0 || g_context->brush_time > 0) {
+		return false;
+	}
+	if (base_is_split() || g_context->split_view || viewport_recording || args_player || player_in_editor || tab_timeline_playing) {
+		return false;
+	}
+	if (g_config->brush_live || context_is_decal() || g_context->tool == TOOL_TYPE_PARTICLE || g_context->paint2d) {
+		return false;
+	}
+	if (render_path_base_input_in_view()) {
+		render_path_base_redraw();
+		return false;
+	}
+	return true;
+}
+
+static void render_path_base_present_last() {
+	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	render_path_bind_target(render_path_base_presented, "tex");
+	if (render_path_base_ssaa4()) {
+		render_path_draw_shader("Scene/supersample_resolve/supersample_resolveRGBA64");
+	}
+	else {
+		render_path_draw_shader("Scene/copy_pass/copy_pass");
+	}
+}
+
 void render_path_base_commands(void (*draw_commands)(void)) {
 	if (iron_window_width() == 0 || iron_window_height() == 0) {
 		return;
@@ -239,6 +295,16 @@ void render_path_base_commands(void (*draw_commands)(void)) {
 
 	render_path_base_begin();
 	render_path_paint_begin();
+
+	if (!render_path_base_path_trace() && render_path_base_can_reuse()) {
+		render_path_base_present_last();
+		render_path_base_draw_outline();
+		render_path_paint_commands_cursor();
+		render_path_paint_end();
+		render_path_base_end();
+		return;
+	}
+
 	render_path_base_draw_split(draw_commands);
 	render_path_base_draw_gbuffer();
 	render_path_paint_draw();
@@ -466,6 +532,7 @@ void render_path_base_draw_taa(char *bufa, char *bufb) {
 
 	render_path_set_target("", NULL, NULL, args_player ? GPU_CLEAR_DONT_LOAD_COLOR : GPU_CLEAR_NONE, 0, 0.0);
 	render_path_bind_target(bufb, "tex");
+	render_path_base_presented = bufb;
 	if (render_path_base_ssaa4()) {
 		render_path_draw_shader("Scene/supersample_resolve/supersample_resolveRGBA64");
 	}

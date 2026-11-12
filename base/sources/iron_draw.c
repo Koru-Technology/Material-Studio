@@ -804,12 +804,26 @@ void draw_string(const char *text, float x, float y) {
 	}
 }
 
+// Atlases of every size, built again for a new glyph set
+static void draw_font_free_images(draw_font_t *font) {
+	for (int i = 0; font->images != NULL && i < font->m_images_len; ++i) {
+		draw_font_image_t *img = &font->images[i];
+		if (img->tex != NULL) {
+			gpu_texture_destroy(img->tex); // Destroyed after the frame, it may still be drawn this frame
+			free(img->tex);
+		}
+		free(img->chars);
+	}
+	free(font->images);
+}
+
 void draw_font_init(draw_font_t *font) {
 	if (draw_font_glyphs == NULL) {
 		draw_font_init_glyphs(32, 127);
 	}
 
 	if (font->glyphs_version != draw_glyphs_version) {
+		draw_font_free_images(font);
 		font->glyphs_version = draw_glyphs_version;
 		font->blob           = font->buf->buffer;
 		font->images         = NULL;
@@ -920,6 +934,14 @@ void draw_font_build_glyphs() {
 void draw_font_add_glyph(int glyph) {
 	i32_array_push(draw_font_glyphs, glyph);
 	draw_font_build_glyphs();
+}
+
+// Many glyphs at once: add each with this, then call draw_font_build_glyphs() once
+void draw_font_add_glyph_later(int glyph) {
+	if (draw_font_glyphs == NULL) {
+		draw_font_init_glyphs(32, 127);
+	}
+	i32_array_push(draw_font_glyphs, glyph);
 }
 
 int draw_font_count(draw_font_t *font) {

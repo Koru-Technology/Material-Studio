@@ -26,6 +26,20 @@ void base_on_shutdown() {
 	config_save();
 }
 
+void gpu_release_staging_buffers(void);
+
+// Low memory: drop what is created again when needed
+void base_on_memory_warning() {
+	if (g_context->brush_time == 0) { // Not in the middle of a stroke
+		render_path_paint_release_scratch();
+	}
+#ifdef IRON_METAL
+	gpu_release_staging_buffers();
+#endif
+	gpu_execute_and_wait(); // Free deleted textures now instead of on the next present
+	gpu_cleanup();
+}
+
 // Home gesture or app switcher, save while the gpu can still read the layers back
 void base_on_resign_active() {
 	project_save_now();
@@ -664,6 +678,7 @@ void base_init() {
 	iron_set_open_file_callback(&base_on_open_file);
 	sys_notify_on_app_state(&base_on_foreground, &base_on_background, &base_on_shutdown);
 	iron_set_resign_active_callback(&base_on_resign_active);
+	iron_set_memory_warning_callback(&base_on_memory_warning);
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
 	agent_init();
 	project_autosave_init();
@@ -944,6 +959,7 @@ void base_on_resize() {
 }
 
 void base_resize() {
+	render_path_base_redraw(); // The 3D view shows the change
 	if (iron_window_width() == 0 || iron_window_height() == 0) {
 		return;
 	}

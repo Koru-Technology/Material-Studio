@@ -335,11 +335,13 @@ void context_set_layer(slot_layer_t *l) {
 void context_select_tool(i32 i) {
 	g_context->tool = i;
 	make_material_parse_paint_material(true);
-	make_material_parse_mesh_material();
-	g_context->ddirty              = 3;
+	g_context->ddirty              = 3; // The mesh material is parsed by context_set_viewport_mode below
 	viewport_mode_t _viewport_mode = g_context->viewport_mode;
 	g_context->viewport_mode       = VIEWPORT_MODE_NONE;
 	context_set_viewport_mode(_viewport_mode);
+	if (_viewport_mode == VIEWPORT_MODE_NONE) { // Not parsed above
+		make_material_parse_mesh_material();
+	}
 
 	context_init_tool();
 	ui_header_handle->redraws  = 2;
@@ -500,6 +502,7 @@ bool context_is_floating_toolbar() {
 }
 
 void context_set_viewport_mode(viewport_mode_t mode) {
+	render_path_base_redraw(); // The 3D view shows the change
 	if (mode == g_context->viewport_mode) {
 		return;
 	}

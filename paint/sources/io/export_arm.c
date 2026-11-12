@@ -1,6 +1,13 @@
 
 #include "../global.h"
 
+// Compressed layer pixels, without keeping the full size readback in memory
+static buffer_t *export_arm_encode_layer_texture(gpu_texture_t *t) {
+	buffer_t *b = lz4_encode(gpu_get_texture_pixels(t));
+	gpu_release_texture_pixels(t);
+	return b;
+}
+
 static mesh_data_t *export_arm_named_mesh_data(mesh_object_t *p) {
 	// Mesh data shared by linked duplicates is named after the object holding it
 	if (string_equals(p->data->name, p->base->name)) {
@@ -240,7 +247,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
 		                              .res                = l->texpaint != NULL ? l->texpaint->width : g_project->_->layers->buffer[0]->texpaint->width,
 		                              .bpp                = bpp,
-		                              .texpaint           = l->texpaint != NULL ? lz4_encode(gpu_get_texture_pixels(l->texpaint)) : NULL,
+		                              .texpaint           = l->texpaint != NULL ? export_arm_encode_layer_texture(l->texpaint) : NULL,
 		                              .uv_scale           = l->scale,
 		                              .uv_rot             = l->angle,
 		                              .uv_type            = l->uv_type,
@@ -252,8 +259,8 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .blending           = l->blending,
 		                              .parent             = l->parent != NULL ? array_index_of(g_project->_->layers, l->parent) : -1,
 		                              .visible            = l->visible,
-		                              .texpaint_nor       = l->texpaint_nor != NULL ? lz4_encode(gpu_get_texture_pixels(l->texpaint_nor)) : NULL,
-		                              .texpaint_pack      = l->texpaint_pack != NULL ? lz4_encode(gpu_get_texture_pixels(l->texpaint_pack)) : NULL,
+		                              .texpaint_nor       = l->texpaint_nor != NULL ? export_arm_encode_layer_texture(l->texpaint_nor) : NULL,
+		                              .texpaint_pack      = l->texpaint_pack != NULL ? export_arm_encode_layer_texture(l->texpaint_pack) : NULL,
 		                              .texpaint_sculpt    = NULL, // Sculpting was removed, the field stays for file compatibility
 		                              .paint_base         = l->paint_base,
 		                              .paint_opac         = l->paint_opac,

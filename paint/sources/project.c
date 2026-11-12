@@ -622,6 +622,7 @@ void project_reimport_textures() {
 }
 
 void project_reimport_texture_load_on_next_frame(void *_) {
+	render_path_base_redraw(); // The 3D view shows the change
 	make_material_parse_paint_material(true);
 	util_render_make_material_preview();
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);

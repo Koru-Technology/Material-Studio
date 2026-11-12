@@ -12,7 +12,7 @@
 #define MINIC_MAX_SIG           64
 #define MINIC_MAX_ENUM_CONSTS   512
 #define MINIC_MAX_INT_TYPEDEFS  128
-#define MINIC_MAX_STRUCT_FIELDS 32
+#define MINIC_MAX_STRUCT_FIELDS 128 // context_t and config_t expose more than 32
 #define MINIC_MAX_STRUCTS       64
 #define MINIC_MAX_GLOBALS       64
 #define MINIC_MAX_NAME          48

@@ -300,6 +300,7 @@ bool layers_is_fill_material() {
 }
 
 void layers_update_fill_layers() {
+	render_path_base_redraw(); // The 3D view shows the change
 	if (bake_texture_node_baking)
 		return;
 
@@ -312,6 +313,7 @@ void layers_update_fill_layers() {
 		if (render_path_paint_live_layer == NULL) {
 			render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
 		}
+		render_path_paint_live_layer_used();
 
 		current     = _draw_current;
 		bool in_use = gpu_in_use;
@@ -464,6 +466,7 @@ void layers_update_fill_layer(bool parse_paint) {
 }
 
 void layers_update_linked_layers() {
+	render_path_base_redraw(); // The 3D view shows the change
 	nodes_mesh_layer_changed(g_context->layer);
 	slot_material_t *_material  = g_context->material;
 	bool             any_linked = false;

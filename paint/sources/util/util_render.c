@@ -454,6 +454,7 @@ void util_render_make_brush_preview() {
 	}
 
 	slot_layer_t *l = render_path_paint_live_layer;
+	render_path_paint_live_layer_used();
 	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 
 	if (g_context->brush->image == NULL) {
@@ -466,8 +467,22 @@ void util_render_make_brush_preview() {
 		g_context->brush->image_wave = gpu_create_render_target(w, math_floor(w * util_render_brush_wave_strip), GPU_TEXTURE_FORMAT_RGBA32);
 	}
 
+	// A default material paints the preview, kept across previews (it was created, and leaked, every time)
+	static slot_material_t *preview_material = NULL;
+	if (preview_material == NULL) {
+		preview_material = slot_material_create(NULL, NULL);
+	}
+	else {
+		preview_material->id = 0; // Not shared with a project material
+		for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+			slot_material_t *mat = g_project->_->materials->buffer[i];
+			if (mat->id >= preview_material->id) {
+				preview_material->id = mat->id + 1;
+			}
+		}
+	}
 	slot_material_t *_material = g_context->material;
-	g_context->material        = slot_material_create(NULL, NULL);
+	g_context->material        = preview_material;
 
 	// Prevent grid jump
 	g_context->material->nodes->pan_x = g_context->brush->nodes->pan_x;

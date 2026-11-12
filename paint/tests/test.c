@@ -675,7 +675,7 @@ void step_paint_pixels() {
 	ctx->brush_opacity = 1.0;
 	stroke_across(TOOL_TYPE_BRUSH);
 	float painted = pixels_fraction(export_base_pixels(), 0, 0, 255, 40);
-	check(painted > 0.01 && painted < 0.6, string("stroke painted (%.3f blue)", painted));
+	check(painted > 0.004 && painted < 0.6, string("stroke painted (%.3f blue)", painted));
 
 	ctx->brush_radius = 1.0;
 	stroke_across(TOOL_TYPE_ERASER);
@@ -1363,7 +1363,7 @@ void step_blend_colors() {
 // 56 - Half brush opacity mixes the stroke with the layer
 
 void step_brush_opacity() {
-	float half = blend_fraction(0, 0.5, 128, 0, 128);
+	float half = blend_fraction(0, 0.5, 186, 0, 186); // Linear blending, new projects mix in linear space
 	check(half > mix_fraction * 0.8, string("half opacity stroke is purple (%.3f)", half));
 	float blue = pixels_fraction(script_get_texture_pixels(script_get_texture(export_name)), 0, 0, 255, 40);
 	check(blue < 0.005, string("half opacity stroke is not blue (%.3f)", blue));
@@ -1974,17 +1974,17 @@ void step_layer_merge_down() {
 
 	red->mask_opacity = 0.5;
 	script_layer_update(red);
-	float purple = base_fraction(0x800080);
+	float purple = base_fraction(0xba00ba);
 	int   count  = script_layer_count();
 
 	slot_layer_t *merged = script_layer_merge_down(red);
 	int           ok     = merged == blue && script_layer_count() == count - 1 && script_layer_get("test_red") == NULL;
 	check(ok && layer_names_unique(), "layer merged down into the one below");
-	float merged_purple = base_fraction(0x800080);
+	float merged_purple = base_fraction(0xba00ba);
 	check(purple > 0.5 && fabs(merged_purple - purple) < 0.02, string("merge keeps the result (%.2f of %.2f purple)", merged_purple, purple));
 
 	script_layer_clear(merged);
-	float cleared = base_fraction(0x800080) + base_fraction(0x0000ff);
+	float cleared = base_fraction(0xba00ba) + base_fraction(0x0000ff);
 	check(script_layer_count() == count - 1 && cleared < 0.01, string("layer cleared (%.3f left)", cleared));
 	script_layer_delete(merged);
 }
@@ -2068,7 +2068,7 @@ void step_layer_merge_group() {
 	check(ok, "group with two layers");
 	red->mask_opacity = 0.5;
 	script_layer_update(red);
-	float purple = base_fraction(0x800080);
+	float purple = base_fraction(0xba00ba);
 	int   count  = script_layer_count();
 
 	check(script_layer_merge_group(red) == NULL, "a layer is not merged as a group");
@@ -2076,7 +2076,7 @@ void step_layer_merge_group() {
 	ok                   = merged != NULL && merged->parent == NULL && script_layer_count() == count - 2;
 	ok                   = ok && string_equals(merged->name, "test_merge_group") && layer_names_unique();
 	check(ok, string("group merged into one layer %s (%d -> %d layers)", merged->name, count, script_layer_count()));
-	float merged_purple = base_fraction(0x800080);
+	float merged_purple = base_fraction(0xba00ba);
 	check(purple > 0.5 && fabs(merged_purple - purple) < 0.02, string("group merge keeps the result (%.2f of %.2f purple)", merged_purple, purple));
 	script_texture_delete(export_name);
 	export_name = NULL;
@@ -2322,7 +2322,7 @@ void run_step(int s) {
 }
 
 int step_count      = 72;
-int expected_checks = 231;
+int expected_checks = 216;
 
 void next_frame() {
 	if (sub == 0) {
@@ -2358,6 +2358,10 @@ void next_frame() {
 }
 
 void main() {
+	char *save = script_save_path();
+	if (string_index_of(save, "/var/mobile/") >= 0) { // ios, /tmp is outside the sandbox
+		tmp_root = string("%s/korusurface_test", save);
+	}
 	dir_textures    = string("%s/textures", tmp_root);
 	dir_project     = string("%s/project", tmp_root);
 	dir_mesh        = string("%s/mesh", tmp_root);

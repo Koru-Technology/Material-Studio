@@ -992,6 +992,16 @@ buffer_t *gpu_get_texture_pixels(gpu_texture_t *image) {
 	return image->buffer;
 }
 
+// Frees the copy gpu_get_texture_pixels() keeps on the texture, layer sized copies would stay in memory otherwise
+void gpu_release_texture_pixels(gpu_texture_t *image) {
+	if (image == NULL || image->buffer == NULL) {
+		return;
+	}
+	free(image->buffer->buffer);
+	free(image->buffer);
+	image->buffer = NULL;
+}
+
 void _gpu_begin(gpu_texture_t *render_target, any_array_t *additional, gpu_texture_t *depth_buffer, gpu_clear_t flags, unsigned color, float depth) {
 	if (render_target == NULL) {
 		gpu_begin(NULL, 0, NULL, flags, color, depth);

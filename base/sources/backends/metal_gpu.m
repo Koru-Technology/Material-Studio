@@ -119,7 +119,8 @@ void gpu_render_target_init2(gpu_texture_t *target, uint32_t width, uint32_t hei
 		descriptor.pixelFormat           = convert_texture_format(format);
 		descriptor.arrayLength           = 1;
 		descriptor.mipmapLevelCount      = 1;
-		descriptor.usage                 = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+		// No ShaderWrite, it disables lossless compression, gpu_raytrace_set_target adds it to the few compute targets
+		descriptor.usage                 = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
 		descriptor.resourceOptions       = MTLResourceStorageModePrivate;
 		target->impl._tex                = (__bridge_retained void *)[device newTextureWithDescriptor:descriptor];
 		if (target->impl._tex == nil) {
@@ -198,7 +199,54 @@ void gpu_init_internal(int depth_buffer_bits, bool vsync) {
 	gpu_create_framebuffers(depth_buffer_bits);
 }
 
+// A pass on the same targets as the one just ended continues it: on tile based gpus every pass loads and stores
+// its whole targets, the ui draws many short passes on the framebuffer. The kept encoder ends before anything else.
+static bool  encoder_kept = false;
+static void *encoder_kept_targets[8];
+static int   encoder_kept_count = 0;
+static void *encoder_kept_depth = NULL;
+
+static void end_kept_encoder() {
+	if (encoder_kept) {
+		[command_encoder endEncoding];
+		encoder_kept = false;
+	}
+}
+
+static bool continue_kept_encoder(gpu_clear_t flags) {
+	if (!encoder_kept) {
+		return false;
+	}
+	bool same = !(flags & (GPU_CLEAR_COLOR | GPU_CLEAR_DEPTH | GPU_CLEAR_DONT_STORE_DEPTH)) && encoder_kept_count == current_render_targets_count &&
+	            encoder_kept_count <= 8 && encoder_kept_depth == (current_depth_buffer != NULL ? current_depth_buffer->impl._tex : NULL);
+	for (int i = 0; same && i < current_render_targets_count; ++i) {
+		same = encoder_kept_targets[i] == current_render_targets[i]->impl._tex;
+	}
+	if (!same) {
+		end_kept_encoder();
+		return false;
+	}
+	encoder_kept             = false;
+	current_viewport.originX = 0;
+	current_viewport.originY = 0;
+	current_viewport.width   = current_render_targets[0]->width;
+	current_viewport.height  = current_render_targets[0]->height;
+	current_viewport.znear   = 0.0;
+	current_viewport.zfar    = 1.0;
+	current_scissor.x        = 0;
+	current_scissor.y        = 0;
+	current_scissor.width    = current_render_targets[0]->width;
+	current_scissor.height   = current_render_targets[0]->height;
+	[command_encoder setViewport:current_viewport];
+	[command_encoder setScissorRect:current_scissor];
+	discard_depth_store = false;
+	return true;
+}
+
 void gpu_begin_internal(gpu_clear_t flags, unsigned color, float depth) {
+	if (continue_kept_encoder(flags)) {
+		return;
+	}
 	render_pass_desc = [MTLRenderPassDescriptor renderPassDescriptor];
 	for (int i = 0; i < current_render_targets_count; ++i) {
 		render_pass_desc.colorAttachments[i].texture = (__bridge id<MTLTexture>)current_render_targets[i]->impl._tex;
@@ -256,14 +304,25 @@ void gpu_begin_internal(gpu_clear_t flags, unsigned color, float depth) {
 }
 
 void gpu_end_internal() {
-	if (discard_depth_store) {
-		[command_encoder setDepthStoreAction:MTLStoreActionDontCare];
+	if (discard_depth_store || current_render_targets_count > 8) {
+		if (discard_depth_store) {
+			[command_encoder setDepthStoreAction:MTLStoreActionDontCare];
+		}
+		[command_encoder endEncoding];
 	}
-	[command_encoder endEncoding];
+	else { // Kept open for a following pass on the same targets
+		encoder_kept       = true;
+		encoder_kept_count = current_render_targets_count;
+		for (int i = 0; i < current_render_targets_count; ++i) {
+			encoder_kept_targets[i] = current_render_targets[i]->impl._tex;
+		}
+		encoder_kept_depth = current_depth_buffer != NULL ? current_depth_buffer->impl._tex : NULL;
+	}
 	current_render_targets_count = 0;
 }
 
 void gpu_execute_and_wait() {
+	end_kept_encoder();
 	if (gpu_in_use) {
 		if (discard_depth_store) {
 			[command_encoder setDepthStoreAction:MTLStoreActionStore];
@@ -297,6 +356,7 @@ void gpu_execute_and_wait() {
 }
 
 void gpu_present_internal() {
+	end_kept_encoder();
 	if (drawable != nil) {
 		[command_buffer presentDrawable:drawable];
 	}
@@ -389,20 +449,23 @@ void gpu_set_index_buffer(gpu_buffer_t *buffer) {
 void gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
 	gpu_execute_and_wait();
 
-	int buffer_size              = render_target->width * render_target->height * gpu_texture_format_size(render_target->format);
-	int new_readback_buffer_size = buffer_size;
-	if (new_readback_buffer_size < (2048 * 2048 * 4)) {
-		new_readback_buffer_size = (2048 * 2048 * 4);
+	int buffer_size = render_target->width * render_target->height * gpu_texture_format_size(render_target->format);
+	// Small readbacks (picking, previews) share a kept buffer, layer sized ones get a buffer released right after
+	const int     keep_max  = 4 * 1024 * 1024;
+	id<MTLBuffer> temporary = nil;
+	if (buffer_size > keep_max) {
+		temporary = [get_metal_device() newBufferWithLength:buffer_size options:MTLResourceStorageModeShared];
 	}
-	if (readback_buffer_size < new_readback_buffer_size) {
-		readback_buffer_size = new_readback_buffer_size;
+	else if (readback_buffer_size < buffer_size || readback_buffer == NULL) {
+		int size             = buffer_size < 256 * 1024 ? 256 * 1024 : buffer_size;
+		readback_buffer_size = size;
 		if (readback_buffer != NULL) {
-			id<MTLTexture> readback = (__bridge_transfer id<MTLTexture>)readback_buffer;
-			readback                = nil;
+			id<MTLBuffer> old = (__bridge_transfer id<MTLBuffer>)readback_buffer;
+			old               = nil;
 		}
-		id<MTLDevice> device = get_metal_device();
-		readback_buffer      = (__bridge_retained void *)[device newBufferWithLength:new_readback_buffer_size options:MTLResourceStorageModeShared];
+		readback_buffer = (__bridge_retained void *)[get_metal_device() newBufferWithLength:size options:MTLResourceStorageModeShared];
 	}
+	id<MTLBuffer> target_buffer = temporary != nil ? temporary : (__bridge id<MTLBuffer>)readback_buffer;
 
 	// Copy render target to readback buffer
 	id<MTLCommandQueue>       queue           = get_metal_queue();
@@ -413,7 +476,7 @@ void gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
 	                     sourceLevel:0
 	                    sourceOrigin:MTLOriginMake(0, 0, 0)
 	                      sourceSize:MTLSizeMake(render_target->width, render_target->height, 1)
-	                        toBuffer:(__bridge id<MTLBuffer>)readback_buffer
+	                        toBuffer:target_buffer
 	               destinationOffset:0
 	          destinationBytesPerRow:render_target->width * gpu_texture_format_size(render_target->format)
 	        destinationBytesPerImage:0];
@@ -422,8 +485,7 @@ void gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
 	[command_buffer waitUntilCompleted];
 
 	// Read buffer
-	id<MTLBuffer> buffer = (__bridge id<MTLBuffer>)readback_buffer;
-	memcpy(data, [buffer contents], render_target->width * render_target->height * gpu_texture_format_size(render_target->format));
+	memcpy(data, [target_buffer contents], buffer_size);
 }
 
 void gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size) {
@@ -468,18 +530,40 @@ void gpu_pipeline_compile(gpu_pipeline_t *pipeline) {
 		return;
 	}
 
-	id<MTLDevice>  device  = get_metal_device();
-	NSError       *error   = nil;
-	id<MTLLibrary> library = [device newLibraryWithSource:[[NSString alloc] initWithBytes:pipeline->vertex_shader->impl.source
-	                                                                               length:pipeline->vertex_shader->impl.length
-	                                                                             encoding:NSUTF8StringEncoding]
-	                                              options:nil
-	                                                error:&error];
+	id<MTLDevice> device = get_metal_device();
+	NSString     *source = [[NSString alloc] initWithBytes:pipeline->vertex_shader->impl.source
+	                                            length:pipeline->vertex_shader->impl.length
+	                                          encoding:NSUTF8StringEncoding];
+	// Compiling msl takes tens of ms, materials and tools switch back and forth between the same shaders
+	static NSMutableDictionary<NSString *, id<MTLLibrary>> *library_cache = nil;
+	if (library_cache == nil) {
+		library_cache = [NSMutableDictionary new];
+	}
+	id<MTLLibrary> library = source != nil ? library_cache[source] : nil;
 	if (library == nil) {
-		iron_error("%s", error.localizedDescription.UTF8String);
-		return;
+		NSError *error = nil;
+		library        = [device newLibraryWithSource:source options:nil error:&error];
+		if (library == nil) {
+			iron_error("%s", error.localizedDescription.UTF8String);
+			return;
+		}
+		if (library_cache.count >= 128) {
+			[library_cache removeAllObjects];
+		}
+		library_cache[source] = library;
 	}
 
+	// Shaders compiled again replace their function, release the previous one
+	if (pipeline->vertex_shader->impl.mtl_function != NULL) {
+		id<MTLFunction> old                        = (__bridge_transfer id<MTLFunction>)pipeline->vertex_shader->impl.mtl_function;
+		old                                        = nil;
+		pipeline->vertex_shader->impl.mtl_function = NULL;
+	}
+	if (pipeline->fragment_shader->impl.mtl_function != NULL) {
+		id<MTLFunction> old                          = (__bridge_transfer id<MTLFunction>)pipeline->fragment_shader->impl.mtl_function;
+		old                                          = nil;
+		pipeline->fragment_shader->impl.mtl_function = NULL;
+	}
 	pipeline->vertex_shader->impl.mtl_function =
 	    (__bridge_retained void *)[library newFunctionWithName:[NSString stringWithCString:pipeline->vertex_shader->impl.name encoding:NSUTF8StringEncoding]];
 	pipeline->fragment_shader->impl.mtl_function =
@@ -564,7 +648,8 @@ void gpu_shader_destroy(gpu_shader_t *shader) {
 }
 
 void gpu_shader_init(gpu_shader_t *shader, const void *data, size_t length, gpu_shader_type_t type) {
-	shader->impl.name[0] = 0;
+	shader->impl.name[0]      = 0;
+	shader->impl.mtl_function = NULL; // Set by gpu_pipeline_compile
 	const char *source   = data;
 
 	for (int i = 3; i < length; ++i) { // //>
@@ -646,6 +731,10 @@ static void bc7_compute_encode(id<MTLTexture> tex, void *pixels, uint32_t width,
 	[blit endEncoding];
 	[buffer commit];
 	[buffer waitUntilCompleted];
+	if (pixels_size > 4 * 1024 * 1024) { // Large staging buffers are not kept, imports are rare
+		bc7_src = nil;
+		bc7_dst = nil;
+	}
 }
 
 #endif
@@ -1089,8 +1178,40 @@ void gpu_raytrace_set_pipeline(gpu_raytrace_pipeline_t *_rt_pipeline) {
 	pipeline = _rt_pipeline;
 }
 
+// Render targets are created without ShaderWrite, the first ray dispatch into one swaps in a writable copy
+static void gpu_make_shader_writable(gpu_texture_t *target) {
+	id<MTLTexture> old = (__bridge id<MTLTexture>)target->impl._tex;
+	if (old == nil || (old.usage & MTLTextureUsageShaderWrite)) {
+		return;
+	}
+	MTLTextureDescriptor *descriptor = [MTLTextureDescriptor new];
+	descriptor.textureType           = MTLTextureType2D;
+	descriptor.width                 = old.width;
+	descriptor.height                = old.height;
+	descriptor.depth                 = 1;
+	descriptor.pixelFormat           = old.pixelFormat;
+	descriptor.arrayLength           = 1;
+	descriptor.mipmapLevelCount      = 1;
+	descriptor.usage                 = old.usage | MTLTextureUsageShaderWrite;
+	descriptor.resourceOptions       = MTLResourceStorageModePrivate;
+	id<MTLTexture> tex               = [get_metal_device() newTextureWithDescriptor:descriptor];
+	if (tex == nil) {
+		return;
+	}
+	id<MTLCommandBuffer>      command_buffer = [get_metal_queue() commandBuffer];
+	id<MTLBlitCommandEncoder> blit           = [command_buffer blitCommandEncoder];
+	[blit copyFromTexture:old toTexture:tex];
+	[blit endEncoding];
+	[command_buffer commit];
+	[command_buffer waitUntilCompleted];
+	id<MTLTexture> released = (__bridge_transfer id<MTLTexture>)target->impl._tex; // The dispatch waited for the gpu, nothing uses it
+	released                = nil;
+	target->impl._tex       = (__bridge_retained void *)tex;
+}
+
 void gpu_raytrace_set_target(gpu_texture_t *_output) {
 	output = _output;
+	gpu_make_shader_writable(output);
 }
 
 void gpu_raytrace_dispatch_rays() {
@@ -1159,4 +1280,18 @@ void gpu_raytrace_dispatch_rays() {
 	[compute_encoder dispatchThreadgroups:threadgroups threadsPerThreadgroup:threads_per_threadgroup];
 	[compute_encoder endEncoding];
 	[command_buffer commit];
+}
+
+// Staging buffers are created again on the next readback or import
+void gpu_release_staging_buffers(void) {
+	if (readback_buffer != NULL) {
+		id<MTLBuffer> old    = (__bridge_transfer id<MTLBuffer>)readback_buffer;
+		old                  = nil;
+		readback_buffer      = NULL;
+		readback_buffer_size = 0;
+	}
+#ifdef WITH_BC7
+	bc7_src = nil;
+	bc7_dst = nil;
+#endif
 }

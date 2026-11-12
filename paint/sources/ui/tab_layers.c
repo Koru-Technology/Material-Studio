@@ -509,6 +509,7 @@ void tab_layers_draw_layer_context_menu_export_on_file_picked(char *path) {
 		f = string("%s.png", f);
 	}
 	iron_write_png(string("%s%s%s", path, PATH_SEP, f), gpu_get_texture_pixels(l->texpaint), l->texpaint->width, l->texpaint->height, 3); // RRR1
+	gpu_release_texture_pixels(l->texpaint);
 }
 
 void tab_layers_draw_layer_context_menu_delete(void *_) {

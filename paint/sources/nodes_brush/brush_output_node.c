@@ -88,11 +88,13 @@ void brush_output_node_parse_inputs() {
 		g_context->brush_stencil_image = NULL;
 	}
 
-	if (last_mask != g_context->brush_mask_image || last_stencil != g_context->brush_stencil_image) {
+	bool last_directional        = g_context->brush_directional;
+	g_context->brush_directional = self->raw->buttons->buffer[0]->default_value->buffer[0] > 0.0;
+
+	// Directional brushes are not batched, see make_paint_batch_eligible
+	if (last_mask != g_context->brush_mask_image || last_stencil != g_context->brush_stencil_image || last_directional != g_context->brush_directional) {
 		make_material_parse_paint_material(true);
 	}
-
-	g_context->brush_directional = self->raw->buttons->buffer[0]->default_value->buffer[0] > 0.0;
 }
 
 void brush_output_node_run() {

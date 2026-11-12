@@ -409,7 +409,12 @@ static void ui_toolbar_draw_chevron(i32 toolbar_x) {
 	if (hwnd == NULL) {
 		hwnd = ui_window_create();
 	}
-	hwnd->redraws = 2;
+	static i32 last_key = 0;
+	i32        key      = toolbar_x * 7919 + ui_toolbar_sel_y * 31 + ui_toolbar_sel_h + g_context->tool * 104729;
+	if (key != last_key) { // Follows the selected tool
+		last_key      = key;
+		hwnd->redraws = 2;
+	}
 	i32 size      = math_floor(34 * UI_SCALE());
 	i32 x         = toolbar_x + ui_toolbar_w(false) + ui_toolbar_side() * 2 + math_floor(2 * UI_SCALE());
 	i32 y         = ui_toolbar_sel_y + (ui_toolbar_sel_h - size) / 2;

@@ -303,6 +303,9 @@ static void ui_header_draw_toggles() {
 	}
 	if (t == TOOL_TYPE_BRUSH || t == TOOL_TYPE_ERASER || context_is_decal()) {
 		ui_check(&g_context->brush_camera_align, tr("Camera Align"), "");
+		if (ui_item_changed()) {
+			make_material_parse_paint_material(true); // Camera aligned brushes are not batched
+		}
 		if (g_ui->is_hovered) {
 			ui_tooltip(tr("The brush faces the screen instead of following the surface"));
 		}

@@ -676,6 +676,7 @@ void minic_register_builtins() {
 
 	MINIC_STRUCT(slot_layer_t);
 	MINIC_I(id);
+	MINIC_P(texpaint);
 	MINIC_S(name);
 	MINIC_B(visible);
 	MINIC_O(parent, slot_layer_t);

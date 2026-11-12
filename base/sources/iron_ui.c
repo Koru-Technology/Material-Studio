@@ -27,6 +27,7 @@ static int touch_hold_y = -1;
 // Touch and hold finger for right click
 // Show extra tooltips above finger / on-screen keyboard
 bool  ui_touch_control                         = false;
+bool  ui_frame_changed                         = false; // A widget value changed since the app last cleared it
 bool  ui_tooltips                              = true;
 float ui_touch_speed                           = 1.0;
 bool  ui_is_cut                                = false;
@@ -2024,6 +2025,9 @@ void ui_end_window() {
 	ui_window_t *handle = current->current_window;
 	if (handle == NULL)
 		return;
+	if (current->changed) {
+		ui_frame_changed = true;
+	}
 	if (handle->redraws > 0 || current->is_scrolling) {
 		if (current->scissor) {
 			current->scissor = false;

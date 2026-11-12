@@ -417,6 +417,7 @@ void history_swap_canvas(history_step_t *step) {
 void history_undo() {
 	if (history_undos > 0) {
 		project_modified = true;
+		render_path_base_redraw();
 		i32             active = history_steps->length - 1 - history_redos;
 		history_step_t *step   = history_steps->buffer[active];
 
@@ -640,7 +641,7 @@ void history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask) {
 		history_undo_slot(to_id);
 	}
 	if (is_mask) {
-		render_path_set_target(string_tmp("texpaint_undo%s", to_id_s), NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		render_path_set_target(string_tmp("texpaint_undo%s", to_id_s), NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
 		render_path_bind_target(string("texpaint%s", from_id_s), "tex");
 		// render_path_draw_shader("Scene/copy_pass/copyR8_pass");
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
@@ -652,7 +653,7 @@ void history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask) {
 		        string("texpaint_pack_undo%s", to_id_s),
 		    },
 		    2);
-		render_path_set_target(string_tmp("texpaint_undo%s", to_id_s), additional, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		render_path_set_target(string_tmp("texpaint_undo%s", to_id_s), additional, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0); // Overwritten whole
 		render_path_bind_target(string("texpaint%s", from_id_s), "tex0");
 		render_path_bind_target(string("texpaint_nor%s", from_id_s), "tex1");
 		render_path_bind_target(string("texpaint_pack%s", from_id_s), "tex2");
@@ -701,6 +702,7 @@ void history_swap_active() {
 void history_redo() {
 	if (history_redos > 0) {
 		project_modified = true;
+		render_path_base_redraw();
 		i32             active = history_steps->length - history_redos;
 		history_step_t *step   = history_steps->buffer[active];
 
@@ -914,6 +916,7 @@ void history_reset() {
 
 history_step_t *history_push(history_action_t action) {
 	project_modified = true;
+	render_path_base_redraw();
 	char *name = history_action_to_string(action);
 #if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
 	char *filename = string_equals(g_project->_->filepath, "") ? ui_files_filename
