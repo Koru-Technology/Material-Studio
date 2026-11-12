@@ -418,8 +418,23 @@ static void mouse_touch_mid(f32 *x, f32 *y) {
 	*y = (mouse_touch_y[0] + mouse_touch_y[1]) / 2.0f;
 }
 
-// Twist: the turn of the line between the two fingers
-static f32 mouse_touch_angle = 0.0f;
+// A two finger gesture pans, pinches and twists. The spacing and the angle of the fingers wobble while they pan, so a pinch
+// or a twist only starts once it moved the fingers further than the noise and further than the pan so far, from there it
+// follows them (pinch and pan, or twist and pan, together stay possible).
+#define MOUSE_TOUCH_PINCH_START 30.0f // Pixels the spacing of the fingers changes
+#define MOUSE_TOUCH_TWIST_START 40.0f // Pixels the fingers travel along the turn
+static f32  mouse_touch_angle      = 0.0f;
+static f32  mouse_touch_twist_sum  = 0.0f;
+static bool mouse_touch_twisting   = false;
+static f32  mouse_touch_start_dist = 0.0f;
+static bool mouse_touch_pinching   = false;
+static f32  mouse_touch_pan        = 0.0f; // Pixels the point between the fingers moved
+
+static f32 mouse_touch_spacing(void) {
+	f32 dx = mouse_touch_x[1] - mouse_touch_x[0];
+	f32 dy = mouse_touch_y[1] - mouse_touch_y[0];
+	return sqrtf(dx * dx + dy * dy);
+}
 
 static f32 mouse_touch_line_angle(void) {
 	return atan2f(mouse_touch_y[1] - mouse_touch_y[0], mouse_touch_x[1] - mouse_touch_x[0]);
@@ -434,11 +449,21 @@ static void mouse_touch_twist(void) {
 	while (d < -3.14159265f) {
 		d += 6.2831853f;
 	}
-	mouse_twist_delta += d;
 	mouse_touch_angle = a;
+	if (!mouse_touch_twisting) {
+		mouse_touch_twist_sum += d;
+		f32 arc = fabsf(mouse_touch_twist_sum) * mouse_touch_spacing() * 0.5f;
+		if (arc < MOUSE_TOUCH_TWIST_START || arc < mouse_touch_pan * 0.75f) {
+			return;
+		}
+		mouse_touch_twisting = true;
+		d                    = mouse_touch_twist_sum; // The turn so far, no jump
+	}
+	mouse_twist_delta += d;
 }
 
 static void mouse_move_to(f32 x, f32 y) {
+	mouse_touch_pan += sqrtf((x - mouse_last_x) * (x - mouse_last_x) + (y - mouse_last_y) * (y - mouse_last_y));
 	mouse_movement_x += x - mouse_last_x;
 	mouse_movement_y += y - mouse_last_y;
 	mouse_last_x = x;
@@ -498,8 +523,13 @@ void mouse_on_touch_down(i32 index, i32 x, i32 y) {
 		mouse_touch_y[0] = mouse_y;
 		mouse_touch_x[1] = (f32)x;
 		mouse_touch_y[1] = (f32)y;
-		mouse_touch_two  = true;
-		mouse_touch_angle = mouse_touch_line_angle();
+		mouse_touch_two       = true;
+		mouse_touch_angle     = mouse_touch_line_angle();
+		mouse_touch_twist_sum  = 0.0f;
+		mouse_touch_twisting   = false;
+		mouse_touch_start_dist = mouse_touch_spacing();
+		mouse_touch_pinching   = false;
+		mouse_touch_pan        = 0.0f;
 		f32 mx, my;
 		mouse_touch_mid(&mx, &my);
 		mouse_last_x                   = mx;
@@ -554,6 +584,15 @@ void mouse_on_touch_move(i32 index, i32 x, i32 y) {
 			mouse_move_to(mx, my);
 		}
 		f32 new_distance = sqrtf(dx * dx + dy * dy);
+		if (mouse_touch_two && !mouse_touch_pinching) { // Spacing noise of a pan does not zoom
+			f32 change = fabsf(new_distance - mouse_touch_start_dist);
+			if (change < MOUSE_TOUCH_PINCH_START || change < mouse_touch_pan * 0.75f) {
+				mouse_pinch_dist = new_distance;
+				return;
+			}
+			mouse_touch_pinching = true;
+			mouse_pinch_dist     = mouse_touch_start_dist; // The pinch so far, no jump
+		}
 		if (mouse_pinch_dist == 0.0f) {
 			mouse_pinch_dist = new_distance;
 			return;
