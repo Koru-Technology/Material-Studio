@@ -17,7 +17,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		f32 radius = decal_mask ? brush_decal_mask_radius : g_context->brush_radius;
 		f32 val    = (radius * g_context->brush_nodes_radius * g_context->brush_dab_radius) / 15.0;
 		if (!decal) {
-			val *= util_brush_dynamic(g_config->dyn_size);
+			val *= util_brush_dynamic(g_config->dyn_size, true);
 		}
 		f32 scale2d = (900 / (float)base_h()) * g_config->window_scale;
 		if (!decal) {
@@ -62,7 +62,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_brush_flow")) {
 		bool stamps = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
-		return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_config->dyn_flow) : 1.0;
+		return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_config->dyn_flow, false) : 1.0;
 	}
 	else if (string_equals(link, "_brush_strength")) {
 		return g_context->brush_strength;
@@ -75,7 +75,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_brush_opacity")) {
 		f32 val = g_context->brush_opacity * g_context->brush_nodes_opacity * g_context->brush_dab_opacity;
-		val *= util_brush_dynamic(g_config->dyn_opacity);
+		val *= util_brush_dynamic(g_config->dyn_opacity, false);
 		return math_max(0.0, math_min(1.0, val));
 	}
 	else if (string_equals(link, "_brush_hardness")) {
@@ -84,7 +84,10 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 			return 1.0;
 		}
 		f32 val = fmaxf((g_context->brush_hardness * g_context->brush_nodes_hardness) - 0.02, 0.0);
-		val *= util_brush_dynamic(g_config->dyn_hardness);
+		val *= util_brush_dynamic(g_config->dyn_hardness, false);
+		if (g_config->tilt_shading) { // The side of the lead paints a softer edge
+			val *= 1.0 - 0.6 * util_brush_pen_tilt();
+		}
 		val *= val;
 		return val;
 	}
@@ -192,11 +195,23 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 			else if (g_config->dyn_angle == 2 && g_context->brush_time > 0) {
 				angle += g_context->brush_speed * math_pi(); // Faster strokes turn the brush further
 			}
-			else if (g_config->dyn_angle == 3 && g_context->brush_time > 0) {
+			else if (g_config->dyn_angle == DYN_SOURCE_DIRECTION && g_context->brush_time > 0) {
 				angle += g_context->brush_stroke_angle; // Follows the stroke
+			}
+			else if (g_config->dyn_angle == DYN_SOURCE_AZIMUTH) {
+				angle += util_brush_pen_azimuth(); // Follows where the pen points
+			}
+			else if (g_config->dyn_angle == DYN_SOURCE_ROLL) {
+				angle += util_brush_pen_roll(); // Turning the barrel turns the brush
 			}
 		}
 		return (vec2_t){math_cos(-angle), math_sin(-angle)};
+	}
+	else if (string_equals(link, "_brush_tilt")) {
+		return util_brush_tilt_shape();
+	}
+	else if (string_equals(link, "_undo_tile_size")) {
+		return (vec2_t){(f32)history_tiles_block, (f32)history_tiles_blocks};
 	}
 	return vec2_nan();
 }
@@ -368,6 +383,13 @@ static gpu_texture_t *uniforms_layer_tex(gpu_texture_t *t) {
 }
 
 gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char *link) {
+	// The layer before the stroke: the snapshot of a tiled paint step, the newest whole layer copy otherwise
+	if (string_equals(link, "_texpaint_undo") || string_equals(link, "_texpaint_nor_undo") || string_equals(link, "_texpaint_pack_undo")) {
+		gpu_texture_t *snap = history_tiles_stroke_source(string_equals(link, "_texpaint_undo") ? 0 : string_equals(link, "_texpaint_nor_undo") ? 1 : 2);
+		if (snap != NULL) {
+			return snap;
+		}
+	}
 	if (string_equals(link, "_texpaint_undo")) {
 		i32 i = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 		return _uniforms_ext_get_target(string_tmp("texpaint_undo%d", i));

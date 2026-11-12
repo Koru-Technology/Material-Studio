@@ -98,7 +98,40 @@ static void history_step_free(history_step_t *step) {
 	for (i32 i = 0; step->merge_layers != NULL && i < step->merge_layers->length; ++i) {
 		slot_layer_unload(step->merge_layers->buffer[i]);
 	}
+	history_tiles_release(step);
 	free(step);
+}
+
+static i32 history_ring_pending = 0; // Whole layer copies made for the step about to be pushed
+
+// Steps kept at most, paint steps keep their tiles and can go much further back than whole layer copies
+static i32 history_max_steps() {
+	return 64;
+}
+
+// Whole layer copies held by the steps that can still be undone or redone
+static i32 history_ring_used() {
+	i32 used = 0;
+	for (i32 i = 1; i < history_steps->length; ++i) {
+		used += history_steps->buffer[i]->undo_ring;
+	}
+	return used;
+}
+
+// The oldest step goes, the one after it becomes the base nothing undoes past
+void history_drop_oldest() {
+	if (history_steps->length < 2) {
+		return;
+	}
+	history_step_free(array_shift(history_steps));
+	if (history_undos + history_redos > history_steps->length - 1) {
+		if (history_undos > 0) {
+			history_undos--;
+		}
+		else {
+			history_redos--;
+		}
+	}
 }
 
 slot_layer_t_array_t *history_merge_saved_layers() {
@@ -415,6 +448,7 @@ void history_swap_canvas(history_step_t *step) {
 }
 
 void history_undo() {
+	history_tiles_finalize();
 	if (history_undos > 0) {
 		project_modified = true;
 		render_path_base_redraw();
@@ -585,6 +619,12 @@ void history_undo() {
 			step->canvas        = g_context->material->canvas;
 			slot_material_delete(g_context->material);
 		}
+		else if (step->undo_tiled) { // Paint operation, from its tiles
+			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
+			context_set_layer(g_project->_->layers->buffer[step->layer]);
+			history_tiles_swap(step, g_context->layer);
+			g_context->layer_preview_dirty = true;
+		}
 		else { // Paint operation
 			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
@@ -668,6 +708,7 @@ void history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask) {
 		render_path_draw_shader(string_tmp("Scene/copy_mrt3_pass/%s", pipe));
 	}
 	history_undo_i = (history_undo_i + 1) % g_config->undo_steps;
+	history_ring_pending++;
 }
 
 void history_copy_merging_layers2(slot_layer_t_array_t *layers) {
@@ -694,12 +735,15 @@ void history_redo_new_black_mask(slot_layer_t *l) {
 }
 
 void history_swap_active() {
+	history_tiles_finalize(); // The tiles of the last stroke, before the layer changes
 	slot_layer_t *undo_layer = history_undo_slot(history_undo_i);
 	slot_layer_swap(undo_layer, g_context->layer);
 	history_undo_i = (history_undo_i + 1) % g_config->undo_steps;
+	history_ring_pending++;
 }
 
 void history_redo() {
+	history_tiles_finalize();
 	if (history_redos > 0) {
 		project_modified = true;
 		render_path_base_redraw();
@@ -862,6 +906,12 @@ void history_redo() {
 			ui_nodes_canvas_changed();
 			ui_nodes_hwnd->redraws = 2;
 		}
+		else if (step->undo_tiled) { // Paint operation, from its tiles
+			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
+			context_set_layer(g_project->_->layers->buffer[step->layer]);
+			history_tiles_swap(step, g_context->layer);
+			g_context->layer_preview_dirty = true;
+		}
 		else { // Paint operation
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
@@ -912,9 +962,12 @@ void history_reset() {
 	history_undos  = 0;
 	history_redos  = 0;
 	history_undo_i = 0;
+	history_ring_pending = 0;
+	history_tiles_reset();
 }
 
 history_step_t *history_push(history_action_t action) {
+	history_tiles_finalize(); // The last stroke is over
 	project_modified = true;
 	render_path_base_redraw();
 	char *name = history_action_to_string(action);
@@ -930,9 +983,7 @@ history_step_t *history_push(history_action_t action) {
 		ui_menubar_menu_handle->redraws = 2;
 	}
 
-	if (history_undos < g_config->undo_steps) {
-		history_undos++;
-	}
+	history_undos++;
 	if (history_redos > 0) {
 		for (i32 i = 0; i < history_redos; ++i) {
 			history_step_free(array_pop(history_steps));
@@ -960,10 +1011,13 @@ history_step_t *history_push(history_action_t action) {
 	                                .layer_object   = g_context->layer->object_mask,
 	                                .layer_blending = g_context->layer->blending});
 
+	step->undo_ring      = history_ring_pending;
+	history_ring_pending = 0;
 	any_array_push(history_steps, step);
 
-	while (history_steps->length > g_config->undo_steps + 1) {
-		history_step_free(array_shift(history_steps));
+	// Whole layer copies are a ring of undo_steps layers, a step whose copy would be overwritten goes first
+	while (history_steps->length > history_max_steps() + 1 || (history_steps->length > 2 && history_ring_used() > g_config->undo_steps)) {
+		history_drop_oldest();
 	}
 	return history_steps->buffer[history_steps->length - 1];
 }
@@ -977,11 +1031,17 @@ void history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_gr
 
 void history_paint() {
 	bool is_mask = slot_layer_is_mask(g_context->layer);
-	history_copy_to_undo(g_context->layer->id, history_undo_i, is_mask);
+	bool tiled   = history_tiles_supported(g_context->layer);
+	if (!tiled) {
+		history_copy_to_undo(g_context->layer->id, history_undo_i, is_mask);
+	}
 
 	history_push_undo    = false;
 	history_step_t *step = history_push(HISTORY_ACTION_PAINT);
 	step->name           = tr(ui_toolbar_tool_names->buffer[g_context->tool]);
+	if (tiled) {
+		history_tiles_begin(step, g_context->layer);
+	}
 
 	// Erasing the bottom layer makes the mesh see-through
 	if (g_context->tool == TOOL_TYPE_ERASER && g_context->layer == g_project->_->layers->buffer[0]) {

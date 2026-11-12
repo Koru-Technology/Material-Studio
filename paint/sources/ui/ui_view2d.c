@@ -233,9 +233,25 @@ void ui_view2d_draw_edit() {
 	g_ui->enabled = true;
 }
 
+// Twisting with two fingers turns the layer while painting. Selections, the uv map, pixel snapping and moving layers
+// work on the upright image, the view turns back for them.
+bool ui_view2d_rotation_allowed() {
+	tool_type_t tool = g_context->tool;
+	return ui_view2d_type == VIEW_2D_TYPE_LAYER && tool != TOOL_TYPE_SELECT && tool != TOOL_TYPE_CURSOR && !ui_view2d_uvmap_show &&
+	       !context_is_pixel_snap() && !g_config->view2d_grid_snap;
+}
+
+// Center of the shown image the rotation turns around, relative to the window
+static f32 ui_view2d_rotation_cx = 0.0;
+static f32 ui_view2d_rotation_cy = 0.0;
+
 void ui_view2d_draw_image(gpu_texture_t *image, f32 dx, f32 dy, f32 dw, f32 dh, i32 channel) {
 	if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
 		gpu_set_int(ui_view2d_channel_loc, channel);
+	}
+	if (ui_view2d_rotation != 0.0) {
+		draw_rotated_scaled_image(image, dx, dy, dw, dh, ui_view2d_rotation_cx, ui_view2d_rotation_cy, ui_view2d_rotation);
+		return;
 	}
 	draw_scaled_image(image, dx, dy, dw, dh);
 }
@@ -442,6 +458,30 @@ void ui_view2d_update(void *_) {
 				ui_view2d_pan_y -= (g_ui->input_y - ui_view2d_wy - ui_view2d_wh / 2.0) * (ratio - 1.0);
 			}
 		}
+
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+		// Twist with two fingers or the trackpad turns the layer, it snaps upright near 0
+		static f64 twist_time = 0.0;
+		if (mouse_twist_delta != 0.0 && ui_view2d_rotation_allowed()) {
+			twist_time = sys_time();
+			ui_view2d_rotation += mouse_twist_delta;
+			if (ui_view2d_rotation > math_pi()) {
+				ui_view2d_rotation -= math_pi() * 2.0;
+			}
+			else if (ui_view2d_rotation < -math_pi()) {
+				ui_view2d_rotation += math_pi() * 2.0;
+			}
+			ui_view2d_twisting      = true;
+			ui_view2d_hwnd->redraws = 2;
+		}
+		if (ui_view2d_twisting && !mouse_down("right") && sys_time() - twist_time > 0.25) { // Fingers lifted or the trackpad stopped
+			ui_view2d_twisting = false;
+			if (math_abs(ui_view2d_rotation) < 0.07) {
+				ui_view2d_rotation      = 0.0;
+				ui_view2d_hwnd->redraws = 2;
+			}
+		}
+#endif
 
 		bool decal_mask = context_is_decal_mask_paint();
 		bool set_clone_source =
@@ -664,6 +704,11 @@ void ui_view2d_update(void *_) {
 			                            &oy);
 			f32 mx = tx + ox;
 			f32 my = ty + oy;
+			if (!ui_view2d_rotation_allowed()) {
+				ui_view2d_rotation = 0.0;
+			}
+			ui_view2d_rotation_cx = tx + tw / 2.0;
+			ui_view2d_rotation_cy = ty + th / 2.0;
 			ui_view2d_draw_image(tex, mx, my, tw, th, channel);
 			if (ui_view2d_tiled_show) {
 				ui_view2d_draw_image(tex, mx - tw, my, tw, th, channel);
@@ -944,6 +989,16 @@ void ui_view2d_update(void *_) {
 				ui_slider(&zoom, string_tmp("%%", scale_percent), 1, 100, true, 1, true, UI_ALIGN_RIGHT, true);
 				if (ui_item_changed()) {
 					ui_view2d_pan_scale     = zoom / 100.0 * tex->width / (fmin(ui_view2d_ww, ui_view2d_wh) * 0.9);
+					ui_view2d_hwnd->redraws = 2;
+				}
+				g_ui->_x += ew + 3;
+				g_ui->_y = 2 + start_y;
+			}
+
+			if (full && ui_view2d_rotation != 0.0) {
+				g_ui->_w = math_floor(ew + 3);
+				if (ui_button(tr("Reset Rotation"), UI_ALIGN_CENTER, "")) {
+					ui_view2d_rotation      = 0.0;
 					ui_view2d_hwnd->redraws = 2;
 				}
 				g_ui->_x += ew + 3;

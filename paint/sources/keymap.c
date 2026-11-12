@@ -108,6 +108,7 @@ any_map_t *keymap_get_default() {
 	any_map_set(keymap, "tool_select", "m");
 	any_map_set(keymap, "tool_material", "");
 	any_map_set(keymap, "swap_brush_eraser", "");
+	any_map_set(keymap, "quick_menu", "space");
 	return keymap;
 }
 

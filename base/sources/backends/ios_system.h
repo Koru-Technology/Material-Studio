@@ -4,7 +4,12 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 
-@interface MyView : UIView <UIKeyInput> {
+// Takes the typed text while a text field is edited, the canvas view keeps the hardware keys otherwise
+// (a key input view as first responder brings up the on-screen keyboard)
+@interface KeyInputView : UIView <UIKeyInput>
+@end
+
+@interface MyView : UIView <UIPencilInteractionDelegate, UIPointerInteractionDelegate, UIGestureRecognizerDelegate> {
 @private
 	id<MTLDevice>       device;
 	id<MTLCommandQueue> queue;

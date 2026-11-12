@@ -311,6 +311,9 @@ void        iron_internal_mouse_trigger_press(int button, int x, int y);
 void        iron_internal_mouse_trigger_release(int button, int x, int y);
 void        iron_internal_mouse_trigger_move(int x, int y);
 void        iron_internal_mouse_trigger_scroll(float delta);
+void        iron_internal_mouse_trigger_twist(float radians); // Two finger or trackpad rotation, clockwise on screen
+void        iron_set_pointer_hidden_callback(bool (*callback)(float x, float y));
+bool        iron_internal_pointer_hidden(float x, float y); // The app draws its own cursor there
 void        iron_internal_mouse_trigger_movement(int movement_x, int movement_y);
 void        iron_internal_mouse_window_activated();
 void        iron_internal_mouse_window_deactivated();
@@ -324,6 +327,29 @@ void        iron_internal_pen_trigger_move(int x, int y, float pressure);
 void        iron_internal_pen_trigger_sample(float x, float y, float pressure, float altitude, float azimuth, float roll, double time);
 void        iron_internal_pen_trigger_press(int x, int y, float pressure);
 void        iron_internal_pen_trigger_release(int x, int y, float pressure);
+void        iron_internal_pen_trigger_hover(float x, float y, float height); // height < 0 when the hover ended
+void        iron_internal_pen_trigger_predicted(float x, float y);
+
+// Pencil gestures (Apple Pencil double tap and squeeze)
+typedef enum {
+	IRON_PENCIL_GESTURE_DOUBLE_TAP,
+	IRON_PENCIL_GESTURE_SQUEEZE,
+} iron_pencil_gesture_t;
+
+// What the system settings ask a pencil gesture to do
+typedef enum {
+	IRON_PENCIL_PREFERS_IGNORE,
+	IRON_PENCIL_PREFERS_SWITCH_ERASER,
+	IRON_PENCIL_PREFERS_SWITCH_PREVIOUS,
+	IRON_PENCIL_PREFERS_COLOR_PALETTE,
+	IRON_PENCIL_PREFERS_INK_ATTRIBUTES,
+	IRON_PENCIL_PREFERS_CONTEXTUAL_PALETTE,
+} iron_pencil_preference_t;
+
+void iron_set_pencil_gesture_callback(void (*callback)(int gesture, float x, float y));
+void iron_internal_pencil_gesture_callback(int gesture, float x, float y);
+int  iron_pencil_preferred_action(int gesture);
+void iron_haptic_tick(float x, float y); // A light tick under the pencil, where supported
 void        iron_internal_eraser_trigger_move(int x, int y, float pressure);
 void        iron_internal_eraser_trigger_press(int x, int y, float pressure);
 void        iron_internal_eraser_trigger_release(int x, int y, float pressure);

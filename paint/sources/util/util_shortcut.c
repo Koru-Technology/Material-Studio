@@ -1,28 +1,43 @@
 
 #include "../global.h"
 
-static f64 util_shortcut_undo_tap_time = 0.0;
-static f64 util_shortcut_redo_tap_time = 0.0;
+// Two-finger tap to undo, three-finger tap to redo. A tap lifts within a quarter second and barely moves,
+// the fingers counted are the most that touched (they rarely land at once).
+static bool util_shortcut_tap_active  = false;
+static f64  util_shortcut_tap_start   = 0.0;
+static i32  util_shortcut_tap_fingers = 0;
+static f32  util_shortcut_tap_moved   = 0.0;
 
 void util_shortcut_undo_redo() {
 	bool undo_pressed = keymap_shortcut(any_map_get(g_keymap, "edit_undo"), SHORTCUT_TYPE_STARTED);
 	bool redo_pressed = keymap_shortcut(any_map_get(g_keymap, "edit_redo"), SHORTCUT_TYPE_STARTED) || (keyboard_down("control") && keyboard_started("y"));
 
-	// Two-finger tap to undo, three-finger tap to redo
-	if (context_in_3d_view() && g_config->touch_ui) {
-		if (mouse_started("middle")) {
-			util_shortcut_redo_tap_time = sys_time();
+	bool in_view = context_in_3d_view() || context_in_2d_view(VIEW_2D_TYPE_LAYER);
+	if (in_view && g_config->touch_ui) {
+		if (!util_shortcut_tap_active && (mouse_started("right") || mouse_started("middle"))) {
+			util_shortcut_tap_active  = true;
+			util_shortcut_tap_start   = sys_time();
+			util_shortcut_tap_fingers = 2;
+			util_shortcut_tap_moved   = 0.0;
 		}
-		else if (mouse_started("right")) {
-			util_shortcut_undo_tap_time = sys_time();
+	}
+	if (util_shortcut_tap_active) {
+		if (mouse_started("middle") || mouse_down("middle")) {
+			util_shortcut_tap_fingers = 3;
 		}
-		else if (mouse_released("middle") && sys_time() - util_shortcut_redo_tap_time < 0.1) {
-			util_shortcut_redo_tap_time = util_shortcut_undo_tap_time = 0;
-			redo_pressed                                              = true;
-		}
-		else if (mouse_released("right") && sys_time() - util_shortcut_undo_tap_time < 0.1) {
-			util_shortcut_redo_tap_time = util_shortcut_undo_tap_time = 0;
-			undo_pressed                                              = true;
+		util_shortcut_tap_moved += math_abs(mouse_movement_x) + math_abs(mouse_movement_y) + math_abs(mouse_wheel_delta) * 40.0;
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+		util_shortcut_tap_moved += math_abs(mouse_twist_delta) * 200.0;
+#endif
+		if (!mouse_down("right") && !mouse_down("middle")) {
+			util_shortcut_tap_active = false;
+			bool tap = sys_time() - util_shortcut_tap_start < 0.25 && util_shortcut_tap_moved < 20.0 * UI_SCALE();
+			if (tap && util_shortcut_tap_fingers == 3) {
+				redo_pressed = true;
+			}
+			else if (tap) {
+				undo_pressed = true;
+			}
 		}
 	}
 
@@ -249,6 +264,14 @@ void util_shortcut_viewport() {
 			else if (keymap_shortcut(any_map_get(g_keymap, "swap_brush_eraser"), SHORTCUT_TYPE_STARTED)) {
 				context_select_tool(g_context->tool == TOOL_TYPE_BRUSH ? TOOL_TYPE_ERASER : TOOL_TYPE_BRUSH);
 			}
+			else if (keymap_shortcut(any_map_get(g_keymap, "quick_menu"), SHORTCUT_TYPE_STARTED)) {
+				if (ui_quick_menu_show) {
+					ui_quick_menu_close();
+				}
+				else {
+					ui_quick_menu_open(-1, -1);
+				}
+			}
 		}
 
 		// Radius
@@ -261,7 +284,7 @@ void util_shortcut_viewport() {
 			    (decal_mask &&
 			     keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "decal_mask"), any_map_get(g_keymap, "brush_radius")), SHORTCUT_TYPE_STARTED))) {
 				g_context->brush_locked = true;
-				if (!pen_connected) {
+				if (!pen_connected && iron_mouse_can_lock()) { // Otherwise the pencil or pointer movement adjusts it
 					iron_mouse_lock();
 				}
 			}

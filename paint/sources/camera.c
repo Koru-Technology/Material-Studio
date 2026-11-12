@@ -335,6 +335,38 @@ void camera_set_pivot_center_to_mouse() {
 	camera_object_build_mat(camera);
 }
 
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+// Twist with two fingers or the trackpad rolls the view around the look direction, it levels again near 0
+static void camera_twist() {
+	static f64  twist_time = 0.0;
+	static bool twisting   = false;
+	camera_object_t *camera = scene_camera;
+	vec4_t           look   = vec4_norm(transform_look(camera->base->transform));
+	if (mouse_twist_delta != 0.0 && context_in_3d_view() && base_ui_enabled && !base_paint_in_2d()) {
+		transform_rotate(camera->base->transform, look, -mouse_twist_delta); // The view turns with the fingers
+		camera_object_build_mat(camera);
+		camera_redraws    = 2;
+		g_context->ddirty = 2; // The rest of the camera update may not run without a button down
+		twisting          = true;
+		twist_time     = sys_time();
+	}
+	else if (twisting && !mouse_down("right") && sys_time() - twist_time > 0.25) {
+		twisting     = false;
+		vec4_t right = vec4_norm(transform_right(camera->base->transform));
+		f32    roll  = math_asin(math_max(-1.0, math_min(1.0, right.z)));
+		if (math_abs(roll) < 0.07 && roll != 0.0) {
+			transform_rotate(camera->base->transform, look, roll);
+			if (math_abs(vec4_norm(transform_right(camera->base->transform)).z) > math_abs(right.z)) {
+				transform_rotate(camera->base->transform, look, -2.0 * roll); // The other way levels it
+			}
+			camera_object_build_mat(camera);
+			camera_redraws    = 2;
+			g_context->ddirty = 2;
+		}
+	}
+}
+#endif
+
 void camera_update(void *_) {
 	if (g_context->stencil_edit && context_is_stencil_editing()) { // Pinch scales the stencil
 		return;
@@ -342,6 +374,9 @@ void camera_update(void *_) {
 	if (!camera_wrap_mouse() || g_context->camera_controls == CAMERA_CONTROLS_NONE) {
 		return;
 	}
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+	camera_twist();
+#endif
 
 	bool modif_key      = keyboard_down("alt") || keyboard_down("shift") || keyboard_down("control");
 	bool modif          = modif_key || string_equals(any_map_get(g_keymap, "action_rotate"), "middle");
@@ -370,8 +405,9 @@ void camera_update(void *_) {
 
 	camera_controls_t controls = g_context->camera_controls;
 
-	bool rotate_down =
-	    keymap_shortcut(any_map_get(g_keymap, "action_rotate"), SHORTCUT_TYPE_DOWN) || (mouse_down("right") && (!modif || ruler) && default_keymap);
+	// Three fingers orbit on touch, one finger paints on the mesh and two pan
+	bool rotate_down = keymap_shortcut(any_map_get(g_keymap, "action_rotate"), SHORTCUT_TYPE_DOWN) ||
+	                   (mouse_down("right") && (!modif || ruler) && default_keymap) || (g_config->touch_ui && !default_keymap && mouse_down("middle"));
 
 	if (controls == CAMERA_CONTROLS_ORBIT && rotate_down) {
 		camera_orbit_action(modif, default_keymap, ruler);

@@ -593,3 +593,46 @@ typedef enum {
 } ui_base_corner_t;
 
 #define IMPORT_FOLDER_MAPS 7 // Base color, opacity, occlusion, roughness, metallic, normal, height
+
+// What a pencil double tap or squeeze does
+typedef enum {
+	PENCIL_ACTION_SYSTEM,        // As set in the iPadOS settings
+	PENCIL_ACTION_TOGGLE_ERASER, // Eraser, and back to the tool before
+	PENCIL_ACTION_PREVIOUS_TOOL,
+	PENCIL_ACTION_UNDO,
+	PENCIL_ACTION_QUICK_MENU,
+	PENCIL_ACTION_COLOR_PICKER, // Picker, and back to the tool before
+	PENCIL_ACTION_OFF,
+} pencil_action_t;
+
+// Items of the quick menu
+typedef enum {
+	QUICK_MENU_NONE,
+	QUICK_MENU_BRUSH,
+	QUICK_MENU_ERASER,
+	QUICK_MENU_PICKER,
+	QUICK_MENU_FILL,
+	QUICK_MENU_UNDO,
+	QUICK_MENU_REDO,
+	QUICK_MENU_SIZE,    // Drag to change the brush radius
+	QUICK_MENU_OPACITY, // Drag to change the brush opacity
+	QUICK_MENU_RECENT_BRUSH_1,
+	QUICK_MENU_RECENT_BRUSH_2,
+	QUICK_MENU_RECENT_BRUSH_3,
+	QUICK_MENU_CLONE,
+	QUICK_MENU_BLUR,
+	QUICK_MENU_COUNT,
+} quick_menu_item_t;
+
+#define QUICK_MENU_SLOTS 8
+
+// What drives a brush property (config dyn_*), Direction, Azimuth and Roll only for the angle
+typedef enum {
+	DYN_SOURCE_OFF,
+	DYN_SOURCE_PRESSURE,
+	DYN_SOURCE_SPEED,
+	DYN_SOURCE_DIRECTION,
+	DYN_SOURCE_TILT,
+	DYN_SOURCE_AZIMUTH,
+	DYN_SOURCE_ROLL,
+} dyn_source_t;

@@ -22,12 +22,17 @@ static bool              visible;
 static MyView           *my_view;
 static MyViewController *my_view_controller;
 static bool              keyboard_shown = false;
+static KeyInputView     *key_input_view = nil;
+static float             pointer_x      = 0.0; // Last mouse position sent, for the trackpad gestures
+static float             pointer_y      = 0.0;
+static int               pointer_button = 0;   // Button of the trackpad or mouse click being held
 static char              language[3];
 static char              sysid[512];
 static const char       *video_formats[]                 = {"mp4", NULL};
 static void (*resize_callback)(int x, int y, void *data) = NULL;
 static void *resize_callback_data                        = NULL;
 static void  pencil_flush(bool all);
+static bool  ios_presses(NSSet<UIPress *> *presses, bool down, bool typing);
 
 void iron_internal_call_resize_callback(int width, int height) {
 	if (resize_callback != NULL) {
@@ -259,6 +264,48 @@ int iron_window_display() {
 	return 0;
 }
 
+static int pencil_preference(UIPencilPreferredAction a) {
+	switch (a) {
+	case UIPencilPreferredActionSwitchEraser:
+		return IRON_PENCIL_PREFERS_SWITCH_ERASER;
+	case UIPencilPreferredActionSwitchPrevious:
+		return IRON_PENCIL_PREFERS_SWITCH_PREVIOUS;
+	case UIPencilPreferredActionShowColorPalette:
+		return IRON_PENCIL_PREFERS_COLOR_PALETTE;
+	case UIPencilPreferredActionShowInkAttributes:
+		return IRON_PENCIL_PREFERS_INK_ATTRIBUTES;
+	default:
+		break;
+	}
+	if (@available(iOS 17.5, *)) {
+		if (a == UIPencilPreferredActionShowContextualPalette) {
+			return IRON_PENCIL_PREFERS_CONTEXTUAL_PALETTE;
+		}
+	}
+	return IRON_PENCIL_PREFERS_IGNORE;
+}
+
+int iron_pencil_preferred_action(int gesture) {
+	if (gesture == IRON_PENCIL_GESTURE_SQUEEZE) {
+		if (@available(iOS 17.5, *)) {
+			return pencil_preference(UIPencilInteraction.preferredSqueezeAction);
+		}
+		return IRON_PENCIL_PREFERS_IGNORE;
+	}
+	return pencil_preference(UIPencilInteraction.preferredTapAction);
+}
+
+void iron_haptic_tick(float x, float y) {
+	if (@available(iOS 17.5, *)) {
+		static UICanvasFeedbackGenerator *generator = nil;
+		if (generator == nil) {
+			generator = [UICanvasFeedbackGenerator feedbackGeneratorForView:my_view];
+		}
+		float s = my_view.contentScaleFactor;
+		[generator alignmentOccurredAtLocation:CGPointMake(x / s, y / s)];
+	}
+}
+
 // Pencil force as 0..1, a pencil without pressure (usb-c) reports full pressure
 static float ios_pencil_pressure(UITouch *touch) {
 	if (touch.maximumPossibleForce <= 0.0) {
@@ -376,6 +423,49 @@ static void pencil_update(UITouch *t, UIView *view) {
 	}
 }
 
+@implementation KeyInputView
+
+- (BOOL)canBecomeFirstResponder {
+	return YES;
+}
+
+- (BOOL)hasText {
+	return YES;
+}
+
+- (void)insertText:(NSString *)text {
+	[my_view insertText:text];
+}
+
+- (void)deleteBackward {
+	[my_view deleteBackward];
+}
+
+- (UITextAutocorrectionType)autocorrectionType {
+	return UITextAutocorrectionTypeNo;
+}
+
+- (UITextAutocapitalizationType)autocapitalizationType {
+	return UITextAutocapitalizationTypeNone;
+}
+
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+	ios_presses(presses, true, true);
+	[super pressesBegan:presses withEvent:event];
+}
+
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+	ios_presses(presses, false, true);
+	[super pressesEnded:presses withEvent:event];
+}
+
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+	ios_presses(presses, false, true);
+	[super pressesCancelled:presses withEvent:event];
+}
+
+@end
+
 @implementation MyView
 
 + (Class)layerClass {
@@ -383,21 +473,120 @@ static void pencil_update(UITouch *t, UIView *view) {
 }
 
 - (void)hoverGesture:(UIHoverGestureRecognizer *)recognizer {
+	CGPoint point  = [recognizer locationInView:self];
+	float   x      = point.x * self.contentScaleFactor;
+	float   y      = point.y * self.contentScaleFactor;
+	float   height = 0.5;
+	bool    pencil = true;
+	if (@available(iOS 16.1, *)) {
+		height = recognizer.zOffset;
+		pencil = height > 0.0; // Trackpad or mouse pointer otherwise
+	}
 	if (recognizer.state != UIGestureRecognizerStateBegan && recognizer.state != UIGestureRecognizerStateChanged) {
+		if (pencil) {
+			iron_internal_pen_trigger_hover(x, y, -1.0); // Lifted away, the brush cursor hides
+		}
 		return;
 	}
-	CGPoint point = [recognizer locationInView:self];
-	float   x     = point.x * self.contentScaleFactor;
-	float   y     = point.y * self.contentScaleFactor;
-	if (@available(iOS 16.1, *)) {
-		if (recognizer.zOffset <= 0.0) { // Trackpad or mouse pointer, not a pencil above the screen
-			if (mouse_owner == 0) {
-				iron_internal_mouse_trigger_move(x, y);
-			}
-			return;
+	if (!pencil) {
+		pointer_x = x;
+		pointer_y = y;
+		if (mouse_owner == 0) {
+			iron_internal_mouse_trigger_move(x, y);
+		}
+		return;
+	}
+	iron_internal_pen_trigger_hover(x, y, height);
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)a shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)b {
+	return YES; // Pinch and rotate together on the trackpad
+}
+
+- (void)scrollGesture:(UIPanGestureRecognizer *)recognizer {
+	static bool panning = false;
+	float       s       = self.contentScaleFactor;
+	CGPoint     t       = [recognizer translationInView:self];
+	[recognizer setTranslation:CGPointZero inView:self];
+	bool zoom = (recognizer.modifierFlags & (UIKeyModifierCommand | UIKeyModifierControl)) != 0;
+	if (recognizer.state == UIGestureRecognizerStateBegan && !zoom && mouse_owner == 0) {
+		panning = true; // Middle button drag pans
+		iron_internal_mouse_trigger_press(2, pointer_x, pointer_y);
+	}
+	else if (recognizer.state == UIGestureRecognizerStateChanged) {
+		if (panning) {
+			pointer_x += t.x * s;
+			pointer_y += t.y * s;
+			iron_internal_mouse_trigger_move(pointer_x, pointer_y);
+		}
+		else if (t.y != 0.0) {
+			iron_internal_mouse_trigger_scroll(-t.y * s / 40.0);
 		}
 	}
-	iron_internal_pen_trigger_move(x, y, 0.0); // Pencil hover
+	else if (recognizer.state != UIGestureRecognizerStateBegan && panning) {
+		panning = false;
+		iron_internal_mouse_trigger_release(2, pointer_x, pointer_y);
+	}
+}
+
+- (void)pinchGesture:(UIPinchGestureRecognizer *)recognizer {
+	static CGFloat last = 1.0;
+	if (recognizer.state == UIGestureRecognizerStateBegan) {
+		last = 1.0;
+	}
+	else if (recognizer.state == UIGestureRecognizerStateChanged) {
+		CGFloat d = recognizer.scale - last;
+		last      = recognizer.scale;
+		iron_internal_mouse_trigger_scroll(-d * 10.0);
+	}
+}
+
+- (void)rotationGesture:(UIRotationGestureRecognizer *)recognizer {
+	static CGFloat last = 0.0;
+	if (recognizer.state == UIGestureRecognizerStateBegan) {
+		last = 0.0;
+	}
+	else if (recognizer.state == UIGestureRecognizerStateChanged) {
+		CGFloat d = recognizer.rotation - last;
+		last      = recognizer.rotation;
+		iron_internal_mouse_trigger_twist(d);
+	}
+}
+
+// The system pointer hides where the app draws its brush cursor
+- (UIPointerRegion *)pointerInteraction:(UIPointerInteraction *)interaction
+                       regionForRequest:(UIPointerRegionRequest *)request
+                          defaultRegion:(UIPointerRegion *)defaultRegion {
+	float s      = self.contentScaleFactor;
+	bool  hidden = iron_internal_pointer_hidden(request.location.x * s, request.location.y * s);
+	return [UIPointerRegion regionWithRect:CGRectMake(request.location.x - 1.0, request.location.y - 1.0, 2.0, 2.0) identifier:@(hidden)];
+}
+
+- (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region {
+	return [(NSNumber *)region.identifier boolValue] ? [UIPointerStyle hiddenPointerStyle] : nil;
+}
+
+// Double tap and squeeze, the location is where the pencil hovers, or -1 when unknown
+static void pencil_gesture(UIView *view, int gesture, bool hovering, CGPoint at) {
+	float s = view.contentScaleFactor;
+	iron_internal_pencil_gesture_callback(gesture, hovering ? at.x * s : -1.0, hovering ? at.y * s : -1.0);
+}
+
+- (void)pencilInteractionDidTap:(UIPencilInteraction *)interaction {
+	pencil_gesture(self, IRON_PENCIL_GESTURE_DOUBLE_TAP, false, CGPointZero);
+}
+
+- (void)pencilInteraction:(UIPencilInteraction *)interaction didReceiveTap:(UIPencilInteractionTap *)tap API_AVAILABLE(ios(17.5)) {
+	UIPencilHoverPose *pose = tap.hoverPose;
+	pencil_gesture(self, IRON_PENCIL_GESTURE_DOUBLE_TAP, pose != nil, pose != nil ? pose.location : CGPointZero);
+}
+
+- (void)pencilInteraction:(UIPencilInteraction *)interaction didReceiveSqueeze:(UIPencilInteractionSqueeze *)squeeze API_AVAILABLE(ios(17.5)) {
+	if (squeeze.phase != UIPencilInteractionPhaseEnded) {
+		return;
+	}
+	UIPencilHoverPose *pose = squeeze.hoverPose;
+	pencil_gesture(self, IRON_PENCIL_GESTURE_SQUEEZE, pose != nil, pose != nil ? pose.location : CGPointZero);
 }
 
 - (id)initWithFrame:(CGRect)frame {
@@ -422,6 +611,32 @@ static void pencil_update(UITouch *t, UIView *view) {
 	layer.backgroundColor = nil;
 
 	[self addGestureRecognizer:[[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(hoverGesture:)]];
+	UIPencilInteraction *pencil_interaction = [[UIPencilInteraction alloc] init];
+	pencil_interaction.delegate             = self;
+	[self addInteraction:pencil_interaction];
+
+	key_input_view = [[KeyInputView alloc] initWithFrame:CGRectZero];
+	[self addSubview:key_input_view];
+
+	// Trackpad and mouse: two finger scroll pans (Cmd zooms), pinch zooms, rotate rolls the view.
+	// Only indirect input, fingers on the screen stay with the touch handling.
+	UIPanGestureRecognizer *scroll = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(scrollGesture:)];
+	scroll.allowedScrollTypesMask  = UIScrollTypeMaskAll;
+	scroll.allowedTouchTypes       = @[];
+	scroll.cancelsTouchesInView    = NO;
+	scroll.delegate                = self;
+	[self addGestureRecognizer:scroll];
+	UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinchGesture:)];
+	pinch.allowedTouchTypes         = @[ @(UITouchTypeIndirectPointer) ];
+	pinch.cancelsTouchesInView      = NO;
+	pinch.delegate                  = self;
+	[self addGestureRecognizer:pinch];
+	UIRotationGestureRecognizer *rotation = [[UIRotationGestureRecognizer alloc] initWithTarget:self action:@selector(rotationGesture:)];
+	rotation.allowedTouchTypes            = @[ @(UITouchTypeIndirectPointer) ];
+	rotation.cancelsTouchesInView         = NO;
+	rotation.delegate                     = self;
+	[self addGestureRecognizer:rotation];
+	[self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
 	[[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
 	                                                  object:nil
 	                                                   queue:[NSOperationQueue mainQueue]
@@ -471,8 +686,11 @@ static void pencil_update(UITouch *t, UIView *view) {
 		}
 		if (index >= 0) {
 			if (index == 0 && mouse_owner == 0) {
-				mouse_owner = 1;
-				iron_internal_mouse_trigger_press(event.buttonMask == UIEventButtonMaskSecondary ? 1 : 0, x, y);
+				mouse_owner    = 1;
+				pointer_button = (event.buttonMask & UIEventButtonMaskSecondary) ? 1 : 0; // Right click on a trackpad or mouse
+				pointer_x      = x;
+				pointer_y      = y;
+				iron_internal_mouse_trigger_press(pointer_button, x, y);
 			}
 			iron_internal_surface_trigger_touch_start(index, x, y);
 		}
@@ -485,6 +703,11 @@ static void pencil_update(UITouch *t, UIView *view) {
 		if ((__bridge void *)touch == pencil_touch) {
 			pencil_push_coalesced(touch, event, self);
 			pencil_flush(false);
+			UITouch *predicted = [[event predictedTouchesForTouch:touch] lastObject];
+			if (predicted != nil) {
+				CGPoint p = [predicted preciseLocationInView:self];
+				iron_internal_pen_trigger_predicted(p.x * sc, p.y * sc);
+			}
 			continue;
 		}
 		int index = get_touch_index((__bridge void *)touch);
@@ -493,6 +716,8 @@ static void pencil_update(UITouch *t, UIView *view) {
 			float   x     = point.x * sc;
 			float   y     = point.y * sc;
 			if (index == 0 && mouse_owner == 1) {
+				pointer_x = x;
+				pointer_y = y;
 				iron_internal_mouse_trigger_move(x, y);
 			}
 			iron_internal_surface_trigger_move(index, x, y);
@@ -529,7 +754,7 @@ static void pencil_update(UITouch *t, UIView *view) {
 	int index = remove_touch((__bridge void *)touch);
 	if (index >= 0) {
 		if (index == 0 && mouse_owner == 1) {
-			iron_internal_mouse_trigger_release(event.buttonMask == UIEventButtonMaskSecondary ? 1 : 0, x, y);
+			iron_internal_mouse_trigger_release(pointer_button, x, y); // The mask is empty once released
 			mouse_owner = 0;
 		}
 		iron_internal_surface_trigger_touch_end(index, x, y);
@@ -549,15 +774,204 @@ static void pencil_update(UITouch *t, UIView *view) {
 }
 
 - (void)show_keyboard {
-	[self becomeFirstResponder];
+	[key_input_view becomeFirstResponder];
 }
 
 - (void)hide_keyboard {
-	[self resignFirstResponder];
+	[key_input_view resignFirstResponder];
+	[self becomeFirstResponder]; // Hardware keys keep coming
 }
 
 - (BOOL)hasText {
 	return YES;
+}
+
+// Hardware keyboard, by HID usage
+static int ios_key_code(long usage) {
+	if (usage >= 0x04 && usage <= 0x1D) {
+		return KEY_CODE_A + (int)(usage - 0x04);
+	}
+	if (usage >= 0x1E && usage <= 0x26) {
+		return KEY_CODE_1 + (int)(usage - 0x1E);
+	}
+	if (usage >= 0x3A && usage <= 0x45) {
+		return KEY_CODE_F1 + (int)(usage - 0x3A);
+	}
+	if (usage >= 0x59 && usage <= 0x61) {
+		return KEY_CODE_NUMPAD_1 + (int)(usage - 0x59);
+	}
+	switch (usage) {
+	case 0x27:
+		return KEY_CODE_0;
+	case 0x62:
+		return KEY_CODE_NUMPAD_0;
+	case 0x28:
+	case 0x58:
+		return KEY_CODE_RETURN;
+	case 0x29:
+		return KEY_CODE_ESCAPE;
+	case 0x2A:
+		return KEY_CODE_BACKSPACE;
+	case 0x2B:
+		return KEY_CODE_TAB;
+	case 0x2C:
+		return KEY_CODE_SPACE;
+	case 0x2D:
+		return KEY_CODE_HYPHEN_MINUS;
+	case 0x2E:
+		return KEY_CODE_EQUALS;
+	case 0x2F:
+		return KEY_CODE_OPEN_BRACKET;
+	case 0x30:
+		return KEY_CODE_CLOSE_BRACKET;
+	case 0x31:
+		return KEY_CODE_BACK_SLASH;
+	case 0x33:
+		return KEY_CODE_SEMICOLON;
+	case 0x34:
+		return KEY_CODE_QUOTE;
+	case 0x35:
+		return KEY_CODE_BACK_QUOTE;
+	case 0x36:
+		return KEY_CODE_COMMA;
+	case 0x37:
+		return KEY_CODE_PERIOD;
+	case 0x38:
+		return KEY_CODE_SLASH;
+	case 0x39:
+		return KEY_CODE_CAPS_LOCK;
+	case 0x4A:
+		return KEY_CODE_HOME;
+	case 0x4B:
+		return KEY_CODE_PAGE_UP;
+	case 0x4C:
+		return KEY_CODE_DELETE;
+	case 0x4D:
+		return KEY_CODE_END;
+	case 0x4E:
+		return KEY_CODE_PAGE_DOWN;
+	case 0x4F:
+		return KEY_CODE_RIGHT;
+	case 0x50:
+		return KEY_CODE_LEFT;
+	case 0x51:
+		return KEY_CODE_DOWN;
+	case 0x52:
+		return KEY_CODE_UP;
+	case 0xE0:
+	case 0xE4:
+		return KEY_CODE_CONTROL;
+	case 0xE1:
+	case 0xE5:
+		return KEY_CODE_SHIFT;
+	case 0xE2:
+	case 0xE6:
+		return KEY_CODE_ALT;
+	case 0xE3:
+	case 0xE7:
+		return KEY_CODE_META; // Cmd, works as control
+	default:
+		return KEY_CODE_UNKNOWN;
+	}
+}
+
+// While text is typed, characters, return and backspace arrive through insertText and deleteBackward.
+// The keys sent here are the others: arrows, escape, modifiers and any key held with Cmd or Ctrl (copy, paste, undo).
+static bool ios_key_for_text(UIKey *key, int code) {
+	if (code == KEY_CODE_LEFT || code == KEY_CODE_RIGHT || code == KEY_CODE_UP || code == KEY_CODE_DOWN || code == KEY_CODE_ESCAPE ||
+	    code == KEY_CODE_DELETE || code == KEY_CODE_HOME || code == KEY_CODE_END || code == KEY_CODE_META || code == KEY_CODE_CONTROL ||
+	    code == KEY_CODE_ALT) {
+		return true;
+	}
+	return (key.modifierFlags & (UIKeyModifierCommand | UIKeyModifierControl)) != 0;
+}
+
+// Returns whether the presses were all taken
+static bool ios_presses(NSSet<UIPress *> *presses, bool down, bool typing) {
+	bool all = true;
+	for (UIPress *press in presses) {
+		UIKey *key = press.key;
+		if (key == nil) {
+			all = false;
+			continue;
+		}
+		int code = ios_key_code((long)key.keyCode);
+		if (code == KEY_CODE_UNKNOWN || (typing && !ios_key_for_text(key, code))) {
+			all = false;
+			continue;
+		}
+		if (code == KEY_CODE_SHIFT) {
+			shift_down = down;
+		}
+		if (down) {
+			iron_internal_keyboard_trigger_key_down(code);
+		}
+		else {
+			iron_internal_keyboard_trigger_key_up(code);
+		}
+	}
+	return all;
+}
+
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+	if (keyboard_shown || !ios_presses(presses, true, false)) { // The key input view takes them while typing
+		[super pressesBegan:presses withEvent:event];
+	}
+}
+
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+	if (keyboard_shown || !ios_presses(presses, false, false)) {
+		[super pressesEnded:presses withEvent:event];
+	}
+}
+
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+	if (keyboard_shown || !ios_presses(presses, false, false)) {
+		[super pressesCancelled:presses withEvent:event];
+	}
+}
+
+// Shown in the iPadOS shortcut overlay (hold Cmd). The key reaches the app as Cmd + key, handled by the keymap.
+static void ios_shortcut(int code) {
+	iron_internal_keyboard_trigger_key_down(code);
+	iron_internal_keyboard_trigger_key_up(code);
+}
+
+- (void)shortcutUndo:(UIKeyCommand *)c {
+	ios_shortcut(KEY_CODE_Z);
+}
+- (void)shortcutSave:(UIKeyCommand *)c {
+	ios_shortcut(KEY_CODE_S);
+}
+- (void)shortcutOpen:(UIKeyCommand *)c {
+	ios_shortcut(KEY_CODE_O);
+}
+- (void)shortcutNew:(UIKeyCommand *)c {
+	ios_shortcut(KEY_CODE_N);
+}
+- (void)shortcutExport:(UIKeyCommand *)c {
+	ios_shortcut(KEY_CODE_E);
+}
+- (void)shortcutPrefs:(UIKeyCommand *)c {
+	ios_shortcut(KEY_CODE_K);
+}
+
+- (NSArray<UIKeyCommand *> *)keyCommands {
+	if (keyboard_shown) {
+		return @[];
+	}
+	UIKeyModifierFlags cmd       = UIKeyModifierCommand;
+	UIKeyModifierFlags cmd_shift = UIKeyModifierCommand | UIKeyModifierShift;
+	return @[
+		[UIKeyCommand commandWithTitle:@"Undo" image:nil action:@selector(shortcutUndo:) input:@"z" modifierFlags:cmd propertyList:nil],
+		[UIKeyCommand commandWithTitle:@"Redo" image:nil action:@selector(shortcutUndo:) input:@"z" modifierFlags:cmd_shift propertyList:nil],
+		[UIKeyCommand commandWithTitle:@"New Project" image:nil action:@selector(shortcutNew:) input:@"n" modifierFlags:cmd propertyList:nil],
+		[UIKeyCommand commandWithTitle:@"Open Project" image:nil action:@selector(shortcutOpen:) input:@"o" modifierFlags:cmd propertyList:nil],
+		[UIKeyCommand commandWithTitle:@"Save" image:nil action:@selector(shortcutSave:) input:@"s" modifierFlags:cmd propertyList:nil],
+		[UIKeyCommand commandWithTitle:@"Save As" image:nil action:@selector(shortcutSave:) input:@"s" modifierFlags:cmd_shift propertyList:nil],
+		[UIKeyCommand commandWithTitle:@"Export Textures" image:nil action:@selector(shortcutExport:) input:@"e" modifierFlags:cmd propertyList:nil],
+		[UIKeyCommand commandWithTitle:@"Preferences" image:nil action:@selector(shortcutPrefs:) input:@"k" modifierFlags:cmd propertyList:nil],
+	];
 }
 
 - (void)insertText:(NSString *)text {
@@ -653,6 +1067,13 @@ static void pencil_update(UITouch *t, UIView *view) {
 
 - (void)setVisible:(BOOL)value {
 	visible = value;
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+	[super viewDidAppear:animated];
+	if (!keyboard_shown) {
+		[my_view becomeFirstResponder]; // Hardware keys
+	}
 }
 
 // Log import problems to both the system log and stderr (visible with devicectl --console)
@@ -822,6 +1243,8 @@ static void openSharedFile(NSURL *url) {
 		}
 		kickstart(argc, argv);
 	}
+	// The main loop ended (a script quit): nothing draws or takes input any more, a frozen app is worse than closing it
+	exit(0);
 }
 
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {

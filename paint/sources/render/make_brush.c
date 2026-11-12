@@ -19,6 +19,22 @@ static void make_brush_angle_reject(node_shader_t *kong) {
 	}
 }
 
+// Tilt shading: scales the offsets pa and ba along the pen direction, the dab becomes an ellipse stretched along the pen.
+// shape: x the scale along the direction minus 1, y the direction on screen, see util_brush_tilt_shape.
+static bool make_brush_tilt_shading() {
+	tool_type_t tool = g_context->tool;
+	return g_config->tilt_shading && (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR);
+}
+
+static void make_brush_tilt_stretch(node_shader_t *kong, char *shape, char *pa, char *ba) {
+	node_shader_add_constant(kong, "float3 camera_right", "_camera_right");
+	node_shader_add_constant(kong, "float3 camera_up", "_camera_up");
+	node_shader_write_frag(kong, string_tmp("float3 tilt_axis = normalize(normalize(constants.camera_right) * cos(%s.y) + normalize(constants.camera_up) * sin(%s.y));",
+	                                        shape, shape));
+	node_shader_write_frag(kong, string_tmp("%s = %s + tilt_axis * (dot(%s, tilt_axis) * %s.x);", pa, pa, pa, shape));
+	node_shader_write_frag(kong, string_tmp("%s = %s + tilt_axis * (dot(%s, tilt_axis) * %s.x);", ba, ba, ba, shape));
+}
+
 static void make_brush_depth_reject(node_shader_t *kong) {
 	node_shader_write_frag(kong, "if (sp.z > sample_lod(gbufferD, sampler_linear, sp.xy, 0.0).r - 0.00008) { discard; }");
 }
@@ -66,6 +82,10 @@ void make_brush_run(node_shader_t *kong, bool depth_reject) {
 		node_shader_write_frag(kong, "pa += wn * float3(plane_dist, plane_dist, plane_dist);");
 	}
 	node_shader_write_frag(kong, "float3 ba = winplast.xyz - winp.xyz;");
+	if (make_brush_tilt_shading() && !context_is_pixel_snap()) {
+		node_shader_add_constant(kong, "float2 brush_tilt", "_brush_tilt");
+		make_brush_tilt_stretch(kong, "constants.brush_tilt", "pa", "ba");
+	}
 
 	node_shader_add_constant(kong, "float4x4 VP", "_view_proj_matrix");
 	node_shader_add_constant(kong, "float3 camera_up", "_camera_up");
@@ -142,7 +162,7 @@ void make_brush_run(node_shader_t *kong, bool depth_reject) {
 }
 
 // Batched dabs: one draw paints every dab of a frame. Each dab is three texels of texpaintdabs:
-// inp.xy inplast.xy, radius opacity hardness flow, mask rotation cos sin.
+// inp.xy inplast.xy, radius opacity hardness flow, mask rotation cos sin and tilt shape (util_brush_tilt_shape).
 // Painting them one after another in a loop gives the same result as one draw per dab.
 
 // Declares dab0, dab1, dab_winp and dab_dist for dab k
@@ -159,6 +179,10 @@ void make_brush_dab_dist(node_shader_t *kong) {
 	node_shader_write_frag(kong, "dab_winplast.xyz = dab_winplast.xyz / dab_winplast.w;");
 	node_shader_write_frag(kong, "float3 dab_pa = input.wposition - dab_winp.xyz;");
 	node_shader_write_frag(kong, "float3 dab_ba = dab_winplast.xyz - dab_winp.xyz;");
+	if (make_brush_tilt_shading()) { // Shape of each dab in the third texel, zw
+		node_shader_write_frag(kong, "float2 dab_tilt = texpaintdabs[uint2(uint(k * 3 + 2), uint(0))].zw;");
+		make_brush_tilt_stretch(kong, "dab_tilt", "dab_pa", "dab_ba");
+	}
 	node_shader_write_frag(kong, "float dab_h = clamp(dot(dab_pa, dab_ba) / max(dot(dab_ba, dab_ba), 0.00000001), 0.0, 1.0);");
 	node_shader_write_frag(kong, "float dab_dist = length(dab_pa - dab_ba * dab_h);");
 }

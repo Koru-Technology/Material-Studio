@@ -575,6 +575,50 @@ void iron_internal_pen_trigger_sample(float x, float y, float pressure, float al
 	pen_sample_listener(x, y, pressure, altitude, azimuth, roll, time);
 }
 
+void iron_internal_pen_trigger_hover(float x, float y, float height) {
+	pen_hover_listener(x, y, height);
+}
+
+void iron_internal_pen_trigger_predicted(float x, float y) {
+	pen_predicted_listener(x, y);
+}
+
+void iron_internal_mouse_trigger_twist(float radians) {
+#if defined(IRON_ANDROID) || defined(IRON_IOS)
+	mouse_twist_listener(radians);
+#endif
+}
+
+static bool (*pointer_hidden_callback)(float, float) = NULL;
+
+void iron_set_pointer_hidden_callback(bool (*callback)(float x, float y)) {
+	pointer_hidden_callback = callback;
+}
+
+bool iron_internal_pointer_hidden(float x, float y) {
+	return pointer_hidden_callback != NULL && pointer_hidden_callback(x, y);
+}
+
+static void (*pencil_gesture_callback)(int, float, float) = NULL;
+
+void iron_set_pencil_gesture_callback(void (*callback)(int gesture, float x, float y)) {
+	pencil_gesture_callback = callback;
+}
+
+void iron_internal_pencil_gesture_callback(int gesture, float x, float y) {
+	if (pencil_gesture_callback != NULL) {
+		pencil_gesture_callback(gesture, x, y);
+	}
+}
+
+#ifndef IRON_IOS
+int iron_pencil_preferred_action(int gesture) {
+	return IRON_PENCIL_PREFERS_IGNORE;
+}
+
+void iron_haptic_tick(float x, float y) {}
+#endif
+
 void iron_internal_pen_trigger_release(int x, int y, float pressure) {
 	if (pen_release_callback != NULL) {
 		pen_release_callback(x, y, pressure);

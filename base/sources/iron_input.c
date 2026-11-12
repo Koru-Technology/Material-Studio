@@ -35,6 +35,7 @@ f32             mouse_last_y            = -1.0f;
 f32 mouse_pinch_dist   = 0.0f;
 f32 mouse_pinch_total  = 0.0f;
 f32 mouse_pinch_smooth = 0.0f;
+f32 mouse_twist_delta  = 0.0f;
 #endif
 
 // Pen
@@ -56,6 +57,11 @@ f32             pen_last_y           = -1.0f;
 f32             pen_altitude         = 1.5707963f;
 f32             pen_azimuth          = 0.0f;
 f32             pen_roll             = 0.0f;
+f32             pen_hover            = -1.0f;
+bool            pen_hover_left       = false;
+bool            pen_predicted        = false;
+f32             pen_predicted_x      = 0.0f;
+f32             pen_predicted_y      = 0.0f;
 pen_sample_t    pen_samples[PEN_SAMPLES_MAX];
 i32             pen_sample_count     = 0;
 
@@ -330,6 +336,9 @@ void mouse_end_frame(void) {
 	mouse_movement_x                                                                                             = 0;
 	mouse_movement_y                                                                                             = 0;
 	mouse_wheel_delta                                                                                            = 0;
+#if defined(IRON_ANDROID) || defined(IRON_IOS)
+	mouse_twist_delta = 0;
+#endif
 }
 
 void mouse_reset(void) {
@@ -374,6 +383,7 @@ void mouse_down_listener(i32 index, i32 x, i32 y) {
 		return;
 	}
 
+	pen_hover_left                        = false;
 	_mouse_buttons_down->buffer[index]    = true;
 	_mouse_buttons_started->buffer[index] = true;
 	mouse_x                               = (f32)x;
@@ -408,6 +418,26 @@ static void mouse_touch_mid(f32 *x, f32 *y) {
 	*y = (mouse_touch_y[0] + mouse_touch_y[1]) / 2.0f;
 }
 
+// Twist: the turn of the line between the two fingers
+static f32 mouse_touch_angle = 0.0f;
+
+static f32 mouse_touch_line_angle(void) {
+	return atan2f(mouse_touch_y[1] - mouse_touch_y[0], mouse_touch_x[1] - mouse_touch_x[0]);
+}
+
+static void mouse_touch_twist(void) {
+	f32 a = mouse_touch_line_angle();
+	f32 d = a - mouse_touch_angle;
+	while (d > 3.14159265f) {
+		d -= 6.2831853f;
+	}
+	while (d < -3.14159265f) {
+		d += 6.2831853f;
+	}
+	mouse_twist_delta += d;
+	mouse_touch_angle = a;
+}
+
 static void mouse_move_to(f32 x, f32 y) {
 	mouse_movement_x += x - mouse_last_x;
 	mouse_movement_y += y - mouse_last_y;
@@ -424,6 +454,7 @@ void mouse_move_listener(i32 x, i32 y, i32 movement_x, i32 movement_y) {
 	if (mouse_touch_two) { // First finger moved
 		mouse_touch_x[0] = (f32)x;
 		mouse_touch_y[0] = (f32)y;
+		mouse_touch_twist();
 		f32 mx, my;
 		mouse_touch_mid(&mx, &my);
 		mouse_move_to(mx, my);
@@ -455,6 +486,12 @@ void mouse_wheel_listener(f32 delta) {
 }
 
 #if defined(IRON_ANDROID) || defined(IRON_IOS)
+void mouse_twist_listener(f32 radians) {
+	mouse_twist_delta += radians;
+}
+#endif
+
+#if defined(IRON_ANDROID) || defined(IRON_IOS)
 void mouse_on_touch_down(i32 index, i32 x, i32 y) {
 	if (index == 1) { // Two fingers down - right mouse button, placed between them
 		mouse_touch_x[0] = mouse_x;
@@ -462,6 +499,7 @@ void mouse_on_touch_down(i32 index, i32 x, i32 y) {
 		mouse_touch_x[1] = (f32)x;
 		mouse_touch_y[1] = (f32)y;
 		mouse_touch_two  = true;
+		mouse_touch_angle = mouse_touch_line_angle();
 		f32 mx, my;
 		mouse_touch_mid(&mx, &my);
 		mouse_last_x                   = mx;
@@ -508,6 +546,7 @@ void mouse_on_touch_move(i32 index, i32 x, i32 y) {
 		if (mouse_touch_two) {
 			mouse_touch_x[1] = (f32)x;
 			mouse_touch_y[1] = (f32)y;
+			mouse_touch_twist();
 			dx               = mouse_touch_x[0] - mouse_touch_x[1];
 			dy               = mouse_touch_y[0] - mouse_touch_y[1];
 			f32 mx, my;
@@ -564,6 +603,25 @@ void pen_sample_listener(f32 x, f32 y, f32 pressure, f32 altitude, f32 azimuth, 
 	pen_roll                        = roll;
 }
 
+void pen_hover_listener(f32 x, f32 y, f32 height) {
+	if (height < 0.0f) {
+		if (pen_hover >= 0.0f) {
+			pen_hover_left = true;
+		}
+		pen_hover = -1.0f;
+		return;
+	}
+	pen_hover      = height > 1.0f ? 1.0f : height;
+	pen_hover_left = false;
+	pen_move_listener((i32)x, (i32)y, 0.0f); // Moves the mouse when nothing else is down, the brush cursor follows
+}
+
+void pen_predicted_listener(f32 x, f32 y) {
+	pen_predicted   = true;
+	pen_predicted_x = x;
+	pen_predicted_y = y;
+}
+
 void pen_reset(void) {
 	pen_buttons_down->buffer[0] = false;
 	pen_end_frame();
@@ -586,6 +644,8 @@ bool pen_released(char *button) {
 }
 
 void pen_down_listener(i32 x, i32 y, f32 pressure) {
+	pen_hover_left                 = false;
+	pen_predicted                  = false;
 	pen_buttons_down->buffer[0]    = true;
 	pen_buttons_started->buffer[0] = true;
 	pen_x                          = (f32)x;
@@ -609,6 +669,7 @@ void pen_up_listener(i32 x, i32 y, f32 pressure) {
 
 	pen_buttons_down->buffer[0]     = false;
 	pen_buttons_released->buffer[0] = true;
+	pen_predicted                   = false;
 	pen_x                           = (f32)x;
 	pen_y                           = (f32)y;
 	if (pressure > 0.0f) { // Lifting the pen reports no pressure, the stroke ends with the last one
@@ -725,7 +786,7 @@ char *keyboard_key_code(i32 key) {
 	if (key == KEY_CODE_CONTROL) {
 		return "control";
 	}
-#ifdef IRON_MACOS
+#if defined(IRON_MACOS) || defined(IRON_IOS) // Cmd works as Ctrl
 	if (key == KEY_CODE_META) {
 		return "control";
 	}

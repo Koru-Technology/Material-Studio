@@ -8,7 +8,7 @@
 char *manifest_title           = "Koru Surface";
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "26";
-char *manifest_version_config  = "15";
+char *manifest_version_config  = "16";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -221,6 +221,8 @@ ui_window_t              *ui_view2d_hwnd;
 f32                       ui_view2d_pan_x            = 0.0;
 f32                       ui_view2d_pan_y            = 0.0;
 f32                       ui_view2d_pan_scale        = 1.0;
+f32                       ui_view2d_rotation         = 0.0; // Radians the layer is turned on screen, clockwise, see ui_view2d_rotation_allowed
+bool                      ui_view2d_twisting         = false;
 bool                      ui_view2d_tiled_show       = false;
 sound_t                  *ui_view2d_sound_playing    = NULL;
 bool                      player_running             = false;
@@ -272,6 +274,9 @@ bool                  args_background                   = false;
 bool                  agent_running                     = false;
 bool                  project_modified                  = false; // Changed since the last save, for auto save
 f32                   util_brush_sample_pressure        = -1.0;  // Pressure of the pen sample being drawn, -1 for the current pen pressure
+f32                   util_brush_sample_altitude        = -1.0;  // Angles of the pen sample being drawn, -1 for the current pen angles
+f32                   util_brush_sample_azimuth         = 0.0;
+f32                   util_brush_sample_roll            = 0.0;
 i32                   util_render_material_preview_size = 256;
 f32                   util_render_brush_wave_strip      = 0.25; // Wave preview height relative to its width
 i32                   util_render_node_preview_size     = 512;

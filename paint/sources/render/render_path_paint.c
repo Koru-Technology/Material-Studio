@@ -122,6 +122,7 @@ void render_path_paint_init() {
 	render_path_load_shader("Scene/copy_mrt3_pass/copy_mrt3_pass");
 	render_path_load_shader("Scene/copy_mrt3_pass/copy_mrt3RGBA64_pass");
 	render_path_load_shader("Scene/copy_mrt3_pass/copy_mrt3RGBA128_pass");
+	render_path_load_shader("Scene/undo_tiles_pass/undo_tiles_pass");
 	render_path_load_shader("Scene/dilate_pass/dilate_pass");
 	render_path_load_shader("Scene/dilate_pass/dilateRGBA64_pass");
 	render_path_load_shader("Scene/dilate_pass/dilateRGBA128_pass");
@@ -436,8 +437,9 @@ void render_path_paint_batch_add() {
 	d[7]         = uniforms_ext_f32_link(NULL, NULL, "_brush_flow");
 	d[8]         = angle.x * dab.x - angle.y * dab.y; // Both rotations of the mask
 	d[9]         = angle.x * dab.y + angle.y * dab.x;
-	d[10]        = 0.0;
-	d[11]        = 0.0;
+	vec2_t tilt  = util_brush_tilt_shape();
+	d[10]        = tilt.x;
+	d[11]        = tilt.y;
 	render_path_paint_batch_count++;
 }
 
@@ -1091,8 +1093,22 @@ void render_path_paint_commands_cursor() {
 		return;
 	}
 
+	// The pencil hovered away from the screen and nothing touches it
+	if (pen_hover_left && !pen_down("tip") && !mouse_down_any()) {
+		return;
+	}
+
 	f32 mx = g_context->paint_vec.x;
 	f32 my = 1.0 - g_context->paint_vec.y;
+
+	// Ahead of the pencil where it is expected next, the stroke feels less behind. Only drawn, never painted.
+	if (pen_down("tip") && pen_predicted && g_context->brush_lazy_radius <= 0.0 && !context_is_ruler_paint()) {
+		mx = base_paint_x(pen_predicted_x);
+		my = 1.0 - base_paint_y(pen_predicted_y);
+	}
+
+	// Fainter the higher the pencil hovers
+	f32 tint = pen_hover >= 0.0 && !pen_down("tip") ? 1.0 - 0.6 * pen_hover : 1.0;
 
 	// Prevent cursor jumping constantly if randomness is used in brush nodes
 	f32 brush_nodes_radius = g_context->brush_nodes_radius;
@@ -1114,7 +1130,7 @@ void render_path_paint_commands_cursor() {
 	}
 
 	f32 radius = decal_mask ? g_context->brush_decal_mask_radius : g_context->brush_radius;
-	render_path_paint_draw_cursor(mx, my, brush_nodes_radius * radius / 3.4, 1.0, 1.0, 1.0);
+	render_path_paint_draw_cursor(mx, my, brush_nodes_radius * radius / 3.4, tint, tint, tint);
 }
 
 bool render_path_paint_paint_enabled() {
@@ -1378,8 +1394,44 @@ void render_path_paint_commands_stamps() {
 typedef struct {
 	f32 x;
 	f32 y;
-	f32 p;
+	f32 p; // Pressure
+	f32 a; // Altitude, azimuth and roll of the pen
+	f32 z;
+	f32 r;
 } render_path_paint_point_t;
+
+// The brush uniforms read the pressure and angles of this point instead of the current pen
+static void render_path_paint_point_use(render_path_paint_point_t *pt) {
+	util_brush_sample_pressure = pt->p;
+	util_brush_sample_altitude = pt->a;
+	util_brush_sample_azimuth  = pt->z;
+	util_brush_sample_roll     = pt->r;
+}
+
+static void render_path_paint_point_clear() {
+	util_brush_sample_pressure = -1.0;
+	util_brush_sample_altitude = -1.0;
+}
+
+static f32 render_path_paint_angle_lerp(f32 a, f32 b, f32 t) {
+	f32 d = b - a;
+	while (d > math_pi()) {
+		d -= 2.0 * math_pi();
+	}
+	while (d < -math_pi()) {
+		d += 2.0 * math_pi();
+	}
+	return a + d * t;
+}
+
+static render_path_paint_point_t render_path_paint_point_lerp(render_path_paint_point_t *a, render_path_paint_point_t *b, f32 t) {
+	return (render_path_paint_point_t){a->x + (b->x - a->x) * t,
+	                                   a->y + (b->y - a->y) * t,
+	                                   a->p + (b->p - a->p) * t,
+	                                   a->a + (b->a - a->a) * t,
+	                                   render_path_paint_angle_lerp(a->z, b->z, t),
+	                                   render_path_paint_angle_lerp(a->r, b->r, t)};
+}
 
 #define RENDER_PATH_PAINT_POINTS_MAX 128
 
@@ -1412,6 +1464,9 @@ static i32 render_path_paint_points(render_path_paint_point_t *out) {
 			f32 dy = (y - out[count - 1].y) * h;
 			if (dx * dx + dy * dy < 0.25) { // Closer than half a pixel
 				out[count - 1].p = s->pressure;
+				out[count - 1].a = s->altitude;
+				out[count - 1].z = s->azimuth;
+				out[count - 1].r = s->roll;
 				continue;
 			}
 		}
@@ -1421,7 +1476,7 @@ static i32 render_path_paint_points(render_path_paint_point_t *out) {
 			}
 			count /= 2;
 		}
-		out[count++] = (render_path_paint_point_t){x, y, s->pressure};
+		out[count++] = (render_path_paint_point_t){x, y, s->pressure, s->altitude, s->azimuth, s->roll};
 		// Drop the middle of three points when it adds nothing: within a third of a pixel of the line and the pressure about linear,
 		// each point is a draw over the whole layer
 		if (count >= 3) {
@@ -1435,7 +1490,8 @@ static i32 render_path_paint_points(render_path_paint_point_t *out) {
 			t                             = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
 			f32 dx = ax + lx * t - bx, dy = ay + ly * t - by;
 			f32 dp = a->p + (c->p - a->p) * t - b->p;
-			if (dx * dx + dy * dy < 0.11 && dp < 0.02 && dp > -0.02) {
+			f32 da = a->a + (c->a - a->a) * t - b->a;
+			if (dx * dx + dy * dy < 0.11 && dp < 0.02 && dp > -0.02 && da < 0.02 && da > -0.02) {
 				*b = *c;
 				count--;
 			}
@@ -1471,7 +1527,7 @@ static void render_path_paint_commands_samples() {
 		g_context->last_paint_vec_y = render_path_paint_samples_last.y;
 		g_context->paint_vec.x      = pts[i].x;
 		g_context->paint_vec.y      = pts[i].y;
-		util_brush_sample_pressure  = pts[i].p;
+		render_path_paint_point_use(&pts[i]);
 		if (render_path_paint_batched()) {
 			render_path_paint_batch_add();
 		}
@@ -1484,7 +1540,7 @@ static void render_path_paint_commands_samples() {
 	if (render_path_paint_batched()) {
 		render_path_paint_batch_flush(true);
 	}
-	util_brush_sample_pressure = -1.0;
+	render_path_paint_point_clear();
 	g_context->paint_vec.x     = cx;
 	g_context->paint_vec.y     = cy;
 }
@@ -1503,7 +1559,7 @@ static void render_path_paint_commands_samples_stamps() {
 
 	if (g_context->brush_dab_x < 0.0 || !render_path_paint_samples_started) { // First stamp of the stroke
 		render_path_paint_stamp_seed = (u32)(pts[0].x * 100003.0) ^ (u32)(pts[0].y * 7919.0) ^ (u32)(sys_time() * 1000.0);
-		util_brush_sample_pressure   = pts[0].p;
+		render_path_paint_point_use(&pts[0]);
 		render_path_paint_stamp(pts[0].x, pts[0].y, aspect, diameter, count == 1);
 		render_path_paint_samples_last    = pts[0];
 		render_path_paint_samples_carry   = 0.0;
@@ -1521,9 +1577,10 @@ static void render_path_paint_commands_samples_stamps() {
 		f32                       len = math_sqrt(dx * dx + dy * dy);
 		f32                       d   = step - render_path_paint_samples_carry; // Distance along the segment to the next stamp
 		while (d <= len && stamps < 256) {
-			f32 t                      = len > 0.0 ? d / len : 1.0;
-			util_brush_sample_pressure = a.p + (b.p - a.p) * t;
-			render_path_paint_stamp(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, aspect, diameter, false);
+			f32                       t  = len > 0.0 ? d / len : 1.0;
+			render_path_paint_point_t at = render_path_paint_point_lerp(&a, &b, t);
+			render_path_paint_point_use(&at);
+			render_path_paint_stamp(at.x, at.y, aspect, diameter, false);
 			stamps++;
 			d += step;
 		}
@@ -1540,7 +1597,7 @@ static void render_path_paint_commands_samples_stamps() {
 		render_path_paint_dilate_after_paint();
 	}
 
-	util_brush_sample_pressure   = -1.0;
+	render_path_paint_point_clear();
 	g_context->paint_vec.x       = cx;
 	g_context->paint_vec.y       = cy;
 	g_context->brush_dab_radius  = 1.0;
@@ -1680,7 +1737,8 @@ void render_path_paint_set_plane_mesh() {
 	camera_object_t *cam          = scene_camera;
 	g_context->saved_camera       = cam->base->transform->local;
 	render_path_paint_saved_ortho = cam->data->ortho;
-	transform_set_matrix(cam->base->transform, mat4_translate(mat4_identity(), 0, 0, 1));
+	// Turned like the 2D view shows the layer, the camera rolls the other way around the plane center
+	transform_set_matrix(cam->base->transform, mat4_translate(mat4_rot_z(ui_view2d_rotation), 0, 0, 1));
 	f32 ratio = config_get_texture_res_y() / (float)config_get_texture_res_x();
 	f32 tx, ty, tw, th;
 	ui_view2d_tex_rect(ratio, &tx, &ty, &tw, &th);

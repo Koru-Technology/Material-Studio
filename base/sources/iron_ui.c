@@ -2982,7 +2982,7 @@ void ui_key_down(ui_t *ui, int key_code) {
 	case KEY_CODE_CONTROL:
 		ui->is_ctrl_down = true;
 		break;
-#ifdef IRON_MACOS
+#if defined(IRON_MACOS) || defined(IRON_IOS) // Cmd works as Ctrl
 	case KEY_CODE_META:
 		ui->is_ctrl_down = true;
 		break;
@@ -3029,7 +3029,7 @@ void ui_key_up(ui_t *ui, int key_code) {
 	case KEY_CODE_CONTROL:
 		ui->is_ctrl_down = false;
 		break;
-#ifdef IRON_MACOS
+#if defined(IRON_MACOS) || defined(IRON_IOS) // Cmd works as Ctrl
 	case KEY_CODE_META:
 		ui->is_ctrl_down = false;
 		break;

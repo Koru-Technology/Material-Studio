@@ -332,6 +332,9 @@ void gpu_execute_and_wait() {
 
 	[command_buffer commit];
 	[command_buffer waitUntilCompleted];
+	if (command_buffer.error != nil) { // The gpu dropped the work, e.g. a pass too long for the ios watchdog
+		iron_error("GPU error: %s", command_buffer.error.localizedDescription.UTF8String);
+	}
 	wait_for_frames();
 	id<MTLCommandQueue> queue = get_metal_queue();
 	command_buffer            = [queue commandBuffer];
@@ -1294,4 +1297,32 @@ void gpu_release_staging_buffers(void) {
 	bc7_src = nil;
 	bc7_dst = nil;
 #endif
+}
+
+// Rectangles copied between textures of the same format, between passes, in the order of the frame's commands
+static id<MTLBlitCommandEncoder> region_blit = nil;
+
+void gpu_copy_regions_begin(void) {
+	end_kept_encoder();
+	if (command_buffer == nil) {
+		command_buffer = [get_metal_queue() commandBuffer];
+	}
+	region_blit = [command_buffer blitCommandEncoder];
+}
+
+void gpu_copy_region(gpu_texture_t *dst, int dx, int dy, gpu_texture_t *src, int sx, int sy, int w, int h) {
+	[region_blit copyFromTexture:(__bridge id<MTLTexture>)src->impl._tex
+	                 sourceSlice:0
+	                 sourceLevel:0
+	                sourceOrigin:MTLOriginMake(sx, sy, 0)
+	                  sourceSize:MTLSizeMake(w, h, 1)
+	                   toTexture:(__bridge id<MTLTexture>)dst->impl._tex
+	            destinationSlice:0
+	            destinationLevel:0
+	           destinationOrigin:MTLOriginMake(dx, dy, 0)];
+}
+
+void gpu_copy_regions_end(void) {
+	[region_blit endEncoding];
+	region_blit = nil;
 }

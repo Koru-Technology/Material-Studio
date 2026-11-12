@@ -46,6 +46,75 @@ static bool util_brush_finger_allowed(bool paint_down) {
 }
 #endif
 
+// Touch and hold: a finger resting still on the canvas for half a second picks the color under it, like the picker tool,
+// until it lifts. The dab it painted while resting is taken back.
+static f64             util_brush_hold_time  = 0;
+static f32             util_brush_hold_x     = 0;
+static f32             util_brush_hold_y     = 0;
+static bool            util_brush_hold_moved = false;
+static i32             util_brush_hold_tool  = -1; // Tool to go back to, -1 when not picking
+static history_step_t *util_brush_hold_step  = NULL;
+
+bool util_brush_hold_picking() {
+	return util_brush_hold_tool >= 0;
+}
+
+static void util_brush_hold_pick() {
+	if (util_brush_hold_tool >= 0) {
+		if (!mouse_down("left")) {
+			context_select_tool(util_brush_hold_tool);
+			util_brush_hold_tool       = -1;
+			ui_toolbar_handle->redraws = 2;
+		}
+		return;
+	}
+	if (pen_down("tip") || pen_in_use || !g_config->touch_ui) {
+		util_brush_hold_time = 0;
+		return;
+	}
+	if (mouse_started("left")) {
+		util_brush_hold_time  = sys_time();
+		util_brush_hold_x     = mouse_x;
+		util_brush_hold_y     = mouse_y;
+		util_brush_hold_moved = false;
+		util_brush_hold_step  = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
+	}
+	if (!mouse_down("left") || mouse_down("right") || util_brush_hold_time == 0) {
+		util_brush_hold_time = 0;
+		return;
+	}
+	if (math_abs(mouse_x - util_brush_hold_x) + math_abs(mouse_y - util_brush_hold_y) > 12 * UI_SCALE()) {
+		util_brush_hold_moved = true;
+	}
+	bool brush = g_context->tool == TOOL_TYPE_BRUSH && ui_toolbar_tool_visible(TOOL_TYPE_PICKER) && context_in_paint_area();
+	if (!util_brush_hold_moved && brush && sys_time() - util_brush_hold_time > 0.5) {
+		util_brush_hold_time  = 0;
+		history_step_t *last  = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
+		if (last != NULL && last != util_brush_hold_step && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
+			history_undo();
+		}
+		util_brush_hold_tool = g_context->tool;
+		context_select_tool(TOOL_TYPE_PICKER);
+		iron_haptic_tick(mouse_x, mouse_y);
+	}
+}
+
+// The picked color above the finger while holding
+void util_brush_render_hold_loupe() {
+	if (util_brush_hold_tool < 0) {
+		return;
+	}
+	f32 r = 34 * UI_SCALE();
+	f32 x = mouse_x;
+	f32 y = mouse_y - r * 2.5; // Above the finger, it covers the spot
+	draw_set_color(0xff000000);
+	draw_filled_circle(x, y, r + 3 * UI_SCALE(), 48);
+	draw_set_color(g_context->picked_color->base | 0xff000000);
+	draw_filled_circle(x, y, r, 48);
+	draw_set_color(0xffffffff);
+	draw_circle(x, y, r + 1.5 * UI_SCALE(), 48, 2.0 * UI_SCALE());
+}
+
 // Pen pressure through the curve of the preferences
 f32 util_brush_pen_pressure() {
 	f32 p = util_brush_sample_pressure >= 0.0f ? util_brush_sample_pressure : pen_pressure;
@@ -56,16 +125,60 @@ f32 util_brush_pen_pressure() {
 	return p * g_config->pressure_sensitivity;
 }
 
-// Factor applied to a brush property by its dynamics source, 1 when off
-f32 util_brush_dynamic(i32 source) {
+static bool util_brush_pen_active() {
+	return pen_down("tip") || pen_released("tip");
+}
+
+// How far the pen leans, 0 upright (above 80 degrees) to 1 flat (below 20 degrees)
+f32 util_brush_pen_tilt() {
+	if (!util_brush_pen_active()) {
+		return 0.0f;
+	}
+	f32 altitude = util_brush_sample_altitude >= 0.0f ? util_brush_sample_altitude : pen_altitude;
+	f32 t        = (1.396f - altitude) / (1.396f - 0.349f);
+	return t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+}
+
+// Screen direction the pen points to, radians counter clockwise from the right, 0 without a pen
+f32 util_brush_pen_azimuth() {
+	if (!util_brush_pen_active()) {
+		return 0.0f;
+	}
+	return -(util_brush_sample_altitude >= 0.0f ? util_brush_sample_azimuth : pen_azimuth); // Screen y points down
+}
+
+f32 util_brush_pen_roll() {
+	if (!util_brush_pen_active()) {
+		return 0.0f;
+	}
+	return util_brush_sample_altitude >= 0.0f ? util_brush_sample_roll : pen_roll;
+}
+
+// Tilt shading: the dab stretches along the pen up to three times as it leans.
+// x: 1 / stretch - 1, the factor applied along the pen direction, 0 upright; y: the direction on screen
+vec2_t util_brush_tilt_shape() {
+	if (!g_config->tilt_shading) {
+		return (vec2_t){0.0f, 0.0f};
+	}
+	f32 stretch = 1.0f + 2.0f * util_brush_pen_tilt();
+	return (vec2_t){1.0f / stretch - 1.0f, util_brush_pen_azimuth()};
+}
+
+// Factor applied to a brush property by its dynamics source, 1 when off.
+// grows: leaning the pen makes the property larger (size) instead of smaller (opacity, flow, hardness).
+f32 util_brush_dynamic(i32 source, bool grows) {
 	if (slot_layer_is_path(g_context->layer)) {
 		return 1.0f;
 	}
-	if (source == 1) { // Pen pressure
-		return (pen_down("tip") || pen_released("tip")) ? util_brush_pen_pressure() : 1.0f;
+	if (source == DYN_SOURCE_PRESSURE) {
+		return util_brush_pen_active() ? util_brush_pen_pressure() : 1.0f;
 	}
-	if (source == 2) { // Fast strokes paint thinner and lighter
+	if (source == DYN_SOURCE_SPEED) { // Fast strokes paint thinner and lighter
 		return g_config->pressure_min + (1.0f - g_config->pressure_min) * (1.0f - g_context->brush_speed);
+	}
+	if (source == DYN_SOURCE_TILT) { // Like the side of a pencil lead: wider, lighter and softer
+		f32 t = util_brush_pen_tilt();
+		return grows ? 1.0f + 2.0f * t : 1.0f - (1.0f - g_config->pressure_min) * 0.8f * t;
 	}
 	return 1.0f;
 }
@@ -104,6 +217,7 @@ void util_brush_update() {
 	if (!util_brush_finger_allowed(paint_down)) {
 		paint_down = false;
 	}
+	util_brush_hold_pick();
 #endif
 
 	bool set_clone_source =

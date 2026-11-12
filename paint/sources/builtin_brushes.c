@@ -264,6 +264,7 @@ void builtin_brush_use(i32 i) {
 	}
 	builtin_brush_t *b              = &builtin_brushes[i];
 	g_context->brush_builtin        = i;
+	ui_quick_menu_brush_used(i);
 	g_context->brush_hardness       = b->hardness;
 	g_context->brush_spacing        = b->spacing;
 	g_context->brush_scatter        = b->scatter;

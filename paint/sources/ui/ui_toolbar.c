@@ -427,8 +427,29 @@ static void ui_toolbar_draw_chevron(i32 toolbar_x) {
 		gpu_texture_t *img  = resource_get("icons.k");
 		rect_t        *rect = resource_tile50(img, ICON_CHEVRON_RIGHT);
 		g_ui->image_scroll_align = false;
-		if (ui_sub_image(img, ui_toolbar_sel_col, size, rect->x, rect->y, rect->w, rect->h) == UI_STATE_RELEASED) {
-			ui_menu_draw(&ui_toolbar_tool_properties_menu_draw, x + size, ui_toolbar_sel_y);
+		// Tap: tool properties, long press: the quick menu
+		static f64  press_time = 0.0;
+		static bool long_press = false;
+		i32         state      = ui_sub_image(img, ui_toolbar_sel_col, size, rect->x, rect->y, rect->w, rect->h);
+		if (state == UI_STATE_STARTED) {
+			press_time = sys_time();
+			long_press = false;
+		}
+		if (press_time > 0.0 && !long_press) {
+			hwnd->redraws = 2; // Keeps checking the press
+			if (state == UI_STATE_DOWN && sys_time() - press_time > 0.5) {
+				long_press = true;
+				ui_quick_menu_open(x + size * 5, ui_toolbar_sel_y + size);
+			}
+		}
+		if (state == UI_STATE_RELEASED) {
+			if (!long_press) {
+				ui_menu_draw(&ui_toolbar_tool_properties_menu_draw, x + size, ui_toolbar_sel_y);
+			}
+			press_time = 0.0;
+		}
+		else if (!g_ui->input_down) {
+			press_time = 0.0;
 		}
 		g_ui->image_scroll_align = true;
 	}

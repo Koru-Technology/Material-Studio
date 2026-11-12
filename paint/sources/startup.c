@@ -751,7 +751,7 @@ scene_t *startup_get_scene(void) {
 	}
 
 	// shader_datas
-	scene->shader_datas = any_array_create(17);
+	scene->shader_datas = any_array_create(18);
 	{
 		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
 		sd->name          = "armdefault";
@@ -2119,6 +2119,71 @@ scene_t *startup_get_scene(void) {
 			sd->contexts->buffer[0] = sc;
 		}
 		scene->shader_datas->buffer[16] = sd;
+	}
+	{
+		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
+		sd->name          = "undo_tiles_pass";
+		sd->contexts      = any_array_create(1);
+		{
+			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
+			sc->name                         = "undo_tiles_pass";
+			sc->depth_write                  = false;
+			sc->compare_mode                 = "always";
+			sc->cull_mode                    = "none";
+			sc->vertex_shader                = "undo_tiles_pass.vert";
+			sc->fragment_shader              = "undo_tiles_pass.frag";
+			sc->shader_from_source           = false;
+			sc->color_attachments            = string_array_create(1);
+			sc->color_attachments->buffer[0] = "RGBA32";
+			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
+			{
+				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
+				ve->name                       = "pos";
+				ve->data                       = "float2";
+				sc->vertex_elements->buffer[0] = ve;
+			}
+			sc->constants = (shader_const_t_array_t *)any_array_create(1);
+			{
+				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
+				c->name                  = "tile_size";
+				c->type                  = "float2";
+				c->link                  = "_undo_tile_size";
+				sc->constants->buffer[0] = c;
+			}
+			sc->texture_units = (tex_unit_t_array_t *)any_array_create(6);
+			{
+				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+				tu->name                     = "tex0";
+				sc->texture_units->buffer[0] = tu;
+			}
+			{
+				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+				tu->name                     = "tex1";
+				sc->texture_units->buffer[1] = tu;
+			}
+			{
+				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+				tu->name                     = "tex2";
+				sc->texture_units->buffer[2] = tu;
+			}
+			{
+				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+				tu->name                     = "tex3";
+				sc->texture_units->buffer[3] = tu;
+			}
+			{
+				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+				tu->name                     = "tex4";
+				sc->texture_units->buffer[4] = tu;
+			}
+			{
+				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+				tu->name                     = "tex5";
+				sc->texture_units->buffer[5] = tu;
+			}
+			sd->contexts->buffer[0] = sc;
+		}
+		scene->shader_datas->buffer[17] = sd;
 	}
 
 	// objects

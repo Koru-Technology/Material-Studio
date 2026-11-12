@@ -454,7 +454,18 @@ void box_preferences_usage_tab() {
 	ui_slider_int(&g_config->autosave_interval, tr("Interval (min)"), 1, 15, false, true, UI_ALIGN_RIGHT, true);
 	g_ui->enabled = true;
 
+	ui_slider_int(&g_config->undo_memory_mb, tr("Undo Memory (MB)"), 64, 2048, false, true, UI_ALIGN_RIGHT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(string_tmp("%s (%d MB %s)", tr("Paint strokes keep only the tiles they changed, the oldest go past this"),
+		                      (i32)(history_tiles_memory() / (1024 * 1024)), tr("in use")));
+	}
+	if (g_config->undo_memory_mb < 64) {
+		g_config->undo_memory_mb = 64;
+	}
 	ui_slider_int(&g_config->undo_steps, tr("Undo Steps"), 1, 64, false, true, UI_ALIGN_RIGHT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Whole layer copies for undoing masks, cleared layers and layer conversions, up to 64 paint strokes are kept besides"));
+	}
 	if (g_config->undo_steps < 1) {
 		g_config->undo_steps = 1;
 	}
@@ -637,6 +648,18 @@ static void box_preferences_draw_pressure_curve() {
 	g_ui->_y += h + 8 * UI_SCALE();
 }
 
+// Combo over some of the values, index holds the shown position (static, the combo is identified by its address)
+static void box_preferences_mapped_combo(i32 *value, i32 *index, i32 *values, string_array_t *labels, char *label) {
+	*index = 0;
+	for (i32 i = 0; i < labels->length; ++i) {
+		if (values[i] == *value) {
+			*index = i;
+		}
+	}
+	ui_combo(index, labels, label, true, UI_ALIGN_LEFT, true);
+	*value = values[*index];
+}
+
 void box_preferences_pen_tab() {
 	ui_text(tr("Pressure controls"), UI_ALIGN_LEFT, 0x00000000);
 
@@ -662,19 +685,66 @@ void box_preferences_pen_tab() {
 	box_preferences_draw_pressure_curve();
 	// Brush dynamics: what drives each property
 	ui_text(tr("Brush Dynamics"), UI_ALIGN_LEFT, 0x00000000);
-	string_array_t *sources       = any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed")}, 3);
-	string_array_t *angle_sources = any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed"), tr("Direction")}, 4);
-	ui_combo(&g_config->dyn_size, sources, tr("Size"), true, UI_ALIGN_LEFT, true);
-	ui_combo(&g_config->dyn_opacity, sources, tr("Opacity"), true, UI_ALIGN_LEFT, true);
-	ui_combo(&g_config->dyn_flow, sources, tr("Flow"), true, UI_ALIGN_LEFT, true);
-	ui_combo(&g_config->dyn_hardness, sources, tr("Hardness"), true, UI_ALIGN_LEFT, true);
+	string_array_t *sources       = any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed"), tr("Tilt")}, 4);
+	static i32      source_values[] = {DYN_SOURCE_OFF, DYN_SOURCE_PRESSURE, DYN_SOURCE_SPEED, DYN_SOURCE_TILT};
+	string_array_t *angle_sources =
+	    any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed"), tr("Direction"), tr("Azimuth"), tr("Barrel Roll")}, 6);
+	static i32 angle_values[] = {DYN_SOURCE_OFF, DYN_SOURCE_PRESSURE, DYN_SOURCE_SPEED, DYN_SOURCE_DIRECTION, DYN_SOURCE_AZIMUTH, DYN_SOURCE_ROLL};
+	static i32 index[5];
+	box_preferences_mapped_combo(&g_config->dyn_size, &index[0], source_values, sources, tr("Size"));
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Tilt: leaning the pencil paints wider"));
+	}
+	box_preferences_mapped_combo(&g_config->dyn_opacity, &index[1], source_values, sources, tr("Opacity"));
+	box_preferences_mapped_combo(&g_config->dyn_flow, &index[2], source_values, sources, tr("Flow"));
+	box_preferences_mapped_combo(&g_config->dyn_hardness, &index[3], source_values, sources, tr("Hardness"));
 	i32 dyn_angle = g_config->dyn_angle;
-	ui_combo(&g_config->dyn_angle, angle_sources, tr("Angle"), true, UI_ALIGN_LEFT, true);
+	box_preferences_mapped_combo(&g_config->dyn_angle, &index[4], angle_values, angle_sources, tr("Angle"));
 	if (dyn_angle != g_config->dyn_angle) {
 		make_material_parse_paint_material(true);
 	}
 	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Pressure turns the brush, Direction follows the stroke"));
+		ui_tooltip(tr("Pressure turns the brush, Direction follows the stroke, Azimuth follows where the pencil points, Barrel Roll turns with the "
+		              "Pencil Pro barrel"));
+	}
+	bool tilt_shading = g_config->tilt_shading;
+	ui_check(&g_config->tilt_shading, tr("Tilt Shading"), "");
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Leaning the pencil stretches the brush along it and softens the edge, like shading with the side of a lead"));
+	}
+	if (tilt_shading != g_config->tilt_shading) {
+		make_material_parse_paint_material(true);
+	}
+
+	ui_text(tr("Pencil Gestures"), UI_ALIGN_LEFT, 0x00000000);
+	string_array_t *actions = any_array_create_from_raw_tmp(
+	    (void *[]){tr("System Setting"), tr("Toggle Eraser"), tr("Previous Tool"), tr("Undo"), tr("Quick Menu"), tr("Color Picker"), tr("Off")}, 7);
+	ui_combo(&g_config->pencil_double_tap, actions, tr("Double Tap"), true, UI_ALIGN_LEFT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Double tap on the Apple Pencil (2nd generation, Pro)"));
+	}
+	ui_combo(&g_config->pencil_squeeze, actions, tr("Squeeze"), true, UI_ALIGN_LEFT, true);
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Squeeze on the Apple Pencil Pro, System Setting opens the quick menu for the contextual palette"));
+	}
+
+	ui_text(tr("Quick Menu"), UI_ALIGN_LEFT, 0x00000000);
+	if (g_config->quick_menu_slots == NULL || g_config->quick_menu_slots->length != QUICK_MENU_SLOTS) {
+		g_config->quick_menu_slots = config_default_quick_menu_slots();
+	}
+	static string_array_t *items = NULL;
+	if (items == NULL) {
+		items = any_array_create(0);
+		for (i32 i = 0; i < QUICK_MENU_COUNT; ++i) {
+			any_array_push(items, ui_quick_menu_item_name(i));
+		}
+	}
+	char *positions[] = {tr("Top"), tr("Top Right"), tr("Right"), tr("Bottom Right"), tr("Bottom"), tr("Bottom Left"), tr("Left"), tr("Top Left")};
+	for (i32 i = 0; i < QUICK_MENU_SLOTS; ++i) {
+		ui_combo(&g_config->quick_menu_slots->buffer[i], items, positions[i], true, UI_ALIGN_LEFT, true);
+	}
+	if (ui_button(tr("Reset Quick Menu"), UI_ALIGN_CENTER, "")) {
+		g_config->quick_menu_slots = config_default_quick_menu_slots();
 	}
 
 	ui_end_element();

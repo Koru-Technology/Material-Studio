@@ -30,7 +30,8 @@ void gpu_release_staging_buffers(void);
 
 // Low memory: drop what is created again when needed
 void base_on_memory_warning() {
-	if (g_context->brush_time == 0) { // Not in the middle of a stroke
+	if (g_context->brush_time == 0) {
+		history_tiles_trim(); // Not in the middle of a stroke
 		render_path_paint_release_scratch();
 	}
 #ifdef IRON_METAL
@@ -341,6 +342,9 @@ static void base_draw_console_lines() {
 }
 
 void base_update(void *_) {
+	util_pencil_update();
+	ui_quick_menu_update();
+
 	if (g_project->_->translucency && any_map_get(render_path_render_targets, "main_paint") == NULL) {
 		render_path_base_init_paint_depth();
 	}
@@ -636,7 +640,7 @@ void base_update(void *_) {
 		draw_end();
 	}
 
-	bool using_menu = ui_menu_show && mouse_y > ui_header_h;
+	bool using_menu = (ui_menu_show && mouse_y > ui_header_h) || ui_quick_menu_blocking();
 	base_ui_enabled = !ui_box_show && !using_menu && g_ui->combo_selected_id == 0 && !agent_running && !(ui_nodes_show && ui_nodes_popup_hovered());
 
 	if (viewport_recording) {
@@ -652,6 +656,7 @@ void base_update(void *_) {
 	if (ui_menu_show) {
 		ui_menu_render();
 	}
+	ui_quick_menu_render();
 
 	if (agent_running && gpu_framebuffer_redirect == NULL) {
 		draw_begin(NULL, false, 0);
@@ -670,6 +675,14 @@ void base_update(void *_) {
 #endif
 }
 
+// A trackpad or mouse pointer over the canvas hides, the brush cursor shows instead
+bool base_pointer_hidden(float x, float y) {
+	tool_type_t tool   = g_context->tool;
+	bool        cursor = tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR ||
+	              tool == TOOL_TYPE_PARTICLE || tool == TOOL_TYPE_DECAL || tool == TOOL_TYPE_TEXT;
+	return cursor && base_ui_enabled && !ui_quick_menu_show && x >= sys_x() && x < sys_x() + sys_w() && y >= sys_y() && y < sys_y() + sys_h();
+}
+
 void base_init() {
 	base_last_window_width  = iron_window_width();
 	base_last_window_height = iron_window_height();
@@ -679,6 +692,8 @@ void base_init() {
 	sys_notify_on_app_state(&base_on_foreground, &base_on_background, &base_on_shutdown);
 	iron_set_resign_active_callback(&base_on_resign_active);
 	iron_set_memory_warning_callback(&base_on_memory_warning);
+	iron_set_pencil_gesture_callback(&util_pencil_on_gesture);
+	iron_set_pointer_hidden_callback(&base_pointer_hidden);
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
 	agent_init();
 	project_autosave_init();

@@ -229,6 +229,15 @@ void ui_box_show_custom2(void *commands, i32 mw, i32 mh, void *on_hide, char *ti
 	ui_box_show_custom(_ui_box_show_custom_commands, mw, mh, _ui_box_show_custom_on_hide, true, title);
 }
 
+bool script_box_shown() {
+	return ui_box_show;
+}
+
+// Seconds the last frame took
+f32 script_frame_time() {
+	return (f32)sys_real_delta();
+}
+
 // Writable folder of the app, scripts keep their files there on ios where /tmp is not accessible
 char *script_save_path() {
 	return (char *)iron_internal_save_path();

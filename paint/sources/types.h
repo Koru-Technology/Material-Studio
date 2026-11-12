@@ -225,6 +225,11 @@ typedef struct config {
 	bool                 autosave;
 	i32                  autosave_interval; // Minutes
 	i32                  finger_paint;      // 0 auto (not once the pencil is used), 1 always, 2 never
+	bool                 tilt_shading;      // A leaning pencil stretches the dab along its direction and softens it
+	i32                  pencil_double_tap; // Pencil gesture actions, see pencil_action_t
+	i32                  pencil_squeeze;
+	struct i32_array    *quick_menu_slots;  // Quick menu items clockwise from the top, see quick_menu_item_t
+	i32                  undo_memory_mb;    // Undo steps are dropped, oldest first, above this budget
 } config_t;
 
 typedef struct slot_material {
@@ -654,6 +659,10 @@ typedef struct history_step {
 	i32                          merge_start;
 	i32                          merge_length;
 	bool                         with_prev; // Undone and redone together with the previous step
+	i32                          undo_ring;      // Whole layer copies the step keeps in the undo layers (history_copy_to_undo)
+	bool                         undo_tiled;     // Paint step undone from its tiles, see history_tiles.c
+	i32_array_t                 *undo_tiles;     // Tile and pool slot pairs, NULL until the stroke is over
+	i32                          undo_tiles_gen;
 } history_step_t;
 
 typedef struct logic_node {

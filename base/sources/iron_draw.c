@@ -339,6 +339,30 @@ void draw_scaled_sub_image(gpu_texture_t *img, float sx, float sy, float sw, flo
 	draw_push(pipe, img, x0, y0, u0, v1, x1, y1, u0, v0, x2, y2, u1, v0, x3, y3, u1, v1, r, g, b, a);
 }
 
+// The image turned around (cx, cy) by angle radians, clockwise on screen
+void draw_rotated_scaled_image(gpu_texture_t *img, float dx, float dy, float dw, float dh, float cx, float cy, float angle) {
+	gpu_pipeline_t *pipe = draw_custom_pipeline != NULL                                                ? draw_custom_pipeline
+	                       : (_draw_current != NULL && _draw_current->format == GPU_TEXTURE_FORMAT_R8) ? &image_r8_pipeline
+	                                                                                                   : &image_pipeline;
+	float r  = _draw_color_r(draw_color) / 255.0f;
+	float g  = _draw_color_g(draw_color) / 255.0f;
+	float b  = _draw_color_b(draw_color) / 255.0f;
+	float a  = _draw_color_a(draw_color) / 255.0f;
+	float c  = cosf(angle);
+	float s  = sinf(angle);
+	float px[4] = {dx, dx, dx + dw, dx + dw}; // Bottom left, top left, top right, bottom right
+	float py[4] = {dy + dh, dy, dy, dy + dh};
+	float nx[4];
+	float ny[4];
+	for (int i = 0; i < 4; ++i) {
+		float x = cx + (px[i] - cx) * c - (py[i] - cy) * s;
+		float y = cy + (px[i] - cx) * s + (py[i] - cy) * c;
+		nx[i]   = x / vw() * 2.0f - 1.0f;
+		ny[i]   = -(y / vh() * 2.0f - 1.0f);
+	}
+	draw_push(pipe, img, nx[0], ny[0], 0.0f, 1.0f, nx[1], ny[1], 0.0f, 0.0f, nx[2], ny[2], 1.0f, 0.0f, nx[3], ny[3], 1.0f, 1.0f, r, g, b, a);
+}
+
 void draw_scaled_image(gpu_texture_t *tex, float dx, float dy, float dw, float dh) {
 	draw_scaled_sub_image(tex, 0, 0, (float)tex->width, (float)tex->height, dx, dy, dw, dh);
 }

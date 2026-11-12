@@ -923,6 +923,12 @@ void minic_register_builtins() {
 	MINIC_I(rp_view_transform);
 	MINIC_I(autosave);
 	MINIC_I(autosave_interval);
+	MINIC_I(dyn_size);
+	MINIC_I(dyn_angle);
+	MINIC_B(tilt_shading);
+	MINIC_I(pencil_double_tap);
+	MINIC_I(pencil_squeeze);
+	MINIC_I(undo_memory_mb);
 	MINIC_END();
 
 	MINIC_STRUCT(context_t);

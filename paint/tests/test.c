@@ -2321,8 +2321,9 @@ void run_step(int s) {
 		step_layer_paths_verify();
 }
 
+int close_frames    = 0;
 int step_count      = 72;
-int expected_checks = 216;
+int expected_checks = 217;
 
 void next_frame() {
 	if (sub == 0) {
@@ -2342,6 +2343,17 @@ void next_frame() {
 		script_notify_on_next_frame(next_frame);
 		return;
 	}
+
+	// The loaded project asks to trust its scripts, the dialog closes like its buttons close it and leaves the app usable
+	if (close_frames == 0 && script_box_shown()) {
+		ui_box_hide();
+	}
+	if (close_frames < 40 && script_box_shown()) {
+		close_frames += 1;
+		script_notify_on_next_frame(next_frame);
+		return;
+	}
+	check(!script_box_shown(), string("dialog closes (%d frames)", close_frames));
 
 	if (checks != expected_checks) {
 		failures += 1;

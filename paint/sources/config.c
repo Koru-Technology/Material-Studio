@@ -188,6 +188,16 @@ void config_save() {
 	json_encode_bool("autosave", g_config->autosave);
 	json_encode_i32("autosave_interval", g_config->autosave_interval);
 	json_encode_i32("finger_paint", g_config->finger_paint);
+	json_encode_bool("tilt_shading", g_config->tilt_shading);
+	json_encode_i32("pencil_double_tap", g_config->pencil_double_tap);
+	json_encode_i32("pencil_squeeze", g_config->pencil_squeeze);
+	if (g_config->quick_menu_slots != NULL) {
+		json_encode_i32_array("quick_menu_slots", g_config->quick_menu_slots);
+	}
+	else {
+		json_encode_null("quick_menu_slots");
+	}
+	json_encode_i32("undo_memory_mb", g_config->undo_memory_mb);
 	char *config_json = json_encode_end();
 
 	buffer_t *buffer = sys_string_to_buffer(config_json);
@@ -195,6 +205,12 @@ void config_save() {
 	array_free(buffer);
 	free(buffer);
 	free(config_json);
+}
+
+i32_array_t *config_default_quick_menu_slots() {
+	i32 slots[] = {QUICK_MENU_BRUSH, QUICK_MENU_ERASER, QUICK_MENU_PICKER, QUICK_MENU_FILL,
+	               QUICK_MENU_UNDO,  QUICK_MENU_REDO,   QUICK_MENU_SIZE,   QUICK_MENU_OPACITY};
+	return i32_array_create_from_raw(slots, QUICK_MENU_SLOTS);
 }
 
 config_t *config_create_default() {
@@ -374,6 +390,15 @@ config_t *config_create_default() {
 	c->autosave = true;
 	c->autosave_interval = 5;
 	c->finger_paint = 1;
+	c->tilt_shading = false;
+	c->pencil_double_tap = PENCIL_ACTION_SYSTEM;
+	c->pencil_squeeze = PENCIL_ACTION_SYSTEM;
+	c->quick_menu_slots = config_default_quick_menu_slots();
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+	c->undo_memory_mb = 256;
+#else
+	c->undo_memory_mb = 1024;
+#endif
 	return c;
 }
 
@@ -511,12 +536,27 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->autosave = armpack_map_get_i32(old, "autosave") > 0;
 	c->autosave_interval = armpack_map_get_i32(old, "autosave_interval");
 	c->finger_paint = armpack_map_get_i32(old, "finger_paint");
+	c->tilt_shading = armpack_map_get_i32(old, "tilt_shading") > 0;
+	c->pencil_double_tap = armpack_map_get_i32(old, "pencil_double_tap");
+	c->pencil_squeeze = armpack_map_get_i32(old, "pencil_squeeze");
+	c->quick_menu_slots = any_map_get(old, "quick_menu_slots");
+	c->undo_memory_mb = armpack_map_get_i32(old, "undo_memory_mb");
 	return c;
+}
+
+config_t *config_from_version_15(any_map_t *old) {
+	config_t *def = config_create_default();
+	armpack_map_set_i32(old, "tilt_shading", def->tilt_shading);
+	armpack_map_set_i32(old, "pencil_double_tap", def->pencil_double_tap);
+	armpack_map_set_i32(old, "pencil_squeeze", def->pencil_squeeze);
+	any_map_set(old, "quick_menu_slots", def->quick_menu_slots);
+	armpack_map_set_i32(old, "undo_memory_mb", def->undo_memory_mb);
+	return config_from_map_to_config(old);
 }
 
 config_t *config_from_version_14(any_map_t *old) {
 	armpack_map_set_i32(old, "finger_paint", 1);
-	return config_from_map_to_config(old);
+	return config_from_version_15(old);
 }
 
 config_t *config_from_version_13(any_map_t *old) {
@@ -644,6 +684,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_12,
 	    config_from_version_13,
 	    config_from_version_14,
+	    config_from_version_15,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {

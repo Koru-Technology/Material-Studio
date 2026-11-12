@@ -147,5 +147,6 @@ void util_cursor_render(void *_) {
 	util_shape_tool_render();
 	util_text_tool_render();
 	util_path_tool_render();
+	util_brush_render_hold_loupe();
 	draw_end();
 }

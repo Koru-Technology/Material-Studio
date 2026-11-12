@@ -47,10 +47,12 @@ void mouse_wheel_listener(f32 delta);
 extern f32 mouse_pinch_dist;
 extern f32 mouse_pinch_total;
 extern f32 mouse_pinch_smooth;
+extern f32 mouse_twist_delta; // Radians two fingers turned since the last frame, clockwise on screen
 
 void mouse_on_touch_down(i32 index, i32 x, i32 y);
 void mouse_on_touch_up(i32 index, i32 x, i32 y);
 void mouse_on_touch_move(i32 index, i32 x, i32 y);
+void mouse_twist_listener(f32 radians);
 #endif
 
 f32 mouse_view_x(void);
@@ -75,6 +77,11 @@ extern f32             pen_last_y;
 extern f32             pen_altitude; // Radians, pi/2 when perpendicular to the screen
 extern f32             pen_azimuth;  // Radians in screen space, 0 pointing right
 extern f32             pen_roll;     // Barrel roll in radians, 0 without support
+extern f32             pen_hover;       // Height of the hovering pencil, 0 near the screen to 1 at the edge of detection, -1 when not hovering
+extern bool            pen_hover_left;  // The pencil hovered away and nothing touched since, the brush cursor hides
+extern bool            pen_predicted;   // Where the tip is expected next, while down, for the cursor only, never painted
+extern f32             pen_predicted_x;
+extern f32             pen_predicted_y;
 
 // Every pen sample since the last frame, in order, the backend may deliver several per frame (240 Hz Pencil)
 typedef struct pen_sample {
@@ -91,6 +98,8 @@ typedef struct pen_sample {
 extern pen_sample_t pen_samples[PEN_SAMPLES_MAX];
 extern i32          pen_sample_count;
 void                pen_sample_listener(f32 x, f32 y, f32 pressure, f32 altitude, f32 azimuth, f32 roll, f64 time);
+void                pen_hover_listener(f32 x, f32 y, f32 height); // A height below 0 ends the hover
+void                pen_predicted_listener(f32 x, f32 y);
 
 void pen_end_frame(void);
 void pen_reset(void);

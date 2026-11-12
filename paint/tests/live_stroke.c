@@ -103,6 +103,7 @@ void next() {
 			frame      = 0;
 			if (stroke == 4) {
 				printf(fails == 0 ? "LIVE PASS" : "LIVE FAIL");
+				script_quit();
 				return;
 			}
 		}
