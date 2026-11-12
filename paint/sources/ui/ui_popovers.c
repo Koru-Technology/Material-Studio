@@ -293,7 +293,8 @@ static void ui_popovers_draw_bar() {
 
 // Frosted glass: the 3D view under the popover, halved down a few times and scaled back up, smooth filtering blurs it
 
-#define UI_POPOVERS_BLUR_LEVELS 4
+#define UI_POPOVERS_BLUR_LEVELS 6
+#define UI_POPOVERS_BLUR_SHOWN  2 // Level drawn, an eighth of the size: scaled up it is soft
 static gpu_texture_t *ui_popovers_blur[UI_POPOVERS_BLUR_LEVELS];
 static i32            ui_popovers_blur_count = -1; // Image of the view the blur was made from
 
@@ -323,7 +324,7 @@ static gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *cha
 		levels[i] = ui_popovers_blur_level(i, w >> (i + 1), h >> (i + 1));
 	}
 	if (count == ui_popovers_blur_count) {
-		return levels[1];
+		return levels[UI_POPOVERS_BLUR_SHOWN];
 	}
 	ui_popovers_blur_count = count;
 	*changed               = true;
@@ -346,7 +347,7 @@ static gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *cha
 		draw_scaled_image(levels[i - 1], 0, 0, levels[i]->width, levels[i]->height);
 		draw_end();
 	}
-	for (i32 i = UI_POPOVERS_BLUR_LEVELS - 2; i >= 1; --i) { // Back up to a quarter of the size
+	for (i32 i = UI_POPOVERS_BLUR_LEVELS - 2; i >= UI_POPOVERS_BLUR_SHOWN; --i) { // Back up
 		draw_begin(levels[i], true, 0xff000000);
 		draw_set_color(0xffffffff);
 		draw_scaled_image(levels[i + 1], 0, 0, levels[i]->width, levels[i]->height);
@@ -355,7 +356,7 @@ static gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *cha
 	if (in_use) {
 		draw_begin(current, false, 0);
 	}
-	return levels[1];
+	return levels[UI_POPOVERS_BLUR_SHOWN];
 }
 
 static void ui_popovers_draw_popover() {

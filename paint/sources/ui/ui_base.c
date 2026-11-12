@@ -498,7 +498,7 @@ bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 c
 	}
 	if (ui_base_panel_backdrop != NULL) {
 		ui_base_draw_backdrop(ui_base_panel_backdrop, px, 0, w, h, r, corners);
-		draw_set_color((g_theme->WINDOW_BG_COL & 0x00ffffff) | 0xb0000000); // Tinted glass over it
+		draw_set_color((g_theme->WINDOW_BG_COL & 0x00ffffff) | 0xd0000000); // Tinted glass over it, mostly opaque
 	}
 	else {
 		draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker

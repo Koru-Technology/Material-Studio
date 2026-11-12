@@ -29,6 +29,6 @@ vert_out vert(vert_in input) {
 
 float4 frag(vert_out input) {
 	float4 texcolor = sample(tex, sampler_linear, input.tex) * input.col;
-	texcolor.rgb = texcolor.rgb * texcolor.a * input.col.a;
+	texcolor.rgb = texcolor.rgb * texcolor.a; // Premultiplied once, the tint's alpha is already in texcolor.a
 	return texcolor;
 }
