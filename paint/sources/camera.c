@@ -399,7 +399,9 @@ void camera_update(void *_) {
 		camera_controls_down = false;
 	}
 
-	if (_input_occupied || !base_ui_enabled || ui_base_panel_grab || base_is_dragging || g_ui->is_scrolling || g_ui->combo_selected_id != 0 || !camera_controls_down) {
+	// Not while a split between views is dragged
+	if (_input_occupied || !base_ui_enabled || ui_base_panel_grab || base_is_dragging || base_is_resizing || g_ui->is_scrolling || g_ui->combo_selected_id != 0 ||
+	    !camera_controls_down) {
 		return;
 	}
 

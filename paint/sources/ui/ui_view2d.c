@@ -288,7 +288,7 @@ void ui_view2d_render_color_pick(void *_) {
 
 // Height of the tab names and the header drawn on top of the image, the image is centered in the area below
 i32 ui_view2d_top() {
-	return ui_base_show ? ui_header_h * 2 : 0;
+	return ui_base_show && !ui_popovers_enabled() ? ui_header_h * 2 : 0;
 }
 
 // Rect of the shown image relative to the window, the layer plane fills it when painting
@@ -419,13 +419,21 @@ void ui_view2d_update(void *_) {
 
 	// 2D view takes the tab it is docked in
 	ui_dock_layout();
-	if (!ui_base_show) {
+	if (!ui_base_show || ui_popovers_enabled()) {
 		headerh = 0;
 	}
 
 	ui_nodes_wrap_mouse(ui_view2d_controls_down, ui_view2d_wx, ui_view2d_wy, ui_view2d_ww, ui_view2d_wh);
 
-	if (!base_ui_enabled || !ui_view2d_show || mouse_x < ui_view2d_wx || mouse_x > ui_view2d_wx + ui_view2d_ww || mouse_y < ui_view2d_wy + headerh ||
+	// Dragging the split keeps the image the same size on screen, the fit to the view would scale it
+	static f32 last_wm = 0.0;
+	f32        wm      = fmin(ui_view2d_ww, ui_view2d_wh);
+	if (base_is_resizing && last_wm > 0.0 && wm > 0.0 && wm != last_wm) {
+		ui_view2d_pan_scale *= last_wm / wm;
+	}
+	last_wm = wm;
+
+	if (!base_ui_enabled || !ui_view2d_show || base_is_resizing || mouse_x < ui_view2d_wx || mouse_x > ui_view2d_wx + ui_view2d_ww || mouse_y < ui_view2d_wy + headerh ||
 	    mouse_y > ui_view2d_wy + ui_view2d_wh) {
 		if (ui_view2d_controls_down) {
 			ui_canvas_control_t *control = ui_nodes_get_canvas_control(ui_view2d_controls_down, false);
@@ -823,8 +831,8 @@ void ui_view2d_update(void *_) {
 			draw_set_color(0xffffffff);
 		}
 
-		// Menu
-		if (ui_base_show) {
+		// Menu, none on touch: the popovers and the view button by the cube do its work
+		if (ui_base_show && !ui_popovers_enabled()) {
 			i32 top_y = ui_menu_top_y();
 			i32 ew    = math_floor(UI_ELEMENT_W());
 			draw_set_color(g_theme->WINDOW_BG_COL);

@@ -123,6 +123,7 @@ void next() {
 }
 
 void main() {
+	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	script_project_new();
 	slot_material_t *m   = script_material_create("undo_blue");
 	ui_node_t       *rgb = script_material_create_node_at("RGB", -300.0, 0.0);

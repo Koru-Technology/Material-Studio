@@ -162,6 +162,7 @@ void next() {
 }
 
 void main() {
+	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	char *save = script_save_path();
 	if (string_index_of(save, "/var/mobile/") >= 0) { // ios, /tmp is outside the sandbox
 		tmp_root = string("%s/korusurface_uv", save);

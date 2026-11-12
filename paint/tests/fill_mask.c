@@ -155,6 +155,7 @@ void next() {
 }
 
 void main() {
+	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	script_project_new();
 
 	mat_red      = script_material_create("fill_red");

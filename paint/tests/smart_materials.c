@@ -164,6 +164,7 @@ void next() {
 }
 
 void main() {
+	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	script_project_new();
 	red     = make_material("smart_red", 0);
 	checker = make_material("smart_checker", 1);

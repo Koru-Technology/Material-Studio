@@ -1107,7 +1107,115 @@ void script_bake_lightmap_cancel(void) {
 	render_path_raytrace_bake_lightmap_cancel();
 }
 
+// Brush settings of the session: taken before a --script runs and put back when it quits, scripts change them freely
+// and the config is saved on exit
+typedef struct script_brush_state {
+	bool taken;
+	i32  tool;
+	i32  builtin;
+	i32  blending;
+	f32  radius;
+	f32  opacity;
+	f32  hardness;
+	f32  flow;
+	f32  spacing;
+	f32  scatter;
+	f32  jitter_size;
+	f32  jitter_angle;
+	f32  jitter_opacity;
+	f32  smoothing;
+	f32  strength;
+	f32  angle;
+	f32  mask_value;
+	i32  dyn_size;
+	i32  dyn_opacity;
+	i32  dyn_flow;
+	i32  dyn_hardness;
+	i32  dyn_angle;
+} script_brush_state_t;
+
+static script_brush_state_t script_brush_saved = {0};
+
+void script_brush_take(void) {
+	script_brush_state_t *s = &script_brush_saved;
+	s->taken                = true;
+	s->tool                 = g_context->tool;
+	s->builtin              = g_context->brush_builtin;
+	s->blending             = g_context->brush_blending;
+	s->radius               = g_context->brush_radius;
+	s->opacity              = g_context->brush_opacity;
+	s->hardness             = g_context->brush_hardness;
+	s->flow                 = g_context->brush_flow;
+	s->spacing              = g_context->brush_spacing;
+	s->scatter              = g_context->brush_scatter;
+	s->jitter_size          = g_context->brush_jitter_size;
+	s->jitter_angle         = g_context->brush_jitter_angle;
+	s->jitter_opacity       = g_context->brush_jitter_opacity;
+	s->smoothing            = g_context->brush_smoothing;
+	s->strength             = g_context->brush_strength;
+	s->angle                = g_context->brush_angle;
+	s->mask_value           = g_context->mask_value;
+	s->dyn_size             = g_config->dyn_size;
+	s->dyn_opacity          = g_config->dyn_opacity;
+	s->dyn_flow             = g_config->dyn_flow;
+	s->dyn_hardness         = g_config->dyn_hardness;
+	s->dyn_angle            = g_config->dyn_angle;
+}
+
+static void script_brush_put_back(void) {
+	script_brush_state_t *s = &script_brush_saved;
+	if (!s->taken) {
+		return;
+	}
+	g_context->tool                 = s->tool;
+	g_context->brush_builtin        = s->builtin;
+	g_context->brush_blending       = s->blending;
+	g_context->brush_radius         = s->radius;
+	g_context->brush_opacity        = s->opacity;
+	g_context->brush_hardness       = s->hardness;
+	g_context->brush_flow           = s->flow;
+	g_context->brush_spacing        = s->spacing;
+	g_context->brush_scatter        = s->scatter;
+	g_context->brush_jitter_size    = s->jitter_size;
+	g_context->brush_jitter_angle   = s->jitter_angle;
+	g_context->brush_jitter_opacity = s->jitter_opacity;
+	g_context->brush_smoothing      = s->smoothing;
+	g_context->brush_strength       = s->strength;
+	g_context->brush_angle          = s->angle;
+	g_context->mask_value           = s->mask_value;
+	g_config->dyn_size              = s->dyn_size;
+	g_config->dyn_opacity           = s->dyn_opacity;
+	g_config->dyn_flow              = s->dyn_flow;
+	g_config->dyn_hardness          = s->dyn_hardness;
+	g_config->dyn_angle             = s->dyn_angle;
+}
+
+// A plain round brush for tests, whatever brush the user left picked: no built-in tip, full strength, no pressure or jitter
+void script_brush_defaults(void) {
+	g_context->brush_builtin        = -1;
+	g_context->brush_blending       = BLEND_TYPE_MIX;
+	g_context->brush_opacity        = 1.0;
+	g_context->brush_hardness       = 1.0;
+	g_context->brush_flow           = 1.0;
+	g_context->brush_spacing        = 0.0;
+	g_context->brush_scatter        = 0.0;
+	g_context->brush_jitter_size    = 0.0;
+	g_context->brush_jitter_angle   = 0.0;
+	g_context->brush_jitter_opacity = 0.0;
+	g_context->brush_smoothing      = 0.0;
+	g_context->brush_angle          = 0.0;
+	g_context->mask_value           = 1.0;
+	g_config->dyn_size              = 0;
+	g_config->dyn_opacity           = 0;
+	g_config->dyn_flow              = 0;
+	g_config->dyn_hardness          = 0;
+	g_config->dyn_angle             = 0;
+	brush_output_node_parse_inputs();
+	make_material_parse_paint_material(true);
+}
+
 void script_quit(void) {
+	script_brush_put_back();
 	iron_stop();
 }
 

@@ -439,6 +439,7 @@ void args_run_script_stop(void *_) {
 }
 
 void args_run_script(void *_) {
+	script_brush_take(); // Put back when the script quits, the config is saved on exit
 	char *data = NULL;
 	if (!iron_file_exists(args_script_path) && starts_with(args_script_path, "./")) {
 		data = tab_scripts_find(substring(args_script_path, 2, string_length(args_script_path)));

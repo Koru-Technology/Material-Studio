@@ -481,7 +481,7 @@ void ui_toolbar_render_ui() {
 	if (context_is_floating_toolbar()) {
 		// 2D view takes the toolbar when there is no 3D view
 		if (!base_view3d_show) {
-			x                  = ui_view2d_wx + ui_toolbar_x();
+			x                  = ui_view2d_wx + (g_config->touch_ui ? 0 : ui_toolbar_x()); // Touch: flush with the screen edge
 			_ui_toolbar_y      = ui_view2d_wy;
 			_ui_toolbar_bottom = ui_view2d_wy + ui_view2d_wh;
 		}
@@ -496,7 +496,7 @@ void ui_toolbar_render_ui() {
 		else {
 			h += ui_toolbar_gap(); // Top padding
 		}
-		if (g_config->touch_ui && base_view3d_show) {
+		if (g_config->touch_ui && (base_view3d_show || ui_view2d_show)) {
 			// Centered on the side of the screen, kept clear of the top bar and its shadow
 			i32 top = _ui_toolbar_y + ui_header_h + ui_menubar_top_pad() + ui_menubar_side_pad() + ui_base_panel_shadow() + ui_toolbar_gap();
 			i32 bottom = _ui_toolbar_bottom - ui_panels_history_h(); // Above the undo / redo panel

@@ -165,6 +165,7 @@ void ui_base_update(void *_) {
 	ui_sidebar_w_mini = math_floor(ui_base_sidebar_mini_w(g_config->large_asset_previews) * UI_SCALE());
 
 	ui_base_panel_update_grab();
+	ui_popovers_update(); // A touch outside an open popover closes it
 	if (base_ui_enabled && !ui_base_panel_grab) {
 		render_gizmo_update();
 		util_layer_update_path();
@@ -222,6 +223,8 @@ void ui_base_update(void *_) {
 	ui_menubar_render_ui();
 	ui_header_render_ui();
 	ui_panels_render_ui();
+	ui_popovers_render_ui();
+	ui_dock_render_resize_line();
 	ui_end();
 	ui_base_panel_rects_count = ui_base_panel_rects_drawn;
 	g_ui->input_enabled = true;
@@ -350,6 +353,33 @@ void ui_base_show_2d_view(view_2d_type_t type) {
 	base_resize();
 }
 
+// 0 - 3D view, 1 - 2D view alone, 2 - both
+i32 ui_base_view_mode() {
+	return base_view3d_show && ui_view2d_show ? 2 : ui_view2d_show ? 1 : 0;
+}
+
+// Touch: 3D view -> 2D view alone (strokes paint in it) -> 2D and 3D side by side -> 3D view
+void ui_base_cycle_view_mode() {
+	ui_end_input();
+	bool view3d = base_view3d_show;
+	bool view2d = ui_view2d_show;
+	if (view3d && !view2d) {
+		ui_view2d_type          = VIEW_2D_TYPE_LAYER;
+		ui_view2d_hwnd->redraws = 2;
+		ui_dock_show_view(TAB_NODES, false);
+		ui_dock_show_view(TAB_VIEW2D, true);
+		ui_dock_show_view(TAB_VIEW3D, false);
+	}
+	else if (!view3d && view2d) {
+		ui_dock_show_view(TAB_VIEW3D, true);
+	}
+	else {
+		ui_dock_show_view(TAB_VIEW2D, false);
+		ui_dock_show_view(TAB_VIEW3D, true);
+	}
+	base_resize();
+}
+
 void ui_base_show_3d_view() {
 	if (!base_view3d_show) {
 		if (g_config->touch_ui && ui_nodes_show && ui_view2d_show) {
@@ -400,6 +430,11 @@ static void ui_base_fill_round_rect(f32 x, f32 y, f32 w, f32 h, f32 r, i32 corne
 	else {
 		draw_filled_rect(x, y + h - r, r, r);
 	}
+}
+
+// Filled rect rounded on all corners, window coordinates, current color
+void ui_base_fill_round(f32 x, f32 y, f32 w, f32 h, f32 r) {
+	ui_base_fill_round_rect(x, y, w, h, r, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR);
 }
 
 // A touch starting on a floating panel neither paints nor moves the camera

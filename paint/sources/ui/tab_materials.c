@@ -169,7 +169,7 @@ void tab_materials_draw_slots_menu() {
 	// The selected fill layer (or the fill layer of the selected mask) takes this material
 	slot_layer_t *fill_target = tab_layers_fill_target(g_context->layer);
 	if (fill_target != NULL && fill_target->fill_material != m && ui_menu_button(tr("Apply to Fill Layer"), "", ICON_SPHERE)) {
-		slot_layer_set_fill_material(fill_target, m);
+		tab_layers_set_fill_material_later(fill_target, m);
 	}
 
 	if (ui_menu_button(tr("Export"), "", ICON_EXPORT)) {

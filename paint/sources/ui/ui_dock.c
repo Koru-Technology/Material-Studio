@@ -78,8 +78,11 @@ static i32 dock_collect_leaves(dock_node_t *n, dock_node_t **out, i32 count) {
 	return dock_collect_leaves(n->b, out, count);
 }
 
-// Tabs hidden whatever the layout says: Scripts unless enabled in the preferences
+// Tabs hidden whatever the layout says: Scripts unless enabled in the preferences, the sidebar tabs on touch (they are popovers)
 static bool dock_tab_hidden(i32 id) {
+	if (ui_popovers_enabled() && ui_popovers_has_tab(id)) {
+		return true;
+	}
 	if (id == TAB_SCRIPTS) {
 		return !g_config->show_scripts;
 	}
@@ -669,8 +672,8 @@ void ui_dock_layout() {
 	// The menubar floats in the 3D view when the header is not pinned
 	ui_dock_menubar_leaf = NULL;
 	ui_dock_menubar_row  = false;
-	bool floating        = !g_config->header_pinned && base_view3d_show;
-	bool hidden          = !ui_base_show || (g_config->touch_ui && !base_view3d_show);
+	bool floating        = !g_config->header_pinned && (base_view3d_show || ui_view2d_show);
+	bool hidden          = !ui_base_show || (g_config->touch_ui && !base_view3d_show && !ui_view2d_show);
 	if (!floating && !hidden) {
 		dock_node_t *l = dock_first_visible_leaf(ui_dock_root);
 		if (l != NULL && dock_leaf_has_tab_names(l) && l->w > ui_menubar_w + 100 * UI_SCALE()) {
@@ -770,6 +773,7 @@ void ui_dock_show_view(i32 id, bool show) {
 
 // Redraw the tabs which are docked in the given tab area by default
 void ui_dock_redraw(i32 area) {
+	ui_popovers_redraw(area);
 	dock_node_t *leaves[DOCK_MAX_LEAVES];
 	i32          count = dock_collect_leaves(ui_dock_root, leaves, 0);
 	for (i32 i = 0; i < count; ++i) {
@@ -1205,7 +1209,7 @@ static dock_node_t *dock_hovered_split(dock_node_t *n) {
 		return NULL;
 	}
 	if (n->a->visible && n->b->visible) {
-		i32 grip = 4;
+		i32 grip = g_config->touch_ui ? math_floor(12 * UI_SCALE()) : 4; // A finger needs more room
 		if (n->vertical && mouse_x >= n->x && mouse_x < n->x + n->w && math_abs(mouse_y - n->b->y) <= grip) {
 			return n;
 		}
@@ -1259,6 +1263,28 @@ static void ui_dock_update_resize() {
 		ui_dock_resizing_size = n->size;
 		base_is_resizing      = true;
 	}
+}
+
+// While a split is dragged it shows as a maroon line
+void ui_dock_render_resize_line() {
+	static ui_window_t *hwnd = NULL;
+	if (ui_dock_resizing == NULL) {
+		return;
+	}
+	if (hwnd == NULL) {
+		hwnd = ui_window_create();
+	}
+	dock_node_t *n = ui_dock_resizing;
+	i32          t = math_floor(4 * UI_SCALE());
+	i32          x = n->vertical ? n->x : n->b->x - t / 2;
+	i32          y = n->vertical ? n->b->y - t / 2 : n->y;
+	i32          w = n->vertical ? n->w : t;
+	i32          h = n->vertical ? t : n->h;
+	hwnd->redraws  = 2; // Follows the drag
+	if (ui_window(hwnd, x, y, w, h, false)) {
+		ui_fill(0, 0, w / UI_SCALE(), h / UI_SCALE() + 1, 0xff800000);
+	}
+	ui_end_window();
 }
 
 // Runs before the windows of the frame are drawn

@@ -29,12 +29,12 @@ void ui_menubar_init() {
 
 // The menubar floats in the 3D view when the header is hidden, it is placed in front of the tab names otherwise
 static bool ui_menubar_is_floating() {
-	return !g_config->header_pinned && base_view3d_show;
+	return !g_config->header_pinned && (base_view3d_show || ui_view2d_show);
 }
 
 i32 ui_menu_panel_x() {
 	if (ui_menubar_is_floating()) {
-		return base_view_x(0); // Flush with the screen edge
+		return base_view3d_show ? base_view_x(0) : ui_view2d_wx; // Flush with the screen edge, the 2D view's when it is shown alone
 	}
 	return 0;
 }
@@ -88,7 +88,7 @@ i32 ui_menu_panel_y() {
 #endif
 
 	if (ui_menubar_is_floating()) {
-		return base_y(); // Flush with the screen edge
+		return base_view3d_show ? base_y() : ui_view2d_wy; // Flush with the screen edge
 	}
 	return 0;
 }
@@ -977,7 +977,7 @@ void ui_menubar_update_w() {
 }
 
 void ui_menubar_render_ui() {
-	if (g_config->touch_ui && !base_view3d_show) {
+	if (g_config->touch_ui && !base_view3d_show && !ui_view2d_show) {
 		return;
 	}
 

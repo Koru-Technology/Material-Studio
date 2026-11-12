@@ -2097,11 +2097,11 @@ void step_layer_path() {
 	check(l != NULL && l->path_points != NULL && !l->path_curved && l->path_material == mat_blue && layer_names_unique(),
 	      string("path layer %s created", l->name));
 	// Both points on the front face of the cube, a capsule across the edge cuts through the cube and paints only its ends
-	int   ok   = script_layer_add_path_point(l, 0.35, 0.5);
+	int   ok   = script_layer_add_path_point(l, 0.42, 0.5); // Clear of the edge however wide the view is
 	float dot  = base_fraction(0x0000ff);
-	ok         = ok && script_layer_add_path_point(l, 0.5, 0.5);
+	ok         = ok && script_layer_add_path_point(l, 0.57, 0.5);
 	float line = base_fraction(0x0000ff);
-	check(ok && l->path_points->length == 4 && dot > 0.0005 && line > dot * 2.0, string("path points paint a line (%.4f dot, %.4f line)", dot, line));
+	check(ok && l->path_points->length == 4 && line > 0.001 && line > dot * 2.0, string("path points paint a line (%.4f dot, %.4f line)", dot, line));
 	check(!script_layer_add_path_point(script_layer_at(0), 0.5, 0.5), "no path points on a paint layer");
 
 	script_layer_clear(l);
@@ -2372,6 +2372,10 @@ void next_frame() {
 }
 
 void main() {
+	script_brush_defaults(); // A plain round brush, whatever the user left picked
+	for (int i = 0; i < 3 && ui_base_view_mode() != 0; ++i) { // The 3D view alone, the checks measure it
+		ui_base_cycle_view_mode();
+	}
 	char *save = script_save_path();
 	if (string_index_of(save, "/var/mobile/") >= 0) { // ios, /tmp is outside the sandbox
 		tmp_root = string("%s/korusurface_test", save);

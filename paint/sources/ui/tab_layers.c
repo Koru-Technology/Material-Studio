@@ -567,10 +567,6 @@ void tab_layers_draw_layer_context_menu_add_black_mask(slot_layer_t *l) {
 	layers_update_fill_layers();
 }
 
-void tab_layers_draw_layer_context_menu_update_fill_layers(void *_) {
-	layers_update_fill_layers();
-}
-
 void tab_layers_draw_layer_context_menu_set_bits(void *_) {
 	layers_set_bits();
 }
@@ -695,6 +691,23 @@ static void tab_layers_draw_mask_height_blend(slot_layer_t *m) {
 	}
 }
 
+static slot_layer_t    *tab_layers_fill_swap_layer    = NULL;
+static slot_material_t *tab_layers_fill_swap_material = NULL;
+
+static void tab_layers_set_fill_material_next(void *_) {
+	if (tab_layers_fill_swap_layer != NULL && array_index_of(g_project->_->layers, tab_layers_fill_swap_layer) >= 0) {
+		slot_layer_set_fill_material(tab_layers_fill_swap_layer, tab_layers_fill_swap_material);
+	}
+	tab_layers_fill_swap_layer = NULL;
+}
+
+// Gives fill layer l material m when the frame starts, the repaint does not run while the UI is drawn
+void tab_layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m) {
+	tab_layers_fill_swap_layer    = l;
+	tab_layers_fill_swap_material = m;
+	sys_notify_on_next_frame(&tab_layers_set_fill_material_next, NULL);
+}
+
 // The fill layer that l is or masks, NULL for others
 slot_layer_t *tab_layers_fill_target(slot_layer_t *l) {
 	if (l == NULL) {
@@ -724,7 +737,7 @@ void tab_layers_fill_properties(slot_layer_t *l, bool menu) {
 		}
 		ui_combo(&index, names, tr("Material"), true, UI_ALIGN_LEFT, true);
 		if (ui_item_changed() && index >= 0 && index < materials->length) {
-			slot_layer_set_fill_material(l, materials->buffer[index]);
+			tab_layers_set_fill_material_later(l, materials->buffer[index]);
 		}
 	}
 
@@ -964,6 +977,12 @@ void tab_layers_draw_layer_context_menu_draw() {
 			make_material_parse_mesh_material();
 			ui_menu_keep_open = true;
 		}
+	}
+
+	// Touch: the layers popover has no Edit button, its project settings are here
+	if (ui_popovers_enabled()) {
+		ui_menu_separator();
+		tab_layers_draw_edit();
 	}
 }
 
@@ -1381,14 +1400,24 @@ void tab_layers_draw_full(i32 *htab) {
 		        -88,
 		    },
 		    4);
+		bool popover = ui_popovers_enabled(); // Touch popover: no filter, the Edit items are in the layer menu
+		if (popover) {
+			row->length = 1; // 2D view is the floating button by the view cube
+			if (g_context->layer_filter != 0) { // Nothing to pick it back with, all layers show
+				g_context->layer_filter = 0;
+				tab_layers_apply_filter(0);
+			}
+		}
 		ui_row(row);
 
 		tab_layers_button_new(tr("New"));
-		tab_layers_button_2d_view();
-		if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
-			ui_menu_draw(&tab_layers_draw_edit, -1, -1);
+		if (!popover) {
+			tab_layers_button_2d_view();
+			if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
+				ui_menu_draw(&tab_layers_draw_edit, -1, -1);
+			}
+			tab_layers_combo_filter();
 		}
-		tab_layers_combo_filter();
 
 		if (tab_layers_search_show) {
 			bool search_selected = g_ui->text_selected_id == ui_widget_id(&tab_layers_search, UI_ID_TEXT);

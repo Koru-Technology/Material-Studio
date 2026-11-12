@@ -1,10 +1,11 @@
 #include "../global.h"
 
-// Smart materials tab: saved fill layers and groups, tap to put one on top of the layers
+// Smart materials tab: saved fill layers and groups, tap one to pick it, Add to Layers puts it on top of the layers
 
 static i32   tab_smart_materials_i         = -1;
 static char *tab_smart_materials_save_name = "";
 static i32   tab_smart_materials_box_tab   = 0;
+static char *tab_smart_materials_selected  = NULL; // Name of the picked smart material
 
 // The layer Save takes: the selected fill layer or group, the fill layer of a selected mask
 static slot_layer_t *tab_smart_materials_target() {
@@ -21,12 +22,25 @@ static slot_layer_t *tab_smart_materials_target() {
 	return slot_layer_is_group(l) || l->fill_material != NULL ? l : NULL;
 }
 
+// Applying and saving draw to layers and export materials, they run when the frame starts, not while the UI is drawn
+
+static void tab_smart_materials_apply_next(void *name) {
+	if (smart_materials_apply(name) != NULL && ui_popovers_enabled()) {
+		ui_popovers_show(1); // The layers, its top layer selected
+	}
+}
+
+static void tab_smart_materials_save_next(void *name) {
+	smart_materials_save(tab_smart_materials_target(), name);
+	ui_dock_redraw(TAB_AREA_SIDEBAR1);
+}
+
 static void tab_smart_materials_save_box() {
 	if (ui_tab(&tab_smart_materials_box_tab, tr("Save Smart Material"), false, -1, false)) {
 		ui_row2();
 		char *name = ui_text_input(&tab_smart_materials_save_name, tr("Name"), UI_ALIGN_LEFT, true, false);
 		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-			smart_materials_save(tab_smart_materials_target(), name);
+			sys_notify_on_next_frame(&tab_smart_materials_save_next, string_copy(name));
 			ui_box_hide();
 			ui_dock_redraw(TAB_AREA_SIDEBAR1);
 		}
@@ -45,6 +59,10 @@ void tab_smart_materials_show_save() {
 
 static void tab_smart_materials_menu() {
 	if (ui_menu_button(tr("Delete"), "", ICON_DELETE)) {
+		char *name = smart_materials_name(tab_smart_materials_i);
+		if (name != NULL && tab_smart_materials_selected != NULL && string_equals(name, tab_smart_materials_selected)) {
+			tab_smart_materials_selected = NULL;
+		}
 		smart_materials_delete(tab_smart_materials_i);
 		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
@@ -56,7 +74,7 @@ void tab_smart_materials_draw(i32 *htab) {
 	}
 
 	ui_begin_sticky();
-	f32_array_t *row = f32_array_create_from_raw_tmp((f32[]){-64, -64}, 2);
+	f32_array_t *row = f32_array_create_from_raw_tmp((f32[]){-64, -140}, 2);
 	ui_row(row);
 	g_ui->enabled = tab_smart_materials_target() != NULL;
 	if (ui_icon_button(tr("Save"), ICON_PLUS, UI_ALIGN_CENTER)) {
@@ -65,10 +83,17 @@ void tab_smart_materials_draw(i32 *htab) {
 	if (g_ui->is_hovered) {
 		ui_tooltip(tr("Saves the selected fill layer or group with its masks"));
 	}
-	g_ui->enabled = true;
-	if (ui_button(tr("Refresh"), UI_ALIGN_CENTER, "")) {
-		smart_materials_refresh();
+	if (tab_smart_materials_selected != NULL && smart_materials_find(tab_smart_materials_selected) < 0) {
+		tab_smart_materials_selected = NULL;
 	}
+	g_ui->enabled = tab_smart_materials_selected != NULL;
+	if (ui_icon_button(tr("Add to Layers"), ICON_LAYER_NEW, UI_ALIGN_CENTER)) {
+		sys_notify_on_next_frame(&tab_smart_materials_apply_next, string_copy(tab_smart_materials_selected));
+	}
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Puts the picked smart material on top of the layers"));
+	}
+	g_ui->enabled = true;
 	ui_end_sticky();
 	ui_separator(3, false);
 
@@ -98,6 +123,10 @@ void tab_smart_materials_draw(i32 *htab) {
 				continue;
 			}
 			gpu_texture_t *icon = smart_materials_icon(i);
+			bool           picked = tab_smart_materials_selected != NULL && string_equals(smart_materials_name(i), tab_smart_materials_selected);
+			if (picked) {
+				ui_rect_round(-1, -1, 50 * a + 2, 50 * a + 2, g_theme->HIGHLIGHT_COL, 2 * UI_SCALE());
+			}
 			ui_fill(0, 0, 50 * a, 50 * a, 0xff1b1b1b);
 			ui_state_t state = UI_STATE_IDLE;
 			if (icon != NULL) {
@@ -109,7 +138,8 @@ void tab_smart_materials_draw(i32 *htab) {
 				state = ui_button("", UI_ALIGN_CENTER, "") ? UI_STATE_RELEASED : UI_STATE_IDLE;
 			}
 			if (state == UI_STATE_RELEASED) {
-				smart_materials_apply(smart_materials_name(i));
+				tab_smart_materials_selected = string_copy(smart_materials_name(i));
+				ui_dock_redraw(TAB_AREA_SIDEBAR1);
 			}
 			if (g_ui->is_hovered) {
 				ui_tooltip(smart_materials_name(i));
