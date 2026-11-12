@@ -18,7 +18,11 @@
 #endif
 
 #define GPU_MAX_VERTEX_ELEMENTS      16
-#define GPU_MAX_TEXTURES             16
+#ifdef IRON_METAL
+#define GPU_MAX_TEXTURES 32 // Argument buffers take many, more layers fit a viewport pass (3 textures a layer)
+#else
+#define GPU_MAX_TEXTURES 16
+#endif
 #define GPU_CONSTANT_BUFFER_SIZE     512
 #ifdef IRON_METAL
 #define GPU_CONSTANT_BUFFER_MULTIPLE 8192 // Draws per two frames before a cpu-gpu wait, 4 MB of constants, painting issues many

@@ -148,10 +148,17 @@ mesh_object_t *render_path_paint_target() {
 }
 
 // Texture space, the whole mesh is drawn wherever the camera looks
+#ifdef IRON_METAL
+static void render_path_paint_cull(mesh_object_t *o);
+#endif
+
 void render_path_paint_draw_target() {
 	mesh_object_t *o = render_path_paint_target();
 	if (o != NULL && make_material_paint_scon != NULL) {
 		_mesh_object_last_pipeline = NULL;
+#ifdef IRON_METAL
+		render_path_paint_cull(o);
+#endif
 		mesh_object_draw(o, make_material_paint_scon, _render_path_bind_params);
 	}
 	render_path_end();
@@ -454,6 +461,34 @@ static void render_path_paint_batch_upload() {
 	render_path_paint_batch_ready   = true;
 }
 
+#ifdef IRON_METAL
+// Only the parts of the mesh near the dabs of this draw, see paint_cull.c
+static void render_path_paint_cull(mesh_object_t *o) {
+	tool_type_t tool = g_context->tool;
+	if ((tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_BLUR) || g_context->paint2d ||
+	    context_is_decal() || g_context->xray || context_is_pixel_snap() || context_is_brush_camera_align() || g_context->pick_pos_nor_tex ||
+	    g_context->layer->fill_material != NULL) {
+		return;
+	}
+	static paint_cull_dab_t dabs[RENDER_PATH_PAINT_BATCH_MAX];
+	i32                     count   = 0;
+	f32                     stretch = g_config->tilt_shading ? 3.0 : 1.0;
+	if (render_path_paint_batched()) {
+		for (i32 i = 0; i < (i32)render_path_paint_batch_drawn && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) {
+			f32 *d       = &render_path_paint_batch[i * 12];
+			dabs[count++] = (paint_cull_dab_t){d[0] * 2.0 - 1.0, 1.0 - d[1] * 2.0, d[2] * 2.0 - 1.0, 1.0 - d[3] * 2.0, d[4] * stretch};
+		}
+	}
+	else {
+		vec4_t inp    = uniforms_ext_vec4_link(NULL, NULL, "_input_brush");
+		vec4_t last   = uniforms_ext_vec4_link(NULL, NULL, "_input_brush_last");
+		f32    radius = uniforms_ext_f32_link(NULL, NULL, "_brush_radius");
+		dabs[count++] = (paint_cull_dab_t){inp.x * 2.0 - 1.0, 1.0 - inp.y * 2.0, last.x * 2.0 - 1.0, 1.0 - last.y * 2.0, radius * stretch};
+	}
+	paint_cull_draw_next(o, dabs, count);
+}
+#endif
+
 // Paints the collected dabs
 void render_path_paint_batch_flush(bool dilation) {
 	if (render_path_paint_batch_count == 0) {
@@ -478,6 +513,126 @@ void render_path_paint_commands_paint(bool dilation) {
 	}
 	render_path_paint_commands_paint_internal(dilation);
 	render_path_paint_batch_ready = false;
+}
+
+// Picker results: surface values under the cursor into the picked color, the material and fill layers with picker nodes.
+// tool is the tool when the pick was drawn, the values may arrive a frame later.
+static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_mask, tool_type_t tool) {
+#ifdef IRON_BGRA
+	i32 i0 = 2;
+	i32 i1 = 1;
+	i32 i2 = 0;
+#else
+	i32 i0 = 0;
+	i32 i1 = 1;
+	i32 i2 = 2;
+#endif
+	i32 i3                           = 3;
+	g_context->picked_color->base    = color_set_rb(g_context->picked_color->base, a[i0]);
+	g_context->picked_color->base    = color_set_gb(g_context->picked_color->base, a[i1]);
+	g_context->picked_color->base    = color_set_bb(g_context->picked_color->base, a[i2]);
+	g_context->picked_color->opacity = a[i3] / 255.0;
+	g_context->uvx_picked            = d[i0] / 255.0;
+	g_context->uvy_picked            = d[i1] / 255.0;
+
+	if (!is_mask) {
+		g_context->picked_color->normal    = color_set_rb(g_context->picked_color->normal, b[i0]);
+		g_context->picked_color->normal    = color_set_gb(g_context->picked_color->normal, b[i1]);
+		g_context->picked_color->normal    = color_set_bb(g_context->picked_color->normal, b[i2]);
+		g_context->picked_color->occlusion = c[i0] / 255.0;
+		g_context->picked_color->roughness = c[i1] / 255.0;
+		g_context->picked_color->metallic  = c[i2] / 255.0;
+		g_context->picked_color->height    = c[i3] / 255.0;
+
+		// Pick material
+		if (g_context->color_picker_callback == NULL) {
+			// matid % 3 == 0 - normal, 1 - emission, 2 - subsurface
+			i32 id    = b[3];
+			i32 matid = math_floor((id - (id % 3)) / 3.0);
+			for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+				slot_material_t *m = g_project->_->materials->buffer[i];
+				if (m->id == matid) {
+					if (g_context->picker_select_material) {
+						context_set_material(m);
+					}
+					g_context->materialid_picked = matid;
+					break;
+				}
+			}
+		}
+	}
+
+	if (g_context->color_picker_callback != NULL) {
+		g_context->color_picker_callback(g_context->picked_color);
+	}
+
+	if (tool == TOOL_TYPE_PICKER && g_context->color_picker_callback == NULL && !g_context->picker_select_material) {
+		tab_materials_apply_picked_color(g_context->picked_color);
+	}
+
+	// Update fill layers which are using materials containing a PICKER node
+	slot_material_t *_material = g_context->material;
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		slot_material_t *m          = g_project->_->materials->buffer[i];
+		bool             has_picker = false;
+		for (i32 j = 0; j < m->canvas->nodes->length; ++j) {
+			ui_node_t *node = m->canvas->nodes->buffer[j];
+			if (string_equals(node->type, "PICKER")) {
+				has_picker = true;
+				break;
+			}
+		}
+		if (has_picker) {
+			g_context->material = m;
+			layers_update_fill_layers();
+			util_render_make_material_preview();
+			ui_dock_redraw(TAB_AREA_SIDEBAR1);
+		}
+	}
+	g_context->material = _material;
+	ui_header_handle->redraws = 2;
+	ui_dock_redraw(2);
+}
+
+static gpu_texture_t *render_path_paint_picker_target(char *name) {
+	render_target_t *rt = any_map_get(render_path_render_targets, name);
+	return rt->_image;
+}
+
+#ifdef IRON_METAL
+void gpu_read_textures_async(gpu_texture_t **textures, int count);
+bool gpu_read_textures_async_poll(uint8_t **data);
+
+static bool        render_path_paint_picker_mask = false;
+static tool_type_t render_path_paint_picker_tool = TOOL_TYPE_PICKER;
+
+// Applies the picker values once the gpu read them back, the pick does not wait for the gpu
+void render_path_paint_picker_poll() {
+	uint8_t *data[4];
+	if (gpu_read_textures_async_poll(data)) {
+		bool mask = render_path_paint_picker_mask;
+		render_path_paint_picker_apply(data[0], mask ? NULL : data[2], mask ? NULL : data[3], data[1], mask, render_path_paint_picker_tool);
+	}
+}
+#else
+void render_path_paint_picker_poll() {}
+#endif
+
+static void render_path_paint_picker_read(bool is_mask) {
+#ifdef IRON_METAL
+	gpu_texture_t *textures[4] = {render_path_paint_picker_target("texpaint_picker"), render_path_paint_picker_target("texpaint_uv_picker"),
+	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_nor_picker"),
+	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_pack_picker")};
+	render_path_paint_picker_mask = is_mask;
+	render_path_paint_picker_tool = g_context->tool;
+	gpu_read_textures_async(textures, is_mask ? 2 : 4);
+#else
+	u8 *a = gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_picker"))->buffer;
+	u8 *d = gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_uv_picker"))->buffer;
+	u8 *b = is_mask ? NULL : gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_nor_picker"))->buffer;
+	u8 *c = is_mask ? NULL : gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_pack_picker"))->buffer;
+	render_path_paint_picker_apply(a, b, c, d, is_mask, g_context->tool);
+#endif
 }
 
 static void render_path_paint_commands_paint_internal(bool dilation) {
@@ -586,89 +741,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			}
 			ui_header_handle->redraws = 2;
 			ui_dock_redraw(2);
-
-			render_target_t *texpaint_picker    = any_map_get(render_path_render_targets, "texpaint_picker");
-			render_target_t *texpaint_uv_picker = any_map_get(render_path_render_targets, "texpaint_uv_picker");
-			buffer_t        *a                  = gpu_get_texture_pixels(texpaint_picker->_image);
-			buffer_t        *d                  = gpu_get_texture_pixels(texpaint_uv_picker->_image);
-
-			if (g_context->color_picker_callback != NULL) {
-				g_context->color_picker_callback(g_context->picked_color);
-			}
-
-// Picked surface values
-#ifdef IRON_BGRA
-			i32 i0 = 2;
-			i32 i1 = 1;
-			i32 i2 = 0;
-#else
-			i32 i0 = 0;
-			i32 i1 = 1;
-			i32 i2 = 2;
-#endif
-			i32 i3                           = 3;
-			g_context->picked_color->base    = color_set_rb(g_context->picked_color->base, buffer_get_u8(a, i0));
-			g_context->picked_color->base    = color_set_gb(g_context->picked_color->base, buffer_get_u8(a, i1));
-			g_context->picked_color->base    = color_set_bb(g_context->picked_color->base, buffer_get_u8(a, i2));
-			g_context->picked_color->opacity = buffer_get_u8(a, i3) / 255.0;
-			g_context->uvx_picked            = buffer_get_u8(d, i0) / 255.0;
-			g_context->uvy_picked            = buffer_get_u8(d, i1) / 255.0;
-
-			if (!is_mask) {
-				render_target_t *texpaint_nor_picker  = any_map_get(render_path_render_targets, "texpaint_nor_picker");
-				render_target_t *texpaint_pack_picker = any_map_get(render_path_render_targets, "texpaint_pack_picker");
-				buffer_t        *b                    = gpu_get_texture_pixels(texpaint_nor_picker->_image);
-				buffer_t        *c                    = gpu_get_texture_pixels(texpaint_pack_picker->_image);
-				g_context->picked_color->normal       = color_set_rb(g_context->picked_color->normal, buffer_get_u8(b, i0));
-				g_context->picked_color->normal       = color_set_gb(g_context->picked_color->normal, buffer_get_u8(b, i1));
-				g_context->picked_color->normal       = color_set_bb(g_context->picked_color->normal, buffer_get_u8(b, i2));
-				g_context->picked_color->occlusion    = buffer_get_u8(c, i0) / 255.0;
-				g_context->picked_color->roughness    = buffer_get_u8(c, i1) / 255.0;
-				g_context->picked_color->metallic     = buffer_get_u8(c, i2) / 255.0;
-				g_context->picked_color->height       = buffer_get_u8(c, i3) / 255.0;
-
-				// Pick material
-				if (g_context->color_picker_callback == NULL) {
-					// matid % 3 == 0 - normal, 1 - emission, 2 - subsurface
-					i32 id    = buffer_get_u8(b, 3);
-					i32 matid = math_floor((id - (id % 3)) / 3.0);
-					for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-						slot_material_t *m = g_project->_->materials->buffer[i];
-						if (m->id == matid) {
-							if (g_context->picker_select_material) {
-								context_set_material(m);
-							}
-							g_context->materialid_picked = matid;
-							break;
-						}
-					}
-				}
-			}
-
-			if (g_context->tool == TOOL_TYPE_PICKER && g_context->color_picker_callback == NULL && !g_context->picker_select_material) {
-				tab_materials_apply_picked_color(g_context->picked_color);
-			}
-
-			// Update fill layers which are using materials containing a PICKER node
-			slot_material_t *_material = g_context->material;
-			for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-				slot_material_t *m          = g_project->_->materials->buffer[i];
-				bool             has_picker = false;
-				for (i32 j = 0; j < m->canvas->nodes->length; ++j) {
-					ui_node_t *node = m->canvas->nodes->buffer[j];
-					if (string_equals(node->type, "PICKER")) {
-						has_picker = true;
-						break;
-					}
-				}
-				if (has_picker) {
-					g_context->material = m;
-					layers_update_fill_layers();
-					util_render_make_material_preview();
-					ui_dock_redraw(TAB_AREA_SIDEBAR1);
-				}
-			}
-			g_context->material = _material;
+			render_path_paint_picker_read(is_mask);
 		}
 	}
 	else if (g_context->tool == TOOL_TYPE_CURSOR) {
@@ -1170,6 +1243,7 @@ bool render_path_paint_paint_enabled() {
 }
 
 void render_path_paint_begin() {
+	render_path_paint_picker_poll();
 	if (render_path_paint_live_layer_drawn > 0) {
 		render_path_paint_live_layer_drawn--;
 	}

@@ -155,6 +155,7 @@
 #include "render/render_pass.c"
 #include "render/render_path_base.c"
 #include "render/render_path_lit.c"
+#include "render/paint_cull.c"
 #include "render/render_path_paint.c"
 #include "render/render_path_preview.c"
 #include "render/render_path_raytrace.c"

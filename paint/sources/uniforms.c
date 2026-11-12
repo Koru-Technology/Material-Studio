@@ -9,6 +9,16 @@ i32 uniforms_ext_i32_link(object_t *object, shader_data_t *mat, char *link) {
 }
 
 f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
+	if (starts_with(link, "_layer_opacity")) { // _layer_opacity<layer id>, see make_mesh_opacity
+		i32 id = atoi(link + 14);
+		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+			slot_layer_t *l = g_project->_->layers->buffer[i];
+			if (l->id == id) {
+				return slot_layer_get_opacity(l);
+			}
+		}
+		return 1.0;
+	}
 	if (string_equals(link, "_brush_radius")) {
 		bool decal                   = context_is_decal();
 		bool decal_mask              = context_is_decal_mask_paint_pass();

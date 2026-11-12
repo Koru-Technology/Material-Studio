@@ -18,7 +18,7 @@ uint32_t        draw_calls                         = 0;
 uint32_t        draw_calls_last                    = 0;
 bool            gpu_in_use                         = false;
 uint32_t        gpu_buffer_versions                = 0;
-gpu_texture_t  *current_textures[GPU_MAX_TEXTURES] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+gpu_texture_t  *current_textures[GPU_MAX_TEXTURES] = {0};
 gpu_texture_t  *current_render_targets[8]          = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 uint32_t        current_render_targets_count       = 0;
 gpu_texture_t  *current_depth_buffer               = NULL;
@@ -87,13 +87,46 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 	gpu_begin_internal(flags, color, depth);
 }
 
+#ifdef IRON_METAL
+// The next draw takes these ranges of another index buffer instead of the whole set one (paint culling)
+static bool          draw_ranges_active = false;
+static gpu_buffer_t *draw_ranges_ib     = NULL;
+static i32          *draw_ranges_starts = NULL;
+static i32          *draw_ranges_counts = NULL;
+static i32           draw_ranges_n      = 0;
+void                 gpu_draw_internal_range(gpu_buffer_t *ib, int start, int count);
+
+void gpu_draw_ranges_next(gpu_buffer_t *ib, i32 *starts, i32 *counts, i32 n) {
+	draw_ranges_active = true;
+	draw_ranges_ib     = ib;
+	draw_ranges_starts = starts;
+	draw_ranges_counts = counts;
+	draw_ranges_n      = n;
+}
+#endif
+
 void gpu_draw() {
 	if (current_pipeline == NULL || current_pipeline->impl.pipeline == NULL) {
+#ifdef IRON_METAL
+		draw_ranges_active = false;
+#endif
 		return;
 	}
 	gpu_constant_buffer_unlock(&constant_buffer);
 	gpu_set_constant_buffer(&constant_buffer, constant_buffer_index * GPU_CONSTANT_BUFFER_SIZE, GPU_CONSTANT_BUFFER_SIZE);
+#ifdef IRON_METAL
+	if (draw_ranges_active) {
+		draw_ranges_active = false;
+		for (i32 i = 0; i < draw_ranges_n; ++i) {
+			gpu_draw_internal_range(draw_ranges_ib, draw_ranges_starts[i], draw_ranges_counts[i]);
+		}
+	}
+	else {
+		gpu_draw_internal();
+	}
+#else
 	gpu_draw_internal();
+#endif
 #ifndef NDEBUG
 	gpu_debug_draw_calls++;
 #endif

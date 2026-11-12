@@ -877,7 +877,7 @@ void util_render_pick_pos_nor_tex() {
 	tool_type_t _tool           = g_context->tool;
 	g_context->tool             = TOOL_TYPE_PICKER;
 	make_material_save_paint_material();
-	make_material_parse_paint_material(false);
+	make_material_use_pick_material(); // Built once, every touch start picks
 	if (g_context->paint2d) {
 		render_path_paint_set_plane_mesh();
 	}

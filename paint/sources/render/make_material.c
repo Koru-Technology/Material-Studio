@@ -279,9 +279,12 @@ void make_material_bake_node_previews_linked() {
 		draw_begin(current, false, 0);
 }
 
+// The position picker shader reads only the gbuffer, it does not depend on the material and is built once
+static shader_context_t *make_material_pick_scon = NULL;
+
 static void make_material_set_paint_scon(shader_context_t *scon) {
 	shader_context_t *old = make_material_paint_scon;
-	if (old != NULL && old != scon && old != make_material_default_scon && old != make_material_saved_scon) {
+	if (old != NULL && old != scon && old != make_material_default_scon && old != make_material_saved_scon && old != make_material_pick_scon) {
 		make_material_delete_context(old);
 	}
 	make_material_paint_scon = scon;
@@ -312,6 +315,16 @@ void make_material_parse_paint_material(bool bake_previews) {
 	if (make_material_default_scon == NULL) {
 		make_material_default_scon = make_material_paint_scon;
 	}
+}
+
+// Paint shader for util_render_pick_pos_nor_tex, the picker tool and pick flag are set by the caller
+void make_material_use_pick_material() {
+	if (make_material_pick_scon == NULL) {
+		make_material_parse_paint_material(false);
+		make_material_pick_scon = make_material_paint_scon;
+		return;
+	}
+	make_material_set_paint_scon(make_material_pick_scon);
 }
 
 void make_material_save_paint_material() {

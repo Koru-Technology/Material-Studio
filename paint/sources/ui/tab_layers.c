@@ -792,10 +792,14 @@ void tab_layers_draw_layer_context_menu_draw() {
 			history_layer_opacity();
 		}
 		l->mask_opacity = mask_opacity;
-		if (l == g_project->_->layers->buffer[0] && mask_opacity < 1.0) {
+		if (l == g_project->_->layers->buffer[0] && mask_opacity < 1.0 && !g_project->_->translucency) {
 			layers_enable_translucency();
+			make_material_parse_mesh_material();
 		}
-		make_material_parse_mesh_material();
+		else { // A shader constant, see make_mesh_opacity
+			g_context->ddirty = 2;
+			render_path_base_redraw();
+		}
 		ui_menu_keep_open = true;
 	}
 	if (slot_layer_is_mask(l)) {

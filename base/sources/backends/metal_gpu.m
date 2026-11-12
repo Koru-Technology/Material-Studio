@@ -180,18 +180,14 @@ void gpu_init_internal(int depth_buffer_bits, bool vsync) {
 	sampler_desc.dataType               = MTLDataTypeSampler;
 	sampler_desc.index                  = 1;
 
-	MTLArgumentDescriptor *texture_desc[GPU_MAX_TEXTURES];
+	NSMutableArray *arguments = [NSMutableArray arrayWithObjects:constants_desc, sampler_desc, nil];
 	for (int i = 0; i < GPU_MAX_TEXTURES; ++i) {
-		texture_desc[i]             = [MTLArgumentDescriptor argumentDescriptor];
-		texture_desc[i].dataType    = MTLDataTypeTexture;
-		texture_desc[i].index       = i + 2;
-		texture_desc[i].textureType = MTLTextureType2D;
+		MTLArgumentDescriptor *texture_desc = [MTLArgumentDescriptor argumentDescriptor];
+		texture_desc.dataType               = MTLDataTypeTexture;
+		texture_desc.index                  = i + 2;
+		texture_desc.textureType            = MTLTextureType2D;
+		[arguments addObject:texture_desc];
 	}
-
-	NSArray *arguments =
-	    [NSArray arrayWithObjects:constants_desc, sampler_desc, texture_desc[0], texture_desc[1], texture_desc[2], texture_desc[3], texture_desc[4],
-	                              texture_desc[5], texture_desc[6], texture_desc[7], texture_desc[8], texture_desc[9], texture_desc[10], texture_desc[11],
-	                              texture_desc[12], texture_desc[13], texture_desc[14], texture_desc[15], nil];
 	argument_encoder     = [device newArgumentEncoderWithArguments:arguments];
 	argument_buffer_step = [argument_encoder encodedLength];
 	argument_buffer      = [device newBufferWithLength:(argument_buffer_step * GPU_CONSTANT_BUFFER_MULTIPLE) options:MTLResourceStorageModeShared];
@@ -385,6 +381,17 @@ void gpu_present_internal() {
 }
 
 void gpu_barrier(gpu_texture_t *render_target, gpu_texture_state_t state_after) {}
+
+void gpu_draw_internal_range(gpu_buffer_t *ib, int start, int count) {
+	[command_encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+	                            indexCount:count
+	                             indexType:MTLIndexTypeUInt32
+	                           indexBuffer:(__bridge id<MTLBuffer>)ib->impl.metal_buffer
+	                     indexBufferOffset:start * 4
+	                         instanceCount:1
+	                            baseVertex:current_vb->start
+	                          baseInstance:0];
+}
 
 void gpu_draw_internal() {
 	if (current_ib->count == 0) {
@@ -1325,4 +1332,65 @@ void gpu_copy_region(gpu_texture_t *dst, int dx, int dy, gpu_texture_t *src, int
 void gpu_copy_regions_end(void) {
 	[region_blit endEncoding];
 	region_blit = nil;
+}
+
+// Small textures read back without waiting: copied into a shared buffer with the frame's commands, the data is there once
+// the gpu finished the frame. One request at a time, a new one replaces the pending one.
+static id<MTLBuffer> async_readback_buffer  = nil;
+static volatile int  async_readback_state   = 0; // 0 idle, 1 copying, 2 ready
+static volatile int  async_readback_request = 0;
+static int           async_readback_count   = 0;
+static int           async_readback_offsets[8];
+
+void gpu_read_textures_async(gpu_texture_t **textures, int count) {
+	if (count > 8) {
+		count = 8;
+	}
+	int size = 0;
+	for (int i = 0; i < count; ++i) {
+		async_readback_offsets[i] = size;
+		size += (textures[i]->width * textures[i]->height * gpu_texture_format_size(textures[i]->format) + 255) & ~255;
+	}
+	if (async_readback_buffer == nil || async_readback_buffer.length < size) {
+		async_readback_buffer = [get_metal_device() newBufferWithLength:size options:MTLResourceStorageModeShared];
+	}
+	end_kept_encoder();
+	if (command_buffer == nil) {
+		command_buffer = [get_metal_queue() commandBuffer];
+	}
+	id<MTLBlitCommandEncoder> blit = [command_buffer blitCommandEncoder];
+	for (int i = 0; i < count; ++i) {
+		gpu_texture_t *t = textures[i];
+		[blit copyFromTexture:(__bridge id<MTLTexture>)t->impl._tex
+		                 sourceSlice:0
+		                 sourceLevel:0
+		                sourceOrigin:MTLOriginMake(0, 0, 0)
+		                  sourceSize:MTLSizeMake(t->width, t->height, 1)
+		                    toBuffer:async_readback_buffer
+		           destinationOffset:async_readback_offsets[i]
+		      destinationBytesPerRow:t->width * gpu_texture_format_size(t->format)
+		    destinationBytesPerImage:0];
+	}
+	[blit endEncoding];
+	async_readback_count = count;
+	async_readback_state = 1;
+	int request          = ++async_readback_request;
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+		if (request == async_readback_request) {
+			async_readback_state = 2;
+		}
+	}];
+}
+
+// True once the data of the last request arrived, data[i] points at texture i until the next request
+bool gpu_read_textures_async_poll(uint8_t **data) {
+	if (async_readback_state != 2) {
+		return false;
+	}
+	async_readback_state = 0;
+	uint8_t *contents    = (uint8_t *)[async_readback_buffer contents];
+	for (int i = 0; i < async_readback_count; ++i) {
+		data[i] = contents + async_readback_offsets[i];
+	}
+	return true;
 }

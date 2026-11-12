@@ -122,6 +122,12 @@ static bool make_mesh_layer_has_visible_mask(slot_layer_t *l) {
 	return false;
 }
 
+// Opacity of a layer or mask as a shader constant, dragging the opacity slider then needs no new shader
+static char *make_mesh_opacity(node_shader_t *kong, slot_layer_t *l) {
+	node_shader_add_constant(kong, string("float layer_opac%d", l->id), string("_layer_opacity%d", l->id));
+	return string("constants.layer_opac%d", l->id);
+}
+
 // Multiplies the masks of the layer at coord into var. A height blended mask moves its edge with the layer height (height_top)
 // compared to the layers below (height_below) or a flat level
 static void make_mesh_write_masks(node_shader_t *kong, slot_layer_t *l, char *var, char *coord, char *height_top, char *height_below, bool center) {
@@ -132,7 +138,7 @@ static void make_mesh_write_masks(node_shader_t *kong, slot_layer_t *l, char *va
 			continue;
 		}
 		char *mid  = string_copy(i32_to_string(m->id));
-		char *opac = string_copy(f32_to_string(slot_layer_get_opacity(m)));
+		char *opac = make_mesh_opacity(kong, m);
 		node_shader_add_texture(kong, string_tmp("texpaint%s", mid), NULL);
 		bool reach = m->height_blend && m->height_blend_reach > 0.0;
 		char *soft = string("mask_soft%d_%d", l->id, m->id);
@@ -419,10 +425,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 				node_shader_write_frag(kong, string_tmp("texpaint_opac *= clamp(%s, 0.0, 1.0);", texpaint_mask));
 			}
 
-			if (slot_layer_get_opacity(l) < 1) {
-				f32 opac = slot_layer_get_opacity(l);
-				node_shader_write_frag(kong, string_tmp("texpaint_opac *= float(%s);", f32_to_string(opac)));
-			}
+			node_shader_write_frag(kong, string_tmp("texpaint_opac *= %s;", make_mesh_opacity(kong, l)));
 
 			if (transluc) {
 				node_shader_write_frag(kong, l == g_project->_->layers->buffer[0] ? "transluc_opac = texpaint_opac;"
@@ -534,9 +537,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 						node_shader_write_frag(kong, "float nmask = 1.0;");
 						make_mesh_write_masks(kong, l, "nmask", "nco", "npack", h, false);
 						node_shader_write_frag(kong, "nopac *= clamp(nmask, 0.0, 1.0);");
-						if (slot_layer_get_opacity(l) < 1) {
-							node_shader_write_frag(kong, string_tmp("nopac *= float(%s);", f32_to_string(slot_layer_get_opacity(l))));
-						}
+						node_shader_write_frag(kong, string_tmp("nopac *= %s;", make_mesh_opacity(kong, l)));
 						if (!l->paint_height_blend) {
 							node_shader_write_frag(kong, string_tmp("%s *= 1.0 - nopac;", h));
 						}
@@ -751,8 +752,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 					}
 					node_shader_write_frag(kong, string_tmp("float mask_sample%s = sample_lod(texpaint_view_mask%s, sampler_linear, %s, 0.0).r;",
 					                                        i32_to_string(m->id), i32_to_string(m->id), tex_coord_layer));
-					f32 opac = slot_layer_get_opacity(m);
-					node_shader_write_frag(kong, string_tmp("mask_view *= lerp(1.0, mask_sample%s, float(%s));", i32_to_string(m->id), f32_to_string(opac)));
+					node_shader_write_frag(kong, string_tmp("mask_view *= lerp(1.0, mask_sample%s, %s);", i32_to_string(m->id), make_mesh_opacity(kong, m)));
 				}
 			}
 			node_shader_write_frag(kong, "output[1] = float4(mask_view, mask_view, mask_view, 1.0);");
