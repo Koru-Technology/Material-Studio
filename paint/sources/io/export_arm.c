@@ -215,6 +215,8 @@ buffer_t *export_arm_encode_project(char *path) {
 			                                                       .paint_height = m->paint_height,
 			                                                       .paint_emis   = m->paint_emis,
 			                                                       .paint_subs   = m->paint_subs,
+			                                                       .uv_scale     = m->uv_scale,
+			                                                       .uv_angle     = m->uv_angle,
 			                                                   });
 			any_array_push(mdata2, d);
 		}
@@ -568,6 +570,8 @@ void export_arm_run_material(char *path) {
 	                                                                    .paint_height = m->paint_height,
 	                                                                    .paint_emis   = m->paint_emis,
 	                                                                    .paint_subs   = m->paint_subs,
+	                                                                    .uv_scale     = m->uv_scale,
+	                                                                    .uv_angle     = m->uv_angle,
                                                          });
 	any_array_push(mdata2, md2);
 
@@ -631,6 +635,8 @@ buffer_t *export_arm_encode_library_material(slot_material_t *m) {
 	                                                                    .paint_height = m->paint_height,
 	                                                                    .paint_emis   = m->paint_emis,
 	                                                                    .paint_subs   = m->paint_subs,
+	                                                                    .uv_scale     = m->uv_scale,
+	                                                                    .uv_angle     = m->uv_angle,
                                                          });
 	any_array_push(mdata2, md2);
 

@@ -36,6 +36,9 @@ void tab_materials_draw_slots_duplicate(void *_) {
 	ui_node_canvas_t *cloned    = util_clone_canvas(g_project->_->materials->buffer[i]->canvas);
 	cloned->name                = string_copy(slot_material_unique_name(cloned, cloned->name));
 	g_context->material->canvas = cloned;
+	slot_material_t *src        = g_project->_->materials->buffer[i];
+	g_context->material->uv_scale = src->uv_scale;
+	g_context->material->uv_angle = src->uv_angle;
 	tab_materials_update_material();
 	history_duplicate_material();
 }
@@ -161,6 +164,12 @@ void tab_materials_draw_slots_menu() {
 	if (ui_menu_button(tr("To Fill Layer"), "", ICON_SPHERE)) {
 		context_select_material(i);
 		layers_create_fill_layer(UV_TYPE_UVMAP, mat4_nan(), -1);
+	}
+
+	// The selected fill layer (or the fill layer of the selected mask) takes this material
+	slot_layer_t *fill_target = tab_layers_fill_target(g_context->layer);
+	if (fill_target != NULL && fill_target->fill_material != m && ui_menu_button(tr("Apply to Fill Layer"), "", ICON_SPHERE)) {
+		slot_layer_set_fill_material(fill_target, m);
 	}
 
 	if (ui_menu_button(tr("Export"), "", ICON_EXPORT)) {

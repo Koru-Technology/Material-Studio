@@ -1,6 +1,8 @@
 
 #include "global.h"
 
+static void history_redo_smart_material(char *name);
+
 char *history_action_to_string(history_action_t action) {
 	switch (action) {
 	case HISTORY_ACTION_PAINT:
@@ -65,6 +67,10 @@ char *history_action_to_string(history_action_t action) {
 		return tr("Layer Angle");
 	case HISTORY_ACTION_LAYER_UV_TYPE:
 		return tr("Layer UV Type");
+	case HISTORY_ACTION_LAYER_FILL_MATERIAL:
+		return tr("Layer Material");
+	case HISTORY_ACTION_SMART_MATERIAL:
+		return tr("Smart Material");
 	case HISTORY_ACTION_NEW_BRUSH:
 		return tr("New Brush");
 	case HISTORY_ACTION_DELETE_BRUSH:
@@ -205,9 +211,7 @@ static void history_swap_order(history_step_t *step) {
 }
 
 void history_update_fill_layer(slot_layer_t *l) {
-	context_set_material(l->fill_material);
-	context_set_layer(l);
-	layers_update_fill_layers();
+	layers_refresh_fill_layer(l);
 }
 
 void history_layer_object_clear(slot_layer_t *l) {
@@ -266,9 +270,15 @@ void history_swap_layer_props(history_step_t *step) {
 		f32 t             = l->angle;
 		l->angle          = step->layer_angle;
 		step->layer_angle = t;
-		context_set_material(l->fill_material);
-		context_set_layer(l);
-		make_material_parse_paint_material(true);
+		sys_notify_on_next_frame(&history_update_fill_layer, l);
+	}
+	else if (step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL) {
+		slot_material_t_array_t *materials = g_project->_->materials;
+		i32                      t         = array_index_of(materials, l->fill_material);
+		if (step->material >= 0 && step->material < materials->length) {
+			l->fill_material = materials->buffer[step->material];
+		}
+		step->material = t;
 		sys_notify_on_next_frame(&history_update_fill_layer, l);
 	}
 	else if (step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
@@ -464,6 +474,13 @@ void history_undo() {
 			slot_layer_delete(g_context->layer);
 			g_context->layer = g_project->_->layers->buffer[step->layer > 0 ? step->layer - 1 : 0];
 		}
+		else if (step->action == HISTORY_ACTION_SMART_MATERIAL) {
+			// The inserted top layer, its masks and children go with it
+			g_context->layer = g_project->_->layers->buffer[step->layer];
+			slot_layer_delete(g_context->layer);
+			i32 below        = (step->layer < g_project->_->layers->length ? step->layer : g_project->_->layers->length) - 1;
+			g_context->layer = g_project->_->layers->buffer[below > 0 ? below : 0];
+		}
 		else if (step->action == HISTORY_ACTION_NEW_GROUP) {
 			g_context->layer = g_project->_->layers->buffer[step->layer];
 			// The layer below is the only layer in the group. Its layer masks are automatically unparented, too.
@@ -573,7 +590,7 @@ void history_undo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
-		         step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
+		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
 			history_swap_layer_props(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
@@ -771,6 +788,9 @@ void history_redo() {
 			g_context->layer_preview_dirty = true;
 			context_set_layer(l);
 		}
+		else if (step->action == HISTORY_ACTION_SMART_MATERIAL) {
+			sys_notify_on_next_frame(&history_redo_smart_material, step->layer_name);
+		}
 		else if (step->action == HISTORY_ACTION_NEW_GROUP) {
 			slot_layer_t *l     = g_project->_->layers->buffer[step->layer - 1];
 			slot_layer_t *group = layers_new_group();
@@ -859,7 +879,7 @@ void history_redo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
-		         step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
+		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
 			history_swap_layer_props(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
@@ -1038,7 +1058,7 @@ void history_paint() {
 
 	history_push_undo    = false;
 	history_step_t *step = history_push(HISTORY_ACTION_PAINT);
-	step->name           = tr(ui_toolbar_tool_names->buffer[g_context->tool]);
+	step->name           = tr(ui_toolbar_tool_labels->buffer[g_context->tool]);
 	if (tiled) {
 		history_tiles_begin(step, g_context->layer);
 	}
@@ -1235,6 +1255,25 @@ void history_layer_angle() {
 void history_mask_height_blend() {
 	history_step_t *step = history_push(HISTORY_ACTION_MASK_HEIGHT_BLEND);
 	history_get_height_blend(g_context->layer, step->layer_height_blend);
+}
+
+static void history_redo_smart_material(char *name) {
+	smart_materials_insert(name);
+}
+
+// After smart material name was put on the layer stack, its top layer selected
+void history_smart_material(char *name) {
+	history_step_t *step = history_push(HISTORY_ACTION_SMART_MATERIAL);
+	step->layer_name     = string_copy(name);
+}
+
+// Before l gets another fill material
+void history_layer_fill_material(slot_layer_t *l) {
+	slot_layer_t *_layer = g_context->layer;
+	g_context->layer     = l;
+	history_step_t *step = history_push(HISTORY_ACTION_LAYER_FILL_MATERIAL);
+	step->material       = array_index_of(g_project->_->materials, l->fill_material);
+	g_context->layer     = _layer;
 }
 
 void history_layer_uv_type() {

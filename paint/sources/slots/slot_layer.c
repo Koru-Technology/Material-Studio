@@ -534,10 +534,23 @@ void slot_layer_to_fill_layer_on_next_frame(void *_) {
 }
 
 void slot_layer_to_fill_layer(slot_layer_t *raw) {
+	// Starts with the texture scale and rotation the material was painted with
+	raw->scale = g_context->material->uv_scale;
+	raw->angle = g_context->material->uv_angle;
 	context_set_layer(raw);
 	raw->fill_material = g_context->material;
 	layers_update_fill_layer(true);
 	sys_notify_on_next_frame(&slot_layer_to_fill_layer_on_next_frame, NULL);
+}
+
+// Gives fill layer l another material, undoable
+void slot_layer_set_fill_material(slot_layer_t *l, slot_material_t *m) {
+	if (l == NULL || l->fill_material == NULL || m == NULL || l->fill_material == m) {
+		return;
+	}
+	history_layer_fill_material(l);
+	l->fill_material = m;
+	layers_refresh_fill_layer(l);
 }
 
 void slot_layer_to_paint_layer(slot_layer_t *raw) {

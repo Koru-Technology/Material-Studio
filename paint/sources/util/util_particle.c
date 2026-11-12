@@ -185,6 +185,7 @@ void util_particle_update() {
 		particle_last_spawn_time = sys_time();
 
 		if (mouse_started("left")) {
+			layers_fill_paint_to_mask(); // A fill layer is painted through its mask
 			history_push_undo            = true;
 			g_context->brush_blend_dirty = true;
 		}

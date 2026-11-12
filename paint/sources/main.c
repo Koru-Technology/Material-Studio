@@ -184,6 +184,7 @@
 #include "ui/tab_layers.c"
 #include "ui/tab_materials.c"
 #include "ui/tab_library.c"
+#include "ui/tab_smart_materials.c"
 #include "ui/tab_meshes.c"
 #include "ui/tab_scripts.c"
 #include "ui/tab_sounds.c"
@@ -247,6 +248,8 @@
 #include "library_cloud.c"
 #include "builtin_materials.c"
 #include "builtin_brushes.c"
+#include "brush_presets.c"
+#include "smart_materials.c"
 #include "console.c"
 #include "context.c"
 #include "history.c"
@@ -308,6 +311,17 @@ void _kickstart() {
 	    },
 	    26);
 
+	// Shown in the toolbar, tooltips and history, the names above stay the keymap ids (tool_cursor, ...)
+	ui_toolbar_tool_labels = any_array_create_from_raw(
+	    (void *[]){
+	        _tr("Brush"),   _tr("Eraser"), _tr("Fill"),     _tr("Decal"),   _tr("Text"),   _tr("Clone"),   _tr("Blur"),  _tr("Particle"),
+	        _tr("ID"),      _tr("Picker"), _tr("Preview"),  _tr("Move"),    _tr("Select"), _tr("Empty"),   _tr("Plane"), _tr("Cube"),
+	        _tr("Sphere"),  _tr("Cone"),   _tr("Cylinder"), _tr("Capsule"), _tr("Torus"),  _tr("3D Text"), _tr("Path"),  _tr("Curve"),
+	        _tr("Bake"),
+	        _tr("Inpaint"),
+	    },
+	    26);
+
 	ui_toolbar_tooltip_extras = any_array_create_from_raw(
 	    (void *[]){
 	        _tr("Hold {action_paint} to paint\nHold {brush_ruler} and press {action_paint} to paint a straight line (ruler mode)"),
@@ -318,10 +332,10 @@ void _kickstart() {
 	        _tr("Hold {set_clone_source} to set source"),
 	        "",
 	        "",
+	        _tr("Color ID mask, click a color of the ID map to paint only there"),
 	        "",
-	        "",
-	        "",
-	        "",
+	        _tr("Shows the selected material on the active layer, click to read its values"),
+	        _tr("Select and transform objects"),
 	        "",
 	        "",
 	        "",

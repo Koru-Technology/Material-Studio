@@ -103,8 +103,13 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_brush_scale")) {
 		bool fill = g_context->layer->fill_material != NULL;
-		f32  val  = (fill ? g_context->layer->scale : g_context->brush_scale) * g_context->brush_nodes_scale;
+		// The fill layer's own, the decal's, else the material's
+		f32 base = fill ? g_context->layer->scale : context_is_decal() ? g_context->brush_scale : g_context->material->uv_scale;
+		f32 val  = base * g_context->brush_nodes_scale;
 		return val;
+	}
+	else if (string_equals(link, "_mask_value")) {
+		return g_context->mask_value;
 	}
 	else if (string_equals(link, "_atlas_stride")) {
 		return util_mesh_udim_active() ? util_mesh_atlas_stride() : 1.0;
@@ -177,6 +182,11 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	return NAN;
 }
 
+// Texture rotation of the material painted on paint layers, degrees
+static f32 uniforms_material_uv_angle() {
+	return g_context->material->uv_angle;
+}
+
 vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) {
 	if (string_equals(link, "_gbuffer_size")) {
 		render_target_t *gbuffer2 = any_map_get(render_path_render_targets, "gbuffer2");
@@ -193,6 +203,15 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 	}
 	else if (string_equals(link, "_brush_dab_angle")) {
 		return (vec2_t){math_cos(-g_context->brush_dab_angle), math_sin(-g_context->brush_dab_angle)};
+	}
+	else if (string_equals(link, "_uv_angle")) {
+		// Rotation of the material texture: the fill layer's own, the brush tip's for decals, else the material's
+		if (g_context->layer->fill_material == NULL && context_is_decal()) {
+			return uniforms_ext_vec2_link(object, mat, "_brush_angle");
+		}
+		f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle : uniforms_material_uv_angle();
+		angle *= (math_pi() / 180.0);
+		return (vec2_t){math_cos(-angle), math_sin(-angle)};
 	}
 	else if (string_equals(link, "_brush_angle")) {
 		f32 brush_angle = g_context->brush_angle + g_context->brush_nodes_angle;
@@ -345,6 +364,12 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 }
 
 mat4_t uniforms_ext_mat4_link(object_t *object, shader_data_t *mat, char *link) {
+	if (string_equals(link, "_taa_inv_vp")) { // Reprojection, see taa_pass.shader
+		return mat4_inv(mat4_mult_mat(scene_camera->v, scene_camera->no_jitter_p));
+	}
+	if (string_equals(link, "_taa_prev_vp")) {
+		return render_path_base_taa_prev_vp;
+	}
 	if (string_equals(link, "_decal_layer_matrix")) { // Decal layer
 		mat4_t m            = mat4_inv(g_context->layer->decal_mat);
 		f32    parent_scale = object->parent != NULL ? object->parent->transform->scale.x : 1.0;

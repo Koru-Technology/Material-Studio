@@ -465,6 +465,46 @@ void layers_update_fill_layer(bool parse_paint) {
 		draw_begin(current, false, 0);
 }
 
+// Repaints fill layer l with its own material, the selected layer and material stay
+void layers_refresh_fill_layer(slot_layer_t *l) {
+	if (l == NULL || l->fill_material == NULL || array_index_of(g_project->_->layers, l) == -1) {
+		return;
+	}
+	slot_layer_t    *_layer    = g_context->layer;
+	slot_material_t *_material = g_context->material;
+	g_context->layer           = l;
+	g_context->material        = l->fill_material;
+	layers_set_object_mask();
+	layers_update_fill_layer(true);
+	g_context->layer    = _layer;
+	g_context->material = _material;
+	layers_set_object_mask();
+	make_material_parse_paint_material(false);
+	g_context->ddirty               = 2;
+	g_context->rtdirty              = 1;
+	g_context->layers_preview_dirty = true;
+	render_path_base_redraw();
+}
+
+static slot_layer_t *layers_refresh_pending = NULL;
+
+static void layers_refresh_fill_layer_run(void *_) {
+	slot_layer_t *l        = layers_refresh_pending;
+	layers_refresh_pending = NULL;
+	layers_refresh_fill_layer(l);
+}
+
+// Once on the next frame, however often a slider moves in between
+void layers_refresh_fill_layer_later(slot_layer_t *l) {
+	if (layers_refresh_pending != NULL && layers_refresh_pending != l) {
+		layers_refresh_fill_layer(layers_refresh_pending);
+	}
+	if (layers_refresh_pending == NULL) {
+		sys_notify_on_next_frame(&layers_refresh_fill_layer_run, NULL);
+	}
+	layers_refresh_pending = l;
+}
+
 void layers_update_linked_layers() {
 	render_path_base_redraw(); // The 3D view shows the change
 	nodes_mesh_layer_changed(g_context->layer);
@@ -683,6 +723,42 @@ slot_layer_t *layers_new_mask(bool clear, slot_layer_t *parent, i32 position) {
 	tab_stages_add_layer(l->name);
 	g_context->layer_preview_dirty = true;
 	return l;
+}
+
+static void layers_fill_paint_update(void *_) {
+	layers_update_fill_layers();
+}
+
+// A stroke on a fill layer paints its mask: the first paintable mask of the layer, or a new black one.
+// Returns false when the layer is no fill layer or there is no room for a mask.
+bool layers_fill_paint_to_mask() {
+	slot_layer_t *l = g_context->layer;
+	if (l == NULL || l->fill_material == NULL || !slot_layer_is_layer(l)) {
+		return false;
+	}
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *m = g_project->_->layers->buffer[i];
+		if (m->parent == l && slot_layer_is_mask(m) && m->fill_material == NULL) {
+			context_set_layer(m);
+			return true;
+		}
+	}
+	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t         *m        = layers_new_mask(false, l, -1);
+	if (m == NULL) {
+		return false;
+	}
+	tab_layers_remap_all_layer_pointers(pointers);
+	slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+	g_context->layer_preview_dirty = true;
+	history_new_black_mask();
+	sys_notify_on_next_frame(&layers_fill_paint_update, NULL);
+	return true;
+}
+
+// Tools that paint a fill layer through its mask
+bool layers_fill_paint_tool(i32 tool) {
+	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_BLUR || tool == TOOL_TYPE_FILL || tool == TOOL_TYPE_PARTICLE;
 }
 
 slot_layer_t *layers_new_group() {

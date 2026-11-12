@@ -125,9 +125,10 @@ void ui_header_render_ui() {
 }
 
 void ui_header_particle_menu_draw() {
-	string_array_t *presets = any_array_create_from_raw_tmp((void *[]){tr("Custom")}, 1);
+	string_array_t *presets = any_array_create_from_raw_tmp(NULL, util_particle_preset_count() + 1); // Sized up front, tmp arrays can not grow
+	presets->buffer[0]      = tr("Custom");
 	for (i32 i = 0; i < util_particle_preset_count(); ++i) {
-		any_array_push(presets, util_particle_preset_name(i));
+		presets->buffer[i + 1] = util_particle_preset_name(i);
 	}
 	i32 preset = 0;
 	ui_combo(&preset, presets, tr("Preset"), true, UI_ALIGN_LEFT, true);
@@ -542,20 +543,55 @@ void ui_header_draw_tool_properties() {
 			ui_slider(&g_context->brush_scale_x, tr("Scale X"), 0.01, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 		}
 
-		if (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_DECAL ||
-		    g_context->tool == TOOL_TYPE_TEXT) {
+		// Masks and fill layers (painted through their mask): a gray value, and the fill layer's own material settings
+		slot_layer_t *fill_target = tab_layers_fill_target(g_context->layer);
+		bool          on_mask     = (slot_layer_is_mask(g_context->layer) && g_context->layer->fill_material == NULL) || fill_target == g_context->layer;
+		if (on_mask && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_PARTICLE)) {
+			ui_slider(&g_context->mask_value, tr("Value"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+			if (ui_button(tr("Swap"), UI_ALIGN_CENTER, "")) {
+				g_context->mask_value = 1.0 - g_context->mask_value;
+			}
+			if (g_ui->is_hovered) {
+				ui_tooltip(tr("White reveals the fill layer, black hides it"));
+			}
+		}
+		bool fill_props = fill_target != NULL && g_context->tool != TOOL_TYPE_DECAL && g_context->tool != TOOL_TYPE_TEXT;
+		if (fill_props && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_ERASER ||
+		                   g_context->tool == TOOL_TYPE_BLUR || g_context->tool == TOOL_TYPE_PARTICLE)) {
+			tab_layers_fill_properties(fill_target, false);
+		}
+
+		// On paint layers the material keeps its own texture scale and rotation, picking the material again brings them back
+		bool decal_tool = g_context->tool == TOOL_TYPE_DECAL || g_context->tool == TOOL_TYPE_TEXT;
+		if (!fill_props && !on_mask && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL)) {
+			slot_material_t *m = g_context->material;
+			ui_slider(&m->uv_scale, tr("UV Scale"), 0.01, 5.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+			if (ui_item_changed()) {
+				project_modified = true;
+			}
+			ui_slider(&m->uv_angle, tr("UV Rotation"), 0.0, 360.0, true, 1, true, UI_ALIGN_RIGHT, true);
+			if (ui_item_changed()) {
+				project_modified = true;
+			}
+			if (g_ui->is_hovered) {
+				ui_tooltip(tr("Rotation of the material's texture, saved with the material"));
+			}
+		}
+
+		if (decal_tool) {
 			ui_slider(&g_context->brush_scale, tr("UV Scale"), 0.01, 5.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 			if (ui_item_changed()) {
-				if (g_context->tool == TOOL_TYPE_DECAL || g_context->tool == TOOL_TYPE_TEXT) {
-					gpu_texture_t *current = _draw_current;
-					draw_end();
-					util_render_make_decal_preview();
-					draw_begin(current, false, 0);
-				}
+				gpu_texture_t *current = _draw_current;
+				draw_end();
+				util_render_make_decal_preview();
+				draw_begin(current, false, 0);
 			}
+		}
 
+		// Rotation of the brush tip (of the decal for decals), apart from the material's texture
+		if (decal_tool || g_context->tool == TOOL_TYPE_BRUSH) {
 			ui_header_pressure_row();
-			ui_slider(&g_context->brush_angle, tr("Angle"), 0.0, 360.0, true, 1, true, UI_ALIGN_RIGHT, true);
+			ui_slider(&g_context->brush_angle, decal_tool ? tr("Angle") : tr("Tip Angle"), 0.0, 360.0, true, 1, true, UI_ALIGN_RIGHT, true);
 			bool angle_changed = ui_item_changed();
 			if (g_ui->is_hovered) {
 				any_map_t *vars = any_map_create();
@@ -637,7 +673,7 @@ void ui_header_draw_tool_properties() {
 			}
 		}
 
-		if (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL) {
+		if ((g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL) && !fill_props) {
 			string_array_t *texcoord_combo = any_array_create_from_raw_tmp(
 			    (void *[]){
 			        tr("UV Map"),

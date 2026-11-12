@@ -515,6 +515,7 @@ void render_path_base_draw_deferred_light() {
 // }
 
 static gpu_texture_t *render_path_base_taa_history = NULL;
+mat4_t                render_path_base_taa_prev_vp = {0}; // Camera of the frame in the history, without jitter
 
 void render_path_base_draw_taa(char *bufa, char *bufb) {
 	render_path_set_target(bufb, NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
@@ -527,8 +528,10 @@ void render_path_base_draw_taa(char *bufa, char *bufb) {
 	}
 	else {
 		render_path_bind_target("last", "tex2");
+		render_path_bind_target("main", "gbufferD");
 		render_path_draw_shader("Scene/taa_pass/taa_pass");
 	}
+	render_path_base_taa_prev_vp = mat4_mult_mat(scene_camera->v, scene_camera->no_jitter_p);
 
 	render_path_set_target("", NULL, NULL, args_player ? GPU_CLEAR_DONT_LOAD_COLOR : GPU_CLEAR_NONE, 0, 0.0);
 	render_path_bind_target(bufb, "tex");

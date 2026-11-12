@@ -552,6 +552,21 @@ bool tab_layers_can_merge_down(slot_layer_t *l) {
 	return true;
 }
 
+// A black mask on l, selected to paint the layer in
+void tab_layers_draw_layer_context_menu_add_black_mask(slot_layer_t *l) {
+	context_set_layer(l);
+	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t         *m        = layers_new_mask(false, l, -1);
+	if (m == NULL) {
+		return;
+	}
+	tab_layers_remap_all_layer_pointers(pointers);
+	slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+	g_context->layer_preview_dirty = true;
+	history_new_black_mask();
+	layers_update_fill_layers();
+}
+
 void tab_layers_draw_layer_context_menu_update_fill_layers(void *_) {
 	layers_update_fill_layers();
 }
@@ -680,6 +695,110 @@ static void tab_layers_draw_mask_height_blend(slot_layer_t *m) {
 	}
 }
 
+// The fill layer that l is or masks, NULL for others
+slot_layer_t *tab_layers_fill_target(slot_layer_t *l) {
+	if (l == NULL) {
+		return NULL;
+	}
+	if (slot_layer_is_layer(l) && l->fill_material != NULL) {
+		return l;
+	}
+	if (slot_layer_is_mask(l) && l->fill_material == NULL && l->parent != NULL && slot_layer_is_layer(l->parent) && l->parent->fill_material != NULL) {
+		return l->parent;
+	}
+	return NULL;
+}
+
+// Material, UV scale, angle and projection of fill layer l, in its menu or in the header.
+// Edits leave the selection alone: history is taken for l, l is repainted on the next frame.
+void tab_layers_fill_properties(slot_layer_t *l, bool menu) {
+	slot_layer_t *_layer = g_context->layer;
+
+	if (!menu) {
+		slot_material_t_array_t *materials = g_project->_->materials;
+		static i32               index     = 0;
+		index                              = array_index_of(materials, l->fill_material);
+		string_array_t *names              = any_array_create_from_raw_tmp(NULL, materials->length); // Sized up front, tmp arrays can not grow
+		for (i32 i = 0; i < materials->length; ++i) {
+			names->buffer[i] = materials->buffer[i]->canvas->name;
+		}
+		ui_combo(&index, names, tr("Material"), true, UI_ALIGN_LEFT, true);
+		if (ui_item_changed() && index >= 0 && index < materials->length) {
+			slot_layer_set_fill_material(l, materials->buffer[index]);
+		}
+	}
+
+	if (menu) {
+		ui_menu_align();
+	}
+	f32 prev_scale = l->scale;
+	ui_slider(&l->scale, tr("UV Scale"), 0.0, 5.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
+	if (ui_item_changed()) {
+		if (g_ui->input_started) {
+			f32 new_scale    = l->scale;
+			l->scale         = prev_scale;
+			g_context->layer = l;
+			history_layer_scale();
+			g_context->layer = _layer;
+			l->scale         = new_scale;
+		}
+		layers_refresh_fill_layer_later(l);
+		if (menu) {
+			ui_menu_keep_open = true;
+		}
+	}
+
+	if (menu) {
+		ui_menu_align();
+	}
+	f32 prev_angle = l->angle;
+	ui_slider(&l->angle, tr("Angle"), 0.0, 360, true, 1, true, UI_ALIGN_RIGHT, true);
+	if (ui_item_changed()) {
+		if (g_ui->input_started) {
+			f32 new_angle    = l->angle;
+			l->angle         = prev_angle;
+			g_context->layer = l;
+			history_layer_angle();
+			g_context->layer = _layer;
+			l->angle         = new_angle;
+		}
+		layers_refresh_fill_layer_later(l);
+		if (menu) {
+			ui_menu_keep_open = true;
+		}
+	}
+
+	if (menu) {
+		ui_menu_align();
+	}
+	string_array_t *uv_type_items = any_array_create_from_raw_tmp(
+	    (void *[]){
+	        tr("UV Map"),
+	        tr("Triplanar"),
+	        tr("Project"),
+	    },
+	    3);
+	i32 prev_uv_type = l->uv_type;
+	if (menu) {
+		ui_inline_radio((int *)&l->uv_type, uv_type_items, UI_ALIGN_LEFT);
+	}
+	else {
+		ui_combo((int *)&l->uv_type, uv_type_items, tr("Projection"), true, UI_ALIGN_LEFT, true);
+	}
+	if (ui_item_changed()) {
+		i32 new_uv_type  = l->uv_type;
+		l->uv_type       = prev_uv_type;
+		g_context->layer = l;
+		history_layer_uv_type();
+		g_context->layer = _layer;
+		l->uv_type       = new_uv_type;
+		layers_refresh_fill_layer_later(l);
+		if (menu) {
+			ui_menu_keep_open = true;
+		}
+	}
+}
+
 void tab_layers_draw_layer_context_menu_draw() {
 	slot_layer_t *l    = tab_layers_l;
 	bool          mini = tab_layers_mini;
@@ -721,6 +840,13 @@ void tab_layers_draw_layer_context_menu_draw() {
 		if (fill_layer && ui_menu_button(to_paint_string, "", ICON_PAINT)) {
 			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_to_paint_layer, NULL);
 		}
+	}
+	if (slot_layer_is_layer(l) && ui_menu_button(tr("Add Black Mask"), "", ICON_MASK)) {
+		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_add_black_mask, l);
+	}
+	if ((slot_layer_is_group(l) || (slot_layer_is_layer(l) && l->fill_material != NULL)) && ui_menu_button(tr("Save as Smart Material"), "", ICON_SAVE)) {
+		context_set_layer(l);
+		tab_smart_materials_show_save();
 	}
 
 	g_ui->enabled = tab_layers_can_delete(l);
@@ -806,60 +932,7 @@ void tab_layers_draw_layer_context_menu_draw() {
 		tab_layers_draw_mask_height_blend(l);
 	}
 	if (l->fill_material != NULL) {
-		ui_menu_align();
-		f32 prev_scale = l->scale;
-		ui_slider(&l->scale, tr("UV Scale"), 0.0, 5.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-		if (ui_item_changed()) {
-			context_set_material(l->fill_material);
-			context_set_layer(l);
-			if (g_ui->input_started) {
-				f32 new_scale = l->scale;
-				l->scale      = prev_scale;
-				history_layer_scale();
-				l->scale = new_scale;
-			}
-			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_update_fill_layers, NULL);
-			ui_menu_keep_open = true;
-		}
-
-		ui_menu_align();
-		f32 prev_angle = l->angle;
-		ui_slider(&l->angle, tr("Angle"), 0.0, 360, true, 1, true, UI_ALIGN_RIGHT, true);
-		if (ui_item_changed()) {
-			context_set_material(l->fill_material);
-			context_set_layer(l);
-			if (g_ui->input_started) {
-				f32 new_angle = l->angle;
-				l->angle      = prev_angle;
-				history_layer_angle();
-				l->angle = new_angle;
-			}
-			make_material_parse_paint_material(true);
-			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_update_fill_layers, NULL);
-			ui_menu_keep_open = true;
-		}
-
-		ui_menu_align();
-		string_array_t *uv_type_items = any_array_create_from_raw(
-		    (void *[]){
-		        tr("UV Map"),
-		        tr("Triplanar"),
-		        tr("Project"),
-		    },
-		    3);
-		i32 prev_uv_type = l->uv_type;
-		ui_inline_radio((int *)&l->uv_type, uv_type_items, UI_ALIGN_LEFT);
-		if (ui_item_changed()) {
-			i32 new_uv_type = l->uv_type;
-			l->uv_type      = prev_uv_type;
-			context_set_material(l->fill_material);
-			context_set_layer(l);
-			history_layer_uv_type();
-			l->uv_type = new_uv_type;
-			make_material_parse_paint_material(true);
-			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_update_fill_layers, NULL);
-			ui_menu_keep_open = true;
-		}
+		tab_layers_fill_properties(l, true);
 	}
 
 	if (!slot_layer_is_group(l)) {

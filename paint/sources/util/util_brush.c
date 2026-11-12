@@ -283,6 +283,11 @@ void util_brush_update() {
 				if (g_context->brush_time == 0 && !base_is_dragging && !base_is_resizing && !ui_dock_is_dragging() &&
 				    g_ui->combo_selected_id == 0) { // Paint started
 
+					// A fill layer is painted through its mask
+					if (layers_fill_paint_tool(g_context->tool)) {
+						layers_fill_paint_to_mask();
+					}
+
 					// First stamp of the stroke
 					g_context->brush_dab_x = -1.0;
 					g_context->brush_dab_y = -1.0;

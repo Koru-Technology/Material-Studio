@@ -713,6 +713,8 @@ void minic_register_builtins() {
 
 	MINIC_STRUCT(slot_material_t);
 	MINIC_O(canvas, ui_node_canvas_t);
+	MINIC_F(uv_scale);
+	MINIC_F(uv_angle);
 	MINIC_I(id);
 	MINIC_B(paint_base);
 	MINIC_B(paint_opac);
@@ -946,6 +948,7 @@ void minic_register_builtins() {
 	MINIC_F(brush_hardness);
 	MINIC_F(brush_scale);
 	MINIC_F(brush_angle);
+	MINIC_F(mask_value);
 	MINIC_F(brush_spacing);
 	MINIC_F(brush_scatter);
 	MINIC_F(brush_jitter_size);

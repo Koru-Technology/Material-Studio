@@ -685,6 +685,14 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_frag(kong, "height = 0.0;");
 	}
 
+	// Masks take a gray value, not the material: white reveals the layer, black hides it
+	bool mask_gray = slot_layer_is_mask(g_context->layer) && g_context->layer->fill_material == NULL &&
+	                 (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_PARTICLE);
+	if (mask_gray) {
+		node_shader_add_constant(kong, "float mask_value", "_mask_value");
+		node_shader_write_frag(kong, "basecol = float3(constants.mask_value, constants.mask_value, constants.mask_value);");
+	}
+
 	// Output
 	node_shader_add_texture(kong, tex_nor_src, tex_nor_link);
 	node_shader_add_texture(kong, tex_pack_src, tex_pack_link);
@@ -778,6 +786,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 
 	if (is_mask) {
 		// Base color only
+		con_paint->data->color_writes_red->buffer[0]   = true;
 		con_paint->data->color_writes_green->buffer[0] = false;
 		con_paint->data->color_writes_blue->buffer[0]  = false;
 		con_paint->data->color_writes_alpha->buffer[0] = false;

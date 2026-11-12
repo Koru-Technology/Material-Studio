@@ -7,7 +7,7 @@
 
 char *manifest_title           = "Koru Surface";
 char *manifest_version         = "1.1rc1";
-char *manifest_version_project = "26";
+char *manifest_version_project = "27";
 char *manifest_version_config  = "16";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";

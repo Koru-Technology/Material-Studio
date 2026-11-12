@@ -249,6 +249,8 @@ typedef struct slot_material {
 	bool                   paint_height;
 	bool                   paint_emis;
 	bool                   paint_subs;
+	f32                    uv_scale; // Texture scale and rotation (degrees) when painted on paint layers
+	f32                    uv_angle;
 } slot_material_t;
 
 typedef struct tab_draw {
@@ -479,6 +481,7 @@ typedef struct context {
 	f32                         brush_opacity;
 	f32                         brush_scale;
 	f32                         brush_angle;
+	f32                         mask_value; // Gray painted on masks, 1 reveals
 	f32                         brush_hardness;
 	f32                         brush_lazy_radius;
 	f32                         brush_lazy_step;
@@ -1098,6 +1101,8 @@ typedef struct material_data2 {
 	bool paint_height;
 	bool paint_emis;
 	bool paint_subs;
+	f32  uv_scale;
+	f32  uv_angle;
 } material_data2_t;
 
 typedef struct material_data2_t_array {

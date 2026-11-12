@@ -40,6 +40,8 @@ slot_material_t *slot_material_create(shader_data_t *m, ui_node_canvas_t *c) {
 	raw->paint_height    = true;
 	raw->paint_emis      = true;
 	raw->paint_subs      = true;
+	raw->uv_scale        = 1.0;
+	raw->uv_angle        = 0.0;
 
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *mat = g_project->_->materials->buffer[i];

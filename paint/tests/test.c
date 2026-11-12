@@ -2018,7 +2018,9 @@ void step_layer_mask_ops() {
 	mask                   = script_layer_new_mask(red, 1);
 	slot_material_t *black = flat_material("test_black", 0.0, 0.0, 0.0);
 	script_layer_set(mask);
+	script_get_context()->mask_value = 0.0; // Masks paint a gray value, not the material
 	stroke_across(TOOL_TYPE_BRUSH);
+	script_get_context()->mask_value = 1.0;
 	float masked = base_fraction(0xff0000);
 	script_layer_apply_mask(mask);
 	float baked = base_fraction(0xff0000);

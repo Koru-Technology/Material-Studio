@@ -360,6 +360,9 @@ static bool script_paint_allowed(void) {
 	if (args_player || g_context == NULL || g_context->layer == NULL || g_context->material == NULL) {
 		return false;
 	}
+	if (!script_paint_active && layers_fill_paint_tool(g_context->tool)) {
+		layers_fill_paint_to_mask(); // A fill layer is painted through its mask
+	}
 	if (slot_layer_is_group(g_context->layer)) {
 		return false;
 	}
@@ -968,7 +971,17 @@ slot_layer_t *script_layer_apply_mask(slot_layer_t *m) {
 }
 
 bool script_layer_to_fill(slot_layer_t *l) {
-	// Fills with the current material
+	// Fills with the current material, a fill layer takes it in place of its own
+	if (script_layer_valid(l) && slot_layer_is_layer(l) && l->fill_material != NULL && g_context->material != NULL &&
+	    l->fill_material != g_context->material) {
+		gpu_texture_t *current;
+		bool           in_use;
+		script_gpu_begin(&current, &in_use);
+		base_init_undo_layers();
+		slot_layer_set_fill_material(l, g_context->material);
+		script_layer_op_end(current, in_use);
+		return true;
+	}
 	if (!script_layer_valid(l) || slot_layer_is_group(l) || l->fill_material != NULL || l->path_material != NULL || g_context->material == NULL) {
 		return false;
 	}

@@ -239,6 +239,7 @@ void ui_base_init_tabs() {
 	_draw_callback_create(tab_scripts_draw, TAB_SCRIPTS, "Scripts", TAB_AREA_SIDEBAR0);
 	_draw_callback_create(tab_materials_draw, TAB_MATERIALS, "Materials", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_library_draw, TAB_LIBRARY, "Library", TAB_AREA_SIDEBAR1);
+	_draw_callback_create(tab_smart_materials_draw, TAB_SMART, "Smart", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_brushes_draw, TAB_BRUSHES, "Brushes", TAB_AREA_SIDEBAR1);
 	_draw_callback_create(tab_browser_draw, TAB_BROWSER, "Browser", TAB_AREA_STATUS);
 	_draw_callback_create(tab_textures_draw, TAB_TEXTURES, "Textures", TAB_AREA_STATUS);

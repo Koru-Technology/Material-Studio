@@ -350,6 +350,7 @@ void ui_dock_reset() {
 	dock_node_t *sidebar1 = dock_leaf_create();
 	dock_default_leaf(sidebar1, TAB_MATERIALS);
 	dock_default_leaf(sidebar1, TAB_LIBRARY);
+	dock_default_leaf(sidebar1, TAB_SMART);
 	dock_default_leaf(sidebar1, TAB_BRUSHES);
 
 	f32 scale     = g_config->window_scale;
@@ -510,7 +511,7 @@ void ui_dock_load() {
 		tab_draw_t *tab = ui_base_get_tab(i);
 		if (tab != NULL && !docked[i]) {
 			tab->closed = tab->closed_default;
-			dock_leaf_add(i == TAB_LIBRARY ? materials_leaf : leaves[0], i, -1);
+			dock_leaf_add(i == TAB_LIBRARY || i == TAB_SMART ? materials_leaf : leaves[0], i, -1);
 		}
 	}
 	ui_dock_layout();

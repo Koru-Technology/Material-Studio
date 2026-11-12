@@ -1023,15 +1023,36 @@ scene_t *startup_get_scene(void) {
 				ve->data                       = "float2";
 				sc->vertex_elements->buffer[0] = ve;
 			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
+			sc->constants = (shader_const_t_array_t *)any_array_create(4);
+			{
+				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
+				c->name                  = "inv_vp";
+				c->type                  = "float4x4";
+				c->link                  = "_taa_inv_vp";
+				sc->constants->buffer[0] = c;
+			}
+			{
+				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
+				c->name                  = "prev_vp";
+				c->type                  = "float4x4";
+				c->link                  = "_taa_prev_vp";
+				sc->constants->buffer[1] = c;
+			}
+			{
+				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
+				c->name                  = "texel";
+				c->type                  = "float2";
+				c->link                  = "_screen_size_inv";
+				sc->constants->buffer[2] = c;
+			}
 			{
 				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
 				c->name                  = "taa_blend";
 				c->type                  = "float";
 				c->link                  = "_taa_blend";
-				sc->constants->buffer[0] = c;
+				sc->constants->buffer[3] = c;
 			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
+			sc->texture_units = (tex_unit_t_array_t *)any_array_create(3);
 			{
 				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
 				tu->name                     = "tex";
@@ -1041,6 +1062,11 @@ scene_t *startup_get_scene(void) {
 				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
 				tu->name                     = "tex2";
 				sc->texture_units->buffer[1] = tu;
+			}
+			{
+				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+				tu->name                     = "gbufferD";
+				sc->texture_units->buffer[2] = tu;
 			}
 			sd->contexts->buffer[0] = sc;
 		}

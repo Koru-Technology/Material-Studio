@@ -671,6 +671,21 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 		ui_node_canvas_t *c = util_clone_canvas(project->material_nodes->buffer[i]); // Project data is temporary
 		import_arm_init_nodes(c->nodes);
 		g_context->material = slot_material_create(m0, c);
+		if (project->material_datas != NULL && i < project->material_datas->length) {
+			// Channels and texture scale and rotation travel with the material file
+			material_data2_t *md              = project->material_datas->buffer[i];
+			g_context->material->paint_base   = md->paint_base;
+			g_context->material->paint_opac   = md->paint_opac;
+			g_context->material->paint_occ    = md->paint_occ;
+			g_context->material->paint_rough  = md->paint_rough;
+			g_context->material->paint_met    = md->paint_met;
+			g_context->material->paint_nor    = md->paint_nor;
+			g_context->material->paint_height = md->paint_height;
+			g_context->material->paint_emis   = md->paint_emis;
+			g_context->material->paint_subs   = md->paint_subs;
+			g_context->material->uv_scale     = md->uv_scale > 0.0 ? md->uv_scale : 1.0;
+			g_context->material->uv_angle     = md->uv_angle;
+		}
 		any_array_push(g_project->_->materials, g_context->material);
 		any_array_push(imported, g_context->material);
 		history_new_material();
@@ -1179,6 +1194,8 @@ void import_arm_run_project(char *path) {
 		g_context->material->paint_height = md->paint_height;
 		g_context->material->paint_emis   = md->paint_emis;
 		g_context->material->paint_subs   = md->paint_subs;
+		g_context->material->uv_scale     = md->uv_scale;
+		g_context->material->uv_angle     = md->uv_angle;
 
 		any_array_push(g_project->_->materials, g_context->material);
 	}

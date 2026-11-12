@@ -146,6 +146,7 @@ void context_init() {
 	g_context->brush_opacity                = 1.0;
 	g_context->brush_scale                  = 1.0;
 	g_context->brush_angle                  = 0.0;
+	g_context->mask_value                   = 1.0;
 	g_context->brush_lazy_radius            = 0.0;
 	g_context->brush_lazy_step              = 0.0;
 	g_context->brush_lazy_x                 = 0.0;

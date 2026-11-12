@@ -6,8 +6,6 @@ void make_texcoord_run(node_shader_t *kong, bool is_atlas) {
 	bool      fill_layer = g_context->layer->fill_material != NULL;
 	uv_type_t uv_type    = fill_layer ? g_context->layer->uv_type : g_context->brush_paint;
 	bool      decal      = context_is_decal();
-	f32       angle      = g_context->brush_angle + g_context->brush_nodes_angle;
-	f32       uv_angle   = fill_layer ? g_context->layer->angle : angle;
 
 	char *scale = "1.0";
 	if (!is_atlas) {
@@ -21,10 +19,10 @@ void make_texcoord_run(node_shader_t *kong, bool is_atlas) {
 		if (fill_layer) { // Decal layer
 			node_shader_write_attrib_frag(kong, "if (uvsp.x < 0.0 || uvsp.y < 0.0 || uvsp.x > 1.0 || uvsp.y > 1.0) { discard; }");
 
-			if (uv_angle != 0.0) {
-				node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
-				node_shader_write_attrib_frag(kong, "uvsp = float2(uvsp.x * constants.brush_angle.x - uvsp.y * constants.brush_angle.y, uvsp.x * "
-				                                    "constants.brush_angle.y + uvsp.y * constants.brush_angle.x);");
+			{ // Rotation is a uniform, turning it needs no new shader
+				node_shader_add_constant(kong, "float2 uv_angle", "_uv_angle");
+				node_shader_write_attrib_frag(kong, "uvsp = float2(uvsp.x * constants.uv_angle.x - uvsp.y * constants.uv_angle.y, uvsp.x * "
+				                                    "constants.uv_angle.y + uvsp.y * constants.uv_angle.x);");
 			}
 
 			kong->frag_n = true;
@@ -115,10 +113,10 @@ void make_texcoord_run(node_shader_t *kong, bool is_atlas) {
 				                                    "constants.brush_direction.y + uvsp.y * constants.brush_direction.x);");
 			}
 
-			if (uv_angle != 0.0) {
-				node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
-				node_shader_write_attrib_frag(kong, "uvsp = float2(uvsp.x * constants.brush_angle.x - uvsp.y * constants.brush_angle.y, uvsp.x * "
-				                                    "constants.brush_angle.y + uvsp.y * constants.brush_angle.x);");
+			{ // Rotation is a uniform, turning it needs no new shader
+				node_shader_add_constant(kong, "float2 uv_angle", "_uv_angle");
+				node_shader_write_attrib_frag(kong, "uvsp = float2(uvsp.x * constants.uv_angle.x - uvsp.y * constants.uv_angle.y, uvsp.x * "
+				                                    "constants.uv_angle.y + uvsp.y * constants.uv_angle.x);");
 			}
 
 			node_shader_add_constant(kong, "float brush_scale_x", "_brush_scale_x");
@@ -128,10 +126,10 @@ void make_texcoord_run(node_shader_t *kong, bool is_atlas) {
 		}
 		else {
 			node_shader_write_attrib_frag(kong, "uvsp.x *= constants.aspect_ratio;");
-			if (uv_angle != 0.0) {
-				node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
-				node_shader_write_attrib_frag(kong, "uvsp = float2(uvsp.x * constants.brush_angle.x - uvsp.y * constants.brush_angle.y, uvsp.x * "
-				                                    "constants.brush_angle.y + uvsp.y * constants.brush_angle.x);");
+			{ // Rotation is a uniform, turning it needs no new shader
+				node_shader_add_constant(kong, "float2 uv_angle", "_uv_angle");
+				node_shader_write_attrib_frag(kong, "uvsp = float2(uvsp.x * constants.uv_angle.x - uvsp.y * constants.uv_angle.y, uvsp.x * "
+				                                    "constants.uv_angle.y + uvsp.y * constants.uv_angle.x);");
 			}
 		}
 
@@ -156,11 +154,11 @@ void make_texcoord_run(node_shader_t *kong, bool is_atlas) {
 			node_shader_write_vert(kong, string_tmp("output.tex_coord = input.tex * %s;", scale));
 		}
 
-		if (uv_angle > 0.0) {
-			node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
+		{ // Rotation is a uniform, turning it needs no new shader
+			node_shader_add_constant(kong, "float2 uv_angle", "_uv_angle");
 			node_shader_write_vert(kong,
-			                       "output.tex_coord = float2(output.tex_coord.x * constants.brush_angle.x - output.tex_coord.y * constants.brush_angle.y, "
-			                       "output.tex_coord.x * constants.brush_angle.y + output.tex_coord.y * constants.brush_angle.x);");
+			                       "output.tex_coord = float2(output.tex_coord.x * constants.uv_angle.x - output.tex_coord.y * constants.uv_angle.y, "
+			                       "output.tex_coord.x * constants.uv_angle.y + output.tex_coord.y * constants.uv_angle.x);");
 		}
 		node_shader_write_attrib_frag(kong, "float2 tex_coord = input.tex_coord;");
 	}
@@ -174,14 +172,14 @@ void make_texcoord_run(node_shader_t *kong, bool is_atlas) {
 		node_shader_write_attrib_frag(kong, string_tmp("float2 tex_coord = input.wposition.yz * %s * 0.5;", scale));
 		node_shader_write_attrib_frag(kong, string_tmp("float2 tex_coord1 = input.wposition.xz * %s * 0.5;", scale));
 		node_shader_write_attrib_frag(kong, string_tmp("float2 tex_coord2 = input.wposition.xy * %s * 0.5;", scale));
-		if (uv_angle != 0.0) {
-			node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
-			node_shader_write_attrib_frag(kong, "tex_coord = float2(tex_coord.x * constants.brush_angle.x - tex_coord.y * constants.brush_angle.y, tex_coord.x "
-			                                    "* constants.brush_angle.y + tex_coord.y * constants.brush_angle.x);");
-			node_shader_write_attrib_frag(kong, "tex_coord1 = float2(tex_coord1.x * constants.brush_angle.x - tex_coord1.y * constants.brush_angle.y, "
-			                                    "tex_coord1.x * constants.brush_angle.y + tex_coord1.y * constants.brush_angle.x);");
-			node_shader_write_attrib_frag(kong, "tex_coord2 = float2(tex_coord2.x * constants.brush_angle.x - tex_coord2.y * constants.brush_angle.y, "
-			                                    "tex_coord2.x * constants.brush_angle.y + tex_coord2.y * constants.brush_angle.x);");
+		{ // Rotation is a uniform, turning it needs no new shader
+			node_shader_add_constant(kong, "float2 uv_angle", "_uv_angle");
+			node_shader_write_attrib_frag(kong, "tex_coord = float2(tex_coord.x * constants.uv_angle.x - tex_coord.y * constants.uv_angle.y, tex_coord.x "
+			                                    "* constants.uv_angle.y + tex_coord.y * constants.uv_angle.x);");
+			node_shader_write_attrib_frag(kong, "tex_coord1 = float2(tex_coord1.x * constants.uv_angle.x - tex_coord1.y * constants.uv_angle.y, "
+			                                    "tex_coord1.x * constants.uv_angle.y + tex_coord1.y * constants.uv_angle.x);");
+			node_shader_write_attrib_frag(kong, "tex_coord2 = float2(tex_coord2.x * constants.uv_angle.x - tex_coord2.y * constants.uv_angle.y, "
+			                                    "tex_coord2.x * constants.uv_angle.y + tex_coord2.y * constants.uv_angle.x);");
 		}
 	}
 }

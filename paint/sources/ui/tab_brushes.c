@@ -79,6 +79,79 @@ void tab_brushes_draw_edit() {
 	}
 }
 
+// Brush presets: the tool, brush settings and material saved by name, kept across projects
+
+static i32   tab_brushes_preset_i    = -1; // Preset being renamed, -1 while saving a new one
+static char *tab_brushes_preset_name = "";
+
+static i32 tab_brushes_preset_tab = 0;
+
+static void tab_brushes_preset_name_box() {
+	if (ui_tab(&tab_brushes_preset_tab, tab_brushes_preset_i < 0 ? tr("Save Preset") : tr("Rename Preset"), false, -1, false)) {
+		ui_row2();
+		char *name = ui_text_input(&tab_brushes_preset_name, tr("Name"), UI_ALIGN_LEFT, true, false);
+		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
+			if (tab_brushes_preset_i < 0) {
+				brush_presets_add(name);
+			}
+			else {
+				brush_presets_rename(tab_brushes_preset_i, name);
+			}
+			ui_box_hide();
+			ui_dock_redraw(TAB_AREA_SIDEBAR1);
+		}
+	}
+}
+
+static void tab_brushes_preset_save() {
+	tab_brushes_preset_i = -1;
+	char *material       = g_context->material != NULL ? g_context->material->canvas->name : tr("Brush");
+	char *name           = string_copy(material);
+	for (i32 n = 2; brush_presets_find(name) >= 0; ++n) {
+		name = string("%s %d", material, n);
+	}
+	tab_brushes_preset_name = name;
+	ui_box_show_custom(&tab_brushes_preset_name_box, 400, 200, NULL, true, "");
+}
+
+static void tab_brushes_preset_menu() {
+	i32 i = tab_brushes_preset_i;
+	if (ui_menu_button(tr("Update"), "", ICON_SAVE)) {
+		brush_presets_add(brush_presets_name(i)); // Same name, the current settings
+	}
+	if (ui_menu_button(tr("Rename"), "", ICON_EDIT)) {
+		tab_brushes_preset_name = string_copy(brush_presets_name(i));
+		ui_box_show_custom(&tab_brushes_preset_name_box, 400, 200, NULL, true, "");
+	}
+	if (ui_menu_button(tr("Delete"), "", ICON_DELETE)) {
+		brush_presets_delete(i);
+		ui_dock_redraw(TAB_AREA_SIDEBAR1);
+	}
+}
+
+static void tab_brushes_draw_presets() {
+	ui_separator(3, false);
+	ui_row2();
+	ui_text(tr("Presets"), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+	if (ui_icon_button(tr("Save"), ICON_PLUS, UI_ALIGN_CENTER)) {
+		tab_brushes_preset_save();
+	}
+	if (g_ui->is_hovered) {
+		ui_tooltip(tr("Saves the tool, the brush settings and the material"));
+	}
+	i32 count = brush_presets_count();
+	for (i32 i = 0; i < count; ++i) {
+		char *name = brush_presets_name(i);
+		if (ui_button(name, UI_ALIGN_LEFT, "")) {
+			brush_presets_apply(i);
+		}
+		if (g_ui->is_hovered && g_ui->input_released_r) {
+			tab_brushes_preset_i = i;
+			ui_menu_draw(&tab_brushes_preset_menu, -1, -1);
+		}
+	}
+}
+
 // Built-in brushes: tip and stroke settings, tap to use
 static void tab_brushes_draw_builtin() {
 	ui_separator(3, false);
@@ -318,6 +391,8 @@ void tab_brushes_draw(i32 *htab) {
 				}
 			}
 		}
+
+		tab_brushes_draw_presets();
 
 		if (!g_config->hide_builtin_brushes) {
 			tab_brushes_draw_builtin();
