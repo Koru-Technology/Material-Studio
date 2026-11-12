@@ -203,7 +203,7 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 		f32 angle       = g_context->layer->fill_material != NULL ? g_context->layer->angle : brush_angle;
 		angle *= (math_pi() / 180.0);
 		if (g_context->layer->fill_material == NULL && !slot_layer_is_path(g_context->layer)) {
-			if (g_config->dyn_angle == 1 && (pen_down("tip") || pen_released("tip"))) {
+			if (g_config->dyn_angle == 1 && util_brush_pen_active()) {
 				angle += util_brush_pen_pressure() * math_pi(); // Pressure turns the brush up to half a turn
 			}
 			else if (g_config->dyn_angle == 2 && g_context->brush_time > 0) {

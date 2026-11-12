@@ -169,7 +169,8 @@ gpu_texture_t *script_get_texture(char *s) {
 			return g_project->_->assets->buffer[i]->image;
 		}
 	}
-	return NULL;
+	render_target_t *rt = any_map_get(render_path_render_targets, s); // Or a render target, for tests
+	return rt != NULL ? rt->_image : NULL;
 }
 
 void script_texture_delete(char *s) {
@@ -971,11 +972,7 @@ void script_brush_take(void) {
 	s->dyn_angle            = g_config->dyn_angle;
 }
 
-static void script_brush_put_back(void) {
-	script_brush_state_t *s = &script_brush_saved;
-	if (!s->taken) {
-		return;
-	}
+static void script_brush_apply(script_brush_state_t *s) {
 	g_context->tool                 = s->tool;
 	g_context->brush_builtin        = s->builtin;
 	g_context->brush_blending       = s->blending;
@@ -997,6 +994,27 @@ static void script_brush_put_back(void) {
 	g_config->dyn_flow              = s->dyn_flow;
 	g_config->dyn_hardness          = s->dyn_hardness;
 	g_config->dyn_angle             = s->dyn_angle;
+}
+
+static void script_brush_put_back(void) {
+	if (!script_brush_saved.taken) {
+		return;
+	}
+	script_brush_apply(&script_brush_saved);
+	script_brush_saved.taken = false;
+}
+
+// Swaps the user's brush settings with the script's: the config saves the user's while a script runs, not the test brush.
+// Twice puts things back as they were.
+void script_brush_swap(void) {
+	if (!script_brush_saved.taken) {
+		return;
+	}
+	script_brush_state_t user = script_brush_saved;
+	script_brush_take();
+	script_brush_state_t script = script_brush_saved;
+	script_brush_apply(&user);
+	script_brush_saved = script;
 }
 
 // A plain round brush for tests, whatever brush the user left picked: no built-in tip, full strength, no pressure or jitter
@@ -1021,6 +1039,18 @@ void script_brush_defaults(void) {
 	g_config->dyn_angle             = 0;
 	brush_output_node_parse_inputs();
 	make_material_parse_paint_material(true);
+}
+
+// Renders the stroke preview of the current brush, painted as a Pencil stroke, and returns it
+gpu_texture_t *script_brush_wave(void) {
+	make_material_parse_brush();
+	brush_output_node_parse_inputs();
+	gpu_texture_t *current;
+	bool           in_use;
+	script_gpu_begin(&current, &in_use);
+	util_render_make_brush_preview();
+	script_gpu_end(current, in_use);
+	return g_context->brush->image_wave;
 }
 
 void script_quit(void) {

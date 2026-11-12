@@ -125,8 +125,8 @@ f32 util_brush_pen_pressure() {
 	return p * g_config->pressure_sensitivity;
 }
 
-static bool util_brush_pen_active() {
-	return pen_down("tip") || pen_released("tip");
+bool util_brush_pen_active() {
+	return util_brush_preview_pen || pen_down("tip") || pen_released("tip");
 }
 
 // How far the pen leans, 0 upright (above 80 degrees) to 1 flat (below 20 degrees)

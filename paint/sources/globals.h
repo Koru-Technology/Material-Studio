@@ -259,6 +259,7 @@ f32                   util_brush_sample_pressure        = -1.0;  // Pressure of 
 f32                   util_brush_sample_altitude        = -1.0;  // Angles of the pen sample being drawn, -1 for the current pen angles
 f32                   util_brush_sample_azimuth         = 0.0;
 f32                   util_brush_sample_roll            = 0.0;
+bool                  util_brush_preview_pen            = false; // The brush preview paints as a pen, its samples set the pressure
 i32                   util_render_material_preview_size = 256;
 f32                   util_render_brush_wave_strip      = 0.25; // Wave preview height relative to its width
 i32                   util_render_node_preview_size     = 512;

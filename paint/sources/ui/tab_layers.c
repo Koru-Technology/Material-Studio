@@ -1407,6 +1407,7 @@ void tab_layers_draw_full(i32 *htab) {
 
 // Touch popover, the only content so no tab above it
 void tab_layers_draw_popover() {
+	ui_set_hovered_tab_name(tr("Layers")); // Drops and the long press menu look for the tab name, see context_in_layers()
 	tab_layers_draw_content(true);
 }
 

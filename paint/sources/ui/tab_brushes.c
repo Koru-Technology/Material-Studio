@@ -222,6 +222,37 @@ static void tab_brushes_draw_builtin() {
 
 static gpu_texture_t *tab_brushes_builtin_rows[64];
 static i32            tab_brushes_row_pending = -1; // Row whose stroke renders on the next frame
+static i32            tab_brushes_row_refresh = -1; // Rows from this one render again, the pen settings changed; -1 when current
+
+// The pen settings that shape the strokes: they are painted as a Pencil stroke
+typedef struct {
+	i32 dyn[5];
+	f32 curve;
+	f32 min;
+	f32 sensitivity;
+} tab_brushes_pen_t;
+
+static tab_brushes_pen_t tab_brushes_pen;
+static bool              tab_brushes_pen_set = false;
+
+static void tab_brushes_check_pen() {
+	tab_brushes_pen_t p;
+	memset(&p, 0, sizeof(p));
+	p.dyn[0]      = g_config->dyn_size;
+	p.dyn[1]      = g_config->dyn_opacity;
+	p.dyn[2]      = g_config->dyn_flow;
+	p.dyn[3]      = g_config->dyn_hardness;
+	p.dyn[4]      = g_config->dyn_angle;
+	p.curve       = g_config->pressure_curve;
+	p.min         = g_config->pressure_min;
+	p.sensitivity = g_config->pressure_sensitivity;
+	if (tab_brushes_pen_set && memcmp(&p, &tab_brushes_pen, sizeof(p)) != 0) {
+		tab_brushes_row_refresh         = 0;
+		g_context->brush->preview_ready = false; // The parameters panel stroke too
+	}
+	tab_brushes_pen     = p;
+	tab_brushes_pen_set = true;
+}
 
 static gpu_texture_t *tab_brushes_row_image(i32 r) {
 	i32 n = g_project->_->brushes->length;
@@ -274,6 +305,9 @@ static void tab_brushes_make_row_image(void *_) {
 			draw_begin(current, false, 0);
 	}
 	g_context->brush->preview_ready = false; // Its previews show this row's stroke now, the parameters panel renders them again
+	if (tab_brushes_row_refresh >= 0 && r >= tab_brushes_row_refresh) {
+		tab_brushes_row_refresh = r + 1 < n + builtin_brush_count() ? r + 1 : -1;
+	}
 
 	g_context->brush                = _brush;
 	g_context->brush_builtin        = _builtin;
@@ -342,11 +376,13 @@ static void tab_brushes_select_project_brush(i32 i) {
 }
 
 static void tab_brushes_draw_rows() {
+	tab_brushes_check_pen();
 	i32 n     = g_project->_->brushes->length;
 	i32 count = n + builtin_brush_count();
 	for (i32 r = 0; r < count; ++r) {
-		gpu_texture_t *img = tab_brushes_row_image(r);
-		if (img == NULL && tab_brushes_row_pending == -1) {
+		gpu_texture_t *img   = tab_brushes_row_image(r);
+		bool           stale = img == NULL || (tab_brushes_row_refresh >= 0 && r >= tab_brushes_row_refresh);
+		if (stale && tab_brushes_row_pending == -1) {
 			tab_brushes_row_pending = r;
 			sys_notify_on_next_frame(&tab_brushes_make_row_image, NULL);
 		}
@@ -393,6 +429,7 @@ void tab_brushes_draw_content() {
 
 // Touch popover, the only content so no tab above it: title with Nodes, Edit and + buttons
 void tab_brushes_draw_popover() {
+	ui_set_hovered_tab_name(tr("Brushes")); // See context_in_brushes()
 	tab_brushes_draw_slots(true);
 }
 

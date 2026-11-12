@@ -418,12 +418,22 @@ void util_render_make_brush_preview_parse_paint_material(void *_) {
 
 #define UTIL_RENDER_BRUSH_DOT_RADIUS 1.0
 
+// A gentle rising S, as a pen stroke across a brush library row
 static f32 util_render_brush_wave_x(i32 i, i32 segments) {
-	return 0.15 + 0.7 * (i / (f32)segments);
+	return 0.1 + 0.8 * (i / (f32)segments);
 }
 
 static f32 util_render_brush_wave_y(i32 i, i32 segments) {
-	return 0.5 + 0.04 * sinf(i / (f32)segments * math_pi() * 2.0);
+	f32 t = i / (f32)segments;
+	return 0.5 + 0.035 * sinf(t * math_pi() * 2.0) - 0.02 * (t - 0.5);
+}
+
+// Pen pressure along the preview stroke: a quick press, a long hold and a longer lift
+static f32 util_render_brush_wave_pressure(i32 i, i32 segments) {
+	f32 t = i / (f32)segments;
+	t     = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
+	f32 p = sinf(math_pi() * powf(t, 0.8));
+	return p < 0.02 ? 0.02 : p;
 }
 
 // Scale the horizontal strip of the given height around the center of the live layer down to the target
@@ -434,6 +444,12 @@ static void util_render_brush_preview_copy(gpu_texture_t *source, gpu_texture_t 
 	draw_scaled_sub_image(source, 0, (source->height - sh) / 2.0, source->width, sh, 0, 0, target->width, target->height);
 	draw_set_pipeline(NULL);
 	draw_end();
+}
+
+// Stroke coverage starts empty, a previous stroke or preview would show through
+static void util_render_brush_preview_clear_coverage() {
+	g_context->brush_blend_dirty = true;
+	render_path_paint_clear_blend();
 }
 
 void util_render_make_brush_preview() {
@@ -569,11 +585,13 @@ void util_render_make_brush_preview() {
 	g_context->last_paint_vec_y = 0.5;
 	g_context->paint_vec.x      = 0.5;
 	g_context->paint_vec.y      = 0.5;
+	util_render_brush_preview_clear_coverage();
 	render_path_paint_commands_paint(false);
 	util_render_brush_preview_copy(l->texpaint, g_context->brush->image, 0.0);
 
 	// Shallow sine wave, generated at runtime for the parameters panel
 	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+	util_render_brush_preview_clear_coverage(); // The dot's coverage would build up the stroke where they overlap
 	g_context->brush_radius   = 0.25;
 	g_context->brush_hardness = _brush_hardness; // The stroke shows the brush as it paints
 
@@ -615,14 +633,23 @@ void util_render_make_brush_preview() {
 	f32  lazy_step   = g_context->brush_lazy_step;
 	bool sphere_mode = lazy_r > 0 && lazy_step > 0;
 
-	// The mouse moves along the wave and the brush follows it as in input_node_update
-	// Spaced dabs are left in sphere mode, sampled finely as a slow mouse would be
+	// A pen moves along the wave and the brush follows it as in input_node_update: pressure, speed and direction
+	// change along the stroke, so the dynamics shape it as they would a Pencil stroke. The pen stays upright.
+	f32 _brush_speed        = g_context->brush_speed;
+	f32 _brush_stroke_angle = g_context->brush_stroke_angle;
+	f64 _brush_time         = g_context->brush_time;
+	util_brush_preview_pen  = true;
+	util_brush_sample_altitude = math_pi() / 2.0;
+	util_brush_sample_azimuth  = 0.0;
+	util_brush_sample_roll     = 0.0;
+
+	// Spaced dabs are left in sphere mode, sampled finely as a slow pen would be
 	f32 aspect  = sys_w() / (f32)sys_h();
-	i32 samples = 64;
+	i32 samples = 128;
 	if (sphere_mode) {
 		f32 len = 0.7 * aspect;
 		samples = math_ceil(len / (lazy_step * lazy_r) * 4.0);
-		samples = samples < 64 ? 64 : samples > 256 ? 256 : samples;
+		samples = samples < 128 ? 128 : samples > 256 ? 256 : samples;
 	}
 	f32 bx = util_render_brush_wave_x(0, samples) * aspect; // Brush, aspect corrected
 	f32 by = util_render_brush_wave_y(0, samples);
@@ -652,6 +679,12 @@ void util_render_make_brush_preview() {
 		g_context->last_paint_vec_y = sphere_mode ? by : ly;
 		g_context->paint_vec.x      = bx / aspect;
 		g_context->paint_vec.y      = by;
+		g_context->brush_time       = i == 0 ? 0.0 : 1.0; // One stroke: it starts at the first dab and does not build up after
+		util_brush_sample_pressure  = util_render_brush_wave_pressure(i, samples);
+		g_context->brush_speed      = sinf(math_pi() * i / (f32)samples); // Slow at the ends
+		if (bx != lx || by != ly) {
+			g_context->brush_stroke_angle = atan2f(-(by - ly), bx - lx);
+		}
 		if (stamps) {
 			g_context->pdirty = 2;
 			render_path_paint_commands_stamps();
@@ -663,6 +696,12 @@ void util_render_make_brush_preview() {
 		ly = by;
 	}
 	util_render_brush_preview_copy(l->texpaint, g_context->brush->image_wave, util_render_brush_wave_strip);
+	util_brush_preview_pen        = false;
+	util_brush_sample_pressure    = -1.0;
+	util_brush_sample_altitude    = -1.0;
+	g_context->brush_speed        = _brush_speed;
+	g_context->brush_stroke_angle = _brush_stroke_angle;
+	g_context->brush_time         = _brush_time;
 	g_context->brush_dab_x = -1.0;
 	g_context->brush_dab_y = -1.0;
 	g_context->posx_picked = _posx_picked;

@@ -43,10 +43,18 @@ void config_load() {
 	free(path);
 }
 
+static void config_save_now();
+
 void config_save() {
 	if (base_player) {
 		return;
 	}
+	script_brush_swap(); // A running script's test brush is not saved
+	config_save_now();
+	script_brush_swap();
+}
+
+static void config_save_now() {
 	g_config->pressure_radius   = g_config->dyn_size == 1;
 	g_config->pressure_opacity  = g_config->dyn_opacity == 1;
 	g_config->pressure_hardness = g_config->dyn_hardness == 1;

@@ -77,6 +77,16 @@ i32 ui_popovers_current() {
 	return ui_popovers_open;
 }
 
+// Rectangle of the open popover, 0 x, 1 y, 2 w, 3 h (w is 0 when none is shown), for scripts
+i32 ui_popovers_rect_get(i32 i) {
+	return i >= 0 && i < 4 ? ui_popovers_pop_rect[i] : 0;
+}
+
+// A menu (context menu, combo list) is open, for scripts
+bool ui_menu_shown() {
+	return ui_menu_show;
+}
+
 // Opens popover p (1 layers, 2 brushes, 3 materials), 0 closes
 void ui_popovers_show(i32 p) {
 	ui_popovers_open = p >= POPOVER_NONE && p <= POPOVER_MATERIALS ? (popover_t)p : POPOVER_NONE;
