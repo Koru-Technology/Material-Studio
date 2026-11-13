@@ -39,9 +39,8 @@ static void make_curvature_norm(f32 *v) {
 	}
 }
 
-static u64 make_curvature_objects_key() {
-	u64                    key  = 1469598103934665603ull;
-	mesh_object_t_array_t *objs = g_project->_->paint_objects;
+static u64 make_curvature_objects_key(mesh_object_t_array_t *objs) {
+	u64 key = 1469598103934665603ull;
 	for (i32 i = 0; i < objs->length; ++i) {
 		mesh_object_t *o = objs->buffer[i];
 		u64            v = (u64)(uintptr_t)o->data ^ ((u64)(o->data != NULL && o->data->index_array != NULL ? o->data->index_array->length : 0) << 40);
@@ -62,10 +61,9 @@ static void make_curvature_free_mesh() {
 	memset(&make_curvature_mesh, 0, sizeof(make_curvature_mesh_t));
 }
 
-static void make_curvature_read_mesh() {
+static void make_curvature_read_mesh(mesh_object_t_array_t *objs) {
 	make_curvature_free_mesh();
-	mesh_object_t_array_t *objs  = g_project->_->paint_objects;
-	i32                    count = 0;
+	i32 count = 0;
 	for (i32 i = 0; i < objs->length; ++i) {
 		if (make_curvature_usable(objs->buffer[i])) {
 			count += objs->buffer[i]->data->index_array->length / 3;
@@ -252,7 +250,8 @@ typedef struct make_curvature_eval {
 	f32  offset;
 	f32  axis[3];
 	bool use_axis;
-	bool convex;
+	i32  side; // 0 ridges and grooves, 1 ridges, 2 grooves
+	f32 *raw;  // Curvature of either side, normalizing by it keeps the faint side faint
 } make_curvature_eval_t;
 
 // Triangles too small to cover any texel centre are splatted once at their centroid
@@ -385,10 +384,14 @@ static void make_curvature_raster(make_curvature_grid_t *g, i32 w, i32 h, i32 ro
 					if (sum[0] > 0.0) {
 						c = sqrtf(fmaxf(1.0 - sqrtf(sum[1] * sum[1] + sum[2] * sum[2] + sum[3] * sum[3]) / sum[0], 0.0));
 					}
+					if (e->raw != NULL) {
+						e->raw[y * w + x] = fminf(fmaxf(powf(c, e->exponent) * e->strength * 2.0 + e->offset / 10.0, 0.0), 1.0);
+					}
 					// Surface around a ridge lies behind it, around a groove in front of it
-					if (e->convex && sum[4] > 0.0) {
-						f32 d = ((p[0] - sum[5] / sum[4]) * n[0] + (p[1] - sum[6] / sum[4]) * n[1] + (p[2] - sum[7] / sum[4]) * n[2]) / g->size;
-						c *= fminf(fmaxf(0.5 + d * 25.0, 0.0), 1.0);
+					if (e->side != 0 && sum[4] > 0.0) {
+						f32 d     = ((p[0] - sum[5] / sum[4]) * n[0] + (p[1] - sum[6] / sum[4]) * n[1] + (p[2] - sum[7] / sum[4]) * n[2]) / g->size;
+						f32 ridge = fminf(fmaxf(0.5 + d * 25.0, 0.0), 1.0);
+						c *= e->side == 1 ? ridge : 1.0 - ridge;
 					}
 					c = powf(c, e->exponent) * e->strength * 2.0 + e->offset / 10.0;
 					c = fminf(fmaxf(c, 0.0), 1.0);
@@ -601,16 +604,24 @@ static f32 make_curvature_input(ui_node_t *node, i32 socket, ui_node_canvas_t *c
 
 void make_curvature_bake(ui_node_t *node, ui_node_canvas_t *group, ui_node_t_array_t *parents, char *id) {
 	ui_node_canvas_t *canvas   = group != NULL ? group : g_context->material->canvas;
-	i32               res_x    = math_floor(config_get_texture_res_x());
-	i32               res_y    = math_floor(config_get_texture_res_y());
 	f32               strength = make_curvature_input(node, 0, canvas, parents, parents->length);
 	f32               radius   = make_curvature_input(node, 1, canvas, parents, parents->length);
 	f32               offset   = make_curvature_input(node, 2, canvas, parents, parents->length);
 	bool              convex   = node->buttons->length > 0 && node->buttons->buffer[0]->default_value->buffer[0] > 0; // Missing in older projects
-	u64               key      = make_curvature_objects_key();
+	make_curvature_bake_mesh(id, g_project->_->paint_objects, math_floor(config_get_texture_res_x()), math_floor(config_get_texture_res_y()), strength, radius,
+	                         offset, convex ? 1 : 0, true, false, 1.0);
+}
+
+// Curvature of the meshes into texture id of g_context->node_previews, baked again only when a setting or the meshes changed
+void make_curvature_bake_mesh(char *id, mesh_object_t_array_t *objs, i32 res_x, i32 res_y, f32 strength, f32 radius, f32 offset, i32 side, bool use_axis,
+                              bool normalize, f32 spread) {
+	u64 key = make_curvature_objects_key(objs);
+	if (g_context->node_previews == NULL) {
+		g_context->node_previews = any_map_create();
+	}
 
 	if (make_curvature_mesh.key != key || make_curvature_mesh.p == NULL) {
-		make_curvature_read_mesh();
+		make_curvature_read_mesh(objs);
 		make_curvature_mesh.key = key;
 	}
 
@@ -620,8 +631,11 @@ void make_curvature_bake(ui_node_t *node, ui_node_canvas_t *group, ui_node_t_arr
 	}
 	f32_array_t   *baked = any_map_get(make_curvature_baked, id);
 	gpu_texture_t *image = any_map_get(g_context->node_previews, id);
-	any_array_push(g_context->node_previews_used, id);
-	f32 settings[7] = {strength, radius, offset, (f32)g_context->bake_axis, (f32)(key & 0xffffff), (f32)(key >> 40), (f32)convex};
+	if (g_context->node_previews_used != NULL) {
+		any_array_push(g_context->node_previews_used, id);
+	}
+	i32 axis        = use_axis ? g_context->bake_axis : BAKE_AXIS_XYZ;
+	f32 settings[7] = {strength, radius, offset, (f32)axis, (f32)(key & 0xffffff), (f32)(key >> 40), (f32)(side + (normalize ? 10 : 0)) + spread * 100.0f};
 	if (image != NULL && image->width == res_x && image->height == res_y && baked != NULL && memcmp(baked->buffer, settings, sizeof(settings)) == 0) {
 		return;
 	}
@@ -633,15 +647,17 @@ void make_curvature_bake(ui_node_t *node, ui_node_canvas_t *group, ui_node_t_arr
 
 	f32                  *out  = calloc(res_x * res_y, sizeof(f32));
 	u8                   *mask = calloc(res_x * res_y, 1);
-	make_curvature_eval_t e    = {.out = out, .mask = mask, .strength = strength, .exponent = 0.5 / fmaxf(radius, 0.001), .offset = offset, .convex = convex};
-	if (g_context->bake_axis != BAKE_AXIS_XYZ) {
-		i32 a      = g_context->bake_axis;
+	f32                  *raw  = normalize && side != 0 ? calloc(res_x * res_y, sizeof(f32)) : NULL;
+	make_curvature_eval_t e    = {
+	       .out = out, .mask = mask, .strength = strength, .exponent = 0.5 / fmaxf(radius, 0.001), .offset = offset, .side = side, .raw = raw};
+	if (axis != BAKE_AXIS_XYZ) {
+		i32 a      = axis;
 		i32 i      = (a == BAKE_AXIS_X || a == BAKE_AXIS_MX) ? 0 : (a == BAKE_AXIS_Y || a == BAKE_AXIS_MY) ? 1 : 2;
 		e.axis[i]  = (a == BAKE_AXIS_MX || a == BAKE_AXIS_MY || a == BAKE_AXIS_MZ) ? -1.0 : 1.0;
 		e.use_axis = true;
 	}
 	// Radius sets the neighbourhood size relative to the model, and how strongly weak curvature is boosted
-	f32                  size    = make_curvature_mesh.diag * 0.0025 * fmaxf(radius, 0.05);
+	f32                  size    = make_curvature_mesh.diag * 0.0025 * fmaxf(radius, 0.05) * spread;
 	i32                  threads = math_max(1, math_min(iron_hardware_threads(), MAKE_CURVATURE_MAX_THREADS));
 	make_curvature_job_t jobs[MAKE_CURVATURE_MAX_THREADS];
 	u8                  *covered = calloc(math_max(make_curvature_mesh.count, 1), 1);
@@ -687,6 +703,30 @@ void make_curvature_bake(ui_node_t *node, ui_node_canvas_t *group, ui_node_t_arr
 	free(tris);
 	free(start);
 	make_curvature_dilate(out, mask, res_x, res_y, math_max(g_config->dilate_radius, 4), jobs, threads);
+	// Normalized: the strongest edges reach 1 whatever the mesh, a few outliers aside. One side is measured against the
+	// curvature of both, a convex model has faint grooves beside its edges that must not reach 1.
+	if (normalize) {
+		f32 *ref       = raw != NULL ? raw : out;
+		i32  hist[256] = {0};
+		i32  total     = 0;
+		for (i32 i = 0; i < res_x * res_y; ++i) {
+			if (mask[i] && ref[i] > 0.0) {
+				hist[(i32)fminf(ref[i] * 255.0f, 255.0f)]++;
+				total++;
+			}
+		}
+		i32 top = 255;
+		for (i32 seen = 0; top > 0; --top) {
+			seen += hist[top];
+			if (seen >= total / 100 + 1) {
+				break;
+			}
+		}
+		f32 scale = 255.0 / fmaxf((f32)top, 1.0);
+		for (i32 i = 0; i < res_x * res_y; ++i) {
+			out[i] = fminf(out[i] * scale, 1.0);
+		}
+	}
 	u16     *hb = malloc(res_x * res_y * 2);
 	buffer_t b  = {.buffer = (u8 *)hb, .length = res_x * res_y * 2};
 	for (i32 i = 0; i < res_x * res_y; ++i) {
@@ -694,6 +734,7 @@ void make_curvature_bake(ui_node_t *node, ui_node_canvas_t *group, ui_node_t_arr
 	}
 	free(out);
 	free(mask);
+	free(raw);
 
 	if (image != NULL) {
 		gpu_delete_texture(image);

@@ -20,6 +20,7 @@ void nodes_material_init() {
 	uv_map_node_init();
 	value_node_init();
 	wireframe_node_init();
+	mask_nodes_init();
 
 	nodes_material_texture = any_array_create_from_raw((void *[]){}, 0);
 	bake_texture_node_init();
@@ -34,6 +35,7 @@ void nodes_material_init() {
 	noise_texture_node_init();
 	text_texture_node_init();
 	voronoi_texture_node_init();
+	pattern_nodes_init();
 	wave_texture_node_init();
 
 	nodes_material_color = any_array_create_from_raw((void *[]){}, 0);
@@ -59,6 +61,7 @@ void nodes_material_init() {
 	combine_xyz_node_init();
 	float_curve_node_init();
 	map_range_node_init();
+	material_mix_node_init();
 	mapping_node_init();
 	math2_node_init();
 	mix_normal_map_node_init();

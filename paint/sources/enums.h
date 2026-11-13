@@ -617,3 +617,42 @@ typedef enum {
 	DYN_SOURCE_AZIMUTH,
 	DYN_SOURCE_ROLL,
 } dyn_source_t;
+
+// Material Studio: what a node of a studio material is for, kept in the high bits of its flags (studio_graph.c)
+typedef enum {
+	STUDIO_ROLE_NONE,
+	STUDIO_ROLE_PATTERN, // Pattern node, absent for a plain layer
+	STUDIO_ROLE_CELLVAR, // Mix Color of the pattern height and its cell value, feeds the ramp
+	STUDIO_ROLE_RAMP,    // Color Ramp, the layer color
+	STUDIO_ROLE_ROUGH,   // Map Range, the layer roughness
+	STUDIO_ROLE_HEIGHT,  // Math multiply, the layer height
+	STUDIO_ROLE_MASK,    // Curvature Mask, Direction Mask or Map Range of the pattern, where the layer shows
+	STUDIO_ROLE_MIX,     // Material Mix over the layers below
+	STUDIO_ROLE_COUNT,
+} studio_role_t;
+
+typedef enum {
+	STUDIO_MASK_FULL,
+	STUDIO_MASK_EDGES,
+	STUDIO_MASK_CAVITIES,
+	STUDIO_MASK_UP,
+	STUDIO_MASK_PATTERN,
+	STUDIO_MASK_COUNT,
+} studio_mask_t;
+
+// Values of a studio layer made of one or more node inputs
+typedef enum {
+	STUDIO_VALUE_ROUGHNESS,
+	STUDIO_VALUE_ROUGH_VAR,
+	STUDIO_VALUE_METALLIC,
+	STUDIO_VALUE_DEPTH,
+	STUDIO_VALUE_CELL_VAR,
+	STUDIO_VALUE_OPACITY,
+	STUDIO_VALUE_MASK_AMOUNT,
+	STUDIO_VALUE_MASK_SOFT,
+	STUDIO_VALUE_MASK_BREAKUP,
+	STUDIO_VALUE_MASK_INVERT,
+	STUDIO_VALUE_COUNT,
+} studio_value_t;
+
+typedef struct studio_graph studio_graph_t; // types.h

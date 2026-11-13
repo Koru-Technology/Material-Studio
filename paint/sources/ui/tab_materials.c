@@ -146,9 +146,21 @@ void tab_materials_delete_unused() {
 	ui_dock_redraw(1);
 }
 
+static void tab_materials_new_studio(void *_) {
+	material_studio_new();
+}
+
+static void tab_materials_open_studio(void *m) {
+	material_studio_open(m);
+}
+
 void tab_materials_draw_slots_menu() {
 	i32              i = _tab_materials_draw_slots;
 	slot_material_t *m = g_project->_->materials->buffer[i];
+
+	if (studio_graph_is(m->canvas) && ui_menu_button(tr("Edit in Studio"), "", ICON_EDIT)) {
+		sys_notify_on_next_frame(&tab_materials_open_studio, m);
+	}
 
 	if (ui_menu_button(tr("To Fill Layer"), "", ICON_SPHERE)) {
 		context_select_material(i);
@@ -311,9 +323,14 @@ void tab_materials_draw_slots(bool mini) {
 				base_drag_off_x    = -(mouse_x - uix - g_ui->_window_x - 3);
 				base_drag_off_y    = -(mouse_y - uiy - g_ui->_window_y + 1);
 				base_drag_material = g_context->material;
-				// Double click to show nodes
+				// Double click to show nodes, studio materials open in the studio on touch
 				if (sys_time() - g_context->select_time < 0.2) {
-					ui_base_show_material_nodes();
+					if (g_config->touch_ui && studio_graph_is(g_context->material->canvas)) {
+						sys_notify_on_next_frame(&tab_materials_open_studio, g_context->material);
+					}
+					else {
+						ui_base_show_material_nodes();
+					}
 					base_drag_material = NULL;
 					base_is_dragging   = false;
 				}
@@ -404,7 +421,8 @@ void tab_materials_button_new_on_next_frame(void *_) {
 
 void tab_materials_button_new(char *text) {
 	if (ui_icon_button(text, ICON_PLUS, UI_ALIGN_CENTER)) {
-		sys_notify_on_next_frame(&tab_materials_button_new_on_next_frame, NULL);
+		// Touch makes it in the Material Studio, the node editor is a step away with Edit Nodes
+		sys_notify_on_next_frame(g_config->touch_ui ? &tab_materials_new_studio : &tab_materials_button_new_on_next_frame, NULL);
 	}
 }
 
@@ -423,6 +441,9 @@ void tab_materials_draw_mini(i32 *htab) {
 }
 
 void tab_materials_draw_edit() {
+	if (ui_menu_button(tr("New Studio Material"), "", ICON_PLUS)) {
+		sys_notify_on_next_frame(&tab_materials_new_studio, NULL);
+	}
 	if (ui_menu_button(tr("Import"), "", ICON_IMPORT)) {
 		project_import_material();
 	}

@@ -38,6 +38,7 @@ void  script_on_next_frame(void *_) {
     }
 }
 void script_notify_on_next_frame(void *fn) {
+	iron_delay_idle_sleep(); // The next frame comes even when nothing else changes
 	sys_notify_on_next_frame(script_on_next_frame, NULL);
 	script_next_frame_fn = fn;
 }
@@ -1574,6 +1575,9 @@ void script_mouse_press(i32 x, i32 y, i32 button) {
 void script_mouse_move(i32 x, i32 y) {
 	iron_internal_mouse_trigger_move(x, y);
 	ui_mouse_move(g_ui, x, y, 0, 0);
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+	ui_touch_move(g_ui, 0, x, y); // The ui takes moves from touches there
+#endif
 }
 
 void script_mouse_release(i32 x, i32 y, i32 button) {

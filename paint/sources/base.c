@@ -519,7 +519,7 @@ void base_update(void *_) {
 	ui_dock_render_drag();
 
 	bool using_menu = (ui_menu_show && mouse_y > ui_header_h) || ui_quick_menu_blocking();
-	base_ui_enabled = !ui_box_show && !using_menu && g_ui->combo_selected_id == 0 && !(ui_nodes_show && ui_nodes_popup_hovered());
+	base_ui_enabled = !ui_box_show && !using_menu && g_ui->combo_selected_id == 0 && !(ui_nodes_show && ui_nodes_popup_hovered()) && !material_studio_show;
 
 	if (viewport_recording) {
 		viewport_capture_video_draw();

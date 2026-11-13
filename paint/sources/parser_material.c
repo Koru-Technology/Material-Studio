@@ -365,7 +365,8 @@ char *parser_material_parse_vector_input(ui_node_socket_t *inp) {
 		}
 	}
 	else {
-		return parser_material_vec3(inp->default_value);
+		char *live = parser_material_live_input(inp);
+		return live != NULL ? string_tmp("%s.xyz", live) : parser_material_vec3(inp->default_value);
 	}
 }
 
@@ -404,7 +405,8 @@ char *parser_material_parse_value_input(ui_node_socket_t *inp, bool vector_as_gr
 		}
 	}
 	else {
-		return parser_material_vec1(inp->default_value->buffer[0]);
+		char *live = parser_material_live_input(inp);
+		return live != NULL ? string_tmp("%s.x", live) : parser_material_vec1(inp->default_value->buffer[0]);
 	}
 }
 
@@ -549,4 +551,173 @@ char *u8_array_string_at(u8_array_t *a, i32 i) {
 	free(ss);
 	free(s);
 	return r;
+}
+
+// ██╗     ██╗██╗   ██╗███████╗
+// ██║     ██║██║   ██║██╔════╝
+// ██║     ██║██║   ██║█████╗
+// ██║     ██║╚██╗ ██╔╝██╔══╝
+// ███████╗██║ ╚████╔╝ ███████╗
+// ╚══════╝╚═╝  ╚═══╝  ╚══════╝
+
+// Live values: while parser_material_live_canvas is set, the inputs of its nodes that are not linked and the stops of its
+// color ramps are read from a texture instead of being compiled in, one texel each. The Material Studio compiles its
+// preview this way and only refills the texture when a slider moves. The per draw constants are too small for this.
+
+#define PARSER_MATERIAL_LIVE_MAX    512
+#define PARSER_MATERIAL_LIVE_TABLES 8 // A table, a texture, for each shader compiled with live values
+
+typedef struct parser_material_live {
+	i32 node_id;
+	i32 index;
+	i32 kind; // 0 input, 1 color of the index-th ramp stop by position, 2 positions of ramp stops 4 * index ..
+} parser_material_live_t;
+
+ui_node_canvas_t             *parser_material_live_canvas = NULL;
+static i32                    parser_material_live_table  = 0;
+static parser_material_live_t parser_material_live[PARSER_MATERIAL_LIVE_TABLES][PARSER_MATERIAL_LIVE_MAX];
+static i32                    parser_material_live_count[PARSER_MATERIAL_LIVE_TABLES];
+static gpu_texture_t         *parser_material_live_textures[PARSER_MATERIAL_LIVE_TABLES];
+
+// Compiles from here on read the values from the texture of the table, until parser_material_live_end
+void parser_material_live_begin(ui_node_canvas_t *canvas, i32 table) {
+	parser_material_live_canvas       = canvas;
+	parser_material_live_table        = table;
+	parser_material_live_count[table] = 0;
+}
+
+void parser_material_live_end() {
+	parser_material_live_canvas = NULL;
+}
+
+i32 parser_material_live_entries(i32 table) {
+	return parser_material_live_count[table];
+}
+
+// Texture of the "_texlive<table>" link
+gpu_texture_t *parser_material_live_texture(char *link) {
+	i32 t = parse_int(link + 8);
+	return t >= 0 && t < PARSER_MATERIAL_LIVE_TABLES ? parser_material_live_textures[t] : NULL;
+}
+
+static char *parser_material_live_ref(i32 node_id, i32 index, i32 kind) {
+	if (parser_material_live_canvas == NULL || !parser_material_is_frag || parser_material_nodes != parser_material_live_canvas->nodes) {
+		return NULL; // Not the live canvas: inside a group, or the vertex shader
+	}
+	i32                     t       = parser_material_live_table;
+	parser_material_live_t *entries = parser_material_live[t];
+	i32                     i       = 0;
+	for (; i < parser_material_live_count[t]; ++i) {
+		parser_material_live_t *e = &entries[i];
+		if (e->node_id == node_id && e->index == index && e->kind == kind) {
+			break;
+		}
+	}
+	if (i == parser_material_live_count[t]) {
+		if (i >= PARSER_MATERIAL_LIVE_MAX) {
+			return NULL;
+		}
+		entries[i] = (parser_material_live_t){.node_id = node_id, .index = index, .kind = kind};
+		parser_material_live_count[t]++;
+	}
+	node_shader_add_texture(parser_material_kong, "texlive", string("_texlive%d", t));
+	return string_tmp("sample(texlive, sampler_linear, float2(%s, 0.5))", f32_to_string_with_zeros((i + 0.5) / (f32)PARSER_MATERIAL_LIVE_MAX));
+}
+
+char *parser_material_live_input(ui_node_socket_t *inp) {
+	if (parser_material_live_canvas == NULL) {
+		return NULL;
+	}
+	ui_node_t *node = parser_material_get_node(inp->node_id);
+	if (node == NULL) {
+		return NULL;
+	}
+	for (i32 i = 0; i < node->inputs->length; ++i) {
+		if (node->inputs->buffer[i] == inp) {
+			return parser_material_live_ref(node->id, i, 0);
+		}
+	}
+	return NULL;
+}
+
+// float4 color of the index-th stop sorted by position
+char *parser_material_live_ramp_color(ui_node_t *node, i32 index) {
+	return parser_material_live_ref(node->id, index, 1);
+}
+
+// float4 positions of the stops 4 * pack to 4 * pack + 3 sorted by position
+char *parser_material_live_ramp_pos(ui_node_t *node, i32 pack) {
+	return parser_material_live_ref(node->id, pack, 2);
+}
+
+// Ramp stop indices sorted by position, len is at most 32
+static i32 parser_material_live_ramp_sort(f32_array_t *v, i32 *sorted) {
+	i32 len = v->length / 5;
+	len     = len > 32 ? 32 : len;
+	for (i32 i = 0; i < len; ++i) {
+		sorted[i] = i;
+	}
+	for (i32 i = 1; i < len; ++i) {
+		i32 key = sorted[i];
+		i32 j   = i - 1;
+		while (j >= 0 && v->buffer[sorted[j] * 5 + 4] > v->buffer[key * 5 + 4]) {
+			sorted[j + 1] = sorted[j];
+			j--;
+		}
+		sorted[j + 1] = key;
+	}
+	return len;
+}
+
+// Fills the texture of the table from the current values of the canvas nodes
+void parser_material_live_update(ui_node_canvas_t *canvas, i32 table) {
+	static f32 values[PARSER_MATERIAL_LIVE_MAX * 4];
+	static u16 halfs[PARSER_MATERIAL_LIVE_MAX * 4];
+	memset(values, 0, sizeof(values));
+	for (i32 i = 0; i < parser_material_live_count[table]; ++i) {
+		parser_material_live_t *e    = &parser_material_live[table][i];
+		ui_node_t              *node = canvas != NULL ? ui_get_node(canvas->nodes, e->node_id) : NULL;
+		f32                    *out  = values + i * 4;
+		if (node == NULL) {
+			continue;
+		}
+		if (e->kind == 0) {
+			if (e->index < node->inputs->length) {
+				f32_array_t *d = node->inputs->buffer[e->index]->default_value;
+				for (i32 j = 0; d != NULL && j < 4 && j < d->length; ++j) {
+					out[j] = d->buffer[j];
+				}
+			}
+			continue;
+		}
+		if (node->buttons->length == 0 || node->buttons->buffer[0]->default_value == NULL) {
+			continue;
+		}
+		f32_array_t *v = node->buttons->buffer[0]->default_value;
+		i32          sorted[32];
+		i32          len = parser_material_live_ramp_sort(v, sorted);
+		if (e->kind == 1) {
+			if (e->index < len) {
+				for (i32 j = 0; j < 4; ++j) {
+					out[j] = v->buffer[sorted[e->index] * 5 + j];
+				}
+			}
+		}
+		else {
+			for (i32 j = 0; j < 4; ++j) {
+				i32 k  = e->index * 4 + j;
+				out[j] = k < len ? v->buffer[sorted[k] * 5 + 4] : 1.0;
+			}
+		}
+	}
+	for (i32 i = 0; i < PARSER_MATERIAL_LIVE_MAX * 4; ++i) {
+		halfs[i] = float_to_half_fast(values[i]);
+	}
+	gpu_texture_t **tex = &parser_material_live_textures[table];
+	if (*tex != NULL) {
+		gpu_texture_destroy(*tex);
+		free(*tex);
+	}
+	buffer_t b = {.buffer = (u8 *)halfs, .length = sizeof(halfs)};
+	*tex       = gpu_create_texture_from_bytes_raw(&b, PARSER_MATERIAL_LIVE_MAX, 1, GPU_TEXTURE_FORMAT_RGBA64);
 }

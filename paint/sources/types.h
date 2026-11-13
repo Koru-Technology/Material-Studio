@@ -1044,3 +1044,16 @@ typedef struct ui_nodes_editor_state {
 
 typedef struct library_entry library_entry_t; // Material library item, library.c
 typedef struct cloud_item    cloud_item_t;    // Cloud material, library_cloud.c
+
+#define STUDIO_LAYERS 4
+
+// Nodes of a studio material layer by role (studio_role_t), NULL where the layer has none
+typedef struct studio_layer {
+	ui_node_t *n[8];
+} studio_layer_t;
+
+struct studio_graph {
+	ui_node_t     *output;
+	i32            count;
+	studio_layer_t layers[STUDIO_LAYERS];
+};

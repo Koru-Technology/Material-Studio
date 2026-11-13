@@ -230,6 +230,7 @@ void ui_base_update(void *_) {
 	ui_header_render_ui();
 	ui_panels_render_ui();
 	ui_popovers_render_ui();
+	ui_material_studio_render_ui();
 	ui_dock_render_resize_line();
 	ui_end();
 	ui_base_panel_rects_count = ui_base_panel_rects_drawn;

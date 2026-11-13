@@ -914,6 +914,9 @@ void minic_register_builtins() {
 	MINIC_I(autosave_interval);
 	MINIC_I(dyn_size);
 	MINIC_I(dyn_angle);
+	MINIC_F(pressure_sensitivity);
+	MINIC_F(pressure_curve);
+	MINIC_F(pressure_min);
 	MINIC_B(tilt_shading);
 	MINIC_I(pencil_double_tap);
 	MINIC_I(pencil_squeeze);
