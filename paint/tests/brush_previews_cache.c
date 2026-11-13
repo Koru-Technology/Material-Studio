@@ -64,6 +64,7 @@ void next() {
 		cfg->pressure_curve = curve;
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[brush_previews_cache] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "BRUSH_PREVIEWS_CACHE PASS" : "BRUSH_PREVIEWS_CACHE FAIL");
 		script_quit();

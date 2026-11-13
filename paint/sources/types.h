@@ -733,7 +733,7 @@ typedef struct material {
 } material_t;
 
 typedef struct node_shader_context {
-	struct node_shader    *kong;
+	struct node_shader    *shader;
 	struct shader_context *data;
 	bool                   allow_vcols;
 	struct material       *material;

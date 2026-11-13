@@ -91,6 +91,7 @@ void next() {
 		check(head * 10 > top * 7 && tail * 10 > top * 7, "without size pressure the stroke keeps its width");
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[brush_preview] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "BRUSH_PREVIEW PASS" : "BRUSH_PREVIEW FAIL");
 		script_quit();

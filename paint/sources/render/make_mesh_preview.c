@@ -28,17 +28,17 @@ node_shader_context_t *make_mesh_preview_run(material_t *data, bool viewport) {
 
 	node_shader_context_t *con_mesh = node_shader_context_create(data, props);
 
-	node_shader_t *kong = node_shader_context_make_kong(con_mesh);
+	node_shader_t *shader = node_shader_context_make_shader(con_mesh);
 
 	char *pos = "input.pos";
 
-	node_shader_add_constant(kong, "float4x4 WVP", "_world_view_proj_matrix");
-	node_shader_write_attrib_vert(kong, string_tmp("output.pos = constants.WVP * float4(%s.xyz, 1.0);", pos));
+	node_shader_add_constant(shader, "mat4 WVP", "_world_view_proj_matrix");
+	node_shader_write_attrib_vert(shader, string_tmp("output.pos = constants.WVP * vec4(%s.xyz, 1.0);", pos));
 	f32   sc          = g_context->brush_scale * g_context->brush_nodes_scale;
 	char *brush_scale = f32_to_string(sc);
-	node_shader_add_out(kong, "float2 tex_coord");
-	node_shader_write_attrib_vert(kong, string_tmp("output.tex_coord = input.tex * float(%s);", brush_scale));
-	node_shader_write_attrib_frag(kong, "float2 tex_coord = input.tex_coord;");
+	node_shader_add_out(shader, "vec2 tex_coord");
+	node_shader_write_attrib_vert(shader, string_tmp("output.tex_coord = input.tex * float(%s);", brush_scale));
+	node_shader_write_attrib_frag(shader, "vec2 tex_coord = input.tex_coord;");
 
 	bool decal                         = g_context->decal_preview;
 	parser_material_sample_keep_aspect = decal;
@@ -48,7 +48,7 @@ node_shader_context_t *make_mesh_preview_run(material_t *data, bool viewport) {
 	bool cutout_only                 = viewport && !decal;
 	parser_material_straight_cutouts = cutout_only;
 #endif
-	shader_out_t *sout           = parser_material_parse(g_context->material->canvas, con_mesh, kong);
+	shader_out_t *sout           = parser_material_parse(g_context->material->canvas, con_mesh, shader);
 	parser_material_parse_height = false;
 #ifdef WITH_MIPMAPS
 	parser_material_straight_cutouts = false;
@@ -61,52 +61,53 @@ node_shader_context_t *make_mesh_preview_run(material_t *data, bool viewport) {
 	char *opac                         = sout->out_opacity;
 	char *height                       = sout->out_height;
 	char *nortan                       = parser_material_out_normaltan;
-	node_shader_write_frag(kong, string_tmp("float3 basecol = pow(%s, float3(2.2, 2.2, 2.2));", base));
-	node_shader_write_frag(kong, string_tmp("float roughness = %s;", rough));
-	node_shader_write_frag(kong, string_tmp("float metallic = %s;", met));
-	node_shader_write_frag(kong, string_tmp("float occlusion = %s;", occ));
-	node_shader_write_frag(kong, string_tmp("float opacity = %s;", opac));
-	node_shader_write_frag(kong, string_tmp("float3 nortan = %s;", nortan));
-	node_shader_write_frag(kong, string_tmp("float height = %s;", height));
+	node_shader_write_frag(shader, string_tmp("vec3 basecol = pow(max(%s, vec3(0.0, 0.0, 0.0)), vec3(2.2, 2.2, 2.2));", base)); // pow of a negative is undefined
+	node_shader_write_frag(shader, string_tmp("float roughness = %s;", rough));
+	node_shader_write_frag(shader, string_tmp("float metallic = %s;", met));
+	node_shader_write_frag(shader, string_tmp("float occlusion = %s;", occ));
+	node_shader_write_frag(shader, string_tmp("float opacity = %s;", opac));
+	node_shader_write_frag(shader, string_tmp("vec3 nortan = %s;", nortan));
+	node_shader_write_frag(shader, string_tmp("float height = %s;", height));
 
 	if (decal) {
 		if (g_context->tool == TOOL_TYPE_TEXT) {
-			node_shader_add_texture(kong, "textexttool", "_textexttool");
-			node_shader_write_frag(kong, string_tmp("opacity *= sample_lod(textexttool, sampler_linear, tex_coord / float(%s), 0.0).r;", brush_scale));
+			node_shader_add_texture(shader, "textexttool", "_textexttool");
+			node_shader_write_frag(shader, string_tmp("opacity *= textureLod(sampler2D(textexttool, sampler_linear), tex_coord / float(%s), 0.0).r;", brush_scale));
 		}
 		f32 opac = g_config->brush_alpha_discard;
-		node_shader_write_frag(kong, string_tmp("if (opacity <= float(%s)) { discard; }", f32_to_string(opac)));
+		node_shader_write_frag(shader, string_tmp("if (opacity <= float(%s)) { discard; }", f32_to_string(opac)));
 	}
 
-	kong->frag_out = viewport && render_path_base_gbuffer_uv() ? "float4[3]" : "float4[2]";
-	kong->frag_n   = true;
+	shader->frag_out = viewport && render_path_base_gbuffer_uv() ? "vec4[3]" : "vec4[2]";
+	shader->frag_n   = true;
 
-	node_shader_add_function(kong, str_pack_float_int16);
-	node_shader_add_function(kong, str_cotangent_frame);
-	node_shader_add_function(kong, str_octahedron_wrap);
+	node_shader_add_function(shader, str_pack_float_int16);
+	node_shader_add_function(shader, str_cotangent_frame);
+	node_shader_add_function(shader, str_octahedron_wrap);
 
 	if (g_project->_->translucency) {
-		kong->frag_wvpposition = true;
-		node_shader_add_function(kong, str_dither_bayer);
-		node_shader_write_frag(kong,
-		                       "float2 fragcoord1 = float2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
-		node_shader_write_frag(kong, "float dither = dither_bayer(fragcoord1 * float2(256.0, 256.0));");
-		node_shader_write_frag(kong, "if (opacity <= dither) { discard; }");
+		shader->frag_wvpposition = true;
+		node_shader_add_function(shader, str_dither_bayer);
+		node_shader_write_frag(shader,
+		                       "vec2 fragcoord1 = vec2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
+		node_shader_write_frag(shader, "float dither = dither_bayer(fragcoord1 * vec2(256.0, 256.0));");
+		node_shader_write_frag(shader, "if (opacity <= dither) { discard; }");
 	}
 	else if (viewport && !decal) {
 		// Override material without translucency - cut out pixels below the alpha discard threshold
-		node_shader_write_frag(kong, string_tmp("if (opacity <= float(%s)) { discard; }", f32_to_string(g_config->brush_alpha_discard)));
+		node_shader_write_frag(shader, string_tmp("if (opacity <= float(%s)) { discard; }", f32_to_string(g_config->brush_alpha_discard)));
 	}
 
 	if (make_material_height_used) {
-		node_shader_write_frag(kong, "if (height > 0.0) {");
-		node_shader_write_frag(kong, "float height_dx = ddx(height * 2.0);");
-		node_shader_write_frag(kong, "float height_dy = ddy(height * 2.0);");
+		// Derivatives outside the branch, they are undefined in non-uniform control flow
+		node_shader_write_frag(shader, "float height_dx = dFdx(height * 2.0);");
+		node_shader_write_frag(shader, "float height_dy = dFdy(height * 2.0);");
+		node_shader_write_frag(shader, "if (height > 0.0) {");
 		// Whiteout blend
-		node_shader_write_frag(kong, "float3 n1 = nortan * float3(2.0, 2.0, 2.0) - float3(1.0, 1.0, 1.0);");
-		node_shader_write_frag(kong, "float3 n2 = normalize(float3(height_dx * 16.0, height_dy * 16.0, 1.0));");
-		node_shader_write_frag(kong, "nortan = normalize(float3(n1.xy + n2.xy, n1.z * n2.z)) * float3(0.5, 0.5, 0.5) + float3(0.5, 0.5, 0.5);");
-		node_shader_write_frag(kong, "}");
+		node_shader_write_frag(shader, "vec3 n1 = nortan * vec3(2.0, 2.0, 2.0) - vec3(1.0, 1.0, 1.0);");
+		node_shader_write_frag(shader, "vec3 n2 = normalize(vec3(height_dx * 16.0, height_dy * 16.0, 1.0));");
+		node_shader_write_frag(shader, "nortan = normalize(vec3(n1.xy + n2.xy, n1.z * n2.z)) * vec3(0.5, 0.5, 0.5) + vec3(0.5, 0.5, 0.5);");
+		node_shader_write_frag(shader, "}");
 	}
 
 	// Apply normal channel
@@ -114,42 +115,42 @@ node_shader_context_t *make_mesh_preview_run(material_t *data, bool viewport) {
 		// TODO
 	}
 	else {
-		kong->frag_vvec = true;
-		node_shader_write_frag(kong, "float3x3 TBN = cotangent_frame(n, input.eye_dir, tex_coord);");
-		node_shader_write_frag(kong, "n = nortan * 2.0 - 1.0;");
-		node_shader_write_frag(kong, "n.y = -n.y;");
-		node_shader_write_frag(kong, "n = normalize(TBN * n);");
+		shader->frag_vvec = true;
+		node_shader_write_frag(shader, "mat3 TBN = cotangent_frame(n, input.eye_dir, tex_coord);");
+		node_shader_write_frag(shader, "n = nortan * 2.0 - 1.0;");
+		node_shader_write_frag(shader, "n.y = -n.y;");
+		node_shader_write_frag(shader, "n = normalize(TBN * n);");
 	}
 
-	node_shader_write_frag(kong, "n = n / (abs(n.x) + abs(n.y) + abs(n.z));");
-	// node_shader_write_frag(kong, "n.xy = n.z >= 0.0 ? n.xy : octahedron_wrap(n.xy);");
-	node_shader_write_frag(kong, "if (n.z < 0.0) { n.xy = octahedron_wrap(n.xy); }");
+	node_shader_write_frag(shader, "n = n / (abs(n.x) + abs(n.y) + abs(n.z));");
+	// node_shader_write_frag(shader, "n.xy = n.z >= 0.0 ? n.xy : octahedron_wrap(n.xy);");
+	node_shader_write_frag(shader, "if (n.z < 0.0) { n.xy = octahedron_wrap(n.xy); }");
 	// uint matid = uint(0);
 
 	if (decal) {
-		node_shader_write_frag(kong, "output[0] = float4(n.x, n.y, roughness, pack_f32_i16(metallic, uint(0)));"); // metallic/matid
-		node_shader_write_frag(kong, "output[1] = float4(basecol, occlusion);");
+		node_shader_write_frag(shader, "output[0] = vec4(n.x, n.y, roughness, pack_f32_i16(metallic, uint(0)));"); // metallic/matid
+		node_shader_write_frag(shader, "output[1] = vec4(basecol, occlusion);");
 	}
 #ifdef WITH_MIPMAPS
 	else if (cutout_only) {
-		node_shader_write_frag(kong, "output[0] = float4(n.x, n.y, roughness, pack_f32_i16(metallic, uint(0)));"); // metallic/matid
-		node_shader_write_frag(kong, "output[1] = float4(basecol, occlusion);");
+		node_shader_write_frag(shader, "output[0] = vec4(n.x, n.y, roughness, pack_f32_i16(metallic, uint(0)));"); // metallic/matid
+		node_shader_write_frag(shader, "output[1] = vec4(basecol, occlusion);");
 	}
 #endif
 	else {
 		node_shader_write_frag(
-		    kong, "output[0] = float4(n.x, n.y, lerp(1.0, roughness, opacity), pack_f32_i16(lerp(1.0, metallic, opacity), uint(0)));"); // metallic/matid
-		node_shader_write_frag(kong, "output[1] = float4(lerp(float3(0.0, 0.0, 0.0), basecol, opacity), occlusion);");
+		    shader, "output[0] = vec4(n.x, n.y, mix(1.0, roughness, opacity), pack_f32_i16(mix(1.0, metallic, opacity), uint(0)));"); // metallic/matid
+		node_shader_write_frag(shader, "output[1] = vec4(mix(vec3(0.0, 0.0, 0.0), basecol, opacity), occlusion);");
 	}
 
 	if (viewport && render_path_base_gbuffer_uv()) {
-		node_shader_write_frag(kong, "output[2] = float4(0.0, 0.0, 0.0, 0.0);");
+		node_shader_write_frag(shader, "output[2] = vec4(0.0, 0.0, 0.0, 0.0);");
 	}
 
 	parser_material_finalize(con_mesh);
 
 	con_mesh->data->shader_from_source = true;
-	gpu_create_shaders_from_kong(node_shader_get(kong), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
+	gpu_create_shaders_from_glsl(node_shader_get(shader), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
 	                             &con_mesh->data->_->vertex_shader_size, &con_mesh->data->_->fragment_shader_size);
 	return con_mesh;
 }

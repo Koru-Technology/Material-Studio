@@ -30,7 +30,14 @@ char        *material_node_types = "ATTRIBUTE,RGB,NEW_GEOMETRY,LAYER,LAYER_MASK,
                                    "VALUE,WIREFRAME,TEX_BRICK,TEX_CHECKER,BAKE_CURVATURE,TEX_GABOR,TEX_GRADIENT,TEX_IMAGE,TEX_MAGIC,TEX_NOISE,"
                                    "TEX_TEXT,TEX_VORONOI,TEX_WAVE,BLUR,BRIGHTCONTRAST,COLMASK,VALTORGB,COMBINE_COLOR,GAMMA,HUE_SAT,INVERT_COLOR,"
                                    "MIX_RGB,QUANTIZE,CURVE_RGB,RGBTOBW,REPLACECOL,SEPARATE_COLOR,DIRECT_WARP,BUMP,CLAMP,COMBXYZ,FLOAT_CURVE,"
-                                   "MAPRANGE,MAPPING,MATH,MIX_NORMAL_MAP,NORMAL,NORMAL_MAP,SEPXYZ,CURVE_VEC,VECT_MATH,VECT_ROTATE,VECT_TRANSFORM";
+                                   "MAPRANGE,MAPPING,MATH,MIX_NORMAL_MAP,NORMAL,NORMAL_MAP,SEPXYZ,CURVE_VEC,VECT_MATH,VECT_ROTATE,VECT_TRANSFORM,"
+                                   "CURVATURE_MASK,HEIGHT_MASK,DIRECTION_MASK,MATERIAL_MIX,"
+                                   "PATTERN_ARCS,PATTERN_BRICKS,PATTERN_CELLS,PATTERN_CHAINMAIL,PATTERN_CRATERS,PATTERN_DOTS,PATTERN_FACETS,"
+                                   "PATTERN_FEATHERS,PATTERN_FIBERS,PATTERN_GRAIN,PATTERN_HERRINGBONE,PATTERN_HEX,PATTERN_MESH,PATTERN_MOTIF,"
+                                   "PATTERN_NOISE,PATTERN_PARQUET,PATTERN_PEBBLES,PATTERN_PLANKS,PATTERN_RADIAL,PATTERN_RINGS,PATTERN_ROPE,"
+                                   "PATTERN_SCATTER,PATTERN_SCRATCHES,PATTERN_SEIGAIHA,PATTERN_SHINGLES,PATTERN_STARS,PATTERN_STITCHES,"
+                                   "PATTERN_STREAKS,PATTERN_STRIPES,PATTERN_THATCH,PATTERN_TILES,PATTERN_TREAD,PATTERN_TRUCHET,PATTERN_TUFTED,"
+                                   "PATTERN_UNEVEN,PATTERN_WEAVE,PATTERN_WEB";
 any_array_t *node_types;
 int          sweep_ok = 1; // Result of a step that repeats
 
@@ -949,7 +956,7 @@ char *custom_node_type  = "TEST_CUSTOM";
 
 char *custom_node(ui_node_t *node, char *socket_name) {
 	custom_node_calls += 1;
-	return "float3(1.0, 0.0, 1.0)";
+	return "vec3(1.0, 0.0, 1.0)";
 }
 
 ui_node_socket_t *custom_socket(char *name, char *type) {
@@ -1003,7 +1010,7 @@ int viewport_shader_calls = 0;
 
 void viewport_shader(void *shader) {
 	viewport_shader_calls += 1;
-	node_shader_write_frag(shader, "output_color = float3(1.0, 0.0, 1.0);");
+	node_shader_write_frag(shader, "output_color = vec3(1.0, 0.0, 1.0);");
 }
 
 void step_viewport_shader() {
@@ -1484,6 +1491,62 @@ void step_layer_paths_verify() {
 	export_name = NULL;
 }
 
+// Script fullscreen pass: a magenta post pass covers the viewport, removing it brings the scene back
+render_pass_t *test_pass = NULL;
+
+// Magenta share of a screenshot of the window, -1 while it is being written
+float pass_magenta_shot(int sub_shot) {
+	char *file = string("%s/test_pass_shot.png", tmp_root);
+	if (sub_shot == 0) {
+		if (iron_file_exists(file)) {
+			iron_delete_file(file);
+		}
+		script_screenshot(file);
+		return -1.0;
+	}
+	if (!iron_file_exists(file)) {
+		return -1.0;
+	}
+	script_import_asset(file, false);
+	gpu_texture_t *tex = script_get_texture("test_pass_shot.png");
+	float          f   = pixels_fraction(script_get_texture_pixels(tex), 255, 0, 255, 30);
+	script_texture_delete("test_pass_shot.png");
+	return f;
+}
+
+void step_render_pass() {
+	if (sub == 0) {
+		test_pass = render_pass_create("output = vec4(1.0, 0.0, 1.0, 1.0);", 1);
+		check(test_pass != NULL, "render pass created");
+	}
+	if (sub < 8) {
+		step_again = 1;
+		return;
+	}
+	if (sub < 40) { // Screenshot with the pass
+		float f = pass_magenta_shot(sub - 8);
+		if (f < 0.0 && sub < 39) {
+			step_again = 1;
+			return;
+		}
+		check(f > 0.5, string("render pass covers the viewport (%.2f)", f));
+		render_pass_remove(test_pass);
+		sub        = 40;
+		step_again = 1;
+		return;
+	}
+	if (sub < 56) {
+		step_again = 1;
+		return;
+	}
+	float f = pass_magenta_shot(sub - 56);
+	if (f < 0.0 && sub < 90) {
+		step_again = 1;
+		return;
+	}
+	check(f >= 0.0 && f < 0.05, string("removed render pass is gone (%.2f)", f));
+}
+
 void run_step(int s) {
 	if (s == 0)
 		step_tools();
@@ -1599,10 +1662,12 @@ void run_step(int s) {
 		step_layer_paths_load();
 	else if (s == 56)
 		step_layer_paths_verify();
+	else if (s == 57)
+		step_render_pass();
 }
 
-int step_count      = 57;
-int expected_checks = 133;
+int step_count      = 58;
+int expected_checks = 137;
 
 void next_frame() {
 	if (sub == 0) {
@@ -1623,6 +1688,7 @@ void next_frame() {
 		return;
 	}
 
+	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 	if (checks != expected_checks) {
 		failures += 1;
 		printf("[test]   FAIL expected %d checks, ran %d - a step was cut short", expected_checks, checks);

@@ -46,8 +46,8 @@ static bool parser_material_is_cutout(ui_node_t *tex_node) {
 
 char *parser_material_texture_store(ui_node_t *node, bind_tex_t *tex, char *tex_name, i32 color_space) {
 	any_array_push(parser_material_con->data->bind_textures, tex);
-	node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
-	node_shader_add_texture(parser_material_kong, tex_name, NULL);
+	node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm");
+	node_shader_add_texture(parser_material_shader, tex_name, NULL);
 	char *uv_name = "";
 	// Image nodes pasted from a mesh canvas have no vector input
 	if (string_equals(node->type, "TEX_IMAGE") && node->inputs->length > 0 && parser_material_get_input_link(node->inputs->buffer[0]) != NULL) {
@@ -58,38 +58,38 @@ char *parser_material_texture_store(ui_node_t *node, bind_tex_t *tex, char *tex_
 	}
 	char *tex_store = parser_material_store_var_name(node);
 	if (parser_material_sample_keep_aspect) {
-		node_shader_add_constant(parser_material_kong, string_tmp("float2 %s_size", tex_name), string_tmp("_size(%s)", tex_name));
-		parser_material_write(parser_material_kong, string_tmp("float2 %s_size = constants.%s_size;", tex_store, tex_name));
-		parser_material_write(parser_material_kong, string_tmp("float %s_ax = %s_size.x / %s_size.y;", tex_store, tex_store, tex_store));
-		parser_material_write(parser_material_kong, string_tmp("float %s_ay = %s_size.y / %s_size.x;", tex_store, tex_store, tex_store));
+		node_shader_add_constant(parser_material_shader, string_tmp("vec2 %s_size", tex_name), string_tmp("_size(%s)", tex_name));
+		parser_material_write(parser_material_shader, string_tmp("vec2 %s_size = constants.%s_size;", tex_store, tex_name));
+		parser_material_write(parser_material_shader, string_tmp("float %s_ax = %s_size.x / %s_size.y;", tex_store, tex_store, tex_store));
+		parser_material_write(parser_material_shader, string_tmp("float %s_ay = %s_size.y / %s_size.x;", tex_store, tex_store, tex_store));
 		parser_material_write(
-		    parser_material_kong,
-		    string_tmp("float2 %s_uv = ((%s.xy / float(%s) - float2(0.5, 0.5)) * float2(max(%s_ay, 1.0), max(%s_ax, 1.0))) + float2(0.5, 0.5);", tex_store,
+		    parser_material_shader,
+		    string_tmp("vec2 %s_uv = ((%s.xy / float(%s) - vec2(0.5, 0.5)) * vec2(max(%s_ay, 1.0), max(%s_ax, 1.0))) + vec2(0.5, 0.5);", tex_store,
 		               uv_name, parser_material_sample_uv_scale, tex_store, tex_store));
-		parser_material_write(parser_material_kong, string_tmp("if (%s_uv.x < 0.0 || %s_uv.y < 0.0 || %s_uv.x > 1.0 || %s_uv.y > 1.0) { discard; }", tex_store,
+		parser_material_write(parser_material_shader, string_tmp("if (%s_uv.x < 0.0 || %s_uv.y < 0.0 || %s_uv.x > 1.0 || %s_uv.y > 1.0) { discard; }", tex_store,
 		                                                       tex_store, tex_store, tex_store));
-		parser_material_write(parser_material_kong, string_tmp("%s_uv = %s_uv * float(%s);", tex_store, tex_store, parser_material_sample_uv_scale));
+		parser_material_write(parser_material_shader, string_tmp("%s_uv = %s_uv * float(%s);", tex_store, tex_store, parser_material_sample_uv_scale));
 		uv_name = string_tmp("%s_uv", tex_store);
 	}
 	if (parser_material_triplanar) {
 		if (!string_equals(uv_name, parser_material_tex_coord)) {
-			parser_material_write(parser_material_kong, string_tmp("float3 %s1 = %s;", uv_name, uv_name));
-			parser_material_write(parser_material_kong, string_tmp("float3 %s2 = %s;", uv_name, uv_name));
+			parser_material_write(parser_material_shader, string_tmp("vec3 %s1 = %s;", uv_name, uv_name));
+			parser_material_write(parser_material_shader, string_tmp("vec3 %s2 = %s;", uv_name, uv_name));
 		}
-		parser_material_write(parser_material_kong, string_tmp("float4 %s = float4(0.0, 0.0, 0.0, 0.0);", tex_store));
-		parser_material_write(parser_material_kong, string_tmp("if (tex_coord_blend.x > 0.0) {%s += sample(%s, sampler_linear, %s.xy) * tex_coord_blend.x; }",
+		parser_material_write(parser_material_shader, string_tmp("vec4 %s = vec4(0.0, 0.0, 0.0, 0.0);", tex_store));
+		parser_material_write(parser_material_shader, string_tmp("if (tex_coord_blend.x > 0.0) {%s += texture(sampler2D(%s, sampler_linear), %s.xy) * tex_coord_blend.x; }",
 		                                                       tex_store, tex_name, uv_name));
-		parser_material_write(parser_material_kong, string_tmp("if (tex_coord_blend.y > 0.0) {%s += sample(%s, sampler_linear, %s1.xy) * tex_coord_blend.y; }",
+		parser_material_write(parser_material_shader, string_tmp("if (tex_coord_blend.y > 0.0) {%s += texture(sampler2D(%s, sampler_linear), %s1.xy) * tex_coord_blend.y; }",
 		                                                       tex_store, tex_name, uv_name));
-		parser_material_write(parser_material_kong, string_tmp("if (tex_coord_blend.z > 0.0) {%s += sample(%s, sampler_linear, %s2.xy) * tex_coord_blend.z; }",
+		parser_material_write(parser_material_shader, string_tmp("if (tex_coord_blend.z > 0.0) {%s += texture(sampler2D(%s, sampler_linear), %s2.xy) * tex_coord_blend.z; }",
 		                                                       tex_store, tex_name, uv_name));
 	}
 	else {
 		if (parser_material_is_frag) {
-			parser_material_write(parser_material_kong, string_tmp("float4 %s = sample(%s, sampler_linear, %s.xy);", tex_store, tex_name, uv_name));
+			parser_material_write(parser_material_shader, string_tmp("vec4 %s = texture(sampler2D(%s, sampler_linear), %s.xy);", tex_store, tex_name, uv_name));
 		}
 		else {
-			parser_material_write(parser_material_kong, string_tmp("float4 %s = sample_lod(%s, sampler_linear, %s.xy, 0.0);", tex_store, tex_name, uv_name));
+			parser_material_write(parser_material_shader, string_tmp("vec4 %s = textureLod(sampler2D(%s, sampler_linear), %s.xy, 0.0);", tex_store, tex_name, uv_name));
 		}
 #ifdef WITH_MIPMAPS
 		bool premultiply = !(parser_material_straight_cutouts && parser_material_is_cutout(node));
@@ -97,20 +97,20 @@ char *parser_material_texture_store(ui_node_t *node, bind_tex_t *tex, char *tex_
 		bool premultiply = true;
 #endif
 		if (premultiply && !path_has_ext(tex->file, "jpg") && !path_has_ext(tex->file, "jpeg")) { // Pre-mult alpha
-			parser_material_write(parser_material_kong, string_tmp("%s.rgb = %s.rgb * %s.a;", tex_store, tex_store, tex_store));
+			parser_material_write(parser_material_shader, string_tmp("%s.rgb = %s.rgb * %s.a;", tex_store, tex_store, tex_store));
 		}
 	}
 	if (parser_material_transform_color_space) {
 		// Base color socket auto-converts from sRGB to linear
 		// Base color is kept sRGB encoded, the other sockets take linear values
 		if (color_space == COLOR_SPACE_LINEAR && parser_material_parsing_basecolor) { // Linear to sRGB
-			parser_material_write(parser_material_kong, string_tmp("%s.rgb = pow(%s.rgb, float3(1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2));", tex_store, tex_store));
+			parser_material_write(parser_material_shader, string_tmp("%s.rgb = pow(%s.rgb, vec3(1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2));", tex_store, tex_store));
 		}
 		else if (color_space == COLOR_SPACE_SRGB && !parser_material_parsing_basecolor) { // sRGB to linear
-			parser_material_write(parser_material_kong, string_tmp("%s.rgb = pow(%s.rgb, float3(2.2, 2.2, 2.2));", tex_store, tex_store));
+			parser_material_write(parser_material_shader, string_tmp("%s.rgb = pow(%s.rgb, vec3(2.2, 2.2, 2.2));", tex_store, tex_store));
 		}
 		else if (color_space == COLOR_SPACE_DIRECTX_NORMAL_MAP) { // DirectX normal map to OpenGL normal map
-			parser_material_write(parser_material_kong, string_tmp("%s.y = 1.0 - %s.y;", tex_store, tex_store));
+			parser_material_write(parser_material_shader, string_tmp("%s.y = 1.0 - %s.y;", tex_store, tex_store));
 		}
 	}
 	return tex_store;
@@ -131,7 +131,7 @@ char *image_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	}
 	else {
 		char *tex_store = parser_material_store_var_name(node); // Pink color for missing texture
-		parser_material_write(parser_material_kong, string_tmp("float4 %s = float4(1.0, 0.0, 1.0, 1.0);", tex_store));
+		parser_material_write(parser_material_shader, string_tmp("vec4 %s = vec4(1.0, 0.0, 1.0, 1.0);", tex_store));
 		return string_tmp("%s.rgb", tex_store);
 	}
 }

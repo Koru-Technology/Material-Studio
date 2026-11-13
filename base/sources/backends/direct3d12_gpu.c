@@ -974,7 +974,7 @@ void gpu_shader_destroy(gpu_shader_t *shader) {
 #ifdef WITH_BC7
 
 // Gpu bc7 encoder: rgba8 pixels in the upload buffer -> compute shader -> bc7 blocks buffer -> texture
-// Root parameters follow kong's registers in gpu_bc7.shader: constant buffer b0, src t0, dst u0
+// Root parameters of the encoder in direct3d12_bc7.h: constant buffer b0, src t0, dst u0
 #include "direct3d12_bc7.h"
 
 static bool                 bc7_compute_checked = false;

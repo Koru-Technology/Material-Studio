@@ -18,7 +18,7 @@ char *image_to_pbr_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	}
 
 	if (result == NULL) {
-		return "float3(0.0, 0.0, 0.0)";
+		return "vec3(0.0, 0.0, 0.0)";
 	}
 	char *tex_name = string("%s%s", parser_material_node_name(node, NULL), i32_to_string(socket->id));
 	any_map_set(data_cached_textures, tex_name, result);

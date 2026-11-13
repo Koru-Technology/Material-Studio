@@ -403,6 +403,14 @@ void string_buffer_append(buffer_t *sb, char *s) {
 	sb->buffer[sb->length] = '\0';
 }
 
+// The first n chars of s
+void string_buffer_append_n(buffer_t *sb, char *s, int n) {
+	string_buffer_ensure(sb, n);
+	memcpy(sb->buffer + sb->length, s, n);
+	sb->length += n;
+	sb->buffer[sb->length] = '\0';
+}
+
 char *string_buffer_get(buffer_t *sb) {
 	return (char *)sb->buffer;
 }

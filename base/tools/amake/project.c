@@ -17,14 +17,24 @@ project_t *main() {
 	add_cfiles(project, "aimage.c");
 	add_cfiles(project, "ashader.c");
 
-	add_cfiles(project, "../../sources/kong/dir.c");
-	add_cfiles(project, "../../sources/kong/kong.c");
-	add_cfiles(project, "../../sources/kong/kong_cstyle.c");
-	add_cfiles(project, "../../sources/kong/stb_ds.c");
-	add_cfiles(project, "../../sources/kong/kong_spirv.c");
-	add_cfiles(project, "../../sources/kong/kong_wgsl.c");
-	add_cfiles(project, "../../sources/kong/kong_hlsl.c");
-	add_cfiles(project, "../../sources/kong/kong_metal.c");
+	add_cfiles(project, "../../sources/iron_dir.c");
+
+	// GLSL shaders (iron_glsl.c): glslang and SPIRV-Cross
+	add_define(project, "WITH_GLSL");
+	add_define(project, "SPIRV_CROSS_C_API_MSL=1");
+	add_define(project, "SPIRV_CROSS_C_API_GLSL=1");
+	add_include_dir(project, "../../sources/libs/glslang");
+	add_include_dir(project, "../../sources/libs/spirv_cross");
+	add_cfiles(project, "../../sources/iron_glsl.c");
+	add_cfiles(project, "../../sources/libs/glslang/glslang/MachineIndependent/*.cpp");
+	add_cfiles(project, "../../sources/libs/glslang/glslang/MachineIndependent/preprocessor/*.cpp");
+	add_cfiles(project, "../../sources/libs/glslang/glslang/GenericCodeGen/*.cpp");
+	add_cfiles(project, "../../sources/libs/glslang/glslang/OSDependent/Unix/ossource.cpp");
+	add_cfiles(project, "../../sources/libs/glslang/glslang/CInterface/*.cpp");
+	add_cfiles(project, "../../sources/libs/glslang/glslang/ResourceLimits/*.cpp");
+	add_cfiles(project, "../../sources/libs/glslang/SPIRV/*.cpp");
+	add_cfiles(project, "../../sources/libs/glslang/SPIRV/CInterface/*.cpp");
+	add_cfiles(project, "../../sources/libs/spirv_cross/*.cpp");
 
 	if (platform == PLATFORM_WINDOWS) {
 		add_define(project, "_CRT_SECURE_NO_WARNINGS");

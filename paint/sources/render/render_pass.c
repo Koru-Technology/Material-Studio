@@ -1,7 +1,7 @@
 #include "../global.h"
 
-// Fullscreen passes created by scripts. The frag code writes float4 output, blended over the target by its alpha.
-// It reads tex (screen uv), depth, wposition (world position from depth) and constants.<name>: eye, time, or a float4
+// Fullscreen passes created by scripts. The frag code (GLSL) writes vec4 output, blended over the target by its alpha.
+// It reads tex (screen uv), depth, wposition (world position from depth) and constants.<name>: eye, time, or a vec4
 // set with render_pass_set_vec4.
 
 static any_array_t *render_pass_list   = NULL;
@@ -53,8 +53,7 @@ render_pass_t *render_pass_create(char *frag, render_pass_stage_t stage) {
 	for (i32 i = 0; i < 4; ++i) {
 		render_pass_add_const(scon, render_pass_builtins[i][0], render_pass_builtins[i][1], render_pass_builtins[i][2]);
 	}
-	char *consts = "\tfloat4x4 invVP;\n\tfloat3 eye;\n\tfloat3 eye_look;\n\tfloat2 camera_proj;\n";
-	char *s      = frag;
+	char *s = frag;
 	while ((s = strstr(s, "constants.")) != NULL) {
 		s += 10;
 		i32 len = 0;
@@ -76,37 +75,59 @@ render_pass_t *render_pass_create(char *frag, render_pass_stage_t stage) {
 		else {
 			render_pass_add_const(scon, name, "float4", string_tmp("_pass%d_%s", p->id, name));
 		}
-		consts = string("%s\t%s %s;\n", consts, b >= 0 ? render_pass_builtins[b][1] : "float4", name);
 	}
 
-	char *kong = string("cbuffer constants {\n%s};\n\
-sampler sampler_linear;\n\
-tex2d gbufferD;\n\
-struct vert_in { float2 pos; };\n\
-struct vert_out { float4 pos; float2 tex; float3 view_ray; };\n\
-vert_out vert(vert_in input) {\n\
-	vert_out output;\n\
-	output.tex = input.pos.xy * 0.5 + 0.5;\n\
-	output.tex.y = 1.0 - output.tex.y;\n\
-	output.pos = float4(input.pos.xy, 0.0, 1.0);\n\
-	float4 v = constants.invVP * float4(input.pos.xy, 1.0, 1.0);\n\
-	output.view_ray = v.xyz / v.w - constants.eye;\n\
-	return output;\n\
+	// The constants block, offsets as the engine computes them
+	char *consts = "";
+	i32   offset = 0;
+	for (i32 i = 0; i < scon->constants->length; ++i) {
+		shader_const_t *c    = scon->constants->buffer[i];
+		i32             size = shader_context_type_size(c->type);
+		offset += shader_context_type_pad(offset, size);
+		char *t = string_equals(c->type, "float4x4") ? "mat4" : string_equals(c->type, "float3") ? "vec3" : string_equals(c->type, "float2") ? "vec2"
+		        : string_equals(c->type, "float4")   ? "vec4"
+		                                             : c->type;
+		consts  = string("%s\tlayout(offset = %d) %s %s;\n", consts, offset, t, c->name);
+		offset += size;
+	}
+
+	// The code writes output, a GLSL keyword
+	buffer_t code;
+	string_buffer_init(&code);
+	node_shader_rename(&code, frag, "output", "frag_out");
+
+	char *glsl = string("#version 450\n\
+layout(set = 0, binding = 0, std140) uniform Constants {\n%s} constants;\n\
+layout(set = 0, binding = 1) uniform sampler sampler_linear;\n\
+layout(set = 0, binding = 2) uniform texture2D gbufferD;\n\
+layout(location = 0) VARYING Varyings { vec2 tex; vec3 view_ray; } VARYING_NAME;\n\
+#ifdef VERT\n\
+layout(location = 0) in vec2 in_pos;\n\
+void main() {\n\
+	vout.tex = in_pos.xy * 0.5 + 0.5;\n\
+	vout.tex.y = 1.0 - vout.tex.y;\n\
+	gl_Position = vec4(in_pos.xy, 0.0, 1.0);\n\
+	vec4 v = constants.invVP * vec4(in_pos.xy, 1.0, 1.0);\n\
+	vout.view_ray = v.xyz / v.w - constants.eye;\n\
 }\n\
-float4 frag(vert_out input) {\n\
-	float2 tex = input.tex;\n\
-	float depth = sample_lod(gbufferD, sampler_linear, tex, 0.0).r;\n\
-	float3 view_ray = normalize(input.view_ray);\n\
+#endif\n\
+#ifdef FRAG\n\
+layout(location = 0) out vec4 frag_out;\n\
+void main() {\n\
+	vec2 tex = vin.tex;\n\
+	float depth = textureLod(sampler2D(gbufferD, sampler_linear), tex, 0.0).r;\n\
+	vec3 view_ray = normalize(vin.view_ray);\n\
 	float linear_depth = constants.camera_proj.y / (depth - constants.camera_proj.x);\n\
-	float3 wposition = constants.eye + view_ray * (linear_depth / dot(constants.eye_look, view_ray));\n\
-	float4 output = float4(0.0, 0.0, 0.0, 0.0);\n\
+	vec3 wposition = constants.eye + view_ray * (linear_depth / dot(constants.eye_look, view_ray));\n\
+	frag_out = vec4(0.0, 0.0, 0.0, 0.0);\n\
 %s\n\
-	return output;\n\
-}\n",
-	                    consts, frag);
+}\n\
+#endif\n",
+	                    consts, string_buffer_get(&code));
+	string_buffer_free(&code);
 
 	scon->_ = calloc(1, sizeof(shader_context_runtime_t));
-	gpu_create_shaders_from_kong(kong, &scon->vertex_shader, &scon->fragment_shader, &scon->_->vertex_shader_size, &scon->_->fragment_shader_size);
+	gpu_create_shaders_from_glsl(glsl, &scon->vertex_shader, &scon->fragment_shader, &scon->_->vertex_shader_size, &scon->_->fragment_shader_size);
 	shader_context_load(scon);
 
 	p->scon                     = scon;

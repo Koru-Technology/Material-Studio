@@ -325,6 +325,7 @@ void next() {
 		check(saved_materials_count() == saved, "deleting it from the library");
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[studio] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "STUDIO PASS" : "STUDIO FAIL");
 		script_quit();

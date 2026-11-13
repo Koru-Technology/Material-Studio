@@ -761,7 +761,7 @@ static char *xc_get_dir(project_file_t *file) {
 }
 
 static bool xc_is_build_file(char *name) {
-	return ends_with(name, ".c") || ends_with(name, ".m") || ends_with(name, ".metal");
+	return ends_with(name, ".c") || ends_with(name, ".cpp") || ends_with(name, ".m") || ends_with(name, ".metal");
 }
 
 static void add_icons(any_array_t *icons, char *idiom, double *sizes, int *scales, int count) {
@@ -1082,6 +1082,12 @@ static void xc_export(project_t *project) {
 		if (ends_with(file->name, ".c")) {
 			filetype = "sourcecode.c.c";
 		}
+		if (ends_with(file->name, ".cpp")) {
+			filetype = "sourcecode.cpp.cpp";
+		}
+		if (ends_with(file->name, ".hpp")) {
+			filetype = "sourcecode.cpp.h";
+		}
 		if (ends_with(file->name, ".metal")) {
 			filetype     = "sourcecode.metal";
 			fileencoding = "fileEncoding = 4; ";
@@ -1270,6 +1276,8 @@ static void xc_export(project_t *project) {
 	p(4, "ENABLE_STRICT_OBJC_MSGSEND = YES;");
 	p(4, "ENABLE_TESTABILITY = YES;");
 	p(4, "GCC_C_LANGUAGE_STANDARD = \"%s\";", project->c_std);
+	p(4, "CLANG_CXX_LANGUAGE_STANDARD = \"c++17\";");
+	p(4, "CLANG_CXX_LIBRARY = \"libc++\";");
 	p(4, "GCC_DYNAMIC_NO_PIC = NO;");
 	p(4, "GCC_NO_COMMON_BLOCKS = YES;");
 	p(4, "GCC_OPTIMIZATION_LEVEL = 0;");
@@ -1310,6 +1318,8 @@ static void xc_export(project_t *project) {
 	p(4, "ENABLE_NS_ASSERTIONS = NO;");
 	p(4, "ENABLE_STRICT_OBJC_MSGSEND = YES;");
 	p(4, "GCC_C_LANGUAGE_STANDARD = \"%s\";", project->c_std);
+	p(4, "CLANG_CXX_LANGUAGE_STANDARD = \"c++17\";");
+	p(4, "CLANG_CXX_LIBRARY = \"libc++\";");
 	p(4, "GCC_NO_COMMON_BLOCKS = YES;");
 	p(4, "GCC_PREPROCESSOR_DEFINITIONS = (");
 	p(5, "NDEBUG,");

@@ -1,251 +1,84 @@
+// Shader compiler: GLSL (iron_glsl.c) to the Metal shader files the app loads
 
-// kong wrapper
-
-#include "../../sources/kong/kong.h"
-#include "iron_string.h"
+#include "../../sources/iron_glsl.h"
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#include <D3Dcompiler.h>
-#include <d3d11.h>
-
-char *hlsl_to_bin(char *source, char *shader_type, char *to) {
-	char *type;
-	if (string_equals(shader_type, "vert")) {
-		type = "vs_5_0";
-	}
-	else {
-		type = "ps_5_0";
-	}
-
-	ID3DBlob *error_message;
-	ID3DBlob *shader_buffer;
-	UINT      flags = D3DCOMPILE_OPTIMIZATION_LEVEL3;
-	HRESULT   hr    = D3DCompile(source, strlen(source) + 1, NULL, NULL, NULL, "main", type, flags, 0, &shader_buffer, &error_message);
-	if (hr != S_OK) {
-		printf("%s\n", (char *)error_message->lpVtbl->GetBufferPointer(error_message));
-		return NULL;
-	}
-
-	FILE *fp  = fopen(to, "wb");
-	int   len = shader_buffer->lpVtbl->GetBufferSize(shader_buffer);
-	fwrite((char *)shader_buffer->lpVtbl->GetBufferPointer(shader_buffer), 1, len, fp);
-	fclose(fp);
-	shader_buffer->lpVtbl->Release(shader_buffer);
-}
+#ifdef IRON_WINDOWS
+#include <windows.h>
 #endif
 
-extern uint64_t    next_variable_id;
-extern size_t      allocated_globals_size;
-extern function_id next_function_index;
-extern global_id   globals_size;
-extern name_id     names_index;
-extern size_t      sets_count;
-extern type_id     next_type_index;
-void               hlsl_export2(char **vs, char **fs, api_kind d3d, bool debug);
-void               spirv_export2(char **vs, char **fs, int *vs_size, int *fs_size, bool debug);
-void               wgsl_export2(char **vs, char **fs);
+typedef enum {
+	IRON_LOG_LEVEL_INFO,
+	IRON_LOG_LEVEL_ERROR
+} iron_log_level_t;
 
-static bool has_compute_function(void) {
-	for (function_id i = 0; get_function(i) != NULL; ++i) {
-		if (has_attribute(&get_function(i)->attributes, add_name("compute"))) {
-			return true;
-		}
-	}
-	return false;
-}
+bool ashader_ios = false; // Metal output for iOS instead of macOS
 
-static void kong_compile_compute(char *shader_lang, const char *to) {
-	char *code;
-	int   size;
-	if (strcmp(shader_lang, "spirv") == 0) {
-		transform(TRANSFORM_FLAG_ONE_COMPONENT_SWIZZLE | TRANSFORM_FLAG_BINARY_UNIFY_LENGTH);
-		code = spirv_export_compute(&size);
-	}
-	else if (strcmp(shader_lang, "hlsl") == 0) {
-		code = hlsl_export_compute();
-		size = (int)strlen(code);
-	}
-	else if (strcmp(shader_lang, "metal") == 0) {
-		code = metal_export_compute();
-		size = (int)strlen(code);
-	}
-	else if (strcmp(shader_lang, "wgsl") == 0) {
-		code = wgsl_export_compute();
-		size = (int)strlen(code);
-	}
-	else {
-		printf("Compute shaders are not supported for %s\n", shader_lang);
-		return;
-	}
-
-	FILE *fp = fopen(to, "wb");
-	fwrite(code, 1, size, fp);
-	fclose(fp);
-}
-
-void kong_compile(char *shader_lang, const char *from, const char *to, char **defines, int defines_count) {
+// GLSL source (#ifdef VERT / FRAG) to <to>.vert.metal and <to>.frag.metal, see iron_glsl.h
+static int glsl_compile(char *from, char *to, char **defines, int defines_count) {
 	FILE *fp = fopen(from, "rb");
+	if (fp == NULL) {
+		return 1;
+	}
 	fseek(fp, 0, SEEK_END);
-	int size = ftell(fp);
-	rewind(fp);
-	char *data = malloc(size + 1);
-	data[size] = 0;
-	fread(data, size, 1, fp);
+	long size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	char *glsl = malloc(size + 1);
+	fread(glsl, 1, size, fp);
+	glsl[size] = 0;
 	fclose(fp);
-	data = kong_preprocess(data, defines, defines_count);
 
-	next_variable_id       = 1;
-	allocated_globals_size = 0;
-	next_function_index    = 0;
-	globals_size           = 0;
-	names_index            = 1;
-	sets_count             = 0;
-	next_type_index        = 0;
-	names_init();
-	types_init();
-	functions_init();
-	tokens tokens = tokenize(from, data);
-	parse(from, &tokens);
-	resolve_types();
-	allocate_globals();
-	for (function_id i = 0; get_function(i) != NULL; ++i) {
-		compile_function_block(&get_function(i)->code, get_function(i)->block);
-	}
-	analyze();
-
-	if (has_compute_function()) {
-		kong_compile_compute(shader_lang, to);
-		return;
+	char pre[4096] = "";
+	for (int i = 0; i < defines_count; ++i) {
+		strcat(pre, "#define ");
+		strcat(pre, defines[i]);
+		strcat(pre, "\n");
 	}
 
-	if (strcmp(shader_lang, "wgsl") == 0) {
-		transform(TRANSFORM_FLAG_ONE_COMPONENT_SWIZZLE);
-		char *vs;
-		char *fs;
-		wgsl_export2(&vs, &fs);
-
-		char to_[512];
-		strcpy(to_, to);
-		to_[strlen(to_) - 4] = '\0';
-		strcat(to_, "vert.wgsl");
-
-		FILE *fp = fopen(to_, "wb");
-		fwrite(vs, 1, strlen(vs), fp);
-		fclose(fp);
-
-		strcpy(to_, to);
-		to_[strlen(to_) - 4] = '\0';
-		strcat(to_, "frag.wgsl");
-
-		fp = fopen(to_, "wb");
-		fwrite(fs, 1, strlen(fs), fp);
-		fclose(fp);
-
-		return;
+	char base[1024];
+	strcpy(base, to);
+	char *dot = strrchr(base, '.');
+	if (dot != NULL) {
+		*dot = 0;
 	}
-
-#ifdef _WIN32
-
-	char *vs;
-	char *fs;
-	hlsl_export2(&vs, &fs, API_DIRECT3D11, false);
-
-	////
-	// int i = string_last_index_of(to, "\\");
-	// char filename[512];
-	// strcpy(filename, to);
-	// char *filebase = &filename[i + 1];
-	// int j = string_index_of(filebase, ".");
-	// filebase[j] = '\0';
-
-	// char tmp[512];
-	// strcpy(tmp, to);
-	// tmp[i] = '\0';
-	// strcat(tmp, "\\..\\..\\temp\\");
-	// strcat(tmp, filebase);
-	// strcat(tmp, ".vert.hlsl");
-	// fp = fopen(tmp, "wb");
-	// fwrite(vs, 1, strlen(vs), fp);
-	// fclose(fp);
-	// tmp[i] = '\0';
-	// strcat(tmp, "\\..\\..\\temp\\");
-	// strcat(tmp, filebase);
-	// strcat(tmp, ".frag.hlsl");
-	// fp = fopen(tmp, "wb");
-	// fwrite(fs, 1, strlen(fs), fp);
-	// fclose(fp);
-	////
-
-	char to_[512];
-	strcpy(to_, to);
-	to_[strlen(to_) - 4] = '\0';
-	strcat(to_, "vert.d3d11");
-	hlsl_to_bin(vs, "vert", to_);
-
-	strcpy(to_, to);
-	to_[strlen(to_) - 4] = '\0';
-	strcat(to_, "frag.d3d11");
-	hlsl_to_bin(fs, "frag", to_);
-
-#elif defined(__APPLE__)
-
-	char *metal = metal_export("");
-
-	char to_[512];
-	strcpy(to_, to);
-	to_[strlen(to_) - 5] = '\0';
-	strcat(to_, "vert.metal");
-
-	fp = fopen(to_, "wb");
-	fwrite("//>vert\n", 1, 8, fp);
-	fwrite(metal, 1, strlen(metal), fp);
-	fclose(fp);
-
-	strcpy(to_, to);
-	to_[strlen(to_) - 5] = '\0';
-	strcat(to_, "frag.metal");
-
-	fp = fopen(to_, "wb");
-	fwrite("//>frag\n", 1, 8, fp);
-	fclose(fp);
-
-#else
-
-	transform(TRANSFORM_FLAG_ONE_COMPONENT_SWIZZLE | TRANSFORM_FLAG_BINARY_UNIFY_LENGTH);
-	char *vs;
-	char *fs;
-	int   vs_size;
-	int   fs_size;
-	spirv_export2(&vs, &fs, &vs_size, &fs_size, false);
-
-	char to_[512];
-	strcpy(to_, to);
-	to_[strlen(to_) - 5] = '\0';
-	strcat(to_, "vert.spirv");
-
-	fp = fopen(to_, "wb");
-	fwrite(vs, 1, vs_size, fp);
-	fclose(fp);
-
-	strcpy(to_, to);
-	to_[strlen(to_) - 5] = '\0';
-	strcat(to_, "frag.spirv");
-
-	fp = fopen(to_, "wb");
-	fwrite(fs, 1, fs_size, fp);
-	fclose(fp);
-
-#endif
+	for (int stage = 0; stage < 2; ++stage) {
+		char *error = NULL;
+		char *msl   = iron_glsl_to_msl(glsl, stage, pre, ashader_ios, &error);
+		if (msl == NULL) {
+			fprintf(stderr, "Error: %s\n%s\n", from, error != NULL ? error : "");
+			free(glsl);
+			return 1;
+		}
+		char path[1100];
+		snprintf(path, sizeof(path), "%s.%s.metal", base, stage == 0 ? "vert" : "frag");
+		FILE *out = fopen(path, "wb");
+		if (out == NULL) {
+			fprintf(stderr, "Error: can not write %s\n", path);
+			free(glsl);
+			return 1;
+		}
+		fprintf(out, "//>%s\n%s", stage == 0 ? "vert" : "frag", msl);
+		fclose(out);
+	}
+	free(glsl);
+	return 0;
 }
 
 int ashader(char *shader_lang, char *from, char *to, char **defines, int defines_count) {
 	// shader_lang == hlsl || metal || spirv || wgsl
-	kong_compile(shader_lang, from, to, defines, defines_count);
-	return 0;
+	size_t n = strlen(from);
+	if (n < 6 || strcmp(from + n - 5, ".glsl") != 0) {
+		fprintf(stderr, "Error: %s: shaders are .glsl files\n", from);
+		return 1;
+	}
+	if (strcmp(shader_lang, "metal") != 0) {
+		fprintf(stderr, "Error: %s: glsl shaders compile to metal only\n", from);
+		return 1;
+	}
+	return glsl_compile(from, to, defines, defines_count);
 }
 
 #ifdef IRON_WINDOWS

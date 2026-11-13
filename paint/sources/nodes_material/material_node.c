@@ -2,7 +2,7 @@
 #include "../global.h"
 
 char *material_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
-	char *result = "float3(0.0, 0.0, 0.0)";
+	char *result = "vec3(0.0, 0.0, 0.0)";
 	i32   mi     = node->buttons->buffer[0]->default_value->buffer[0];
 	if (mi >= g_project->_->materials->length) {
 		return result;

@@ -2,12 +2,12 @@
 #include "../global.h"
 
 char *tilesheet_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
+	node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm");
 	char *tile_x  = parser_material_parse_value_input(node->inputs->buffer[0], false);
 	char *tile_y  = parser_material_parse_value_input(node->inputs->buffer[1], false);
 	i32   tiles_x = (i32)node->buttons->buffer[0]->default_value->buffer[0];
 	i32   tiles_y = (i32)node->buttons->buffer[1]->default_value->buffer[0];
-	return string_tmp("float3((tex_coord.x + %s) / %d.0, (tex_coord.y + %s) / %d.0, 0.0)", tile_x, tiles_x, tile_y, tiles_y);
+	return string_tmp("vec3((tex_coord.x + %s) / %d.0, (tex_coord.y + %s) / %d.0, 0.0)", tile_x, tiles_x, tile_y, tiles_y);
 }
 
 void tilesheet_node_init() {

@@ -181,7 +181,7 @@ char *iron_get_arg(i32 index) {
 #include "iron_raycast.h"
 #include "iron_shape.h"
 #include "iron_tween.h"
-#include "kong/dir.h"
+#include "iron_dir.h"
 #include <lz4x.h>
 #include <stdio.h>
 #define STB_IMAGE_IMPLEMENTATION
@@ -694,8 +694,8 @@ void gpu_delete_shader(gpu_shader_t *shader) {
 	free(shader);
 }
 
-#ifdef WITH_KONG
-void gpu_create_shaders_from_kong(char *kong, char **vs, char **fs, int *vs_size, int *fs_size);
+#ifdef WITH_GLSL
+#include "iron_glsl.h"
 #endif
 
 gpu_shader_t *gpu_create_shader_from_source(char *source, int source_size, gpu_shader_type_t shader_type) {

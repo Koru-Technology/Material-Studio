@@ -1655,7 +1655,7 @@ void gpu_shader_destroy(gpu_shader_t *shader) {
 #ifdef WITH_BC7
 
 // Gpu bc7 encoder: rgba8 pixels in the upload buffer -> compute shader -> bc7 blocks buffer -> image
-// Bindings follow kong's declaration order in gpu_bc7.shader: constant buffer 0, src 1, dst 2
+// Bindings of the encoder in vulkan_bc7.h: constant buffer 0, src 1, dst 2
 #include "vulkan_bc7.h"
 
 static bool                  bc7_compute_checked = false;

@@ -4,7 +4,7 @@
 char *neural_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	gpu_texture_t *result = any_imap_get(neural_node_results, socket->id);
 	if (result == NULL) {
-		return "float3(0.0, 0.0, 0.0)";
+		return "vec3(0.0, 0.0, 0.0)";
 	}
 	char *tex_name = string_copy(parser_material_node_name(node, NULL));
 	any_map_set(data_cached_textures, tex_name, result);

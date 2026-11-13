@@ -278,7 +278,7 @@ static char *bake_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket)
 	char            *rt_name = string_tmp("bake_texture_node_%d", node->id);
 	render_target_t *rt      = any_map_get(render_path_render_targets, rt_name);
 	if (rt == NULL || bake_texture_node_baking) {
-		return "float3(0.0, 0.0, 0.0)";
+		return "vec3(0.0, 0.0, 0.0)";
 	}
 	any_map_set(data_cached_textures, rt_name, rt->_image);
 	bind_tex_t *tex      = parser_material_make_bind_tex(rt_name, rt_name);

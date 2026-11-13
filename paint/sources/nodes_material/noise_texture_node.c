@@ -2,19 +2,19 @@
 #include "../global.h"
 
 char *str_tex_noise = "\
-float hash(float n) { return frac(sin(n) * 10000.0); } \
-float tex_noise_f(float3 x) { \
-	float3 step = float3(110.0, 241.0, 171.0); \
-	float3 i = floor(x); \
-	float3 f = frac(x); \
+float hash(float n) { return fract(sin(n) * 10000.0); } \
+float tex_noise_f(vec3 x) { \
+	vec3 step = vec3(110.0, 241.0, 171.0); \
+	vec3 i = floor(x); \
+	vec3 f = fract(x); \
 	float n = dot(i, step); \
-	float3 u = f * f * (3.0 - 2.0 * f); \
-	return lerp(lerp(lerp(hash(n + dot(step, float3(0.0, 0.0, 0.0))), hash(n + dot(step, float3(1.0, 0.0, 0.0))), u.x), \
-	                     lerp(hash(n + dot(step, float3(0.0, 1.0, 0.0))), hash(n + dot(step, float3(1.0, 1.0, 0.0))), u.x), u.y), \
-	                lerp(lerp(hash(n + dot(step, float3(0.0, 0.0, 1.0))), hash(n + dot(step, float3(1.0, 0.0, 1.0))), u.x), \
-	                     lerp(hash(n + dot(step, float3(0.0, 1.0, 1.0))), hash(n + dot(step, float3(1.0, 1.0, 1.0))), u.x), u.y), u.z); \
+	vec3 u = f * f * (3.0 - 2.0 * f); \
+	return mix(mix(mix(hash(n + dot(step, vec3(0.0, 0.0, 0.0))), hash(n + dot(step, vec3(1.0, 0.0, 0.0))), u.x), \
+	                     mix(hash(n + dot(step, vec3(0.0, 1.0, 0.0))), hash(n + dot(step, vec3(1.0, 1.0, 0.0))), u.x), u.y), \
+	                mix(mix(hash(n + dot(step, vec3(0.0, 0.0, 1.0))), hash(n + dot(step, vec3(1.0, 0.0, 1.0))), u.x), \
+	                     mix(hash(n + dot(step, vec3(0.0, 1.0, 1.0))), hash(n + dot(step, vec3(1.0, 1.0, 1.0))), u.x), u.y), u.z); \
 } \
-float tex_noise_fbm(float3 p, float detail, float roughness, float lacunarity) { \
+float tex_noise_fbm(vec3 p, float detail, float roughness, float lacunarity) { \
 	float fscale = 1.0; \
 	float amp = 1.0; \
 	float maxamp = 0.0; \
@@ -31,22 +31,22 @@ float tex_noise_fbm(float3 p, float detail, float roughness, float lacunarity) {
 		float t = tex_noise_f(p * fscale); \
 		float sum2 = sum + t * amp; \
 		float maxamp2 = maxamp + amp; \
-		return lerp(sum / maxamp, sum2 / maxamp2, rmd); \
+		return mix(sum / maxamp, sum2 / maxamp2, rmd); \
 	} \
 	return sum / maxamp; \
 } \
-float3 tex_noise(float3 p, float scale, float detail, float roughness, float lacunarity, float distortion) { \
-	float3 pp = p * scale; \
-	pp = pp + distortion * (float3(tex_noise_f(pp), tex_noise_f(pp + float3(0.5, 0.0, 0.0)), tex_noise_f(pp + float3(0.0, 0.5, 0.0))) * 2.0 - 1.0); \
+vec3 tex_noise(vec3 p, float scale, float detail, float roughness, float lacunarity, float distortion) { \
+	vec3 pp = p * scale; \
+	pp = pp + distortion * (vec3(tex_noise_f(pp), tex_noise_f(pp + vec3(0.5, 0.0, 0.0)), tex_noise_f(pp + vec3(0.0, 0.5, 0.0))) * 2.0 - 1.0); \
 	float f = tex_noise_fbm(pp, detail, roughness, lacunarity); \
-	float r = tex_noise_fbm(pp + float3(0.33, 0.0, 0.0), detail, roughness, lacunarity); \
-	float g = tex_noise_fbm(pp + float3(0.0, 0.33, 0.0), detail, roughness, lacunarity); \
-	return float3(f, r, g); \
+	float r = tex_noise_fbm(pp + vec3(0.33, 0.0, 0.0), detail, roughness, lacunarity); \
+	float g = tex_noise_fbm(pp + vec3(0.0, 0.33, 0.0), detail, roughness, lacunarity); \
+	return vec3(f, r, g); \
 } \
 ";
 
 static char *noise_texture_node_result(ui_node_t *node) {
-	node_shader_add_function(parser_material_kong, str_tex_noise);
+	node_shader_add_function(parser_material_shader, str_tex_noise);
 	char *co         = parser_material_get_coord(node);
 	char *scale      = parser_material_parse_value_input(node->inputs->buffer[1], false);
 	char *detail     = parser_material_parse_value_input(node->inputs->buffer[2], false);

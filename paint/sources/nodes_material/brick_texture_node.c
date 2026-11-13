@@ -7,14 +7,14 @@ float tex_brick_noise(int n) { \
 	int nn = (n * (n * n * 60493 + 19990303) + 1376312589) & 2147483647; \
 	return float(nn) / 2147483647.0; \
 } \
-float3 tex_brick(float3 co, float3 c1, float3 c2, float3 cm, float scale, float mortar_size, float mortar_smooth, float bias, float brick_width, float row_height, float offset_amount, float offset_frequency, float squash_amount, float squash_frequency) { \
-	float3 p = co * scale; \
+vec3 tex_brick(vec3 co, vec3 c1, vec3 c2, vec3 cm, float scale, float mortar_size, float mortar_smooth, float bias, float brick_width, float row_height, float offset_amount, float offset_frequency, float squash_amount, float squash_frequency) { \
+	vec3 p = co * scale; \
 	float row = floor(p.y / row_height); \
 	float bw = brick_width; \
 	float offset = 0.0; \
 	if (offset_frequency != 0.0 && squash_frequency != 0.0) { \
-		if ((row % squash_frequency) == 0.0) { bw = bw * squash_amount; } \
-		if ((row % offset_frequency) == 0.0) { offset = bw * offset_amount; } \
+		if ((row - squash_frequency * trunc(row / squash_frequency)) == 0.0) { bw = bw * squash_amount; } \
+		if ((row - offset_frequency * trunc(row / offset_frequency)) == 0.0) { offset = bw * offset_amount; } \
 	} \
 	float col = floor((p.x + offset) / bw); \
 	float x = (p.x + offset) - bw * col; \
@@ -26,16 +26,16 @@ float3 tex_brick(float3 co, float3 c1, float3 c2, float3 cm, float scale, float 
 		if (mortar_smooth == 0.0) { f = 1.0; } \
 		if (mortar_smooth > 0.0) { f = smoothstep(0.0, mortar_smooth, 1.0 - min_dist / mortar_size); } \
 	} \
-	return lerp(lerp(c1, c2, tint), cm, f); \
+	return mix(mix(c1, c2, tint), cm, f); \
 } \
-float tex_brick_f(float3 co, float scale, float mortar_size, float mortar_smooth, float brick_width, float row_height, float offset_amount, float offset_frequency, float squash_amount, float squash_frequency) { \
-	float3 p = co * scale; \
+float tex_brick_f(vec3 co, float scale, float mortar_size, float mortar_smooth, float brick_width, float row_height, float offset_amount, float offset_frequency, float squash_amount, float squash_frequency) { \
+	vec3 p = co * scale; \
 	float row = floor(p.y / row_height); \
 	float bw = brick_width; \
 	float offset = 0.0; \
 	if (offset_frequency != 0.0 && squash_frequency != 0.0) { \
-		if ((row % squash_frequency) == 0.0) { bw = bw * squash_amount; } \
-		if ((row % offset_frequency) == 0.0) { offset = bw * offset_amount; } \
+		if ((row - squash_frequency * trunc(row / squash_frequency)) == 0.0) { bw = bw * squash_amount; } \
+		if ((row - offset_frequency * trunc(row / offset_frequency)) == 0.0) { offset = bw * offset_amount; } \
 	} \
 	float col = floor((p.x + offset) / bw); \
 	float x = (p.x + offset) - bw * col; \
@@ -51,7 +51,7 @@ float tex_brick_f(float3 co, float scale, float mortar_size, float mortar_smooth
 ";
 
 char *brick_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_function(parser_material_kong, str_tex_brick);
+	node_shader_add_function(parser_material_shader, str_tex_brick);
 	char *co            = parser_material_get_coord(node);
 	char *col1          = parser_material_parse_vector_input(node->inputs->buffer[1]);
 	char *col2          = parser_material_parse_vector_input(node->inputs->buffer[2]);
@@ -71,7 +71,7 @@ char *brick_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 }
 
 char *brick_texture_node_value(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_function(parser_material_kong, str_tex_brick);
+	node_shader_add_function(parser_material_shader, str_tex_brick);
 	char *co            = parser_material_get_coord(node);
 	char *scale         = parser_material_parse_value_input(node->inputs->buffer[4], false);
 	char *mortar_size   = parser_material_parse_value_input(node->inputs->buffer[5], false);

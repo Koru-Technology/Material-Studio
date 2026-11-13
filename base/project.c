@@ -5,11 +5,11 @@ project_t *main() {
 	add_include_dir(project, "sources");
 	add_include_dir(project, "sources/libs");
 	add_shaders(project, "shaders/*.shader");
+	add_shaders(project, "shaders/*.glsl");
 	add_assets(project, "assets/*", "data/{name}", 0);
 	add_assets(project, "assets/licenses/**", "data/licenses/{name}", 0);
 	add_assets(project, "assets/themes/*.json", "data/themes/{name}", 0);
 	add_cfiles(project, "sources/*.c");
-	add_cfiles(project, "sources/kong/dir.c");
 	add_define(project, string("EMBED_H_PATH=\"%s/build/embed.h\"", flags->dirname));
 
 	if (platform == PLATFORM_WINDOWS) {
@@ -130,20 +130,22 @@ project_t *main() {
 		add_define(project, "IRON_BGRA");
 	}
 
-	if (flags->with_kong) {
-		add_define(project, "WITH_KONG");
-		add_cfiles(project, "sources/kong/dir.c");
-		add_cfiles(project, "sources/kong/kong.c");
-		add_cfiles(project, "sources/kong/kong_cstyle.c");
-		add_cfiles(project, "sources/kong/stb_ds.c");
-		add_cfiles(project, "sources/kong/kong_spirv.c");
-		add_cfiles(project, "sources/kong/kong_wgsl.c");
-		if (platform == PLATFORM_WINDOWS) {
-			add_cfiles(project, "sources/kong/kong_hlsl.c");
-		}
-		if (platform == PLATFORM_MACOS || platform == PLATFORM_IOS) {
-			add_cfiles(project, "sources/kong/kong_metal.c");
-		}
+	if (graphics == GRAPHICS_METAL) {
+		// GLSL shaders: glslang (GLSL -> SPIR-V) and SPIRV-Cross (SPIR-V -> MSL), see iron_glsl.c
+		add_define(project, "WITH_GLSL");
+		add_define(project, "SPIRV_CROSS_C_API_MSL=1");
+		add_define(project, "SPIRV_CROSS_C_API_GLSL=1");
+		add_include_dir(project, "sources/libs/glslang");
+		add_include_dir(project, "sources/libs/spirv_cross");
+		add_cfiles(project, "sources/libs/glslang/glslang/MachineIndependent/*.cpp");
+		add_cfiles(project, "sources/libs/glslang/glslang/MachineIndependent/preprocessor/*.cpp");
+		add_cfiles(project, "sources/libs/glslang/glslang/GenericCodeGen/*.cpp");
+		add_cfiles(project, "sources/libs/glslang/glslang/OSDependent/Unix/ossource.cpp");
+		add_cfiles(project, "sources/libs/glslang/glslang/CInterface/*.cpp");
+		add_cfiles(project, "sources/libs/glslang/glslang/ResourceLimits/*.cpp");
+		add_cfiles(project, "sources/libs/glslang/SPIRV/*.cpp");
+		add_cfiles(project, "sources/libs/glslang/SPIRV/CInterface/*.cpp");
+		add_cfiles(project, "sources/libs/spirv_cross/*.cpp");
 	}
 
 	if (flags->with_plugins) {

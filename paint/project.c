@@ -12,7 +12,6 @@ project_t *main() {
 	flags->with_video_write    = !has_arg("tcc");
 	flags->with_eval           = true;
 	flags->with_plugins        = true;
-	flags->with_kong           = true;
 	flags->with_raytrace       = true;
 	flags->with_bc7            = true;
 	flags->with_audio          = false;
@@ -35,6 +34,7 @@ project_t *main() {
 	add_cfiles(project, "sources/minic_api.c");
 	add_cfiles(project, "sources/main.c");
 	add_shaders(project, "shaders/*.shader");
+	add_shaders(project, "shaders/*.glsl");
 	add_assets(project, "assets/*", "data/{name}", 0);
 	add_assets(project, "assets/export_presets/*", "data/export_presets/{name}", 0);
 	add_assets(project, "assets/keymap_presets/*", "data/keymap_presets/{name}", 0);

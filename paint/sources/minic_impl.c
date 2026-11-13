@@ -1789,8 +1789,8 @@ void script_brush_custom_nodes_remove(char *node_type) {
 	map_delete(parser_logic_custom_nodes, node_type);
 }
 
-void *script_material_kong_get() {
-	return parser_material_kong;
+void *script_material_shader_get() {
+	return parser_material_shader;
 }
 
 static char *_script_message    = NULL;

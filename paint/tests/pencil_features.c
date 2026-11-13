@@ -212,6 +212,7 @@ void next() {
 			check(n < 20, string("double tap undo takes the stroke back (%d left)", n));
 			cfg->pencil_double_tap = 0;
 			cfg->pencil_squeeze    = 0;
+			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 			printf("[pencil] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "PENCIL PASS" : "PENCIL FAIL");
 			script_quit();

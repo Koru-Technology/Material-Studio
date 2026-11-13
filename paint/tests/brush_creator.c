@@ -164,6 +164,7 @@ void next() {
 	}
 	else {
 		script_brush_defaults();
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[brush_creator] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "BRUSH_CREATOR PASS" : "BRUSH_CREATOR FAIL");
 		script_quit();

@@ -24,14 +24,14 @@ node_shader_context_t *make_node_preview_run(material_t *data, ui_node_t *node, 
 
 	con_mesh->allow_vcols = true;
 
-	node_shader_t *kong = node_shader_context_make_kong(con_mesh);
+	node_shader_t *shader = node_shader_context_make_shader(con_mesh);
 
-	node_shader_write_attrib_vert(kong, "output.pos = float4(input.pos.xy * 3.0, 0.0, 1.0);");
-	node_shader_write_attrib_vert(kong, "float2 madd = float2(0.5, 0.5);");
-	node_shader_add_out(kong, "float2 tex_coord");
-	node_shader_write_attrib_vert(kong, "output.tex_coord = output.pos.xy * madd + madd;");
-	node_shader_write_attrib_vert(kong, "output.tex_coord.y = 1.0 - output.tex_coord.y;");
-	node_shader_write_attrib_frag(kong, "float2 tex_coord = input.tex_coord;");
+	node_shader_write_attrib_vert(shader, "output.pos = vec4(input.pos.xy * 3.0, 0.0, 1.0);");
+	node_shader_write_attrib_vert(shader, "vec2 madd = vec2(0.5, 0.5);");
+	node_shader_add_out(shader, "vec2 tex_coord");
+	node_shader_write_attrib_vert(shader, "output.tex_coord = output.pos.xy * madd + madd;");
+	node_shader_write_attrib_vert(shader, "output.tex_coord.y = 1.0 - output.tex_coord.y;");
+	node_shader_write_attrib_frag(shader, "vec2 tex_coord = input.tex_coord;");
 
 	parser_material_init();
 	parser_material_canvases = any_array_create_from_raw(
@@ -56,7 +56,7 @@ node_shader_context_t *make_node_preview_run(material_t *data, ui_node_t *node, 
 	any_array_push(links, link);
 
 	parser_material_con  = con_mesh;
-	parser_material_kong = kong;
+	parser_material_shader = shader;
 
 	parser_material_transform_color_space = false;
 	char *res                             = parser_material_write_result(link);
@@ -67,21 +67,21 @@ node_shader_context_t *make_node_preview_run(material_t *data, ui_node_t *node, 
 	}
 	array_remove(links, link);
 
-	kong->frag_out = "float4";
-	node_shader_write_frag(kong, string_tmp("float3 basecol = %s;", res));
+	shader->frag_out = "vec4";
+	node_shader_write_frag(shader, string_tmp("vec3 basecol = %s;", res));
 	if (parser_material_blur_passthrough && string_equals(node->type, "BLUR")) {
 		// Texture sampled by the blur node, premultiplied by the input alpha
-		node_shader_write_frag(kong, string_tmp("float basecol_a = %s;", blur_node_input_alpha(node)));
-		node_shader_write_frag(kong, "output = float4(basecol.rgb * basecol_a, basecol_a);");
+		node_shader_write_frag(shader, string_tmp("float basecol_a = %s;", blur_node_input_alpha(node)));
+		node_shader_write_frag(shader, "output = vec4(basecol.rgb * basecol_a, basecol_a);");
 	}
 	else {
-		node_shader_write_frag(kong, "output = float4(basecol.rgb, 1.0);");
+		node_shader_write_frag(shader, "output = vec4(basecol.rgb, 1.0);");
 	}
 
 	parser_material_finalize(con_mesh);
 
 	con_mesh->data->shader_from_source = true;
-	gpu_create_shaders_from_kong(node_shader_get(kong), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
+	gpu_create_shaders_from_glsl(node_shader_get(shader), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
 	                             &con_mesh->data->_->vertex_shader_size, &con_mesh->data->_->fragment_shader_size);
 	return con_mesh;
 }

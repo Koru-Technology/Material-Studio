@@ -32,6 +32,12 @@ xcodebuild -project MaterialStudio.xcodeproj -scheme MaterialStudio -configurati
 
 `CODE_SIGN_IDENTITY="Apple Development"` is needed; the generated project's default identity fails to sign. The team id is shown in Xcode under Signing & Capabilities, or in your Apple developer account.
 
+## Shaders
+
+Shaders are GLSL, compiled to Metal by glslang and SPIRV-Cross (vendored in `base/sources/libs`). The `.glsl` files in `base/shaders` and `paint/shaders` are compiled by `amake` during `../base/make`; material shaders are generated as GLSL at runtime and compiled in the app. See [base/docs/ashader.md](base/docs/ashader.md) for the conventions. Only the Metal backend (Mac and iPad) is supported.
+
+`amake` is a prebuilt binary (`base/tools/bin/macos/amake`). After changing its sources, rebuild it from `base/tools/amake` with `../../make --compile` and copy `build/build/Release/amake` there.
+
 ## Installing on the iPad
 
 The iPad must be connected by cable (or paired over the network), have Developer Mode on, and be unlocked when you install or launch.

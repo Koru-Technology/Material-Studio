@@ -161,6 +161,7 @@ void next() {
 		check(ctx->tool != TOOL_TYPE_COLORID, "cancel leaves the ID map view");
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[id_mask] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "ID_MASK PASS" : "ID_MASK FAIL");
 		script_quit();

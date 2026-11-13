@@ -48,5 +48,6 @@ float        parse_float(const char *s);
 void  string_buffer_init(buffer_t *sb);
 void  string_buffer_reset(buffer_t *sb);
 void  string_buffer_append(buffer_t *sb, char *s);
+void  string_buffer_append_n(buffer_t *sb, char *s, int n);
 char *string_buffer_get(buffer_t *sb);
 void  string_buffer_free(buffer_t *sb);

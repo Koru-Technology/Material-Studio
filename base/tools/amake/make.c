@@ -493,7 +493,6 @@ void minic_register_builtins(void) {
 	MINIC_B(with_video_write);
 	MINIC_B(with_eval);
 	MINIC_B(with_plugins);
-	MINIC_B(with_kong);
 	MINIC_B(with_raytrace);
 	MINIC_B(with_bc7);
 	MINIC_B(with_audio);
@@ -765,6 +764,10 @@ static char *shader_type(void) {
 	return "wgsl";
 }
 
+extern bool ashader_ios;
+int         shader_errors = 0;
+int         ashader(char *shader_lang, char *from, char *to, char **defines, int defines_count);
+
 static void compile_shader(char *file, char *to_dir, char *temp) {
 	char *type = shader_type();
 	char *to   = path_join(to_dir, string("%s.%s", path_basename_noext(file), type));
@@ -792,7 +795,10 @@ static void compile_shader(char *file, char *to_dir, char *temp) {
 		return;
 	}
 	fs_ensuredir(temp);
-	ashader(type, file, to, NULL, 0);
+	ashader_ios = strcmp(goptions.target, "ios") == 0;
+	if (ashader(type, file, to, NULL, 0) != 0) {
+		shader_errors += 1;
+	}
 }
 
 static any_array_t *export_shaders(project_t *project, char *to_dir, char *temp) {
@@ -818,6 +824,10 @@ static any_array_t *export_shaders(project_t *project, char *to_dir, char *temp)
 			create_export_info(file, false, m, &shader->name);
 			any_array_push(shaders, shader);
 		}
+	}
+	if (shader_errors > 0) {
+		fprintf(stderr, "Error: %d shaders failed to compile\n", shader_errors);
+		exit(1);
 	}
 	return shaders;
 }

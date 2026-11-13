@@ -29,6 +29,11 @@ gpu_texture_t  *gpu_framebuffer_redirect = NULL;
 uint32_t        framebuffer_index        = 0;
 int             gpu_frame_index          = 0;
 bool            gpu_vertex_textures      = true;
+int             gpu_shader_failure_count = 0; // Shaders that failed to compile, tests check it stays 0
+
+int gpu_shader_failures(void) {
+	return gpu_shader_failure_count;
+}
 #ifndef NDEBUG
 uint32_t gpu_debug_draw_calls       = 0;
 uint32_t gpu_debug_draw_calls_frame = 0;

@@ -15,53 +15,53 @@
 // contributors. The noise repeats every per cells, the fbm doubles per with the frequency so it repeats too. The fbm sums
 // gradient noise, value noise shows its grid.
 char *str_pattern_common = "\
-float pat_rand(float2 x) { \
-	float d = dot(x, float2(13.9898, 8.141)); \
-	return frac(cos(d - 3.14 * floor(d / 3.14)) * 43758.5453); \
+float pat_rand(vec2 x) { \
+	float d = dot(x, vec2(13.9898, 8.141)); \
+	return fract(cos(d - 3.14 * floor(d / 3.14)) * 43758.5453); \
 } \
-float2 pat_rand2(float2 x) { \
-	float2 d = float2(dot(x, float2(13.9898, 8.141)), dot(x, float2(3.4562, 17.398))); \
-	return frac(cos(d - float2(3.14, 3.14) * floor(d / 3.14)) * 43758.5453); \
+vec2 pat_rand2(vec2 x) { \
+	vec2 d = vec2(dot(x, vec2(13.9898, 8.141)), dot(x, vec2(3.4562, 17.398))); \
+	return fract(cos(d - vec2(3.14, 3.14) * floor(d / 3.14)) * 43758.5453); \
 } \
-float2 pat_wrap(float2 c, float2 per) { \
+vec2 pat_wrap(vec2 c, vec2 per) { \
 	return c - per * floor(c / per); \
 } \
-float2 pat_seed(float seed) { \
-	return float2(seed * 0.1373, seed * 0.2917); \
+vec2 pat_seed(float seed) { \
+	return vec2(seed * 0.1373, seed * 0.2917); \
 } \
-float pat_cell_rand(float2 c, float2 per, float seed) { \
+float pat_cell_rand(vec2 c, vec2 per, float seed) { \
 	return pat_rand(pat_wrap(c, per) + pat_seed(seed)); \
 } \
-float pat_noise(float2 p, float2 per, float seed) { \
-	float2 i = floor(p); \
-	float2 f = p - i; \
-	float2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0); \
+float pat_noise(vec2 p, vec2 per, float seed) { \
+	vec2 i = floor(p); \
+	vec2 f = p - i; \
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0); \
 	float a = pat_cell_rand(i, per, seed); \
-	float b = pat_cell_rand(i + float2(1.0, 0.0), per, seed); \
-	float c = pat_cell_rand(i + float2(0.0, 1.0), per, seed); \
-	float d = pat_cell_rand(i + float2(1.0, 1.0), per, seed); \
-	return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y); \
+	float b = pat_cell_rand(i + vec2(1.0, 0.0), per, seed); \
+	float c = pat_cell_rand(i + vec2(0.0, 1.0), per, seed); \
+	float d = pat_cell_rand(i + vec2(1.0, 1.0), per, seed); \
+	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y); \
 } \
-float pat_gnoise(float2 p, float2 per, float seed) { \
-	float2 i = floor(p); \
-	float2 f = p - i; \
-	float2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0); \
+float pat_gnoise(vec2 p, vec2 per, float seed) { \
+	vec2 i = floor(p); \
+	vec2 f = p - i; \
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0); \
 	float a00 = pat_cell_rand(i, per, seed) * 6.28318530718; \
-	float a10 = pat_cell_rand(i + float2(1.0, 0.0), per, seed) * 6.28318530718; \
-	float a01 = pat_cell_rand(i + float2(0.0, 1.0), per, seed) * 6.28318530718; \
-	float a11 = pat_cell_rand(i + float2(1.0, 1.0), per, seed) * 6.28318530718; \
-	float n00 = dot(float2(cos(a00), sin(a00)), f); \
-	float n10 = dot(float2(cos(a10), sin(a10)), f - float2(1.0, 0.0)); \
-	float n01 = dot(float2(cos(a01), sin(a01)), f - float2(0.0, 1.0)); \
-	float n11 = dot(float2(cos(a11), sin(a11)), f - float2(1.0, 1.0)); \
-	return 0.5 + 0.7 * lerp(lerp(n00, n10, u.x), lerp(n01, n11, u.x), u.y); \
+	float a10 = pat_cell_rand(i + vec2(1.0, 0.0), per, seed) * 6.28318530718; \
+	float a01 = pat_cell_rand(i + vec2(0.0, 1.0), per, seed) * 6.28318530718; \
+	float a11 = pat_cell_rand(i + vec2(1.0, 1.0), per, seed) * 6.28318530718; \
+	float n00 = dot(vec2(cos(a00), sin(a00)), f); \
+	float n10 = dot(vec2(cos(a10), sin(a10)), f - vec2(1.0, 0.0)); \
+	float n01 = dot(vec2(cos(a01), sin(a01)), f - vec2(0.0, 1.0)); \
+	float n11 = dot(vec2(cos(a11), sin(a11)), f - vec2(1.0, 1.0)); \
+	return 0.5 + 0.7 * mix(mix(n00, n10, u.x), mix(n01, n11, u.x), u.y); \
 } \
-float pat_fbm(float2 p, float2 per, float seed, float persistence) { \
+float pat_fbm(vec2 p, vec2 per, float seed, float persistence) { \
 	float sum = 0.0; \
 	float amp = 1.0; \
 	float total = 0.0; \
-	float2 q = p; \
-	float2 qp = per; \
+	vec2 q = p; \
+	vec2 qp = per; \
 	for (int ii = 0; ii < 5; ii += 1) { \
 		sum = sum + amp * pat_gnoise(q, qp, seed); \
 		total = total + amp; \
@@ -71,39 +71,39 @@ float pat_fbm(float2 p, float2 per, float seed, float persistence) { \
 	} \
 	return sum / total; \
 } \
-float2 pat_cells(float4 t, float tile) { \
+vec2 pat_cells(vec4 t, float tile) { \
 	float sx = max(t.x, 0.01); \
 	float sy = max(t.x * t.y, 0.01); \
 	if (tile > 0.5) { \
 		sx = max(floor(sx + 0.5), 1.0); \
 		sy = max(floor(sy + 0.5), 1.0); \
 	} \
-	return float2(sx, sy); \
+	return vec2(sx, sy); \
 } \
 float pat_shrink(float per, float f) { \
 	return max(floor(per / f + 0.5), 1.0) / per; \
 } \
-float2 pat_coord(float2 uv, float4 t, float4 d, float2 sc, float dper) { \
+vec2 pat_coord(vec2 uv, vec4 t, vec4 d, vec2 sc, float dper) { \
 	float c = cos(t.z); \
 	float s = sin(t.z); \
-	float2 q = uv - float2(0.5, 0.5); \
-	q = float2(q.x * c - q.y * s, q.x * s + q.y * c) + float2(0.5, 0.5); \
-	float2 p = q * sc; \
+	vec2 q = uv - vec2(0.5, 0.5); \
+	q = vec2(q.x * c - q.y * s, q.x * s + q.y * c) + vec2(0.5, 0.5); \
+	vec2 p = q * sc; \
 	if (d.x > 0.0) { \
 		float ds = max(floor(d.y + 0.5), 1.0); \
-		float2 dp = float2(ds, ds) * dper; \
-		float2 o = float2(pat_fbm(uv * ds, dp, t.w + 3.1, 0.5), pat_fbm(uv * ds, dp, t.w + 7.7, 0.5)); \
-		p = p + (o - float2(0.5, 0.5)) * d.x * 4.0; \
+		vec2 dp = vec2(ds, ds) * dper; \
+		vec2 o = vec2(pat_fbm(uv * ds, dp, t.w + 3.1, 0.5), pat_fbm(uv * ds, dp, t.w + 7.7, 0.5)); \
+		p = p + (o - vec2(0.5, 0.5)) * d.x * 4.0; \
 	} \
 	return p; \
 } \
-float2 pat_rotate(float2 v, float an) { \
+vec2 pat_rotate(vec2 v, float an) { \
 	float c = cos(an); \
 	float s = sin(an); \
-	return float2(v.x * c - v.y * s, v.x * s + v.y * c); \
+	return vec2(v.x * c - v.y * s, v.x * s + v.y * c); \
 } \
-float pat_box(float2 q, float2 hs) { \
-	float2 d = abs(q) - hs; \
+float pat_box(vec2 q, vec2 hs) { \
+	vec2 d = abs(q) - hs; \
 	return max(d.x, d.y); \
 } \
 float pat_bevel(float d, float gap, float bevel) { \
@@ -114,27 +114,27 @@ float pat_bevel(float d, float gap, float bevel) { \
 
 // a: persistence, ridged (folds the noise into thin ridges, veins)
 static char *str_pattern_noise = "\
-float2 pat_noise_fbm(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_noise_fbm(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float h = pat_fbm(p, per, seed, a.x); \
 	float hn = clamp((h - 0.5) * 2.5 + 0.5, 0.0, 1.0); \
-	h = lerp(h, 1.0 - abs(hn * 2.0 - 1.0), a.y); \
-	return float2(h, pat_noise(p, per, seed + 11.0)); \
+	h = mix(h, 1.0 - abs(hn * 2.0 - 1.0), a.y); \
+	return vec2(h, pat_noise(p, per, seed + 11.0)); \
 } \
 ";
 
 // a: edge width, randomness, variation, rounding (domes the cells towards their center)
 static char *str_pattern_cells = "\
-float2 pat_voronoi(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 cell = floor(p); \
-	float2 f = p - cell; \
+vec2 pat_voronoi(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 cell = floor(p); \
+	vec2 f = p - cell; \
 	float f1 = 8.0; \
 	float f2 = 8.0; \
-	float2 nearest = cell; \
+	vec2 nearest = cell; \
 	for (int jj = 0; jj < 3; jj += 1) { \
 		for (int kk = 0; kk < 3; kk += 1) { \
-			float2 o = float2(float(kk) - 1.0, float(jj) - 1.0); \
-			float2 rr = pat_rand2(pat_wrap(cell + o, per) + pat_seed(seed)); \
-			float2 r = o + float2(0.5, 0.5) + (rr - float2(0.5, 0.5)) * a.y - f; \
+			vec2 o = vec2(float(kk) - 1.0, float(jj) - 1.0); \
+			vec2 rr = pat_rand2(pat_wrap(cell + o, per) + pat_seed(seed)); \
+			vec2 r = o + vec2(0.5, 0.5) + (rr - vec2(0.5, 0.5)) * a.y - f; \
 			float d = dot(r, r); \
 			if (d < f1) { \
 				f2 = f1; \
@@ -150,70 +150,70 @@ float2 pat_voronoi(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 	float edge = smoothstep(0.0, max(a.x, 0.001), sqrt(f2) - sqrt(f1)); \
 	float dome = clamp(1.0 - sqrt(f1) / 0.75, 0.0, 1.0); \
 	edge = edge * (1.0 - a.w * (1.0 - dome)); \
-	return float2(edge * (1.0 - a.z + a.z * cr), cr); \
+	return vec2(edge * (1.0 - a.z + a.z * cr), cr); \
 } \
 ";
 
 // a: rings, waviness
 static char *str_pattern_grain = "\
-float2 pat_grain(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_grain(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float k = pat_shrink(per.x, 3.3); \
-	float w = pat_fbm(float2(p.x * k, p.y * 2.0), float2(per.x * k, per.y * 2.0), seed, 0.5); \
+	float w = pat_fbm(vec2(p.x * k, p.y * 2.0), vec2(per.x * k, per.y * 2.0), seed, 0.5); \
 	float rings = max(floor(a.x + 0.5), 1.0); \
-	float ring = frac(p.y * rings + w * a.y); \
+	float ring = fract(p.y * rings + w * a.y); \
 	float profile = smoothstep(0.0, 0.6, ring) * (1.0 - smoothstep(0.6, 1.0, ring)); \
-	float fine = pat_noise(float2(p.x, p.y * 40.0), float2(per.x, per.y * 40.0), seed + 3.0); \
-	return float2(0.35 + 0.65 * profile * (0.8 + 0.2 * fine), w); \
+	float fine = pat_noise(vec2(p.x, p.y * 40.0), vec2(per.x, per.y * 40.0), seed + 3.0); \
+	return vec2(0.35 + 0.65 * profile * (0.8 + 0.2 * fine), w); \
 } \
 ";
 
 // After Material Maker bricks2.mmg (rows of bricks, bevel), MIT, (c) Rodolphe Suescun and contributors.
 // a: mortar, bevel, offset, variation
 static char *str_pattern_bricks = "\
-float2 pat_bricks(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 b = float2(p.x, p.y * 2.0); \
+vec2 pat_bricks(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 b = vec2(p.x, p.y * 2.0); \
 	float row = floor(b.y); \
 	b.x = b.x + a.z * (row - 2.0 * floor(row * 0.5)); \
-	float2 id = floor(b); \
-	float2 f = b - id; \
-	float2 e = min(f, float2(1.0, 1.0) - f) * float2(1.0, 0.5); \
-	float cr = pat_cell_rand(id, float2(per.x, per.y * 2.0), seed); \
+	vec2 id = floor(b); \
+	vec2 f = b - id; \
+	vec2 e = min(f, vec2(1.0, 1.0) - f) * vec2(1.0, 0.5); \
+	float cr = pat_cell_rand(id, vec2(per.x, per.y * 2.0), seed); \
 	float h = pat_bevel(min(e.x, e.y), a.x * 0.5, a.y * 0.5); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
 // a: gap, bevel, variation
 static char *str_pattern_tiles = "\
-float2 pat_tiles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 id = floor(p); \
-	float2 f = p - id; \
-	float2 e = min(f, float2(1.0, 1.0) - f); \
+vec2 pat_tiles(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 id = floor(p); \
+	vec2 f = p - id; \
+	vec2 e = min(f, vec2(1.0, 1.0) - f); \
 	float cr = pat_cell_rand(id, per, seed); \
-	float checker = frac((id.x + id.y) * 0.5) * 2.0; \
-	cr = lerp(cr, checker * 0.8 + cr * 0.2, a.w); \
+	float checker = fract((id.x + id.y) * 0.5) * 2.0; \
+	cr = mix(cr, checker * 0.8 + cr * 0.2, a.w); \
 	float h = pat_bevel(min(e.x, e.y), a.x * 0.5, a.y * 0.5); \
-	return float2(h * (1.0 - a.z + a.z * cr), cr); \
+	return vec2(h * (1.0 - a.z + a.z * cr), cr); \
 } \
 ";
 
 // a: thread width, fiber, twill (threads go over two and under two, the crossings step along a diagonal)
 static char *str_pattern_weave = "\
-float2 pat_weave(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 q = p * 2.0; \
-	float2 c = floor(q); \
-	float2 f = q - c; \
-	float alt = frac((c.x + c.y) * 0.5) * 2.0; \
+vec2 pat_weave(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 q = p * 2.0; \
+	vec2 c = floor(q); \
+	vec2 f = q - c; \
+	float alt = fract((c.x + c.y) * 0.5) * 2.0; \
 	if (a.z > 0.5) { \
-		alt = floor(frac((c.x + c.y) * 0.25) * 2.0); \
+		alt = floor(fract((c.x + c.y) * 0.25) * 2.0); \
 	} \
-	float h = lerp(sin(f.y * 3.14159), sin(f.x * 3.14159), alt); \
+	float h = mix(sin(f.y * 3.14159), sin(f.x * 3.14159), alt); \
 	float wd = max(a.x, 0.01); \
 	h = clamp((h - (1.0 - wd)) / wd, 0.0, 1.0); \
-	float fiber = lerp(sin(f.x * 18.85), sin(f.y * 18.85), alt) * 0.5 + 0.5; \
+	float fiber = mix(sin(f.x * 18.85), sin(f.y * 18.85), alt) * 0.5 + 0.5; \
 	float n = pat_noise(q * 4.0, per * 8.0, seed); \
 	h = 0.2 + 0.8 * h * (1.0 - a.y + a.y * fiber) * (0.92 + 0.08 * n); \
-	return float2(h, pat_cell_rand(c, per * 2.0, seed)); \
+	return vec2(h, pat_cell_rand(c, per * 2.0, seed)); \
 } \
 ";
 
@@ -221,75 +221,75 @@ float2 pat_weave(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 // scratch per cell and layer, the layers shift by random fractions of a cell.
 // a: length, width, waviness, randomness
 static char *str_pattern_scratches = "\
-float pat_scratch(float2 p, float2 per, float4 a, float2 sd) { \
-	float2 c = floor(p); \
-	float2 r1 = pat_rand2(pat_wrap(c, per) + sd); \
-	float2 r2 = pat_rand2(r1); \
-	float2 uv = p - c; \
-	float2 border = min(uv, float2(1.0, 1.0) - uv) * 10.0; \
-	uv = uv * 2.0 - float2(1.0, 1.0); \
+float pat_scratch(vec2 p, vec2 per, vec4 a, vec2 sd) { \
+	vec2 c = floor(p); \
+	vec2 r1 = pat_rand2(pat_wrap(c, per) + sd); \
+	vec2 r2 = pat_rand2(r1); \
+	vec2 uv = p - c; \
+	vec2 border = min(uv, vec2(1.0, 1.0) - uv) * 10.0; \
+	uv = uv * 2.0 - vec2(1.0, 1.0); \
 	float an = 6.28318530718 * (r1.x - 0.5) * a.w; \
 	float co = cos(an); \
 	float si = sin(an); \
-	uv = float2(co * uv.x + si * uv.y, si * uv.x - co * uv.y); \
+	uv = vec2(co * uv.x + si * uv.y, si * uv.x - co * uv.y); \
 	uv.y = uv.y + 2.0 * r1.y - 1.0; \
 	uv.y = uv.y + 0.5 * a.z * cos(2.0 * uv.x + 6.28318530718 * r2.y); \
 	uv.x = uv.x / max(a.x, 0.05); \
 	uv.y = uv.y / max(a.y, 0.05); \
 	return clamp(min(border.x, border.y), 0.0, 1.0) * max(1.0 - uv.x * uv.x, 0.0) * max(0.0, 1.0 - 1000.0 * uv.y * uv.y); \
 } \
-float2 pat_scratches(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_scratches(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float v = 0.0; \
-	float2 sd = pat_seed(seed) + float2(0.31, 0.77); \
+	vec2 sd = pat_seed(seed) + vec2(0.31, 0.77); \
 	for (int ii = 0; ii < 4; ii += 1) { \
 		sd = pat_rand2(sd); \
 		v = max(v, pat_scratch(p + sd, per, a, sd)); \
 	} \
 	v = clamp(v, 0.0, 1.0); \
-	return float2(1.0 - v, v); \
+	return vec2(1.0 - v, v); \
 } \
 ";
 
 // After Material Maker beehive.mmg (beehive_dist, beehive_center), MIT, (c) Rodolphe Suescun and contributors.
 // a: gap, bevel, variation
 static char *str_pattern_hex = "\
-float2 pat_hex(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 s = float2(1.0, 1.73205080757); \
-	float2 q = float2(p.x, p.y * 1.73205080757); \
-	float4 hc = floor(float4(q.x, q.y, q.x - 0.5, q.y - 1.0) / float4(s.x, s.y, s.x, s.y)) + float4(0.5, 0.5, 0.5, 0.5); \
-	float2 h1 = q - hc.xy * s; \
-	float2 h2 = q - (hc.zw + float2(0.5, 0.5)) * s; \
-	float2 hp = h1; \
-	float2 id = hc.xy; \
+vec2 pat_hex(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 s = vec2(1.0, 1.73205080757); \
+	vec2 q = vec2(p.x, p.y * 1.73205080757); \
+	vec4 hc = floor(vec4(q.x, q.y, q.x - 0.5, q.y - 1.0) / vec4(s.x, s.y, s.x, s.y)) + vec4(0.5, 0.5, 0.5, 0.5); \
+	vec2 h1 = q - hc.xy * s; \
+	vec2 h2 = q - (hc.zw + vec2(0.5, 0.5)) * s; \
+	vec2 hp = h1; \
+	vec2 id = hc.xy; \
 	if (dot(h2, h2) < dot(h1, h1)) { \
 		hp = h2; \
-		id = hc.zw + float2(9.73, 9.73); \
+		id = hc.zw + vec2(9.73, 9.73); \
 	} \
-	float2 ap = abs(hp); \
+	vec2 ap = abs(hp); \
 	float dist = max(dot(ap, s * 0.5), ap.x); \
 	float cr = pat_rand(id + pat_seed(seed)); \
 	float h = pat_bevel(0.5 - dist, a.x * 0.5, a.y * 0.5); \
-	return float2(h * (1.0 - a.z + a.z * cr), cr); \
+	return vec2(h * (1.0 - a.z + a.z * cr), cr); \
 } \
 ";
 
 // Round pebbles scattered one per cell, the highest wins where they overlap
 // a: size, size jitter, softness, variation
 static char *str_pattern_pebbles = "\
-float2 pat_pebbles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 cell = floor(p); \
-	float2 f = p - cell; \
+vec2 pat_pebbles(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 cell = floor(p); \
+	vec2 f = p - cell; \
 	float h = 0.0; \
 	float cid = 0.0; \
 	for (int jj = 0; jj < 3; jj += 1) { \
 		for (int kk = 0; kk < 3; kk += 1) { \
-			float2 o = float2(float(kk) - 1.0, float(jj) - 1.0); \
-			float2 id = pat_wrap(cell + o, per) + pat_seed(seed); \
-			float2 rr = pat_rand2(id); \
-			float rs = pat_rand(id + float2(7.3, 1.9)); \
-			float rv = pat_rand(id + float2(3.7, 5.1)); \
+			vec2 o = vec2(float(kk) - 1.0, float(jj) - 1.0); \
+			vec2 id = pat_wrap(cell + o, per) + pat_seed(seed); \
+			vec2 rr = pat_rand2(id); \
+			float rs = pat_rand(id + vec2(7.3, 1.9)); \
+			float rv = pat_rand(id + vec2(3.7, 5.1)); \
 			float rad = max(a.x * (1.0 - a.y * rs), 0.02); \
-			float2 d = o + float2(0.2, 0.2) + rr * 0.6 - f; \
+			vec2 d = o + vec2(0.2, 0.2) + rr * 0.6 - f; \
 			float dist = sqrt(dot(d, d)) / rad; \
 			float dome = sqrt(max(1.0 - dist * dist, 0.0)); \
 			float edge = clamp((1.0 - dist) / max(a.z, 0.01), 0.0, 1.0); \
@@ -300,7 +300,7 @@ float2 pat_pebbles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 			} \
 		} \
 	} \
-	return float2(h, cid); \
+	return vec2(h, cid); \
 } \
 ";
 
@@ -308,22 +308,22 @@ float2 pat_pebbles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 // Dots on a grid: rivets with no randomness, spots, pores and lights with some, density leaves cells empty
 // a: size, randomness, density, softness; a2: offset x, offset y
 static char *str_pattern_dots = "\
-float2 pat_dots(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 q = p + float2(a2.x, a2.y); \
-	float2 cell = floor(q); \
-	float2 f = q - cell; \
+vec2 pat_dots(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 q = p + vec2(a2.x, a2.y); \
+	vec2 cell = floor(q); \
+	vec2 f = q - cell; \
 	float h = 0.0; \
 	float cid = 0.0; \
 	for (int jj = 0; jj < 3; jj += 1) { \
 		for (int kk = 0; kk < 3; kk += 1) { \
-			float2 o = float2(float(kk) - 1.0, float(jj) - 1.0); \
-			float2 id = pat_wrap(cell + o, per) + pat_seed(seed); \
-			float2 rr = pat_rand2(id); \
-			float rs = pat_rand(id + float2(7.3, 1.9)); \
-			float rv = pat_rand(id + float2(3.7, 5.1)); \
+			vec2 o = vec2(float(kk) - 1.0, float(jj) - 1.0); \
+			vec2 id = pat_wrap(cell + o, per) + pat_seed(seed); \
+			vec2 rr = pat_rand2(id); \
+			float rs = pat_rand(id + vec2(7.3, 1.9)); \
+			float rv = pat_rand(id + vec2(3.7, 5.1)); \
 			if (rv < a.z) { \
 				float rad = max(a.x * 0.5 * (1.0 - a.y * 0.5 * rs), 0.01); \
-				float2 d = o + float2(0.5, 0.5) + (rr - float2(0.5, 0.5)) * a.y * (1.0 - a.x) - f; \
+				vec2 d = o + vec2(0.5, 0.5) + (rr - vec2(0.5, 0.5)) * a.y * (1.0 - a.x) - f; \
 				float dist = sqrt(dot(d, d)) / rad; \
 				float dome = sqrt(max(1.0 - dist * dist, 0.0)); \
 				float edge = clamp((1.0 - dist) / max(a.w, 0.01), 0.0, 1.0); \
@@ -335,17 +335,17 @@ float2 pat_dots(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 			} \
 		} \
 	} \
-	return float2(h, cid); \
+	return vec2(h, cid); \
 } \
 ";
 
 // Bands across the pattern: a sine, saw or square profile, wavy if asked
 // a: profile (0 sine, 1 saw, 2 square), width (of the square band), waviness, wave count
 static char *str_pattern_stripes = "\
-float2 pat_stripes(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_stripes(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float k = pat_shrink(per.x, max(a.w, 0.1)); \
 	float wv = sin(p.x * k * 6.28318530718 + pat_rand(pat_seed(seed)) * 6.28318530718) * a.z * 0.5; \
-	float v = p.y + wv + abs(frac(p.x) - 0.5) * 2.0 * a2.x; \
+	float v = p.y + wv + abs(fract(p.x) - 0.5) * 2.0 * a2.x; \
 	float t = v - floor(v); \
 	float h = 0.5 + 0.5 * sin(t * 6.28318530718); \
 	if (a.x > 0.5) { \
@@ -355,34 +355,34 @@ float2 pat_stripes(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 		float e = 0.03; \
 		h = smoothstep(0.0, e, t) * (1.0 - smoothstep(a.y, a.y + e, t)); \
 	} \
-	return float2(h, pat_cell_rand(float2(0.0, floor(v)), float2(4096.0, per.y), seed)); \
+	return vec2(h, pat_cell_rand(vec2(0.0, floor(v)), vec2(4096.0, per.y), seed)); \
 } \
 ";
 
 // Hair: thin strands along the pattern, gathered in clumps that are taller at their centers, bent a little
 // a: length, clumping, clump size, bend
 static char *str_pattern_fibers = "\
-float2 pat_fibers(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float bend = (pat_gnoise(p * float2(0.25, 0.25 / max(a.x, 1.0)), per * float2(0.25, 0.25), seed + 5.0) - 0.5) * a.w * 2.0; \
-	float2 q = float2(p.x + bend, p.y); \
+vec2 pat_fibers(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	float bend = (pat_gnoise(p * vec2(0.25, 0.25 / max(a.x, 1.0)), per * vec2(0.25, 0.25), seed + 5.0) - 0.5) * a.w * 2.0; \
+	vec2 q = vec2(p.x + bend, p.y); \
 	float ky = pat_shrink(per.y, max(a.x, 1.0)); \
-	float s1 = pat_gnoise(float2(q.x, q.y * ky), float2(per.x, per.y * ky), seed); \
-	float s2 = pat_gnoise(float2(q.x, q.y * ky) * 2.0, float2(per.x, per.y * ky) * 2.0, seed + 2.0); \
+	float s1 = pat_gnoise(vec2(q.x, q.y * ky), vec2(per.x, per.y * ky), seed); \
+	float s2 = pat_gnoise(vec2(q.x, q.y * ky) * 2.0, vec2(per.x, per.y * ky) * 2.0, seed + 2.0); \
 	float strands = max(smoothstep(0.42, 0.68, s1), smoothstep(0.45, 0.7, s2) * 0.6); \
 	float cs = max(a.z, 1.0); \
 	float kx = pat_shrink(per.x, cs); \
 	float kc = pat_shrink(per.y, cs * max(a.x, 1.0) * 0.5); \
-	float2 cq = float2(q.x * kx, q.y * kc); \
-	float2 cper = float2(per.x * kx, per.y * kc); \
-	float2 cell = floor(cq); \
-	float2 f = cq - cell; \
+	vec2 cq = vec2(q.x * kx, q.y * kc); \
+	vec2 cper = vec2(per.x * kx, per.y * kc); \
+	vec2 cell = floor(cq); \
+	vec2 f = cq - cell; \
 	float f1 = 8.0; \
 	float cid = 0.0; \
 	for (int jj = 0; jj < 3; jj += 1) { \
 		for (int kk = 0; kk < 3; kk += 1) { \
-			float2 o = float2(float(kk) - 1.0, float(jj) - 1.0); \
-			float2 rr = pat_rand2(pat_wrap(cell + o, cper) + pat_seed(seed)); \
-			float2 r = o + rr - f; \
+			vec2 o = vec2(float(kk) - 1.0, float(jj) - 1.0); \
+			vec2 rr = pat_rand2(pat_wrap(cell + o, cper) + pat_seed(seed)); \
+			vec2 r = o + rr - f; \
 			float d = dot(r, r); \
 			if (d < f1) { \
 				f1 = d; \
@@ -391,35 +391,35 @@ float2 pat_fibers(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 		} \
 	} \
 	float clump = clamp(1.0 - sqrt(f1) / 0.8, 0.0, 1.0); \
-	return float2(strands * (1.0 - a.y + a.y * clump), cid); \
+	return vec2(strands * (1.0 - a.y + a.y * clump), cid); \
 } \
 ";
 
 // Floor boards: rows of long boards with staggered ends, grain running along each board
 // a: gap, bevel, board length (cells), grain
 static char *str_pattern_planks = "\
-float2 pat_planks(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_planks(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float row = floor(p.y); \
 	float len = max(floor(a.z + 0.5), 1.0); \
-	float off = floor(pat_cell_rand(float2(0.0, row), float2(1.0, per.y), seed + 2.0) * len); \
+	float off = floor(pat_cell_rand(vec2(0.0, row), vec2(1.0, per.y), seed + 2.0) * len); \
 	float x = p.x + off; \
 	float bx = floor(x / len); \
-	float2 id = float2(bx, row); \
+	vec2 id = vec2(bx, row); \
 	float fx = (x - bx * len) / len; \
 	float fy = p.y - row; \
 	float d = min(min(fx, 1.0 - fx) * len, min(fy, 1.0 - fy)); \
-	float cr = pat_cell_rand(id, float2(max(floor(per.x / len + 0.5), 1.0), per.y), seed); \
+	float cr = pat_cell_rand(id, vec2(max(floor(per.x / len + 0.5), 1.0), per.y), seed); \
 	float h = pat_bevel(d, a.x * 0.5, a.y * 0.5); \
-	float g = pat_gnoise(float2(x * 0.35, fy * 3.0 + cr * 37.0), float2(4096.0, 4096.0), seed + 4.0); \
+	float g = pat_gnoise(vec2(x * 0.35, fy * 3.0 + cr * 37.0), vec2(4096.0, 4096.0), seed + 4.0); \
 	float grain = 0.5 + 0.5 * sin((fy * 5.0 + g * 4.0 + cr * 3.0) * 6.28318530718); \
-	return float2(h * (1.0 - a.w * 0.4 + a.w * 0.4 * grain), cr); \
+	return vec2(h * (1.0 - a.w * 0.4 + a.w * 0.4 * grain), cr); \
 } \
 ";
 
 // Roof tiles: overlapping rows, each tile rises to its rounded or square lower lip, the tile above shades its top
 // a: roundness, gap, slope, variation
 static char *str_pattern_shingles = "\
-float2 pat_shingles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_shingles(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float row = floor(p.y); \
 	float x = p.x + 0.5 * (row - 2.0 * floor(row * 0.5)); \
 	float col = floor(x); \
@@ -427,12 +427,12 @@ float2 pat_shingles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 	float fy = p.y - row; \
 	float cx = fx * 2.0 - 1.0; \
 	float lip = a.x * 0.45 * (1.0 - sqrt(max(1.0 - cx * cx, 0.0))); \
-	float2 id = float2(col, row); \
+	vec2 id = vec2(col, row); \
 	float h = 0.0; \
 	if (fy < lip) { \
 		float r2 = row - 1.0; \
 		float x2 = p.x + 0.5 * (r2 - 2.0 * floor(r2 * 0.5)); \
-		id = float2(floor(x2), r2); \
+		id = vec2(floor(x2), r2); \
 		h = 0.15 * (1.0 - fy / max(lip, 0.001)); \
 	} \
 	else { \
@@ -443,7 +443,7 @@ float2 pat_shingles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 		h = h * pat_bevel(fy - lip, 0.0, 0.05); \
 	} \
 	float cr = pat_cell_rand(id, per, seed); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
@@ -451,63 +451,63 @@ float2 pat_shingles(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 // (1, 1), (length, -length) hold one board of each.
 // a: gap, bevel, length, variation
 static char *str_pattern_herringbone = "\
-float2 pat_herringbone(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_herringbone(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float bl = max(floor(a.z + 0.5), 2.0); \
-	float2 c = floor(p); \
-	float2 f = p - c; \
+	vec2 c = floor(p); \
+	vec2 f = p - c; \
 	float sd = c.x - c.y; \
 	float band = floor(sd / (2.0 * bl)); \
 	float sm = sd - band * 2.0 * bl; \
 	float along = 0.0; \
 	float across = 0.0; \
-	float2 id = float2(0.0, 0.0); \
+	vec2 id = vec2(0.0, 0.0); \
 	if (sm < bl) { \
 		along = sm + f.x; \
 		across = f.y; \
-		id = float2(band, c.y); \
+		id = vec2(band, c.y); \
 	} \
 	else { \
 		along = 2.0 * bl - 1.0 - sm + f.y; \
 		across = f.x; \
-		id = float2(band + 517.0, c.x); \
+		id = vec2(band + 517.0, c.x); \
 	} \
 	float d = min(min(along, bl - along), min(across, 1.0 - across)); \
 	float cr = pat_rand(id + pat_seed(seed)); \
 	float h = pat_bevel(d, a.x * 0.5, a.y * 0.5); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
 // Parquet: square blocks of strips, the strips of neighbor blocks cross each other
 // a: strips, gap, bevel, variation
 static char *str_pattern_parquet = "\
-float2 pat_parquet(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_parquet(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float n = max(floor(a.x + 0.5), 1.0); \
-	float2 b = floor(p); \
-	float2 f = p - b; \
-	float flip = frac((b.x + b.y) * 0.5) * 2.0; \
-	float u = lerp(f.x, f.y, flip); \
-	float v = lerp(f.y, f.x, flip); \
+	vec2 b = floor(p); \
+	vec2 f = p - b; \
+	float flip = fract((b.x + b.y) * 0.5) * 2.0; \
+	float u = mix(f.x, f.y, flip); \
+	float v = mix(f.y, f.x, flip); \
 	float strip = floor(v * n); \
 	float acr = v * n - strip; \
 	float d = min(min(acr, 1.0 - acr), min(u, 1.0 - u) * n); \
-	float cr = pat_rand(float2(b.x * 7.0 + strip, b.y) + pat_seed(seed)); \
+	float cr = pat_rand(vec2(b.x * 7.0 + strip, b.y) + pat_seed(seed)); \
 	float h = pat_bevel(d, a.y * 0.5, a.z * 0.5); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
 // Uneven bricks: each cell split in two again and again, across its longer side mostly, at a random place
 // a: gap, bevel, splits, variation
 static char *str_pattern_uneven = "\
-float2 pat_uneven(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 c = pat_wrap(floor(p), per); \
-	float2 f = p - floor(p); \
-	float2 lo = float2(0.0, 0.0); \
-	float2 hi = float2(1.0, 1.0); \
+vec2 pat_uneven(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 c = pat_wrap(floor(p), per); \
+	vec2 f = p - floor(p); \
+	vec2 lo = vec2(0.0, 0.0); \
+	vec2 hi = vec2(1.0, 1.0); \
 	for (int ii = 0; ii < 6; ii += 1) { \
 		if (float(ii) < a.z) { \
-			float2 sz = hi - lo; \
+			vec2 sz = hi - lo; \
 			float r1 = pat_rand(c * 1.31 + lo * 7.1 + hi * 3.3 + pat_seed(seed)); \
 			float r2 = pat_rand(c * 2.17 + lo * 1.9 + hi * 5.7 + pat_seed(seed + 1.0)); \
 			float split = 0.3 + 0.4 * r2; \
@@ -531,10 +531,10 @@ float2 pat_uneven(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 			} \
 		} \
 	} \
-	float2 e = min(f - lo, hi - f); \
+	vec2 e = min(f - lo, hi - f); \
 	float cr = pat_rand(c + (lo + hi) * 3.7 + pat_seed(seed + 2.0)); \
 	float h = pat_bevel(min(e.x, e.y), a.x * 0.5, a.y * 0.5); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
@@ -542,7 +542,7 @@ float2 pat_uneven(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 // rings (arc pavement) when segments is above 0
 // a: rings, radius, gap, variation
 static char *str_pattern_fan = "\
-float2 pat_fan_rows(float2 p, float2 per, float4 a, float seed, float segments) { \
+vec2 pat_fan_rows(vec2 p, vec2 per, vec4 a, float seed, float segments) { \
 	float rad = max(a.y, 0.3); \
 	float rs = rad * 0.5; \
 	float jb = floor(p.y / rs); \
@@ -553,7 +553,7 @@ float2 pat_fan_rows(float2 p, float2 per, float4 a, float seed, float segments) 
 		float j = jb - 2.0 + float(ii); \
 		float off = 0.5 * (j - 2.0 * floor(j * 0.5)); \
 		float cx = floor(p.x - off + 0.5) + off; \
-		float2 d = p - float2(cx, j * rs); \
+		vec2 d = p - vec2(cx, j * rs); \
 		float r = sqrt(dot(d, d)) / rad; \
 		if (found < 0.5 && r < 1.0 && d.y > -rad * 0.05) { \
 			found = 1.0; \
@@ -562,25 +562,25 @@ float2 pat_fan_rows(float2 p, float2 per, float4 a, float seed, float segments) 
 			float ring = floor(rr); \
 			float fr = rr - ring; \
 			float dr = min(fr, 1.0 - fr) / rings * rad; \
-			cr = pat_rand(float2(cx, j + ring * 13.0) + pat_seed(seed)); \
+			cr = pat_rand(vec2(cx, j + ring * 13.0) + pat_seed(seed)); \
 			if (segments > 0.5) { \
-				float an = atan2(d.x, max(d.y, 0.0001)) / 3.14159265 + 0.5; \
+				float an = atan(d.x, max(d.y, 0.0001)) / 3.14159265 + 0.5; \
 				float cnt = max(floor(segments * (ring + 1.0) + 0.5), 1.0); \
 				float sa = an * cnt; \
 				float sf = sa - floor(sa); \
 				float da = min(sf, 1.0 - sf) / cnt * 3.14159265 * r * rad; \
 				dr = min(dr, da); \
-				cr = pat_rand(float2(cx + floor(sa) * 7.3, j + ring * 13.0) + pat_seed(seed)); \
+				cr = pat_rand(vec2(cx + floor(sa) * 7.3, j + ring * 13.0) + pat_seed(seed)); \
 			} \
 			h = pat_bevel(dr, a.z * 0.5, a.z * 0.5 + 0.03); \
 		} \
 	} \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
-float2 pat_seigaiha(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_seigaiha(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	return pat_fan_rows(p, per, a, seed, 0.0); \
 } \
-float2 pat_arcs(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_arcs(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	return pat_fan_rows(p, per, a, seed, 2.0); \
 } \
 ";
@@ -588,52 +588,52 @@ float2 pat_arcs(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 // Eight pointed stars, two squares turned 45 degrees, and the crosses between them
 // a: star size, gap, bevel, variation
 static char *str_pattern_stars = "\
-float2 pat_stars(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 c = floor(p); \
-	float2 q = p - c - float2(0.5, 0.5); \
+vec2 pat_stars(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 c = floor(p); \
+	vec2 q = p - c - vec2(0.5, 0.5); \
 	float hs = a.x * 0.5; \
-	float star = min(pat_box(q, float2(hs, hs)), pat_box(pat_rotate(q, 0.785398), float2(hs, hs))); \
-	float2 e = min(p - c, float2(1.0, 1.0) - (p - c)); \
+	float star = min(pat_box(q, vec2(hs, hs)), pat_box(pat_rotate(q, 0.785398), vec2(hs, hs))); \
+	vec2 e = min(p - c, vec2(1.0, 1.0) - (p - c)); \
 	float d = min(abs(star), min(e.x, e.y) + max(-star, 0.0) * 4.0); \
 	float inside = 1.0 - step(0.0, star); \
 	float cr = pat_cell_rand(c, per, seed); \
 	float h = pat_bevel(d, a.y * 0.5, a.z * 0.5); \
-	return float2(h * (1.0 - a.w + a.w * cr), inside * 0.6 + 0.4 * cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), inside * 0.6 + 0.4 * cr); \
 } \
 ";
 
 // Truchet: quarter circles in the corners of each cell, turned at random, they join into winding bands
 // a: width, softness, variation
 static char *str_pattern_truchet = "\
-float2 pat_truchet(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 c = floor(p); \
-	float2 f = p - c; \
+vec2 pat_truchet(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 c = floor(p); \
+	vec2 f = p - c; \
 	float cr = pat_cell_rand(c, per, seed); \
 	if (cr > 0.5) { \
 		f.x = 1.0 - f.x; \
 	} \
 	float d1 = abs(sqrt(dot(f, f)) - 0.5); \
-	float2 g = f - float2(1.0, 1.0); \
+	vec2 g = f - vec2(1.0, 1.0); \
 	float d2 = abs(sqrt(dot(g, g)) - 0.5); \
 	float d = min(d1, d2); \
 	float w = a.x * 0.5; \
 	float h = 1.0 - smoothstep(w - max(a.y, 0.005) * w, w, d); \
 	h = h * sqrt(max(1.0 - (d / max(w, 0.001)) * (d / max(w, 0.001)), 0.0)); \
-	return float2(h * (1.0 - a.z + a.z * cr), cr); \
+	return vec2(h * (1.0 - a.z + a.z * cr), cr); \
 } \
 ";
 
 // Ornaments: a flower in each cell of staggered rows, petals around a round heart (damask, floral wallpaper)
 // a: petals, size, heart, softness
 static char *str_pattern_motif = "\
-float2 pat_motif(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_motif(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float row = floor(p.y); \
-	float2 q = p; \
+	vec2 q = p; \
 	q.x = q.x + 0.5 * (row - 2.0 * floor(row * 0.5)); \
-	float2 c = floor(q); \
-	float2 d = q - c - float2(0.5, 0.5); \
+	vec2 c = floor(q); \
+	vec2 d = q - c - vec2(0.5, 0.5); \
 	float r = sqrt(dot(d, d)) * 2.0; \
-	float an = atan2(d.y, d.x); \
+	float an = atan(d.y, d.x); \
 	float n = max(floor(a.x + 0.5), 2.0); \
 	float petal = a.y * (0.55 + 0.45 * abs(cos(an * n * 0.5))); \
 	float soft = max(a.w, 0.01); \
@@ -641,40 +641,40 @@ float2 pat_motif(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 	float heart = clamp((a.z * a.y - r) / soft, 0.0, 1.0); \
 	float vein = 1.0 - 0.35 * pow(abs(sin(an * n * 0.5)), 30.0) * step(a.z * a.y, r); \
 	float h = max(flower * 0.7 * vein, heart); \
-	return float2(h, pat_cell_rand(c, per, seed)); \
+	return vec2(h, pat_cell_rand(c, per, seed)); \
 } \
 ";
 
 // Thatch: rows of straw bundles laid over each other, ragged at their lower edge
 // a: strand density, slope, ragged, variation
 static char *str_pattern_thatch = "\
-float2 pat_thatch(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_thatch(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float row = floor(p.y); \
 	float fy = p.y - row; \
-	float rag = (pat_gnoise(float2(p.x * 6.0, row * 3.1), float2(4096.0, 4096.0), seed) - 0.5) * a.z; \
+	float rag = (pat_gnoise(vec2(p.x * 6.0, row * 3.1), vec2(4096.0, 4096.0), seed) - 0.5) * a.z; \
 	float v = clamp(fy + rag, 0.0, 1.0); \
-	float strands = pat_gnoise(float2(p.x * a.x, fy * 2.0 + row * 7.0), float2(4096.0, 4096.0), seed + 1.0); \
-	strands = strands * 0.6 + 0.4 * pat_gnoise(float2(p.x * a.x * 2.3, fy * 3.0 + row * 3.0), float2(4096.0, 4096.0), seed + 2.0); \
+	float strands = pat_gnoise(vec2(p.x * a.x, fy * 2.0 + row * 7.0), vec2(4096.0, 4096.0), seed + 1.0); \
+	strands = strands * 0.6 + 0.4 * pat_gnoise(vec2(p.x * a.x * 2.3, fy * 3.0 + row * 3.0), vec2(4096.0, 4096.0), seed + 2.0); \
 	float h = (1.0 - v * a.y) * (0.45 + 0.55 * smoothstep(0.3, 0.7, strands)); \
-	float cr = pat_rand(float2(floor(p.x * 2.0), row) + pat_seed(seed)); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	float cr = pat_rand(vec2(floor(p.x * 2.0), row) + pat_seed(seed)); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
 // Rings: round log ends packed together, growth rings inside a bark rim; with a large size, banded stone like malachite
 // a: size, rings, wobble, bark
 static char *str_pattern_rings = "\
-float2 pat_rings(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 cell = floor(p); \
-	float2 f = p - cell; \
+vec2 pat_rings(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 cell = floor(p); \
+	vec2 f = p - cell; \
 	float f1 = 8.0; \
-	float2 nearest = cell; \
-	float2 nd = float2(0.0, 0.0); \
+	vec2 nearest = cell; \
+	vec2 nd = vec2(0.0, 0.0); \
 	for (int jj = 0; jj < 3; jj += 1) { \
 		for (int kk = 0; kk < 3; kk += 1) { \
-			float2 o = float2(float(kk) - 1.0, float(jj) - 1.0); \
-			float2 rr = pat_rand2(pat_wrap(cell + o, per) + pat_seed(seed)); \
-			float2 r = o + float2(0.25, 0.25) + rr * 0.5 - f; \
+			vec2 o = vec2(float(kk) - 1.0, float(jj) - 1.0); \
+			vec2 rr = pat_rand2(pat_wrap(cell + o, per) + pat_seed(seed)); \
+			vec2 r = o + vec2(0.25, 0.25) + rr * 0.5 - f; \
 			float d = dot(r, r); \
 			if (d < f1) { \
 				f1 = d; \
@@ -686,13 +686,13 @@ float2 pat_rings(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 	float cr = pat_cell_rand(nearest, per, seed + 1.0); \
 	float rad = max(a.x * (0.8 + 0.4 * cr), 0.05); \
 	float r = sqrt(f1) / rad; \
-	float wob = (pat_gnoise(nd * 6.0 + nearest * 3.0, float2(4096.0, 4096.0), seed + 2.0) - 0.5) * a.z; \
-	float rings = frac(r * a.y + wob); \
+	float wob = (pat_gnoise(nd * 6.0 + nearest * 3.0, vec2(4096.0, 4096.0), seed + 2.0) - 0.5) * a.z; \
+	float rings = fract(r * a.y + wob); \
 	float ringh = 0.7 + 0.3 * smoothstep(0.0, 0.25, rings) * (1.0 - smoothstep(0.75, 1.0, rings)); \
 	float bark = smoothstep(1.0 - a.w, 1.0 - a.w * 0.5, r); \
 	float inside = 1.0 - smoothstep(0.97, 1.0, r); \
-	float h = inside * lerp(ringh, 0.45, bark); \
-	return float2(h, lerp(rings * 0.6 + cr * 0.4, 0.05, bark)); \
+	float h = inside * mix(ringh, 0.45, bark); \
+	return vec2(h, mix(rings * 0.6 + cr * 0.4, 0.05, bark)); \
 } \
 ";
 
@@ -700,43 +700,43 @@ float2 pat_rings(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 // 4 ring, 5 flower
 // a: shape, size, size jitter, rotation; a2: density
 static char *str_pattern_scatter = "\
-float pat_shape(float2 q, float shape) { \
-	float d = pat_box(q, float2(0.5, 0.22)); \
+float pat_shape(vec2 q, float shape) { \
+	float d = pat_box(q, vec2(0.5, 0.22)); \
 	if (shape > 0.5) { \
-		float2 o = float2(0.0, 0.32); \
+		vec2 o = vec2(0.0, 0.32); \
 		d = max(sqrt(dot(q - o, q - o)) - 0.55, sqrt(dot(q + o, q + o)) - 0.55); \
 	} \
 	if (shape > 1.5) { \
 		d = sqrt(dot(q, q)) - 0.45; \
 	} \
 	if (shape > 2.5) { \
-		float2 aq = abs(q); \
+		vec2 aq = abs(q); \
 		d = max(max(aq.x * 0.866 + aq.y * 0.5, aq.y) - 0.42, 0.17 - sqrt(dot(q, q))); \
 	} \
 	if (shape > 3.5) { \
 		d = abs(sqrt(dot(q, q)) - 0.32) - 0.1; \
 	} \
 	if (shape > 4.5) { \
-		float an = atan2(q.y, q.x); \
+		float an = atan(q.y, q.x); \
 		d = sqrt(dot(q, q)) - 0.45 * (0.55 + 0.45 * abs(cos(an * 2.5))); \
 	} \
 	return d; \
 } \
-float2 pat_scatter(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_scatter(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float h = 0.0; \
 	float cid = 0.0; \
 	for (int kk = 0; kk < 3; kk += 1) { \
-		float2 q0 = p + float2(float(kk) * 0.37, float(kk) * 0.61); \
-		float2 cell = floor(q0); \
+		vec2 q0 = p + vec2(float(kk) * 0.37, float(kk) * 0.61); \
+		vec2 cell = floor(q0); \
 		for (int jj = 0; jj < 9; jj += 1) { \
-			float2 o = float2(floor(float(jj) / 3.0) - 1.0, float(jj) - 3.0 * floor(float(jj) / 3.0) - 1.0); \
-			float2 id = pat_wrap(cell + o, per) + pat_seed(seed + float(kk) * 11.0); \
-			float2 rr = pat_rand2(id); \
-			float rs = pat_rand(id + float2(7.3, 1.9)); \
-			float rv = pat_rand(id + float2(3.7, 5.1)); \
+			vec2 o = vec2(floor(float(jj) / 3.0) - 1.0, float(jj) - 3.0 * floor(float(jj) / 3.0) - 1.0); \
+			vec2 id = pat_wrap(cell + o, per) + pat_seed(seed + float(kk) * 11.0); \
+			vec2 rr = pat_rand2(id); \
+			float rs = pat_rand(id + vec2(7.3, 1.9)); \
+			float rv = pat_rand(id + vec2(3.7, 5.1)); \
 			if (rv < a2.x) { \
 				float sz = max(a.y * (1.0 - a.z * rs), 0.05); \
-				float2 lq = (q0 - cell - o - float2(0.5, 0.5) - (rr - float2(0.5, 0.5)) * 0.6) / sz; \
+				vec2 lq = (q0 - cell - o - vec2(0.5, 0.5) - (rr - vec2(0.5, 0.5)) * 0.6) / sz; \
 				lq = pat_rotate(lq, (rr.x - 0.5) * 6.28318530718 * a.w); \
 				float sd = pat_shape(lq, a.x); \
 				if (sd < 0.0) { \
@@ -753,97 +753,97 @@ float2 pat_scatter(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 			} \
 		} \
 	} \
-	return float2(h, cid); \
+	return vec2(h, cid); \
 } \
 ";
 
 // Tufted: cushions bulging between buttons on a diamond grid, creases running between the buttons
 // a: puffiness, button size, crease, variation
 static char *str_pattern_tufted = "\
-float2 pat_tufted(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 q = float2(p.x + p.y, p.y - p.x) * 0.5; \
-	float2 c = floor(q); \
-	float2 f = q - c; \
+vec2 pat_tufted(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 q = vec2(p.x + p.y, p.y - p.x) * 0.5; \
+	vec2 c = floor(q); \
+	vec2 f = q - c; \
 	float pillow = sqrt(max(sin(f.x * 3.14159) * sin(f.y * 3.14159), 0.0)); \
 	float crease = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)); \
 	float h = pow(pillow, max(1.0 - a.x, 0.2)) * (1.0 - a.z * (1.0 - smoothstep(0.0, 0.06, crease))); \
-	float2 g = f - floor(f + float2(0.5, 0.5)); \
+	vec2 g = f - floor(f + vec2(0.5, 0.5)); \
 	float bd = sqrt(dot(g, g)); \
 	float button = 1.0 - smoothstep(a.y * 0.5, a.y * 0.5 + 0.02, bd); \
-	h = lerp(h, 0.18 + 0.15 * sqrt(max(1.0 - bd / max(a.y * 0.5, 0.01), 0.0)), button); \
-	float cr = pat_cell_rand(c, float2(4096.0, 4096.0), seed); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	h = mix(h, 0.18 + 0.15 * sqrt(max(1.0 - bd / max(a.y * 0.5, 0.01), 0.0)), button); \
+	float cr = pat_cell_rand(c, vec2(4096.0, 4096.0), seed); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
 // Tread plate: raised lozenges turned one way and the other like a checker board
 // a: length, width, softness
 static char *str_pattern_tread = "\
-float2 pat_tread(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 c = floor(p); \
-	float2 q = p - c - float2(0.5, 0.5); \
-	float flip = frac((c.x + c.y) * 0.5) * 2.0; \
-	q = pat_rotate(q, lerp(0.785398, -0.785398, flip)); \
+vec2 pat_tread(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 c = floor(p); \
+	vec2 q = p - c - vec2(0.5, 0.5); \
+	float flip = fract((c.x + c.y) * 0.5) * 2.0; \
+	q = pat_rotate(q, mix(0.785398, -0.785398, flip)); \
 	float hl = a.x * 0.5; \
-	float2 k = float2(clamp(q.x, -hl, hl), 0.0); \
-	float2 dq = q - k; \
+	vec2 k = vec2(clamp(q.x, -hl, hl), 0.0); \
+	vec2 dq = q - k; \
 	float d = sqrt(dot(dq, dq)) / max(a.y * 0.5, 0.01); \
 	float h = sqrt(max(1.0 - d * d, 0.0)); \
 	h = h * smoothstep(1.0, 1.0 - max(a.z, 0.02), d); \
-	return float2(h, pat_cell_rand(c, per, seed)); \
+	return vec2(h, pat_cell_rand(c, per, seed)); \
 } \
 ";
 
 // Chain mail: rings of two staggered grids linking through each other, each one leans so the other passes over it
 // a: ring radius, thickness, variation
 static char *str_pattern_chainmail = "\
-float pat_ring_h(float2 q, float rad, float th) { \
+float pat_ring_h(vec2 q, float rad, float th) { \
 	float d = abs(sqrt(dot(q, q)) - rad) / max(th, 0.01); \
 	return sqrt(max(1.0 - d * d, 0.0)); \
 } \
-float2 pat_chainmail(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 ca = floor(p + float2(0.5, 0.5)); \
-	float2 qa = p - ca; \
-	float2 pb = p + float2(0.5, 0.5); \
-	float2 cb = floor(pb + float2(0.5, 0.5)); \
-	float2 qb = pb - cb; \
+vec2 pat_chainmail(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 ca = floor(p + vec2(0.5, 0.5)); \
+	vec2 qa = p - ca; \
+	vec2 pb = p + vec2(0.5, 0.5); \
+	vec2 cb = floor(pb + vec2(0.5, 0.5)); \
+	vec2 qb = pb - cb; \
 	float ha = pat_ring_h(qa, a.x, a.y) * (0.75 + 0.25 * clamp(qa.x / max(a.x, 0.01), -1.0, 1.0)); \
 	float hb = pat_ring_h(qb, a.x, a.y) * (0.75 - 0.25 * clamp(qb.x / max(a.x, 0.01), -1.0, 1.0)); \
 	float h = max(ha, hb); \
-	float cr = pat_rand(lerp(ca, cb + float2(31.0, 17.0), step(ha, hb)) + pat_seed(seed)); \
-	return float2(h * (1.0 - a.z + a.z * cr), cr); \
+	float cr = pat_rand(mix(ca, cb + vec2(31.0, 17.0), step(ha, hb)) + pat_seed(seed)); \
+	return vec2(h * (1.0 - a.z + a.z * cr), cr); \
 } \
 ";
 
 // Radial: a disc in each cell brushed in circles, fine scratches running around its center
 // a: density, disc size, variation
 static char *str_pattern_radial = "\
-float2 pat_radial(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 c = floor(p); \
-	float2 q = p - c - float2(0.5, 0.5); \
+vec2 pat_radial(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 c = floor(p); \
+	vec2 q = p - c - vec2(0.5, 0.5); \
 	float r = sqrt(dot(q, q)); \
-	float an = atan2(q.y, q.x) / 6.28318530718; \
-	float lines = pat_gnoise(float2(r * a.x, an * 3.0), float2(4096.0, 4096.0), seed); \
-	lines = lines * 0.7 + 0.3 * pat_gnoise(float2(r * a.x * 3.1, an * 9.0), float2(4096.0, 4096.0), seed + 1.0); \
+	float an = atan(q.y, q.x) / 6.28318530718; \
+	float lines = pat_gnoise(vec2(r * a.x, an * 3.0), vec2(4096.0, 4096.0), seed); \
+	lines = lines * 0.7 + 0.3 * pat_gnoise(vec2(r * a.x * 3.1, an * 9.0), vec2(4096.0, 4096.0), seed + 1.0); \
 	float disc = 1.0 - smoothstep(a.y * 0.5 - 0.01, a.y * 0.5, r); \
-	float h = lerp(0.5, lines, disc); \
+	float h = mix(0.5, lines, disc); \
 	float cr = pat_cell_rand(c, per, seed + 2.0); \
-	return float2(h * (1.0 - a.z + a.z * cr), r); \
+	return vec2(h * (1.0 - a.z + a.z * cr), r); \
 } \
 ";
 
 // Streaks: drips running down, they start at random heights and fade as they go (use triplanar mapping for world down)
 // a: density, length, width, wobble
 static char *str_pattern_streaks = "\
-float2 pat_streaks(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_streaks(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float s = 0.0; \
 	for (int kk = 0; kk < 3; kk += 1) { \
 		float k = a.x * (1.0 + float(kk) * 0.7); \
-		float wx = p.x * k + (pat_gnoise(float2(p.x * 2.0, p.y * 3.0), float2(4096.0, 4096.0), seed + float(kk)) - 0.5) * a.w * 2.0; \
+		float wx = p.x * k + (pat_gnoise(vec2(p.x * 2.0, p.y * 3.0), vec2(4096.0, 4096.0), seed + float(kk)) - 0.5) * a.w * 2.0; \
 		float col = floor(wx); \
 		float fx = wx - col; \
-		float r1 = pat_rand(float2(col, float(kk) * 13.0) + pat_seed(seed)); \
-		float r2 = pat_rand(float2(col, float(kk) * 7.0 + 3.0) + pat_seed(seed)); \
+		float r1 = pat_rand(vec2(col, float(kk) * 13.0) + pat_seed(seed)); \
+		float r2 = pat_rand(vec2(col, float(kk) * 7.0 + 3.0) + pat_seed(seed)); \
 		float start = r1 * 4.0; \
 		float len = max(a.y * (0.4 + 0.8 * r2), 0.05); \
 		float yy = p.y / 4.0; \
@@ -852,33 +852,33 @@ float2 pat_streaks(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 		float w = clamp(1.0 - abs(fx - 0.5) * 2.0 / max(a.z, 0.02), 0.0, 1.0); \
 		s = max(s, fade * w * (0.5 + 0.5 * r2)); \
 	} \
-	return float2(s, s); \
+	return vec2(s, s); \
 } \
 ";
 
 // Craters: bowls with raised rims in three passes; with cracks, holes with lines running out of them (impacts)
 // a: size, size jitter, density, rim; a2: cracks, depth
 static char *str_pattern_craters = "\
-float2 pat_craters(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_craters(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float h = 0.5; \
 	float cid = 0.0; \
 	for (int kk = 0; kk < 3; kk += 1) { \
-		float2 q0 = p + float2(float(kk) * 0.41, float(kk) * 0.73); \
-		float2 cell = floor(q0); \
+		vec2 q0 = p + vec2(float(kk) * 0.41, float(kk) * 0.73); \
+		vec2 cell = floor(q0); \
 		for (int jj = 0; jj < 9; jj += 1) { \
-			float2 o = float2(floor(float(jj) / 3.0) - 1.0, float(jj) - 3.0 * floor(float(jj) / 3.0) - 1.0); \
-			float2 id = pat_wrap(cell + o, per) + pat_seed(seed + float(kk) * 11.0); \
-			float2 rr = pat_rand2(id); \
-			float rs = pat_rand(id + float2(7.3, 1.9)); \
-			float rv = pat_rand(id + float2(3.7, 5.1)); \
+			vec2 o = vec2(floor(float(jj) / 3.0) - 1.0, float(jj) - 3.0 * floor(float(jj) / 3.0) - 1.0); \
+			vec2 id = pat_wrap(cell + o, per) + pat_seed(seed + float(kk) * 11.0); \
+			vec2 rr = pat_rand2(id); \
+			float rs = pat_rand(id + vec2(7.3, 1.9)); \
+			float rv = pat_rand(id + vec2(3.7, 5.1)); \
 			if (rv < a.z) { \
 				float rad = max(a.x * 0.5 * (1.0 - a.y * rs), 0.02); \
-				float2 d = q0 - cell - o - float2(0.5, 0.5) - (rr - float2(0.5, 0.5)) * 0.6; \
+				vec2 d = q0 - cell - o - vec2(0.5, 0.5) - (rr - vec2(0.5, 0.5)) * 0.6; \
 				float r = sqrt(dot(d, d)) / rad; \
 				if (r < 2.5) { \
 					float bowl = (1.0 - min(r * r, 1.0)) * a2.y; \
 					float rim = exp(-(r - 1.0) * (r - 1.0) * 18.0) * a.w; \
-					float an = atan2(d.y, d.x); \
+					float an = atan(d.y, d.x); \
 					float crack = pow(abs(sin(an * 4.0 + rs * 12.0)), 40.0) * (1.0 - smoothstep(1.0, 2.5, r)) * step(1.0, r) * a2.x; \
 					h = h - bowl * 0.5 + rim * 0.25 - crack * 0.3; \
 					if (r < 1.0) { \
@@ -888,14 +888,14 @@ float2 pat_craters(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 			} \
 		} \
 	} \
-	return float2(clamp(h, 0.0, 1.0), cid); \
+	return vec2(clamp(h, 0.0, 1.0), cid); \
 } \
 ";
 
 // Mesh: two families of wires crossing in diamonds, going over and under each other (chain link fence, nets)
 // a: thickness, stretch, weave
 static char *str_pattern_mesh = "\
-float2 pat_mesh(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_mesh(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float u = p.x + p.y * max(a.y, 0.1); \
 	float v = p.x - p.y * max(a.y, 0.1); \
 	float fu = u - floor(u); \
@@ -906,32 +906,32 @@ float2 pat_mesh(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 	float wu = sqrt(max(1.0 - du * du, 0.0)) * (0.8 + 0.2 * a.z * sin(v * 3.14159)); \
 	float wv = sqrt(max(1.0 - dv * dv, 0.0)) * (0.8 - 0.2 * a.z * sin(u * 3.14159)); \
 	float h = max(wu, wv); \
-	return float2(h, step(wu, wv)); \
+	return vec2(h, step(wu, wv)); \
 } \
 ";
 
 // Rope: rows of rope, the strands winding around each one
 // a: strands, twist, gap, fiber
 static char *str_pattern_rope = "\
-float2 pat_rope(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_rope(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float row = floor(p.y); \
 	float fy = p.y - row; \
 	float g = a.z * 0.5; \
 	float v = clamp((fy - g) / max(1.0 - 2.0 * g, 0.01), 0.0, 1.0); \
 	float body = sqrt(max(1.0 - (2.0 * v - 1.0) * (2.0 * v - 1.0), 0.0)) * step(g, fy) * step(fy, 1.0 - g); \
 	float t = p.x * a.y + v * max(floor(a.x + 0.5), 1.0); \
-	float strand = frac(t); \
+	float strand = fract(t); \
 	float sh = sqrt(max(1.0 - (2.0 * strand - 1.0) * (2.0 * strand - 1.0), 0.0)); \
 	float fib = 0.5 + 0.5 * sin((p.x * a.y * 9.0 - v * 14.0) * 6.28318530718); \
 	float h = body * (0.55 + 0.45 * sh) * (1.0 - a.w * 0.2 + a.w * 0.2 * fib); \
-	return float2(h, pat_rand(float2(row, floor(t)) + pat_seed(seed))); \
+	return vec2(h, pat_rand(vec2(row, floor(t)) + pat_seed(seed))); \
 } \
 ";
 
 // Stitches: rows of slanted stitches, one or two lines (leather seams, embroidery)
 // a: length, width, slant, double
 static char *str_pattern_stitches = "\
-float2 pat_stitches(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_stitches(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float row = floor(p.y); \
 	float fy = p.y - row - 0.5; \
 	float h = 0.0; \
@@ -947,14 +947,14 @@ float2 pat_stitches(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 			h = max(h, dash * across * (0.6 + 0.4 * bulge)); \
 		} \
 	} \
-	return float2(h, h); \
+	return vec2(h, h); \
 } \
 ";
 
 // Feathers: rows of pointed feathers over each other, a shaft down the middle, barbs slanting off it
 // a: point, barbs, shaft, variation
 static char *str_pattern_feathers = "\
-float2 pat_feathers(float2 p, float2 per, float4 a, float4 a2, float seed) { \
+vec2 pat_feathers(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
 	float row = floor(p.y); \
 	float x = p.x + 0.5 * (row - 2.0 * floor(row * 0.5)); \
 	float col = floor(x); \
@@ -962,12 +962,12 @@ float2 pat_feathers(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 	float fy = p.y - row; \
 	float cx = fx * 2.0 - 1.0; \
 	float lip = a.x * 0.5 * abs(cx); \
-	float2 id = float2(col, row); \
+	vec2 id = vec2(col, row); \
 	float h = 0.0; \
 	if (fy < lip) { \
 		float r2 = row - 1.0; \
 		float x2 = p.x + 0.5 * (r2 - 2.0 * floor(r2 * 0.5)); \
-		id = float2(floor(x2), r2); \
+		id = vec2(floor(x2), r2); \
 		h = 0.15; \
 	} \
 	else { \
@@ -978,25 +978,25 @@ float2 pat_feathers(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 		h = max(h, shaft * (1.0 - v * 0.5)); \
 	} \
 	float cr = pat_cell_rand(id, per, seed); \
-	return float2(h * (1.0 - a.w + a.w * cr), cr); \
+	return vec2(h * (1.0 - a.w + a.w * cr), cr); \
 } \
 ";
 
 // Facets: flat faces leaning every way, a crease between them (crumpled paper soft, crystals sharp)
 // a: slope, crease, randomness, variation
 static char *str_pattern_facets = "\
-float2 pat_facets(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 cell = floor(p); \
-	float2 f = p - cell; \
+vec2 pat_facets(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 cell = floor(p); \
+	vec2 f = p - cell; \
 	float f1 = 8.0; \
 	float f2 = 8.0; \
-	float2 nearest = cell; \
-	float2 nr = float2(0.0, 0.0); \
+	vec2 nearest = cell; \
+	vec2 nr = vec2(0.0, 0.0); \
 	for (int jj = 0; jj < 3; jj += 1) { \
 		for (int kk = 0; kk < 3; kk += 1) { \
-			float2 o = float2(float(kk) - 1.0, float(jj) - 1.0); \
-			float2 rr = pat_rand2(pat_wrap(cell + o, per) + pat_seed(seed)); \
-			float2 r = o + float2(0.5, 0.5) + (rr - float2(0.5, 0.5)) * a.z - f; \
+			vec2 o = vec2(float(kk) - 1.0, float(jj) - 1.0); \
+			vec2 rr = pat_rand2(pat_wrap(cell + o, per) + pat_seed(seed)); \
+			vec2 r = o + vec2(0.5, 0.5) + (rr - vec2(0.5, 0.5)) * a.z - f; \
 			float d = dot(r, r); \
 			if (d < f1) { \
 				f2 = f1; \
@@ -1009,23 +1009,23 @@ float2 pat_facets(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 			} \
 		} \
 	} \
-	float2 g = pat_rand2(pat_wrap(nearest, per) + pat_seed(seed + 3.0)) * 2.0 - float2(1.0, 1.0); \
+	vec2 g = pat_rand2(pat_wrap(nearest, per) + pat_seed(seed + 3.0)) * 2.0 - vec2(1.0, 1.0); \
 	float cr = pat_cell_rand(nearest, per, seed + 1.0); \
 	float h = 0.5 + dot(nr, g) * a.x + (cr - 0.5) * 0.3 * a.w; \
 	float crease = smoothstep(0.0, max(a.y, 0.002), sqrt(f2) - sqrt(f1)); \
 	h = h * (0.6 + 0.4 * crease); \
-	return float2(clamp(h, 0.0, 1.0), cr); \
+	return vec2(clamp(h, 0.0, 1.0), cr); \
 } \
 ";
 
 // Spider webs: spokes from the center of each cell and a spiral thread around them
 // a: spokes, rings, thickness, size
 static char *str_pattern_web = "\
-float2 pat_web(float2 p, float2 per, float4 a, float4 a2, float seed) { \
-	float2 c = floor(p); \
-	float2 q = p - c - float2(0.5, 0.5); \
+vec2 pat_web(vec2 p, vec2 per, vec4 a, vec4 a2, float seed) { \
+	vec2 c = floor(p); \
+	vec2 q = p - c - vec2(0.5, 0.5); \
 	float r = sqrt(dot(q, q)) / max(a.w * 0.5, 0.05); \
-	float an = atan2(q.y, q.x) / 6.28318530718 + 0.5; \
+	float an = atan(q.y, q.x) / 6.28318530718 + 0.5; \
 	float n = max(floor(a.x + 0.5), 3.0); \
 	float sp = an * n; \
 	float spoke = abs(sp - floor(sp + 0.5)) / n * 6.28318530718 * r; \
@@ -1035,7 +1035,7 @@ float2 pat_web(float2 p, float2 per, float4 a, float4 a2, float seed) { \
 	float lines = 1.0 - smoothstep(th, th * 2.0, min(spoke, rd)); \
 	float inside = 1.0 - smoothstep(0.95, 1.0, r); \
 	float h = lines * inside; \
-	return float2(h, h); \
+	return vec2(h, h); \
 } \
 ";
 
@@ -1135,41 +1135,41 @@ static char *pattern_eval(ui_node_t *node) {
 	for (i32 i = 1; i < PATTERN_COMMON_INPUTS + PATTERN_EXTRA_INPUTS; ++i) {
 		in[i] = i < node->inputs->length ? string_copy(parser_material_parse_value_input(node->inputs->buffer[i], false)) : string_copy("0.0");
 	}
-	parser_material_write(parser_material_kong, string_tmp("float4 %s_t = float4(%s, %s, %s * 0.0174533, %s);", store, in[1], in[2], in[3], in[5]));
-	parser_material_write(parser_material_kong, string_tmp("float4 %s_d = float4(%s, %s, 0.0, 0.0);", store, in[6], in[7]));
-	parser_material_write(parser_material_kong, string_tmp("float4 %s_a = float4(%s, %s, %s, %s);", store, in[8], in[9], in[10], in[11]));
-	parser_material_write(parser_material_kong, string_tmp("float4 %s_b = float4(%s, %s, 0.0, 0.0);", store, in[12], in[13]));
+	parser_material_write(parser_material_shader, string_tmp("vec4 %s_t = vec4(%s, %s, %s * 0.0174533, %s);", store, in[1], in[2], in[3], in[5]));
+	parser_material_write(parser_material_shader, string_tmp("vec4 %s_d = vec4(%s, %s, 0.0, 0.0);", store, in[6], in[7]));
+	parser_material_write(parser_material_shader, string_tmp("vec4 %s_a = vec4(%s, %s, %s, %s);", store, in[8], in[9], in[10], in[11]));
+	parser_material_write(parser_material_shader, string_tmp("vec4 %s_b = vec4(%s, %s, 0.0, 0.0);", store, in[12], in[13]));
 
 	bool triplanar = vec == NULL && node->buttons->length > 0 && node->buttons->buffer[0]->default_value->buffer[0] > 0.5;
 	if (triplanar) {
-		parser_material_kong->frag_bposition = true;
-		parser_material_kong->frag_n         = true;
-		parser_material_write(parser_material_kong, string_tmp("float3 %s_w = abs(n);", store));
-		parser_material_write(parser_material_kong, string_tmp("%s_w = %s_w / max(%s_w.x + %s_w.y + %s_w.z, 0.0001);", store, store, store, store, store));
-		parser_material_write(parser_material_kong, string_tmp("float2 %s_sc = pat_cells(%s_t, 0.0);", store, store));
+		parser_material_shader->frag_bposition = true;
+		parser_material_shader->frag_n         = true;
+		parser_material_write(parser_material_shader, string_tmp("vec3 %s_w = abs(n);", store));
+		parser_material_write(parser_material_shader, string_tmp("%s_w = %s_w / max(%s_w.x + %s_w.y + %s_w.z, 0.0001);", store, store, store, store, store));
+		parser_material_write(parser_material_shader, string_tmp("vec2 %s_sc = pat_cells(%s_t, 0.0);", store, store));
 		char *planes[3] = {"bposition.yz", "bposition.xz", "bposition.xy"};
 		char *w[3]      = {"x", "y", "z"};
-		parser_material_write(parser_material_kong, string_tmp("float2 %s_r = float2(0.0, 0.0);", store));
+		parser_material_write(parser_material_shader, string_tmp("vec2 %s_r = vec2(0.0, 0.0);", store));
 		for (i32 i = 0; i < 3; ++i) {
-			parser_material_write(parser_material_kong,
-			                      string_tmp("%s_r = %s_r + %s(pat_coord(%s, %s_t, %s_d, %s_sc, 1000.0), float2(4096.0, 4096.0), %s_a, %s_b, %s_t.w) * %s_w.%s;",
+			parser_material_write(parser_material_shader,
+			                      string_tmp("%s_r = %s_r + %s(pat_coord(%s, %s_t, %s_d, %s_sc, 1000.0), vec2(4096.0, 4096.0), %s_a, %s_b, %s_t.w) * %s_w.%s;",
 			                                 store, store, def->fn, planes[i], store, store, store, store, store, store, store, w[i]));
 		}
 	}
 	else {
 		char *uv = vec;
 		if (uv == NULL) {
-			node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
+			node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm");
 			uv = "tex_coord";
 		}
 		else {
 			uv = string_tmp("%s.xy", vec);
 		}
-		parser_material_write(parser_material_kong, string_tmp("float2 %s_sc = pat_cells(%s_t, 1.0);", store, store));
-		parser_material_write(parser_material_kong, string_tmp("float2 %s_r = %s(pat_coord(%s, %s_t, %s_d, %s_sc, 1.0), %s_sc, %s_a, %s_b, %s_t.w);", store, def->fn,
+		parser_material_write(parser_material_shader, string_tmp("vec2 %s_sc = pat_cells(%s_t, 1.0);", store, store));
+		parser_material_write(parser_material_shader, string_tmp("vec2 %s_r = %s(pat_coord(%s, %s_t, %s_d, %s_sc, 1.0), %s_sc, %s_a, %s_b, %s_t.w);", store, def->fn,
 		                                                       uv, store, store, store, store, store, store, store));
 	}
-	parser_material_write(parser_material_kong, string_tmp("float2 %s = float2(clamp((%s_r.x - 0.5) * %s + 0.5, 0.0, 1.0), %s_r.y);", store, store, in[4], store));
+	parser_material_write(parser_material_shader, string_tmp("vec2 %s = vec2(clamp((%s_r.x - 0.5) * %s + 0.5, 0.0, 1.0), %s_r.y);", store, store, in[4], store));
 
 	for (i32 i = 1; i < PATTERN_COMMON_INPUTS + PATTERN_EXTRA_INPUTS; ++i) {
 		free(in[i]);
@@ -1187,7 +1187,7 @@ char *pattern_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 
 char *pattern_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	char *store = pattern_eval(node);
-	return string_tmp(socket == node->outputs->buffer[1] ? "float3(%s.y, %s.y, %s.y)" : "float3(%s.x, %s.x, %s.x)", store, store, store);
+	return string_tmp(socket == node->outputs->buffer[1] ? "vec3(%s.y, %s.y, %s.y)" : "vec3(%s.x, %s.x, %s.x)", store, store, store);
 }
 
 ui_node_socket_t *nodes_material_socket_def(char *name, char *type, f32_array_t *value, f32 min, f32 max) {
@@ -1216,75 +1216,11 @@ ui_node_button_t *nodes_material_button_def(char *name, char *type, f32 value, c
 	                                     .height        = 0});
 }
 
-// The shader functions are kept in a map and written in no set order, so functions calling each other go in one string: the
-// shared functions and the patterns the shader uses. One string per set of patterns, made once.
-
-#define PATTERN_LIB_MAX 64
-static u64   pattern_lib_masks[PATTERN_LIB_MAX];
-static char *pattern_lib_strs[PATTERN_LIB_MAX];
-static i32   pattern_lib_count = 0;
-
-static char *pattern_lib(u64 mask) {
-	for (i32 i = 0; i < pattern_lib_count; ++i) {
-		if (pattern_lib_masks[i] == mask) {
-			return pattern_lib_strs[i];
-		}
-	}
-	size_t size = strlen(str_pattern_common) + 1;
-	for (i32 i = 0; i < PATTERN_DEF_COUNT; ++i) {
-		if (mask & ((u64)1 << i)) {
-			size += strlen(*pattern_defs[i].src);
-		}
-	}
-	char *lib = malloc(size);
-	strcpy(lib, str_pattern_common);
-	for (i32 i = 0; i < PATTERN_DEF_COUNT; ++i) {
-		bool added = false; // Patterns sharing a string add it once
-		for (i32 j = 0; j < i; ++j) {
-			added = added || ((mask & ((u64)1 << j)) && pattern_defs[j].src == pattern_defs[i].src);
-		}
-		if ((mask & ((u64)1 << i)) && !added) {
-			strcat(lib, *pattern_defs[i].src);
-		}
-	}
-	if (pattern_lib_count < PATTERN_LIB_MAX) {
-		pattern_lib_masks[pattern_lib_count] = mask;
-		pattern_lib_strs[pattern_lib_count]  = lib;
-		pattern_lib_count++;
-	}
-	return lib;
-}
-
-static u64 pattern_lib_mask_of(char *lib) {
-	for (i32 i = 0; i < pattern_lib_count; ++i) {
-		if (pattern_lib_strs[i] == lib) {
-			return pattern_lib_masks[i];
-		}
-	}
-	return 0;
-}
-
-// The shared functions in the shader being parsed, with pattern i (-1 for none)
 void pattern_lib_use(i32 i) {
-	any_map_t *fns  = parser_material_kong->functions;
-	char      *key  = "float pat_rand";
-	i32        slot = -1;
-	for (i32 k = 0; k < fns->keys->capacity; ++k) {
-		if (fns->keys->buffer[k] != NULL && string_equals(fns->keys->buffer[k], key)) {
-			slot = k;
-			break;
-		}
-	}
-	u64 mask = slot >= 0 ? pattern_lib_mask_of(fns->values->buffer[slot]) : 0;
-	u64 want = mask | (i >= 0 ? ((u64)1 << i) : 0);
-	if (slot >= 0 && want == mask) {
-		return;
-	}
-	if (slot < 0) {
-		node_shader_add_function(parser_material_kong, pattern_lib(want));
-	}
-	else {
-		fns->values->buffer[slot] = pattern_lib(want); // The key stays, the map frees it
+	// GLSL shaders declare every function first (node_shader_get), each function string goes in on its own
+	node_shader_add_function(parser_material_shader, str_pattern_common);
+	if (i >= 0) {
+		node_shader_add_function(parser_material_shader, *pattern_defs[i].src);
 	}
 }
 

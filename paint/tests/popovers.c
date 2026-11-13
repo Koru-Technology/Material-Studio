@@ -101,6 +101,7 @@ void next() {
 		check(painted() > 0, string("that touch still painted (%d)", painted()));
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[popover] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "POPOVER PASS" : "POPOVER FAIL");
 		script_quit();

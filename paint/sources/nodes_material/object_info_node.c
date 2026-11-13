@@ -3,7 +3,7 @@
 
 char *object_info_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	if (socket == node->outputs->buffer[0]) { // Location
-		parser_material_kong->frag_wposition = true;
+		parser_material_shader->frag_wposition = true;
 		return "input.wposition";
 	}
 	return "";
@@ -11,15 +11,15 @@ char *object_info_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 
 char *object_info_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	if (socket == node->outputs->buffer[1]) { // Object Index
-		node_shader_add_constant(parser_material_kong, "float object_info_index", "_object_info_index");
+		node_shader_add_constant(parser_material_shader, "float object_info_index", "_object_info_index");
 		return "constants.object_info_index";
 	}
 	else if (socket == node->outputs->buffer[2]) { // Material Index
-		node_shader_add_constant(parser_material_kong, "float object_info_material_index", "_object_info_material_index");
+		node_shader_add_constant(parser_material_shader, "float object_info_material_index", "_object_info_material_index");
 		return "constants.object_info_material_index";
 	}
 	else { // Random
-		node_shader_add_constant(parser_material_kong, "float object_info_random", "_object_info_random");
+		node_shader_add_constant(parser_material_shader, "float object_info_random", "_object_info_random");
 		return "constants.object_info_random";
 	}
 }

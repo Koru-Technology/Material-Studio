@@ -2,8 +2,8 @@
 #include "../global.h"
 
 char *str_tex_magic = "\
-float3 tex_magic(float3 co, float distortion, float depth) { \
-	float3 p = co % float3(6.28318530718, 6.28318530718, 6.28318530718); \
+vec3 tex_magic(vec3 co, float distortion, float depth) { \
+	vec3 p = co - vec3(6.28318530718, 6.28318530718, 6.28318530718) * trunc(co / vec3(6.28318530718, 6.28318530718, 6.28318530718)); \
 	float x = sin((p.x + p.y + p.z) * 5.0); \
 	float y = cos((-p.x + p.y - p.z) * 5.0); \
 	float z = -cos((-p.x - p.y + p.z) * 5.0); \
@@ -56,16 +56,16 @@ float3 tex_magic(float3 co, float distortion, float depth) { \
 		y = y / d2; \
 		z = z / d2; \
 	} \
-	return float3(0.5 - x, 0.5 - y, 0.5 - z); \
+	return vec3(0.5 - x, 0.5 - y, 0.5 - z); \
 } \
-float tex_magic_f(float3 co, float distortion, float depth) { \
-	float3 c = tex_magic(co, distortion, depth); \
+float tex_magic_f(vec3 co, float distortion, float depth) { \
+	vec3 c = tex_magic(co, distortion, depth); \
 	return (c.x + c.y + c.z) / 3.0; \
 } \
 ";
 
 char *magic_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_function(parser_material_kong, str_tex_magic);
+	node_shader_add_function(parser_material_shader, str_tex_magic);
 	char *co         = parser_material_get_coord(node);
 	char *scale      = parser_material_parse_value_input(node->inputs->buffer[1], false);
 	char *distortion = parser_material_parse_value_input(node->inputs->buffer[2], false);
@@ -74,7 +74,7 @@ char *magic_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 }
 
 char *magic_texture_node_value(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_function(parser_material_kong, str_tex_magic);
+	node_shader_add_function(parser_material_shader, str_tex_magic);
 	char *co         = parser_material_get_coord(node);
 	char *scale      = parser_material_parse_value_input(node->inputs->buffer[1], false);
 	char *distortion = parser_material_parse_value_input(node->inputs->buffer[2], false);

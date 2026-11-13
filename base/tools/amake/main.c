@@ -211,10 +211,10 @@ int main(int argc, char **argv) {
 	makedir        = path_join(toolsdir, "..", "..");
 	irondir        = path_join(makedir, "..");
 
-	// amake --ashader <spirv|metal|hlsl|wgsl> <from> <to> [-DNAME...]
+	// amake --ashader metal <from.glsl> <to> [-DNAME...]
 	if (argc > 1 && strcmp(argv[1], "--ashader") == 0) {
 		if (argc < 5) {
-			printf("Usage: amake --ashader <spirv|metal|hlsl|wgsl> <from> <to> [-DNAME...]\n");
+			printf("Usage: amake --ashader metal <from.glsl> <to> [-DNAME...]\n");
 			return 1;
 		}
 		char *defines[64];

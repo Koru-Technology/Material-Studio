@@ -2,36 +2,36 @@
 #include "../global.h"
 
 char *str_tex_checker = "\
-float3 tex_checker(float3 co, float3 col1, float3 col2, float scale) { \
+vec3 tex_checker(vec3 co, vec3 col1, vec3 col2, float scale) { \
 	/* Prevent precision issues on unit coordinates */ \
-	float3 p = (co + 0.000001 * 0.999999) * scale; \
+	vec3 p = (co + 0.000001 * 0.999999) * scale; \
 	float xi = abs(floor(p.x)); \
 	float yi = abs(floor(p.y)); \
 	float zi = abs(floor(p.z)); \
 	/* bool check = (xi % 2.0 == yi % 2.0) == zi % 2.0;*/ \
 	int checka = 0; \
 	int checkb = 0; \
-	if (xi % 2.0 == yi % 2.0) { checka = 1; } \
-	if (zi % 2.0 != 0.0) { checkb = 1; } \
+	if (mod(xi, 2.0) == mod(yi, 2.0)) { checka = 1; } \
+	if (mod(zi, 2.0) != 0.0) { checkb = 1; } \
 	if (checka == checkb) { return col1; } return col2; \
 } \
-float tex_checker_f(float3 co, float scale) { \
-	float3 p = (co + 0.000001 * 0.999999) * scale; \
+float tex_checker_f(vec3 co, float scale) { \
+	vec3 p = (co + 0.000001 * 0.999999) * scale; \
 	float xi = abs(floor(p.x)); \
 	float yi = abs(floor(p.y)); \
 	float zi = abs(floor(p.z)); \
 	/*return float((xi % 2.0 == yi % 2.0) == zi % 2.0);*/ \
 	int checka = 0; \
 	int checkb = 0; \
-	if (xi % 2.0 == yi % 2.0) { checka = 1; } \
-	if (zi % 2.0 != 0.0) { checkb = 1; } \
+	if (mod(xi, 2.0) == mod(yi, 2.0)) { checka = 1; } \
+	if (mod(zi, 2.0) != 0.0) { checkb = 1; } \
 	if (checka == checkb) { return 1.0; } return 0.0; \
 	\
 } \
 ";
 
 char *checker_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_function(parser_material_kong, str_tex_checker);
+	node_shader_add_function(parser_material_shader, str_tex_checker);
 	char *co    = parser_material_get_coord(node);
 	char *col1  = parser_material_parse_vector_input(node->inputs->buffer[1]);
 	char *col2  = parser_material_parse_vector_input(node->inputs->buffer[2]);
@@ -40,7 +40,7 @@ char *checker_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 }
 
 char *checker_texture_node_value(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_function(parser_material_kong, str_tex_checker);
+	node_shader_add_function(parser_material_shader, str_tex_checker);
 	char *co    = parser_material_get_coord(node);
 	char *scale = parser_material_parse_value_input(node->inputs->buffer[3], false);
 	return string_tmp("tex_checker_f(%s, %s)", co, scale);

@@ -25,7 +25,7 @@ char *float_curve_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	i32   num    = (i32)curves->buffer[32];
 	char *name   = parser_material_node_name(node, NULL);
 	char *mapped = vector_curves_eval(name, val, curves->buffer, num);
-	return string_tmp("lerp(%s, %s, %s)", val, mapped, fac);
+	return string_tmp("mix(%s, %s, %s)", val, mapped, fac);
 }
 
 void nodes_material_float_curve_button(i32 node_id) {

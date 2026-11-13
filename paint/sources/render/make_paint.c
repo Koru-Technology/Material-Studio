@@ -8,7 +8,7 @@ bool make_paint_is_raytraced_bake() {
 #define MAKE_PAINT_CACHE_SIZE 4
 
 typedef struct make_paint_cached_shader {
-	char *kong;
+	char *shader;
 	char *vs;
 	char *fs;
 	i32   vs_size;
@@ -27,10 +27,10 @@ static char *make_paint_copy_shader(char *s, i32 size) {
 }
 
 // Callers own the returned shaders
-static void make_paint_create_shaders(char *kong, char **vs, char **fs, i32 *vs_size, i32 *fs_size) {
+static void make_paint_create_shaders(char *shader, char **vs, char **fs, i32 *vs_size, i32 *fs_size) {
 	for (i32 i = 0; i < MAKE_PAINT_CACHE_SIZE; ++i) {
 		make_paint_cached_shader_t *c = &make_paint_cache[i];
-		if (c->kong != NULL && strcmp(c->kong, kong) == 0) {
+		if (c->shader != NULL && strcmp(c->shader, shader) == 0) {
 			*vs      = make_paint_copy_shader(c->vs, c->vs_size);
 			*fs      = make_paint_copy_shader(c->fs, c->fs_size);
 			*vs_size = c->vs_size;
@@ -39,17 +39,17 @@ static void make_paint_create_shaders(char *kong, char **vs, char **fs, i32 *vs_
 		}
 	}
 
-	gpu_create_shaders_from_kong(kong, vs, fs, vs_size, fs_size);
+	gpu_create_shaders_from_glsl(shader, vs, fs, vs_size, fs_size);
 	if (*vs == NULL || *fs == NULL || (*vs_size == 0 && (*vs)[0] == '\0')) {
 		return; // Failed to compile
 	}
 
 	make_paint_cached_shader_t *c = &make_paint_cache[make_paint_cache_next];
 	make_paint_cache_next         = (make_paint_cache_next + 1) % MAKE_PAINT_CACHE_SIZE;
-	free(c->kong);
+	free(c->shader);
 	free(c->vs);
 	free(c->fs);
-	c->kong    = string_copy(kong);
+	c->shader    = string_copy(shader);
 	c->vs      = make_paint_copy_shader(*vs, *vs_size);
 	c->fs      = make_paint_copy_shader(*fs, *fs_size);
 	c->vs_size = *vs_size;
@@ -249,13 +249,13 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	    4);
 	con_paint->allow_vcols = !is_atlas && mesh_data_get_vertex_array(g_context->paint_object->data, "col") != NULL;
 
-	node_shader_t *kong = node_shader_context_make_kong(con_paint);
+	node_shader_t *shader = node_shader_context_make_shader(con_paint);
 
 	if (g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_INIT) {
 		// Init raytraced bake
-		make_bake_position_normal(kong);
+		make_bake_position_normal(shader);
 		con_paint->data->shader_from_source = true;
-		gpu_create_shaders_from_kong(node_shader_get(kong), &con_paint->data->vertex_shader, &con_paint->data->fragment_shader,
+		gpu_create_shaders_from_glsl(node_shader_get(shader), &con_paint->data->vertex_shader, &con_paint->data->fragment_shader,
 		                             &con_paint->data->_->vertex_shader_size, &con_paint->data->_->fragment_shader_size);
 		return con_paint;
 	}
@@ -266,9 +266,9 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 
 	if (g_context->tool == TOOL_TYPE_COLORID || g_context->tool == TOOL_TYPE_PICKER ||
 	    g_context->tool == TOOL_TYPE_CURSOR) {
-		make_picking_run(kong);
+		make_picking_run(shader);
 		con_paint->data->shader_from_source = true;
-		gpu_create_shaders_from_kong(node_shader_get(kong), &con_paint->data->vertex_shader, &con_paint->data->fragment_shader,
+		gpu_create_shaders_from_glsl(node_shader_get(shader), &con_paint->data->vertex_shader, &con_paint->data->fragment_shader,
 		                             &con_paint->data->_->vertex_shader_size, &con_paint->data->_->fragment_shader_size);
 		return con_paint;
 	}
@@ -288,61 +288,61 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	char *tuv  = g_context->layer->uv_map == 1 ? "input.tex1" : "input.tex";
 	bool  udim = !is_atlas && util_mesh_udim_layer(g_context->layer);
 	if (is_atlas || udim) {
-		node_shader_add_constant(kong, "float3 atlas_transform", "_atlas_transform");
-		node_shader_write_vert(kong, string_tmp("float2 atlas_uv = %s * constants.atlas_transform.z + constants.atlas_transform.xy;", tuv));
+		node_shader_add_constant(shader, "vec3 atlas_transform", "_atlas_transform");
+		node_shader_write_vert(shader, string_tmp("vec2 atlas_uv = %s * constants.atlas_transform.z + constants.atlas_transform.xy;", tuv));
 		tuv = "atlas_uv";
 	}
-	node_shader_write_vert(kong, string_tmp("float2 tpos = float2(%s.x * 2.0 - 1.0, (1.0 - %s.y) * 2.0 - 1.0);", tuv, tuv));
+	node_shader_write_vert(shader, string_tmp("vec2 tpos = vec2(%s.x * 2.0 - 1.0, (1.0 - %s.y) * 2.0 - 1.0);", tuv, tuv));
 
-	node_shader_write_vert(kong, "output.pos = float4(tpos, 0.0, 1.0);");
+	node_shader_write_vert(shader, "output.pos = vec4(tpos, 0.0, 1.0);");
 
 	if (g_context->tool == TOOL_TYPE_BLUR) {
-		node_shader_add_out(kong, "float2 blur_uv");
-		node_shader_write_vert(kong, string_tmp("output.blur_uv = %s;", tuv));
+		node_shader_add_out(shader, "vec2 blur_uv");
+		node_shader_write_vert(shader, string_tmp("output.blur_uv = %s;", tuv));
 	}
 
 	if (context_is_pixel_snap()) {
-		node_shader_add_out(kong, "float2 pixel_uv");
-		node_shader_write_vert(kong, string_tmp("output.pixel_uv = %s;", tuv));
+		node_shader_add_out(shader, "vec2 pixel_uv");
+		node_shader_write_vert(shader, string_tmp("output.pixel_uv = %s;", tuv));
 	}
 
 	bool decal_layer = g_context->layer->fill_material != NULL && g_context->layer->uv_type == UV_TYPE_PROJECT;
 	if (decal_layer) {
-		node_shader_add_constant(kong, "float4x4 WVP", "_decal_layer_matrix");
+		node_shader_add_constant(shader, "mat4 WVP", "_decal_layer_matrix");
 	}
 	else {
-		node_shader_add_constant(kong, "float4x4 WVP", "_world_view_proj_matrix");
+		node_shader_add_constant(shader, "mat4 WVP", "_world_view_proj_matrix");
 	}
 
-	node_shader_add_out(kong, "float4 ndc");
-	node_shader_write_attrib_vert(kong, "output.ndc = constants.WVP * float4(input.pos.xyz, 1.0);");
+	node_shader_add_out(shader, "vec4 ndc");
+	node_shader_write_attrib_vert(shader, "output.ndc = constants.WVP * vec4(input.pos.xyz, 1.0);");
 
-	node_shader_write_attrib_frag(kong, "float3 sp = (input.ndc.xyz / input.ndc.w);");
-	node_shader_write_attrib_frag(kong, "sp.x = sp.x * 0.5 + 0.5;");
-	node_shader_write_attrib_frag(kong, "sp.y = sp.y * 0.5 + 0.5;");
-	node_shader_write_attrib_frag(kong, "sp.y = 1.0 - sp.y;");
-	node_shader_write_attrib_frag(kong, "sp.z -= 0.0001;"); // small bias
+	node_shader_write_attrib_frag(shader, "vec3 sp = (input.ndc.xyz / input.ndc.w);");
+	node_shader_write_attrib_frag(shader, "sp.x = sp.x * 0.5 + 0.5;");
+	node_shader_write_attrib_frag(shader, "sp.y = sp.y * 0.5 + 0.5;");
+	node_shader_write_attrib_frag(shader, "sp.y = 1.0 - sp.y;");
+	node_shader_write_attrib_frag(shader, "sp.z -= 0.0001;"); // small bias
 
 	uv_type_t uv_type = g_context->layer->fill_material != NULL ? g_context->layer->uv_type : g_context->brush_paint;
 	if (uv_type == UV_TYPE_PROJECT) {
-		kong->frag_ndcpos = true;
+		shader->frag_ndcpos = true;
 	}
 
-	node_shader_add_constant(kong, "float4 inp", "_input_brush");
-	node_shader_add_constant(kong, "float4 inplast", "_input_brush_last");
-	node_shader_add_constant(kong, "float aspect_ratio", "_aspect_ratio_window");
-	node_shader_write_frag(kong, "float2 bsp = sp.xy * 2.0 - 1.0;");
-	node_shader_write_frag(kong, "bsp.x *= constants.aspect_ratio;");
-	node_shader_write_frag(kong, "bsp = bsp * 0.5 + 0.5;");
+	node_shader_add_constant(shader, "vec4 inp", "_input_brush");
+	node_shader_add_constant(shader, "vec4 inplast", "_input_brush_last");
+	node_shader_add_constant(shader, "float aspect_ratio", "_aspect_ratio_window");
+	node_shader_write_frag(shader, "vec2 bsp = sp.xy * 2.0 - 1.0;");
+	node_shader_write_frag(shader, "bsp.x *= constants.aspect_ratio;");
+	node_shader_write_frag(shader, "bsp = bsp * 0.5 + 0.5;");
 
 
-	node_shader_add_texture(kong, "gbufferD", NULL);
+	node_shader_add_texture(shader, "gbufferD", NULL);
 
-	kong->frag_out = "float4[4]";
+	shader->frag_out = "vec4[4]";
 
-	node_shader_add_constant(kong, "float brush_radius", "_brush_radius");
-	node_shader_add_constant(kong, "float brush_opacity", "_brush_opacity");
-	node_shader_add_constant(kong, "float brush_hardness", "_brush_hardness");
+	node_shader_add_constant(shader, "float brush_radius", "_brush_radius");
+	node_shader_add_constant(shader, "float brush_opacity", "_brush_opacity");
+	node_shader_add_constant(shader, "float brush_hardness", "_brush_hardness");
 
 	if (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE || g_context->tool == TOOL_TYPE_BLUR ||
 	    g_context->tool == TOOL_TYPE_PARTICLE || decal) {
@@ -360,77 +360,77 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		}
 
 		if (make_paint_batched) {
-			make_brush_run_batched(kong, depth_reject);
+			make_brush_run_batched(shader, depth_reject);
 		}
 		else {
-			make_brush_run(kong, depth_reject && !particle);
+			make_brush_run(shader, depth_reject && !particle);
 		}
 	}
 	else { // Fill, Bake
-		node_shader_write_frag(kong, "float dist = 0.0;");
+		node_shader_write_frag(shader, "float dist = 0.0;");
 		bool angle_fill = g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_ANGLE;
 		if (angle_fill) {
-			node_shader_add_function(kong, str_octahedron_wrap);
-			node_shader_add_texture(kong, "gbuffer0", NULL);
-			node_shader_write_frag(kong, "float2 g0 = sample_lod(gbuffer0, sampler_linear, constants.inp.xy, 0.0).rg;");
-			node_shader_write_frag(kong, "float3 wn;");
-			node_shader_write_frag(kong, "wn.z = 1.0 - abs(g0.x) - abs(g0.y);");
-			// node_shader_write_frag(kong, "wn.xy = wn.z >= 0.0 ? g0.xy : octahedron_wrap(g0.xy);");
-			node_shader_write_frag(kong,
-			                       "if (wn.z >= 0.0) { wn.x = g0.x; wn.y = g0.y; } else { float2 f2 = octahedron_wrap(g0.xy); wn.x = f2.x; wn.y = f2.y; }");
-			node_shader_write_frag(kong, "wn = normalize(wn);");
-			kong->frag_n = true;
+			node_shader_add_function(shader, str_octahedron_wrap);
+			node_shader_add_texture(shader, "gbuffer0", NULL);
+			node_shader_write_frag(shader, "vec2 g0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
+			node_shader_write_frag(shader, "vec3 wn;");
+			node_shader_write_frag(shader, "wn.z = 1.0 - abs(g0.x) - abs(g0.y);");
+			// node_shader_write_frag(shader, "wn.xy = wn.z >= 0.0 ? g0.xy : octahedron_wrap(g0.xy);");
+			node_shader_write_frag(shader,
+			                       "if (wn.z >= 0.0) { wn.x = g0.x; wn.y = g0.y; } else { vec2 f2 = octahedron_wrap(g0.xy); wn.x = f2.x; wn.y = f2.y; }");
+			node_shader_write_frag(shader, "wn = normalize(wn);");
+			shader->frag_n = true;
 			f32 angle    = g_context->brush_angle_reject_dot;
-			node_shader_write_frag(kong, string_tmp("if (dot(wn, n) < %s) { discard; }", f32_to_string(angle)));
+			node_shader_write_frag(shader, string_tmp("if (dot(wn, n) < %s) { discard; }", f32_to_string(angle)));
 		}
 		bool stencil_fill = g_context->tool == TOOL_TYPE_FILL && g_context->brush_stencil_image != NULL;
 		if (stencil_fill) {
-			node_shader_write_frag(kong, "if (sp.z > sample_lod(gbufferD, sampler_linear, sp.xy, 0.0).r - 0.00005) { discard; }");
+			node_shader_write_frag(shader, "if (sp.z > textureLod(sampler2D(gbufferD, sampler_linear), sp.xy, 0.0).r - 0.00005) { discard; }");
 		}
 	}
 
 	if (face_fill || uv_island_fill) {
-		node_shader_add_out(kong, "float2 tex_coord_pick");
-		node_shader_write_vert(kong, udim ? "output.tex_coord_pick = atlas_uv;" : "output.tex_coord_pick = input.tex;");
+		node_shader_add_out(shader, "vec2 tex_coord_pick");
+		node_shader_write_vert(shader, udim ? "output.tex_coord_pick = atlas_uv;" : "output.tex_coord_pick = input.tex;");
 		if (face_fill) {
-			make_discard_face(kong);
+			make_discard_face(shader);
 		}
 		else if (uv_island_fill) {
-			make_discard_uv_island(kong);
+			make_discard_uv_island(shader);
 		}
 	}
 
 	if (g_context->picker_material_mask) {
-		make_discard_material_id(kong, NULL);
+		make_discard_material_id(shader, NULL);
 	}
 
 	if (g_context->picker_color_mask) {
-		make_discard_picked_color(kong, tex_src, tex_src_link);
+		make_discard_picked_color(shader, tex_src, tex_src_link);
 	}
 
-	make_texcoord_run(kong, is_atlas);
+	make_texcoord_run(shader, is_atlas);
 
 	if (g_context->tool == TOOL_TYPE_CLONE || g_context->tool == TOOL_TYPE_BLUR) {
-		node_shader_add_texture(kong, "gbuffer2", NULL);
-		node_shader_add_constant(kong, "float2 gbuffer_size", "_gbuffer_size");
-		node_shader_add_texture(kong, tex_src, tex_src_link);
-		node_shader_add_texture(kong, tex_nor_src, tex_nor_link);
-		node_shader_add_texture(kong, tex_pack_src, tex_pack_link);
+		node_shader_add_texture(shader, "gbuffer2", NULL);
+		node_shader_add_constant(shader, "vec2 gbuffer_size", "_gbuffer_size");
+		node_shader_add_texture(shader, tex_src, tex_src_link);
+		node_shader_add_texture(shader, tex_nor_src, tex_nor_link);
+		node_shader_add_texture(shader, tex_pack_src, tex_pack_link);
 
 		if (g_context->tool == TOOL_TYPE_CLONE) {
 			if (g_context->clone_layers == CLONE_LAYERS_VISIBLE) {
 				// Visible layers flattened at stroke start
-				node_shader_add_texture(kong, "texpaint_ref", "_texpaint_ref");
-				node_shader_add_texture(kong, "texpaint_nor_ref", "_texpaint_nor_ref");
-				node_shader_add_texture(kong, "texpaint_pack_ref", "_texpaint_pack_ref");
-				make_clone_run(kong, "texpaint_ref", "texpaint_nor_ref", "texpaint_pack_ref");
+				node_shader_add_texture(shader, "texpaint_ref", "_texpaint_ref");
+				node_shader_add_texture(shader, "texpaint_nor_ref", "_texpaint_nor_ref");
+				node_shader_add_texture(shader, "texpaint_pack_ref", "_texpaint_pack_ref");
+				make_clone_run(shader, "texpaint_ref", "texpaint_nor_ref", "texpaint_pack_ref");
 			}
 			else {
-				make_clone_run(kong, tex_src, tex_nor_src, tex_pack_src);
+				make_clone_run(shader, tex_src, tex_nor_src, tex_pack_src);
 			}
 		}
 		else { // Blur, Smudge
-			make_blur_run(kong);
+			make_blur_run(shader);
 		}
 	}
 	else {
@@ -441,7 +441,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		parser_material_triplanar          = uv_type == UV_TYPE_TRIPLANAR && !decal;
 		parser_material_sample_keep_aspect = decal;
 		parser_material_sample_uv_scale    = is_atlas ? "1.0" : "constants.brush_scale";
-		shader_out_t *sout                 = parser_material_parse(g_context->material->canvas, con_paint, kong);
+		shader_out_t *sout                 = parser_material_parse(g_context->material->canvas, con_paint, shader);
 		parser_material_parse_emission     = false;
 		parser_material_parse_subsurface   = false;
 		parser_material_parse_height       = false;
@@ -454,14 +454,14 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		char *opac                         = sout->out_opacity;
 		char *emis                         = sout->out_emission;
 		char *subs                         = sout->out_subsurface;
-		node_shader_write_frag(kong, string_tmp("float3 basecol = %s;", base));
-		node_shader_write_frag(kong, string_tmp("float roughness = %s;", rough));
-		node_shader_write_frag(kong, string_tmp("float metallic = %s;", met));
-		node_shader_write_frag(kong, string_tmp("float occlusion = %s;", occ));
-		node_shader_write_frag(kong, string_tmp("float3 nortan = %s;", nortan));
-		node_shader_write_frag(kong, string_tmp("float height = %s;", height));
-		node_shader_write_frag(kong, string_tmp("float mat_opacity = %s;", opac));
-		node_shader_write_frag(kong, "float opacity = mat_opacity;");
+		node_shader_write_frag(shader, string_tmp("vec3 basecol = %s;", base));
+		node_shader_write_frag(shader, string_tmp("float roughness = %s;", rough));
+		node_shader_write_frag(shader, string_tmp("float metallic = %s;", met));
+		node_shader_write_frag(shader, string_tmp("float occlusion = %s;", occ));
+		node_shader_write_frag(shader, string_tmp("vec3 nortan = %s;", nortan));
+		node_shader_write_frag(shader, string_tmp("float height = %s;", height));
+		node_shader_write_frag(shader, string_tmp("float mat_opacity = %s;", opac));
+		node_shader_write_frag(shader, "float opacity = mat_opacity;");
 
 		// Fill layers write the material opacity directly, anything but a constant 1.0 on the bottom layer makes it see-through
 		if (g_context->layer->fill_material != NULL && g_context->layer == g_project->_->layers->buffer[0] && g_context->material->paint_opac) {
@@ -473,14 +473,14 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		}
 
 		if (g_context->layer->fill_material == NULL && !make_paint_batched) { // Batched: the opacity of each dab
-			node_shader_write_frag(kong, "opacity *= constants.brush_opacity;");
+			node_shader_write_frag(shader, "opacity *= constants.brush_opacity;");
 		}
 
 		if (g_context->material->paint_emis) {
-			node_shader_write_frag(kong, string_tmp("float emis = %s;", emis));
+			node_shader_write_frag(shader, string_tmp("float emis = %s;", emis));
 		}
 		if (g_context->material->paint_subs) {
-			node_shader_write_frag(kong, string_tmp("float subs = %s;", subs));
+			node_shader_write_frag(shader, string_tmp("float subs = %s;", subs));
 		}
 		if (!make_material_height_used && !make_paint_is_zero_constant(height)) {
 			make_material_height_used = true;
@@ -490,258 +490,258 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	}
 
 	if (g_context->brush_mask_image != NULL && g_context->tool == TOOL_TYPE_DECAL) {
-		node_shader_add_texture(kong, "texbrushmask", "_texbrushmask");
-		node_shader_write_frag(kong, "float4 mask_sample = sample_lod(texbrushmask, sampler_linear, uvsp, 0.0);");
+		node_shader_add_texture(shader, "texbrushmask", "_texbrushmask");
+		node_shader_write_frag(shader, "vec4 mask_sample = textureLod(sampler2D(texbrushmask, sampler_linear), uvsp, 0.0);");
 		if (g_context->brush_mask_image_is_alpha) {
-			node_shader_write_frag(kong, "opacity *= mask_sample.a;");
+			node_shader_write_frag(shader, "opacity *= mask_sample.a;");
 		}
 		else {
-			node_shader_write_frag(kong, "opacity *= mask_sample.r * mask_sample.a;");
+			node_shader_write_frag(shader, "opacity *= mask_sample.r * mask_sample.a;");
 		}
 	}
 	else if (g_context->tool == TOOL_TYPE_TEXT) {
-		node_shader_add_texture(kong, "textexttool", "_textexttool");
-		node_shader_write_frag(kong, "opacity *= sample_lod(textexttool, sampler_linear, uvsp, 0.0).r;");
+		node_shader_add_texture(shader, "textexttool", "_textexttool");
+		node_shader_write_frag(shader, "opacity *= textureLod(sampler2D(textexttool, sampler_linear), uvsp, 0.0).r;");
 	}
 
 	if (g_context->brush_stencil_image != NULL &&
 	    (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_CLONE ||
 	     g_context->tool == TOOL_TYPE_BLUR || g_context->tool == TOOL_TYPE_PARTICLE || decal)) {
-		node_shader_add_texture(kong, "texbrushstencil", "_texbrushstencil");
-		node_shader_add_constant(kong, "float2 texbrushstencil_size", "_size(_texbrushstencil)");
-		node_shader_add_constant(kong, "float4 stencil_transform", "_stencil_transform");
+		node_shader_add_texture(shader, "texbrushstencil", "_texbrushstencil");
+		node_shader_add_constant(shader, "vec2 texbrushstencil_size", "_size(_texbrushstencil)");
+		node_shader_add_constant(shader, "vec4 stencil_transform", "_stencil_transform");
 		node_shader_write_frag(
-		    kong, "float2 stencil_uv = (sp.xy - constants.stencil_transform.xy) / constants.stencil_transform.z * float2(constants.aspect_ratio, 1.0);");
-		node_shader_write_frag(kong, "float2 stencil_size = constants.texbrushstencil_size;");
-		node_shader_write_frag(kong, "float stencil_ratio = stencil_size.y / stencil_size.x;");
-		node_shader_write_frag(kong, "stencil_uv -= float2(0.5 / stencil_ratio, 0.5);");
-		node_shader_write_frag(kong,
-		                       "stencil_uv = float2(stencil_uv.x * cos(constants.stencil_transform.w) - stencil_uv.y * sin(constants.stencil_transform.w),\
+		    shader, "vec2 stencil_uv = (sp.xy - constants.stencil_transform.xy) / constants.stencil_transform.z * vec2(constants.aspect_ratio, 1.0);");
+		node_shader_write_frag(shader, "vec2 stencil_size = constants.texbrushstencil_size;");
+		node_shader_write_frag(shader, "float stencil_ratio = stencil_size.y / stencil_size.x;");
+		node_shader_write_frag(shader, "stencil_uv -= vec2(0.5 / stencil_ratio, 0.5);");
+		node_shader_write_frag(shader,
+		                       "stencil_uv = vec2(stencil_uv.x * cos(constants.stencil_transform.w) - stencil_uv.y * sin(constants.stencil_transform.w),\
 												   stencil_uv.x * sin(constants.stencil_transform.w) + stencil_uv.y * cos(constants.stencil_transform.w));");
-		node_shader_write_frag(kong, "stencil_uv += float2(0.5 / stencil_ratio, 0.5);");
-		node_shader_write_frag(kong, "stencil_uv.x *= stencil_ratio;");
-		node_shader_write_frag(kong, "if (stencil_uv.x < 0.0 || stencil_uv.x > 1.0 || stencil_uv.y < 0.0 || stencil_uv.y > 1.0) { discard; }");
-		node_shader_write_frag(kong, "float4 texbrushstencil_sample = sample_lod(texbrushstencil, sampler_linear, stencil_uv, 0.0);");
+		node_shader_write_frag(shader, "stencil_uv += vec2(0.5 / stencil_ratio, 0.5);");
+		node_shader_write_frag(shader, "stencil_uv.x *= stencil_ratio;");
+		node_shader_write_frag(shader, "if (stencil_uv.x < 0.0 || stencil_uv.x > 1.0 || stencil_uv.y < 0.0 || stencil_uv.y > 1.0) { discard; }");
+		node_shader_write_frag(shader, "vec4 texbrushstencil_sample = textureLod(sampler2D(texbrushstencil, sampler_linear), stencil_uv, 0.0);");
 		if (g_context->brush_stencil_image_is_alpha) {
-			node_shader_write_frag(kong, "opacity *= texbrushstencil_sample.a;");
+			node_shader_write_frag(shader, "opacity *= texbrushstencil_sample.a;");
 		}
 		else {
-			node_shader_write_frag(kong, "opacity *= texbrushstencil_sample.r * texbrushstencil_sample.a;");
+			node_shader_write_frag(shader, "opacity *= texbrushstencil_sample.r * texbrushstencil_sample.a;");
 		}
 	}
 
 	if (g_context->brush_mask_image != NULL && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER) && !make_paint_batched) {
 		// Project mask onto mesh surface
-		node_shader_add_texture(kong, "texbrushmask", "_texbrushmask");
-		node_shader_add_function(kong, str_octahedron_wrap);
-		node_shader_add_texture(kong, "gbuffer0", NULL);
-		node_shader_add_constant(kong, "float3 camera_right", "_camera_right");
-		node_shader_add_constant(kong, "float3 camera_up", "_camera_up");
-		node_shader_add_constant(kong, "float camera_align", "_brush_camera_align");
-		node_shader_add_constant(kong, "float4x4 VP", "_view_proj_matrix");
-		node_shader_write_frag(kong, "float2 mn0 = sample_lod(gbuffer0, sampler_linear, constants.inp.xy, 0.0).rg;");
-		node_shader_write_frag(kong, "float3 mn;");
-		node_shader_write_frag(kong, "mn.z = 1.0 - abs(mn0.x) - abs(mn0.y);");
-		node_shader_write_frag(kong,
-		                       "if (mn.z >= 0.0) { mn.x = mn0.x; mn.y = mn0.y; } else { float2 mfw = octahedron_wrap(mn0.xy); mn.x = mfw.x; mn.y = mfw.y; }");
-		node_shader_write_frag(kong, "mn = normalize(mn);");
-		node_shader_write_frag(kong, "float3 mr = constants.camera_right;");
-		node_shader_write_frag(kong, "if (abs(dot(mn, mr)) > 0.999) { mr = float3(0.0, 0.0, 1.0); }");
-		node_shader_write_frag(kong, "float3 mt = normalize(mr - mn * dot(mr, mn));");
-		node_shader_write_frag(kong, "float3 mb = cross(mt, mn);");
-		node_shader_write_frag(kong, "float3 pa_mask_3d = input.wposition - winp.xyz;");
-		node_shader_write_frag(kong, "float2 pa_mask;");
-		node_shader_write_frag(kong, "if (constants.camera_align > 0.0) {");
-		node_shader_write_frag(kong, "float mvp_up_y = (constants.VP * float4(constants.camera_up, 0.0)).y;");
-		node_shader_write_frag(kong, "float2 msa = sp.xy - constants.inp.xy;");
-		node_shader_write_frag(kong, "msa.x *= constants.aspect_ratio;");
-		node_shader_write_frag(kong, "pa_mask = msa * (2.0 / (mvp_up_y * winp.w));");
-		node_shader_write_frag(kong, "}");
-		node_shader_write_frag(kong, "else {");
-		node_shader_write_frag(kong, "pa_mask = float2(dot(pa_mask_3d, mt), dot(pa_mask_3d, mb));");
-		node_shader_write_frag(kong, "}");
+		node_shader_add_texture(shader, "texbrushmask", "_texbrushmask");
+		node_shader_add_function(shader, str_octahedron_wrap);
+		node_shader_add_texture(shader, "gbuffer0", NULL);
+		node_shader_add_constant(shader, "vec3 camera_right", "_camera_right");
+		node_shader_add_constant(shader, "vec3 camera_up", "_camera_up");
+		node_shader_add_constant(shader, "float camera_align", "_brush_camera_align");
+		node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
+		node_shader_write_frag(shader, "vec2 mn0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
+		node_shader_write_frag(shader, "vec3 mn;");
+		node_shader_write_frag(shader, "mn.z = 1.0 - abs(mn0.x) - abs(mn0.y);");
+		node_shader_write_frag(shader,
+		                       "if (mn.z >= 0.0) { mn.x = mn0.x; mn.y = mn0.y; } else { vec2 mfw = octahedron_wrap(mn0.xy); mn.x = mfw.x; mn.y = mfw.y; }");
+		node_shader_write_frag(shader, "mn = normalize(mn);");
+		node_shader_write_frag(shader, "vec3 mr = constants.camera_right;");
+		node_shader_write_frag(shader, "if (abs(dot(mn, mr)) > 0.999) { mr = vec3(0.0, 0.0, 1.0); }");
+		node_shader_write_frag(shader, "vec3 mt = normalize(mr - mn * dot(mr, mn));");
+		node_shader_write_frag(shader, "vec3 mb = cross(mt, mn);");
+		node_shader_write_frag(shader, "vec3 pa_mask_3d = input.wposition - winp.xyz;");
+		node_shader_write_frag(shader, "vec2 pa_mask;");
+		node_shader_write_frag(shader, "if (constants.camera_align > 0.0) {");
+		node_shader_write_frag(shader, "float mvp_up_y = (constants.VP * vec4(constants.camera_up, 0.0)).y;");
+		node_shader_write_frag(shader, "vec2 msa = sp.xy - constants.inp.xy;");
+		node_shader_write_frag(shader, "msa.x *= constants.aspect_ratio;");
+		node_shader_write_frag(shader, "pa_mask = msa * (2.0 / (mvp_up_y * winp.w));");
+		node_shader_write_frag(shader, "}");
+		node_shader_write_frag(shader, "else {");
+		node_shader_write_frag(shader, "pa_mask = vec2(dot(pa_mask_3d, mt), dot(pa_mask_3d, mb));");
+		node_shader_write_frag(shader, "}");
 		if (context_is_pixel_snap()) {
-			node_shader_write_frag(kong, "pa_mask = pixel_pa;");
+			node_shader_write_frag(shader, "pa_mask = pixel_pa;");
 		}
 		if (g_context->brush_directional) {
-			node_shader_add_constant(kong, "float3 brush_direction", "_brush_direction");
-			node_shader_write_frag(kong, "if (constants.brush_direction.z == 0.0) { discard; }");
-			node_shader_write_frag(kong, "pa_mask = float2(pa_mask.x * constants.brush_direction.x - pa_mask.y * constants.brush_direction.y, pa_mask.x * "
+			node_shader_add_constant(shader, "vec3 brush_direction", "_brush_direction");
+			node_shader_write_frag(shader, "if (constants.brush_direction.z == 0.0) { discard; }");
+			node_shader_write_frag(shader, "pa_mask = vec2(pa_mask.x * constants.brush_direction.x - pa_mask.y * constants.brush_direction.y, pa_mask.x * "
 			                             "constants.brush_direction.y + pa_mask.y * constants.brush_direction.x);");
 		}
 		f32 angle = g_context->brush_angle + g_context->brush_nodes_angle;
 		if (angle != 0.0 || g_context->brush_rotation != BRUSH_ROTATION_FIXED) {
-			node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
-			node_shader_write_frag(kong, "pa_mask.xy = float2(pa_mask.x * constants.brush_angle.x - pa_mask.y * constants.brush_angle.y, pa_mask.x * "
+			node_shader_add_constant(shader, "vec2 brush_angle", "_brush_angle");
+			node_shader_write_frag(shader, "pa_mask.xy = vec2(pa_mask.x * constants.brush_angle.x - pa_mask.y * constants.brush_angle.y, pa_mask.x * "
 			                             "constants.brush_angle.y + pa_mask.y * constants.brush_angle.x);");
 		}
 		if (g_context->brush_jitter_angle > 0.0) { // Rotation of each stamp
-			node_shader_add_constant(kong, "float2 brush_dab_angle", "_brush_dab_angle");
-			node_shader_write_frag(kong, "pa_mask.xy = float2(pa_mask.x * constants.brush_dab_angle.x - pa_mask.y * constants.brush_dab_angle.y, pa_mask.x * "
+			node_shader_add_constant(shader, "vec2 brush_dab_angle", "_brush_dab_angle");
+			node_shader_write_frag(shader, "pa_mask.xy = vec2(pa_mask.x * constants.brush_dab_angle.x - pa_mask.y * constants.brush_dab_angle.y, pa_mask.x * "
 			                             "constants.brush_dab_angle.y + pa_mask.y * constants.brush_dab_angle.x);");
 		}
-		node_shader_write_frag(kong, "pa_mask = pa_mask / constants.brush_radius * 0.5 + 0.5;");
-		node_shader_write_frag(kong, "float4 mask_sample = sample_lod(texbrushmask, sampler_linear, pa_mask, 0.0);");
+		node_shader_write_frag(shader, "pa_mask = pa_mask / constants.brush_radius * 0.5 + 0.5;");
+		node_shader_write_frag(shader, "vec4 mask_sample = textureLod(sampler2D(texbrushmask, sampler_linear), pa_mask, 0.0);");
 		if (g_context->brush_mask_image_is_alpha) {
-			node_shader_write_frag(kong, "opacity *= mask_sample.a;");
+			node_shader_write_frag(shader, "opacity *= mask_sample.a;");
 		}
 		else {
-			node_shader_write_frag(kong, "opacity *= mask_sample.r * mask_sample.a;");
+			node_shader_write_frag(shader, "opacity *= mask_sample.r * mask_sample.a;");
 		}
 	}
 
 	if (make_paint_batched) { // Coverage of every dab, see make_brush_run_batched_coverage
-		kong->frag_wvpposition = true;
-		node_shader_write_frag(kong,
-		                       "float2 sample_tc = float2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
-		node_shader_write_frag(kong, "sample_tc.y = 1.0 - sample_tc.y;");
-		node_shader_add_texture(kong, "paintmask", NULL);
-		node_shader_write_frag(kong, "float sample_mask = sample_lod(paintmask, sampler_linear, sample_tc, 0.0).r;");
-		node_shader_write_frag(kong, "float cov = sample_mask;");
-		make_brush_run_batched_coverage(kong);
-		node_shader_write_frag(kong, "float str = cov;");
+		shader->frag_wvpposition = true;
+		node_shader_write_frag(shader,
+		                       "vec2 sample_tc = vec2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
+		node_shader_write_frag(shader, "sample_tc.y = 1.0 - sample_tc.y;");
+		node_shader_add_texture(shader, "paintmask", NULL);
+		node_shader_write_frag(shader, "float sample_mask = textureLod(sampler2D(paintmask, sampler_linear), sample_tc, 0.0).r;");
+		node_shader_write_frag(shader, "float cov = sample_mask;");
+		make_brush_run_batched_coverage(shader);
+		node_shader_write_frag(shader, "float str = cov;");
 	}
 	else {
-	node_shader_write_frag(kong, string_tmp("if (opacity <= float(%s)) { discard; }", f32_to_string(g_config->brush_alpha_discard)));
+	node_shader_write_frag(shader, string_tmp("if (opacity <= float(%s)) { discard; }", f32_to_string(g_config->brush_alpha_discard)));
 
 	if (g_context->tool == TOOL_TYPE_PARTICLE) { // Particle mask
-		make_particle_mask(kong);
+		make_particle_mask(shader);
 	}
 	else { // Brush cursor mask
-		node_shader_write_frag(kong, "float t = dist / constants.brush_radius;");
-		node_shader_write_frag(kong, "float t2 = clamp((t - constants.brush_hardness) / max(1.0 - constants.brush_hardness, 0.001), 0.0, 1.0);");
-		node_shader_write_frag(kong, "float str = (1.0 - t2 * t2 * (3.0 - 2.0 * t2)) * opacity;");
+		node_shader_write_frag(shader, "float t = dist / constants.brush_radius;");
+		node_shader_write_frag(shader, "float t2 = clamp((t - constants.brush_hardness) / max(1.0 - constants.brush_hardness, 0.001), 0.0, 1.0);");
+		node_shader_write_frag(shader, "float str = (1.0 - t2 * t2 * (3.0 - 2.0 * t2)) * opacity;");
 	}
 
 	if (g_context->tool == TOOL_TYPE_CLONE) {
-		node_shader_write_frag(kong, "str *= clone_src_alpha;");
+		node_shader_write_frag(shader, "str *= clone_src_alpha;");
 	}
 
 	// Manual blending to preserve memory
-	kong->frag_wvpposition = true;
-	node_shader_write_frag(kong,
-	                       "float2 sample_tc = float2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
-	node_shader_write_frag(kong, "sample_tc.y = 1.0 - sample_tc.y;");
-	node_shader_add_texture(kong, "paintmask", NULL);
-	node_shader_write_frag(kong, "float sample_mask = sample_lod(paintmask, sampler_linear, sample_tc, 0.0).r;");
+	shader->frag_wvpposition = true;
+	node_shader_write_frag(shader,
+	                       "vec2 sample_tc = vec2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
+	node_shader_write_frag(shader, "sample_tc.y = 1.0 - sample_tc.y;");
+	node_shader_add_texture(shader, "paintmask", NULL);
+	node_shader_write_frag(shader, "float sample_mask = textureLod(sampler2D(paintmask, sampler_linear), sample_tc, 0.0).r;");
 	if (accum) {
-		node_shader_add_constant(kong, "float brush_strength", "_brush_strength");
-		node_shader_write_frag(kong, "str *= constants.brush_strength;");
+		node_shader_add_constant(shader, "float brush_strength", "_brush_strength");
+		node_shader_write_frag(shader, "str *= constants.brush_strength;");
 	}
 	else {
 		// Flow: each stamp adds a part of the paint, the stroke builds up to the brush opacity
-		node_shader_add_constant(kong, "float brush_flow", "_brush_flow");
-		node_shader_write_frag(kong, "float base_str = max(str, sample_mask);");
-		node_shader_write_frag(kong, "if (constants.brush_flow < 1.0) { str = min(sample_mask + str * constants.brush_flow, base_str); }");
-		node_shader_write_frag(kong, "else { str = base_str + str * (1.0 - base_str) * 0.1; }");
+		node_shader_add_constant(shader, "float brush_flow", "_brush_flow");
+		node_shader_write_frag(shader, "float base_str = max(str, sample_mask);");
+		node_shader_write_frag(shader, "if (constants.brush_flow < 1.0) { str = min(sample_mask + str * constants.brush_flow, base_str); }");
+		node_shader_write_frag(shader, "else { str = base_str + str * (1.0 - base_str) * 0.1; }");
 	}
 	} // Not batched
 
-	node_shader_add_texture(kong, tex_src, tex_src_link);
-	node_shader_write_frag(kong, string_tmp("float4 sample_undo = sample_lod(%s, sampler_linear, sample_tc, 0.0);", tex_src));
+	node_shader_add_texture(shader, tex_src, tex_src_link);
+	node_shader_write_frag(shader, string_tmp("vec4 sample_undo = textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0);", tex_src));
 
 	f32 matid = g_context->material->id / 255.0;
 	if (g_context->picker_material_mask) {
 		matid = g_context->materialid_picked / 255.0; // Keep existing material id in place when mask is set
 	}
 	char *matid_string = parser_material_vec1(matid * 3.0);
-	node_shader_write_frag(kong, string_tmp("float matid = %s;", matid_string));
+	node_shader_write_frag(shader, string_tmp("float matid = %s;", matid_string));
 
 	// matid % 3 == 0 - normal, 1 - emission, 2 - subsurface
 	if (g_context->material->paint_emis && make_material_emis_used) {
-		node_shader_write_frag(kong, "if (emis > 0.0) {");
-		node_shader_write_frag(kong, "	matid += 1.0 / 255.0;");
-		node_shader_write_frag(kong, "	if (str == 0.0) { discard; }");
-		node_shader_write_frag(kong, "}");
+		node_shader_write_frag(shader, "if (emis > 0.0) {");
+		node_shader_write_frag(shader, "	matid += 1.0 / 255.0;");
+		node_shader_write_frag(shader, "	if (str == 0.0) { discard; }");
+		node_shader_write_frag(shader, "}");
 	}
 	else if (g_context->material->paint_subs && make_material_subs_used) {
-		node_shader_write_frag(kong, "if (subs > 0.0) {");
-		node_shader_write_frag(kong, "	matid += 2.0 / 255.0;");
-		node_shader_write_frag(kong, "	if (str == 0.0) { discard; }");
-		node_shader_write_frag(kong, "}");
+		node_shader_write_frag(shader, "if (subs > 0.0) {");
+		node_shader_write_frag(shader, "	matid += 2.0 / 255.0;");
+		node_shader_write_frag(shader, "	if (str == 0.0) { discard; }");
+		node_shader_write_frag(shader, "}");
 	}
 
 	if (g_context->tool == TOOL_TYPE_ERASER) {
-		node_shader_write_frag(kong, "basecol = float3(0.0, 0.0, 0.0);");
-		node_shader_write_frag(kong, "nortan = float3(0.5, 0.5, 1.0);");
-		node_shader_write_frag(kong, "occlusion = 1.0;");
-		node_shader_write_frag(kong, "roughness = 0.0;");
-		node_shader_write_frag(kong, "metallic = 0.0;");
-		node_shader_write_frag(kong, "height = 0.0;");
+		node_shader_write_frag(shader, "basecol = vec3(0.0, 0.0, 0.0);");
+		node_shader_write_frag(shader, "nortan = vec3(0.5, 0.5, 1.0);");
+		node_shader_write_frag(shader, "occlusion = 1.0;");
+		node_shader_write_frag(shader, "roughness = 0.0;");
+		node_shader_write_frag(shader, "metallic = 0.0;");
+		node_shader_write_frag(shader, "height = 0.0;");
 	}
 
 	// Masks take a gray value, not the material: white reveals the layer, black hides it
 	bool mask_gray = slot_layer_is_mask(g_context->layer) && g_context->layer->fill_material == NULL &&
 	                 (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_PARTICLE);
 	if (mask_gray) {
-		node_shader_add_constant(kong, "float mask_value", "_mask_value");
-		node_shader_write_frag(kong, "basecol = float3(constants.mask_value, constants.mask_value, constants.mask_value);");
+		node_shader_add_constant(shader, "float mask_value", "_mask_value");
+		node_shader_write_frag(shader, "basecol = vec3(constants.mask_value, constants.mask_value, constants.mask_value);");
 	}
 
 	// Output
-	node_shader_add_texture(kong, tex_nor_src, tex_nor_link);
-	node_shader_add_texture(kong, tex_pack_src, tex_pack_link);
-	node_shader_write_frag(kong, string_tmp("float4 sample_nor_undo = sample_lod(%s, sampler_linear, sample_tc, 0.0);", tex_nor_src));
-	node_shader_write_frag(kong, string_tmp("float4 sample_pack_undo = sample_lod(%s, sampler_linear, sample_tc, 0.0);", tex_pack_src));
+	node_shader_add_texture(shader, tex_nor_src, tex_nor_link);
+	node_shader_add_texture(shader, tex_pack_src, tex_pack_link);
+	node_shader_write_frag(shader, string_tmp("vec4 sample_nor_undo = textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0);", tex_nor_src));
+	node_shader_write_frag(shader, string_tmp("vec4 sample_pack_undo = textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0);", tex_pack_src));
 
 	bool is_mask = slot_layer_is_mask(g_context->layer);
 	if (g_context->tool == TOOL_TYPE_ERASER && !is_mask) {
-		node_shader_write_frag(kong, "float out_a = sample_undo.a * (1.0 - str);");
-		node_shader_write_frag(kong, "output[0] = float4(sample_undo.rgb, out_a);");
+		node_shader_write_frag(shader, "float out_a = sample_undo.a * (1.0 - str);");
+		node_shader_write_frag(shader, "output[0] = vec4(sample_undo.rgb, out_a);");
 	}
 	else if (g_context->tool == TOOL_TYPE_BLUR && !is_mask) {
-		node_shader_write_frag(kong, "float t_blur = str / max(blur_src_alpha, 0.0000001);");
-		node_shader_write_frag(kong, "float out_a = str + sample_undo.a * (1.0 - t_blur);");
-		node_shader_write_frag(kong,
-		                       "output[0] = float4((basecol * t_blur + sample_undo.rgb * sample_undo.a * (1.0 - t_blur)) / max(out_a, 0.0000001), out_a);");
+		node_shader_write_frag(shader, "float t_blur = str / max(blur_src_alpha, 0.0000001);");
+		node_shader_write_frag(shader, "float out_a = str + sample_undo.a * (1.0 - t_blur);");
+		node_shader_write_frag(shader,
+		                       "output[0] = vec4((basecol * t_blur + sample_undo.rgb * sample_undo.a * (1.0 - t_blur)) / max(out_a, 0.0000001), out_a);");
 	}
 	else if (g_context->layer->fill_material != NULL) {
-		node_shader_write_frag(kong, string_tmp("output[0] = float4(%s, %s);",
-		                                        make_material_blend_mode(kong, g_context->brush_blending, "sample_undo.rgb", "basecol", "str"), "mat_opacity"));
+		node_shader_write_frag(shader, string_tmp("output[0] = vec4(%s, %s);",
+		                                        make_material_blend_mode(shader, g_context->brush_blending, "sample_undo.rgb", "basecol", "str"), "mat_opacity"));
 	}
 	else if (g_project->linear_blending && !is_mask) {
 		// Blend in linear space, the layer stays gamma encoded
-		node_shader_write_frag(kong, "float3 undo_lin = pow(max(sample_undo.rgb, float3(0.0, 0.0, 0.0)), float3(2.2, 2.2, 2.2));");
-		node_shader_write_frag(kong, "float3 base_lin = pow(max(basecol, float3(0.0, 0.0, 0.0)), float3(2.2, 2.2, 2.2));");
-		node_shader_write_frag(kong, "float out_a = str + sample_undo.a * (1.0 - str);");
+		node_shader_write_frag(shader, "vec3 undo_lin = pow(max(sample_undo.rgb, vec3(0.0, 0.0, 0.0)), vec3(2.2, 2.2, 2.2));");
+		node_shader_write_frag(shader, "vec3 base_lin = pow(max(basecol, vec3(0.0, 0.0, 0.0)), vec3(2.2, 2.2, 2.2));");
+		node_shader_write_frag(shader, "float out_a = str + sample_undo.a * (1.0 - str);");
 		if (g_context->brush_blending == BLEND_TYPE_MIX) {
-			node_shader_write_frag(kong, "float3 out_lin = (base_lin * str + undo_lin * sample_undo.a * (1.0 - str)) / max(out_a, 0.0000001);");
+			node_shader_write_frag(shader, "vec3 out_lin = (base_lin * str + undo_lin * sample_undo.a * (1.0 - str)) / max(out_a, 0.0000001);");
 		}
 		else {
-			node_shader_write_frag(kong, string_tmp("float3 out_lin = %s;", make_material_blend_mode(kong, g_context->brush_blending, "undo_lin", "base_lin", "str")));
+			node_shader_write_frag(shader, string_tmp("vec3 out_lin = %s;", make_material_blend_mode(shader, g_context->brush_blending, "undo_lin", "base_lin", "str")));
 		}
-		node_shader_write_frag(kong, "output[0] = float4(pow(max(out_lin, float3(0.0, 0.0, 0.0)), float3(0.4545, 0.4545, 0.4545)), out_a);");
+		node_shader_write_frag(shader, "output[0] = vec4(pow(max(out_lin, vec3(0.0, 0.0, 0.0)), vec3(0.4545, 0.4545, 0.4545)), out_a);");
 	}
 	else if (g_context->brush_blending == BLEND_TYPE_MIX && !is_mask) {
-		node_shader_write_frag(kong, "float out_a = str + sample_undo.a * (1.0 - str);");
-		node_shader_write_frag(kong, "output[0] = float4((basecol * str + sample_undo.rgb * sample_undo.a * (1.0 - str)) / max(out_a, 0.0000001), out_a);");
+		node_shader_write_frag(shader, "float out_a = str + sample_undo.a * (1.0 - str);");
+		node_shader_write_frag(shader, "output[0] = vec4((basecol * str + sample_undo.rgb * sample_undo.a * (1.0 - str)) / max(out_a, 0.0000001), out_a);");
 	}
 	else {
-		node_shader_write_frag(kong, "float out_a = str + sample_undo.a * (1.0 - str);");
-		node_shader_write_frag(kong, string_tmp("output[0] = float4(%s, %s);",
-		                                        make_material_blend_mode(kong, g_context->brush_blending, "sample_undo.rgb", "basecol", "str"), "out_a"));
+		node_shader_write_frag(shader, "float out_a = str + sample_undo.a * (1.0 - str);");
+		node_shader_write_frag(shader, string_tmp("output[0] = vec4(%s, %s);",
+		                                        make_material_blend_mode(shader, g_context->brush_blending, "sample_undo.rgb", "basecol", "str"), "out_a"));
 	}
 	if (make_material_blend_mode_channels(g_context->brush_blending) && !is_mask && g_context->layer->fill_material == NULL &&
 	    g_context->tool != TOOL_TYPE_BLUR) {
 		// The blend mode also applies to occlusion, roughness, metallic and height, the normal adds detail
-		node_shader_write_frag(kong, "float3 pack_undo_rgb = sample_pack_undo.rgb;");
-		node_shader_write_frag(kong, "float3 pack_new_rgb = float3(occlusion, roughness, metallic);");
-		node_shader_write_frag(kong, "float3 pack_undo_h = float3(sample_pack_undo.a, sample_pack_undo.a, sample_pack_undo.a);");
-		node_shader_write_frag(kong, "float3 pack_new_h = float3(height, height, height);");
-		char *rgb = string_copy(make_material_blend_mode(kong, g_context->brush_blending, "pack_undo_rgb", "pack_new_rgb", "str"));
-		char *h   = string_copy(make_material_blend_mode(kong, g_context->brush_blending, "pack_undo_h", "pack_new_h", "str"));
-		node_shader_write_frag(kong, string_tmp("float3 pack_out_rgb = clamp(%s, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0));", rgb));
-		node_shader_write_frag(kong, string_tmp("float3 pack_out_h = clamp(%s, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0));", h));
-		node_shader_write_frag(kong, "float3 bn1 = sample_nor_undo.rgb * float3(2.0, 2.0, 2.0) - float3(1.0, 1.0, 1.0);");
-		node_shader_write_frag(kong, "float3 bn2 = lerp(float3(0.5, 0.5, 1.0), nortan, str) * float3(2.0, 2.0, 2.0) - float3(1.0, 1.0, 1.0);");
-		node_shader_write_frag(kong, "output[1] = float4(normalize(float3(bn1.xy + bn2.xy, bn1.z * bn2.z)) * float3(0.5, 0.5, 0.5) + float3(0.5, 0.5, 0.5), matid);");
-		node_shader_write_frag(kong, "output[2] = float4(pack_out_rgb, pack_out_h.x);");
+		node_shader_write_frag(shader, "vec3 pack_undo_rgb = sample_pack_undo.rgb;");
+		node_shader_write_frag(shader, "vec3 pack_new_rgb = vec3(occlusion, roughness, metallic);");
+		node_shader_write_frag(shader, "vec3 pack_undo_h = vec3(sample_pack_undo.a, sample_pack_undo.a, sample_pack_undo.a);");
+		node_shader_write_frag(shader, "vec3 pack_new_h = vec3(height, height, height);");
+		char *rgb = string_copy(make_material_blend_mode(shader, g_context->brush_blending, "pack_undo_rgb", "pack_new_rgb", "str"));
+		char *h   = string_copy(make_material_blend_mode(shader, g_context->brush_blending, "pack_undo_h", "pack_new_h", "str"));
+		node_shader_write_frag(shader, string_tmp("vec3 pack_out_rgb = clamp(%s, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0));", rgb));
+		node_shader_write_frag(shader, string_tmp("vec3 pack_out_h = clamp(%s, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0));", h));
+		node_shader_write_frag(shader, "vec3 bn1 = sample_nor_undo.rgb * vec3(2.0, 2.0, 2.0) - vec3(1.0, 1.0, 1.0);");
+		node_shader_write_frag(shader, "vec3 bn2 = mix(vec3(0.5, 0.5, 1.0), nortan, str) * vec3(2.0, 2.0, 2.0) - vec3(1.0, 1.0, 1.0);");
+		node_shader_write_frag(shader, "output[1] = vec4(normalize(vec3(bn1.xy + bn2.xy, bn1.z * bn2.z)) * vec3(0.5, 0.5, 0.5) + vec3(0.5, 0.5, 0.5), matid);");
+		node_shader_write_frag(shader, "output[2] = vec4(pack_out_rgb, pack_out_h.x);");
 	}
 	else {
-		node_shader_write_frag(kong, "output[1] = float4(lerp(sample_nor_undo.rgb, nortan, str), matid);");
-		node_shader_write_frag(kong, "output[2] = lerp(sample_pack_undo, float4(occlusion, roughness, metallic, height), str);");
+		node_shader_write_frag(shader, "output[1] = vec4(mix(sample_nor_undo.rgb, nortan, str), matid);");
+		node_shader_write_frag(shader, "output[2] = mix(sample_pack_undo, vec4(occlusion, roughness, metallic, height), str);");
 	}
-	node_shader_write_frag(kong, "output[3] = float4(str, 0.0, 0.0, 1.0);");
+	node_shader_write_frag(shader, "output[3] = vec4(str, 0.0, 0.0, 1.0);");
 
 	if (!g_context->material->paint_base) {
 		con_paint->data->color_writes_red->buffer[0]   = false;
@@ -786,7 +786,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	}
 
 	if (g_context->tool == TOOL_TYPE_BAKE) {
-		make_bake_run(con_paint, kong);
+		make_bake_run(con_paint, shader);
 	}
 
 	parser_material_finalize(con_paint);
@@ -794,7 +794,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	parser_material_sample_keep_aspect = false;
 
 	con_paint->data->shader_from_source = true;
-	make_paint_create_shaders(node_shader_get(kong), &con_paint->data->vertex_shader, &con_paint->data->fragment_shader,
+	make_paint_create_shaders(node_shader_get(shader), &con_paint->data->vertex_shader, &con_paint->data->fragment_shader,
 	                          &con_paint->data->_->vertex_shader_size, &con_paint->data->_->fragment_shader_size);
 
 	return con_paint;

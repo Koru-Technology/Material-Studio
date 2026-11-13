@@ -85,8 +85,8 @@ void curvature_mask_preview_end() {
 // 1 - b * 0.9 + b * 1.8 * noise: no breakup at 0, the border wanders more the higher it is
 static char *mask_breakup(char *breakup, char *scale) {
 	pattern_lib_use(-1);
-	node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
-	return string_tmp("(1.0 - %s * 0.9 + %s * 1.8 * clamp((pat_fbm(tex_coord * %s, float2(4096.0, 4096.0), 0.0, 0.5) - 0.5) * 2.5 + 0.5, 0.0, 1.0))",
+	node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm");
+	return string_tmp("(1.0 - %s * 0.9 + %s * 1.8 * clamp((pat_fbm(tex_coord * %s, vec2(4096.0, 4096.0), 0.0, 0.5) - 0.5) * 2.5 + 0.5, 0.0, 1.0))",
 	                  breakup, breakup, scale);
 }
 
@@ -98,7 +98,7 @@ static char *curvature_mask_eval(ui_node_t *node) {
 	any_array_push(parser_material_parsed, store);
 	slot_material_t *m = nodes_material_node_material(node);
 	if (m == NULL) { // Inside groups there is no curvature
-		parser_material_write(parser_material_kong, string_tmp("float %s = 0.0;", store));
+		parser_material_write(parser_material_shader, string_tmp("float %s = 0.0;", store));
 		return store;
 	}
 	char *amount  = string_copy(parser_material_parse_value_input(node->inputs->buffer[0], false));
@@ -108,17 +108,17 @@ static char *curvature_mask_eval(ui_node_t *node) {
 	char *height  = string_copy(parser_material_parse_value_input(node->inputs->buffer[4], false));
 	char *noise   = string_copy(mask_breakup(breakup, bscale));
 
-	node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
+	node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm");
 	char *tex = string("texbake_%s", curvature_mask_bake_id(node, m));
-	node_shader_add_texture(parser_material_kong, tex, string("_%s", tex));
+	node_shader_add_texture(parser_material_shader, tex, string("_%s", tex));
 	// The amount lowers the curvature it starts at, the noise breaks the border up, a narrow ramp keeps half mixed metal out
-	parser_material_write(parser_material_kong,
-	                      string_tmp("float %s = clamp((sample(%s, sampler_linear, tex_coord).r - (1.0 - %s)) * 4.0, 0.0, 1.0) * clamp(%s, 0.0, 1.0);", store,
+	parser_material_write(parser_material_shader,
+	                      string_tmp("float %s = clamp((texture(sampler2D(%s, sampler_linear), tex_coord).r - (1.0 - %s)) * 4.0, 0.0, 1.0) * clamp(%s, 0.0, 1.0);", store,
 	                                 tex, amount, noise));
 	if (curvature_mask_cavities(node)) { // Dirt settles in the recesses of the height too
-		parser_material_write(parser_material_kong, string_tmp("%s = max(%s, (1.0 - %s) * %s * 0.55);", store, store, height, amount));
+		parser_material_write(parser_material_shader, string_tmp("%s = max(%s, (1.0 - %s) * %s * 0.55);", store, store, height, amount));
 	}
-	parser_material_write(parser_material_kong,
+	parser_material_write(parser_material_shader,
 	                      string_tmp("%s = smoothstep(0.425 - %s * 0.5, 0.426 + %s * 0.5, %s);", store, soft, soft, store));
 	free(amount);
 	free(soft);
@@ -135,7 +135,7 @@ char *curvature_mask_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 
 char *curvature_mask_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	char *v = curvature_mask_eval(node);
-	return string_tmp("float3(%s, %s, %s)", v, v, v);
+	return string_tmp("vec3(%s, %s, %s)", v, v, v);
 }
 
 static char *direction_mask_eval(ui_node_t *node) {
@@ -150,10 +150,10 @@ static char *direction_mask_eval(ui_node_t *node) {
 	char *bscale  = string_copy(parser_material_parse_value_input(node->inputs->buffer[3], false));
 	char *noise   = string_copy(mask_breakup(breakup, bscale));
 	bool  down    = node->buttons->buffer[0]->default_value->buffer[0] > 0.5;
-	parser_material_kong->frag_n = true;
-	parser_material_write(parser_material_kong, string_tmp("float %s_t = 1.0 - %s * 2.0;", store, amount));
-	parser_material_write(parser_material_kong, string_tmp("float %s = %sn.z + (%s - 1.0) * 0.5;", store, down ? "-" : "", noise));
-	parser_material_write(parser_material_kong,
+	parser_material_shader->frag_n = true;
+	parser_material_write(parser_material_shader, string_tmp("float %s_t = 1.0 - %s * 2.0;", store, amount));
+	parser_material_write(parser_material_shader, string_tmp("float %s = %sn.z + (%s - 1.0) * 0.5;", store, down ? "-" : "", noise));
+	parser_material_write(parser_material_shader,
 	                      string_tmp("%s = smoothstep(%s_t - %s * 0.5, %s_t + 0.001 + %s * 0.5, %s);", store, store, soft, store, soft, store));
 	free(amount);
 	free(soft);
@@ -169,7 +169,7 @@ char *direction_mask_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 
 char *direction_mask_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	char *v = direction_mask_eval(node);
-	return string_tmp("float3(%s, %s, %s)", v, v, v);
+	return string_tmp("vec3(%s, %s, %s)", v, v, v);
 }
 
 // Height Mask: where a height (a pattern) is high, or low with Invert, with a soft border broken up by noise
@@ -187,11 +187,11 @@ static char *height_mask_eval(ui_node_t *node) {
 	bool  invert  = node->buttons->buffer[0]->default_value->buffer[0] > 0.5;
 	// Breakup removes more of the mask the higher it is: none at 0, about a tenth left at 1
 	pattern_lib_use(-1);
-	node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
-	char *noise = string_copy(string_tmp("smoothstep(%s * 0.8 - 0.1, %s * 0.8 + 0.1, clamp((pat_fbm(tex_coord * %s, float2(4096.0, 4096.0), 5.0, 0.5) - 0.5) * 2.5 + 0.5, 0.0, 1.0))",
+	node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm");
+	char *noise = string_copy(string_tmp("smoothstep(%s * 0.8 - 0.1, %s * 0.8 + 0.1, clamp((pat_fbm(tex_coord * %s, vec2(4096.0, 4096.0), 5.0, 0.5) - 0.5) * 2.5 + 0.5, 0.0, 1.0))",
 	                                     breakup, breakup, bscale));
-	parser_material_write(parser_material_kong, string_tmp("float %s_h = %s%s;", store, invert ? "1.0 - " : "", height));
-	parser_material_write(parser_material_kong, string_tmp("float %s = smoothstep(1.0 - %s - %s * 0.5, 1.001 - %s + %s * 0.5, %s_h) * %s;",
+	parser_material_write(parser_material_shader, string_tmp("float %s_h = %s%s;", store, invert ? "1.0 - " : "", height));
+	parser_material_write(parser_material_shader, string_tmp("float %s = smoothstep(1.0 - %s - %s * 0.5, 1.001 - %s + %s * 0.5, %s_h) * %s;",
 	                                                       store, amount, soft, amount, soft, store, noise));
 	free(height);
 	free(amount);
@@ -208,7 +208,7 @@ char *height_mask_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 
 char *height_mask_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	char *v = height_mask_eval(node);
-	return string_tmp("float3(%s, %s, %s)", v, v, v);
+	return string_tmp("vec3(%s, %s, %s)", v, v, v);
 }
 
 static ui_node_t *mask_node_def(char *name, char *type, char *button, char *options, bool height) {

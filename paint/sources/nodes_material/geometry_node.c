@@ -3,23 +3,23 @@
 
 char *geometry_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	if (socket == node->outputs->buffer[0]) { // Position
-		parser_material_kong->frag_wposition = true;
+		parser_material_shader->frag_wposition = true;
 		return "input.wposition";
 	}
 	else if (socket == node->outputs->buffer[1]) { // Normal
-		parser_material_kong->frag_n = true;
+		parser_material_shader->frag_n = true;
 		return "n";
 	}
 	else if (socket == node->outputs->buffer[2]) { // Tangent
-		parser_material_kong->frag_wtangent = true;
+		parser_material_shader->frag_wtangent = true;
 		return "input.wtangent";
 	}
 	else if (socket == node->outputs->buffer[3]) { // Incoming
-		parser_material_kong->frag_vvec = true;
+		parser_material_shader->frag_vvec = true;
 		return "vvec";
 	}
 	else { // Parametric
-		parser_material_kong->frag_mposition = true;
+		parser_material_shader->frag_mposition = true;
 		return "input.mposition";
 	}
 }
@@ -30,12 +30,12 @@ char *geometry_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 		f32   radius                 = 1.0;
 		f32   offset                 = 0.0;
 		char *store                  = parser_material_store_var_name(node);
-		parser_material_kong->frag_n = true;
-		parser_material_write(parser_material_kong, string_tmp("float3 %s_dx = ddx(n);", store));
-		parser_material_write(parser_material_kong, string_tmp("float3 %s_dy = ddy(n);", store));
-		parser_material_write(parser_material_kong,
+		parser_material_shader->frag_n = true;
+		parser_material_write(parser_material_shader, string_tmp("vec3 %s_dx = dFdx(n);", store));
+		parser_material_write(parser_material_shader, string_tmp("vec3 %s_dy = dFdy(n);", store));
+		parser_material_write(parser_material_shader,
 		                      string_tmp("float %s_curvature = max(dot(%s_dx, %s_dx), dot(%s_dy, %s_dy));", store, store, store, store, store));
-		parser_material_write(parser_material_kong,
+		parser_material_write(parser_material_shader,
 		                      string_tmp("%s_curvature = clamp(pow(%s_curvature, (1.0 / %s) * 0.25) * %s * 2.0 + %s / 10.0, 0.0, 1.0);", store, store,
 		                                 parser_material_vec1(radius), parser_material_vec1(strength), parser_material_vec1(offset)));
 		return string_tmp("%s_curvature", store);

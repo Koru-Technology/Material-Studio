@@ -19,32 +19,32 @@ i32 blur_node_seamless_passes(ui_node_t *node) {
 
 static void blur_node_write_blurred(ui_node_t *node, char *store) {
 	char *tex_name = string_tmp("texblur_%s", make_material_node_preview_id(node, NULL));
-	node_shader_add_texture(parser_material_kong, tex_name, string_tmp("_%s", tex_name));
+	node_shader_add_texture(parser_material_shader, tex_name, string_tmp("_%s", tex_name));
 	if (blur_node_seamless_passes(node) > 0) {
 		// Blurred along the surface at bake time
-		parser_material_write(parser_material_kong, string_tmp("float4 %s_s = sample(%s, sampler_linear, tex_coord);", store, tex_name));
-		parser_material_write(parser_material_kong, string_tmp("float3 %s_res = %s_s.rgb / max(%s_s.a, 0.0001);", store, store, store)); // Premultiplied
-		parser_material_write(parser_material_kong, string_tmp("float %s_a = %s_s.a;", store, store));
+		parser_material_write(parser_material_shader, string_tmp("vec4 %s_s = texture(sampler2D(%s, sampler_linear), tex_coord);", store, tex_name));
+		parser_material_write(parser_material_shader, string_tmp("vec3 %s_res = %s_s.rgb / max(%s_s.a, 0.0001);", store, store, store)); // Premultiplied
+		parser_material_write(parser_material_shader, string_tmp("float %s_a = %s_s.a;", store, store));
 		return;
 	}
 	char *strength = parser_material_parse_value_input(node->inputs->buffer[node->inputs->length - 1], false);
 	char *steps    = string_tmp("(%s * 10.0 + 1.0)", strength);
-	node_shader_add_constant(parser_material_kong, string_tmp("float2 %s_size", tex_name), string_tmp("_size(_%s)", tex_name));
-	parser_material_write(parser_material_kong, string_tmp("float3 %s_res = float3(0.0, 0.0, 0.0);", store));
-	parser_material_write(parser_material_kong, string_tmp("float %s_a = 0.0;", store));
-	parser_material_write(parser_material_kong, string_tmp("float %s_n = 0.0;", store));
-	parser_material_write(parser_material_kong, string_tmp("for (int i = 0; i <= int(%s * 2.0); i += 1) {", steps));
-	parser_material_write(parser_material_kong, string_tmp("for (int j = 0; j <= int(%s * 2.0); j += 1) {", steps));
-	parser_material_write(parser_material_kong,
-	                      string_tmp("float4 %s_s = sample(%s, sampler_linear, tex_coord + float2(float(i) - %s, float(j) - %s) / constants.%s_size);", store,
+	node_shader_add_constant(parser_material_shader, string_tmp("vec2 %s_size", tex_name), string_tmp("_size(_%s)", tex_name));
+	parser_material_write(parser_material_shader, string_tmp("vec3 %s_res = vec3(0.0, 0.0, 0.0);", store));
+	parser_material_write(parser_material_shader, string_tmp("float %s_a = 0.0;", store));
+	parser_material_write(parser_material_shader, string_tmp("float %s_n = 0.0;", store));
+	parser_material_write(parser_material_shader, string_tmp("for (int i = 0; i <= int(%s * 2.0); i += 1) {", steps));
+	parser_material_write(parser_material_shader, string_tmp("for (int j = 0; j <= int(%s * 2.0); j += 1) {", steps));
+	parser_material_write(parser_material_shader,
+	                      string_tmp("vec4 %s_s = texture(sampler2D(%s, sampler_linear), tex_coord + vec2(float(i) - %s, float(j) - %s) / constants.%s_size);", store,
 	                                 tex_name, steps, steps, tex_name));
-	parser_material_write(parser_material_kong, string_tmp("%s_res += %s_s.rgb;", store, store));
-	parser_material_write(parser_material_kong, string_tmp("%s_a += %s_s.a;", store, store));
-	parser_material_write(parser_material_kong, string_tmp("%s_n += 1.0;", store));
-	parser_material_write(parser_material_kong, "}");
-	parser_material_write(parser_material_kong, "}");
-	parser_material_write(parser_material_kong, string_tmp("%s_res = %s_res / max(%s_a, 0.0001);", store, store, store)); // Premultiplied
-	parser_material_write(parser_material_kong, string_tmp("%s_a = %s_a / %s_n;", store, store, store));
+	parser_material_write(parser_material_shader, string_tmp("%s_res += %s_s.rgb;", store, store));
+	parser_material_write(parser_material_shader, string_tmp("%s_a += %s_s.a;", store, store));
+	parser_material_write(parser_material_shader, string_tmp("%s_n += 1.0;", store));
+	parser_material_write(parser_material_shader, "}");
+	parser_material_write(parser_material_shader, "}");
+	parser_material_write(parser_material_shader, string_tmp("%s_res = %s_res / max(%s_a, 0.0001);", store, store, store)); // Premultiplied
+	parser_material_write(parser_material_shader, string_tmp("%s_a = %s_a / %s_n;", store, store, store));
 }
 
 static char *blur_node_write(ui_node_t *node) {
@@ -63,9 +63,9 @@ static char *blur_node_write(ui_node_t *node) {
 	char *strength = parser_material_parse_value_input(strength_socket, false);
 	char *col      = parser_material_parse_vector_input(node->inputs->buffer[0]);
 	char *alpha    = blur_node_input_alpha(node);
-	parser_material_write(parser_material_kong, string_tmp("float %s_f = clamp(%s * 10.0, 0.0, 1.0);", store, strength));
-	parser_material_write(parser_material_kong, string_tmp("%s_res = lerp(%s, %s_res, %s_f);", store, col, store, store));
-	parser_material_write(parser_material_kong, string_tmp("%s_a = lerp(%s, %s_a, %s_f);", store, alpha, store, store));
+	parser_material_write(parser_material_shader, string_tmp("float %s_f = clamp(%s * 10.0, 0.0, 1.0);", store, strength));
+	parser_material_write(parser_material_shader, string_tmp("%s_res = mix(%s, %s_res, %s_f);", store, col, store, store));
+	parser_material_write(parser_material_shader, string_tmp("%s_a = mix(%s, %s_a, %s_f);", store, alpha, store, store));
 	return store;
 }
 

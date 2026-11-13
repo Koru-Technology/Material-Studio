@@ -3,9 +3,9 @@
 
 char *curvature_bake_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	char *tex_name = string_tmp("texbake_%s", make_material_node_preview_id(node, NULL));
-	node_shader_add_texture(parser_material_kong, tex_name, string_tmp("_%s", tex_name));
+	node_shader_add_texture(parser_material_shader, tex_name, string_tmp("_%s", tex_name));
 	char *store = parser_material_store_var_name(node);
-	parser_material_write(parser_material_kong, string_tmp("float %s_res = sample(%s, sampler_linear, tex_coord).r;", store, tex_name));
+	parser_material_write(parser_material_shader, string_tmp("float %s_res = texture(sampler2D(%s, sampler_linear), tex_coord).r;", store, tex_name));
 	return string_tmp("%s_res", store);
 }
 

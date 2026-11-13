@@ -98,7 +98,6 @@ typedef struct {
 	bool  with_video_write;
 	bool  with_eval;
 	bool  with_plugins;
-	bool  with_kong;
 	bool  with_raytrace;
 	bool  with_bc7;
 	bool  with_audio;

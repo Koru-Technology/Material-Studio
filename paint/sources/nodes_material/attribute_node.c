@@ -3,22 +3,22 @@
 
 char *attribute_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	if (socket == node->outputs->buffer[0]) { // Color
-		if (parser_material_kong->context->allow_vcols) {
-			node_shader_context_add_elem(parser_material_kong->context, "col", "short4norm"); // Vcols only for now
+		if (parser_material_shader->context->allow_vcols) {
+			node_shader_context_add_elem(parser_material_shader->context, "col", "short4norm"); // Vcols only for now
 			return "input.vcolor";
 		}
 		else {
-			return ("float3(0.0, 0.0, 0.0)");
+			return ("vec3(0.0, 0.0, 0.0)");
 		}
 	}
 	else {                                                                                // Vector
-		node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm"); // UVMaps only for now
-		return "float3(tex_coord.x, tex_coord.y, 0.0)";
+		node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm"); // UVMaps only for now
+		return "vec3(tex_coord.x, tex_coord.y, 0.0)";
 	}
 }
 
 char *attribute_node_value(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_constant(parser_material_kong, "float time", "_time");
+	node_shader_add_constant(parser_material_shader, "float time", "_time");
 	return "constants.time";
 }
 

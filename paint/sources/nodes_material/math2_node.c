@@ -20,8 +20,8 @@ char *math2_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	}
 	else if (string_equals(op, "DIVIDE")) {
 		char *store = string_tmp("%s_divide", parser_material_store_var_name(node));
-		parser_material_write(parser_material_kong, string_tmp("float %s = %s;", store, val2));
-		parser_material_write(parser_material_kong, string_tmp("if (%s == 0.0) { %s = %s; }", store, store, f32_to_string(parser_material_eps)));
+		parser_material_write(parser_material_shader, string_tmp("float %s = %s;", store, val2));
+		parser_material_write(parser_material_shader, string_tmp("if (%s == 0.0) { %s = %s; }", store, store, f32_to_string(parser_material_eps)));
 		out_val = string_tmp("(%s / %s)", val1, store);
 	}
 	else if (string_equals(op, "POWER")) {
@@ -34,7 +34,7 @@ char *math2_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 		out_val = string_tmp("sqrt(%s)", val1);
 	}
 	else if (string_equals(op, "INVERSE_SQUARE_ROOT")) {
-		out_val = string_tmp("rsqrt(%s)", val1);
+		out_val = string_tmp("inversesqrt(%s)", val1);
 	}
 	else if (string_equals(op, "EXPONENT")) {
 		out_val = string_tmp("exp(%s)", val1);
@@ -51,15 +51,15 @@ char *math2_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	else if (string_equals(op, "LESS_THAN")) {
 		// out_val = "float(" + val1 + " < " + val2 + ")";
 		char *store = string_tmp("%s_lessthan", parser_material_store_var_name(node));
-		parser_material_write(parser_material_kong, string_tmp("float %s = 0.0;", store));
-		parser_material_write(parser_material_kong, string_tmp("if (%s < %s) { %s = 1.0; }", val1, val2, store));
+		parser_material_write(parser_material_shader, string_tmp("float %s = 0.0;", store));
+		parser_material_write(parser_material_shader, string_tmp("if (%s < %s) { %s = 1.0; }", val1, val2, store));
 		out_val = string_copy(store);
 	}
 	else if (string_equals(op, "GREATER_THAN")) {
 		// out_val = "float(" + val1 + " > " + val2 + ")";
 		char *store = string_tmp("%s_greaterthan", parser_material_store_var_name(node));
-		parser_material_write(parser_material_kong, string_tmp("float %s = 0.0;", store));
-		parser_material_write(parser_material_kong, string_tmp("if (%s > %s) { %s = 1.0; }", val1, val2, store));
+		parser_material_write(parser_material_shader, string_tmp("float %s = 0.0;", store));
+		parser_material_write(parser_material_shader, string_tmp("if (%s > %s) { %s = 1.0; }", val1, val2, store));
 		out_val = string_copy(store);
 	}
 	else if (string_equals(op, "SIGN")) {
@@ -81,21 +81,21 @@ char *math2_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 		out_val = string_tmp("trunc(%s)", val1);
 	}
 	else if (string_equals(op, "FRACTION")) {
-		out_val = string_tmp("frac(%s)", val1);
+		out_val = string_tmp("fract(%s)", val1);
 	}
 	else if (string_equals(op, "TRUNCATED_MODULO")) {
-		out_val = string_tmp("(%s %% %s)", val1, val2);
+		out_val = string_tmp("(%s - %s * trunc(%s / %s))", val1, val2, val1, val2);
 	}
 	else if (string_equals(op, "FLOORED_MODULO")) {
 		char *store = string_tmp("%s_flooredmod", parser_material_store_var_name(node));
-		parser_material_write(parser_material_kong, string_tmp("float %s = 0.0;", store));
-		parser_material_write(parser_material_kong, string_tmp("if (%s != 0.0) { %s = %s - %s * floor(%s / %s); }", val2, store, val1, val2, val1, val2));
+		parser_material_write(parser_material_shader, string_tmp("float %s = 0.0;", store));
+		parser_material_write(parser_material_shader, string_tmp("if (%s != 0.0) { %s = %s - %s * floor(%s / %s); }", val2, store, val1, val2, val1, val2));
 		out_val = string_copy(store);
 	}
 	else if (string_equals(op, "PING-PONG")) {
 		char *store = string_tmp("%s_pingpong", parser_material_store_var_name(node));
-		parser_material_write(parser_material_kong, string_tmp("float %s = 0.0;", store));
-		parser_material_write(parser_material_kong, string_tmp("if (%s != 0.0) { %s = abs(frac((%s - %s) / (%s * 2.0)) * %s * 2.0 - %s); }", val2, store, val1,
+		parser_material_write(parser_material_shader, string_tmp("float %s = 0.0;", store));
+		parser_material_write(parser_material_shader, string_tmp("if (%s != 0.0) { %s = abs(fract((%s - %s) / (%s * 2.0)) * %s * 2.0 - %s); }", val2, store, val1,
 		                                                       val2, val2, val2, val2));
 		out_val = string_copy(store);
 	}
@@ -118,7 +118,7 @@ char *math2_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 		out_val = string_tmp("atan(%s)", val1);
 	}
 	else if (string_equals(op, "ARCTAN2")) {
-		out_val = string_tmp("atan2(%s, %s)", val1, val2);
+		out_val = string_tmp("atan(%s, %s)", val1, val2);
 	}
 	else if (string_equals(op, "HYPERBOLIC_SINE")) {
 		out_val = string_tmp("sinh(%s)", val1);

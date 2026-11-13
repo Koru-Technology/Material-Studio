@@ -145,6 +145,7 @@ void next() {
 		check(d < 100, string("undo repaints the old material (%d)", d));
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[fill] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "FILL PASS" : "FILL FAIL");
 		script_quit();

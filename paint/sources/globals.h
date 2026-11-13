@@ -226,7 +226,7 @@ f64                       viewport_video_time        = -1.0;
 f32                       viewport_video_vignette    = 0.0;
 f32                       viewport_video_grain       = 0.0;
 node_shader_context_t    *parser_material_con;
-node_shader_t            *parser_material_kong;
+node_shader_t            *parser_material_shader;
 string_array_t           *parser_material_parsed;
 ui_node_t_array_t        *parser_material_parents;
 ui_node_canvas_t_array_t *parser_material_canvases;
@@ -396,63 +396,63 @@ char *render_path_raytrace_ext = ".spirv";
 #endif
 
 char *str_hue_sat = "\
-float3 hsv_to_rgb(float3 c) { \
-	float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0); \
-	float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www); \
-	return lerp(K.xxx, clamp(p - K.xxx, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0)), c.y) * c.z; \
+vec3 hsv_to_rgb(vec3 c) { \
+	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0); \
+	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www); \
+	return mix(K.xxx, clamp(p - K.xxx, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)), c.y) * c.z; \
 } \
-float3 rgb_to_hsv(float3 c) { \
-	float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0); \
-	float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g)); \
-	float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r)); \
+vec3 rgb_to_hsv(vec3 c) { \
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0); \
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g)); \
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r)); \
 	float d = q.x - min(q.w, q.y); \
 	float e = 0.0000000001; \
-	return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x); \
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x); \
 } \
-float3 hue_sat(float3 col, float4 shift) { \
-	float3 hsv = rgb_to_hsv(col); \
+vec3 hue_sat(vec3 col, vec4 shift) { \
+	vec3 hsv = rgb_to_hsv(col); \
 	hsv.x += shift.x; \
 	hsv.y *= shift.y; \
 	hsv.z *= shift.z; \
-	return lerp(hsv_to_rgb(hsv), col, shift.w); \
+	return mix(hsv_to_rgb(hsv), col, shift.w); \
 } \
 ";
 
 char *str_brightcontrast = "\
-float3 brightcontrast(float3 col, float bright, float contr) { \
+vec3 brightcontrast(vec3 col, float bright, float contr) { \
 	float a = 1.0 + contr; \
 	float b = bright - contr * 0.5; \
-	return max(a * col + b, float3(0.0, 0.0, 0.0)); \
+	return max(a * col + b, vec3(0.0, 0.0, 0.0)); \
 } \
 ";
 
 char *str_cotangent_frame = "\
-float3x3 cotangent_frame(float3 n, float3 p, float2 tex_coord) { \
-	float2 duv1 = ddx(tex_coord); \
-	float2 duv2 = ddy(tex_coord); \
-	float3 dp1 = ddx(p); \
-	float3 dp2 = ddy(p); \
-	float3 dp2perp = cross(dp2, n); \
-	float3 dp1perp = cross(n, dp1); \
-	float3 t = dp2perp * duv1.x + dp1perp * duv2.x; \
-	float3 b = dp2perp * duv1.y + dp1perp * duv2.y; \
-	float invmax = rsqrt(max(dot(t, t), dot(b, b))); \
-	return float3x3(t * invmax, b * invmax, n); \
+mat3 cotangent_frame(vec3 n, vec3 p, vec2 tex_coord) { \
+	vec2 duv1 = dFdx(tex_coord); \
+	vec2 duv2 = dFdy(tex_coord); \
+	vec3 dp1 = dFdx(p); \
+	vec3 dp2 = dFdy(p); \
+	vec3 dp2perp = cross(dp2, n); \
+	vec3 dp1perp = cross(n, dp1); \
+	vec3 t = dp2perp * duv1.x + dp1perp * duv2.x; \
+	vec3 b = dp2perp * duv1.y + dp1perp * duv2.y; \
+	float invmax = inversesqrt(max(dot(t, t), dot(b, b))); \
+	return mat3(t * invmax, b * invmax, n); \
 } \
 ";
 
 // let str_octahedron_wrap: string = "\
-// float2 octahedron_wrap(float2 v) { \
-// 	return (1.0 - abs(v.yx)) * (float2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0)); \
+// vec2 octahedron_wrap(vec2 v) { \
+// 	return (1.0 - abs(v.yx)) * (vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0)); \
 // } \
 // ";
 
 char *str_octahedron_wrap = "\
-float2 octahedron_wrap(float2 v) { \
-	float2 a; \
+vec2 octahedron_wrap(vec2 v) { \
+	vec2 a; \
 	if (v.x >= 0.0) { a.x = 1.0; } else { a.x = -1.0; } \
 	if (v.y >= 0.0) { a.y = 1.0; } else { a.y = -1.0; } \
-	float2 r; \
+	vec2 r; \
 	r.x = abs(v.y); \
 	r.y = abs(v.x); \
 	r.x = 1.0 - r.x; \
@@ -479,9 +479,9 @@ float pack_f32_i16(float f, uint i) { \
 ";
 
 char *str_dither_bayer = "\
-float dither_bayer(float2 uv) { \
-	int x = int(uv.x % 4.0); \
-	int y = int(uv.y % 4.0); \
+float dither_bayer(vec2 uv) { \
+	int x = int(mod(uv.x, 4.0)); \
+	int y = int(mod(uv.y, 4.0)); \
 	if (y == 0) { \
 		if (x == 0) { \
 			return 0.0 / 16.0; \

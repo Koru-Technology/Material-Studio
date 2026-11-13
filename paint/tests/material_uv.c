@@ -152,6 +152,7 @@ void next() {
 		check(f != NULL && f->fill_material->uv_scale == 1.0 && f->fill_material->uv_angle == 0.0, "version 26 materials get scale 1, rotation 0");
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[uv] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UV PASS" : "UV FAIL");
 		script_quit();

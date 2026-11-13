@@ -21,12 +21,12 @@ node_shader_context_t *make_depth_run(material_t *data) {
 	                                                                 .depth_attachment = "D32"});
 	node_shader_context_t *con_depth = node_shader_context_create(data, props);
 
-	node_shader_t *kong  = node_shader_context_make_kong(con_depth);
-	kong->frag_wposition = true;
+	node_shader_t *shader  = node_shader_context_make_shader(con_depth);
+	shader->frag_wposition = true;
 
-	node_shader_add_constant(kong, "float4x4 VP", "_view_proj_matrix");
+	node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
 
-	node_shader_write_vert(kong, "output.pos = constants.VP * float4(output.wposition.xyz, 1.0);");
+	node_shader_write_vert(shader, "output.pos = constants.VP * vec4(output.wposition.xyz, 1.0);");
 
 	con_depth->data->color_writes_red = u8_array_create_from_raw(
 	    (u8[]){
@@ -55,7 +55,7 @@ node_shader_context_t *make_depth_run(material_t *data) {
 	parser_material_finalize(con_depth);
 
 	con_depth->data->shader_from_source = true;
-	gpu_create_shaders_from_kong(node_shader_get(kong), &con_depth->data->vertex_shader, &con_depth->data->fragment_shader,
+	gpu_create_shaders_from_glsl(node_shader_get(shader), &con_depth->data->vertex_shader, &con_depth->data->fragment_shader,
 	                             &con_depth->data->_->vertex_shader_size, &con_depth->data->_->fragment_shader_size);
 	return con_depth;
 }

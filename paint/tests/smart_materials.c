@@ -154,6 +154,7 @@ void next() {
 		check(smart_materials_count() == count0, "smart materials deleted");
 	}
 	else {
+		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[smart] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "SMART PASS" : "SMART FAIL");
 		script_quit();

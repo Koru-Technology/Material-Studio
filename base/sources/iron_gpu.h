@@ -289,6 +289,8 @@ extern gpu_pipeline_t *current_pipeline;
 extern uint32_t        constant_buffer_index;
 extern gpu_texture_t   framebuffers[GPU_FRAMEBUFFER_COUNT];
 extern int             gpu_frame_index;
+extern int             gpu_shader_failure_count;
+int                    gpu_shader_failures(void);
 extern bool            gpu_vertex_textures;
 extern gpu_texture_t   framebuffer_depth;
 extern gpu_texture_t  *gpu_framebuffer_redirect;

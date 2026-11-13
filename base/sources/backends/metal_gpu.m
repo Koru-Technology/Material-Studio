@@ -534,6 +534,63 @@ void gpu_pipeline_destroy_internal(gpu_pipeline_t *pipeline) {
 	pipeline->impl.depth                 = NULL;
 }
 
+// More than the "//>name" first line
+static bool metal_shader_has_code(gpu_shader_t *shader) {
+	const char *s = shader->impl.source;
+	for (size_t i = 0; i < shader->impl.length; ++i) {
+		if (s[i] == '\n') {
+			return i + 1 < shader->impl.length && s[i + 1] != 0;
+		}
+	}
+	return false;
+}
+
+// Compiling msl takes tens of ms, materials and tools switch back and forth between the same shaders. Pipelines can
+// compile on worker threads, the cache is locked.
+static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
+	static NSMutableDictionary<NSString *, id<MTLLibrary>> *library_cache = nil;
+	static dispatch_once_t                                  once;
+	dispatch_once(&once, ^{
+		library_cache = [NSMutableDictionary new];
+	});
+	NSString *source = [[NSString alloc] initWithBytes:shader->impl.source length:shader->impl.length encoding:NSUTF8StringEncoding];
+	if (source == nil) {
+		gpu_shader_failure_count += 1;
+		return nil;
+	}
+	id<MTLLibrary> library = nil;
+	@synchronized(library_cache) {
+		library = library_cache[source];
+	}
+	if (library != nil) {
+		return library;
+	}
+	NSError *error = nil;
+	library        = [get_metal_device() newLibraryWithSource:source options:nil error:&error];
+	if (library == nil) {
+		iron_error("%s", error.localizedDescription.UTF8String);
+		gpu_shader_failure_count += 1;
+		const char *dump = getenv("IRON_SHADER_DUMP"); // A folder for the sources that failed, to debug them
+		if (dump != NULL) {
+			char path[512];
+			snprintf(path, sizeof(path), "%s/failed_%d.metal", dump, gpu_shader_failure_count);
+			FILE *f = fopen(path, "wb");
+			if (f != NULL) {
+				fwrite(shader->impl.source, 1, shader->impl.length, f);
+				fclose(f);
+			}
+		}
+		return nil;
+	}
+	@synchronized(library_cache) {
+		if (library_cache.count >= 128) {
+			[library_cache removeAllObjects];
+		}
+		library_cache[source] = library;
+	}
+	return library;
+}
+
 void gpu_pipeline_compile(gpu_pipeline_t *pipeline) {
 	if (pipeline->vertex_shader->impl.length == 0 || pipeline->fragment_shader->impl.length == 0) {
 		// Shader compilation error
@@ -541,26 +598,17 @@ void gpu_pipeline_compile(gpu_pipeline_t *pipeline) {
 	}
 
 	id<MTLDevice> device = get_metal_device();
-	NSString     *source = [[NSString alloc] initWithBytes:pipeline->vertex_shader->impl.source
-	                                            length:pipeline->vertex_shader->impl.length
-	                                          encoding:NSUTF8StringEncoding];
-	// Compiling msl takes tens of ms, materials and tools switch back and forth between the same shaders
-	static NSMutableDictionary<NSString *, id<MTLLibrary>> *library_cache = nil;
-	if (library_cache == nil) {
-		library_cache = [NSMutableDictionary new];
-	}
-	id<MTLLibrary> library = source != nil ? library_cache[source] : nil;
+	// Each blob holds its stage's function, a fragment blob with nothing after its "//>frag" line uses the vertex library
+	id<MTLLibrary> library = metal_library(pipeline->vertex_shader);
 	if (library == nil) {
-		NSError *error = nil;
-		library        = [device newLibraryWithSource:source options:nil error:&error];
-		if (library == nil) {
-			iron_error("%s", error.localizedDescription.UTF8String);
+		return;
+	}
+	id<MTLLibrary> frag_library = library;
+	if (metal_shader_has_code(pipeline->fragment_shader)) {
+		frag_library = metal_library(pipeline->fragment_shader);
+		if (frag_library == nil) {
 			return;
 		}
-		if (library_cache.count >= 128) {
-			[library_cache removeAllObjects];
-		}
-		library_cache[source] = library;
 	}
 
 	// Shaders compiled again replace their function, release the previous one
@@ -577,7 +625,7 @@ void gpu_pipeline_compile(gpu_pipeline_t *pipeline) {
 	pipeline->vertex_shader->impl.mtl_function =
 	    (__bridge_retained void *)[library newFunctionWithName:[NSString stringWithCString:pipeline->vertex_shader->impl.name encoding:NSUTF8StringEncoding]];
 	pipeline->fragment_shader->impl.mtl_function =
-	    (__bridge_retained void *)[library newFunctionWithName:[NSString stringWithCString:pipeline->fragment_shader->impl.name encoding:NSUTF8StringEncoding]];
+	    (__bridge_retained void *)[frag_library newFunctionWithName:[NSString stringWithCString:pipeline->fragment_shader->impl.name encoding:NSUTF8StringEncoding]];
 
 	MTLRenderPipelineDescriptor *render_pipeline_desc = [[MTLRenderPipelineDescriptor alloc] init];
 	render_pipeline_desc.vertexFunction               = (__bridge id<MTLFunction>)pipeline->vertex_shader->impl.mtl_function;
@@ -678,7 +726,7 @@ void gpu_shader_init(gpu_shader_t *shader, const void *data, size_t length, gpu_
 #ifdef WITH_BC7
 
 // Gpu bc7 encoder: rgba8 pixels -> compute shader -> bc7 blocks buffer -> blit into the texture
-// Buffer indices follow kong's declaration order in gpu_bc7.shader: constants 0, src 1, dst 2
+// Buffer indices of the encoder in metal_bc7.h: constants 0, src 1, dst 2
 #include "metal_bc7.h"
 
 static bool                        bc7_compute_checked = false;

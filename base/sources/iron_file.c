@@ -7,7 +7,7 @@
 #include "iron_path.h"
 #include "iron_string.h"
 #include "iron_system.h"
-#include "kong/dir.h"
+#include "iron_dir.h"
 #ifdef IRON_ANDROID
 #include "backends/android_system.h"
 #endif

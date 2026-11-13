@@ -24,18 +24,18 @@ static char *material_mix_eval(ui_node_t *node) {
 
 	char *opacity = string_copy(parser_material_parse_value_input(node->inputs->buffer[0], false));
 	char *mask    = string_copy(parser_material_parse_value_input(node->inputs->buffer[1], false));
-	parser_material_write(parser_material_kong, string_tmp("float %s_f = clamp(%s * %s, 0.0, 1.0);", store, opacity, mask));
+	parser_material_write(parser_material_shader, string_tmp("float %s_f = clamp(%s * %s, 0.0, 1.0);", store, opacity, mask));
 	free(opacity);
 	free(mask);
 
 	i32   n            = material_mix_channels(node);
 	i32   height_blend = node->buttons->length > n ? (i32)node->buttons->buffer[n]->default_value->buffer[0] : 0;
-	char *defaults[MATERIAL_MIX_CHANNELS] = {"float3(0.8, 0.8, 0.8)", "0.5", "0.0", "0.0", "1.0", "0.0", "0.0", "1.0"};
+	char *defaults[MATERIAL_MIX_CHANNELS] = {"vec3(0.8, 0.8, 0.8)", "0.5", "0.0", "0.0", "1.0", "0.0", "0.0", "1.0"};
 	for (i32 i = 0; i < MATERIAL_MIX_CHANNELS; ++i) {
-		char *type = i == 0 ? "float3" : "float";
+		char *type = i == 0 ? "vec3" : "float";
 		char *name = material_mix_names[i];
 		if (i >= n) {
-			parser_material_write(parser_material_kong, string_tmp("%s %s_%s = %s;", type, store, name, defaults[i]));
+			parser_material_write(parser_material_shader, string_tmp("%s %s_%s = %s;", type, store, name, defaults[i]));
 			continue;
 		}
 		ui_node_socket_t *in_a = node->inputs->buffer[2 + i];
@@ -45,18 +45,18 @@ static char *material_mix_eval(ui_node_t *node) {
 		if (on) {
 			char *b = string_copy(i == 0 ? parser_material_parse_vector_input(in_b) : parser_material_parse_value_input(in_b, false));
 			if (i == MATERIAL_MIX_HEIGHT && height_blend == 1) { // Add
-				parser_material_write(parser_material_kong, string_tmp("float %s_%s = %s + %s * %s_f;", store, name, a, b, store));
+				parser_material_write(parser_material_shader, string_tmp("float %s_%s = %s + %s * %s_f;", store, name, a, b, store));
 			}
 			else if (i == MATERIAL_MIX_HEIGHT && height_blend == 2) { // Subtract
-				parser_material_write(parser_material_kong, string_tmp("float %s_%s = %s - %s * %s_f;", store, name, a, b, store));
+				parser_material_write(parser_material_shader, string_tmp("float %s_%s = %s - %s * %s_f;", store, name, a, b, store));
 			}
 			else {
-				parser_material_write(parser_material_kong, string_tmp("%s %s_%s = lerp(%s, %s, %s_f);", type, store, name, a, b, store));
+				parser_material_write(parser_material_shader, string_tmp("%s %s_%s = mix(%s, %s, %s_f);", type, store, name, a, b, store));
 			}
 			free(b);
 		}
 		else {
-			parser_material_write(parser_material_kong, string_tmp("%s %s_%s = %s;", type, store, name, a));
+			parser_material_write(parser_material_shader, string_tmp("%s %s_%s = %s;", type, store, name, a));
 		}
 		free(a);
 	}
@@ -78,7 +78,7 @@ char *material_mix_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 		return material_mix_output(node, socket);
 	}
 	char *v = material_mix_output(node, socket);
-	return string_tmp("float3(%s, %s, %s)", v, v, v);
+	return string_tmp("vec3(%s, %s, %s)", v, v, v);
 }
 
 char *material_mix_node_value(ui_node_t *node, ui_node_socket_t *socket) {

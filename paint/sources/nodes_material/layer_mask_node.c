@@ -3,8 +3,8 @@
 
 char *layer_mask_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	i32 l = node->buttons->buffer[0]->default_value->buffer[0];
-	node_shader_add_texture(parser_material_kong, string_tmp("texpaint%s", i32_to_string(l)), string_tmp("_texpaint%s", i32_to_string(l)));
-	return string_tmp("sample(texpaint%s, sampler_linear, tex_coord).r", i32_to_string(l));
+	node_shader_add_texture(parser_material_shader, string_tmp("texpaint%s", i32_to_string(l)), string_tmp("_texpaint%s", i32_to_string(l)));
+	return string_tmp("texture(sampler2D(texpaint%s, sampler_linear), tex_coord).r", i32_to_string(l));
 }
 
 void layer_mask_node_init() {

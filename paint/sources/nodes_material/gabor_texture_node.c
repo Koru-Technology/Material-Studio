@@ -2,13 +2,13 @@
 #include "../global.h"
 
 char *str_tex_gabor = "\
-float gabor_hash3(float3 k) { \
-	return frac(sin(dot(k, float3(127.1, 311.7, 74.7))) * 43758.5453); \
+float gabor_hash3(vec3 k) { \
+	return fract(sin(dot(k, vec3(127.1, 311.7, 74.7))) * 43758.5453); \
 } \
 float gabor_hash4(float kx, float ky, float kz, float kw) { \
-	return frac(sin(kx * 127.1 + ky * 311.7 + kz * 74.7 + kw * 380.3) * 43758.5453); \
+	return fract(sin(kx * 127.1 + ky * 311.7 + kz * 74.7 + kw * 380.3) * 43758.5453); \
 } \
-float3 tex_gabor_2d(float3 co, float scale, float frequency, float anisotropy, float orientation) { \
+vec3 tex_gabor_2d(vec3 co, float scale, float frequency, float anisotropy, float orientation) { \
 	float pi = 3.14159265; \
 	frequency = max(0.001, frequency); \
 	float isotropy = 1.0 - clamp(anisotropy, 0.0, 1.0); \
@@ -28,16 +28,16 @@ float3 tex_gabor_2d(float3 co, float scale, float frequency, float anisotropy, f
 			float py = ly - float(jj); \
 			for (int imp = 0; imp < 8; imp += 1) { \
 				float kf = float(imp); \
-				float rand_ori = (gabor_hash3(float3(ccx, ccy, kf * 3.0)) - 0.5) * pi; \
+				float rand_ori = (gabor_hash3(vec3(ccx, ccy, kf * 3.0)) - 0.5) * pi; \
 				float ori = orientation + rand_ori * isotropy; \
-				float kcx = gabor_hash3(float3(ccx, ccy, kf * 3.0 + 1.0)); \
-				float kcy = gabor_hash3(float3(ccx + 1.0, ccy, kf * 3.0 + 1.0)); \
+				float kcx = gabor_hash3(vec3(ccx, ccy, kf * 3.0 + 1.0)); \
+				float kcy = gabor_hash3(vec3(ccx + 1.0, ccy, kf * 3.0 + 1.0)); \
 				float pkx = px - kcx; \
 				float pky = py - kcy; \
 				float d2 = pkx * pkx + pky * pky; \
 				if (d2 < 1.0) { \
 					float wt = 1.0; \
-					if (gabor_hash3(float3(ccx, ccy, kf * 3.0 + 2.0)) < 0.5) { wt = -1.0; } \
+					if (gabor_hash3(vec3(ccx, ccy, kf * 3.0 + 2.0)) < 0.5) { wt = -1.0; } \
 					float hann = 0.5 + 0.5 * cos(pi * d2); \
 					float gauss = exp(-pi * d2) * hann; \
 					float angle = 2.0 * pi * (pkx * frequency * cos(ori) + pky * frequency * sin(ori)); \
@@ -49,18 +49,18 @@ float3 tex_gabor_2d(float3 co, float scale, float frequency, float anisotropy, f
 	} \
 	float norm = 6.0; \
 	float value = (pim / norm) * 0.5 + 0.5; \
-	float phase = (atan2(pim, pr) + pi) / (2.0 * pi); \
+	float phase = (atan(pim, pr) + pi) / (2.0 * pi); \
 	float intensity = sqrt(pr * pr + pim * pim) / norm; \
-	return float3(value, phase, intensity); \
+	return vec3(value, phase, intensity); \
 } \
-float3 tex_gabor_3d(float3 co, float scale, float frequency, float anisotropy, float3 orientation) { \
+vec3 tex_gabor_3d(vec3 co, float scale, float frequency, float anisotropy, vec3 orientation) { \
 	float pi = 3.14159265; \
 	frequency = max(0.001, frequency); \
 	float isotropy = 1.0 - clamp(anisotropy, 0.0, 1.0); \
-	float3 base_ori = normalize(orientation); \
-	float3 p = co * scale; \
-	float3 cell = floor(p); \
-	float3 lp = p - cell; \
+	vec3 base_ori = normalize(orientation); \
+	vec3 p = co * scale; \
+	vec3 cell = floor(p); \
+	vec3 lp = p - cell; \
 	float inc_base = acos(clamp(base_ori.z, -1.0, 1.0)); \
 	float len_xy = sqrt(base_ori.x * base_ori.x + base_ori.y * base_ori.y); \
 	float az_base = 0.0; \
@@ -71,18 +71,18 @@ float3 tex_gabor_3d(float3 co, float scale, float frequency, float anisotropy, f
 	for (int kk = -1; kk <= 1; kk += 1) { \
 		for (int jj = -1; jj <= 1; jj += 1) { \
 			for (int ii = -1; ii <= 1; ii += 1) { \
-				float3 cc = cell + float3(float(ii), float(jj), float(kk)); \
-				float3 pos = lp - float3(float(ii), float(jj), float(kk)); \
+				vec3 cc = cell + vec3(float(ii), float(jj), float(kk)); \
+				vec3 pos = lp - vec3(float(ii), float(jj), float(kk)); \
 				for (int imp = 0; imp < 8; imp += 1) { \
 					float kf = float(imp); \
 					float inc = inc_base + gabor_hash4(cc.x, cc.y, cc.z, kf * 3.0) * pi * isotropy; \
 					float az = az_base + gabor_hash4(cc.x + 0.5, cc.y, cc.z, kf * 3.0) * pi * isotropy; \
 					float sin_inc = sin(inc); \
-					float3 ori = float3(sin_inc * cos(az), sin_inc * sin(az), cos(inc)); \
+					vec3 ori = vec3(sin_inc * cos(az), sin_inc * sin(az), cos(inc)); \
 					float kcx = gabor_hash4(cc.x, cc.y, cc.z, kf * 3.0 + 1.0); \
 					float kcy = gabor_hash4(cc.x + 0.5, cc.y, cc.z, kf * 3.0 + 1.0); \
 					float kcz = gabor_hash4(cc.x + 1.0, cc.y, cc.z, kf * 3.0 + 1.0); \
-					float3 pk = pos - float3(kcx, kcy, kcz); \
+					vec3 pk = pos - vec3(kcx, kcy, kcz); \
 					float d2 = dot(pk, pk); \
 					if (d2 < 1.0) { \
 						float wt = 1.0; \
@@ -99,14 +99,14 @@ float3 tex_gabor_3d(float3 co, float scale, float frequency, float anisotropy, f
 	} \
 	float norm = 5.04551; \
 	float value = (pim / norm) * 0.5 + 0.5; \
-	float phase = (atan2(pim, pr) + pi) / (2.0 * pi); \
+	float phase = (atan(pim, pr) + pi) / (2.0 * pi); \
 	float intensity = sqrt(pr * pr + pim * pim) / norm; \
-	return float3(value, phase, intensity); \
+	return vec3(value, phase, intensity); \
 } \
 ";
 
 char *gabor_texture_node_value(ui_node_t *node, ui_node_socket_t *socket) {
-	node_shader_add_function(parser_material_kong, str_tex_gabor);
+	node_shader_add_function(parser_material_shader, str_tex_gabor);
 	char             *co         = parser_material_get_coord(node);
 	char             *scale      = parser_material_parse_value_input(node->inputs->buffer[1], false);
 	char             *frequency  = parser_material_parse_value_input(node->inputs->buffer[2], false);
