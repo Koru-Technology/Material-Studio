@@ -105,3 +105,7 @@ python3 -m venv ~/.venvs/pmd
 - iPad screenshots are large. Shrink them before viewing or sharing with `sips -Z 1400 screen.png --out screen_small.png`.
 
 Crash logs from the iPad can be listed with `pymobiledevice3 crash ls --udid <hardware udid>`.
+
+## License
+
+Koru Surface is licensed under the [GNU Affero General Public License v3.0](LICENSE). It is based on ArmorPaint, which is under the zlib license; the original notice is kept in [NOTICE.md](NOTICE.md). Third-party licenses are in `base/assets/licenses` and `paint/assets/licenses`.
