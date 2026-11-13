@@ -129,6 +129,67 @@ static void tab_library_draw_builtin(tab_library_grid_t *g) {
 	free(items);
 }
 
+static i32 tab_library_saved_i = -1;
+
+static void tab_library_saved_menu() {
+	if (ui_menu_button(tr("Delete"), "", ICON_DELETE)) {
+		saved_materials_delete(tab_library_saved_i);
+		ui_dock_redraw(TAB_AREA_SIDEBAR1);
+	}
+}
+
+// Materials saved from the Material Studio (saved_materials.c), long press or right click to delete
+static void tab_library_draw_saved(tab_library_grid_t *g) {
+	char *search = to_lower_case(tab_library_search);
+	i32   total  = saved_materials_count();
+	i32  *items  = malloc(sizeof(i32) * (total > 0 ? total : 1));
+	i32   shown  = 0;
+	for (i32 i = 0; i < total; ++i) {
+		if (string_index_of(to_lower_case(saved_materials_name(i)), search) >= 0) {
+			items[shown++] = i;
+		}
+	}
+	if (shown > 0) {
+		ui_text(tr("Saved"), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+	}
+	for (i32 row = 0; row * g->num < shown; ++row) {
+		if (tab_library_row_hidden(g)) {
+			g_ui->_y += g->row_h;
+			continue;
+		}
+		ui_row(g->ratios);
+		for (i32 j = 0; j < g->num; ++j) {
+			i32 k = row * g->num + j;
+			if (k >= shown) {
+				ui_end_element_of_size(g->imgh);
+				continue;
+			}
+			ui_state_t state = tab_library_image(saved_materials_icon(items[k]), g->imgh, 0xffffffff);
+			if (state == UI_STATE_RELEASED && !g_ui->is_scrolling) {
+				saved_materials_use(items[k]);
+			}
+			if (g_ui->is_hovered) {
+				ui_tooltip(saved_materials_name(items[k]));
+				if (g_ui->input_released_r) {
+					tab_library_saved_i = items[k];
+					ui_menu_draw(&tab_library_saved_menu, -1, -1);
+				}
+			}
+		}
+		ui_row(g->ratios);
+		for (i32 j = 0; j < g->num; ++j) {
+			i32 k = row * g->num + j;
+			if (k >= shown) {
+				ui_end_element_of_size(g->text_h);
+				continue;
+			}
+			ui_text(saved_materials_name(items[k]), UI_ALIGN_CENTER, 0x00000000);
+		}
+		g_ui->_y += 8 * UI_SCALE();
+	}
+	free(items);
+}
+
 static void tab_library_draw_local() {
 	ui_begin_sticky();
 	tab_library_draw_header();
@@ -140,6 +201,7 @@ static void tab_library_draw_local() {
 	ui_separator(3, false);
 
 	tab_library_grid_t g = tab_library_grid();
+	tab_library_draw_saved(&g);
 	if (!g_config->hide_builtin_materials) {
 		tab_library_draw_builtin(&g);
 	}

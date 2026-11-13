@@ -7,7 +7,8 @@
 //                   └─ Math multiply (height) ─────────────────────────┤
 //                                                    Mask (layers 1+) ─┘ Mask
 //
-// The Material Mix of a layer takes the one below it as A, the top one feeds the output. Metallic is the B input of the mix.
+// Map Range nodes from the pattern height also give the metallic and the occlusion (cavities). The Material Mix of a layer
+// takes the one below it as A, the top one feeds the output. Emission and subsurface are B inputs of the mix.
 // Every studio node carries its role and layer in the high bits of its flags, so the studio finds them however they were
 // moved, and nodes the user adds in the node editor are left alone.
 
@@ -17,9 +18,10 @@
 // Inputs of the nodes the studio uses
 #define MIX_IN_OPACITY 0
 #define MIX_IN_MASK    1
-#define MIX_IN_A       2 // Base Color, Roughness, Metallic, Height, Occlusion
-#define MIX_IN_B       7
-#define MIX_CHANNELS   5
+#define MIX_IN_A       2 // Base Color, Roughness, Metallic, Height, Occlusion, Emission, Subsurface
+#define MIX_IN_B       10
+#define MIX_CHANNELS   8
+#define MIX_BLEND      8 // Height blend button
 
 i32 studio_role(ui_node_t *n) {
 	return (n->flags >> STUDIO_FLAG_SHIFT) & 0xf;
@@ -60,7 +62,8 @@ bool studio_graph_read(ui_node_canvas_t *c, studio_graph_t *g) {
 	}
 	for (i32 k = 0; k < STUDIO_LAYERS; ++k) {
 		studio_layer_t *l = &g->layers[k];
-		if (l->n[STUDIO_ROLE_RAMP] == NULL || l->n[STUDIO_ROLE_ROUGH] == NULL || l->n[STUDIO_ROLE_HEIGHT] == NULL || l->n[STUDIO_ROLE_MIX] == NULL) {
+		if (l->n[STUDIO_ROLE_RAMP] == NULL || l->n[STUDIO_ROLE_ROUGH] == NULL || l->n[STUDIO_ROLE_HEIGHT] == NULL || l->n[STUDIO_ROLE_MIX] == NULL ||
+		    l->n[STUDIO_ROLE_METAL] == NULL || l->n[STUDIO_ROLE_OCC] == NULL || l->n[STUDIO_ROLE_ALPHA] == NULL) {
 			break;
 		}
 		g->count = k + 1;
@@ -112,14 +115,14 @@ static void sg_delete(ui_node_t *n) {
 	}
 }
 
-#define STUDIO_LAYER_H 900 // Rows of nodes a layer takes in the node editor, a material mix is tall
+#define STUDIO_LAYER_H 1400 // Rows of nodes a layer takes in the node editor, a material mix is tall
 
-// Columns from the left: pattern, cell variation, ramp / roughness / height, mask, mix, then the output
+// Columns from the left: pattern, cell variation, ramp / roughness / height / metallic / occlusion, mask, mix, then the output
 static void sg_place(ui_node_t *n, ui_node_t *out, i32 role, i32 k) {
 	f32 ox    = out != NULL ? out->x : 900;
 	f32 oy    = out != NULL ? out->y : 100;
-	f32 col[] = {0, 5, 4, 3, 3, 3, 2, 1};
-	f32 row[] = {0, 120, 0, 0, 220, 440, 140, 0};
+	f32 col[] = {0, 5, 4, 3, 3, 3, 2, 1, 3, 3, 3};
+	f32 row[] = {0, 120, 0, 0, 220, 440, 140, 0, 600, 820, 1040};
 	n->x      = ox - col[role] * 240;
 	n->y      = oy + k * STUDIO_LAYER_H + row[role];
 }
@@ -178,21 +181,30 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 		}
 		sg_link(pat, 0, n[STUDIO_ROLE_ROUGH], 0);
 		sg_link(pat, 0, n[STUDIO_ROLE_HEIGHT], 0);
+		sg_link(pat, 0, n[STUDIO_ROLE_METAL], 0);
+		sg_link(pat, 0, n[STUDIO_ROLE_OCC], 0);
+		sg_link(pat, 0, n[STUDIO_ROLE_ALPHA], 0);
 	}
 	else {
 		sg_unlink(n[STUDIO_ROLE_RAMP], 0);
 		sg_unlink(n[STUDIO_ROLE_ROUGH], 0);
 		sg_unlink(n[STUDIO_ROLE_HEIGHT], 0);
+		sg_unlink(n[STUDIO_ROLE_METAL], 0);
+		sg_unlink(n[STUDIO_ROLE_OCC], 0);
+		sg_unlink(n[STUDIO_ROLE_ALPHA], 0);
 	}
 	sg_link(n[STUDIO_ROLE_RAMP], 0, mix, MIX_IN_B + 0);
 	sg_link(n[STUDIO_ROLE_ROUGH], 0, mix, MIX_IN_B + 1);
+	sg_link(n[STUDIO_ROLE_METAL], 0, mix, MIX_IN_B + 2);
 	sg_link(n[STUDIO_ROLE_HEIGHT], 0, mix, MIX_IN_B + 3);
+	sg_link(n[STUDIO_ROLE_OCC], 0, mix, MIX_IN_B + 4);
+	sg_link(n[STUDIO_ROLE_ALPHA], 0, mix, MIX_IN_B + 7);
 	if (mask == NULL || k == 0) {
 		sg_unlink(mix, MIX_IN_MASK);
 		return;
 	}
 	sg_link(mask, 0, mix, MIX_IN_MASK);
-	if (string_equals(mask->type, "MAPRANGE")) { // The layer's own pattern
+	if (string_equals(mask->type, "HEIGHT_MASK")) { // The layer's own pattern
 		if (pat != NULL) {
 			sg_link(pat, 0, mask, 0);
 		}
@@ -229,7 +241,7 @@ static void sg_wire(studio_graph_t *g) {
 		return;
 	}
 	ui_node_t *top     = g->layers[g->count - 1].n[STUDIO_ROLE_MIX];
-	char      *names[] = {"Base Color", "Roughness", "Metallic", "Height", "Occlusion"};
+	char      *names[] = {"Base Color", "Roughness", "Metallic", "Height", "Occlusion", "Emission", "Subsurface", "Opacity"};
 	for (i32 ch = 0; ch < MIX_CHANNELS; ++ch) {
 		i32 in = sg_output_input(g->output, names[ch]);
 		if (in >= 0) {
@@ -280,8 +292,27 @@ static void sg_create_layer(studio_graph_t *g, i32 k) {
 	sg_in(height, 0)[0] = 0.0;
 	sg_in(height, 1)[0] = 0.0;
 
-	ui_node_t *mix = sg_node(g, "MATERIAL_MIX", STUDIO_ROLE_MIX, k);
-	sg_in(mix, MIX_IN_B + 2)[0] = 0.0;
+	ui_node_t *metal = sg_node(g, "MAPRANGE", STUDIO_ROLE_METAL, k);
+	sg_in(metal, 0)[0] = 1.0;
+	sg_in(metal, 3)[0] = 0.0; // Recesses
+	sg_in(metal, 4)[0] = 0.0; // Surface
+	sg_button(metal, 0, 1);
+
+	ui_node_t *occ = sg_node(g, "MAPRANGE", STUDIO_ROLE_OCC, k);
+	sg_in(occ, 0)[0] = 1.0;
+	sg_in(occ, 3)[0] = 1.0; // Recesses, darker with cavity
+	sg_in(occ, 4)[0] = 1.0;
+	sg_button(occ, 0, 1);
+
+	ui_node_t *alpha = sg_node(g, "MAPRANGE", STUDIO_ROLE_ALPHA, k);
+	sg_in(alpha, 0)[0] = 1.0;
+	sg_in(alpha, 1)[0] = -2.0; // No cutout: always opaque
+	sg_in(alpha, 2)[0] = -1.0;
+	sg_in(alpha, 3)[0] = 0.0;
+	sg_in(alpha, 4)[0] = 1.0;
+	sg_button(alpha, 0, 1);
+
+	sg_node(g, "MATERIAL_MIX", STUDIO_ROLE_MIX, k);
 }
 
 void studio_graph_create(ui_node_canvas_t *c) {
@@ -300,6 +331,7 @@ void studio_graph_create(ui_node_canvas_t *c) {
 
 static ui_node_t *studio_mix_rgb(studio_graph_t *g, i32 k) {
 	ui_node_t *cv = sg_node(g, "MIX_RGB", STUDIO_ROLE_CELLVAR, k);
+	sg_button(cv, 0, 2); // Multiply: the height times the cell value, recesses keep their color
 	sg_button(cv, 1, 1); // Clamp factor
 	sg_in(cv, 0)[0] = 0.0;
 	return cv;
@@ -322,8 +354,11 @@ void studio_graph_set_pattern(ui_node_canvas_t *c, i32 k, char *type) {
 		sg_in(n[STUDIO_ROLE_RAMP], 0)[0]   = 1.0;
 		sg_in(n[STUDIO_ROLE_ROUGH], 0)[0]  = 1.0;
 		sg_in(n[STUDIO_ROLE_HEIGHT], 0)[0] = 0.0;
+		sg_in(n[STUDIO_ROLE_METAL], 0)[0]  = 1.0;
+		sg_in(n[STUDIO_ROLE_OCC], 0)[0]    = 1.0;
+		sg_in(n[STUDIO_ROLE_ALPHA], 0)[0]  = 1.0;
 		ui_node_t *mask = n[STUDIO_ROLE_MASK];
-		if (mask != NULL && string_equals(mask->type, "MAPRANGE")) { // A pattern mask needs the pattern
+		if (mask != NULL && string_equals(mask->type, "HEIGHT_MASK")) { // A pattern mask needs the pattern
 			sg_delete(mask);
 		}
 	}
@@ -381,8 +416,7 @@ void studio_graph_set_mask(ui_node_canvas_t *c, i32 k, i32 mask) {
 		m = sg_node(&g, "DIRECTION_MASK", STUDIO_ROLE_MASK, k);
 	}
 	else if (mask == STUDIO_MASK_PATTERN) {
-		m = sg_node(&g, "MAPRANGE", STUDIO_ROLE_MASK, k);
-		sg_button(m, 0, 1);
+		m = sg_node(&g, "HEIGHT_MASK", STUDIO_ROLE_MASK, k);
 	}
 	sg_end(&g);
 	if (m != NULL) {
@@ -501,7 +535,23 @@ f32 studio_graph_get(ui_node_canvas_t *c, i32 k, i32 value) {
 	case STUDIO_VALUE_ROUGH_VAR:
 		return sg_in(n[STUDIO_ROLE_ROUGH], 3)[0] - sg_in(n[STUDIO_ROLE_ROUGH], 4)[0];
 	case STUDIO_VALUE_METALLIC:
-		return sg_in(n[STUDIO_ROLE_MIX], MIX_IN_B + 2)[0];
+		return sg_in(n[STUDIO_ROLE_METAL], 4)[0];
+	case STUDIO_VALUE_METAL_VAR: { // How much less metal the recesses are
+		f32 m = sg_in(n[STUDIO_ROLE_METAL], 4)[0];
+		return m > 0.0 ? 1.0 - sg_in(n[STUDIO_ROLE_METAL], 3)[0] / m : 0.0;
+	}
+	case STUDIO_VALUE_CAVITY:
+		return 1.0 - sg_in(n[STUDIO_ROLE_OCC], 3)[0];
+	case STUDIO_VALUE_EMISSION:
+		return sg_in(n[STUDIO_ROLE_MIX], MIX_IN_B + 5)[0];
+	case STUDIO_VALUE_SUBSURFACE:
+		return sg_in(n[STUDIO_ROLE_MIX], MIX_IN_B + 6)[0];
+	case STUDIO_VALUE_CUTOUT: { // Holes where the pattern is below it
+		f32 hi = sg_in(n[STUDIO_ROLE_ALPHA], 2)[0];
+		return hi < 0.0 ? 0.0 : (sg_in(n[STUDIO_ROLE_ALPHA], 1)[0] + hi) * 0.5;
+	}
+	case STUDIO_VALUE_CELL_COLORS:
+		return n[STUDIO_ROLE_CELLVAR] != NULL && n[STUDIO_ROLE_CELLVAR]->buttons->buffer[0]->default_value->buffer[0] < 1.0 ? 1.0 : 0.0;
 	case STUDIO_VALUE_DEPTH:
 		return sg_in(n[STUDIO_ROLE_HEIGHT], 1)[0];
 	case STUDIO_VALUE_CELL_VAR:
@@ -512,21 +562,15 @@ f32 studio_graph_get(ui_node_canvas_t *c, i32 k, i32 value) {
 	if (mask == NULL) {
 		return 0.0;
 	}
-	if (string_equals(mask->type, "MAPRANGE")) { // From min and max around 1 - amount
-		f32 lo = sg_in(mask, 1)[0];
-		f32 hi = sg_in(mask, 2)[0];
-		bool invert = sg_in(mask, 3)[0] > sg_in(mask, 4)[0];
-		if (value == STUDIO_VALUE_MASK_INVERT) {
-			return invert ? 1.0 : 0.0;
-		}
-		f32 amount = 1.0 - (lo + hi) * 0.5;
-		return value == STUDIO_VALUE_MASK_AMOUNT ? (invert ? 1.0 - amount : amount) : value == STUDIO_VALUE_MASK_SOFT ? hi - lo : 0.0;
-	}
+	bool height_mask = string_equals(mask->type, "HEIGHT_MASK");
 	if (value == STUDIO_VALUE_MASK_INVERT) {
-		return 0.0;
+		return height_mask && mask->buttons->buffer[0]->default_value->buffer[0] > 0.5 ? 1.0 : 0.0;
+	}
+	if (value == STUDIO_VALUE_MASK_SCALE) {
+		return sg_in(mask, height_mask ? 4 : 3)[0];
 	}
 	i32 in = value == STUDIO_VALUE_MASK_AMOUNT ? 0 : value == STUDIO_VALUE_MASK_SOFT ? 1 : 2;
-	return sg_in(mask, in)[0];
+	return sg_in(mask, in + (height_mask ? 1 : 0))[0];
 }
 
 void studio_graph_set(ui_node_canvas_t *c, i32 k, i32 value, f32 v) {
@@ -547,9 +591,32 @@ void studio_graph_set(ui_node_canvas_t *c, i32 k, i32 value, f32 v) {
 		sg_in(n[STUDIO_ROLE_ROUGH], 4)[0] = r - var * 0.5;
 		return;
 	}
+	if (value == STUDIO_VALUE_METALLIC || value == STUDIO_VALUE_METAL_VAR) {
+		f32 m   = value == STUDIO_VALUE_METALLIC ? v : studio_graph_get(c, k, STUDIO_VALUE_METALLIC);
+		f32 var = value == STUDIO_VALUE_METAL_VAR ? v : studio_graph_get(c, k, STUDIO_VALUE_METAL_VAR);
+		sg_in(n[STUDIO_ROLE_METAL], 3)[0] = m * (1.0 - var);
+		sg_in(n[STUDIO_ROLE_METAL], 4)[0] = m;
+		return;
+	}
 	switch (value) {
-	case STUDIO_VALUE_METALLIC:
-		sg_in(n[STUDIO_ROLE_MIX], MIX_IN_B + 2)[0] = v;
+	case STUDIO_VALUE_CAVITY:
+		sg_in(n[STUDIO_ROLE_OCC], 3)[0] = 1.0 - v;
+		sg_in(n[STUDIO_ROLE_OCC], 4)[0] = 1.0;
+		return;
+	case STUDIO_VALUE_EMISSION:
+		sg_in(n[STUDIO_ROLE_MIX], MIX_IN_B + 5)[0] = v;
+		return;
+	case STUDIO_VALUE_SUBSURFACE:
+		sg_in(n[STUDIO_ROLE_MIX], MIX_IN_B + 6)[0] = v;
+		return;
+	case STUDIO_VALUE_CUTOUT:
+		sg_in(n[STUDIO_ROLE_ALPHA], 1)[0] = v <= 0.0 ? -2.0 : v - 0.03;
+		sg_in(n[STUDIO_ROLE_ALPHA], 2)[0] = v <= 0.0 ? -1.0 : v + 0.03;
+		return;
+	case STUDIO_VALUE_CELL_COLORS: // Mix: the ramp follows the cell value, multiply: a tint over the pattern
+		if (n[STUDIO_ROLE_CELLVAR] != NULL) {
+			n[STUDIO_ROLE_CELLVAR]->buttons->buffer[0]->default_value->buffer[0] = v > 0.5 ? 0 : 2;
+		}
 		return;
 	case STUDIO_VALUE_DEPTH:
 		sg_in(n[STUDIO_ROLE_HEIGHT], 1)[0] = v;
@@ -566,28 +633,84 @@ void studio_graph_set(ui_node_canvas_t *c, i32 k, i32 value, f32 v) {
 	if (mask == NULL) {
 		return;
 	}
-	if (string_equals(mask->type, "MAPRANGE")) {
-		f32 amount = value == STUDIO_VALUE_MASK_AMOUNT ? v : studio_graph_get(c, k, STUDIO_VALUE_MASK_AMOUNT);
-		f32 soft   = value == STUDIO_VALUE_MASK_SOFT ? v : studio_graph_get(c, k, STUDIO_VALUE_MASK_SOFT);
-		bool invert = value == STUDIO_VALUE_MASK_INVERT ? v > 0.5 : studio_graph_get(c, k, STUDIO_VALUE_MASK_INVERT) > 0.5;
-		soft        = fmaxf(soft, 0.01);
-		if (invert) { // Where the pattern is low: amount is how high it reaches
-			amount = 1.0 - amount;
-		}
-		sg_in(mask, 1)[0] = 1.0 - amount - soft * 0.5;
-		sg_in(mask, 2)[0] = 1.0 - amount + soft * 0.5;
-		sg_in(mask, 3)[0] = invert ? 1.0 : 0.0;
-		sg_in(mask, 4)[0] = invert ? 0.0 : 1.0;
-		return;
-	}
+	bool height_mask = string_equals(mask->type, "HEIGHT_MASK");
 	if (value == STUDIO_VALUE_MASK_INVERT) {
+		if (height_mask) {
+			mask->buttons->buffer[0]->default_value->buffer[0] = v > 0.5 ? 1 : 0;
+		}
 		return;
 	}
-	i32 in = value == STUDIO_VALUE_MASK_AMOUNT ? 0 : value == STUDIO_VALUE_MASK_SOFT ? 1 : 2;
-	sg_in(mask, in)[0] = v;
+	if (value == STUDIO_VALUE_MASK_SCALE) {
+		sg_in(mask, height_mask ? 4 : 3)[0] = v;
+		return;
+	}
+	i32 in                                  = value == STUDIO_VALUE_MASK_AMOUNT ? 0 : value == STUDIO_VALUE_MASK_SOFT ? 1 : 2;
+	sg_in(mask, in + (height_mask ? 1 : 0))[0] = v;
 }
 
-// Channels of the layer that cover the ones below: 0 color, 1 roughness, 2 metallic, 3 height, 4 occlusion
+// How the height of the layer goes over the ones below: 0 mix, 1 add, 2 subtract
+i32 studio_graph_height_blend(ui_node_canvas_t *c, i32 k) {
+	ui_node_t *mix = studio_graph_node(c, k, STUDIO_ROLE_MIX);
+	return mix != NULL ? (i32)mix->buttons->buffer[MIX_BLEND]->default_value->buffer[0] : 0;
+}
+
+void studio_graph_set_height_blend(ui_node_canvas_t *c, i32 k, i32 blend) {
+	ui_node_t *mix = studio_graph_node(c, k, STUDIO_ROLE_MIX);
+	if (mix != NULL) {
+		mix->buttons->buffer[MIX_BLEND]->default_value->buffer[0] = blend;
+	}
+}
+
+// Input of the layer's pattern node by name, false when the pattern has none
+bool studio_graph_set_pattern_input(ui_node_canvas_t *c, i32 k, char *name, f32 v) {
+	ui_node_t *pat = studio_graph_node(c, k, STUDIO_ROLE_PATTERN);
+	for (i32 i = 0; pat != NULL && i < pat->inputs->length; ++i) {
+		if (string_equals(pat->inputs->buffer[i]->name, name)) {
+			pat->inputs->buffer[i]->default_value->buffer[0] = v;
+			return true;
+		}
+	}
+	return false;
+}
+
+void studio_graph_set_mapping(ui_node_canvas_t *c, i32 k, bool triplanar) {
+	ui_node_t *pat = studio_graph_node(c, k, STUDIO_ROLE_PATTERN);
+	if (pat != NULL) {
+		pat->buttons->buffer[0]->default_value->buffer[0] = triplanar ? 1 : 0;
+	}
+}
+
+// Stops of the layer colors: count colors at their positions, hard steps between them or a smooth gradient
+void studio_graph_set_ramp(ui_node_canvas_t *c, i32 k, i32 count, f32 (*color)[3], f32 *pos, bool hard) {
+	ui_node_t *ramp = studio_graph_node(c, k, STUDIO_ROLE_RAMP);
+	if (ramp == NULL) {
+		return;
+	}
+	sg_ramp(ramp, count, color, pos);
+	ramp->buttons->buffer[0]->data->buffer[0] = hard ? 1 : 0;
+}
+
+bool studio_graph_ramp_hard(ui_node_canvas_t *c, i32 k) {
+	ui_node_t *ramp = studio_graph_node(c, k, STUDIO_ROLE_RAMP);
+	return ramp != NULL && ramp->buttons->buffer[0]->data->buffer[0] == 1;
+}
+
+void studio_graph_set_ramp_hard(ui_node_canvas_t *c, i32 k, bool hard) {
+	ui_node_t *ramp = studio_graph_node(c, k, STUDIO_ROLE_RAMP);
+	if (ramp != NULL) {
+		ramp->buttons->buffer[0]->data->buffer[0] = hard ? 1 : 0;
+	}
+}
+
+// The layer name is the name of its Material Mix node, shown in the node editor too
+void studio_graph_set_layer_name(ui_node_canvas_t *c, i32 k, char *name) {
+	ui_node_t *mix = studio_graph_node(c, k, STUDIO_ROLE_MIX);
+	if (mix != NULL) {
+		mix->name = string_copy(name);
+	}
+}
+
+// Channels of the layer that cover the ones below: 0 color, 1 roughness, 2 metallic, 3 height, 4 occlusion, 5 emission, 6 subsurface
 bool studio_graph_channel(ui_node_canvas_t *c, i32 k, i32 ch) {
 	ui_node_t *mix = studio_graph_node(c, k, STUDIO_ROLE_MIX);
 	return mix != NULL && ch < mix->buttons->length && mix->buttons->buffer[ch]->default_value->buffer[0] > 0.5;
@@ -629,14 +752,14 @@ typedef struct studio_layer_preset {
 	f32   mask_amount;
 	f32   mask_soft;
 	f32   mask_breakup;
-	i32   channels; // Bits: color, roughness, metallic, height, occlusion
+	i32   channels; // Bits: color, roughness, metallic, height, occlusion, emission, subsurface
 	f32   opacity;
 	i32   invert; // A pattern mask where the pattern is low
 } studio_layer_preset_t;
 
-#define CH_ALL   31
-#define CH_NOH   23 // All but height
-#define CH_PAINT 7  // Color, roughness, metallic
+#define CH_ALL   255
+#define CH_NOH   247 // All but height
+#define CH_PAINT 7   // Color, roughness, metallic
 
 // clang-format off
 static studio_layer_preset_t studio_layer_presets[] = {

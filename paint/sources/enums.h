@@ -628,6 +628,9 @@ typedef enum {
 	STUDIO_ROLE_HEIGHT,  // Math multiply, the layer height
 	STUDIO_ROLE_MASK,    // Curvature Mask, Direction Mask or Map Range of the pattern, where the layer shows
 	STUDIO_ROLE_MIX,     // Material Mix over the layers below
+	STUDIO_ROLE_METAL,   // Map Range, the layer metallic
+	STUDIO_ROLE_OCC,     // Map Range, the layer occlusion, darker in the recesses with cavity
+	STUDIO_ROLE_ALPHA,   // Map Range, the layer opacity, holes where the pattern is low with cutout
 	STUDIO_ROLE_COUNT,
 } studio_role_t;
 
@@ -652,6 +655,13 @@ typedef enum {
 	STUDIO_VALUE_MASK_SOFT,
 	STUDIO_VALUE_MASK_BREAKUP,
 	STUDIO_VALUE_MASK_INVERT,
+	STUDIO_VALUE_METAL_VAR,
+	STUDIO_VALUE_CAVITY,
+	STUDIO_VALUE_EMISSION,
+	STUDIO_VALUE_SUBSURFACE,
+	STUDIO_VALUE_MASK_SCALE,
+	STUDIO_VALUE_CUTOUT,
+	STUDIO_VALUE_CELL_COLORS, // 1: the colors follow the cell value alone, a random color of the ramp each
 	STUDIO_VALUE_COUNT,
 } studio_value_t;
 

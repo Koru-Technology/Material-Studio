@@ -15,6 +15,8 @@ char            *file     = NULL;
 char            *mat_name = NULL;
 float            means[32];
 int              PRESETS = 16;
+int              saved    = 0;
+int              saved_i  = -1;
 
 // As in studio_role_t, studio_value_t and studio_mask_t
 int R_PATTERN = 1;
@@ -126,7 +128,7 @@ void next() {
 		mat = material_studio_new();
 		check(mat != NULL && material_studio_is_open(), "new studio material opens the studio");
 		check(material_studio_layers() == 1, "one layer");
-		check(count_type(mat, "VALTORGB") == 1 && count_type(mat, "MAPRANGE") == 1 && count_type(mat, "MATERIAL_MIX") == 1,
+		check(count_type(mat, "VALTORGB") == 1 && count_type(mat, "MAPRANGE") == 4 && count_type(mat, "MATERIAL_MIX") == 1,
 		      "made of real nodes: color ramp, map range, material mix");
 	}
 	else if (step == 1) {
@@ -254,6 +256,73 @@ void next() {
 	else if (step == 18 + PRESETS) {
 		check(material_studio_is_open(), "studio reopens on it");
 		material_studio_close();
+	}
+	else if (step == 19 + PRESETS) {
+		// Every built-in material is a studio material of at most six layers
+		int              ok    = 1;
+		int              glows = 0;
+		int              dots  = 0;
+		slot_material_t *last  = NULL;
+		int              boards = 0;
+		for (int i = 0; i < builtin_material_count(); ++i) {
+			slot_material_t *m = builtin_material_add(i);
+			int              n = material_studio_layers();
+			last               = m;
+			if (m == NULL || n < 1 || n > 6) {
+				ok = 0;
+				printf("[studio]   built-in %d has %d layers", i, n);
+			}
+			if (m != NULL && count_type(m, "PATTERN_DOTS") > 0) {
+				dots = dots + 1;
+			}
+			if (m != NULL && (count_type(m, "PATTERN_PLANKS") > 0 || count_type(m, "PATTERN_SHINGLES") > 0)) {
+				boards = boards + 1;
+			}
+			for (int k = 0; m != NULL && k < n; ++k) {
+				if (material_studio_get_value(k, 12) > 0.0) { // A glowing layer
+					glows = glows + 1;
+				}
+			}
+		}
+		check(ok, "built-in materials are studio materials");
+		check(dots >= 5, string("dots in skin, bone and sci-fi (%d)", dots));
+		check(builtin_material_count() >= 37 && boards == 2, string("planks and roof tiles among %d built-ins", builtin_material_count()));
+		check(glows >= 2, string("glowing layers in the sci-fi ones (%d)", glows));
+		material_studio_open(last);
+	}
+	else if (step == 20 + PRESETS) {
+		check(material_studio_is_open() && material_studio_preview() != NULL, "a built-in opens in the studio");
+		mat      = script_material_get();
+		mat_name = "Studio Save Test";
+		mat->canvas->name = mat_name;
+		saved    = saved_materials_count();
+		compiles = script_material_count();
+		material_studio_save();
+	}
+	else if (step == 21 + PRESETS) {
+		check(!material_studio_is_open(), "save to library closes the studio");
+		check(saved_materials_count() == saved + 1, string("save to library adds it to the library (%d)", saved_materials_count()));
+		check(script_material_get() == mat && script_material_count() == compiles, "it stays the current project material");
+		saved_i = -1;
+		for (int i = 0; i < saved_materials_count(); ++i) {
+			if (string_equals(saved_materials_name(i), mat_name)) {
+				saved_i = i;
+			}
+		}
+		check(saved_i >= 0, "listed under its name");
+		saved_materials_use(saved_i);
+	}
+	else if (step == 22 + PRESETS) {
+		check(script_material_count() == compiles + 1, "a saved material adds to the project");
+		slot_material_t *m = script_material_get();
+		check(m != mat && m != NULL, "and is selected");
+		material_studio_open(m);
+	}
+	else if (step == 23 + PRESETS) {
+		check(material_studio_is_open() && material_studio_layers() >= 1, "the saved material opens in the studio");
+		material_studio_close();
+		saved_materials_delete(saved_i);
+		check(saved_materials_count() == saved, "deleting it from the library");
 	}
 	else {
 		printf("[studio] %d checks, %d failures", checks, fails);

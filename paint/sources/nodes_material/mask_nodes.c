@@ -84,7 +84,7 @@ void curvature_mask_preview_end() {
 
 // 1 - b * 0.9 + b * 1.8 * noise: no breakup at 0, the border wanders more the higher it is
 static char *mask_breakup(char *breakup, char *scale) {
-	node_shader_add_function(parser_material_kong, str_pattern_lib);
+	pattern_lib_use(-1);
 	node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
 	return string_tmp("(1.0 - %s * 0.9 + %s * 1.8 * clamp((pat_fbm(tex_coord * %s, float2(4096.0, 4096.0), 0.0, 0.5) - 0.5) * 2.5 + 0.5, 0.0, 1.0))",
 	                  breakup, breakup, scale);
@@ -172,6 +172,45 @@ char *direction_mask_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	return string_tmp("float3(%s, %s, %s)", v, v, v);
 }
 
+// Height Mask: where a height (a pattern) is high, or low with Invert, with a soft border broken up by noise
+static char *height_mask_eval(ui_node_t *node) {
+	char *store = parser_material_store_var_name(node);
+	if (string_array_index_of(parser_material_parsed, store) >= 0) {
+		return store;
+	}
+	any_array_push(parser_material_parsed, store);
+	char *height  = string_copy(parser_material_parse_value_input(node->inputs->buffer[0], false));
+	char *amount  = string_copy(parser_material_parse_value_input(node->inputs->buffer[1], false));
+	char *soft    = string_copy(parser_material_parse_value_input(node->inputs->buffer[2], false));
+	char *breakup = string_copy(parser_material_parse_value_input(node->inputs->buffer[3], false));
+	char *bscale  = string_copy(parser_material_parse_value_input(node->inputs->buffer[4], false));
+	bool  invert  = node->buttons->buffer[0]->default_value->buffer[0] > 0.5;
+	// Breakup removes more of the mask the higher it is: none at 0, about a tenth left at 1
+	pattern_lib_use(-1);
+	node_shader_context_add_elem(parser_material_kong->context, "tex", "short2norm");
+	char *noise = string_copy(string_tmp("smoothstep(%s * 0.8 - 0.1, %s * 0.8 + 0.1, clamp((pat_fbm(tex_coord * %s, float2(4096.0, 4096.0), 5.0, 0.5) - 0.5) * 2.5 + 0.5, 0.0, 1.0))",
+	                                     breakup, breakup, bscale));
+	parser_material_write(parser_material_kong, string_tmp("float %s_h = %s%s;", store, invert ? "1.0 - " : "", height));
+	parser_material_write(parser_material_kong, string_tmp("float %s = smoothstep(1.0 - %s - %s * 0.5, 1.001 - %s + %s * 0.5, %s_h) * %s;",
+	                                                       store, amount, soft, amount, soft, store, noise));
+	free(height);
+	free(amount);
+	free(soft);
+	free(breakup);
+	free(bscale);
+	free(noise);
+	return store;
+}
+
+char *height_mask_node_value(ui_node_t *node, ui_node_socket_t *socket) {
+	return height_mask_eval(node);
+}
+
+char *height_mask_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
+	char *v = height_mask_eval(node);
+	return string_tmp("float3(%s, %s, %s)", v, v, v);
+}
+
 static ui_node_t *mask_node_def(char *name, char *type, char *button, char *options, bool height) {
 	ui_node_socket_array_t *inputs = any_array_create_from_raw(
 	    (void *[]){
@@ -211,6 +250,15 @@ void mask_nodes_init() {
 	any_array_push(nodes_material_input, curvature);
 	any_map_set(parser_material_node_values, "CURVATURE_MASK", curvature_mask_node_value);
 	any_map_set(parser_material_node_vectors, "CURVATURE_MASK", curvature_mask_node_vector);
+
+	ui_node_t *height = mask_node_def(_tr("Height Mask"), "HEIGHT_MASK", _tr("Invert"), NULL, false);
+	height->buttons->buffer[0]->type = "BOOL";
+	array_insert(height->inputs, 0, nodes_material_socket_def(_tr("Height"), "VALUE", f32_array_create_x(1.0), 0.0, 1.0));
+	height->inputs->buffer[2]->default_value->buffer[0] = 0.2; // Softness
+	height->inputs->buffer[3]->default_value->buffer[0] = 0.0; // Breakup
+	any_array_push(nodes_material_input, height);
+	any_map_set(parser_material_node_values, "HEIGHT_MASK", height_mask_node_value);
+	any_map_set(parser_material_node_vectors, "HEIGHT_MASK", height_mask_node_vector);
 
 	ui_node_t *direction = mask_node_def(_tr("Direction Mask"), "DIRECTION_MASK", _tr("Facing"), string_tmp("%s\n%s", _tr("Up"), _tr("Down")), false);
 	direction->inputs->buffer[0]->default_value->buffer[0] = 0.3;

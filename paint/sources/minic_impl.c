@@ -1300,6 +1300,14 @@ slot_material_t *script_material_create(char *name) {
 	return m;
 }
 
+slot_material_t *script_material_get() {
+	return g_context->material;
+}
+
+i32 script_material_count() {
+	return g_project->_->materials->length;
+}
+
 void script_material_set(slot_material_t *m) {
 	if (m == NULL) {
 		return;

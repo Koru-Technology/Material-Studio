@@ -31,6 +31,7 @@ static f32               studio_yaw           = 0.65;
 static f32               studio_pitch         = 0.4;
 static f32               studio_dist          = 1.75; // Camera distance, pinch or wheel to zoom
 static bool              studio_sphere        = false; // Preview on the sphere instead of the cube
+static bool              studio_orbiting      = false; // A drag that started on the preview turns it
 static i32               studio_sel           = 0;    // Selected layer
 static i32               studio_stop          = 0;    // Selected stop of its color ramp
 static bool              studio_ramp_drag     = false; // A stop follows the finger
@@ -44,7 +45,7 @@ static f64               studio_known_values  = 0.0;
 static f32               studio_slots[STUDIO_SLOTS];
 static f32               studio_swipe[STUDIO_LAYERS]; // Layer row offsets, the delete button shows under them
 
-#define STUDIO_THUMBS     16
+#define STUDIO_THUMBS     48
 #define STUDIO_THUMB_SIZE 128
 static gpu_texture_t *studio_thumbs[STUDIO_THUMBS];
 static gpu_texture_t *studio_thumb_none  = NULL;
@@ -685,6 +686,27 @@ void material_studio_close() {
 	base_redraw_ui();
 }
 
+static void studio_save_next(void *m) {
+	if (array_index_of(g_project->_->materials, m) < 0) {
+		return;
+	}
+	context_set_material(m); // Stays the current material
+	if (saved_materials_save(m)) {
+		console_info(string("%s %s", tr("Saved to the library:"), ((slot_material_t *)m)->canvas->name));
+	}
+	ui_dock_redraw(-1);
+}
+
+// Closes the studio and saves the material to the library, it stays in the project's materials
+void material_studio_save() {
+	slot_material_t *m = studio_material;
+	if (m == NULL) {
+		return;
+	}
+	material_studio_close(); // Commits, applies to the paint and renders the icon
+	sys_notify_on_next_frame(&studio_save_next, m);
+}
+
 bool material_studio_is_open() {
 	return material_studio_show;
 }
@@ -915,9 +937,11 @@ static bool studio_swatch(f32 *v) {
 }
 
 // Stop indices of the ramp by position
+#define STUDIO_RAMP_MAX 8
+
 static i32 studio_ramp_sorted(f32_array_t *v, i32 *sorted) {
 	i32 len = v->length / 5;
-	len     = len > 8 ? 8 : len;
+	len     = len > STUDIO_RAMP_MAX ? STUDIO_RAMP_MAX : len;
 	for (i32 i = 0; i < len; ++i) {
 		sorted[i] = i;
 	}
@@ -1017,21 +1041,22 @@ static void studio_draw_ramp(ui_node_t *ramp, bool pattern) {
 	}
 	g_ui->_y += h * UI_SCALE() + 4 * UI_SCALE();
 
-	// Swatches by position, then add and remove
-	f32_array_t *row = f32_array_create(6);
-	for (i32 i = 0; i < 6; ++i) {
-		row->buffer[i] = 1.0 / 6.0;
+	// Swatches by position, then add, remove and the blend between the stops
+	f32_array_t *row = f32_array_create(STUDIO_RAMP_MAX);
+	for (i32 i = 0; i < STUDIO_RAMP_MAX; ++i) {
+		row->buffer[i] = 1.0 / STUDIO_RAMP_MAX;
 	}
 	ui_row(row);
-	for (i32 i = 0; i < len && i < 4; ++i) {
+	for (i32 i = 0; i < len; ++i) {
 		if (studio_swatch(v->buffer + sorted[i] * 5)) {
 			studio_stop = sorted[i];
 		}
 	}
-	for (i32 i = len; i < 4; ++i) {
+	for (i32 i = len; i < STUDIO_RAMP_MAX; ++i) {
 		ui_end_element();
 	}
-	if (ui_button("+", UI_ALIGN_CENTER, "") && len < 4) { // A new stop half way to the next one
+	ui_row3();
+	if (ui_button("+", UI_ALIGN_CENTER, "") && len < STUDIO_RAMP_MAX) { // A new stop half way to the next one
 		studio_begin_edit();
 		i32 at = 0;
 		for (i32 i = 0; i < len; ++i) {
@@ -1059,6 +1084,12 @@ static void studio_draw_ramp(ui_node_t *ramp, bool pattern) {
 		}
 		v->length -= 5;
 		studio_stop = 0;
+		studio_edited();
+	}
+	u8_array_t *interp = ramp->buttons->buffer[0]->data;
+	if (ui_button(interp->buffer[0] == 1 ? tr("Hard Steps") : tr("Smooth"), UI_ALIGN_CENTER, "")) {
+		studio_begin_edit();
+		interp->buffer[0] = interp->buffer[0] == 1 ? 0 : 1;
 		studio_edited();
 	}
 	array_free(row);
@@ -1303,7 +1334,7 @@ static void studio_draw_layers(ui_node_canvas_t *c) {
 
 // Tiles of the patterns with their names, None first, the picked one framed
 static i32 studio_pattern_grid(i32 current) {
-	i32          cols   = 5;
+	i32          cols   = 6;
 	i32          count  = pattern_node_count() + 1;
 	f32_array_t *row    = f32_array_create(cols);
 	i32          tapped = -1;
@@ -1316,7 +1347,7 @@ static i32 studio_pattern_grid(i32 current) {
 		for (i32 j = 0; j < cols; ++j) {
 			i32 i = r * cols + j;
 			if (i >= count) {
-				ui_end_element();
+				ui_end_element_of_size(size); // The row is as tall as its last cell
 				continue;
 			}
 			gpu_texture_t *thumb = i == 0 ? studio_thumb_none : i - 1 < STUDIO_THUMBS ? studio_thumbs[i - 1] : NULL;
@@ -1328,7 +1359,7 @@ static i32 studio_pattern_grid(i32 current) {
 			g_ui->image_scroll_align = false;
 			i32 state                = thumb != NULL ? ui_image(thumb, 0xffffffff, size) : UI_STATE_IDLE;
 			if (thumb == NULL) {
-				ui_end_element();
+				ui_end_element_of_size(size);
 			}
 			g_ui->image_scroll_align = true;
 			g_ui->_y -= 2 * UI_SCALE();
@@ -1408,10 +1439,11 @@ static void studio_draw_mask(ui_node_canvas_t *c, i32 k) {
 	if (mask != STUDIO_MASK_FULL) {
 		studio_value_slider(10, k, STUDIO_VALUE_MASK_AMOUNT, tr("Amount"), 0.0, 1.0, 100);
 		studio_value_slider(11, k, STUDIO_VALUE_MASK_SOFT, tr("Softness"), 0.0, 1.0, 100);
-		if (mask != STUDIO_MASK_PATTERN) {
-			studio_value_slider(12, k, STUDIO_VALUE_MASK_BREAKUP, tr("Breakup"), 0.0, 1.0, 100);
+		studio_value_slider(12, k, STUDIO_VALUE_MASK_BREAKUP, tr("Breakup"), 0.0, 1.0, 100);
+		if (studio_graph_get(c, k, STUDIO_VALUE_MASK_BREAKUP) > 0.0) {
+			studio_value_slider(14, k, STUDIO_VALUE_MASK_SCALE, tr("Breakup Scale"), 1.0, 200.0, 10);
 		}
-		else {
+		if (mask == STUDIO_MASK_PATTERN) {
 			bool inv = studio_graph_get(c, k, STUDIO_VALUE_MASK_INVERT) > 0.5;
 			bool was = inv;
 			ui_check(&inv, tr("Where the pattern is low"), "");
@@ -1437,6 +1469,16 @@ static void studio_draw_mask(ui_node_canvas_t *c, i32 k) {
 			studio_edited();
 		}
 		g_theme->BUTTON_COL = col;
+	}
+	if (studio_graph_channel(c, k, 3)) { // How the height goes over the layers below
+		char *blends[3] = {tr("Mix Height"), tr("Add Height"), tr("Carve Height")};
+		i32   blend     = studio_graph_height_blend(c, k);
+		i32   picked    = studio_chips(blends, 3, blend, 3);
+		if (picked >= 0 && picked != blend) {
+			studio_begin_edit();
+			studio_graph_set_height_blend(c, k, picked);
+			studio_edited();
+		}
 	}
 }
 
@@ -1467,6 +1509,14 @@ static void studio_draw_controls(ui_node_canvas_t *c) {
 	studio_draw_ramp(studio_graph_node(c, k, STUDIO_ROLE_RAMP), pattern);
 	if (pattern) {
 		studio_value_slider(0, k, STUDIO_VALUE_CELL_VAR, tr("Cell Variation"), 0.0, 1.0, 100);
+		bool random = studio_graph_get(c, k, STUDIO_VALUE_CELL_COLORS) > 0.5;
+		bool was    = random;
+		ui_check(&random, tr("A random color of the ramp for each cell"), "");
+		if (random != was) {
+			studio_begin_edit();
+			studio_graph_set(c, k, STUDIO_VALUE_CELL_COLORS, random ? 1.0 : 0.0);
+			studio_edited();
+		}
 	}
 
 	studio_label(tr("Surface"));
@@ -1476,8 +1526,13 @@ static void studio_draw_controls(ui_node_canvas_t *c) {
 	}
 	studio_value_slider(3, k, STUDIO_VALUE_METALLIC, tr("Metallic"), 0.0, 1.0, 100);
 	if (pattern) {
+		studio_value_slider(5, k, STUDIO_VALUE_METAL_VAR, tr("Metallic Variation"), 0.0, 1.0, 100);
 		studio_value_slider(4, k, STUDIO_VALUE_DEPTH, tr("Depth"), 0.0, 1.0, 100);
+		studio_value_slider(6, k, STUDIO_VALUE_CAVITY, tr("Cavity Darkening"), 0.0, 1.0, 100);
+		studio_value_slider(9, k, STUDIO_VALUE_CUTOUT, tr("Cutout"), 0.0, 1.0, 100);
 	}
+	studio_value_slider(7, k, STUDIO_VALUE_EMISSION, tr("Glow"), 0.0, 1.0, 100);
+	studio_value_slider(8, k, STUDIO_VALUE_SUBSURFACE, tr("Subsurface"), 0.0, 1.0, 100);
 
 	if (k > 0) {
 		studio_label(tr("Mask"));
@@ -1543,8 +1598,8 @@ static void studio_draw_header(f32 w) {
 	g_ui->_y = by;
 	g_ui->_x = _x + w - bw;
 	g_ui->_w = bw;
-	if (ui_icon_button(tr("Done"), ICON_CHECK, UI_ALIGN_CENTER)) {
-		material_studio_close();
+	if (ui_icon_button(tr("Save to Library"), ICON_CHECK, UI_ALIGN_CENTER)) {
+		material_studio_save();
 	}
 
 	g_ui->_x = _x;
@@ -1606,29 +1661,39 @@ void ui_material_studio_render_ui() {
 	i32  body_y   = y + pad / 2 + head_h;
 	i32  body_h   = h - head_h - pad;
 	bool portrait = w < h;
-	i32  view_s   = portrait ? math_floor(fminf(w - pad * 2, body_h * 0.45)) : math_floor(fminf(body_h, (w - pad * 3) * 0.55));
-	i32  view_x   = portrait ? x + (w - view_s) / 2 : x + w - pad - view_s; // Preview at the right, controls at the left
+	// The preview takes the full height next to the controls, the full width above them in portrait
+	i32  view_w   = portrait ? w - pad * 2 : math_floor((w - pad * 3) * 0.55);
+	i32  view_h   = portrait ? math_floor(body_h * 0.45) : body_h;
+	i32  view_x   = portrait ? x + pad : x + w - pad - view_w; // Preview at the right, controls at the left
 	i32  ctrl_x   = x + pad;
-	i32  ctrl_y   = portrait ? body_y + view_s + pad : body_y;
+	i32  ctrl_y   = portrait ? body_y + view_h + pad : body_y;
 	i32  ctrl_w   = portrait ? w - pad * 2 : view_x - pad - ctrl_x;
 	i32  ctrl_h   = portrait ? y + h - pad - ctrl_y : body_h;
 
-	if (ui_window(studio_view_handle, view_x, body_y, view_s, view_s, false)) {
-		if (studio_preview != NULL) {
-			g_ui->image_scroll_align = false;
-			ui_state_t state         = ui_image(studio_preview, 0xffffffff, view_s);
-			g_ui->image_scroll_align = true;
-			if (state == UI_STATE_DOWN && (mouse_movement_x != 0 || mouse_movement_y != 0)) { // Turn the cube with the finger
-				studio_yaw -= mouse_movement_x * 0.01;
-				studio_pitch       = fmaxf(-1.2, fminf(1.2, studio_pitch + mouse_movement_y * 0.01));
-				studio_need_render = true;
-			}
+	f32  bs        = math_floor(UI_ELEMENT_H() * 1.4); // Cube or sphere button, at the bottom left
+	f32  bm        = math_floor(10 * UI_SCALE());
+	bool over_view = mouse_x >= view_x && mouse_x < view_x + view_w && mouse_y >= body_y && mouse_y < body_y + view_h;
+	bool over_bt   = mouse_x < view_x + bm + bs && mouse_y >= body_y + view_h - bm - bs;
+	if (ui_window(studio_view_handle, view_x, body_y, view_w, view_h, false)) {
+		if (studio_preview != NULL) { // The square render covers the view, cut at the sides (or top and bottom)
+			f32 s = fmaxf(view_w, view_h);
+			draw_set_color(0xffffffff);
+			draw_scaled_image(studio_preview, (view_w - s) / 2.0, (view_h - s) / 2.0, s, s);
 		}
-		// Cube or sphere, at the bottom left
-		f32 bs   = math_floor(UI_ELEMENT_H() * 1.4);
-		f32 m    = math_floor(10 * UI_SCALE());
-		g_ui->_x = m;
-		g_ui->_y = view_s - bs - m;
+		// Turn the cube with the finger
+		if (g_ui->input_enabled && g_ui->input_started && over_view && !over_bt) {
+			studio_orbiting = true;
+		}
+		if (!g_ui->input_down) {
+			studio_orbiting = false;
+		}
+		if (studio_orbiting && (mouse_movement_x != 0 || mouse_movement_y != 0)) {
+			studio_yaw -= mouse_movement_x * 0.01;
+			studio_pitch       = fmaxf(-1.2, fminf(1.2, studio_pitch + mouse_movement_y * 0.01));
+			studio_need_render = true;
+		}
+		g_ui->_x = bm;
+		g_ui->_y = view_h - bs - bm;
 		g_ui->_w = bs;
 		if (ui_icon_button("", studio_sphere ? ICON_CUBE : ICON_SPHERE, UI_ALIGN_CENTER)) {
 			studio_sphere      = !studio_sphere;
@@ -1637,8 +1702,7 @@ void ui_material_studio_render_ui() {
 	}
 	ui_end_window();
 	// Pinch or wheel over the preview zooms
-	if (material_studio_show && !ui_menu_show && mouse_wheel_delta != 0 && mouse_x >= view_x && mouse_x < view_x + view_s && mouse_y >= body_y &&
-	    mouse_y < body_y + view_s) {
+	if (material_studio_show && !ui_menu_show && mouse_wheel_delta != 0 && over_view) {
 		studio_dist        = fmaxf(1.0, fminf(4.0, studio_dist * (1.0 + mouse_wheel_delta * 0.08)));
 		studio_need_render = true;
 	}

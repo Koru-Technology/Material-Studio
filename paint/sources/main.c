@@ -214,6 +214,7 @@
 #include "builtin_materials.c"
 #include "builtin_brushes.c"
 #include "smart_materials.c"
+#include "saved_materials.c"
 #include "brush_previews.c"
 #include "console.c"
 #include "context.c"
