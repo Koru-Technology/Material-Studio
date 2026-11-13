@@ -521,6 +521,14 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			return rt->_image;
 		}
 	}
+	if (starts_with(link, "_texlive")) { // Material Studio preview values
+		gpu_texture_t *live = parser_material_live_texture(link);
+		if (live != NULL) {
+			return live;
+		}
+		render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
+		return rt->_image;
+	}
 	if (starts_with(link, "_texbake_")) {
 		char *id = link + 9;
 		if (g_context->node_previews != NULL) {

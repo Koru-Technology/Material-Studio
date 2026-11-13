@@ -629,3 +629,52 @@ typedef enum {
 	TIP_COUNT,
 	TIP_IMAGE = 100,
 } brush_tip_t;
+
+// Material Studio: what a node of a studio material is for, kept in the high bits of its flags (studio_graph.c)
+typedef enum {
+	STUDIO_ROLE_NONE,
+	STUDIO_ROLE_PATTERN, // Pattern node, absent for a plain layer
+	STUDIO_ROLE_CELLVAR, // Mix Color of the pattern height and its cell value, feeds the ramp
+	STUDIO_ROLE_RAMP,    // Color Ramp, the layer color
+	STUDIO_ROLE_ROUGH,   // Map Range, the layer roughness
+	STUDIO_ROLE_HEIGHT,  // Math multiply, the layer height
+	STUDIO_ROLE_MASK,    // Curvature Mask, Direction Mask or Map Range of the pattern, where the layer shows
+	STUDIO_ROLE_MIX,     // Material Mix over the layers below
+	STUDIO_ROLE_METAL,   // Map Range, the layer metallic
+	STUDIO_ROLE_OCC,     // Map Range, the layer occlusion, darker in the recesses with cavity
+	STUDIO_ROLE_ALPHA,   // Map Range, the layer opacity, holes where the pattern is low with cutout
+	STUDIO_ROLE_COUNT,
+} studio_role_t;
+
+typedef enum {
+	STUDIO_MASK_FULL,
+	STUDIO_MASK_EDGES,
+	STUDIO_MASK_CAVITIES,
+	STUDIO_MASK_UP,
+	STUDIO_MASK_PATTERN,
+	STUDIO_MASK_COUNT,
+} studio_mask_t;
+
+// Values of a studio layer made of one or more node inputs
+typedef enum {
+	STUDIO_VALUE_ROUGHNESS,
+	STUDIO_VALUE_ROUGH_VAR,
+	STUDIO_VALUE_METALLIC,
+	STUDIO_VALUE_DEPTH,
+	STUDIO_VALUE_CELL_VAR,
+	STUDIO_VALUE_OPACITY,
+	STUDIO_VALUE_MASK_AMOUNT,
+	STUDIO_VALUE_MASK_SOFT,
+	STUDIO_VALUE_MASK_BREAKUP,
+	STUDIO_VALUE_MASK_INVERT,
+	STUDIO_VALUE_METAL_VAR,
+	STUDIO_VALUE_CAVITY,
+	STUDIO_VALUE_EMISSION,
+	STUDIO_VALUE_SUBSURFACE,
+	STUDIO_VALUE_MASK_SCALE,
+	STUDIO_VALUE_CUTOUT,
+	STUDIO_VALUE_CELL_COLORS, // 1: the colors follow the cell value alone, a random color of the ramp each
+	STUDIO_VALUE_COUNT,
+} studio_value_t;
+
+typedef struct studio_graph studio_graph_t; // types.h

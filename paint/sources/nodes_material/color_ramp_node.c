@@ -91,42 +91,48 @@ static char *color_ramp_eval(ui_node_t *node) {
 	char *fac_var = string_tmp("%s_fac", base);
 	parser_material_write(parser_material_kong, string_tmp("float %s = %s;", fac_var, fac));
 
-	// Declare one float4 variable per stop: {base}_c0, {base}_c1, ...
+	// One float4 per stop: {base}_c0, {base}_c1, .. and the positions, compiled in or live values of the studio preview
+	bool  live = parser_material_live_ramp_color(node, 0) != NULL;
+	char *pos[len];
 	for (i32 i = 0; i < len; i++) {
-		i32   s = sorted[i];
+		i32 s = sorted[i];
+		if (live) {
+			parser_material_write(parser_material_kong, string_tmp("float4 %s_c%d = %s;", base, i, parser_material_live_ramp_color(node, i)));
+			if (i % 4 == 0) {
+				parser_material_write(parser_material_kong, string_tmp("float4 %s_p%d = %s;", base, i / 4, parser_material_live_ramp_pos(node, i / 4)));
+			}
+			char *comp[4] = {"x", "y", "z", "w"};
+			pos[i]        = string_copy(string_tmp("%s_p%d.%s", base, i / 4, comp[i % 4]));
+			continue;
+		}
 		char *r = f32_to_string_with_zeros(elems->buffer[s * 5 + 0]);
 		char *g = f32_to_string_with_zeros(elems->buffer[s * 5 + 1]);
 		char *b = f32_to_string_with_zeros(elems->buffer[s * 5 + 2]);
 		char *a = f32_to_string_with_zeros(elems->buffer[s * 5 + 3]);
 		parser_material_write(parser_material_kong, string_tmp("float4 %s_c%d = float4(%s, %s, %s, %s);", base, i, r, g, b, a));
+		pos[i] = string_copy(f32_to_string_with_zeros(elems->buffer[s * 5 + 4]));
 	}
 
 	if (len == 1) {
 		parser_material_write(parser_material_kong, string_tmp("float4 %s = %s_c0;", store_var, base));
-		return store_var;
 	}
-
-	if (interp == 1) { // Constant
+	else if (interp == 1) { // Constant
 		parser_material_write(parser_material_kong, string_tmp("float4 %s = %s_c0;", store_var, base));
 		for (i32 i = 1; i < len; i++) {
-			char *pi = f32_to_string_with_zeros(elems->buffer[sorted[i] * 5 + 4]);
-			parser_material_write(parser_material_kong, string_tmp("if (%s > %s) { %s = %s_c%d; }", fac_var, pi, store_var, base, i));
+			parser_material_write(parser_material_kong, string_tmp("if (%s > %s) { %s = %s_c%d; }", fac_var, pos[i], store_var, base, i));
 		}
 	}
 	else { // Linear
-		f32   p0  = elems->buffer[sorted[0] * 5 + 4];
-		f32   p1  = elems->buffer[sorted[1] * 5 + 4];
-		char *b01 = string_tmp("clamp((%s - %s) / max(%s, 0.00001), 0.0, 1.0)", fac_var, f32_to_string_with_zeros(p0), f32_to_string_with_zeros(p1 - p0));
+		char *b01 = string_tmp("clamp((%s - %s) / max(%s - %s, 0.00001), 0.0, 1.0)", fac_var, pos[0], pos[1], pos[0]);
 		parser_material_write(parser_material_kong, string_tmp("float4 %s = lerp(%s_c0, %s_c1, %s);", store_var, base, base, b01));
 		for (i32 i = 1; i < len - 1; i++) {
-			f32   pi  = elems->buffer[sorted[i] * 5 + 4];
-			f32   pi1 = elems->buffer[sorted[i + 1] * 5 + 4];
-			char *blend =
-			    string_tmp("clamp((%s - %s) / max(%s, 0.00001), 0.0, 1.0)", fac_var, f32_to_string_with_zeros(pi), f32_to_string_with_zeros(pi1 - pi));
-			char *pi_s = f32_to_string_with_zeros(pi);
+			char *blend = string_tmp("clamp((%s - %s) / max(%s - %s, 0.00001), 0.0, 1.0)", fac_var, pos[i], pos[i + 1], pos[i]);
 			parser_material_write(parser_material_kong,
-			                      string_tmp("if (%s > %s) { %s = lerp(%s_c%d, %s_c%d, %s); }", fac_var, pi_s, store_var, base, i, base, i + 1, blend));
+			                      string_tmp("if (%s > %s) { %s = lerp(%s_c%d, %s_c%d, %s); }", fac_var, pos[i], store_var, base, i, base, i + 1, blend));
 		}
+	}
+	for (i32 i = 0; i < len; i++) {
+		free(pos[i]);
 	}
 
 	return store_var;

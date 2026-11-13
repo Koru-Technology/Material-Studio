@@ -168,7 +168,7 @@ static bool ui_popovers_in(i32 *r, f32 x, f32 y) {
 
 // A touch that starts outside the bar and the popover closes it, and goes on to do what it does (paint, orbit, ...)
 void ui_popovers_update() {
-	if (!ui_popovers_enabled() || ui_popovers_open == POPOVER_NONE || ui_brush_creator_shown()) {
+	if (!ui_popovers_enabled() || ui_popovers_open == POPOVER_NONE || ui_brush_creator_shown() || material_studio_show) {
 		return;
 	}
 	if (!(mouse_started("left") || pen_started("tip"))) {
@@ -312,7 +312,7 @@ static gpu_texture_t *ui_popovers_blur_level(i32 i, i32 w, i32 h) {
 }
 
 // Blurred view under the rectangle, NULL when the 3D view is not behind it. *changed tells whether it was made again.
-static gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *changed) {
+gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *changed) {
 	*changed = false;
 	i32            count;
 	gpu_texture_t *src = render_path_base_presented_image(&count);

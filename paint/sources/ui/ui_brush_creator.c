@@ -130,7 +130,6 @@ static void bc_save() {
 	else {
 		bc_target->name      = string_copy(name);
 		bc_target->s         = bc_edit.s;
-		bc_target->row_stale = true;
 		brush_library_set_tip(bc_target, bc_tip);
 		brush_library_save();
 		brush_library_use(bc_target);

@@ -256,7 +256,9 @@ void util_render_make_material_preview() {
 	make_material_parse_mesh_preview_material();
 	void (*_commands)(void) = render_path_commands;
 	render_path_commands    = render_path_preview_commands_preview;
+	curvature_mask_preview_begin(g_context->material);
 	render_path_render_frame();
+	curvature_mask_preview_end();
 	render_path_commands = _commands;
 
 	g_context->material_preview = false;

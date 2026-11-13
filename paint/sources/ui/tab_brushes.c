@@ -8,35 +8,17 @@
 static i32            tab_brushes_group      = -1; // Id of the group shown, -1 for the group of the picked brush
 static brush_def_t   *tab_brushes_menu_def   = NULL;
 static brush_group_t *tab_brushes_menu_group = NULL;
-static brush_def_t   *tab_brushes_row_pending = NULL; // Brush whose stroke renders on the next frame
 static char          *tab_brushes_name_text   = "";
 static i32            tab_brushes_box_tab     = 0;
 
-// The strokes are painted as Pencil strokes, the pen settings of the preferences shape them
-typedef struct {
-	f32 curve;
-	f32 min;
-	f32 sensitivity;
-} tab_brushes_pen_t;
-
-static tab_brushes_pen_t tab_brushes_pen;
-static bool              tab_brushes_pen_set = false;
-
-static void tab_brushes_check_pen() {
-	tab_brushes_pen_t p;
-	memset(&p, 0, sizeof(p));
-	p.curve       = g_config->pressure_curve;
-	p.min         = g_config->pressure_min;
-	p.sensitivity = g_config->pressure_sensitivity;
-	if (tab_brushes_pen_set && memcmp(&p, &tab_brushes_pen, sizeof(p)) != 0) {
-		brush_library_rows_stale();
-	}
-	tab_brushes_pen     = p;
-	tab_brushes_pen_set = true;
-}
-
 // Renders the stroke of brush settings s into *dst, as shown in the brush list. Not while a window draws, see sys_notify_on_next_frame.
 void tab_brushes_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture_t **dst) {
+	static slot_brush_t *row_brush = NULL; // Default brush the rows paint with, the project brush nodes do not show
+	if (row_brush == NULL) {
+		row_brush = slot_brush_create(NULL);
+	}
+	slot_brush_t *_brush = g_context->brush;
+	g_context->brush     = row_brush;
 	brush_settings_t saved;
 	brush_library_capture_settings(&saved);
 	gpu_texture_t *saved_tip = brush_library_tip_image_get();
@@ -66,21 +48,10 @@ void tab_brushes_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture
 		}
 	}
 
+	g_context->brush = _brush;
 	brush_library_apply_settings(&saved, saved_tip);
 	make_material_parse_brush();
 	brush_output_node_parse_inputs();
-}
-
-static void tab_brushes_make_row_image(void *_) {
-	brush_def_t *d          = tab_brushes_row_pending;
-	tab_brushes_row_pending = NULL;
-	if (d == NULL || ui_brush_creator_shown()) {
-		return;
-	}
-	tab_brushes_render_row(&d->s, brush_library_tip_of(d), &d->image_row);
-	d->row_stale = false;
-	ui_popovers_redraw(-1);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 // Draws a stroke strip so its middle band fills the rectangle, keeping its aspect
@@ -298,22 +269,8 @@ static bool tab_brushes_group_listed(brush_group_t *g) {
 }
 
 static void tab_brushes_draw_rows() {
-	tab_brushes_check_pen();
-	i32 shown = tab_brushes_shown_group();
-
-	// Strokes render one per frame and are kept, the shown group's first
-	if (tab_brushes_row_pending == NULL && !ui_brush_creator_shown()) {
-		for (i32 pass = 0; pass < 2 && tab_brushes_row_pending == NULL; ++pass) {
-			for (i32 i = 0; i < brush_library_count(); ++i) {
-				brush_def_t *d = brush_library_at(i);
-				if ((d->row_stale || d->image_row == NULL) && (pass == 1 || d->group == shown)) {
-					tab_brushes_row_pending = d;
-					sys_notify_on_next_frame(&tab_brushes_make_row_image, NULL);
-					break;
-				}
-			}
-		}
-	}
+	i32 shown            = tab_brushes_shown_group();
+	brush_previews_group = shown; // Its strokes render first
 
 	// Groups on the left, the brushes of the shown group on the right
 	f32 x      = g_ui->_x;

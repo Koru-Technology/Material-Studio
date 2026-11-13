@@ -641,9 +641,6 @@ void box_preferences_pen_tab() {
 		ui_tooltip(tr("Share of the size, opacity and hardness kept at the lightest pressure"));
 	}
 	box_preferences_draw_pressure_curve();
-	if (g_ui->changed) { // The pressure curve shapes the strokes in the brush list
-		brush_library_rows_stale();
-	}
 	ui_text(tr("Each brush sets how pressure and tilt drive it, in the Apple Pencil settings of the Brush Creator"), UI_ALIGN_LEFT, 0x00000000);
 
 	ui_text(tr("Pencil Gestures"), UI_ALIGN_LEFT, 0x00000000);

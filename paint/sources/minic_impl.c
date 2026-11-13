@@ -38,6 +38,7 @@ void  script_on_next_frame(void *_) {
     }
 }
 void script_notify_on_next_frame(void *fn) {
+	iron_delay_idle_sleep(); // The next frame comes even when nothing else changes
 	sys_notify_on_next_frame(script_on_next_frame, NULL);
 	script_next_frame_fn = fn;
 }
@@ -1316,6 +1317,14 @@ slot_material_t *script_material_create(char *name) {
 	return m;
 }
 
+slot_material_t *script_material_get() {
+	return g_context->material;
+}
+
+i32 script_material_count() {
+	return g_project->_->materials->length;
+}
+
 void script_material_set(slot_material_t *m) {
 	if (m == NULL) {
 		return;
@@ -1591,6 +1600,9 @@ void script_mouse_press(i32 x, i32 y, i32 button) {
 void script_mouse_move(i32 x, i32 y) {
 	iron_internal_mouse_trigger_move(x, y);
 	ui_mouse_move(g_ui, x, y, 0, 0);
+#if defined(IRON_IOS) || defined(IRON_ANDROID)
+	ui_touch_move(g_ui, 0, x, y); // The ui takes moves from touches there
+#endif
 }
 
 void script_mouse_release(i32 x, i32 y, i32 button) {

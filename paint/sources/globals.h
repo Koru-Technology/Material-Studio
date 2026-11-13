@@ -6,6 +6,7 @@
 #include <iron.h>
 
 char *manifest_title           = "Material Studio";
+i32   brush_previews_group       = -1; // Group shown in the brush list, its strokes render first
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "29";
 char *manifest_version_config  = "18";

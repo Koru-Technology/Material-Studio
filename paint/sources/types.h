@@ -12,7 +12,6 @@ typedef struct slot_brush {
 	struct gpu_texture    *image; // 200px
 	struct gpu_texture    *image_icon;
 	struct gpu_texture    *image_wave; // Stroke preview, generated at runtime
-	struct gpu_texture    *image_row;  // Stroke of the brush alone (no built-in tip) in the touch brush list, generated at runtime
 	bool                   preview_ready;
 	i32                    id;
 } slot_brush_t;
@@ -96,8 +95,11 @@ typedef struct brush_def {
 	brush_settings_t    s;
 	char               *tip_file;  // Imported tip, a png in the library folder, NULL without
 	struct gpu_texture *tip_image; // Loaded imported tip
-	struct gpu_texture *image_row; // Its stroke in the brush list, rendered at runtime
-	bool                row_stale; // Settings changed, the stroke renders again
+	struct gpu_texture *image_row; // Its stroke in the brush list, read from disk or rendered, see brush_previews.c
+	bool                row_rt;    // image_row is a render target, rendered here
+	i32                 row_state; // brush_preview_state_t of row_key
+	u64                 row_key;   // Hash of what shapes its stroke, names the file of the stroke
+	u64                 tip_hash;  // Hash of the imported tip file, 0 until read
 } brush_def_t;
 
 typedef struct brush_group {
@@ -1184,3 +1186,16 @@ typedef struct ui_nodes_editor_state {
 
 typedef struct library_entry library_entry_t; // Material library item, library.c
 typedef struct cloud_item    cloud_item_t;    // Cloud material, library_cloud.c
+
+#define STUDIO_LAYERS 6
+
+// Nodes of a studio material layer by role (studio_role_t), NULL where the layer has none
+typedef struct studio_layer {
+	ui_node_t *n[16];
+} studio_layer_t;
+
+struct studio_graph {
+	ui_node_t     *output;
+	i32            count;
+	studio_layer_t layers[STUDIO_LAYERS];
+};

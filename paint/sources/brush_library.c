@@ -109,7 +109,6 @@ static void brush_library_add_builtins() {
 		d->s.jitter_angle          = b->jitter_angle;
 		d->s.jitter_opacity        = b->jitter_opacity;
 		d->s.flow                  = b->flow;
-		d->row_stale               = true;
 		brush_library_defs[brush_library_n++] = d;
 	}
 }
@@ -189,7 +188,6 @@ static void brush_library_load_file() {
 				d->s.tip = TIP_NONE;
 			}
 		}
-		d->row_stale                          = true;
 		brush_library_defs[brush_library_n++] = d;
 	}
 }
@@ -504,7 +502,6 @@ brush_def_t *brush_library_new_def() {
 	brush_def_t *d = calloc(1, sizeof(brush_def_t));
 	d->name        = string_copy(tr("New Brush"));
 	d->s           = brush_settings_default();
-	d->row_stale   = true;
 	return d;
 }
 
@@ -530,7 +527,6 @@ void brush_library_add(brush_def_t *d, gpu_texture_t *tip_image) {
 	}
 	d->id        = brush_library_next_id++;
 	d->builtin   = false;
-	d->row_stale = true;
 	brush_library_set_tip(d, tip_image);
 	brush_library_defs[brush_library_n++] = d;
 	brush_library_save();
@@ -548,6 +544,7 @@ void brush_library_set_tip(brush_def_t *d, gpu_texture_t *tip_image) {
 	gpu_release_texture_pixels(tip_image);
 	d->tip_file  = file;
 	d->tip_image = tip_image;
+	d->tip_hash  = 0; // Read again for the key of its stroke
 }
 
 // An editable copy of brush d in group, right after the original when they share the group
@@ -565,7 +562,9 @@ brush_def_t *brush_library_duplicate(brush_def_t *d, i32 group) {
 	c->tip_file    = NULL;
 	c->tip_image   = NULL;
 	c->image_row   = NULL;
-	c->row_stale   = true;
+	c->row_rt      = false;
+	c->row_state   = 0;
+	c->tip_hash    = 0;
 	brush_library_copy_tip(d, c);
 	i32 at = brush_library_n;
 	for (i32 i = 0; i < brush_library_n; ++i) {
@@ -593,14 +592,6 @@ void brush_library_delete(brush_def_t *d) {
 		}
 	}
 	brush_library_save();
-}
-
-// The stroke of every brush in the list renders again, the pen settings changed
-void brush_library_rows_stale() {
-	brush_library_load();
-	for (i32 i = 0; i < brush_library_n; ++i) {
-		brush_library_defs[i]->row_stale = true;
-	}
 }
 
 // An image picked as a brush tip: white, its shape in the alpha. Images without transparency give their brightness as the shape,
