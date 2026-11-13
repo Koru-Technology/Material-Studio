@@ -1,4 +1,4 @@
-This repository contains everything needed to build Koru Surface except the C compiler itself.
+This repository contains everything needed to build Material Studio except the C compiler itself.
 
 ## `/base`
 
@@ -24,4 +24,4 @@ This file adds C source files, include directories, libraries and defines to the
 
 ## `/paint`
 
-Contains Koru Surface specific code & assets only. The `project.c` file adds this specific code to the final project.
+Contains Material Studio specific code & assets only. The `project.c` file adds this specific code to the final project.

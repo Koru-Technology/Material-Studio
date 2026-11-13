@@ -17,6 +17,138 @@ typedef struct slot_brush {
 	i32                    id;
 } slot_brush_t;
 
+// Settings of a brush, edited in the Brush Creator. Picking a brush puts them in the context (brush_library_apply).
+typedef struct brush_settings {
+	// Stroke path
+	f32 spacing;        // Distance between stamps in brush diameters, 0 for a continuous stroke
+	f32 spacing_jitter; // Random change of each step, 0-1
+	f32 jitter_lateral; // Random offset of each stamp across the stroke, in brush diameters
+	f32 jitter_linear;  // Random offset of each stamp along the stroke, in brush diameters
+	f32 falloff;        // The stroke fades out along its length, 0 never
+	f32 flow;           // Paint added by each stamp, builds up to the opacity
+	// Stabilization
+	f32 streamline;    // The brush trails the pen, smoothing out wobbles
+	f32 stabilization; // Averages the pen positions over time, steadies slow strokes
+	// Taper, lengths 0-1
+	f32 taper_start; // Pencil strokes
+	f32 taper_end;
+	f32 taper_size;    // How thin the tapered ends get
+	f32 taper_opacity; // How transparent
+	f32 touch_taper_start; // Finger and mouse strokes
+	f32 touch_taper_end;
+	// Shape
+	i32 tip; // brush_tip_t
+	f32 hardness;
+	i32 rotation; // brush_rotation_t
+	f32 angle;    // Degrees
+	f32 jitter_angle;
+	f32 jitter_size;
+	f32 jitter_opacity;
+	f32 roundness; // 1 round, smaller squashes the tip
+	// Apple Pencil, how much the pen drives each property 0-1
+	f32  pressure_size;
+	f32  pressure_opacity;
+	f32  pressure_flow;
+	f32  pressure_hardness;
+	f32  tilt_size;
+	f32  tilt_opacity;
+	bool tilt_shading; // The dab stretches into an ellipse as the pen leans
+	// Preview
+	f32 preview_size; // Size of the stroke in the brush list and on the drawing pad, 0-1
+} brush_settings_t;
+
+// The f32 settings by key: the library file reads keys added later as their default, scripts set them by name
+#define BRUSH_LIBRARY_SETTINGS(X)                                                                                                                      \
+	X(spacing)                                                                                                                                         \
+	X(spacing_jitter)                                                                                                                                  \
+	X(jitter_lateral)                                                                                                                                  \
+	X(jitter_linear)                                                                                                                                   \
+	X(falloff)                                                                                                                                         \
+	X(flow)                                                                                                                                            \
+	X(streamline)                                                                                                                                      \
+	X(stabilization)                                                                                                                                   \
+	X(taper_start)                                                                                                                                     \
+	X(taper_end)                                                                                                                                       \
+	X(taper_size)                                                                                                                                      \
+	X(taper_opacity)                                                                                                                                   \
+	X(touch_taper_start)                                                                                                                               \
+	X(touch_taper_end)                                                                                                                                 \
+	X(hardness)                                                                                                                                        \
+	X(angle)                                                                                                                                           \
+	X(jitter_angle)                                                                                                                                    \
+	X(jitter_size)                                                                                                                                     \
+	X(jitter_opacity)                                                                                                                                  \
+	X(roundness)                                                                                                                                       \
+	X(pressure_size)                                                                                                                                   \
+	X(pressure_opacity)                                                                                                                                \
+	X(pressure_flow)                                                                                                                                   \
+	X(pressure_hardness)                                                                                                                               \
+	X(tilt_size)                                                                                                                                       \
+	X(tilt_opacity)                                                                                                                                    \
+	X(preview_size)
+
+// A brush of the Brushes popover: built-in, or made in the Brush Creator and kept in the brush library
+typedef struct brush_def {
+	i32                 id;
+	char               *name;
+	i32                 group; // Id of its brush_group_t
+	bool                builtin;
+	brush_settings_t    s;
+	char               *tip_file;  // Imported tip, a png in the library folder, NULL without
+	struct gpu_texture *tip_image; // Loaded imported tip
+	struct gpu_texture *image_row; // Its stroke in the brush list, rendered at runtime
+	bool                row_stale; // Settings changed, the stroke renders again
+} brush_def_t;
+
+typedef struct brush_group {
+	i32   id;
+	char *name;
+	i32   icon;
+	bool  builtin;
+} brush_group_t;
+
+// What util_render_brush_scene_begin changes to paint brush strokes on a plane facing the camera, put back by util_render_brush_scene_end
+typedef struct util_render_brush_scene {
+	struct gpu_texture    *current;
+	bool                   in_use;
+	struct slot_material  *material;
+	i32                    tool;
+	struct slot_layer     *layer;
+	struct slot_material  *fill_material;
+	struct mesh_object    *paint_object;
+	struct mesh_object    *plane;
+	struct u8_array       *visibles;
+	bool                   merged_visible;
+	f32                    fov;
+	f32                    radius;
+	f32                    opacity;
+	f32                    hardness;
+	f32                    x;
+	f32                    y;
+	f32                    last_x;
+	f32                    last_y;
+	i32                    pdirty;
+	f32                    posx;
+	f32                    posy;
+	f32                    posz;
+	bool                   sym_x;
+	bool                   sym_y;
+	bool                   sym_z;
+	i32                    sym_radial;
+	f32                    speed;
+	f32                    stroke_angle;
+	f64                    brush_time;
+} util_render_brush_scene_t;
+
+// Streamline and stabilization state of a stroke, see render_path_paint_filter_apply
+typedef struct render_path_paint_filter {
+	bool started;
+	f32  x; // Streamline
+	f32  y;
+	f32  x2; // Stabilization
+	f32  y2;
+} render_path_paint_filter_t;
+
 typedef struct mesh_nodes {
 	i32                    uid; // Object
 	struct ui_nodes       *nodes;
@@ -189,31 +321,17 @@ typedef struct config {
 	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
 	f32                  library_scroll;     // Scroll position of the Library tab
 	bool                 hide_builtin_materials; // Library tab hides the built-in procedural materials
-	f32                  brush_radius; // Brush settings kept across launches
+	f32                  brush_radius; // Brush settings kept across launches, the others come with the picked brush
 	f32                  brush_opacity;
-	f32                  brush_hardness;
-	f32                  brush_flow;
-	f32                  brush_spacing;
-	f32                  brush_scatter;
-	f32                  brush_jitter_size;
-	f32                  brush_jitter_angle;
-	f32                  brush_jitter_opacity;
-	f32                  brush_smoothing;
 	f32                  brush_strength;
 	f32                  pressure_curve; // Exponent applied to the pen pressure, below 1 soft, above 1 firm
 	f32                  pressure_min;   // Share of the size, opacity... kept at the lightest pressure
-	i32                  dyn_size;       // Brush dynamics, what drives each property: 0 off, 1 pen pressure, 2 stroke speed, 3 stroke direction (angle)
-	i32                  dyn_opacity;
-	i32                  dyn_flow;
-	i32                  dyn_hardness;
-	i32                  dyn_angle;
-	i32                  brush_builtin;        // Built-in brush picked in the Brushes tab, -1 for none
+	i32                  brush_selected; // Id of the brush picked in the brush library
 	bool                 hide_builtin_brushes; // Brushes tab hides the built-in brushes
 	i32                  rp_view_transform;    // 0 Filmic, 1 ACES, 2 AgX, 3 Standard
 	bool                 autosave;
 	i32                  autosave_interval; // Minutes
 	i32                  finger_paint;      // 0 auto (not once the pencil is used), 1 always, 2 never
-	bool                 tilt_shading;      // A leaning pencil stretches the dab along its direction and softens it
 	i32                  pencil_double_tap; // Pencil gesture actions, see pencil_action_t
 	i32                  pencil_squeeze;
 	struct i32_array    *quick_menu_slots;  // Quick menu items clockwise from the top, see quick_menu_item_t
@@ -456,12 +574,32 @@ typedef struct context {
 	f32                         brush_lazy_x;
 	f32                         brush_lazy_y;
 	f32                         brush_spacing;        // Stamps along the stroke, distance in brush diameters, 0 for a continuous stroke
-	f32                         brush_scatter;        // Random offset of each stamp, in brush diameters
+	f32                         brush_spacing_jitter; // Random change of each step, 0-1
+	f32                         brush_jitter_lateral; // Random offset of each stamp across the stroke, in brush diameters
+	f32                         brush_jitter_linear;  // Random offset of each stamp along the stroke, in brush diameters
+	f32                         brush_falloff;        // The stroke fades out along its length, 0 never
+	f32                         brush_taper_start;    // Taper lengths 0-1 of Pencil strokes
+	f32                         brush_taper_end;
+	f32                         brush_touch_taper_start; // Of finger and mouse strokes
+	f32                         brush_touch_taper_end;
+	f32                         brush_taper_size;    // How thin the tapered ends get
+	f32                         brush_taper_opacity; // How transparent
+	f32                         brush_stabilization; // Averages the pen positions over time
+	i32                         brush_rotation;      // brush_rotation_t
+	f32                         brush_roundness;     // 1 round, smaller squashes the tip
+	f32                         brush_pressure_size; // How much the pen drives each property 0-1
+	f32                         brush_pressure_opacity;
+	f32                         brush_pressure_flow;
+	f32                         brush_pressure_hardness;
+	f32                         brush_tilt_size;
+	f32                         brush_tilt_opacity;
+	bool                        brush_tilt_shading;
+	f32                         brush_stroke_length; // Distance painted since the stroke started, in paint view heights
 	f32                         brush_jitter_size;    // Random size reduction of each stamp, 0-1
 	f32                         brush_jitter_angle;   // Random rotation of each stamp, 0-1 of a full turn
 	f32                         brush_jitter_opacity; // Random opacity reduction of each stamp, 0-1
 	f32                         brush_flow;           // Paint added by each stamp, builds up to the opacity, 1 paints the opacity at once
-	f32                         brush_smoothing;      // Stroke stabilizer, the brush trails the pen on a string
+	f32                         brush_smoothing;      // Streamline, the brush trails the pen
 	f32                         brush_strength;       // Blur and smudge strength
 	f32                         brush_dab_x;          // Last stamp of the stroke, -1 before the first one
 	f32                         brush_dab_y;
@@ -470,7 +608,8 @@ typedef struct context {
 	f32                         brush_dab_angle; // Radians
 	f32                         brush_speed;     // Smoothed stroke speed 0-1, for the brush dynamics
 	f32                         brush_stroke_angle; // Direction of the stroke, radians
-	i32                         brush_builtin;      // Built-in brush of the Brushes tab, its tip is the brush mask, -1 for none
+	i32                         brush_selected;     // Id of the brush picked in the brush library
+	i32                         brush_tip;          // brush_tip_t painted with, the tip is the brush mask
 	uv_type_t                   brush_paint;
 	f32                         brush_angle_reject_dot;
 	bake_type_t                 bake_type;

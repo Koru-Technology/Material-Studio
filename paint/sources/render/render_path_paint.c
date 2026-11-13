@@ -477,7 +477,7 @@ static void render_path_paint_cull(mesh_object_t *o) {
 	}
 	static paint_cull_dab_t dabs[RENDER_PATH_PAINT_BATCH_MAX];
 	i32                     count   = 0;
-	f32                     stretch = g_config->tilt_shading ? 3.0 : 1.0;
+	f32                     stretch = g_context->brush_tilt_shading ? 3.0 : 1.0;
 	if (render_path_paint_batched()) {
 		for (i32 i = 0; i < (i32)render_path_paint_batch_drawn && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) {
 			f32 *d       = &render_path_paint_batch[i * 12];
@@ -963,7 +963,7 @@ void render_path_paint_commands_live_brush() {
 		return;
 	}
 
-	if (render_path_paint_live_layer_locked) {
+	if (render_path_paint_live_layer_locked || ui_brush_creator_shown()) { // The drawing pad paints its strokes in the live layer
 		return;
 	}
 
@@ -1332,7 +1332,7 @@ void render_path_paint_clear_blend() {
 	}
 }
 
-// Brush stamps: spacing, scatter and jitter
+// Brush stamps: spacing, jitter, fall off and taper
 static u32 render_path_paint_stamp_seed = 1;
 
 static f32 render_path_paint_stamp_random() {
@@ -1340,33 +1340,261 @@ static f32 render_path_paint_stamp_random() {
 	return (render_path_paint_stamp_seed >> 8) / 16777216.0f;
 }
 
+// Streamline and stabilization: two smoothing passes over the brush positions, timed so that pen samples and frames smooth alike
+bool render_path_paint_filter_on() {
+	return g_context->brush_smoothing > 0.0 || g_context->brush_stabilization > 0.0;
+}
+
+static f32 render_path_paint_filter_pass(f32 *v, f32 target, f32 amount, f32 dt) {
+	f32 tau = amount * amount * 0.25; // Seconds the brush takes to catch up, about
+	if (tau <= 0.0) {
+		*v = target;
+	}
+	else {
+		*v += (target - *v) * (1.0 - expf(-dt / tau));
+	}
+	return *v;
+}
+
+void render_path_paint_filter_apply(render_path_paint_filter_t *f, f32 *x, f32 *y, f32 dt) {
+	if (!f->started) {
+		f->started = true;
+		f->x = f->x2 = *x;
+		f->y = f->y2 = *y;
+		return;
+	}
+	dt = dt < 0.0005 ? 0.0005 : dt > 0.1 ? 0.1 : dt;
+	render_path_paint_filter_pass(&f->x2, *x, g_context->brush_stabilization * 0.8, dt);
+	render_path_paint_filter_pass(&f->y2, *y, g_context->brush_stabilization * 0.8, dt);
+	*x = render_path_paint_filter_pass(&f->x, f->x2, g_context->brush_smoothing, dt);
+	*y = render_path_paint_filter_pass(&f->y, f->y2, g_context->brush_smoothing, dt);
+}
+
+// Taper and fall off lengths are in paint view heights
+#define RENDER_PATH_PAINT_TAPER_LENGTH 0.6
+
+static bool render_path_paint_stroke_pen = false; // Pencil stroke, it tapers by the pencil taper, else by the touch taper
+
+static f32 render_path_paint_taper_start() {
+	return (render_path_paint_stroke_pen ? g_context->brush_taper_start : g_context->brush_touch_taper_start) * RENDER_PATH_PAINT_TAPER_LENGTH;
+}
+
+static f32 render_path_paint_taper_end() {
+	return (render_path_paint_stroke_pen ? g_context->brush_taper_end : g_context->brush_touch_taper_end) * RENDER_PATH_PAINT_TAPER_LENGTH;
+}
+
+// Spacing painted with: a continuous brush stamps closely when it tapers, fades or jitters, its stamps carry those
+f32 render_path_paint_spacing() {
+	f32 s = g_context->brush_spacing;
+	if (s <= 0.0 && (g_context->brush_taper_start > 0.0 || g_context->brush_taper_end > 0.0 || g_context->brush_touch_taper_start > 0.0 ||
+	                 g_context->brush_touch_taper_end > 0.0 || g_context->brush_falloff > 0.0 || g_context->brush_jitter_lateral > 0.0 ||
+	                 g_context->brush_jitter_linear > 0.0 || g_context->brush_jitter_size > 0.0 || g_context->brush_jitter_opacity > 0.0 ||
+	                 g_context->brush_jitter_angle > 0.0)) {
+		s = 0.03;
+	}
+	return s;
+}
+
 bool render_path_paint_stamps() {
 	bool tool = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
-	return tool && g_context->brush_spacing > 0.0 && !slot_layer_is_path(g_context->layer) && g_context->layer->fill_material == NULL &&
+	return tool && render_path_paint_spacing() > 0.0 && !slot_layer_is_path(g_context->layer) && g_context->layer->fill_material == NULL &&
 	       !context_is_decal() && !context_is_pixel_snap();
 }
 
-static void render_path_paint_stamp(f32 x, f32 y, f32 aspect, f32 diameter, bool last) {
-	f32 scatter = g_context->brush_scatter;
-	if (scatter > 0.0) {
-		f32 a = render_path_paint_stamp_random() * math_pi() * 2.0;
-		f32 d = render_path_paint_stamp_random() * scatter * diameter;
-		x += math_cos(a) * d / aspect;
-		y += math_sin(a) * d;
+// A stamp to paint, kept back while the end taper may still shrink it
+typedef struct {
+	f32  x;
+	f32  y;
+	f32  len; // Stroke length at the stamp
+	f32  radius;
+	f32  opacity;
+	f32  angle;
+	f32  stroke_angle;
+	f32  pressure; // Pen state of the stamp
+	f32  altitude;
+	f32  azimuth;
+	f32  roll;
+	bool preview_pen;
+} render_path_paint_dab_t;
+
+#define RENDER_PATH_PAINT_TAIL_MAX 1024
+
+static render_path_paint_dab_t render_path_paint_tail[RENDER_PATH_PAINT_TAIL_MAX];
+static i32                     render_path_paint_tail_first     = 0;
+static i32                     render_path_paint_tail_count     = 0;
+static bool                    render_path_paint_tail_pending   = false; // The stroke ended, its tail paints with the next draw
+static f32                     render_path_paint_stamp_prev_x   = 0.0;
+static f32                     render_path_paint_stamp_prev_y   = 0.0;
+static f32                     render_path_paint_stamp_dir      = 0.0; // Screen direction of the stroke at the last stamp, radians, y down
+static bool                    render_path_paint_stamp_has_prev = false;
+static f32                     render_path_paint_step_factor    = 1.0; // Spacing jitter of the next step
+
+// First stamp of a stroke: seeds the jitter, the stroke length starts over
+static void render_path_paint_stroke_begin(f32 x, f32 y) {
+	render_path_paint_stamp_seed     = render_path_paint_stamp_seed_fixed != 0
+	                                       ? render_path_paint_stamp_seed_fixed
+	                                       : (u32)(x * 100003.0) ^ (u32)(y * 7919.0) ^ (u32)(sys_time() * 1000.0);
+	g_context->brush_stroke_length   = 0.0;
+	render_path_paint_stamp_has_prev = false;
+	render_path_paint_stamp_dir      = -g_context->brush_stroke_angle; // Until the stroke shows its own direction
+	render_path_paint_step_factor    = 1.0;
+	render_path_paint_tail_first     = 0;
+	render_path_paint_tail_count     = 0;
+	render_path_paint_tail_pending   = false;
+	render_path_paint_stroke_pen     = util_brush_pen_active();
+}
+
+static void render_path_paint_dab_paint(render_path_paint_dab_t *d, f32 size, f32 opacity, bool dilation) {
+	f32  pressure                 = util_brush_sample_pressure;
+	f32  altitude                 = util_brush_sample_altitude;
+	f32  azimuth                  = util_brush_sample_azimuth;
+	f32  roll                     = util_brush_sample_roll;
+	bool preview_pen              = util_brush_preview_pen;
+	util_brush_sample_pressure    = d->pressure;
+	util_brush_sample_altitude    = d->altitude;
+	util_brush_sample_azimuth     = d->azimuth;
+	util_brush_sample_roll        = d->roll;
+	util_brush_preview_pen        = d->preview_pen;
+	g_context->brush_dab_radius   = d->radius * size;
+	g_context->brush_dab_opacity  = d->opacity * opacity;
+	g_context->brush_dab_angle    = d->angle;
+	g_context->brush_stroke_angle = d->stroke_angle;
+	g_context->paint_vec.x        = d->x;
+	g_context->paint_vec.y        = d->y;
+	g_context->last_paint_vec_x   = d->x;
+	g_context->last_paint_vec_y   = d->y;
+	if (g_context->brush_dab_opacity > 0.001 && g_context->brush_dab_radius > 0.001) {
+		if (render_path_paint_batched()) { // Painted with the other stamps of the frame by render_path_paint_batch_flush
+			render_path_paint_batch_add();
+		}
+		else {
+			render_path_paint_commands_symmetry();
+			render_path_paint_commands_paint(dilation);
+		}
 	}
-	g_context->brush_dab_radius  = 1.0 - g_context->brush_jitter_size * render_path_paint_stamp_random();
-	g_context->brush_dab_opacity = 1.0 - g_context->brush_jitter_opacity * render_path_paint_stamp_random();
-	g_context->brush_dab_angle   = (render_path_paint_stamp_random() * 2.0 - 1.0) * math_pi() * g_context->brush_jitter_angle;
-	g_context->paint_vec.x       = x;
-	g_context->paint_vec.y       = y;
-	g_context->last_paint_vec_x  = x;
-	g_context->last_paint_vec_y  = y;
-	if (render_path_paint_batched()) { // Painted with the other stamps of the frame by render_path_paint_batch_flush
-		render_path_paint_batch_add();
+	util_brush_sample_pressure = pressure;
+	util_brush_sample_altitude = altitude;
+	util_brush_sample_azimuth  = azimuth;
+	util_brush_sample_roll     = roll;
+	util_brush_preview_pen     = preview_pen;
+}
+
+// Smaller and fainter towards a tapered end, t 0 at the tip and 1 past the taper
+static void render_path_paint_taper_factors(f32 t, f32 *size, f32 *opacity) {
+	t        = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
+	t        = t * t * (3.0 - 2.0 * t);
+	*size    = 1.0 - g_context->brush_taper_size * (1.0 - t);
+	*opacity = 1.0 - g_context->brush_taper_opacity * (1.0 - t);
+}
+
+static render_path_paint_dab_t *render_path_paint_tail_at(i32 i) {
+	return &render_path_paint_tail[(render_path_paint_tail_first + i) % RENDER_PATH_PAINT_TAIL_MAX];
+}
+
+// Paints the kept back stamps the end taper no longer reaches, and the oldest when there is no room for another
+static void render_path_paint_tail_release(f32 len, f32 taper_end) {
+	while (render_path_paint_tail_count > 0) {
+		render_path_paint_dab_t *d = render_path_paint_tail_at(0);
+		if (render_path_paint_tail_count < RENDER_PATH_PAINT_TAIL_MAX && d->len > len - taper_end) {
+			break;
+		}
+		render_path_paint_dab_paint(d, 1.0, 1.0, false);
+		render_path_paint_tail_first = (render_path_paint_tail_first + 1) % RENDER_PATH_PAINT_TAIL_MAX;
+		render_path_paint_tail_count--;
+	}
+}
+
+// The stroke ended: its kept back stamps paint, tapered towards the end
+void render_path_paint_tail_flush() {
+	f32 taper_end = render_path_paint_taper_end();
+	f32 len       = g_context->brush_stroke_length;
+	for (i32 i = 0; i < render_path_paint_tail_count; ++i) {
+		render_path_paint_dab_t *d = render_path_paint_tail_at(i);
+		f32                      size, opacity;
+		render_path_paint_taper_factors(taper_end > 0.0 ? (len - d->len) / taper_end : 1.0, &size, &opacity);
+		render_path_paint_dab_paint(d, size, opacity, false);
+	}
+	render_path_paint_tail_first   = 0;
+	render_path_paint_tail_count   = 0;
+	render_path_paint_tail_pending = false;
+	if (render_path_paint_batched()) {
+		render_path_paint_batch_flush(true);
+	}
+	g_context->brush_dab_radius  = 1.0;
+	g_context->brush_dab_opacity = 1.0;
+	g_context->brush_dab_angle   = 0.0;
+}
+
+// The brush was released: the stamps kept back for the end taper paint with the next draw
+void render_path_paint_stroke_end() {
+	if (render_path_paint_tail_count > 0) {
+		render_path_paint_tail_pending = true;
+		g_context->pdirty              = 1;
+	}
+}
+
+static void render_path_paint_stamp(f32 x, f32 y, f32 aspect, f32 diameter, bool last) {
+	// Direction and length of the stroke so far
+	if (render_path_paint_stamp_has_prev) {
+		f32 dx = (x - render_path_paint_stamp_prev_x) * aspect;
+		f32 dy = y - render_path_paint_stamp_prev_y;
+		f32 d  = math_sqrt(dx * dx + dy * dy);
+		g_context->brush_stroke_length += d;
+		if (d > 0.000001) {
+			render_path_paint_stamp_dir = atan2f(dy, dx);
+		}
+	}
+	render_path_paint_stamp_prev_x   = x;
+	render_path_paint_stamp_prev_y   = y;
+	render_path_paint_stamp_has_prev = true;
+	f32 len                          = g_context->brush_stroke_length;
+
+	// Jitter along and across the stroke
+	f32 along  = (render_path_paint_stamp_random() * 2.0 - 1.0) * g_context->brush_jitter_linear * diameter;
+	f32 across = (render_path_paint_stamp_random() * 2.0 - 1.0) * g_context->brush_jitter_lateral * diameter;
+	f32 c      = math_cos(render_path_paint_stamp_dir);
+	f32 s      = math_sin(render_path_paint_stamp_dir);
+
+	render_path_paint_dab_t d;
+	d.x            = x + (c * along - s * across) / aspect;
+	d.y            = y + s * along + c * across;
+	d.len          = len;
+	d.radius       = 1.0 - g_context->brush_jitter_size * render_path_paint_stamp_random();
+	d.opacity      = 1.0 - g_context->brush_jitter_opacity * render_path_paint_stamp_random();
+	d.angle        = (render_path_paint_stamp_random() * 2.0 - 1.0) * math_pi() * g_context->brush_jitter_angle;
+	d.stroke_angle = g_context->brush_rotation == BRUSH_ROTATION_FOLLOW ? -render_path_paint_stamp_dir : g_context->brush_stroke_angle;
+	d.pressure     = util_brush_sample_pressure;
+	d.altitude     = util_brush_sample_altitude;
+	d.azimuth      = util_brush_sample_azimuth;
+	d.roll         = util_brush_sample_roll;
+	d.preview_pen  = util_brush_preview_pen;
+
+	// The start tapers, the stroke fades out along its length
+	f32 taper_start = render_path_paint_taper_start();
+	if (taper_start > 0.0) {
+		f32 size, opacity;
+		render_path_paint_taper_factors(len / taper_start, &size, &opacity);
+		d.radius *= size;
+		d.opacity *= opacity;
+	}
+	if (g_context->brush_falloff > 0.0) {
+		f32 k    = 1.0 - g_context->brush_falloff;
+		f32 fade = 0.05 + k * k * 3.0;
+		d.opacity *= math_max(0.0, 1.0 - len / fade);
+	}
+
+	f32 sj                        = g_context->brush_spacing_jitter;
+	render_path_paint_step_factor = sj > 0.0 ? math_max(0.1, 1.0 + sj * (render_path_paint_stamp_random() * 2.0 - 1.0)) : 1.0;
+
+	// The end taper reaches back from the pen: stamps within it wait until the pen has moved past them or the stroke ends
+	f32 taper_end = render_path_paint_taper_end();
+	if (taper_end > 0.0) {
+		render_path_paint_tail_release(len, taper_end);
+		*render_path_paint_tail_at(render_path_paint_tail_count) = d;
+		render_path_paint_tail_count++;
 		return;
 	}
-	render_path_paint_commands_symmetry();
-	render_path_paint_commands_paint(last);
+	render_path_paint_dab_paint(&d, 1.0, 1.0, last);
 }
 
 // Stamps from the last one to the brush position, one every spacing; the remainder carries over to the next frame
@@ -1378,35 +1606,39 @@ void render_path_paint_commands_stamps() {
 	f32 cy       = g_context->paint_vec.y;
 	f32 aspect   = base_paint_view_w() / (f32)base_paint_view_h();
 	f32 diameter = util_layer_brush_screen_radius() * 2.0;
-	f32 step     = math_max(g_context->brush_spacing * diameter, 0.0005);
+	f32 step     = math_max(render_path_paint_spacing() * diameter, 0.0005);
+	i32 stamps   = 0;
 
 	if (g_context->brush_dab_x < 0.0) { // First stamp of the stroke
-		render_path_paint_stamp_seed = (u32)(cx * 100003.0) ^ (u32)(cy * 7919.0) ^ (u32)(sys_time() * 1000.0);
+		render_path_paint_stroke_begin(cx, cy);
 		render_path_paint_stamp(cx, cy, aspect, diameter, true);
 		g_context->brush_dab_x = cx;
 		g_context->brush_dab_y = cy;
+		stamps++;
 	}
 	else {
 		f32 dx    = (cx - g_context->brush_dab_x) * aspect;
 		f32 dy    = cy - g_context->brush_dab_y;
 		f32 dist  = math_sqrt(dx * dx + dy * dy);
-		i32 count = (i32)(dist / step);
-		if (count > 64) { // Keep the frame responsive on a fast stroke, the rest follows on the next frames
-			count = 64;
-		}
-		f32 sx = g_context->brush_dab_x;
-		f32 sy = g_context->brush_dab_y;
-		for (i32 i = 1; i <= count; ++i) {
-			f32 t = (step * i) / dist;
+		f32 sx    = g_context->brush_dab_x;
+		f32 sy    = g_context->brush_dab_y;
+		f32 along = step * render_path_paint_step_factor;
+		while (along <= dist && stamps < 64) { // Keep the frame responsive on a fast stroke, the rest follows on the next frames
+			f32 t = along / dist;
 			f32 x = sx + (cx - sx) * t;
 			f32 y = sy + (cy - sy) * t;
-			render_path_paint_stamp(x, y, aspect, diameter, i == count);
+			render_path_paint_stamp(x, y, aspect, diameter, false);
 			g_context->brush_dab_x = x;
 			g_context->brush_dab_y = y;
+			stamps++;
+			along += step * render_path_paint_step_factor;
 		}
 	}
 	if (render_path_paint_batched()) {
 		render_path_paint_batch_flush(true);
+	}
+	else if (stamps > 0) {
+		render_path_paint_dilate_after_paint();
 	}
 
 	g_context->paint_vec.x       = cx;
@@ -1477,15 +1709,24 @@ bool render_path_paint_use_samples() {
 	       g_context->layer->fill_material == NULL && !context_is_decal();
 }
 
-// Frame samples in paint space, the last one is the brush position
+static render_path_paint_filter_t render_path_paint_samples_filter = {0};
+static f64                        render_path_paint_samples_time   = 0.0; // Of the last sample smoothed
+
+// Frame samples in paint space, smoothed by the streamline and stabilization of the brush; the last one is the brush position
 static i32 render_path_paint_points(render_path_paint_point_t *out) {
-	f32 w     = (f32)base_paint_view_w();
-	f32 h     = (f32)base_paint_view_h();
-	i32 count = 0;
+	f32  w      = (f32)base_paint_view_w();
+	f32  h      = (f32)base_paint_view_h();
+	i32  count  = 0;
+	bool filter = render_path_paint_filter_on();
 	for (i32 i = 0; i < pen_sample_count; ++i) {
 		pen_sample_t *s = &pen_samples[i];
 		f32           x = base_paint_x(s->x);
 		f32           y = base_paint_y(s->y);
+		if (filter) {
+			f32 dt = render_path_paint_samples_filter.started ? (f32)(s->time - render_path_paint_samples_time) : 0.0;
+			render_path_paint_filter_apply(&render_path_paint_samples_filter, &x, &y, dt > 0.0 ? dt : 1.0 / 240.0);
+			render_path_paint_samples_time = s->time;
+		}
 		if (count > 0) {
 			f32 dx = (x - out[count - 1].x) * w;
 			f32 dy = (y - out[count - 1].y) * h;
@@ -1524,7 +1765,7 @@ static i32 render_path_paint_points(render_path_paint_point_t *out) {
 			}
 		}
 	}
-	if (count > 0) {
+	if (count > 0 && !filter) {
 		out[count - 1].x = g_context->paint_vec.x;
 		out[count - 1].y = g_context->paint_vec.y;
 	}
@@ -1536,7 +1777,8 @@ static render_path_paint_point_t render_path_paint_samples_last;
 static f32                       render_path_paint_samples_carry = 0.0; // Distance since the last stamp
 
 void render_path_paint_samples_reset() {
-	render_path_paint_samples_started = false;
+	render_path_paint_samples_started        = false;
+	render_path_paint_samples_filter.started = false;
 }
 
 // One capsule per sample, from the previous one
@@ -1580,13 +1822,13 @@ static void render_path_paint_commands_samples_stamps() {
 	f32                       cy       = g_context->paint_vec.y;
 	f32                       aspect   = base_paint_view_w() / (f32)base_paint_view_h();
 	f32                       diameter = util_layer_brush_screen_radius() * 2.0;
-	f32                       step     = math_max(g_context->brush_spacing * diameter, 0.0005);
+	f32                       step     = math_max(render_path_paint_spacing() * diameter, 0.0005);
 	i32                       stamps   = 0;
 	i32                       first    = 0;
 
 	if (g_context->brush_dab_x < 0.0 || !render_path_paint_samples_started) { // First stamp of the stroke
-		render_path_paint_stamp_seed = (u32)(pts[0].x * 100003.0) ^ (u32)(pts[0].y * 7919.0) ^ (u32)(sys_time() * 1000.0);
 		render_path_paint_point_use(&pts[0]);
+		render_path_paint_stroke_begin(pts[0].x, pts[0].y);
 		render_path_paint_stamp(pts[0].x, pts[0].y, aspect, diameter, count == 1);
 		render_path_paint_samples_last    = pts[0];
 		render_path_paint_samples_carry   = 0.0;
@@ -1602,16 +1844,18 @@ static void render_path_paint_commands_samples_stamps() {
 		f32                       dx  = (b.x - a.x) * aspect;
 		f32                       dy  = b.y - a.y;
 		f32                       len = math_sqrt(dx * dx + dy * dy);
-		f32                       d   = step - render_path_paint_samples_carry; // Distance along the segment to the next stamp
+		f32                       next = step * render_path_paint_step_factor;
+		f32                       d    = next - render_path_paint_samples_carry; // Distance along the segment to the next stamp
 		while (d <= len && stamps < 256) {
 			f32                       t  = len > 0.0 ? d / len : 1.0;
 			render_path_paint_point_t at = render_path_paint_point_lerp(&a, &b, t);
 			render_path_paint_point_use(&at);
 			render_path_paint_stamp(at.x, at.y, aspect, diameter, false);
 			stamps++;
-			d += step;
+			next = step * render_path_paint_step_factor; // Jittered by the stamp
+			d += next;
 		}
-		render_path_paint_samples_carry = len - (d - step);
+		render_path_paint_samples_carry = len - (d - next);
 		a                               = b;
 	}
 	render_path_paint_samples_last = a;
@@ -1642,7 +1886,15 @@ void render_path_paint_draw() {
 		render_path_paint_commands_live_brush();
 	}
 
-	if (history_undo_layers != NULL) {
+	if (history_undo_layers != NULL && render_path_paint_tail_pending) {
+		// The brush was released, the stamps the end taper kept back paint now. Painted as part of the stroke: its paint so far
+		// is kept, the coverage clears after this draw.
+		f64 brush_time        = g_context->brush_time;
+		g_context->brush_time = brush_time > 0.0 ? brush_time : 0.001;
+		render_path_paint_tail_flush();
+		g_context->brush_time = brush_time;
+	}
+	else if (history_undo_layers != NULL) {
 		bool stamps  = render_path_paint_stamps();
 		bool samples = render_path_paint_use_samples();
 		if (!stamps && !samples) {
@@ -1912,7 +2164,7 @@ void render_path_paint_live_layer_release_idle() {
 	if (render_path_paint_live_layer == NULL || render_path_paint_live_layer_locked) {
 		return;
 	}
-	if (g_config->brush_live) {
+	if (g_config->brush_live || ui_brush_creator_shown()) { // The drawing pad keeps the stroke being drawn in it
 		render_path_paint_live_last_use = iron_time();
 		return;
 	}

@@ -570,7 +570,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 			                             "constants.brush_direction.y + pa_mask.y * constants.brush_direction.x);");
 		}
 		f32 angle = g_context->brush_angle + g_context->brush_nodes_angle;
-		if (angle != 0.0 || g_config->dyn_angle != 0) {
+		if (angle != 0.0 || g_context->brush_rotation != BRUSH_ROTATION_FIXED) {
 			node_shader_add_constant(kong, "float2 brush_angle", "_brush_angle");
 			node_shader_write_frag(kong, "pa_mask.xy = float2(pa_mask.x * constants.brush_angle.x - pa_mask.y * constants.brush_angle.y, pa_mask.x * "
 			                             "constants.brush_angle.y + pa_mask.y * constants.brush_angle.x);");

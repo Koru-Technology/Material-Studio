@@ -100,9 +100,9 @@ void next() {
 			return;
 		}
 		printf("[pencil] frame rate %.1f fps", 120.0 / frame_time_sum);
-		cfg->tilt_shading = 1;
-		cfg->dyn_size     = 4; // Tilt
-		cfg->dyn_angle    = 5; // Azimuth
+		script_brush_set("tilt_shading", 1.0);
+		script_brush_set("tilt_size", 1.0);
+		script_brush_set("rotation", 2.0); // Pencil azimuth
 		make_paint_set_batching(1);
 		check(make_paint_is_batched(), "tilt shading paint shader is batched");
 		before   = copy_pixels();
@@ -125,9 +125,10 @@ void next() {
 			int n = changed_texels();
 			check(n > 200, string("single dab stroke with tilt shading paints (%d)", n));
 			make_paint_set_batching(1);
-			cfg->tilt_shading = 0;
-			cfg->dyn_size     = 1;
-			cfg->dyn_angle    = 0;
+			script_brush_set("tilt_shading", 0.0);
+			script_brush_set("tilt_size", 0.0);
+			script_brush_set("pressure_size", 1.0);
+			script_brush_set("rotation", 0.0);
 			make_paint_set_batching(1);
 			// Quick menu, tap on the eraser (top right)
 			context_select_tool(TOOL_TYPE_BRUSH);

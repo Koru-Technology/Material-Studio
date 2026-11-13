@@ -57,7 +57,7 @@ void brush_output_node_parse_inputs() {
 	}
 	else {
 		g_context->brush_nodes_opacity = math_max(0.0, math_min(1.0, opac->_f32));
-		g_context->brush_mask_image    = builtin_brush_tip(); // Tip of the built-in brush, NULL for round
+		g_context->brush_mask_image    = brush_library_tip(); // Tip of the brush, NULL for round
 		if (g_context->brush_mask_image != NULL) {
 			g_context->brush_mask_image_is_alpha = true;
 		}
@@ -164,7 +164,7 @@ void brush_output_node_run() {
 	}
 
 	if (g_ui->is_hovered || base_is_dragging || base_is_resizing || ui_dock_is_dragging() || g_ui->is_scrolling || g_ui->combo_selected_id != 0 ||
-	    ui_quick_menu_blocking()) {
+	    ui_quick_menu_blocking() || ui_brush_creator_shown()) {
 		return;
 	}
 

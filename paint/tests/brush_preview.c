@@ -75,7 +75,7 @@ void next() {
 
 	if (step == 0) {
 		script_brush_defaults();
-		cfg->dyn_size             = 1; // Pen pressure
+		script_brush_set("pressure_size", 1.0);
 		cfg->pressure_curve       = 1.0;
 		cfg->pressure_min         = 0.0;
 		cfg->pressure_sensitivity = 1.0;
@@ -86,7 +86,7 @@ void next() {
 		check(tail * 2 < top, "pressure tapers the end");
 	}
 	else if (step == 1) {
-		cfg->dyn_size = 0;
+		script_brush_set("pressure_size", 0.0);
 		measure();
 		check(head * 10 > top * 7 && tail * 10 > top * 7, "without size pressure the stroke keeps its width");
 	}

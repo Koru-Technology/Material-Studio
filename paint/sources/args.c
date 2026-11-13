@@ -76,7 +76,7 @@ void args_parse() {
 				args_background = true;
 			}
 			else if (string_equals(current_arg, "--help")) {
-				printf("Usage: korusurface [options] [file]\n");
+				printf("Usage: materialstudio [options] [file]\n");
 				printf("Options:\n");
 				printf("  --background                      Run without displaying the window\n");
 				printf("  --export-textures <type> <preset> <path>\n");

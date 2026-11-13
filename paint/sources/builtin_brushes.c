@@ -1,72 +1,10 @@
 
 #include "global.h"
 
-// Built-in brushes of the Brushes tab: a brush tip generated in code (white, shape in the alpha) and the stroke settings that go with it.
-// Picking one sets the tip and the spacing, scatter, jitter, flow and hardness of the tool options. The brush nodes keep working, a mask
-// image wired in the brush nodes wins over the tip.
+// Brush tips generated in code: white, the shape in the alpha. Built-in brushes and the Shape tab of the Brush Creator use them,
+// see brush_library.c.
 
 #define BUILTIN_TIP_RES 256
-
-typedef enum {
-	TIP_NONE,
-	TIP_CHALK,
-	TIP_BRISTLE,
-	TIP_DRY,
-	TIP_SPLATTER,
-	TIP_SPECKLE,
-	TIP_STAR,
-	TIP_STRANDS,
-	TIP_SCALE,
-	TIP_SQUARE,
-	TIP_COUNT,
-} builtin_tip_t;
-
-typedef struct builtin_brush {
-	char *name;
-	i32   tip;
-	f32   hardness;
-	f32   spacing;
-	f32   scatter;
-	f32   jitter_size;
-	f32   jitter_angle;
-	f32   jitter_opacity;
-	f32   flow;
-	i32   group; // See builtin_brush_groups
-} builtin_brush_t;
-
-// Brush groups, shown as a list beside the brushes of the picked group
-typedef struct builtin_brush_group {
-	char *name;
-	i32   icon;
-} builtin_brush_group_t;
-
-static builtin_brush_group_t builtin_brush_groups[] = {
-    {"Basic", ICON_BRUSH},
-    {"Painting", ICON_PAINT},
-    {"Texture", ICON_CHECKER},
-    {"Effects", ICON_STAR},
-};
-
-#define BUILTIN_BRUSH_GROUP_COUNT ((i32)(sizeof(builtin_brush_groups) / sizeof(builtin_brush_groups[0])))
-
-// clang-format off
-static builtin_brush_t builtin_brushes[] = {
-	{"Round Hard", TIP_NONE,     1.0, 0.0,  0.0, 0.0, 0.0,  0.0, 1.0,  0},
-	{"Round Soft", TIP_NONE,     0.0, 0.0,  0.0, 0.0, 0.0,  0.0, 1.0,  0},
-	{"Airbrush",   TIP_NONE,     0.0, 0.08, 0.0, 0.0, 0.0,  0.0, 0.08, 0},
-	{"Chalk",      TIP_CHALK,    1.0, 0.15, 0.0, 0.0, 1.0,  0.3, 1.0,  1},
-	{"Bristle",    TIP_BRISTLE,  1.0, 0.04, 0.0, 0.0, 0.02, 0.0, 1.0,  1},
-	{"Dry Brush",  TIP_DRY,      1.0, 0.05, 0.0, 0.0, 0.0,  0.2, 1.0,  1},
-	{"Splatter",   TIP_SPLATTER, 1.0, 1.2,  0.8, 0.7, 1.0,  0.2, 1.0,  3},
-	{"Speckle",    TIP_SPECKLE,  1.0, 0.7,  1.5, 0.8, 1.0,  0.5, 1.0,  2},
-	{"Star",       TIP_STAR,     1.0, 1.5,  0.0, 0.4, 1.0,  0.0, 1.0,  3},
-	{"Fur",        TIP_STRANDS,  1.0, 0.35, 0.3, 0.3, 0.1,  0.2, 1.0,  2},
-	{"Scales",     TIP_SCALE,    1.0, 0.8,  0.0, 0.1, 0.0,  0.0, 1.0,  2},
-	{"Square",     TIP_SQUARE,   1.0, 0.0,  0.0, 0.0, 0.0,  0.0, 1.0,  0},
-};
-// clang-format on
-
-#define BUILTIN_BRUSH_COUNT ((i32)(sizeof(builtin_brushes) / sizeof(builtin_brushes[0])))
 
 static gpu_texture_t *builtin_tip_textures[TIP_COUNT];
 
@@ -204,7 +142,8 @@ static void builtin_tip_generate(i32 tip, f32 *a) {
 	}
 }
 
-static gpu_texture_t *builtin_tip_texture(i32 tip) {
+// Texture of a generated tip, NULL for TIP_NONE (round) and imported tips
+gpu_texture_t *brush_tip_texture(i32 tip) {
 	if (tip <= TIP_NONE || tip >= TIP_COUNT) {
 		return NULL;
 	}
@@ -224,104 +163,4 @@ static gpu_texture_t *builtin_tip_texture(i32 tip) {
 		builtin_tip_textures[tip] = gpu_create_texture_from_pixels(&px); // Frees the pixels
 	}
 	return builtin_tip_textures[tip];
-}
-
-i32 builtin_brush_count() {
-	return BUILTIN_BRUSH_COUNT;
-}
-
-i32 builtin_brush_group(i32 i) {
-	return i >= 0 && i < BUILTIN_BRUSH_COUNT ? builtin_brushes[i].group : -1;
-}
-
-i32 builtin_brush_group_count() {
-	return BUILTIN_BRUSH_GROUP_COUNT;
-}
-
-char *builtin_brush_group_name(i32 g) {
-	return builtin_brush_groups[g].name;
-}
-
-i32 builtin_brush_group_icon(i32 g) {
-	return builtin_brush_groups[g].icon;
-}
-
-char *builtin_brush_name(i32 i) {
-	return tr(builtin_brushes[i].name);
-}
-
-static gpu_texture_t *builtin_round_icons[32];
-
-// Round brushes show a disc with their hardness
-gpu_texture_t *builtin_brush_icon(i32 i) {
-	if (builtin_brushes[i].tip != TIP_NONE) {
-		return builtin_tip_texture(builtin_brushes[i].tip);
-	}
-	if (builtin_round_icons[i] == NULL) {
-		i32 n      = 64;
-		u8 *pixels = malloc(n * n * 4);
-		f32 h      = builtin_brushes[i].hardness;
-		f32 r      = n * 0.42f;
-		for (i32 y = 0; y < n; ++y) {
-			for (i32 x = 0; x < n; ++x) {
-				f32 d = sqrtf((x + 0.5f - n * 0.5f) * (x + 0.5f - n * 0.5f) + (y + 0.5f - n * 0.5f) * (y + 0.5f - n * 0.5f)) / r;
-				f32 t = builtin_tip_clamp((d - h) / fmaxf(1.0f - h, 0.001f));
-				f32 v = d > 1.0f ? builtin_tip_clamp((1.0f - d) * r + 1.0f) * (h > 0.99f ? 1.0f : 0.0f) : 1.0f - t * t * (3.0f - 2.0f * t);
-				if (builtin_brushes[i].flow < 1.0f) {
-					v *= 0.6f;
-				}
-				u8 *p = pixels + (y * n + x) * 4;
-				p[0] = p[1] = p[2] = 255;
-				p[3]               = (u8)(builtin_tip_clamp(v) * 255.0f + 0.5f);
-			}
-		}
-		iron_image_pixels_t px     = {.data = pixels, .width = n, .height = n, .format = GPU_TEXTURE_FORMAT_RGBA32};
-		builtin_round_icons[i] = gpu_create_texture_from_pixels(&px);
-	}
-	return builtin_round_icons[i];
-}
-
-// Tip of the picked built-in brush, NULL for a round brush
-gpu_texture_t *builtin_brush_tip() {
-	i32 i = g_context->brush_builtin;
-	if (i < 0 || i >= BUILTIN_BRUSH_COUNT) {
-		return NULL;
-	}
-	return builtin_tip_texture(builtin_brushes[i].tip);
-}
-
-// Sets the tip and stroke settings of built-in brush i, nothing else
-void builtin_brush_settings(i32 i) {
-	builtin_brush_t *b              = &builtin_brushes[i];
-	g_context->brush_builtin        = i;
-	g_context->brush_hardness       = b->hardness;
-	g_context->brush_spacing        = b->spacing;
-	g_context->brush_scatter        = b->scatter;
-	g_context->brush_jitter_size    = b->jitter_size;
-	g_context->brush_jitter_angle   = b->jitter_angle;
-	g_context->brush_jitter_opacity = b->jitter_opacity;
-	g_context->brush_flow           = b->flow;
-}
-
-// After the tip and stroke settings changed: back to painting with them
-static void builtin_brush_applied() {
-	if (g_context->tool != TOOL_TYPE_BRUSH && g_context->tool != TOOL_TYPE_ERASER) {
-		context_select_tool(TOOL_TYPE_BRUSH);
-	}
-	brush_output_node_parse_inputs(); // Picks up the tip, recompiles the paint shader when it changed
-	make_material_parse_paint_material(true);
-	g_context->brush->preview_ready = false; // The parameters panel renders the stroke again
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	ui_popovers_redraw(-1);
-	ui_header_handle->redraws = 2;
-	config_save();
-}
-
-void builtin_brush_use(i32 i) {
-	if (i < 0 || i >= BUILTIN_BRUSH_COUNT) {
-		return;
-	}
-	builtin_brush_settings(i);
-	ui_quick_menu_brush_used(i);
-	builtin_brush_applied();
 }

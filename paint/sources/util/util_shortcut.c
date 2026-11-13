@@ -52,12 +52,7 @@ void util_shortcut_undo_redo() {
 void util_shortcut_global() {
 	if (!g_ui->is_typing) {
 		if (keymap_shortcut(any_map_get(g_keymap, "toggle_node_editor"), SHORTCUT_TYPE_STARTED)) {
-			if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
-				ui_base_show_material_nodes();
-			}
-			else {
-				ui_base_show_brush_nodes();
-			}
+			ui_base_show_material_nodes(); // Brushes are made in the Brush Creator
 		}
 		else if (keymap_shortcut(any_map_get(g_keymap, "toggle_browser"), SHORTCUT_TYPE_STARTED)) {
 			ui_base_toggle_browser();

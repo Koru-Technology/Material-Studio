@@ -9,87 +9,6 @@ void ui_header_init() {
 	ui_header_split_handle->layout = UI_LAYOUT_HORIZONTAL;
 }
 
-static bool ui_header_is_horizontal() {
-	return g_ui->current_window != NULL && g_ui->current_window->layout == UI_LAYOUT_HORIZONTAL;
-}
-
-static void ui_header_pressure_row() {
-	if (pen_connected && !ui_header_is_horizontal()) {
-		f32 button = UI_ELEMENT_H() / (f32)g_ui->_w;
-		ui_row(f32_array_create_from_raw_tmp((f32[]){1.0 - button, button}, 2));
-	}
-}
-
-static void ui_header_pressure_seam(i32 x, i32 y, i32 w, i32 h, u32 color, bool shadows) {
-	draw_set_color(color);
-	draw_filled_rect(x, y, w, h);
-	if (shadows) {
-		draw_set_color(color + 0x00080808);
-		draw_filled_rect(x, y, w, 1);
-		draw_set_color(color + 0x00030303);
-		draw_filled_rect(x, y + h - 1, w, 1);
-	}
-}
-
-static void ui_header_pressure_toggle_bool(bool *value) {
-	if (!pen_connected) {
-		return;
-	}
-	i32  _w              = g_ui->_w;
-	i32  _BUTTON_COL     = g_theme->BUTTON_COL;
-	i32  _HOVER_COL      = g_theme->HOVER_COL;
-	i32  _FILL_BUTTON_BG = g_theme->FILL_BUTTON_BG;
-	bool horizontal      = ui_header_is_horizontal();
-	if (horizontal) {
-		g_ui->_x -= UI_ELEMENT_OFFSET();
-		g_ui->_w = UI_ELEMENT_H();
-	}
-	g_theme->FILL_BUTTON_BG = true;
-	g_theme->BUTTON_COL     = *value ? g_theme->HIGHLIGHT_COL : g_theme->PRESSED_COL;
-	if (*value) {
-		g_theme->HOVER_COL = g_theme->HIGHLIGHT_COL;
-	}
-
-	i32  offset = g_ui->button_offset_y;
-	i32  corner = g_ui->filled_round_corner_image.width;
-	i32  seam_x = g_ui->_x;
-	i32  seam_y = g_ui->_y + g_ui->button_offset_y;
-	bool hover  = ui_get_hover(UI_ELEMENT_H());
-	u32  seam   = hover && g_ui->input_down ? g_theme->PRESSED_COL : hover ? g_theme->HOVER_COL : g_theme->BUTTON_COL;
-
-	if (ui_icon_button("", ICON_EDIT, UI_ALIGN_CENTER)) {
-		*value                    = !*value;
-		g_ui->changed             = true;
-		ui_header_handle->redraws = 2;
-		config_save();
-	}
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Pressure controls"));
-	}
-
-	ui_header_pressure_seam(seam_x - offset - corner, seam_y, offset + corner, UI_BUTTON_H(), g_theme->PRESSED_COL, true);
-	ui_header_pressure_seam(seam_x, seam_y, offset + corner, UI_BUTTON_H(), seam, g_theme->SHADOWS);
-	draw_set_color(0xffffffff);
-
-	g_theme->BUTTON_COL     = _BUTTON_COL;
-	g_theme->HOVER_COL      = _HOVER_COL;
-	g_theme->FILL_BUTTON_BG = _FILL_BUTTON_BG;
-	if (horizontal) {
-		g_ui->_w = _w;
-	}
-}
-
-// Pen pressure on or off for a brush property, the source of its dynamics
-static void ui_header_pressure_toggle(i32 *source) {
-	bool on = *source == 1;
-	bool v  = on;
-	ui_header_pressure_toggle_bool(&v);
-	if (v != on) {
-		*source = v ? 1 : 0;
-		config_save();
-	}
-}
-
 void ui_header_render_ui() {
 	if (g_config->touch_ui) {
 		ui_header_h = ui_header_default_h + 4;
@@ -282,35 +201,8 @@ static void ui_header_draw_symmetry_extra(bool *changed) {
 	}
 }
 
-// Stroke: flow, stamps with spacing, scatter and jitter, smoothing, blur strength
+// Blur strength, the stroke settings are the brush's, see the Brush Creator
 static void ui_header_draw_stroke_options(bool decal_mask) {
-	bool stamps = (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE) && !decal_mask;
-	if (stamps) {
-		ui_slider(&g_context->brush_flow, tr("Flow"), 0.01, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-		if (g_ui->is_hovered) {
-			ui_tooltip(tr("Paint added by each stamp, the stroke builds up to the opacity"));
-		}
-		ui_slider(&g_context->brush_spacing, tr("Spacing"), 0.0, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-		if (g_ui->is_hovered) {
-			ui_tooltip(tr("Distance between brush stamps in brush sizes, 0 paints a continuous stroke"));
-		}
-		if (g_context->brush_spacing > 0.0) {
-			ui_slider(&g_context->brush_scatter, tr("Scatter"), 0.0, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-			ui_slider(&g_context->brush_jitter_size, tr("Size Jitter"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-			bool had_angle = g_context->brush_jitter_angle > 0.0;
-			ui_slider(&g_context->brush_jitter_angle, tr("Angle Jitter"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-			if (ui_item_changed() && had_angle != (g_context->brush_jitter_angle > 0.0)) {
-				make_material_parse_paint_material(true); // Stamp rotation is compiled in only when used
-			}
-			ui_slider(&g_context->brush_jitter_opacity, tr("Opacity Jitter"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-		}
-	}
-	if (stamps || g_context->tool == TOOL_TYPE_BLUR) {
-		ui_slider(&g_context->brush_smoothing, tr("Smoothing"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-		if (g_ui->is_hovered) {
-			ui_tooltip(tr("The brush trails the pen on a string for steady lines"));
-		}
-	}
 	if (g_context->tool == TOOL_TYPE_BLUR) {
 		ui_slider(&g_context->brush_strength, tr("Strength"), 0.01, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 	}
@@ -395,9 +287,6 @@ void ui_header_draw_tool_properties() {
 				}
 			}
 			else {
-				if (!context_is_decal()) {
-					ui_header_pressure_row();
-				}
 				ui_slider(&g_context->brush_radius, tr("Radius"), 0.01, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 				if (g_ui->is_hovered) {
 					any_map_t *vars = any_map_create();
@@ -409,9 +298,6 @@ void ui_header_draw_tool_properties() {
 					        "and move mouse to the right or press {brush_radius_increase} to increase the radius",
 					        vars));
 					map_free(vars);
-				}
-				if (!context_is_decal()) {
-					ui_header_pressure_toggle(&g_config->dyn_size);
 				}
 			}
 		}
@@ -467,7 +353,6 @@ void ui_header_draw_tool_properties() {
 
 		// Rotation of the brush tip (of the decal for decals), apart from the material's texture
 		if (decal_tool || g_context->tool == TOOL_TYPE_BRUSH) {
-			ui_header_pressure_row();
 			ui_slider(&g_context->brush_angle, decal_tool ? tr("Angle") : tr("Tip Angle"), 0.0, 360.0, true, 1, true, UI_ALIGN_RIGHT, true);
 			bool angle_changed = ui_item_changed();
 			if (g_ui->is_hovered) {
@@ -477,13 +362,6 @@ void ui_header_draw_tool_properties() {
 				    "Hold {brush_angle} and move mouse to the left to decrease the angle\nHold {brush_angle} and move mouse to the right to increase the angle",
 				    vars));
 				map_free(vars);
-			}
-			{
-				i32 dyn_angle = g_config->dyn_angle;
-				ui_header_pressure_toggle(&g_config->dyn_angle);
-				if (dyn_angle != g_config->dyn_angle) {
-					make_material_parse_paint_material(true);
-				}
 			}
 
 			if (angle_changed) {
@@ -499,7 +377,6 @@ void ui_header_draw_tool_properties() {
 			}
 		}
 
-		ui_header_pressure_row();
 		ui_slider(&g_context->brush_opacity, tr("Opacity"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 		g_context->brush_opacity = math_max(0.0, math_min(1.0, g_context->brush_opacity));
 		if (g_ui->is_hovered) {
@@ -510,13 +387,10 @@ void ui_header_draw_tool_properties() {
 			               vars));
 			map_free(vars);
 		}
-		ui_header_pressure_toggle(&g_config->dyn_opacity);
 
 		if (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE || decal_mask ||
 		    g_context->tool == TOOL_TYPE_PARTICLE) {
-			ui_header_pressure_row();
 			ui_slider(&g_context->brush_hardness, tr("Hardness"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-			ui_header_pressure_toggle(&g_config->dyn_hardness);
 		}
 
 		ui_header_draw_stroke_options(decal_mask);

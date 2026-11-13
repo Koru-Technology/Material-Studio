@@ -5,10 +5,10 @@
 #include "types.h"
 #include <iron.h>
 
-char *manifest_title           = "Koru Surface";
+char *manifest_title           = "Material Studio";
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "29";
-char *manifest_version_config  = "17";
+char *manifest_version_config  = "18";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -260,8 +260,10 @@ f32                   util_brush_sample_altitude        = -1.0;  // Angles of th
 f32                   util_brush_sample_azimuth         = 0.0;
 f32                   util_brush_sample_roll            = 0.0;
 bool                  util_brush_preview_pen            = false; // The brush preview paints as a pen, its samples set the pressure
+u32                   render_path_paint_stamp_seed_fixed = 0; // Drawing pad: strokes painted again jitter alike, 0 seeds from the time
 i32                   util_render_material_preview_size = 256;
 f32                   util_render_brush_wave_strip      = 0.25; // Wave preview height relative to its width
+f32                   util_render_brush_wave_radius     = 0.25; // Brush size of the wave preview, the brush's preview size
 i32                   util_render_node_preview_size     = 512;
 i32                   util_render_decal_preview_size    = 512;
 i32                   util_render_layer_preview_size    = 200;

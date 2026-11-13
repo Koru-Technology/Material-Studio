@@ -618,18 +618,6 @@ static void box_preferences_draw_pressure_curve() {
 	g_ui->_y += h + 8 * UI_SCALE();
 }
 
-// Combo over some of the values, index holds the shown position (static, the combo is identified by its address)
-static void box_preferences_mapped_combo(i32 *value, i32 *index, i32 *values, string_array_t *labels, char *label) {
-	*index = 0;
-	for (i32 i = 0; i < labels->length; ++i) {
-		if (values[i] == *value) {
-			*index = i;
-		}
-	}
-	ui_combo(index, labels, label, true, UI_ALIGN_LEFT, true);
-	*value = values[*index];
-}
-
 void box_preferences_pen_tab() {
 	ui_text(tr("Pressure controls"), UI_ALIGN_LEFT, 0x00000000);
 
@@ -653,38 +641,10 @@ void box_preferences_pen_tab() {
 		ui_tooltip(tr("Share of the size, opacity and hardness kept at the lightest pressure"));
 	}
 	box_preferences_draw_pressure_curve();
-	// Brush dynamics: what drives each property
-	ui_text(tr("Brush Dynamics"), UI_ALIGN_LEFT, 0x00000000);
-	string_array_t *sources       = any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed"), tr("Tilt")}, 4);
-	static i32      source_values[] = {DYN_SOURCE_OFF, DYN_SOURCE_PRESSURE, DYN_SOURCE_SPEED, DYN_SOURCE_TILT};
-	string_array_t *angle_sources =
-	    any_array_create_from_raw_tmp((void *[]){tr("Off"), tr("Pressure"), tr("Speed"), tr("Direction"), tr("Azimuth"), tr("Barrel Roll")}, 6);
-	static i32 angle_values[] = {DYN_SOURCE_OFF, DYN_SOURCE_PRESSURE, DYN_SOURCE_SPEED, DYN_SOURCE_DIRECTION, DYN_SOURCE_AZIMUTH, DYN_SOURCE_ROLL};
-	static i32 index[5];
-	box_preferences_mapped_combo(&g_config->dyn_size, &index[0], source_values, sources, tr("Size"));
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Tilt: leaning the pencil paints wider"));
+	if (g_ui->changed) { // The pressure curve shapes the strokes in the brush list
+		brush_library_rows_stale();
 	}
-	box_preferences_mapped_combo(&g_config->dyn_opacity, &index[1], source_values, sources, tr("Opacity"));
-	box_preferences_mapped_combo(&g_config->dyn_flow, &index[2], source_values, sources, tr("Flow"));
-	box_preferences_mapped_combo(&g_config->dyn_hardness, &index[3], source_values, sources, tr("Hardness"));
-	i32 dyn_angle = g_config->dyn_angle;
-	box_preferences_mapped_combo(&g_config->dyn_angle, &index[4], angle_values, angle_sources, tr("Angle"));
-	if (dyn_angle != g_config->dyn_angle) {
-		make_material_parse_paint_material(true);
-	}
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Pressure turns the brush, Direction follows the stroke, Azimuth follows where the pencil points, Barrel Roll turns with the "
-		              "Pencil Pro barrel"));
-	}
-	bool tilt_shading = g_config->tilt_shading;
-	ui_check(&g_config->tilt_shading, tr("Tilt Shading"), "");
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Leaning the pencil stretches the brush along it and softens the edge, like shading with the side of a lead"));
-	}
-	if (tilt_shading != g_config->tilt_shading) {
-		make_material_parse_paint_material(true);
-	}
+	ui_text(tr("Each brush sets how pressure and tilt drive it, in the Apple Pencil settings of the Brush Creator"), UI_ALIGN_LEFT, 0x00000000);
 
 	ui_text(tr("Pencil Gestures"), UI_ALIGN_LEFT, 0x00000000);
 	string_array_t *actions = any_array_create_from_raw_tmp(

@@ -174,6 +174,7 @@
 #include "ui/ui_nodes.c"
 #include "ui/ui_panels.c"
 #include "ui/ui_popovers.c"
+#include "ui/ui_brush_creator.c"
 #include "ui/ui_search.c"
 #include "ui/ui_toolbar.c"
 #include "ui/ui_view2d.c"
@@ -208,6 +209,8 @@
 #include "library_cloud.c"
 #include "builtin_materials.c"
 #include "builtin_brushes.c"
+#include "brush_library.c"
+#include "brush_pad.c"
 #include "smart_materials.c"
 #include "console.c"
 #include "context.c"
@@ -407,6 +410,7 @@ void _kickstart() {
 	scene_set_active("Scene");
 	util_render_make_default_world();
 
+	brush_library_apply(brush_library_selected()); // Stroke, taper, shape and pen settings of the brush picked last session
 	uniforms_ext_init();
 	render_path_base_init(); // Allocate gbuffer
 	render_path_commands = render_path_lit_commands;

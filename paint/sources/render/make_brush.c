@@ -23,7 +23,7 @@ static void make_brush_angle_reject(node_shader_t *kong) {
 // shape: x the scale along the direction minus 1, y the direction on screen, see util_brush_tilt_shape.
 static bool make_brush_tilt_shading() {
 	tool_type_t tool = g_context->tool;
-	return g_config->tilt_shading && (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR);
+	return util_brush_shaped() && (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR);
 }
 
 static void make_brush_tilt_stretch(node_shader_t *kong, char *shape, char *pa, char *ba) {

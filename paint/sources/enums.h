@@ -607,13 +607,25 @@ typedef enum {
 
 #define QUICK_MENU_SLOTS 8
 
-// What drives a brush property (config dyn_*), Direction, Azimuth and Roll only for the angle
+// How a brush tip turns: at its fixed angle, with the stroke, or with where the pen points
 typedef enum {
-	DYN_SOURCE_OFF,
-	DYN_SOURCE_PRESSURE,
-	DYN_SOURCE_SPEED,
-	DYN_SOURCE_DIRECTION,
-	DYN_SOURCE_TILT,
-	DYN_SOURCE_AZIMUTH,
-	DYN_SOURCE_ROLL,
-} dyn_source_t;
+	BRUSH_ROTATION_FIXED,
+	BRUSH_ROTATION_FOLLOW,
+	BRUSH_ROTATION_AZIMUTH,
+} brush_rotation_t;
+
+// Brush tip shapes: round, generated in code (builtin_brushes.c), or an image from the library folder
+typedef enum {
+	TIP_NONE,
+	TIP_CHALK,
+	TIP_BRISTLE,
+	TIP_DRY,
+	TIP_SPLATTER,
+	TIP_SPECKLE,
+	TIP_STAR,
+	TIP_STRANDS,
+	TIP_SCALE,
+	TIP_SQUARE,
+	TIP_COUNT,
+	TIP_IMAGE = 100,
+} brush_tip_t;

@@ -168,7 +168,7 @@ static bool ui_popovers_in(i32 *r, f32 x, f32 y) {
 
 // A touch that starts outside the bar and the popover closes it, and goes on to do what it does (paint, orbit, ...)
 void ui_popovers_update() {
-	if (!ui_popovers_enabled() || ui_popovers_open == POPOVER_NONE) {
+	if (!ui_popovers_enabled() || ui_popovers_open == POPOVER_NONE || ui_brush_creator_shown()) {
 		return;
 	}
 	if (!(mouse_started("left") || pen_started("tip"))) {
@@ -457,7 +457,8 @@ static void ui_popovers_draw_popover() {
 }
 
 void ui_popovers_render_ui() {
-	if (!ui_popovers_enabled() || !ui_popovers_view_shown() || base_player || g_context->capturing_screenshot) {
+	// Under the Brush Creator nothing shows, the popover is back as it was once the Creator closes
+	if (!ui_popovers_enabled() || !ui_popovers_view_shown() || base_player || g_context->capturing_screenshot || ui_brush_creator_shown()) {
 		ui_popovers_pop_rect[2] = 0;
 		ui_popovers_rect[2]     = 0;
 		return;

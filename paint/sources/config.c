@@ -55,23 +55,11 @@ void config_save() {
 }
 
 static void config_save_now() {
-	g_config->pressure_radius   = g_config->dyn_size == 1;
-	g_config->pressure_opacity  = g_config->dyn_opacity == 1;
-	g_config->pressure_hardness = g_config->dyn_hardness == 1;
-	g_config->pressure_angle    = g_config->dyn_angle == 1;
 	if (g_context != NULL) { // Brush settings kept across launches
-		g_config->brush_radius = g_context->brush_radius;
-		g_config->brush_opacity = g_context->brush_opacity;
-		g_config->brush_hardness = g_context->brush_hardness;
-		g_config->brush_flow = g_context->brush_flow;
-		g_config->brush_spacing = g_context->brush_spacing;
-		g_config->brush_scatter = g_context->brush_scatter;
-		g_config->brush_jitter_size = g_context->brush_jitter_size;
-		g_config->brush_jitter_angle = g_context->brush_jitter_angle;
-		g_config->brush_jitter_opacity = g_context->brush_jitter_opacity;
-		g_config->brush_smoothing = g_context->brush_smoothing;
+		g_config->brush_radius   = g_context->brush_radius;
+		g_config->brush_opacity  = g_context->brush_opacity;
 		g_config->brush_strength = g_context->brush_strength;
-		g_config->brush_builtin = g_context->brush_builtin;
+		g_config->brush_selected = g_context->brush_selected;
 	}
 
 	// Use system application data folder
@@ -169,29 +157,15 @@ static void config_save_now() {
 	json_encode_bool("hide_builtin_materials", g_config->hide_builtin_materials);
 	json_encode_f32("brush_radius", g_config->brush_radius);
 	json_encode_f32("brush_opacity", g_config->brush_opacity);
-	json_encode_f32("brush_hardness", g_config->brush_hardness);
-	json_encode_f32("brush_flow", g_config->brush_flow);
-	json_encode_f32("brush_spacing", g_config->brush_spacing);
-	json_encode_f32("brush_scatter", g_config->brush_scatter);
-	json_encode_f32("brush_jitter_size", g_config->brush_jitter_size);
-	json_encode_f32("brush_jitter_angle", g_config->brush_jitter_angle);
-	json_encode_f32("brush_jitter_opacity", g_config->brush_jitter_opacity);
-	json_encode_f32("brush_smoothing", g_config->brush_smoothing);
 	json_encode_f32("brush_strength", g_config->brush_strength);
 	json_encode_f32("pressure_curve", g_config->pressure_curve);
 	json_encode_f32("pressure_min", g_config->pressure_min);
-	json_encode_i32("dyn_size", g_config->dyn_size);
-	json_encode_i32("dyn_opacity", g_config->dyn_opacity);
-	json_encode_i32("dyn_flow", g_config->dyn_flow);
-	json_encode_i32("dyn_hardness", g_config->dyn_hardness);
-	json_encode_i32("dyn_angle", g_config->dyn_angle);
-	json_encode_i32("brush_builtin", g_config->brush_builtin);
+	json_encode_i32("brush_selected", g_config->brush_selected);
 	json_encode_bool("hide_builtin_brushes", g_config->hide_builtin_brushes);
 	json_encode_i32("rp_view_transform", g_config->rp_view_transform);
 	json_encode_bool("autosave", g_config->autosave);
 	json_encode_i32("autosave_interval", g_config->autosave_interval);
 	json_encode_i32("finger_paint", g_config->finger_paint);
-	json_encode_bool("tilt_shading", g_config->tilt_shading);
 	json_encode_i32("pencil_double_tap", g_config->pencil_double_tap);
 	json_encode_i32("pencil_squeeze", g_config->pencil_squeeze);
 	if (g_config->quick_menu_slots != NULL) {
@@ -362,29 +336,15 @@ config_t *config_create_default() {
 	c->hide_builtin_materials = false;
 	c->brush_radius = 0.5;
 	c->brush_opacity = 1.0;
-	c->brush_hardness = 1.0;
-	c->brush_flow = 1.0;
-	c->brush_spacing = 0.0;
-	c->brush_scatter = 0.0;
-	c->brush_jitter_size = 0.0;
-	c->brush_jitter_angle = 0.0;
-	c->brush_jitter_opacity = 0.0;
-	c->brush_smoothing = 0.0;
 	c->brush_strength = 0.5;
 	c->pressure_curve = 1.0;
 	c->pressure_min = 0.0;
-	c->dyn_size = 1;
-	c->dyn_opacity = 0;
-	c->dyn_flow = 0;
-	c->dyn_hardness = 0;
-	c->dyn_angle = 0;
-	c->brush_builtin = -1;
+	c->brush_selected = 1; // Round Hard
 	c->hide_builtin_brushes = false;
 	c->rp_view_transform = 0;
 	c->autosave = true;
 	c->autosave_interval = 5;
 	c->finger_paint = 1;
-	c->tilt_shading = false;
 	c->pencil_double_tap = PENCIL_ACTION_SYSTEM;
 	c->pencil_squeeze = PENCIL_ACTION_SYSTEM;
 	c->quick_menu_slots = config_default_quick_menu_slots();
@@ -499,34 +459,25 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->hide_builtin_materials = armpack_map_get_i32(old, "hide_builtin_materials") > 0;
 	c->brush_radius = armpack_map_get_f32(old, "brush_radius");
 	c->brush_opacity = armpack_map_get_f32(old, "brush_opacity");
-	c->brush_hardness = armpack_map_get_f32(old, "brush_hardness");
-	c->brush_flow = armpack_map_get_f32(old, "brush_flow");
-	c->brush_spacing = armpack_map_get_f32(old, "brush_spacing");
-	c->brush_scatter = armpack_map_get_f32(old, "brush_scatter");
-	c->brush_jitter_size = armpack_map_get_f32(old, "brush_jitter_size");
-	c->brush_jitter_angle = armpack_map_get_f32(old, "brush_jitter_angle");
-	c->brush_jitter_opacity = armpack_map_get_f32(old, "brush_jitter_opacity");
-	c->brush_smoothing = armpack_map_get_f32(old, "brush_smoothing");
 	c->brush_strength = armpack_map_get_f32(old, "brush_strength");
 	c->pressure_curve = armpack_map_get_f32(old, "pressure_curve");
 	c->pressure_min = armpack_map_get_f32(old, "pressure_min");
-	c->dyn_size = armpack_map_get_i32(old, "dyn_size");
-	c->dyn_opacity = armpack_map_get_i32(old, "dyn_opacity");
-	c->dyn_flow = armpack_map_get_i32(old, "dyn_flow");
-	c->dyn_hardness = armpack_map_get_i32(old, "dyn_hardness");
-	c->dyn_angle = armpack_map_get_i32(old, "dyn_angle");
-	c->brush_builtin = armpack_map_get_i32(old, "brush_builtin");
+	c->brush_selected = any_map_get(old, "brush_selected") != NULL ? armpack_map_get_i32(old, "brush_selected") : 1;
 	c->hide_builtin_brushes = armpack_map_get_i32(old, "hide_builtin_brushes") > 0;
 	c->rp_view_transform = armpack_map_get_i32(old, "rp_view_transform");
 	c->autosave = armpack_map_get_i32(old, "autosave") > 0;
 	c->autosave_interval = armpack_map_get_i32(old, "autosave_interval");
 	c->finger_paint = armpack_map_get_i32(old, "finger_paint");
-	c->tilt_shading = armpack_map_get_i32(old, "tilt_shading") > 0;
 	c->pencil_double_tap = armpack_map_get_i32(old, "pencil_double_tap");
 	c->pencil_squeeze = armpack_map_get_i32(old, "pencil_squeeze");
 	c->quick_menu_slots = any_map_get(old, "quick_menu_slots");
 	c->undo_memory_mb = armpack_map_get_i32(old, "undo_memory_mb");
 	return c;
+}
+
+// Stroke settings and pen dynamics moved into the brushes (brush library), their keys are dropped
+config_t *config_from_version_17(any_map_t *old) {
+	return config_from_map_to_config(old);
 }
 
 // Object mode, scripts and the console agent were removed, their keys are dropped
@@ -536,7 +487,7 @@ config_t *config_from_version_16(any_map_t *old) {
 
 config_t *config_from_version_15(any_map_t *old) {
 	config_t *def = config_create_default();
-	armpack_map_set_i32(old, "tilt_shading", def->tilt_shading);
+	armpack_map_set_i32(old, "tilt_shading", 0);
 	armpack_map_set_i32(old, "pencil_double_tap", def->pencil_double_tap);
 	armpack_map_set_i32(old, "pencil_squeeze", def->pencil_squeeze);
 	any_map_set(old, "quick_menu_slots", def->quick_menu_slots);
@@ -672,6 +623,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_14,
 	    config_from_version_15,
 	    config_from_version_16,
+	    config_from_version_17,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {

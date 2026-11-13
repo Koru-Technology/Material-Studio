@@ -15,7 +15,7 @@ static i32  ui_quick_menu_drag    = QUICK_MENU_NONE;
 static f32  ui_quick_menu_drag_x;
 static f32  ui_quick_menu_drag_value;
 static bool ui_quick_menu_swallow = false; // The press that closed the menu stays out of the canvas until released
-static i32  ui_quick_menu_recent[3] = {-1, -1, -1}; // Built-in brushes, the latest first
+static i32  ui_quick_menu_recent[3] = {-1, -1, -1}; // Brush library ids, the latest first
 
 static f32 ui_quick_menu_radius() {
 	return 130 * UI_SCALE();
@@ -25,13 +25,13 @@ static f32 ui_quick_menu_inner() {
 	return ui_quick_menu_radius() * 0.32;
 }
 
-void ui_quick_menu_brush_used(i32 builtin) {
-	if (builtin < 0 || ui_quick_menu_recent[0] == builtin) {
+void ui_quick_menu_brush_used(i32 id) {
+	if (id < 0 || ui_quick_menu_recent[0] == id) {
 		return;
 	}
 	i32 last = 2;
 	for (i32 i = 0; i < 3; ++i) {
-		if (ui_quick_menu_recent[i] == builtin) {
+		if (ui_quick_menu_recent[i] == id) {
 			last = i;
 			break;
 		}
@@ -39,7 +39,7 @@ void ui_quick_menu_brush_used(i32 builtin) {
 	for (i32 i = last; i > 0; --i) {
 		ui_quick_menu_recent[i] = ui_quick_menu_recent[i - 1];
 	}
-	ui_quick_menu_recent[0] = builtin;
+	ui_quick_menu_recent[0] = id;
 }
 
 static i32 ui_quick_menu_item(i32 slot) {
@@ -87,8 +87,8 @@ char *ui_quick_menu_item_name(i32 item) {
 // Shown on the menu: recent brushes by their name
 static char *ui_quick_menu_item_label(i32 item) {
 	if (item >= QUICK_MENU_RECENT_BRUSH_1 && item <= QUICK_MENU_RECENT_BRUSH_3) {
-		i32 b = ui_quick_menu_recent[item - QUICK_MENU_RECENT_BRUSH_1];
-		return b >= 0 ? builtin_brush_name(b) : "";
+		brush_def_t *b = brush_library_find(ui_quick_menu_recent[item - QUICK_MENU_RECENT_BRUSH_1]);
+		return b != NULL ? brush_library_name(b) : "";
 	}
 	if (item == QUICK_MENU_SIZE) {
 		return string_tmp("%s %d", tr("Size"), (i32)math_round(g_context->brush_radius * 100.0));
@@ -112,7 +112,7 @@ static bool ui_quick_menu_item_enabled(i32 item) {
 	case QUICK_MENU_RECENT_BRUSH_1:
 	case QUICK_MENU_RECENT_BRUSH_2:
 	case QUICK_MENU_RECENT_BRUSH_3:
-		return ui_quick_menu_recent[item - QUICK_MENU_RECENT_BRUSH_1] >= 0;
+		return brush_library_find(ui_quick_menu_recent[item - QUICK_MENU_RECENT_BRUSH_1]) != NULL;
 	default:
 		return true;
 	}
@@ -199,7 +199,7 @@ static void ui_quick_menu_run(i32 item) {
 	case QUICK_MENU_RECENT_BRUSH_1:
 	case QUICK_MENU_RECENT_BRUSH_2:
 	case QUICK_MENU_RECENT_BRUSH_3:
-		builtin_brush_use(ui_quick_menu_recent[item - QUICK_MENU_RECENT_BRUSH_1]);
+		brush_library_use(brush_library_find(ui_quick_menu_recent[item - QUICK_MENU_RECENT_BRUSH_1]));
 		break;
 	default:
 		break;

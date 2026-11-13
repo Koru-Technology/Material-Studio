@@ -118,7 +118,7 @@ static i32 export_obj_dedupe(u64 *keys, i32 len, i32 *map, i32 *first) {
 
 void export_obj_run(char *path, mesh_object_t_array_t *paint_objects) {
 	u8_array_t *o = u8_array_create(0);
-	export_obj_write_string(o, "# Koru Surface\n");
+	export_obj_write_string(o, "# Material Studio\n");
 
 	i32 poff = 0;
 	i32 noff = 0;

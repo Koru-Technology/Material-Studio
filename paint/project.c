@@ -1,8 +1,8 @@
 #include "../base/tools/amake/amake.h"
 
 project_t *main() {
-	flags->name                = "KoruSurface";
-	flags->package             = "technology.koru.surface";
+	flags->name                = "MaterialStudio";
+	flags->package             = "technology.koru.materialstudio";
 	flags->embed               = has_arg("--embed"); // !has_arg("--debug"); // clang 19
 	flags->with_physics        = true;
 	flags->with_d3dcompiler    = true;

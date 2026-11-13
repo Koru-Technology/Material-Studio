@@ -8,7 +8,7 @@ int checks = 0;
 int step   = 0;
 int frame  = 0;
 
-char            *tmp_root = "/tmp/korusurface_uv";
+char            *tmp_root = "/tmp/materialstudio_uv";
 char            *file_new = NULL;
 char            *file_old = NULL;
 slot_material_t *checker  = NULL;
@@ -165,7 +165,7 @@ void main() {
 	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	char *save = script_save_path();
 	if (string_index_of(save, "/var/mobile/") >= 0) { // ios, /tmp is outside the sandbox
-		tmp_root = string("%s/korusurface_uv", save);
+		tmp_root = string("%s/materialstudio_uv", save);
 	}
 	iron_create_directory(tmp_root);
 	file_new = string("%s/uv_new.arm", tmp_root);

@@ -27,7 +27,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		f32 radius = decal_mask ? brush_decal_mask_radius : g_context->brush_radius;
 		f32 val    = (radius * g_context->brush_nodes_radius * g_context->brush_dab_radius) / 15.0;
 		if (!decal) {
-			val *= util_brush_dynamic(g_config->dyn_size, true);
+			val *= util_brush_dynamic(g_context->brush_pressure_size, g_context->brush_tilt_size, true);
 		}
 		f32 scale2d = (900 / (float)base_h()) * g_config->window_scale;
 		if (!decal) {
@@ -72,7 +72,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_brush_flow")) {
 		bool stamps = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
-		return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_config->dyn_flow, false) : 1.0;
+		return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_context->brush_pressure_flow, 0.0, false) : 1.0;
 	}
 	else if (string_equals(link, "_brush_strength")) {
 		return g_context->brush_strength;
@@ -85,7 +85,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_brush_opacity")) {
 		f32 val = g_context->brush_opacity * g_context->brush_nodes_opacity * g_context->brush_dab_opacity;
-		val *= util_brush_dynamic(g_config->dyn_opacity, false);
+		val *= util_brush_dynamic(g_context->brush_pressure_opacity, g_context->brush_tilt_opacity, false);
 		return math_max(0.0, math_min(1.0, val));
 	}
 	else if (string_equals(link, "_brush_hardness")) {
@@ -94,8 +94,8 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 			return 1.0;
 		}
 		f32 val = fmaxf((g_context->brush_hardness * g_context->brush_nodes_hardness) - 0.02, 0.0);
-		val *= util_brush_dynamic(g_config->dyn_hardness, false);
-		if (g_config->tilt_shading) { // The side of the lead paints a softer edge
+		val *= util_brush_dynamic(g_context->brush_pressure_hardness, 0.0, false);
+		if (g_context->brush_tilt_shading) { // The side of the lead paints a softer edge
 			val *= 1.0 - 0.6 * util_brush_pen_tilt();
 		}
 		val *= val;
@@ -199,26 +199,7 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 		return (vec2_t){math_cos(-angle), math_sin(-angle)};
 	}
 	else if (string_equals(link, "_brush_angle")) {
-		f32 brush_angle = g_context->brush_angle + g_context->brush_nodes_angle;
-		f32 angle       = g_context->layer->fill_material != NULL ? g_context->layer->angle : brush_angle;
-		angle *= (math_pi() / 180.0);
-		if (g_context->layer->fill_material == NULL && !slot_layer_is_path(g_context->layer)) {
-			if (g_config->dyn_angle == 1 && util_brush_pen_active()) {
-				angle += util_brush_pen_pressure() * math_pi(); // Pressure turns the brush up to half a turn
-			}
-			else if (g_config->dyn_angle == 2 && g_context->brush_time > 0) {
-				angle += g_context->brush_speed * math_pi(); // Faster strokes turn the brush further
-			}
-			else if (g_config->dyn_angle == DYN_SOURCE_DIRECTION && g_context->brush_time > 0) {
-				angle += g_context->brush_stroke_angle; // Follows the stroke
-			}
-			else if (g_config->dyn_angle == DYN_SOURCE_AZIMUTH) {
-				angle += util_brush_pen_azimuth(); // Follows where the pen points
-			}
-			else if (g_config->dyn_angle == DYN_SOURCE_ROLL) {
-				angle += util_brush_pen_roll(); // Turning the barrel turns the brush
-			}
-		}
+		f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle * (math_pi() / 180.0) : util_brush_tip_angle();
 		return (vec2_t){math_cos(-angle), math_sin(-angle)};
 	}
 	else if (string_equals(link, "_brush_tilt")) {

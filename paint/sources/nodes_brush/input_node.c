@@ -68,6 +68,8 @@ static void input_node_grid_snap() {
 	input_node_coords.y = base_paint_y(sy);
 }
 
+static render_path_paint_filter_t input_node_filter = {0};
+
 void input_node_update(float_node_t *self) {
 	bool  decal_mask  = context_is_decal_mask_paint();
 	char *ruler_paint = string_tmp("%s+%s", any_map_get(g_keymap, "brush_ruler"), any_map_get(g_keymap, "action_paint"));
@@ -80,6 +82,7 @@ void input_node_update(float_node_t *self) {
 	if (mouse_started("left")) {
 		input_node_start_x = paint_x;
 		input_node_start_y = paint_y;
+		input_node_filter.started = false;
 	}
 
 	if (pen_down("tip")) {
@@ -89,6 +92,11 @@ void input_node_update(float_node_t *self) {
 	if (pen_started("tip")) {
 		input_node_start_x = base_paint_x(pen_x);
 		input_node_start_y = base_paint_y(pen_y);
+	}
+
+	// Streamline and stabilization of finger and mouse strokes, pen samples are smoothed as they are painted (render_path_paint_points)
+	if (!pen_down("tip") && keymap_shortcut(any_map_get(g_keymap, "action_paint"), SHORTCUT_TYPE_DOWN) && !slot_layer_is_path(g_context->layer)) {
+		render_path_paint_filter_apply(&input_node_filter, &paint_x, &paint_y, sys_delta());
 	}
 
 	if (keymap_shortcut(ruler_paint, SHORTCUT_TYPE_DOWN)) {
@@ -158,8 +166,8 @@ void input_node_update(float_node_t *self) {
 }
 
 logic_node_value_t *input_node_get(input_node_t *self, i32 from) {
-	// Smoothing of the tool options, or the lazy radius of the brush nodes when larger
-	g_context->brush_lazy_radius = math_max(logic_node_input_get(self->base->inputs->buffer[0])->_f32, g_context->brush_smoothing);
+	// Lazy radius of the brush nodes, the brush's streamline smooths the stroke apart from it
+	g_context->brush_lazy_radius = logic_node_input_get(self->base->inputs->buffer[0])->_f32;
 	g_context->brush_lazy_step   = logic_node_input_get(self->base->inputs->buffer[1])->_f32;
 	if (from == 1) {
 		f32                 pressure = (pen_down("tip") || pen_released("tip")) ? util_brush_pen_pressure() : 1.0;

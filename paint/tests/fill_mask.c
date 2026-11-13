@@ -176,13 +176,7 @@ void main() {
 	ctx->brush_radius  = 0.4;
 	ctx->brush_opacity = 1.0;
 	context_select_tool(TOOL_TYPE_BRUSH);
-	// Hard, full strength stamps whatever the brush settings of the last session were
-	ctx->brush_hardness       = 1.0;
-	ctx->brush_flow           = 1.0;
-	ctx->brush_spacing        = 0.0;
-	ctx->brush_scatter        = 0.0;
-	ctx->brush_jitter_size    = 0.0;
-	ctx->brush_jitter_opacity = 0.0;
-	ctx->brush_smoothing      = 0.0;
+	// Hard, full strength stamps whatever brush the last session picked
+	script_brush_defaults();
 	script_notify_on_next_frame(next);
 }

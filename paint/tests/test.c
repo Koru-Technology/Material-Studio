@@ -1,6 +1,6 @@
 #include "global.h"
 
-char *tmp_root = "/tmp/korusurface";
+char *tmp_root = "/tmp/materialstudio";
 char *dir_textures;
 char *dir_project;
 char *dir_mesh;
@@ -1644,7 +1644,7 @@ void main() {
 	}
 	char *save = script_save_path();
 	if (string_index_of(save, "/var/mobile/") >= 0) { // ios, /tmp is outside the sandbox
-		tmp_root = string("%s/korusurface_test", save);
+		tmp_root = string("%s/materialstudio_test", save);
 	}
 	dir_textures    = string("%s/textures", tmp_root);
 	dir_project     = string("%s/project", tmp_root);

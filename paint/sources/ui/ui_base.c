@@ -166,7 +166,7 @@ void ui_base_update(void *_) {
 
 	ui_base_panel_update_grab();
 	ui_popovers_update(); // A touch outside an open popover closes it
-	if (base_ui_enabled && !ui_base_panel_grab) {
+	if (base_ui_enabled && !ui_base_panel_grab && !ui_brush_creator_shown()) {
 		render_gizmo_update();
 		util_layer_update_path();
 		util_touch_update();
@@ -213,7 +213,7 @@ void ui_base_update(void *_) {
 		return;
 	}
 
-	g_ui->input_enabled = base_ui_enabled;
+	g_ui->input_enabled = base_ui_enabled && !ui_brush_creator_shown(); // The Brush Creator covers the screen
 
 	// Nothing to display
 	if (ui_dock_is_empty()) {
@@ -231,6 +231,7 @@ void ui_base_update(void *_) {
 	ui_panels_render_ui();
 	ui_popovers_render_ui();
 	ui_dock_render_resize_line();
+	ui_brush_creator_render_ui(); // Over everything
 	ui_end();
 	ui_base_panel_rects_count = ui_base_panel_rects_drawn;
 	g_ui->input_enabled = true;
@@ -314,9 +315,6 @@ void ui_base_show_material_nodes() {
 	ui_base_show_nodes(CANVAS_TYPE_MATERIAL);
 }
 
-void ui_base_show_brush_nodes() {
-	ui_base_show_nodes(CANVAS_TYPE_BRUSH);
-}
 
 void ui_base_show_2d_view(view_2d_type_t type) {
 	// Clear input state as ui receives input events even when not drawn

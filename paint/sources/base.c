@@ -429,9 +429,6 @@ void base_update(void *_) {
 			base_drag_layer = NULL;
 		}
 		else if (base_drag_brush != NULL) {
-			if (context_in_brushes()) {
-				tab_brushes_accept_brush_drop(base_drag_brush);
-			}
 			base_drag_brush = NULL;
 		}
 		else if (base_drag_font != NULL) {

@@ -1,4 +1,4 @@
-# Koru Surface
+# Material Studio
 
 A 3D texture painting app for iPad and Mac, based on [ArmorPaint](https://armorpaint.org). The engine (`base/`) is a fork of iron; the app lives in `paint/`. More developer docs are in [base/docs](base/docs/readme.md).
 
@@ -11,20 +11,20 @@ All commands run from `paint/`.
 ```sh
 ../base/make
 cd build
-xcodebuild -project KoruSurface.xcodeproj -scheme KoruSurface -configuration Release \
+xcodebuild -project MaterialStudio.xcodeproj -scheme MaterialStudio -configuration Release \
   -derivedDataPath dd_mac CODE_SIGN_IDENTITY="-"
 ```
 
-The app is at `build/dd_mac/Build/Products/Release/KoruSurface.app`.
+The app is at `build/dd_mac/Build/Products/Release/MaterialStudio.app`.
 
 **iPad**
 
 ```sh
 ../base/make --target ios
 cd build
-xcodebuild -project KoruSurface.xcodeproj -scheme KoruSurface -configuration Release \
+xcodebuild -project MaterialStudio.xcodeproj -scheme MaterialStudio -configuration Release \
   -destination generic/platform=iOS -derivedDataPath dd -allowProvisioningUpdates \
-  PRODUCT_BUNDLE_IDENTIFIER=technology.koru.surface DEVELOPMENT_TEAM=<team id> \
+  PRODUCT_BUNDLE_IDENTIFIER=technology.koru.materialstudio DEVELOPMENT_TEAM=<team id> \
   CODE_SIGN_IDENTITY="Apple Development"
 ```
 
@@ -46,7 +46,7 @@ Install the build:
 
 ```sh
 xcrun devicectl device install app --device <device id> \
-  build/dd/Build/Products/Release-iphoneos/KoruSurface.app
+  build/dd/Build/Products/Release-iphoneos/MaterialStudio.app
 ```
 
 The first install on a new device needs the developer certificate trusted on the iPad (Settings → General → VPN & Device Management).
@@ -58,7 +58,7 @@ The app runs a C script (minic) given with `--script`. The script API is listed 
 **Mac**
 
 ```sh
-build/dd_mac/Build/Products/Release/KoruSurface.app/Contents/MacOS/KoruSurface \
+build/dd_mac/Build/Products/Release/MaterialStudio.app/Contents/MacOS/MaterialStudio \
   --script $PWD/tests/test.c > test.log 2>&1
 ```
 
@@ -70,11 +70,11 @@ Copy the script into the app's Documents folder, then launch the app with it. `-
 
 ```sh
 xcrun devicectl device copy to --device <device id> \
-  --domain-type appDataContainer --domain-identifier technology.koru.surface \
+  --domain-type appDataContainer --domain-identifier technology.koru.materialstudio \
   --source tests/test.c --destination Documents/test.c
 
 xcrun devicectl device process launch --console --terminate-existing \
-  --device <device id> technology.koru.surface --script "~/Documents/test.c"
+  --device <device id> technology.koru.materialstudio --script "~/Documents/test.c"
 ```
 
 Files the app writes into Documents (for example screenshots from a script) can be fetched with `xcrun devicectl device copy from` and the same `--domain-type`/`--domain-identifier` arguments.

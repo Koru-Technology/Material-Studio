@@ -912,9 +912,6 @@ void minic_register_builtins() {
 	MINIC_I(rp_view_transform);
 	MINIC_I(autosave);
 	MINIC_I(autosave_interval);
-	MINIC_I(dyn_size);
-	MINIC_I(dyn_angle);
-	MINIC_B(tilt_shading);
 	MINIC_I(pencil_double_tap);
 	MINIC_I(pencil_squeeze);
 	MINIC_I(undo_memory_mb);
@@ -935,7 +932,9 @@ void minic_register_builtins() {
 	MINIC_F(brush_angle);
 	MINIC_F(mask_value);
 	MINIC_F(brush_spacing);
-	MINIC_F(brush_scatter);
+	MINIC_I(brush_selected);
+	MINIC_F(brush_jitter_lateral);
+	MINIC_F(brush_jitter_linear);
 	MINIC_F(brush_jitter_size);
 	MINIC_F(brush_jitter_angle);
 	MINIC_F(brush_jitter_opacity);
@@ -1127,7 +1126,7 @@ char *minic_api_header_generate(void) {
 
 	buffer_t sb;
 	string_buffer_init(&sb);
-	string_buffer_append(&sb, "// Koru Surface script API\n\n");
+	string_buffer_append(&sb, "// Material Studio script API\n\n");
 
 	// Structs
 	for (int i = 0; i < minic_struct_count; ++i) {

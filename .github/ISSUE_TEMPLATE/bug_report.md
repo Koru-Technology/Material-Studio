@@ -15,7 +15,7 @@ https://forums.armorpaint.org/c/support
 https://github.com/armory3d/armorpaint/issues?q=is%3Aissue
 -->
 
-**Koru Surface version:**
+**Material Studio version:**
 <!-- Specify commit hash if using git build. -->
 
 

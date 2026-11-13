@@ -1,0 +1,10 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project MaterialStudio.xcodeproj -scheme MaterialStudio -configuration Release -destination generic/platform=iOS -derivedDataPath dd -allowProvisioningUpdates PRODUCT_BUNDLE_IDENTIFIER=technology.koru.materialstudio DEVELOPMENT_TEAM=NKX923ZQ6M "CODE_SIGN_IDENTITY=Apple Development"
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = Apple Development
+    DEVELOPMENT_TEAM = NKX923ZQ6M
+    PRODUCT_BUNDLE_IDENTIFIER = technology.koru.materialstudio
+
+2026-11-13 14:25:20.452 xcodebuild[20732:5519424] Writing error result bundle to /var/folders/wl/83s478wj7r9f3x_9mcrf720c0000gn/T/ResultBundle_2026-13-11_14-25-0020.xcresult
+xcodebuild: error: 'MaterialStudio.xcodeproj' does not exist.

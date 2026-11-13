@@ -148,14 +148,8 @@ void context_init() {
 	g_context->brush_lazy_step              = 0.0;
 	g_context->brush_lazy_x                 = 0.0;
 	g_context->brush_lazy_y                 = 0.0;
-	g_context->brush_spacing                = 0.0;
-	g_context->brush_scatter                = 0.0;
-	g_context->brush_jitter_size            = 0.0;
-	g_context->brush_jitter_angle           = 0.0;
-	g_context->brush_jitter_opacity         = 0.0;
-	g_context->brush_flow                   = 1.0;
-	g_context->brush_smoothing              = 0.0;
 	g_context->brush_strength               = 0.5;
+	g_context->brush_stroke_length          = 0.0;
 	g_context->brush_dab_x                  = -1.0;
 	g_context->brush_dab_y                  = -1.0;
 	g_context->brush_dab_radius             = 1.0;
@@ -163,7 +157,6 @@ void context_init() {
 	g_context->brush_dab_angle              = 0.0;
 	g_context->brush_speed                  = 0.0;
 	g_context->brush_stroke_angle           = 0.0;
-	g_context->brush_builtin                = -1;
 	g_context->brush_paint                  = UV_TYPE_UVMAP;
 	g_context->brush_angle_reject_dot       = 0.5;
 	g_context->bake_type                    = BAKE_TYPE_CURVATURE;
@@ -197,20 +190,12 @@ void context_init() {
 	g_context->tool                         = TOOL_TYPE_BRUSH;
 	g_context->color_picker_previous_tool   = TOOL_TYPE_BRUSH;
 	g_context->brush_radius                 = 0.5;
-	g_context->brush_hardness               = 1.0;
+	g_context->brush_selected               = 1;
 	if (g_config != NULL && g_config->brush_radius > 0.0) { // Brush settings of the last session
-		g_context->brush_radius = g_config->brush_radius;
-		g_context->brush_opacity = g_config->brush_opacity;
-		g_context->brush_hardness = g_config->brush_hardness;
-		g_context->brush_flow = g_config->brush_flow;
-		g_context->brush_spacing = g_config->brush_spacing;
-		g_context->brush_scatter = g_config->brush_scatter;
-		g_context->brush_jitter_size = g_config->brush_jitter_size;
-		g_context->brush_jitter_angle = g_config->brush_jitter_angle;
-		g_context->brush_jitter_opacity = g_config->brush_jitter_opacity;
-		g_context->brush_smoothing = g_config->brush_smoothing;
+		g_context->brush_radius   = g_config->brush_radius;
+		g_context->brush_opacity  = g_config->brush_opacity;
 		g_context->brush_strength = g_config->brush_strength;
-		g_context->brush_builtin = g_config->brush_builtin;
+		g_context->brush_selected = g_config->brush_selected;
 	}
 	g_context->project_type                 = -1;
 }

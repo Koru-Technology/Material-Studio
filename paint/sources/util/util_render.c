@@ -452,38 +452,23 @@ static void util_render_brush_preview_clear_coverage() {
 	render_path_paint_clear_blend();
 }
 
-void util_render_make_brush_preview() {
-	if (render_path_paint_live_layer_locked) {
-		return;
-	}
-
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
+// Brush strokes painted on the plane facing the camera, into the live layer, with a default material and no symmetry.
+// The brush preview and the drawing pad of the Brush Creator paint this way. Not while a window draws.
+void util_render_brush_scene_begin(util_render_brush_scene_t *sc) {
+	sc->current = _draw_current;
+	sc->in_use  = gpu_in_use;
+	if (sc->in_use) {
 		draw_end();
+	}
 
 	g_context->material_preview = true;
 
-	// Prepare layers
 	if (render_path_paint_live_layer == NULL) {
 		render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
 	}
-
-	slot_layer_t *l = render_path_paint_live_layer;
 	render_path_paint_live_layer_used();
-	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 
-	if (g_context->brush->image == NULL) {
-		g_context->brush->image = gpu_create_render_target(util_render_material_preview_size, util_render_material_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
-		i32 w_icon              = ui_base_asset_icon_size();
-		g_context->brush->image_icon = gpu_create_render_target(w_icon, w_icon, GPU_TEXTURE_FORMAT_RGBA32);
-	}
-	if (g_context->brush->image_wave == NULL) {
-		i32 w                        = util_render_material_preview_size;
-		g_context->brush->image_wave = gpu_create_render_target(w, math_floor(w * util_render_brush_wave_strip), GPU_TEXTURE_FORMAT_RGBA32);
-	}
-
-	// A default material paints the preview, kept across previews (it was created, and leaked, every time)
+	// A default material paints the strokes, kept across previews (it was created, and leaked, every time)
 	static slot_material_t *preview_material = NULL;
 	if (preview_material == NULL) {
 		preview_material = slot_material_create(NULL, NULL);
@@ -497,23 +482,23 @@ void util_render_make_brush_preview() {
 			}
 		}
 	}
-	slot_material_t *_material = g_context->material;
-	g_context->material        = preview_material;
+	sc->material        = g_context->material;
+	g_context->material = preview_material;
 
 	// Prevent grid jump
 	g_context->material->nodes->pan_x = g_context->brush->nodes->pan_x;
 	g_context->material->nodes->pan_y = g_context->brush->nodes->pan_y;
 	g_context->material->nodes->zoom  = g_context->brush->nodes->zoom;
 
-	tool_type_t _tool = g_context->tool;
-	g_context->tool   = TOOL_TYPE_BRUSH;
+	sc->tool        = g_context->tool;
+	g_context->tool = TOOL_TYPE_BRUSH;
 
-	slot_layer_t *_layer = g_context->layer;
+	sc->layer = g_context->layer;
 	if (slot_layer_is_mask(g_context->layer)) {
 		g_context->layer = g_context->layer->parent;
 	}
 
-	slot_material_t *_fill_material = g_context->layer->fill_material;
+	sc->fill_material               = g_context->layer->fill_material;
 	g_context->layer->fill_material = NULL;
 
 	render_path_paint_use_live_layer(true);
@@ -523,22 +508,22 @@ void util_render_make_brush_preview() {
 	any_map_set(render_path_render_targets, string("texpaint_undo%d", hid), any_map_get(render_path_render_targets, "empty_black"));
 
 	// Set plane mesh
-	mesh_object_t *painto   = g_context->paint_object;
-	u8_array_t    *visibles = u8_array_create_from_raw((u8[]){}, 0);
+	sc->paint_object = g_context->paint_object;
+	sc->visibles     = u8_array_create_from_raw((u8[]){}, 0);
 	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		u8_array_push(visibles, p->base->visible);
+		u8_array_push(sc->visibles, p->base->visible);
 		p->base->visible = false;
 	}
-	bool merged_object_visible = false;
+	sc->merged_visible = false;
 	if (g_context->merged_object != NULL) {
-		merged_object_visible                   = g_context->merged_object->base->visible;
+		sc->merged_visible                      = g_context->merged_object->base->visible;
 		g_context->merged_object->base->visible = false;
 	}
 
 	camera_object_t *cam    = scene_camera;
 	g_context->saved_camera = cam->base->transform->local;
-	f32 saved_fov           = cam->data->fov;
+	sc->fov                 = cam->data->fov;
 	viewport_update_camera_type(CAMERA_TYPE_PERSPECTIVE);
 	mat4_t m = mat4_identity();
 	m        = mat4_translate(m, 0, 0, 0.5);
@@ -551,10 +536,10 @@ void util_render_make_brush_preview() {
 	mesh_object_t *planeo   = scene_get_child(".Plane")->ext;
 	planeo->base->visible   = true;
 	g_context->paint_object = planeo;
+	sc->plane               = planeo;
 
-	vec4_t v                       = (vec4_t){0.0, 0.0, 0.0, 1.0};
-	v                              = (vec4_t){m.m00, m.m01, m.m02, 1.0};
-	f32 sx                         = vec4_len(v);
+	vec4_t v                       = (vec4_t){m.m00, m.m01, m.m02, 1.0};
+	f32    sx                      = vec4_len(v);
 	planeo->base->transform->rot   = quat_from_euler(-math_pi() / 2.0, 0, 0);
 	planeo->base->transform->scale = (vec4_t){sx, 1.0, sx, 1.0};
 	planeo->base->transform->loc   = (vec4_t){m.m30, -m.m31, 0.0, 1.0};
@@ -563,19 +548,115 @@ void util_render_make_brush_preview() {
 	render_path_paint_live_layer_drawn = 0;
 	render_path_base_draw_gbuffer();
 
+	sc->radius        = g_context->brush_radius;
+	sc->opacity       = g_context->brush_opacity;
+	sc->hardness      = g_context->brush_hardness;
+	sc->x             = g_context->paint_vec.x;
+	sc->y             = g_context->paint_vec.y;
+	sc->last_x        = g_context->last_paint_vec_x;
+	sc->last_y        = g_context->last_paint_vec_y;
+	sc->pdirty        = g_context->pdirty;
+	g_context->pdirty = 2;
+
+	// Stamps are measured on the plane, without symmetry copies
+	sc->posx               = g_context->posx_picked;
+	sc->posy               = g_context->posy_picked;
+	sc->posz               = g_context->posz_picked;
+	sc->sym_x              = g_context->sym_x;
+	sc->sym_y              = g_context->sym_y;
+	sc->sym_z              = g_context->sym_z;
+	sc->sym_radial         = g_context->sym_radial;
+	g_context->sym_x       = false;
+	g_context->sym_y       = false;
+	g_context->sym_z       = false;
+	g_context->sym_radial  = 1;
+	g_context->posx_picked = planeo->base->transform->loc.x;
+	g_context->posy_picked = planeo->base->transform->loc.y;
+	g_context->posz_picked = planeo->base->transform->loc.z;
+
+	sc->speed        = g_context->brush_speed;
+	sc->stroke_angle = g_context->brush_stroke_angle;
+	sc->brush_time   = g_context->brush_time;
+}
+
+void util_render_brush_scene_end(util_render_brush_scene_t *sc) {
+	util_brush_preview_pen        = false;
+	util_brush_sample_pressure    = -1.0;
+	util_brush_sample_altitude    = -1.0;
+	g_context->brush_speed        = sc->speed;
+	g_context->brush_stroke_angle = sc->stroke_angle;
+	g_context->brush_time         = sc->brush_time;
+	g_context->brush_dab_x        = -1.0;
+	g_context->brush_dab_y        = -1.0;
+	g_context->posx_picked        = sc->posx;
+	g_context->posy_picked        = sc->posy;
+	g_context->posz_picked        = sc->posz;
+	g_context->sym_x              = sc->sym_x;
+	g_context->sym_y              = sc->sym_y;
+	g_context->sym_z              = sc->sym_z;
+	g_context->sym_radial         = sc->sym_radial;
+
+	g_context->brush_radius     = sc->radius;
+	g_context->brush_opacity    = sc->opacity;
+	g_context->brush_hardness   = sc->hardness;
+	g_context->paint_vec.x      = sc->x;
+	g_context->paint_vec.y      = sc->y;
+	g_context->last_paint_vec_x = sc->last_x;
+	g_context->last_paint_vec_y = sc->last_y;
+	g_context->prev_paint_vec_x = -1;
+	g_context->prev_paint_vec_y = -1;
+	g_context->pdirty           = sc->pdirty;
+	render_path_paint_use_live_layer(false);
+	g_context->layer->fill_material = sc->fill_material;
+	g_context->layer                = sc->layer;
+	g_context->material             = sc->material;
+	g_context->tool                 = sc->tool;
+	sys_notify_on_next_frame(&util_render_make_brush_preview_parse_paint_material, NULL);
+
+	// Restore paint mesh
+	g_context->material_preview = false;
+	sc->plane->base->visible    = false;
+	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
+		g_project->_->paint_objects->buffer[i]->base->visible = sc->visibles->buffer[i];
+	}
+	if (g_context->merged_object != NULL) {
+		g_context->merged_object->base->visible = sc->merged_visible;
+	}
+	g_context->paint_object = sc->paint_object;
+	transform_set_matrix(scene_camera->base->transform, g_context->saved_camera);
+	scene_camera->data->fov = sc->fov;
+	viewport_update_camera_type(g_context->camera_type);
+	camera_object_build_proj(scene_camera, -1.0);
+	camera_object_build_mat(scene_camera);
+
+	if (sc->in_use) {
+		draw_begin(sc->current, false, 0);
+	}
+}
+
+void util_render_make_brush_preview() {
+	if (render_path_paint_live_layer_locked) {
+		return;
+	}
+
+	if (g_context->brush->image == NULL) {
+		g_context->brush->image = gpu_create_render_target(util_render_material_preview_size, util_render_material_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
+		i32 w_icon              = ui_base_asset_icon_size();
+		g_context->brush->image_icon = gpu_create_render_target(w_icon, w_icon, GPU_TEXTURE_FORMAT_RGBA32);
+	}
+	if (g_context->brush->image_wave == NULL) {
+		i32 w                        = util_render_material_preview_size;
+		g_context->brush->image_wave = gpu_create_render_target(w, math_floor(w * util_render_brush_wave_strip), GPU_TEXTURE_FORMAT_RGBA32);
+	}
+
+	util_render_brush_scene_t sc;
+	util_render_brush_scene_begin(&sc);
+	slot_layer_t *l = render_path_paint_live_layer;
+	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+
 	// Paint brush preview
-	f32 _brush_radius         = g_context->brush_radius;
-	f32 _brush_opacity        = g_context->brush_opacity;
-	f32 _brush_hardness       = g_context->brush_hardness;
-	g_context->brush_radius   = 0.33;
 	g_context->brush_opacity  = 1.0;
 	g_context->brush_hardness = 1.0;
-	f32 _x                    = g_context->paint_vec.x;
-	f32 _y                    = g_context->paint_vec.y;
-	f32 _last_x               = g_context->last_paint_vec_x;
-	f32 _last_y               = g_context->last_paint_vec_y;
-	i32 _pdirty               = g_context->pdirty;
-	g_context->pdirty         = 2;
 
 	// Dot, saved with the brush and shown in the brushes tab
 	g_context->brush_radius     = UTIL_RENDER_BRUSH_DOT_RADIUS;
@@ -592,53 +673,22 @@ void util_render_make_brush_preview() {
 	// Shallow sine wave, generated at runtime for the parameters panel
 	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	util_render_brush_preview_clear_coverage(); // The dot's coverage would build up the stroke where they overlap
-	g_context->brush_radius   = 0.25;
-	g_context->brush_hardness = _brush_hardness; // The stroke shows the brush as it paints
+	g_context->brush_radius   = util_render_brush_wave_radius;
+	g_context->brush_hardness = sc.hardness; // The stroke shows the brush as it paints
 
-	// Stamps as when painting, measured on the preview plane, without symmetry copies
-	bool stamps           = render_path_paint_stamps();
-	f32  _posx_picked     = g_context->posx_picked;
-	f32  _posy_picked     = g_context->posy_picked;
-	f32  _posz_picked     = g_context->posz_picked;
-	bool _sym_x           = g_context->sym_x;
-	bool _sym_y           = g_context->sym_y;
-	bool _sym_z           = g_context->sym_z;
-	i32  _sym_radial      = g_context->sym_radial;
-	g_context->sym_x      = false;
-	g_context->sym_y      = false;
-	g_context->sym_z      = false;
-	g_context->sym_radial = 1;
-	if (stamps) {
-		g_context->posx_picked = planeo->base->transform->loc.x;
-		g_context->posy_picked = planeo->base->transform->loc.y;
-		g_context->posz_picked = planeo->base->transform->loc.z;
-		g_context->brush_dab_x = -1.0;
-		g_context->brush_dab_y = -1.0;
-	}
+	// Stamps as when painting, measured on the preview plane
+	bool stamps            = render_path_paint_stamps();
+	g_context->brush_dab_x = -1.0;
+	g_context->brush_dab_y = -1.0;
 
 	// Lazy radius in screen space, the brush sits on the plane
-	f32 lazy_r = 0.0;
-	if (g_context->brush_lazy_radius > 0) {
-		f32 _posx              = g_context->posx_picked;
-		f32 _posy              = g_context->posy_picked;
-		f32 _posz              = g_context->posz_picked;
-		g_context->posx_picked = planeo->base->transform->loc.x;
-		g_context->posy_picked = planeo->base->transform->loc.y;
-		g_context->posz_picked = planeo->base->transform->loc.z;
-		lazy_r                 = g_context->brush_lazy_radius * util_layer_brush_screen_radius() * 3.0;
-		g_context->posx_picked = _posx;
-		g_context->posy_picked = _posy;
-		g_context->posz_picked = _posz;
-	}
+	f32 lazy_r = g_context->brush_lazy_radius > 0 ? g_context->brush_lazy_radius * util_layer_brush_screen_radius() * 3.0 : 0.0;
 	f32  lazy_step   = g_context->brush_lazy_step;
 	bool sphere_mode = lazy_r > 0 && lazy_step > 0;
 
 	// A pen moves along the wave and the brush follows it as in input_node_update: pressure, speed and direction
 	// change along the stroke, so the dynamics shape it as they would a Pencil stroke. The pen stays upright.
-	f32 _brush_speed        = g_context->brush_speed;
-	f32 _brush_stroke_angle = g_context->brush_stroke_angle;
-	f64 _brush_time         = g_context->brush_time;
-	util_brush_preview_pen  = true;
+	util_brush_preview_pen     = true;
 	util_brush_sample_altitude = math_pi() / 2.0;
 	util_brush_sample_azimuth  = 0.0;
 	util_brush_sample_roll     = 0.0;
@@ -655,12 +705,15 @@ void util_render_make_brush_preview() {
 	f32 by = util_render_brush_wave_y(0, samples);
 	f32 lx = bx; // Last dab
 	f32 ly = by;
+	// Streamline and stabilization as on a stroke drawn in half a second
+	render_path_paint_filter_t filter = {0};
 	// Directional brushes discard the dab without a previous position, lead into the wave
 	g_context->prev_paint_vec_x = util_render_brush_wave_x(-1, samples);
 	g_context->prev_paint_vec_y = util_render_brush_wave_y(-1, samples);
 	for (i32 i = 0; i <= samples; ++i) {
 		f32 mx = util_render_brush_wave_x(i, samples) * aspect;
 		f32 my = util_render_brush_wave_y(i, samples);
+		render_path_paint_filter_apply(&filter, &mx, &my, 0.5 / samples);
 		if (lazy_r > 0) {
 			f32 d = vec4_dist((vec4_t){mx, my, 0.0, 1.0}, (vec4_t){bx, by, 0.0, 1.0});
 			if (i > 0 && d <= lazy_r) {
@@ -695,55 +748,11 @@ void util_render_make_brush_preview() {
 		lx = bx;
 		ly = by;
 	}
+	if (stamps) { // The end taper
+		g_context->pdirty = 2;
+		render_path_paint_tail_flush();
+	}
 	util_render_brush_preview_copy(l->texpaint, g_context->brush->image_wave, util_render_brush_wave_strip);
-	util_brush_preview_pen        = false;
-	util_brush_sample_pressure    = -1.0;
-	util_brush_sample_altitude    = -1.0;
-	g_context->brush_speed        = _brush_speed;
-	g_context->brush_stroke_angle = _brush_stroke_angle;
-	g_context->brush_time         = _brush_time;
-	g_context->brush_dab_x = -1.0;
-	g_context->brush_dab_y = -1.0;
-	g_context->posx_picked = _posx_picked;
-	g_context->posy_picked = _posy_picked;
-	g_context->posz_picked = _posz_picked;
-	g_context->sym_x       = _sym_x;
-	g_context->sym_y       = _sym_y;
-	g_context->sym_z       = _sym_z;
-	g_context->sym_radial  = _sym_radial;
-
-	g_context->brush_radius     = _brush_radius;
-	g_context->brush_opacity    = _brush_opacity;
-	g_context->brush_hardness   = _brush_hardness;
-	g_context->paint_vec.x      = _x;
-	g_context->paint_vec.y      = _y;
-	g_context->last_paint_vec_x = _last_x;
-	g_context->last_paint_vec_y = _last_y;
-	g_context->prev_paint_vec_x = -1;
-	g_context->prev_paint_vec_y = -1;
-	g_context->pdirty           = _pdirty;
-	render_path_paint_use_live_layer(false);
-	g_context->layer->fill_material = _fill_material;
-	g_context->layer                = _layer;
-	g_context->material             = _material;
-	g_context->tool                 = _tool;
-	sys_notify_on_next_frame(&util_render_make_brush_preview_parse_paint_material, NULL);
-
-	// Restore paint mesh
-	g_context->material_preview = false;
-	planeo->base->visible       = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		g_project->_->paint_objects->buffer[i]->base->visible = visibles->buffer[i];
-	}
-	if (g_context->merged_object != NULL) {
-		g_context->merged_object->base->visible = merged_object_visible;
-	}
-	g_context->paint_object = painto;
-	transform_set_matrix(scene_camera->base->transform, g_context->saved_camera);
-	scene_camera->data->fov = saved_fov;
-	viewport_update_camera_type(g_context->camera_type);
-	camera_object_build_proj(scene_camera, -1.0);
-	camera_object_build_mat(scene_camera);
 
 	// Scale image preview down to icon
 	render_target_t *texpreview      = any_map_get(render_path_render_targets, "texpreview");
@@ -756,9 +765,7 @@ void util_render_make_brush_preview() {
 
 	g_context->brush->preview_ready = true;
 	g_context->brush_blend_dirty    = true;
-
-	if (in_use)
-		draw_begin(current, false, 0);
+	util_render_brush_scene_end(&sc);
 }
 
 static gpu_texture_t *util_render_resize_icon(gpu_texture_t *image, gpu_texture_t *icon, gpu_texture_format_t format, char *shader) {

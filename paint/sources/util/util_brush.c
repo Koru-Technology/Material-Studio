@@ -154,33 +154,58 @@ f32 util_brush_pen_roll() {
 	return util_brush_sample_altitude >= 0.0f ? util_brush_sample_roll : pen_roll;
 }
 
-// Tilt shading: the dab stretches along the pen up to three times as it leans.
-// x: 1 / stretch - 1, the factor applied along the pen direction, 0 upright; y: the direction on screen
-vec2_t util_brush_tilt_shape() {
-	if (!g_config->tilt_shading) {
-		return (vec2_t){0.0f, 0.0f};
+// Rotation of the brush tip on screen, radians: its angle, turned with the stroke or the pen by the brush's rotation
+f32 util_brush_tip_angle() {
+	f32 angle = (g_context->brush_angle + g_context->brush_nodes_angle) * (math_pi() / 180.0);
+	if (slot_layer_is_path(g_context->layer)) {
+		return angle;
 	}
-	f32 stretch = 1.0f + 2.0f * util_brush_pen_tilt();
-	return (vec2_t){1.0f / stretch - 1.0f, util_brush_pen_azimuth()};
+	if (g_context->brush_rotation == BRUSH_ROTATION_FOLLOW && (g_context->brush_time > 0 || util_brush_preview_pen)) {
+		angle += g_context->brush_stroke_angle; // Follows the stroke
+	}
+	else if (g_context->brush_rotation == BRUSH_ROTATION_AZIMUTH) {
+		angle += util_brush_pen_azimuth(); // Follows where the pen points
+	}
+	return angle;
 }
 
-// Factor applied to a brush property by its dynamics source, 1 when off.
+// Shape of the dab: tilt shading stretches it along the pen up to three times as it leans, roundness squashes it across its angle.
+// x: the factor applied along the direction minus 1, 0 for a round dab; y: the direction on screen
+vec2_t util_brush_tilt_shape() {
+	if (g_context->brush_tilt_shading) {
+		f32 tilt = util_brush_pen_tilt();
+		if (tilt > 0.0f || g_context->brush_roundness >= 0.999f) {
+			f32 stretch = 1.0f + 2.0f * tilt;
+			return (vec2_t){1.0f / stretch - 1.0f, util_brush_pen_azimuth()};
+		}
+	}
+	if (g_context->brush_roundness < 0.999f) {
+		f32 r = g_context->brush_roundness < 0.05f ? 0.05f : g_context->brush_roundness;
+		return (vec2_t){1.0f / r - 1.0f, util_brush_tip_angle() + g_context->brush_dab_angle + math_pi() / 2.0};
+	}
+	return (vec2_t){0.0f, 0.0f};
+}
+
+// The dab is shaped by tilt shading or roundness, see util_brush_tilt_shape
+bool util_brush_shaped() {
+	return g_context->brush_tilt_shading || g_context->brush_roundness < 0.999f;
+}
+
+// Factor applied to a brush property by the pen: pressure and tilt, each by how much the brush lets them drive it, 1 without a pen.
 // grows: leaning the pen makes the property larger (size) instead of smaller (opacity, flow, hardness).
-f32 util_brush_dynamic(i32 source, bool grows) {
-	if (slot_layer_is_path(g_context->layer)) {
+f32 util_brush_dynamic(f32 pressure, f32 tilt, bool grows) {
+	if (slot_layer_is_path(g_context->layer) || !util_brush_pen_active()) {
 		return 1.0f;
 	}
-	if (source == DYN_SOURCE_PRESSURE) {
-		return util_brush_pen_active() ? util_brush_pen_pressure() : 1.0f;
+	f32 f = 1.0f;
+	if (pressure > 0.0f) {
+		f *= 1.0f + (util_brush_pen_pressure() - 1.0f) * pressure;
 	}
-	if (source == DYN_SOURCE_SPEED) { // Fast strokes paint thinner and lighter
-		return g_config->pressure_min + (1.0f - g_config->pressure_min) * (1.0f - g_context->brush_speed);
+	if (tilt > 0.0f) { // Like the side of a pencil lead: wider, lighter
+		f32 t = util_brush_pen_tilt() * tilt;
+		f *= grows ? 1.0f + 2.0f * t : 1.0f - 0.8f * t;
 	}
-	if (source == DYN_SOURCE_TILT) { // Like the side of a pencil lead: wider, lighter and softer
-		f32 t = util_brush_pen_tilt();
-		return grows ? 1.0f + 2.0f * t : 1.0f - (1.0f - g_config->pressure_min) * 0.8f * t;
-	}
-	return 1.0f;
+	return f;
 }
 
 // Stroke speed and direction for the dynamics
@@ -327,6 +352,7 @@ void util_brush_update() {
 		}
 	}
 	else if (g_context->brush_time > 0) { // Brush released
+		render_path_paint_stroke_end(); // The stamps the end taper kept back paint
 		g_context->brush_time          = 0;
 		g_context->prev_paint_vec_x    = -1;
 		g_context->prev_paint_vec_y    = -1;

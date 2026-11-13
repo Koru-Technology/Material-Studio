@@ -920,28 +920,16 @@ void script_layer_repaint_path(slot_layer_t *l) {
 // Brush settings of the session: taken before a --script runs and put back when it quits, scripts change them freely
 // and the config is saved on exit
 typedef struct script_brush_state {
-	bool taken;
-	i32  tool;
-	i32  builtin;
-	i32  blending;
-	f32  radius;
-	f32  opacity;
-	f32  hardness;
-	f32  flow;
-	f32  spacing;
-	f32  scatter;
-	f32  jitter_size;
-	f32  jitter_angle;
-	f32  jitter_opacity;
-	f32  smoothing;
-	f32  strength;
-	f32  angle;
-	f32  mask_value;
-	i32  dyn_size;
-	i32  dyn_opacity;
-	i32  dyn_flow;
-	i32  dyn_hardness;
-	i32  dyn_angle;
+	bool             taken;
+	i32              tool;
+	i32              selected; // Brush library id
+	i32              blending;
+	f32              radius;
+	f32              opacity;
+	f32              strength;
+	f32              mask_value;
+	brush_settings_t s;
+	gpu_texture_t   *tip_image;
 } script_brush_state_t;
 
 static script_brush_state_t script_brush_saved = {0};
@@ -950,50 +938,25 @@ void script_brush_take(void) {
 	script_brush_state_t *s = &script_brush_saved;
 	s->taken                = true;
 	s->tool                 = g_context->tool;
-	s->builtin              = g_context->brush_builtin;
+	s->selected             = g_context->brush_selected;
 	s->blending             = g_context->brush_blending;
 	s->radius               = g_context->brush_radius;
 	s->opacity              = g_context->brush_opacity;
-	s->hardness             = g_context->brush_hardness;
-	s->flow                 = g_context->brush_flow;
-	s->spacing              = g_context->brush_spacing;
-	s->scatter              = g_context->brush_scatter;
-	s->jitter_size          = g_context->brush_jitter_size;
-	s->jitter_angle         = g_context->brush_jitter_angle;
-	s->jitter_opacity       = g_context->brush_jitter_opacity;
-	s->smoothing            = g_context->brush_smoothing;
 	s->strength             = g_context->brush_strength;
-	s->angle                = g_context->brush_angle;
 	s->mask_value           = g_context->mask_value;
-	s->dyn_size             = g_config->dyn_size;
-	s->dyn_opacity          = g_config->dyn_opacity;
-	s->dyn_flow             = g_config->dyn_flow;
-	s->dyn_hardness         = g_config->dyn_hardness;
-	s->dyn_angle            = g_config->dyn_angle;
+	s->tip_image            = brush_library_tip_image_get();
+	brush_library_capture_settings(&s->s);
 }
 
 static void script_brush_apply(script_brush_state_t *s) {
-	g_context->tool                 = s->tool;
-	g_context->brush_builtin        = s->builtin;
-	g_context->brush_blending       = s->blending;
-	g_context->brush_radius         = s->radius;
-	g_context->brush_opacity        = s->opacity;
-	g_context->brush_hardness       = s->hardness;
-	g_context->brush_flow           = s->flow;
-	g_context->brush_spacing        = s->spacing;
-	g_context->brush_scatter        = s->scatter;
-	g_context->brush_jitter_size    = s->jitter_size;
-	g_context->brush_jitter_angle   = s->jitter_angle;
-	g_context->brush_jitter_opacity = s->jitter_opacity;
-	g_context->brush_smoothing      = s->smoothing;
-	g_context->brush_strength       = s->strength;
-	g_context->brush_angle          = s->angle;
-	g_context->mask_value           = s->mask_value;
-	g_config->dyn_size              = s->dyn_size;
-	g_config->dyn_opacity           = s->dyn_opacity;
-	g_config->dyn_flow              = s->dyn_flow;
-	g_config->dyn_hardness          = s->dyn_hardness;
-	g_config->dyn_angle             = s->dyn_angle;
+	g_context->tool           = s->tool;
+	g_context->brush_selected = s->selected;
+	g_context->brush_blending = s->blending;
+	g_context->brush_radius   = s->radius;
+	g_context->brush_opacity  = s->opacity;
+	g_context->brush_strength = s->strength;
+	g_context->mask_value     = s->mask_value;
+	brush_library_apply_settings(&s->s, s->tip_image);
 }
 
 static void script_brush_put_back(void) {
@@ -1017,28 +980,82 @@ void script_brush_swap(void) {
 	script_brush_saved = script;
 }
 
-// A plain round brush for tests, whatever brush the user left picked: no built-in tip, full strength, no pressure or jitter
+// A plain round brush for tests, whatever brush the user left picked: no tip, full strength, no pressure, jitter or taper
 void script_brush_defaults(void) {
-	g_context->brush_builtin        = -1;
-	g_context->brush_blending       = BLEND_TYPE_MIX;
-	g_context->brush_opacity        = 1.0;
-	g_context->brush_hardness       = 1.0;
-	g_context->brush_flow           = 1.0;
-	g_context->brush_spacing        = 0.0;
-	g_context->brush_scatter        = 0.0;
-	g_context->brush_jitter_size    = 0.0;
-	g_context->brush_jitter_angle   = 0.0;
-	g_context->brush_jitter_opacity = 0.0;
-	g_context->brush_smoothing      = 0.0;
-	g_context->brush_angle          = 0.0;
-	g_context->mask_value           = 1.0;
-	g_config->dyn_size              = 0;
-	g_config->dyn_opacity           = 0;
-	g_config->dyn_flow              = 0;
-	g_config->dyn_hardness          = 0;
-	g_config->dyn_angle             = 0;
+	brush_settings_t s       = brush_settings_default();
+	s.pressure_size          = 0.0;
+	g_context->brush_blending = BLEND_TYPE_MIX;
+	g_context->brush_opacity  = 1.0;
+	g_context->mask_value     = 1.0;
+	brush_library_apply_settings(&s, NULL);
 	brush_output_node_parse_inputs();
 	make_material_parse_paint_material(true);
+}
+
+// Settings of the current brush by name, see brush_settings_t: scripts tune any of them
+static f32 *script_brush_setting(brush_settings_t *s, char *name) {
+#define X(k)                                                                                                                                           \
+	if (string_equals(name, #k)) {                                                                                                                     \
+		return &s->k;                                                                                                                                  \
+	}
+	BRUSH_LIBRARY_SETTINGS(X)
+#undef X
+	return NULL;
+}
+
+void script_brush_set(char *name, f32 value) {
+	brush_settings_t s;
+	brush_library_capture_settings(&s);
+	f32 *v = script_brush_setting(&s, name);
+	if (v != NULL) {
+		*v = value;
+	}
+	else if (string_equals(name, "tip")) {
+		s.tip = (i32)value;
+	}
+	else if (string_equals(name, "rotation")) {
+		s.rotation = (i32)value;
+	}
+	else if (string_equals(name, "tilt_shading")) {
+		s.tilt_shading = value > 0.0;
+	}
+	brush_library_apply_settings(&s, brush_library_tip_image_get());
+	brush_output_node_parse_inputs();
+	make_material_parse_paint_material(true);
+}
+
+// Picks the brush of the library with this id
+void script_brush_use(i32 id) {
+	brush_library_use(brush_library_find(id));
+}
+
+void script_brush_delete(i32 id) {
+	brush_library_delete(brush_library_find(id));
+}
+
+// An editable copy of the brush with this id in a group of your own, its id
+i32 script_brush_duplicate(i32 id) {
+	brush_def_t *c = brush_library_duplicate(brush_library_find(id), brush_library_user_group());
+	return c != NULL ? c->id : -1;
+}
+
+f32 script_brush_get(char *name) {
+	brush_settings_t s;
+	brush_library_capture_settings(&s);
+	f32 *v = script_brush_setting(&s, name);
+	if (v != NULL) {
+		return *v;
+	}
+	if (string_equals(name, "tip")) {
+		return (f32)s.tip;
+	}
+	if (string_equals(name, "rotation")) {
+		return (f32)s.rotation;
+	}
+	if (string_equals(name, "tilt_shading")) {
+		return s.tilt_shading ? 1.0 : 0.0;
+	}
+	return 0.0;
 }
 
 // Renders the stroke preview of the current brush, painted as a Pencil stroke, and returns it
