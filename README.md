@@ -1,5 +1,7 @@
 # Material Studio
 
+> **Note:** This project is coded extensively with [Claude](https://claude.com/claude-code), Anthropic's AI coding assistant.
+
 A 3D texture painting app for iPad and Mac, based on [ArmorPaint](https://armorpaint.org). The engine (`base/`) is a fork of iron; the app lives in `paint/`. More developer docs are in [base/docs](base/docs/readme.md).
 
 ## Building
