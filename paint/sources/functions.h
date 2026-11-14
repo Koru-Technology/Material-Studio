@@ -1261,6 +1261,7 @@ char                     *mm_buffers_test_other(char *path_or_id, i32 size);
 i32                       mm_buffers_test_resolve(i32 in_pass);
 void                      mm_buffers_test_budget(i32 kb);
 void                      mm_buffers_set_size_cap(i32 size);
+void                      mm_buffers_test_res(i32 res);
 void                      mm_buffers_trim(void);
 void                      mm_buffers_batch_begin(void);
 void                      mm_buffers_batch_end(void);

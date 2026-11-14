@@ -274,7 +274,16 @@ static i32 mm_buffers_own(mm_pass_t *p) {
 	return p->size < 1 ? 1 : p->size;
 }
 
+static i32 mm_buffers_res_cap = 0; // Tests: full sizes at most this (0: the project's resolution)
+
+void mm_buffers_test_res(i32 res) {
+	mm_buffers_res_cap = res;
+}
+
 static i32 mm_buffers_project_res(void) {
+	if (mm_buffers_res_cap > 0) {
+		return mm_buffers_res_cap;
+	}
 	i32 x = config_get_texture_res_x();
 	i32 y = config_get_texture_res_y();
 	return x > y ? x : y;

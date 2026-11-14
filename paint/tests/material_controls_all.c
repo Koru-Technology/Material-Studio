@@ -21,6 +21,7 @@ int controls = 0;
 int inert    = 0; // Controls that change nothing visible
 int ci       = -1; // Control being tried, -1 the defaults
 int settling = 0;  // Frames waited for buffers
+int settle_max = 300;
 int tries    = 0;  // Comparisons redone because they asked for buffers (rendered from a lower tier)
 int unsure   = 0;  // Comparisons left unsure: the buffers of both copies do not fit the budget together
 float beat   = 0.0; // Last heartbeat: the runner counts 10 s without output as too heavy
@@ -33,6 +34,8 @@ int              before = 0;
 float            began  = 0.0; // sys_time when the material's import began
 float            t_import  = 0.0; // What adding it from the library costs: the import, then its compile
 float            t_compile = 0.0;
+float            t_buffers = 0.0; // Until its buffers landed at full size (-1: not within 30 s)
+float            t_land    = 0.0;
 char            *why    = "";
 
 // Material node outputs compared: Base Color, Height, Roughness, Normal Map, Metallic, Emission, Opacity, Occlusion
@@ -286,10 +289,10 @@ void step_check() {
 	tested = tested + 1;
 	if (string_length(why) > 0) {
 		failed = failed + 1;
-		printf("[bulk] FAIL %d %s (import %.2f s, compile %.2f s, test %.1f s):%s", id, mm_import_library_name(id), t_import, t_compile, sys_time() - began, why);
+		printf("[bulk] FAIL %d %s (import %.2f s, compile %.2f s, buffers %.1f s, test %.1f s):%s", id, mm_import_library_name(id), t_import, t_compile, t_buffers, sys_time() - began, why);
 	}
 	else {
-		printf("[bulk] ok   %d %s (import %.2f s, compile %.2f s, test %.1f s)", id, mm_import_library_name(id), t_import, t_compile, sys_time() - began);
+		printf("[bulk] ok   %d %s (import %.2f s, compile %.2f s, buffers %.1f s, test %.1f s)", id, mm_import_library_name(id), t_import, t_compile, t_buffers, sys_time() - began);
 	}
 	if (m != NULL) {
 		script_material_delete(m);
@@ -303,9 +306,9 @@ void step_check() {
 	p = NULL;
 }
 
-// Waits until the buffers asked for have landed (at most 10 s)
+// Waits until the buffers asked for have landed (at most settle_max frames)
 int buffers_busy() {
-	if (mm_buffers_stat(11) > 0 && settling < 600) {
+	if (mm_buffers_stat(11) > 0 && settling < settle_max) {
 		settling = settling + 1;
 		return 1;
 	}
@@ -353,6 +356,8 @@ void next() {
 		step = 1;
 	}
 	else if (step == 1) {
+		// As in the app: compiled, its buffers rendered at full size
+		mm_buffers_test_res(0);
 		float t0 = sys_time();
 		script_material_set(m);
 		script_material_update();
@@ -360,6 +365,19 @@ void next() {
 		if (t_import > 5.0 || t_compile > 5.0) {
 			fail(string("heavy: import %.1f s, compile %.1f s", t_import, t_compile));
 		}
+		for (int k = 0; k < 8; ++k) {
+			preview(m, sockets[k]);
+		}
+		t_land     = sys_time();
+		settle_max = 1800;
+		step       = 7;
+	}
+	else if (step == 7) {
+		t_buffers  = mm_buffers_stat(11) > 0 ? -1.0 : sys_time() - t_land;
+		settle_max = 300;
+		// The comparisons with buffers of at most 256 px: quick, and both copies fit the budget
+		mm_buffers_test_res(256);
+		empty_trash();
 		prime();
 		free_plain(); // Made again once the buffers have landed
 		step = 2;
