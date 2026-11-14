@@ -1,8 +1,8 @@
 # Material Maker library report
 
-989 of 1776 materials included.
+988 of 1776 materials included.
 
-- Tiles & Floors: 165
+- Tiles & Floors: 164
 - Bricks & Walls: 149
 - Stone & Rock: 148
 - Ground & Nature: 115
@@ -820,3 +820,7 @@ Shader that does not compile, or hangs the GPU (by id in overrides.json).
 - 1422 "Stylized Moss" by rubberduck
 - 1699 "Yellow tread plate floor" by any_other
 - 1723 "temple stones" by any_other
+
+## Left out: removed by hand (1)
+
+- 910 "Swimming Pool Tiles (Animated)" by unfa

@@ -9,7 +9,8 @@
 #   --fetch downloads the catalogue and every material from materialmaker.org into the cache (first run, or to update)
 #   --mm    a checkout of https://github.com/RodZill4/material-maker at the pinned commit (MM_COMMIT)
 # build_library.py --curation
-#   only applies curation.json to the index of the existing library.pack (no cache or checkout needed)
+#   only applies curation.json to the index of the existing library.pack and removes the materials overrides.json
+#   excludes (no cache or checkout needed)
 #
 # curation.json gives each material id its display name in the app, its section and its style ("stylized" or
 # "realistic"), chosen by hand and by Claude from the preview (the names: no colors, no style words). Materials not
@@ -155,8 +156,28 @@ def curate(curation, entry):
     return entry
 
 
+def drop_excluded(path, excluded):
+    """Removes the entries of these ids from a pack, keeping the other blobs as they are. The number removed."""
+    d = open(path, 'rb').read()
+    _, count, index_size = struct.unpack('<III', d[4:16])
+    base = 16 + index_size
+    kept, data = [], b''
+    for e in json.loads(d[16:base]):
+        if str(e.get('id')) in excluded:
+            continue
+        blob = d[base + e['o']:base + e['o'] + e['n']]
+        e['o'] = len(data)
+        data += blob
+        kept.append(e)
+    index = json.dumps(kept, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    with open(path, 'wb') as f:
+        f.write(b'MMPK' + struct.pack('<III', 1, len(kept), len(index)) + index + data)
+    return count - len(kept)
+
+
 def curate_pack():
-    """Applies curation.json to the index of library.pack, the blobs are kept as they are."""
+    """Applies curation.json to the index of library.pack, the blobs are kept as they are, and removes the materials
+    overrides.json excludes from library.pack and thumbs.pack."""
     path = os.path.join(OUT, 'library.pack')
     d = open(path, 'rb').read()
     _, count, index_size = struct.unpack('<III', d[4:16])
@@ -171,6 +192,10 @@ def curate_pack():
     with open(path, 'wb') as f:
         f.write(b'MMPK' + struct.pack('<III', 1, count, len(index)) + index + d[16 + index_size:])
     print('%d of %d entries changed' % (changed, count))
+    overrides = json.load(open(os.path.join(HERE, 'overrides.json')))
+    excluded = {k for k, v in overrides.items() if v == 'exclude'}
+    print('%d removed from library.pack, %d from thumbs.pack' % (drop_excluded(path, excluded),
+                                                                 drop_excluded(os.path.join(OUT, 'thumbs.pack'), excluded)))
 
 
 def main():
