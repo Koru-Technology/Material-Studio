@@ -76,3 +76,23 @@ The defaults are the values in the material's graph, so a material shows as it a
 Controls are checked against the graph (`curate_controls.py`): every target exists, its parameter has the control's type
 (float for sliders, boolean or any for toggles, enum or any for choices, color or gradient for colors), the default is the
 current value, and the range stays within the parameter's.
+
+## In the app
+
+- **Variables.** A control is a Variable node (`nodes_material/variable_node.c`). It has a type (Number, Whole Number,
+  Toggle, Choice, Color, Gradient), a default value, a range or options, a group and a unit, and its output is wired
+  into the graph.
+- **Parameter sockets.** A Material Maker parameter takes a Variable through a parameter socket: an input the parameter
+  gets while it is wired (`mm_nodes.c`), named after the parameter, or `gradient#2` for one stop.
+  - Before a shader is made, `variable_propagate` evaluates what each parameter socket receives and writes it into the
+    parameter.
+  - A `to` mapping is a Map Range node between the Variable and the parameter.
+  - A choice whose targets take other values is a Select Value node.
+- **Import.** `build_controls.py` builds `paint/assets/material_maker/controls.json`. `mm_controls_apply`
+  (`nodes_material/mm_controls.c`) adds its Variables when a library material is imported. Targets inside inline graph
+  nodes and on the Material node are not wired yet.
+- **Material Studio.** A material with Variables opens in the Material Studio, which shows a control for each Variable
+  by group (`ui/ui_material_studio.c`, Variables mode).
+- **Node editor.** "Export Parameter..." in a Material Maker node's context menu adds a Variable for one of its
+  parameters, or for a stop of a gradient.
+- **Tests.** `paint/tests/material_controls.c`.

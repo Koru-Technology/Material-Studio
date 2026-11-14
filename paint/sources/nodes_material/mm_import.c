@@ -735,6 +735,9 @@ slot_material_t *mm_import_library(i32 id) {
 	mm_nodes_init();
 	slot_material_t *m = mm_import_new_material((char *)mm_json_str(mm_json_get(mm_pack_entry(p, k), "name"), "Material"), txt, len);
 	free(txt);
+	if (m != NULL) {
+		mm_controls_apply(m, id); // Its controls as Variables, before it compiles on the next frame
+	}
 	return m;
 }
 

@@ -1182,6 +1182,23 @@ void                      mm_node_set_data_json(ui_node_t *node, char *json, ui_
 void                      mm_node_update(ui_node_t *node, ui_node_canvas_t *canvas); // Switch sockets, "any" types, remotes
 void                      mm_nodes_sync(ui_node_canvas_t *canvas);
 char                     *mm_node_name(ui_node_t *node); // Its name in Material Maker's graph
+ui_node_t                *mm_node_named(ui_node_canvas_t *canvas, char *name);
+bool                      mm_node_is_param_socket(ui_node_socket_t *s); // A parameter wired to a Variable
+i32                       mm_node_port_count(ui_node_t *node);
+bool                      mm_node_param_socket_key(ui_node_t *node, i32 input, char **param, i32 *stop);
+i32                       mm_node_param_kind(ui_node_t *node, char *param);
+i32                       mm_node_param_socket(ui_node_t *node, char *param, i32 stop, ui_node_canvas_t *canvas);
+void                      mm_nodes_prune_param_sockets(ui_node_canvas_t *canvas);
+i32                       mm_node_param_get(ui_node_t *node, char *param, i32 stop, f32 *out, i32 max, i32 *interp);
+char                     *mm_node_param_options(ui_node_t *node, char *param);
+bool                      mm_node_param_range(ui_node_t *node, char *param, f32 *min, f32 *max, f32 *step);
+bool                      mm_node_param_set(ui_node_t *node, char *param, i32 stop, f32 *v, i32 n, i32 interp);
+i32                       mm_node_export_count(ui_node_t *node);
+bool                      mm_node_export_param_at(ui_node_t *node, i32 i, char **name, char **label, i32 *kind);
+void                      mm_nodes_gradient_edit(ui_node_t *node, i32 button, char *label);
+bool                      mm_controls_apply(slot_material_t *m, i32 id); // nodes_material/mm_controls.c: the library's controls as Variables
+ui_node_t                *mm_node_export_param(ui_node_canvas_t *canvas, ui_node_t *node, char *param, i32 stop);
+f32                       mm_node_param_value(ui_node_canvas_t *canvas, char *name, char *param, i32 stop, i32 i);
 i32                       mm_nodes_count_all();
 void                      mm_material_init();                               // nodes_material/mm_import.c: MM Material, .ptex import
 bool                      mm_material_is(ui_node_t *n);
@@ -1555,6 +1572,32 @@ void              nodes_material_vector_curves_button(i32 node_id);
 void              layer_mask_node_init();
 void              camera_texture_node_init();
 void              value_node_init();
+void              variable_node_init(); // nodes_material/variable_node.c: exported values, controls of the material
+bool              variable_is(ui_node_t *node);
+i32               variable_kind(ui_node_t *node); // 0 Number, 1 Whole Number, 2 Toggle, 3 Choice, 4 Color, 5 Gradient
+char             *variable_name(ui_node_t *node);
+char             *variable_id(ui_node_t *node);
+string_array_t   *variable_options(ui_node_t *node);
+void              variable_range(ui_node_t *node, f32 *min, f32 *max, f32 *step);
+i32               variable_group(ui_node_t *node); // 0 color, 1 pattern, 2 surface, 3 detail
+i32               variable_order(ui_node_t *node);
+i32               variable_unit(ui_node_t *node); // 0 none, 1 percent, 2 degrees, 3 count, 4 multiplier
+char             *variable_group_name(i32 group);
+i32               variable_get(ui_node_t *node, f32 *out, i32 max, i32 *interp);
+void              variable_set(ui_node_t *node, f32 *v, i32 n, i32 interp);
+f32_array_t      *variable_value_array(ui_node_t *node);
+f32               variable_value(ui_node_t *node, i32 i);
+void              variable_set_value(ui_node_t *node, i32 i, f32 x);
+bool              variable_propagate_canvas(ui_node_canvas_t *canvas);
+void              variable_sync(ui_node_t *node);
+i32               variable_eval(ui_node_t_array_t *nodes, ui_node_link_t_array_t *links, ui_node_t *node, i32 output, f32 *out, i32 max, i32 *interp);
+bool              variable_propagate(ui_node_t_array_t *nodes, ui_node_link_t_array_t *links);
+ui_node_t_array_t *variable_list(ui_node_canvas_t *canvas);
+i32               variable_count(ui_node_canvas_t *canvas);
+ui_node_t        *variable_find(ui_node_canvas_t *canvas, char *id);
+void              variable_setup(ui_node_t *node, i32 kind, char *label, char *id, char *group, char *unit, i32 order);
+void              variable_set_range(ui_node_t *node, f32 min, f32 max, f32 step);
+void              variable_set_options(ui_node_t *node, char *options);
 void              texture_coordinate_node_init();
 void              tilesheet_node_init();
 void              group_node_init();

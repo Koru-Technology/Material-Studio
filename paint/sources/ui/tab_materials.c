@@ -154,10 +154,11 @@ static void tab_materials_open_studio(void *m) {
 	material_studio_open(m);
 }
 
-// Studio materials open in the Material Studio, the others (Material Maker's library, node graphs) in the node editor.
-// Both have Save to Library and Cancel.
+// Studio materials and materials with Variables (controls) open in the Material Studio, the others (node graphs) in the
+// node editor. Both have Save to Library and Cancel.
 static void tab_materials_edit(void *m) {
-	if (studio_graph_is(((slot_material_t *)m)->canvas)) {
+	ui_node_canvas_t *c = ((slot_material_t *)m)->canvas;
+	if (studio_graph_is(c) || variable_count(c) > 0) {
 		material_studio_open(m);
 	}
 	else {
@@ -347,7 +348,7 @@ void tab_materials_draw_slots(bool mini) {
 				base_drag_material = g_context->material;
 				// Double click to show nodes, studio materials open in the studio on touch
 				if (sys_time() - g_context->select_time < 0.2) {
-					if (g_config->touch_ui && studio_graph_is(g_context->material->canvas)) {
+					if (g_config->touch_ui && (studio_graph_is(g_context->material->canvas) || variable_count(g_context->material->canvas) > 0)) {
 						sys_notify_on_next_frame(&tab_materials_open_studio, g_context->material);
 					}
 					else {

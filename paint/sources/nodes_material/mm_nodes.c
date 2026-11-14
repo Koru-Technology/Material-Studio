@@ -49,6 +49,7 @@
 #define MM_NODES_PARAM_GRAD  6
 #define MM_NODES_PARAM_CURVE 7
 #define MM_NODES_PARAM_STRING 8
+#define MM_PARAM_SOCKET       0x100 // display of a parameter socket (a parameter wired to a Variable)
 
 typedef struct mm_nodes_param {
 	char *name;   // Material Maker's parameter name
@@ -1354,7 +1355,7 @@ double mm_node_seed(ui_node_t *node, bool *locked) {
 char *mm_node_input_expression(ui_node_t *node, i32 input) {
 	mm_nodes_type_t *t = node != NULL ? mm_nodes_built(node->type) : NULL;
 	if (t != NULL && mm_nodes_is_builtin(t->mm_type)) { // No default expressions, Material Maker's default shader
-		return input >= 0 && input < node->inputs->length ? "" : NULL;
+		return input >= 0 && input < mm_node_port_count(node) ? "" : NULL;
 	}
 	return t != NULL && input >= 0 && input < t->input_count ? t->input_exprs[input] : NULL;
 }
@@ -1599,6 +1600,305 @@ static ui_node_t *mm_nodes_named(ui_node_canvas_t *canvas, const char *name) {
 	return NULL;
 }
 
+// Parameter sockets: a parameter wired to a Variable (variable_node.c) gets an input socket after the node's ports, only
+// while it is linked. Its name is the parameter's ("rows"), or "gradient#2" for the color of stop 2 of a gradient (index
+// in the button's values); display MM_PARAM_SOCKET marks it. variable_propagate writes what the link carries into the
+// parameter's button before the node is used, so shaders, previews and buffers read the button as for any parameter.
+
+ui_node_t *mm_node_named(ui_node_canvas_t *canvas, char *name) {
+	return mm_nodes_named(canvas, name);
+}
+
+bool mm_node_is_param_socket(ui_node_socket_t *s) {
+	return s != NULL && (s->display & MM_PARAM_SOCKET) != 0;
+}
+
+// Inputs that are Material Maker's ports, the parameter sockets come after them
+i32 mm_node_port_count(ui_node_t *node) {
+	i32 n = 0;
+	for (i32 i = 0; i < node->inputs->length; ++i) {
+		n += mm_node_is_param_socket(node->inputs->buffer[i]) ? 0 : 1;
+	}
+	return n;
+}
+
+static char *mm_nodes_param_key(char *param, i32 stop) {
+	return stop >= 0 ? string_tmp("%s#%d", param, stop) : param;
+}
+
+// The parameter and stop (-1: none) of a parameter socket, false for other sockets
+bool mm_node_param_socket_key(ui_node_t *node, i32 input, char **param, i32 *stop) {
+	ui_node_socket_t *s = input >= 0 && input < node->inputs->length ? node->inputs->buffer[input] : NULL;
+	if (!mm_node_is_param_socket(s)) {
+		return false;
+	}
+	static char name[128];
+	snprintf(name, sizeof(name), "%s", s->name);
+	char *hash = strchr(name, '#');
+	*stop      = hash != NULL ? atoi(hash + 1) : -1;
+	if (hash != NULL) {
+		*hash = 0;
+	}
+	*param = name;
+	return true;
+}
+
+// The kind of a parameter of the node (MM_NODES_PARAM_*), -1 when it has none of that name
+i32 mm_node_param_kind(ui_node_t *node, char *param) {
+	mm_mark_t         mk = mm_arena_mark();
+	mm_nodes_param_t *p  = mm_nodes_find_param(node, param);
+	i32               k  = p != NULL ? p->kind : -1;
+	mm_arena_release(mk);
+	return k;
+}
+
+static ui_node_button_t *mm_nodes_param_button(ui_node_t *node, char *param, i32 *kind) {
+	mm_mark_t         mk = mm_arena_mark();
+	mm_nodes_param_t *p  = mm_nodes_find_param(node, param);
+	ui_node_button_t *b  = p != NULL ? node->buttons->buffer[p->button] : NULL;
+	*kind                = p != NULL ? p->kind : -1;
+	mm_arena_release(mk);
+	return b;
+}
+
+// The input index of the parameter socket, made when missing (-1 when the node has no such parameter)
+i32 mm_node_param_socket(ui_node_t *node, char *param, i32 stop, ui_node_canvas_t *canvas) {
+	i32               kind = -1;
+	ui_node_button_t *b    = mm_nodes_param_button(node, param, &kind);
+	if (b == NULL || kind == MM_NODES_PARAM_CURVE || kind == MM_NODES_PARAM_STRING || kind == MM_NODES_PARAM_OTHER ||
+	    (stop >= 0 && (kind != MM_NODES_PARAM_GRAD || stop * 5 + 4 >= b->default_value->length))) {
+		return -1;
+	}
+	char *key = mm_nodes_param_key(param, stop);
+	for (i32 i = 0; i < node->inputs->length; ++i) {
+		if (mm_node_is_param_socket(node->inputs->buffer[i]) && string_equals(node->inputs->buffer[i]->name, key)) {
+			return i;
+		}
+	}
+	char *type = kind == MM_NODES_PARAM_COLOR || stop >= 0 ? "RGBA" : kind == MM_NODES_PARAM_GRAD ? "GRADIENT" : "VALUE";
+	f32   v[4] = {0, 0, 0, 1};
+	ui_node_socket_t *s = ALLOC_INIT(ui_node_socket_t, {.id            = ui_get_socket_id(canvas->nodes),
+	                                                    .node_id       = node->id,
+	                                                    .name          = string_copy(key),
+	                                                    .type          = type,
+	                                                    .color         = string_equals(type, "GRADIENT") ? 0xffd88a3d : mm_nodes_socket_color(type),
+	                                                    .default_value = f32_array_create_from_raw(v, string_equals(type, "VALUE") ? 1 : 4),
+	                                                    .min           = 0.0,
+	                                                    .max           = 1.0,
+	                                                    .precision     = 100,
+	                                                    .display       = MM_PARAM_SOCKET});
+	any_array_push(node->inputs, s);
+	return node->inputs->length - 1;
+}
+
+// Unlinked parameter sockets are removed, the links of later sockets follow their index
+void mm_nodes_prune_param_sockets(ui_node_canvas_t *canvas) {
+	for (i32 ni = 0; canvas != NULL && ni < canvas->nodes->length; ++ni) {
+		ui_node_t *node = canvas->nodes->buffer[ni];
+		if (!mm_node_is(node)) {
+			continue;
+		}
+		for (i32 i = node->inputs->length - 1; i >= 0; --i) {
+			if (!mm_node_is_param_socket(node->inputs->buffer[i])) {
+				continue;
+			}
+			bool linked = false;
+			for (i32 l = 0; l < canvas->links->length && !linked; ++l) {
+				ui_node_link_t *k = canvas->links->buffer[l];
+				linked            = k->to_id == node->id && k->to_socket == i;
+			}
+			if (linked) {
+				continue;
+			}
+			for (i32 j = i; j < node->inputs->length - 1; ++j) {
+				node->inputs->buffer[j] = node->inputs->buffer[j + 1];
+			}
+			node->inputs->length--;
+			for (i32 l = 0; l < canvas->links->length; ++l) {
+				ui_node_link_t *k = canvas->links->buffer[l];
+				if (k->to_id == node->id && k->to_socket > i) {
+					k->to_socket--;
+				}
+			}
+		}
+	}
+}
+
+// The current value of a parameter as floats: [v] for float, enum (index), bool, size; [r,g,b,a] for a color or a stop;
+// [r,g,b,a,pos]*n for a gradient (interp: its interpolation). Returns how many, 0 when there is no such parameter.
+i32 mm_node_param_get(ui_node_t *node, char *param, i32 stop, f32 *out, i32 max, i32 *interp) {
+	i32               kind = -1;
+	ui_node_button_t *b    = mm_nodes_param_button(node, param, &kind);
+	if (b == NULL || b->default_value == NULL) {
+		return 0;
+	}
+	f32_array_t *v = b->default_value;
+	if (kind == MM_NODES_PARAM_GRAD) {
+		if (interp != NULL) {
+			*interp = b->data != NULL && b->data->length > 0 ? b->data->buffer[0] : 1;
+		}
+		if (stop >= 0) {
+			if (stop * 5 + 4 >= v->length || max < 4) {
+				return 0;
+			}
+			for (i32 i = 0; i < 4; ++i) {
+				out[i] = v->buffer[stop * 5 + i];
+			}
+			return 4;
+		}
+	}
+	i32 n = kind == MM_NODES_PARAM_COLOR ? 4 : kind == MM_NODES_PARAM_GRAD ? v->length : 1;
+	n     = n < max ? n : max;
+	for (i32 i = 0; i < n; ++i) {
+		out[i] = i < v->length ? v->buffer[i] : (i == 3 ? 1.0 : 0.0);
+	}
+	return n;
+}
+
+// The names of the options of an enum parameter, one per line ("" when not an enum)
+char *mm_node_param_options(ui_node_t *node, char *param) {
+	i32               kind = -1;
+	ui_node_button_t *b    = mm_nodes_param_button(node, param, &kind);
+	if (b == NULL || kind != MM_NODES_PARAM_ENUM || b->data == NULL || b->data->length < 2) {
+		return "";
+	}
+	return string_tmp("%s", (char *)b->data->buffer);
+}
+
+// The range of a float parameter: min, max and step (1 / precision)
+bool mm_node_param_range(ui_node_t *node, char *param, f32 *min, f32 *max, f32 *step) {
+	i32               kind = -1;
+	ui_node_button_t *b    = mm_nodes_param_button(node, param, &kind);
+	if (b == NULL || kind != MM_NODES_PARAM_FLOAT) {
+		return false;
+	}
+	*min  = b->min;
+	*max  = b->max;
+	*step = b->precision > 0 ? 1.0 / b->precision : 0.0;
+	return true;
+}
+
+// Writes a value (as mm_node_param_get gives it) into the parameter's button. A float set this way replaces an
+// expression. True when the button changed.
+bool mm_node_param_set(ui_node_t *node, char *param, i32 stop, f32 *v, i32 n, i32 interp) {
+	i32               kind = -1;
+	ui_node_button_t *b    = mm_nodes_param_button(node, param, &kind);
+	if (b == NULL || b->default_value == NULL || n < 1) {
+		return false;
+	}
+	f32_array_t *d       = b->default_value;
+	bool         changed = false;
+	switch (kind) {
+	case MM_NODES_PARAM_FLOAT:
+		changed = d->buffer[0] != v[0] || (b->data != NULL && b->data->length > 1);
+		d->buffer[0] = v[0];
+		if (b->data != NULL && b->data->length > 1) {
+			b->data = NULL;
+		}
+		break;
+	case MM_NODES_PARAM_ENUM:
+	case MM_NODES_PARAM_SIZE: {
+		i32 count = 1;
+		for (i32 i = 0; kind == MM_NODES_PARAM_ENUM && b->data != NULL && i < b->data->length && b->data->buffer[i] != 0; ++i) {
+			count += b->data->buffer[i] == '\n' ? 1 : 0;
+		}
+		f32 x   = math_floor(v[0] + 0.5);
+		x       = kind == MM_NODES_PARAM_ENUM ? (x < 0 ? 0 : x > count - 1 ? count - 1 : x) : x;
+		changed = d->buffer[0] != x;
+		d->buffer[0] = x;
+		break;
+	}
+	case MM_NODES_PARAM_BOOL: {
+		f32 x   = v[0] != 0 ? 1.0 : 0.0;
+		changed = d->buffer[0] != x;
+		d->buffer[0] = x;
+		break;
+	}
+	case MM_NODES_PARAM_COLOR:
+		for (i32 i = 0; i < 3 && i < n && i < d->length; ++i) { // Its alpha stays
+			changed      = changed || d->buffer[i] != v[i];
+			d->buffer[i] = v[i];
+		}
+		break;
+	case MM_NODES_PARAM_GRAD:
+		if (stop >= 0) {
+			for (i32 i = 0; i < 3 && i < n && stop * 5 + i < d->length; ++i) {
+				changed                 = changed || d->buffer[stop * 5 + i] != v[i];
+				d->buffer[stop * 5 + i] = v[i];
+			}
+		}
+		else if (n >= 5) {
+			n = n - n % 5;
+			changed = d->length != n || (b->data != NULL && b->data->length > 0 && b->data->buffer[0] != interp);
+			for (i32 i = 0; i < n && !changed; ++i) {
+				changed = d->buffer[i] != v[i];
+			}
+			if (changed) {
+				d->length = 0;
+				for (i32 i = 0; i < n; ++i) {
+					f32_array_push(d, v[i]);
+				}
+				if (b->data == NULL || b->data->length < 1) {
+					b->data = u8_array_create(1);
+				}
+				b->data->buffer[0] = interp;
+			}
+		}
+		break;
+	default:
+		break;
+	}
+	return changed;
+}
+
+// Parameters a Variable can drive, for "Export Parameter": count, then name, label and kind of each
+i32 mm_node_export_count(ui_node_t *node) {
+	mm_mark_t mk    = mm_arena_mark();
+	i32       count = 0;
+	mm_nodes_layout(node, &count);
+	mm_arena_release(mk);
+	return count;
+}
+
+bool mm_node_export_param_at(ui_node_t *node, i32 i, char **name, char **label, i32 *kind) {
+	mm_mark_t         mk    = mm_arena_mark();
+	i32               count = 0;
+	mm_nodes_param_t *ps    = mm_nodes_layout(node, &count);
+	bool              ok    = i >= 0 && i < count;
+	if (ok) {
+		*name  = string_tmp("%s", ps[i].name);
+		*label = string_tmp("%s", ps[i].label != NULL && ps[i].label[0] != 0 ? ps[i].label : ps[i].name);
+		*kind  = ps[i].kind;
+		ok     = ps[i].kind == MM_NODES_PARAM_FLOAT || ps[i].kind == MM_NODES_PARAM_ENUM || ps[i].kind == MM_NODES_PARAM_BOOL ||
+		     ps[i].kind == MM_NODES_PARAM_COLOR || ps[i].kind == MM_NODES_PARAM_GRAD;
+	}
+	mm_arena_release(mk);
+	return ok;
+}
+
+// Label of a parameter socket: "Rows", "Gradient: Stop 3"
+static char *mm_nodes_socket_label(ui_node_t *node, ui_node_socket_t *s) {
+	if (!mm_node_is_param_socket(s) || !mm_node_is(node)) {
+		return NULL;
+	}
+	i32   input = -1;
+	for (i32 i = 0; i < node->inputs->length; ++i) {
+		input = node->inputs->buffer[i] == s ? i : input;
+	}
+	char *param = NULL;
+	i32   stop  = -1;
+	if (!mm_node_param_socket_key(node, input, &param, &stop)) {
+		return NULL;
+	}
+	param = string_copy(param);
+	mm_mark_t         mk    = mm_arena_mark();
+	mm_nodes_param_t *p     = mm_nodes_find_param(node, param);
+	char             *label = string_tmp("%s", p != NULL && p->label != NULL && p->label[0] != 0 ? tr(p->label) : param);
+	mm_arena_release(mk);
+	free(param);
+	return stop >= 0 ? string_tmp("%s: %s %d", label, tr("Stop"), stop + 1) : label;
+}
+
 static any_map_t *mm_nodes_remote_seen = NULL; // Remote node to the parameters json it last applied
 
 static void mm_nodes_remote_apply(ui_node_t *remote, const char *name, mm_json_t *v, ui_node_canvas_t *canvas, i32 depth);
@@ -1741,6 +2041,11 @@ static void mm_nodes_reshape(ui_node_t *node, mm_json_t *data, ui_node_canvas_t 
 	scratch.outputs           = any_array_create_from_raw((void *[]){}, 0);
 	scratch.buttons           = any_array_create_from_raw((void *[]){}, 0);
 	mm_nodes_fill(NULL, &scratch, &m, &params, &count);
+	for (i32 i = 0; i < node->inputs->length; ++i) { // Parameter sockets stay, after the new ports
+		if (mm_node_is_param_socket(node->inputs->buffer[i])) {
+			any_array_push(scratch.inputs, node->inputs->buffer[i]);
+		}
+	}
 	mm_nodes_adopt_sockets(node, node->inputs, scratch.inputs, true, canvas);
 	mm_nodes_adopt_sockets(node, node->outputs, scratch.outputs, false, canvas);
 	if (buttons) {
@@ -1825,14 +2130,15 @@ static void mm_nodes_adopt_types(ui_node_t *node, mm_nodes_type_t *t, ui_node_ca
 	}
 	else if (strcmp(t->mm_type, "switch") == 0) {
 		i32 outputs = node->outputs->length;
+		i32 ports   = mm_node_port_count(node);
 		for (i32 o = 0; o < outputs; ++o) {
 			char *type = NULL;
-			for (i32 i = o; i < node->inputs->length && type == NULL; i += outputs) {
+			for (i32 i = o; i < ports && type == NULL; i += outputs) {
 				type = mm_nodes_linked_type(canvas, node, i, true);
 			}
 			type = type != NULL ? type : mm_nodes_linked_type(canvas, node, o, false);
 			type = type != NULL ? type : "MM_ANY";
-			for (i32 i = o; i < node->inputs->length; i += outputs) {
+			for (i32 i = o; i < ports; i += outputs) {
 				mm_nodes_set_socket_type(node->inputs->buffer[i], type);
 			}
 			mm_nodes_set_socket_type(node->outputs->buffer[o], type);
@@ -1870,7 +2176,7 @@ void mm_node_update(ui_node_t *node, ui_node_canvas_t *canvas) {
 		mm_json_t *d       = mm_node_data(node);
 		i32        outputs = mm_nodes_switch_size(d, "outputs", 2, 1);
 		i32        choices = mm_nodes_switch_size(d, "choices", 2, 2);
-		if (node->outputs->length != outputs || node->inputs->length != outputs * choices) {
+		if (node->outputs->length != outputs || mm_node_port_count(node) != outputs * choices) {
 			mm_nodes_reshape(node, d, canvas, false);
 		}
 	}
@@ -2109,13 +2415,20 @@ static void mm_nodes_gradient_eval(f32 *v, i32 n, i32 interp, f32 t, f32 *out) {
 static void mm_nodes_gradient_button(i32 node_id) {
 	ui_node_button_t *but  = NULL;
 	ui_node_t        *node = mm_nodes_drawn_node(node_id, &but);
-	if (node == NULL || but->default_value == NULL || but->default_value->length < 5) {
+	if (node != NULL) {
+		mm_nodes_gradient_edit(node, ui_nodes_custom_button_index, mm_nodes_button_label(node, ui_nodes_custom_button_index));
+	}
+}
+
+// The gradient editor of a button holding [r,g,b,a,pos]*n, data[0] the interpolation: preview, + / -, interpolation,
+// the stop's index, position and color. Also the Variable node's (variable_node.c).
+void mm_nodes_gradient_edit(ui_node_t *node, i32 bi, char *label) {
+	ui_node_button_t *but = bi >= 0 && bi < node->buttons->length ? node->buttons->buffer[bi] : NULL;
+	if (but == NULL || but->default_value == NULL || but->default_value->length < 5) {
 		return;
 	}
-	i32                      bi    = ui_nodes_custom_button_index;
 	ui_nodes_t              *nodes = ui_nodes_get_nodes();
 	ui_nodes_editor_state_t *state = mm_nodes_ui_state(node, bi);
-	char                    *label = mm_nodes_button_label(node, bi);
 	f32_array_t             *vals  = but->default_value;
 	if (but->data == NULL || but->data->length < 1) {
 		but->data            = u8_array_create(1);
@@ -2337,6 +2650,7 @@ void mm_nodes_init() {
 	any_map_set(ui_nodes_custom_buttons, "mm_curve", mm_nodes_curve_button);
 	any_map_set(ui_nodes_custom_buttons, "mm_state", mm_nodes_state_button_draw);
 	any_map_set(ui_nodes_custom_buttons, "mm_string", mm_nodes_string_button);
+	ui_nodes_on_socket_label = mm_nodes_socket_label;
 	if (mm_nodes_done_init) {
 		return;
 	}

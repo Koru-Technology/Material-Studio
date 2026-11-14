@@ -194,6 +194,9 @@ ui_nodes_t *ui_nodes_get_nodes() {
 }
 
 void ui_nodes_canvas_changed() {
+	if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) { // A parameter socket whose link went: the parameter keeps its value
+		mm_nodes_prune_param_sockets(ui_nodes_get_canvas(true));
+	}
 	ui_nodes_recompile_mat       = true;
 	ui_nodes_recompile_mat_final = true;
 }

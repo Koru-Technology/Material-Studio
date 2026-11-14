@@ -36,6 +36,7 @@ int ui_nodes_custom_button_index                         = -1;   // Index in nod
 ui_canvas_control_t *(*ui_nodes_on_canvas_control)(void) = NULL;
 void (*ui_nodes_on_canvas_released)(void)                = NULL;
 void (*ui_nodes_on_socket_released)(int)                 = NULL;
+char *(*ui_nodes_on_socket_label)(ui_node_t *, ui_node_socket_t *) = NULL;
 void (*ui_nodes_on_link_drag)(int, bool)                 = NULL;
 void (*ui_nodes_on_node_remove)(ui_node_t *)             = NULL;
 void (*ui_nodes_on_node_changed)(ui_node_t *)            = NULL;
@@ -736,8 +737,9 @@ void ui_node_draw_body(ui_node_t *node, ui_node_canvas_t *canvas, float nx, floa
 			ny += lineh * 2.5;
 		}
 		else {
+			char *label = ui_nodes_on_socket_label != NULL ? ui_nodes_on_socket_label(node, inp) : NULL;
 			draw_set_color(current->ops->theme->LABEL_COL);
-			draw_string(ui_tr(inp->name), nx + ui_p(12), ny - ui_p(3));
+			draw_string(label != NULL ? label : ui_tr(inp->name), nx + ui_p(12), ny - ui_p(3));
 		}
 		if (ui_nodes_on_socket_released != NULL && current->input_enabled && (current->input_released || current->input_released_r)) {
 			if (current->input_x > wx + nx && current->input_x < wx + nx + w && current->input_y > wy + ny && current->input_y < wy + ny + lineh) {

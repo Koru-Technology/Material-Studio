@@ -483,6 +483,54 @@ void ui_viewnodes_on_socket_released_group_menu(void *_) {
 	ui_menu_draw(&ui_viewnodes_on_socket_released_group_menu_draw, -1, -1);
 }
 
+// Export Parameter: the parameters of a Material Maker node, a Variable wired to the one picked (mm_controls.c)
+static ui_node_t *ui_viewnodes_export_node = NULL;
+
+static void ui_viewnodes_export(ui_node_t *node, char *param, i32 stop) {
+	ui_node_canvas_t *canvas = ui_nodes_get_canvas(true);
+	ui_node_canvas_t *before = util_clone_canvas(canvas);
+	if (mm_node_export_param(canvas, node, param, stop) != NULL) {
+		ui_nodes_push_undo(before);
+		ui_nodes_canvas_changed();
+		ui_nodes_hwnd->redraws = 2;
+	}
+}
+
+static void ui_viewnodes_export_menu_draw() {
+	ui_node_t *node = ui_viewnodes_export_node;
+	if (node == NULL || array_index_of(ui_nodes_get_canvas(true)->nodes, node) < 0) {
+		return;
+	}
+	for (i32 i = 0; i < mm_node_export_count(node); ++i) {
+		char *name  = NULL;
+		char *label = NULL;
+		i32   kind  = 0;
+		if (!mm_node_export_param_at(node, i, &name, &label, &kind)) {
+			continue;
+		}
+		name  = string_copy(name);
+		label = string_copy(label);
+		if (ui_menu_button(tr(label), "", ICON_NONE)) {
+			ui_viewnodes_export(node, name, -1);
+		}
+		if (kind == 6) { // A gradient: also the color of each stop
+			f32 v[320];
+			i32 n = mm_node_param_get(node, name, -1, v, 320, NULL) / 5;
+			for (i32 s = 0; s < n && s < 16; ++s) {
+				if (ui_menu_button(string_tmp("%s: %s %d", tr(label), tr("Stop"), s + 1), "", ICON_NONE)) {
+					ui_viewnodes_export(node, name, s);
+				}
+			}
+		}
+		free(name);
+		free(label);
+	}
+}
+
+static void ui_viewnodes_export_menu(void *_) {
+	ui_menu_draw(&ui_viewnodes_export_menu_draw, -1, -1);
+}
+
 void ui_viewnodes_on_canvas_context_menu() {
 	ui_node_t *selected = _ui_nodes_on_canvas_released_selected;
 	g_ui->_y += 1;
@@ -515,6 +563,12 @@ void ui_viewnodes_on_canvas_context_menu() {
 			any_array_push(g_project->swatches, new_swatch);
 			history_new_swatch();
 			ui_dock_redraw(TAB_AREA_STATUS);
+		}
+	}
+	if (selected != NULL && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL && mm_node_is(selected) && mm_node_export_count(selected) > 0) {
+		if (ui_menu_button(tr("Export Parameter..."), "", ICON_NONE)) {
+			ui_viewnodes_export_node = selected;
+			sys_notify_on_next_frame(&ui_viewnodes_export_menu, NULL);
 		}
 	}
 	if (ui_menu_button(tr("Capture Output"), "", ICON_PHOTO)) {

@@ -117,6 +117,7 @@ static mm_gen_t *mm_bridge_graph(void) {
 			return mm_bridge.canvases[i].graph;
 		}
 	}
+	variable_propagate(nodes, parser_material_links); // Parameters wired to Variables take their values first
 	mm_gen_t *graph = mm_graph_new();
 	for (i32 i = 0; i < nodes->length; ++i) {
 		ui_node_t *n = nodes->buffer[i];
@@ -129,7 +130,8 @@ static mm_gen_t *mm_bridge_graph(void) {
 		ui_node_link_t *l  = links->buffer[i];
 		ui_node_t      *to = mm_bridge_node(nodes, l->to_id);
 		ui_node_t      *fr = mm_bridge_node(nodes, l->from_id);
-		if (to == NULL || fr == NULL || !mm_node_is(to)) {
+		if (to == NULL || fr == NULL || !mm_node_is(to) || l->to_socket >= to->inputs->length ||
+		    mm_node_is_param_socket(to->inputs->buffer[l->to_socket])) { // Parameter sockets: values, not ports
 			continue;
 		}
 		char *to_name = string_copy(mm_bridge_name("n", to, -1));
@@ -152,7 +154,8 @@ static mm_gen_t *mm_bridge_graph(void) {
 			continue;
 		}
 		for (i32 k = 0; k < n->inputs->length; ++k) {
-			if (parser_material_get_input_link(n->inputs->buffer[k]) != NULL || mm_node_input_expression(n, k) != NULL) {
+			if (mm_node_is_param_socket(n->inputs->buffer[k]) || parser_material_get_input_link(n->inputs->buffer[k]) != NULL ||
+			    mm_node_input_expression(n, k) != NULL) {
 				continue;
 			}
 			char *name = string_copy(mm_bridge_name("c", n, k));

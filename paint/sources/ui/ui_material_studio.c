@@ -59,8 +59,46 @@ static void studio_redraw() {
 	}
 }
 
+// Variables mode: a material that is not a studio graph shows the controls of its Variables (variable_node.c). Material
+// Maker parameters wired to them are compiled in (variable_propagate), so a change compiles the preview again: at once
+// when the finger lifts, at most every STUDIO_VAR_COMPILE_S while it drags. The preview starts with tiny Material Maker
+// buffers and renders again as better ones land.
+#define STUDIO_VAR_COMPILE_S 0.35
+#define STUDIO_LAND_RENDER_S 0.25
+static bool studio_vars             = false;
+static f64  studio_known_vars       = 0.0;
+static f64  studio_var_compile_time = 0.0;
+static i32  studio_landed           = 0;
+static f64  studio_land_render_time = 0.0;
+
 static ui_node_canvas_t *studio_canvas() {
-	return studio_material != NULL && studio_graph_is(studio_material->canvas) ? studio_material->canvas : NULL;
+	if (studio_material == NULL) {
+		return NULL;
+	}
+	ui_node_canvas_t *c = studio_material->canvas;
+	return studio_graph_is(c) || (studio_vars && variable_count(c) > 0) ? c : NULL;
+}
+
+// The values of the Variables, a change compiles the preview in Variables mode
+static f64 studio_hash_vars(ui_node_canvas_t *c) {
+	f64 sum = 0.0;
+	f64 w   = 1.0;
+	for (i32 i = 0; i < c->nodes->length; ++i) {
+		ui_node_t *n = c->nodes->buffer[i];
+		if (!variable_is(n)) {
+			continue;
+		}
+		f32 v[320];
+		i32 interp = 0;
+		i32 len    = variable_get(n, v, 320, &interp);
+		for (i32 k = 0; k < len; ++k) {
+			sum += v[k] * w;
+			w += 0.731;
+		}
+		sum += interp * w;
+		w += 0.731;
+	}
+	return sum;
 }
 
 // The graph: nodes, their types, roles and buttons, links and the number of ramp stops. Changing it compiles the preview.
@@ -235,11 +273,13 @@ void render_path_preview_commands_studio() {
 
 // Preview shader of the material with live values, kept so drags render without compiling
 static void studio_compile() {
-	f64         t0 = iron_time();
-	material_t *sd = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
+	f64         t0   = iron_time();
+	material_t *sd   = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
+	i32         need = mm_buffers_require(MM_BUFFERS_TINY); // Material Maker buffers: a texture at once, better ones as they land
 	parser_material_live_begin(studio_material->canvas, 0);
 	node_shader_context_t *con = make_mesh_preview_run(sd, false);
 	parser_material_live_end();
+	mm_buffers_require(need);
 	shader_context_load(con->data);
 	if (studio_scon != NULL) {
 		make_material_delete_context(studio_scon);
@@ -334,7 +374,9 @@ static void studio_render() {
 	}
 	char          *swap_keys[STUDIO_SWAP_MAX];
 	gpu_texture_t *swap_saved[STUDIO_SWAP_MAX];
-	i32            swaps = studio_swap_curvature(swap_keys, swap_saved);
+	i32            swaps  = studio_swap_curvature(swap_keys, swap_saved);
+	i32            need   = mm_buffers_require(MM_BUFFERS_TINY);
+	i32            ddirty = g_context->ddirty;
 	parser_material_live_update(studio_material->canvas, 0);
 	if (studio_preview == NULL) {
 		studio_preview = gpu_create_render_target(STUDIO_PREVIEW_SIZE, STUDIO_PREVIEW_SIZE, GPU_TEXTURE_FORMAT_RGBA64);
@@ -404,7 +446,8 @@ static void studio_render() {
 	camera_object_build_mat(scene_camera);
 	scene_world->_->envmap = _envmap;
 	util_render_preview_lighting_end();
-	g_context->ddirty = 0;
+	mm_buffers_require(need);
+	g_context->ddirty = studio_vars ? ddirty : 0; // A Material Maker buffer landing meanwhile still redraws the viewport
 }
 
 // Draws the node preview shader over the whole target
@@ -593,6 +636,22 @@ static void studio_update(void *_) {
 	if (studio_need_commit && !g_ui->input_down && !ui_menu_show) {
 		studio_commit();
 	}
+	if (studio_vars) {
+		f64 vh  = studio_hash_vars(c);
+		f64 now = iron_time();
+		if (vh != studio_known_vars && (!g_ui->input_down || now - studio_var_compile_time > STUDIO_VAR_COMPILE_S)) {
+			studio_known_vars       = vh;
+			studio_var_compile_time = now;
+			variable_propagate(c->nodes, c->links); // Into the parameters, then compiled
+			studio_need_compile = true;
+		}
+		i32 landed = mm_buffers_landed_count();
+		if (landed != studio_landed && now - studio_land_render_time > STUDIO_LAND_RENDER_S) {
+			studio_landed           = landed;
+			studio_land_render_time = now;
+			studio_need_render      = true;
+		}
+	}
 	u32 st = studio_hash_struct(c);
 	f64 vs = studio_hash_values(c);
 	if (st != studio_known_struct) { // An edit, undo, redo or the node editor
@@ -608,7 +667,7 @@ static void studio_update(void *_) {
 	if (!material_studio_show) {
 		return;
 	}
-	if (!studio_thumbs_made) {
+	if (!studio_thumbs_made && !studio_vars) {
 		studio_make_thumbs();
 		studio_redraw();
 	}
@@ -630,12 +689,20 @@ static void studio_update(void *_) {
 			studio_view_handle->redraws = 2;
 		}
 	}
-	studio_update_tiles(c, vs);
+	if (!studio_vars) {
+		studio_update_tiles(c, vs);
+	}
 }
 
 void material_studio_open(slot_material_t *m) {
-	if (m == NULL || !studio_graph_is(m->canvas)) {
+	if (m == NULL || (!studio_graph_is(m->canvas) && variable_count(m->canvas) == 0)) {
 		return;
+	}
+	studio_vars = !studio_graph_is(m->canvas);
+	if (studio_vars) {
+		variable_propagate(m->canvas->nodes, m->canvas->links);
+		studio_known_vars = studio_hash_vars(m->canvas);
+		studio_landed     = mm_buffers_landed_count();
 	}
 	ui_popovers_close();
 	ui_menu_show         = false;
@@ -1503,6 +1570,108 @@ static void studio_draw_mask(ui_node_canvas_t *c, i32 k) {
 	}
 }
 
+// A Variable's control: slider, switch, chips or menu, swatch, or a gradient with a swatch per stop
+static void studio_draw_variable(ui_node_t *v, i32 slot) {
+	i32          k     = variable_kind(v);
+	char        *label = variable_name(v);
+	f32_array_t *arr   = variable_value_array(v);
+	if (arr == NULL || arr->length == 0) {
+		return;
+	}
+	if (k == 0 || k == 1) { // Number, Whole Number
+		f32 min, max, step;
+		variable_range(v, &min, &max, &step);
+		i32 unit  = variable_unit(v);
+		f32 scale = unit == 1 ? 100.0 : 1.0; // Percent shown 0 to 100
+		f32 prec  = k == 1 ? 1 : step > 0 ? 1.0 / step : (max - min) <= 0.1 ? 10000 : (max - min) <= 2 ? 1000 : 100;
+		studio_take_undo_on_touch();
+		studio_slots[slot] = arr->buffer[0] * scale;
+		f32 before         = studio_slots[slot];
+		ui_slider(&studio_slots[slot], label, min * scale, max * scale, true, k == 1 ? 1 : prec / scale, true, UI_ALIGN_LEFT, true);
+		if (studio_slots[slot] != before) {
+			f32 x = studio_slots[slot] / scale;
+			if (k == 1) {
+				x = math_floor(x + 0.5);
+			}
+			arr->buffer[0] = x;
+			studio_edited();
+		}
+	}
+	else if (k == 2) { // Toggle
+		bool on = arr->buffer[0] != 0;
+		if (ui_check(&on, label, "") != (arr->buffer[0] != 0)) {
+			studio_begin_edit();
+			arr->buffer[0] = on ? 1.0 : 0.0;
+			studio_edited();
+		}
+	}
+	else if (k == 3) { // Choice
+		string_array_t *options = variable_options(v);
+		i32             picked  = (i32)arr->buffer[0];
+		if (options->length > 0 && options->length <= 3) {
+			studio_label(label);
+			i32 tapped = studio_chips((char **)options->buffer, options->length, picked, options->length);
+			if (tapped >= 0 && tapped != picked) {
+				studio_begin_edit();
+				arr->buffer[0] = tapped;
+				studio_edited();
+			}
+		}
+		else if (options->length > 3) {
+			i32 h = picked;
+			ui_combo(&h, options, label, true, UI_ALIGN_LEFT, true);
+			if (h != picked) {
+				studio_begin_edit();
+				arr->buffer[0] = h;
+				studio_edited();
+			}
+		}
+	}
+	else if (k == 4 && arr->length >= 3) { // Color
+		ui_row2();
+		ui_text(label, UI_ALIGN_LEFT, 0x00000000);
+		studio_swatch(arr->buffer);
+	}
+	else if (k == 5 && arr->length >= 10) { // Gradient: its colors, a swatch per stop in order of position
+		studio_label(label);
+		i32 sorted[STUDIO_RAMP_MAX];
+		i32 len    = studio_ramp_sorted(arr, sorted);
+		f32 w      = g_ui->_w / (f32)UI_SCALE();
+		f32 h      = g_theme->ELEMENT_H * 0.6;
+		i32 slices = 48;
+		for (i32 s = 0; s < slices; ++s) {
+			f32 col[3];
+			studio_ramp_color_at(arr, sorted, len, (s + 0.5) / slices, col);
+			ui_fill(w * s / slices, 0, w / slices + 1.0, h, color_from_floats(col[0], col[1], col[2], 1.0));
+		}
+		g_ui->_y += h * UI_SCALE();
+		f32_array_t *row = f32_array_create(len);
+		for (i32 i = 0; i < len; ++i) {
+			row->buffer[i] = 1.0 / len;
+		}
+		ui_row(row);
+		for (i32 i = 0; i < len; ++i) {
+			studio_swatch(arr->buffer + sorted[i] * 5);
+		}
+		array_free(row);
+		free(row);
+	}
+}
+
+// Variables mode: the controls of the material's Variables, by group
+static void studio_draw_variables(ui_node_canvas_t *c) {
+	ui_node_t_array_t *vars  = variable_list(c);
+	i32                group = -1;
+	for (i32 i = 0; i < vars->length && i < STUDIO_SLOTS; ++i) {
+		ui_node_t *v = vars->buffer[i];
+		if (variable_group(v) != group) {
+			group = variable_group(v);
+			studio_label(variable_group_name(group));
+		}
+		studio_draw_variable(v, i);
+	}
+}
+
 static void studio_draw_controls(ui_node_canvas_t *c) {
 	studio_label(tr("Presets"));
 	i32   n = studio_preset_count();
@@ -1736,7 +1905,12 @@ void ui_material_studio_render_ui() {
 	}
 
 	if (ui_window(studio_ctrl_handle, ctrl_x, ctrl_y, ctrl_w, ctrl_h, false)) {
-		studio_draw_controls(c);
+		if (studio_vars) {
+			studio_draw_variables(c);
+		}
+		else {
+			studio_draw_controls(c);
+		}
 	}
 	ui_end_window();
 	g_theme->WINDOW_BG_COL = window_bg;

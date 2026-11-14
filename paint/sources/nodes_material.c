@@ -19,6 +19,7 @@ void nodes_material_init() {
 	tilesheet_node_init();
 	uv_map_node_init();
 	value_node_init();
+	variable_node_init();
 	wireframe_node_init();
 	mask_nodes_init();
 

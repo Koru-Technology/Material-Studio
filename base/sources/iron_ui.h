@@ -602,6 +602,7 @@ extern int ui_nodes_custom_button_index; // Set while ui_nodes_on_custom_button 
 extern ui_canvas_control_t *(*ui_nodes_on_canvas_control)(void);
 extern void (*ui_nodes_on_canvas_released)(void);
 extern void (*ui_nodes_on_socket_released)(int);
+extern char *(*ui_nodes_on_socket_label)(ui_node_t *, ui_node_socket_t *); // A label for a socket instead of its name, NULL: its name
 extern void (*ui_nodes_on_link_drag)(int, bool);
 extern void (*ui_nodes_on_node_remove)(ui_node_t *);
 extern void (*ui_nodes_on_node_changed)(ui_node_t *);
