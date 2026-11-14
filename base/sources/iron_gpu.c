@@ -332,6 +332,15 @@ void gpu_texture_destroy(gpu_texture_t *texture) {
 	}
 }
 
+#ifndef IRON_METAL
+void gpu_commit(void (*done)(void *data, double gpu_ms), void *data) {
+	gpu_execute_and_wait();
+	if (done != NULL) {
+		done(data, -1.0);
+	}
+}
+#endif
+
 #ifdef IRON_METAL
 static struct {
 	gpu_texture_t  *targets[8];

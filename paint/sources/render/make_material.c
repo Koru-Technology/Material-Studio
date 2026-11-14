@@ -258,7 +258,9 @@ void make_material_bake_node_previews() {
 		g_context->node_previews = any_map_create();
 	}
 	ui_node_t_array_t *empty = any_array_create_from_raw((void *[]){}, 0);
+	i32                need  = mm_buffers_require(2); // Blur and warp previews feed the material: full Material Maker buffers
 	make_material_traverse_nodes(g_context->material->canvas->nodes, NULL, empty);
+	mm_buffers_require(need);
 
 	make_material_delete_node_previews(g_context->material, g_context->node_previews_used);
 	array_free(empty);

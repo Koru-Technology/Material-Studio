@@ -185,6 +185,7 @@ void ui_base_update(void *_) {
 
 	box_bake_maps_update();
 	project_autosave_update();
+	config_brush_save_update();
 
 	util_cursor_render(_);
 

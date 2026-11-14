@@ -177,10 +177,18 @@ void util_particle_update() {
 		iron_delay_idle_sleep();
 	}
 
-	static f64 particle_last_spawn_time = 0.0;
-	bool       particle_just_fired      = false;
-	f32        rate                     = g_context->particle_rate > 0.1f ? g_context->particle_rate : 0.1f;
-	if (mouse_down("left") && context_in_paint_area() && !g_context->paint2d &&
+	static f64  particle_last_spawn_time = 0.0;
+	static bool particle_dropped         = false; // Another material than the fill layer's: nothing emits until release
+	bool        particle_just_fired      = false;
+	f32         rate                     = g_context->particle_rate > 0.1f ? g_context->particle_rate : 0.1f;
+	if (particle_dropped && (!mouse_down("left") || mouse_started("left"))) { // Lifted, or a new touch (see util_brush.c)
+		particle_dropped = false;
+	}
+	if (mouse_started("left") && context_in_paint_area() && !g_context->paint2d && layers_fill_paint_needs_new_layer()) {
+		layers_fill_paint_confirm_new_layer();
+		particle_dropped = true;
+	}
+	if (!particle_dropped && mouse_down("left") && context_in_paint_area() && !g_context->paint2d &&
 	    (mouse_started("left") || sys_time() - particle_last_spawn_time >= 1.0 / rate)) {
 		particle_last_spawn_time = sys_time();
 

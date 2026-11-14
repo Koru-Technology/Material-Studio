@@ -253,8 +253,8 @@ void util_render_make_material_preview() {
 	camera_object_build_proj(scene_camera, -1.0);
 	camera_object_build_mat(scene_camera);
 
-	// Material Maker buffers at most the preview's size: rendering them at the material's size (2048 and more) for a
-	// 256 px sphere cost seconds on the iPad. Also while the frame draws: an evicted pass renders again then.
+	// Material Maker buffers: usable ones (low resolution) are enough, a missing one renders now at most the preview's
+	// size: rendering them at the material's size (2048 and more) for a 256 px sphere cost seconds on the iPad.
 	mm_buffers_set_size_cap(util_render_material_preview_size);
 	make_material_parse_mesh_preview_material();
 	void (*_commands)(void) = render_path_commands;
@@ -333,7 +333,9 @@ void util_render_make_decal_preview() {
 	make_material_parse_mesh_preview_material();
 	void (*_commands)(void) = render_path_commands;
 	render_path_commands    = render_path_preview_commands_decal;
+	i32 mm_need             = mm_buffers_require(1); // A preview: Material Maker buffers at least at the low resolution
 	render_path_render_frame();
+	mm_buffers_require(mm_need);
 	render_path_commands = _commands;
 
 	g_context->decal_preview = false;
@@ -841,6 +843,11 @@ void util_render_set_material_preview(slot_material_t *m, gpu_texture_t *src) {
 	render_path_set_target("texpreview_icon", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	render_path_bind_target("texpreview", "tex");
 	render_path_draw_shader("Scene/supersample_resolve/supersample_resolveRGBA64");
+	render_path_end();
+	// The copy has to be done before the caller frees src (it does right away): textures bound through the argument
+	// buffer are not kept alive by the command buffer, and deleted textures are freed at the present, not after the GPU
+	// ran the frame. Reading a freed src gave every material the same broken picture.
+	gpu_execute_and_wait();
 	texpreview->_image      = _preview;
 	texpreview_icon->_image = _icon;
 	if (in_use) {

@@ -23,3 +23,6 @@ double iron_glsl_now_ms(void);
 
 // Both stages: *vs = "//>vert\n" + msl, *fs = "//>frag\n" + msl, or "" on error
 void gpu_create_shaders_from_glsl(char *glsl, char **vs, char **fs, int *vs_size, int *fs_size);
+
+// The same, thread safe (translations run in parallel): malloc'd strings the caller frees, false on error
+bool iron_glsl_translate(const char *glsl, char **vs, char **fs);

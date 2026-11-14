@@ -649,13 +649,105 @@ static void layers_fill_paint_update(void *_) {
 	layers_update_fill_layers();
 }
 
-// A stroke on a fill layer paints its mask: the first paintable mask of the layer, or a new black one.
-// Returns false when the layer is no fill layer or there is no room for a mask.
-bool layers_fill_paint_to_mask() {
+// Tools that put the selected material down (the others only shape a mask: eraser, blur)
+static bool layers_tool_applies_material(i32 tool) {
+	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_FILL || tool == TOOL_TYPE_PARTICLE;
+}
+
+// Pushes a history step that undoes and redoes together with the one before it (one undo for several steps of one
+// action). Nothing is linked when the push added no step.
+void layers_history_with_prev(void (*push)(void)) {
+	i32 before = history_steps->length;
+	push();
+	if (history_steps->length > before && history_steps->length > 1) {
+		history_steps->buffer[history_steps->length - 1]->with_prev = true;
+	}
+}
+
+// A fill layer of the selected material above the current layer, for a stroke started on a fill layer of another
+// material: the stroke paints the new layer's black mask, so the selected material shows where it is painted
+static slot_layer_t *layers_new_fill_layer_for_stroke() {
+	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t         *l        = layers_new_layer(false, -1, NULL); // Above the current layer (its fill layer when on a mask)
+	if (l == NULL) {
+		return NULL;
+	}
+	tab_layers_remap_all_layer_pointers(pointers);
+	history_new_layer();
+	layers_history_with_prev(history_to_fill_layer);
+	slot_layer_to_fill_layer(l); // Filled with the selected material
+	return l;
+}
+
+// The fill layer of the current layer (the layer itself, or the layer of its mask), NULL when it is no fill layer
+static slot_layer_t *layers_fill_paint_target() {
 	slot_layer_t *l = g_context->layer;
+	if (l != NULL && slot_layer_is_mask(l) && l->parent != NULL && slot_layer_is_layer(l->parent) && l->parent->fill_material != NULL) {
+		return l->parent;
+	}
 	if (l == NULL || l->fill_material == NULL || !slot_layer_is_layer(l)) {
+		return NULL;
+	}
+	return l;
+}
+
+// A stroke would put the selected material down on a fill layer of another material: one fill layer holds one
+// material, so the stroke needs a new fill layer (asked with layers_fill_paint_confirm_new_layer)
+bool layers_fill_paint_needs_new_layer() {
+	slot_layer_t *l = layers_fill_paint_target();
+	return l != NULL && l->fill_material != g_context->material && layers_tool_applies_material(g_context->tool);
+}
+
+static bool layers_fill_paint_to_mask_of(slot_layer_t *l, bool created);
+
+// A fill layer of the selected material, on a new black mask that the next stroke paints. One undo removes both.
+bool layers_fill_paint_to_new_layer() {
+	if (layers_fill_paint_target() == NULL) {
 		return false;
 	}
+	slot_layer_t *l = layers_new_fill_layer_for_stroke();
+	return l != NULL && layers_fill_paint_to_mask_of(l, true);
+}
+
+static void layers_fill_paint_to_new_layer_on_next_frame(void *_) {
+	layers_fill_paint_to_new_layer();
+}
+
+static void layers_fill_paint_confirm_box() {
+	ui_text(tr("Multiple materials cannot be painted on the same fill layer."), UI_ALIGN_LEFT, 0x00000000);
+	ui_row2();
+	if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
+		ui_box_hide();
+	}
+	if (ui_icon_button(tr("Create new fill layer"), ICON_CHECK, UI_ALIGN_CENTER)) {
+		ui_box_hide();
+		sys_notify_on_next_frame(&layers_fill_paint_to_new_layer_on_next_frame, NULL); // Not in the middle of drawing the box
+	}
+}
+
+// Asks to paint the selected material on a new fill layer, instead of the stroke on the current one
+void layers_fill_paint_confirm_new_layer() {
+	ui_box_show_custom(&layers_fill_paint_confirm_box, 560, 200, NULL, true, tr("Fill Layer"));
+}
+
+// A stroke on a fill layer paints its mask: the first paintable mask of the layer, or a new black one. A tool that
+// puts another material down than the fill layer's has to ask for a new fill layer first
+// (layers_fill_paint_needs_new_layer): nothing is changed for it here. Returns false when the layer is no fill layer
+// (nor the mask of one), the stroke needs a new fill layer, or there is no room for a mask.
+bool layers_fill_paint_to_mask() {
+	slot_layer_t *l = layers_fill_paint_target();
+	if (l == NULL || layers_fill_paint_needs_new_layer()) {
+		return false;
+	}
+	if (g_context->layer != l) {
+		return false; // The fill layer's own mask, painted as is
+	}
+	return layers_fill_paint_to_mask_of(l, false);
+}
+
+// Selects the first paintable mask of fill layer l, or a new black one. created: l was just made, its mask's history
+// step goes with it.
+static bool layers_fill_paint_to_mask_of(slot_layer_t *l, bool created) {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *m = g_project->_->layers->buffer[i];
 		if (m->parent == l && slot_layer_is_mask(m) && m->fill_material == NULL) {
@@ -671,7 +763,12 @@ bool layers_fill_paint_to_mask() {
 	tab_layers_remap_all_layer_pointers(pointers);
 	slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	g_context->layer_preview_dirty = true;
-	history_new_black_mask();
+	if (created) {
+		layers_history_with_prev(history_new_black_mask);
+	}
+	else {
+		history_new_black_mask();
+	}
 	sys_notify_on_next_frame(&layers_fill_paint_update, NULL);
 	return true;
 }
@@ -731,7 +828,7 @@ void layers_create_fill_layer_on_next_frame(void *_) {
 	}
 	l->object_mask = g_context->layer_filter;
 
-	history_to_fill_layer();
+	layers_history_with_prev(history_to_fill_layer); // One undo removes the new fill layer
 	slot_layer_to_fill_layer(l);
 }
 
@@ -752,8 +849,8 @@ void layers_create_filter_on_next_frame(void *_) {
 	tab_materials_button_new_on_next_frame(NULL);
 
 	slot_layer_t *l = layers_new_layer(false, -1, g_context->layer);
-	history_new_layer();
-	history_to_fill_layer();
+	layers_history_with_prev(history_new_layer); // With the filter's new material: one undo removes the filter
+	layers_history_with_prev(history_to_fill_layer);
 	slot_layer_to_fill_layer(l);
 
 	// Filter material

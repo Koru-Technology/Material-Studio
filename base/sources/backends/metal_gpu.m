@@ -360,6 +360,25 @@ void gpu_execute_and_wait() {
 	}
 }
 
+// Submits the work recorded so far without waiting for it, outside a render pass. done (any thread) gets its GPU time.
+void gpu_commit(void (*done)(void *data, double gpu_ms), void *data) {
+	end_kept_encoder();
+	if (gpu_in_use) { // Not meant for it: as gpu_execute_and_wait
+		gpu_execute_and_wait();
+		if (done != NULL) {
+			done(data, -1.0);
+		}
+		return;
+	}
+	if (done != NULL) {
+		[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+		  done(data, cb.error == nil ? (cb.GPUEndTime - cb.GPUStartTime) * 1000.0 : -1.0);
+		}];
+	}
+	[command_buffer commit];
+	command_buffer = [get_metal_queue() commandBuffer];
+}
+
 // gpu_suspend / gpu_resume: the pass ends storing everything, continues in a new encoder loading it
 static MTLRenderPassDescriptor *suspended_desc = nil;
 static MTLViewport              suspended_viewport;
@@ -424,12 +443,24 @@ bool gpu_float32_filtering_supported(void) {
 	return supported == 1;
 }
 
+static double metal_now_ms(void);
+
 void gpu_present_internal() {
 	end_kept_encoder();
 	if (drawable != nil) {
 		[command_buffer presentDrawable:drawable];
 	}
-	if (metal_timing()) { // Frames with more than 20 ms of GPU work
+	static int frame_timing = -1; // IRON_FRAME_TIMING: every frame, when it was committed and its GPU time
+	if (frame_timing < 0) {
+		frame_timing = getenv("IRON_FRAME_TIMING") != NULL ? 1 : 0;
+	}
+	if (frame_timing) {
+		double committed = metal_now_ms();
+		[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+		  fprintf(stderr, "[frame] t %.1f gpu %.2f ms\n", committed, (cb.GPUEndTime - cb.GPUStartTime) * 1000.0);
+		}];
+	}
+	else if (metal_timing()) { // Frames with more than 20 ms of GPU work
 		[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
 		  double ms = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0;
 		  if (ms > 20.0) {

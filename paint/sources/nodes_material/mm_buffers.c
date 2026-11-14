@@ -7,18 +7,19 @@
 // Material shaders sample a rendered pass through a texture link: "_mmbuf" + the pass's key as 16 lowercase hex digits
 // (mm_buffers_link), resolved by uniforms_ext_tex_link with mm_buffers_texture.
 //
-// Keys: a 64-bit hash of everything a pass's texture depends on: its GLSL (and loop GLSL), size, format, iterations and
-// shrink, a CPU texture's mm_texture_key, and the same for every pass it reads, followed through iterate loops (a
-// canonical hash of the dependency graph from the pass).
+// Keys: a 64-bit hash of everything a pass's texture depends on: its GLSL (and loop GLSL), its size in the graph (not the
+// size it renders at, see Levels), format, iterations and shrink, a CPU texture's mm_texture_key, and the same for every
+// pass it reads, followed through iterate loops (a canonical hash of the dependency graph from the pass).
 //
 // Recipes: each pass gets a recipe, malloc'd, outliving the mm arena: its GLSL, flags, the keys of its inputs, the loop
 // passes of an iterate buffer, a CPU texture's pixels (lz4). A recipe renders its texture again by itself, rendering
 // the inputs it needs from their recipes: a material shader compiled once keeps resolving its links after its textures
-// were evicted. The texture is made when the link resolves: between gpu_begin and gpu_draw on Metal, where the pass in
-// progress is suspended (gpu_suspend); elsewhere the link reads black for a frame and the texture renders on the next.
+// were evicted. A texture needed at once (mm_buffers_require) renders when the link resolves: between gpu_begin and
+// gpu_draw on Metal, where the pass in progress is suspended (gpu_suspend); elsewhere it is queued.
 //
 // Eviction: textures stay while they fit MM_BUFFERS_BUDGET_MB; past it, the least recently rendered, found or bound go
-// first, never the last render's (a generation counter: mm_buffers_render advances it, finding or binding marks used).
+// first, never the last render's (a generation counter: mm_buffers_render advances it, finding or binding marks used),
+// nor queued ones. A recipe has one texture: its low one is freed when the full one lands.
 // Pipelines stay up to MM_BUFFERS_MAX_PIPES, the least recently used go first. Recipes
 // stay while they fit MM_BUFFERS_RECIPE_BUDGET_MB, the least recently used go first; binding a link keeps its recipe and
 // those of every pass it reads.
@@ -26,14 +27,44 @@
 // Passes inside an iterate buffer's loop (loop_of >= 0) render into scratch targets for each iteration, recycled; their
 // last iteration's texture is kept as theirs (Material Maker renders them again whenever the loop texture updates),
 // with a link like any pass. Their key includes the iterate buffer's; rendering one again renders the iterate buffer.
+// An iterate buffer and its loop passes render together: a unit.
+//
+// Levels: a pass's texture renders at two resolutions. Full: the pass's own size, at most the project's texture
+// resolution and MM_BUFFERS_MAX_SIZE. Low (usable): at most MM_BUFFERS_LOW_SIZE, from inputs at any level. A texture
+// is full once rendered at the full size from full inputs. A recipe holds its best texture; the key and link do not
+// depend on the size, the material shader samples whichever texture is there without compiling again.
+//
+// Deferred rendering: a material compile (mm_buffers_render) makes the recipes and queues their passes instead of
+// rendering them: the stage 0 queue for passes with no texture (rendered low), the stage 1 queue for passes not full.
+// mm_buffers_step, each frame, renders queued passes in dependency order within a budget, stage 0 first, without
+// waiting for the GPU: the estimated GPU time of its draws (MM_BUFFERS_STEP_GPU_MS, each pass's cost in ms per Mpx
+// measured from the GPU times of earlier draws, gpu_commit) and main thread time. A unit's render continues across
+// frames (the recipe's job): draw after draw (an iterate buffer's iterations), a draw too long for a frame in bands of
+// rows (scissor). Pipelines translate (GLSL to MSL) and compile on worker threads (mm_buffers_pipe_request), a pass
+// renders once its pipelines are ready.
+//
+// mm_buffers_texture returns the best texture of a link (NULL, an empty texture, when there is none yet) and queues
+// what is missing, unless the caller needs more (mm_buffers_require): 1, usable (previews: a low texture rendered at
+// once, at most the size cap) or 2, full (painting, fill layers, bakes, thumbnails: full textures rendered at once).
+// Env MM_BUFFERS_SYNC=1: the old synchronous behaviour, every pass rendered full by mm_buffers_render, no low stage.
+// Env MM_BUFFERS_STEP_GPU_MS, MM_BUFFERS_STEP_MS: a step's budgets. IRON_SHADER_TIMING logs when the queue's pipelines
+// are made, when its passes are usable and full (also profile marks "mm buffers usable" / "mm buffers full").
 
 #include "../global.h"
 #include "../material_maker/mm.h"
+#include <iron_profile.h>
+#include <stdatomic.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #define MM_BUFFERS_MAX_PIPES 256 // Compiled pass pipelines kept, the least recently used go first past it
 #define MM_BUFFERS_FLUSH 64 // Draws between submits, short command buffers (the ios gpu watchdog, iterate buffers draw thousands)
+#define MM_BUFFERS_LOW_SIZE 512 // The usable level, rendered first
 #ifdef IRON_IOS
-#define MM_BUFFERS_MAX_SIZE         2048 // Pass sizes are clamped to it (shaders get the real size): 2048² RGBA32F is 64 MB
+#define MM_BUFFERS_MAX_SIZE         2048 // Full pass sizes are clamped to it (and to the project's texture resolution)
 #define MM_BUFFERS_MAX_CPU_SIZE     1024 // CPU textures (text: 2048²) are halved down to it
 #define MM_BUFFERS_BUDGET_MB        256  // When the device's memory is unknown (see mm_buffers_budget)
 #define MM_BUFFERS_RAM_SHARE        10   // Otherwise the budget is this fraction of physical memory,
@@ -52,6 +83,7 @@
 #define MM_BUFFERS_LINK    "_mmbuf"
 
 #ifdef __APPLE__
+#include <pthread.h>
 #include <sys/sysctl.h>
 #ifdef IRON_IOS
 #include <os/proc.h>
@@ -67,7 +99,7 @@ typedef struct mm_buffers_recipe {
 	char                     *glsl_loop;
 	u64                       glsl_hash;
 	u64                       loop_hash;
-	i32                       size;
+	i32                       own; // The pass's size in its graph, before clamping (mm_buffers_full_size)
 	bool                      greyscale;
 	bool                      f32;
 	bool                      exact; // 32-bit floats wherever (read with texelFetch)
@@ -89,7 +121,23 @@ typedef struct mm_buffers_recipe {
 	i32                       w;
 	i32                       h;
 	// State
-	gpu_texture_t            *tex; // NULL until rendered, and once evicted
+	gpu_texture_t            *tex; // NULL until rendered, and once evicted: the best texture rendered
+	i32                       tex_size;  // The size it rendered at
+	i32                       tex_level; // 1 low (or from low inputs), 2 full
+	bool                      queued[2]; // In the stage 0 / stage 1 queue
+	i32                       visit;     // mm_buffers_work's search stamp
+	// A unit's render in progress, continued over frames: draw after draw (an iterate buffer's first draw, then for each
+	// iteration its loop passes and its loop source), a draw in bands of rows when it does not fit a frame
+	bool                      job;
+	i32                       job_level;
+	i32                       job_k;     // Iteration: 0 the first draw
+	i32                       job_phase; // In an iteration: loop pass, nloop for the loop source
+	i32                       job_band;  // Rows of the draw in progress done
+	bool                      job_exact; // Full sizes from full inputs
+	gpu_texture_t            *job_draw;  // The target of the draw in progress
+	gpu_texture_t            *job_t;     // The last iteration's texture
+	gpu_texture_t            *job_cur;   // A loop pass: its texture of the last iteration
+	f32                       cost;      // Measured GPU ms per Mpx drawn, 0 unknown
 	bool                      failed;
 	i32                       used;        // Generation the texture was last rendered, found or bound
 	i32                       recipe_used; // Generation the recipe was last needed
@@ -100,14 +148,21 @@ typedef struct mm_buffers_recipe {
 	i32                       rendered_call; // mm_buffers_render call it was last rendered by (the stats)
 } mm_buffers_recipe_t;
 
+// A pipeline's state: new (nothing made), queued for a worker or being made by one, ready (compiled, or failed: !ok)
+#define MM_PIPE_NEW    0
+#define MM_PIPE_QUEUED 1
+#define MM_PIPE_READY  2
+
 typedef struct {
-	u64            key; // GLSL hash and format
-	gpu_pipeline_t pipe;
-	gpu_shader_t  *vs;
-	gpu_shader_t  *fs;
-	bool           ok;
-	bool           compiled; // false: shaders made, pipeline still to compile (mm_buffers_precompile)
-	i32            used;
+	u64                  key; // GLSL hash and format
+	gpu_pipeline_t       pipe;
+	gpu_shader_t        *vs;
+	gpu_shader_t        *fs;
+	bool                 ok;
+	atomic_int           state;
+	char                *glsl; // Until made
+	gpu_texture_format_t format;
+	i32                  used;
 } mm_buffers_pipe_t;
 
 typedef struct {
@@ -127,6 +182,9 @@ static i32                    mm_buffers_draws    = 0;
 static i32                    mm_buffers_rerenders = 0;
 static gpu_texture_t         *mm_buffers_empty    = NULL;
 static gpu_vertex_structure_t mm_buffers_structure;
+static i32                    mm_buffers_need     = 0;     // mm_buffers_require
+static bool                   mm_buffers_forced   = false; // mm_buffers_render renders synchronously (tests)
+static bool                   mm_buffers_stepping = false; // In mm_buffers_step: draws are not flushed
 
 // The last render: its returned textures and keys, for mm_buffers_link
 static mm_plan_t      *mm_buffers_last_plan  = NULL;
@@ -162,19 +220,45 @@ static u64 mm_buffers_hash_str(u64 h, const char *s) {
 
 // Pass properties
 
-// Material previews (a 256 px sphere) render their passes at most this size: the material's own sizes (2048 and more)
-// cost up to seconds per preview on the iPad. 0: no cap. The size is part of a pass's key, the capped textures never
-// stand in for the full size ones painting uses.
+// Material previews (a 256 px sphere) need usable textures only, rendered at most this size when missing: the
+// material's own sizes (2048 and more) cost up to seconds per preview on the iPad. 0: no cap. Painting still gets full
+// textures (a recipe's texture is full only when rendered at the full size).
 static i32 mm_buffers_size_cap = 0;
 
 void mm_buffers_set_size_cap(i32 size) {
 	mm_buffers_size_cap = size;
 }
 
-static i32 mm_buffers_size(mm_pass_t *p) {
-	i32 s = p->size < 1 ? 1 : p->size;
-	s     = s > MM_BUFFERS_MAX_SIZE ? MM_BUFFERS_MAX_SIZE : s;
-	return mm_buffers_size_cap > 0 && s > mm_buffers_size_cap ? mm_buffers_size_cap : s;
+static bool mm_buffers_sync(void) { // Env MM_BUFFERS_SYNC: every pass rendered full by mm_buffers_render, as before
+	static int sync = -1;
+	if (sync < 0) {
+		sync = getenv("MM_BUFFERS_SYNC") != NULL && getenv("MM_BUFFERS_SYNC")[0] != '0';
+	}
+	return sync == 1;
+}
+
+// What links need now: 0 the best texture there is (or none), 1 usable, 2 full
+i32 mm_buffers_require(i32 level) {
+	i32 old         = mm_buffers_need;
+	mm_buffers_need = level;
+	return old;
+}
+
+static i32 mm_buffers_needed(void) {
+	if (mm_buffers_sync()) {
+		return 2;
+	}
+	return mm_buffers_need > 0 ? mm_buffers_need : mm_buffers_size_cap > 0 ? 1 : 0;
+}
+
+static i32 mm_buffers_own(mm_pass_t *p) {
+	return p->size < 1 ? 1 : p->size;
+}
+
+static i32 mm_buffers_project_res(void) {
+	i32 x = config_get_texture_res_x();
+	i32 y = config_get_texture_res_y();
+	return x > y ? x : y;
 }
 
 static bool mm_buffers_float32(void) {
@@ -191,6 +275,32 @@ static gpu_texture_format_t mm_buffers_format(mm_buffers_recipe_t *r) {
 		return f32 ? GPU_TEXTURE_FORMAT_R32 : GPU_TEXTURE_FORMAT_R16;
 	}
 	return f32 ? GPU_TEXTURE_FORMAT_RGBA128 : GPU_TEXTURE_FORMAT_RGBA64;
+}
+
+// The full size of a pass: its own, at most the project's texture resolution and MM_BUFFERS_MAX_SIZE
+static i32 mm_buffers_full_size(mm_buffers_recipe_t *r) {
+	i32 s   = r->own > MM_BUFFERS_MAX_SIZE ? MM_BUFFERS_MAX_SIZE : r->own;
+	i32 res = mm_buffers_project_res();
+	s       = res > 0 && s > res ? res : s;
+	return s < 1 ? 1 : s;
+}
+
+// The size a level renders at: full, or low (at most MM_BUFFERS_LOW_SIZE and the size cap)
+static i32 mm_buffers_level_size(mm_buffers_recipe_t *r, i32 level) {
+	i32 s = mm_buffers_full_size(r);
+	if (level >= 2) {
+		return s;
+	}
+	s = s > MM_BUFFERS_LOW_SIZE ? MM_BUFFERS_LOW_SIZE : s;
+	return mm_buffers_size_cap > 0 && s > mm_buffers_size_cap ? mm_buffers_size_cap : s;
+}
+
+// The recipe has a texture good for the level: any for 1, a full one for 2
+static bool mm_buffers_sat(mm_buffers_recipe_t *r, i32 level) {
+	if (r->tex == NULL) {
+		return false;
+	}
+	return level < 2 || r->cpu || (r->tex_level >= 2 && r->tex_size == mm_buffers_full_size(r));
 }
 
 static bool mm_buffers_in_loop(mm_pass_t *p) {
@@ -260,7 +370,7 @@ static u64 mm_buffers_content(mm_pass_t *p) {
 	u64 l   = mm_buffers_hash_str(MM_BUFFERS_SEED, p->iterate ? p->glsl_loop : NULL);
 	u64 h   = mm_buffers_hash(MM_BUFFERS_SEED, &g, sizeof(u64));
 	h       = mm_buffers_hash(h, &l, sizeof(u64));
-	i32 v[] = {p->texture_gen != NULL ? 0 : mm_buffers_size(p),
+	i32 v[] = {p->texture_gen != NULL ? 0 : mm_buffers_own(p),
 	           p->greyscale,
 	           p->f32,
 	           p->iterate,
@@ -343,7 +453,7 @@ static mm_buffers_recipe_t *mm_buffers_recipe_new(mm_plan_t *plan, i32 i, u64 *k
 	r->greyscale           = p->greyscale;
 	r->f32                 = p->f32;
 	r->exact               = p->exact;
-	r->size                = mm_buffers_size(p);
+	r->own                 = mm_buffers_own(p);
 	r->in_loop             = mm_buffers_in_loop(p);
 	r->bytes               = sizeof(mm_buffers_recipe_t);
 	if (r->cpu) {
@@ -478,13 +588,25 @@ static void mm_buffers_scratch_free(void);
 void mm_buffers_trim(void) {
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
 		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
-			if (r->tex != NULL && r->used < mm_buffers_gen && !r->rendering) {
+			if (r->tex != NULL && r->used < mm_buffers_gen && !r->rendering && !r->job && !r->queued[0] && !r->queued[1]) {
 				mm_buffers_texture_free(r->tex);
 				r->tex = NULL;
 			}
 		}
 	}
 	mm_buffers_scratch_free();
+}
+
+// Queued and in progress recipes stay, and their textures: rendering them again would not end
+static void mm_buffers_keep_pending(void) {
+	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
+		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
+			if (r->job || r->job_cur != NULL || r->queued[0] || r->queued[1] || r->rendering) {
+				r->used = mm_buffers_gen;
+				mm_buffers_touch(r); // Its inputs' recipes too
+			}
+		}
+	}
 }
 
 // Tests: a texture budget in KB (eviction without rendering hundreds of MB), 0 restores the default
@@ -498,10 +620,15 @@ static int mm_buffers_cmp_i32(const void *a, const void *b) {
 	return x < y ? -1 : x > y;
 }
 
+static void mm_buffers_workers_drain(void);
+
 static void mm_buffers_evict(bool all) {
 	// Textures stay while they fit the budget: a material compiles into several plans (paint, preview, mesh) and other
 	// materials render in between, freeing whatever a render did not use made the same passes render again and again.
 	// Over budget, the least recently used go first, never the last render's.
+	if (!all) {
+		mm_buffers_keep_pending();
+	}
 	i64 total = 0, recipes = 0;
 	i32 oldest_kept = INT32_MAX;
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
@@ -583,10 +710,14 @@ static void mm_buffers_evict(bool all) {
 		oldest_pipe = oldest_pipe > mm_buffers_gen ? mm_buffers_gen : oldest_pipe;
 		free(used);
 	}
+	if (all) {
+		mm_buffers_workers_drain();
+	}
 	i32 n = 0;
 	for (i32 i = 0; i < mm_buffers_npipes; ++i) {
 		mm_buffers_pipe_t *p = mm_buffers_pipes[i];
-		if (all || p->used < oldest_pipe) {
+		if ((all || p->used < oldest_pipe) && atomic_load(&p->state) != MM_PIPE_QUEUED) {
+			free(p->glsl);
 			if (p->ok) {
 				gpu_pipeline_destroy(&p->pipe);
 			}
@@ -607,9 +738,19 @@ static void mm_buffers_evict(bool all) {
 
 // Pipelines, cached like textures
 
-// The pipeline of a pass, its shaders made (GLSL translated, on this thread: the translator is not thread safe) but not
-// compiled yet: mm_buffers_pipe_compile does, on any thread
-static mm_buffers_pipe_t *mm_buffers_pipe_prepare(char *glsl, u64 glsl_hash, gpu_texture_format_t format) {
+static void mm_buffers_pipe_shaders(mm_buffers_pipe_t *p, char *vs, char *fs, i32 vs_size, i32 fs_size) {
+	p->vs = gpu_create_shader_from_source(vs, vs_size, GPU_SHADER_TYPE_VERTEX);
+	p->fs = gpu_create_shader_from_source(fs, fs_size, GPU_SHADER_TYPE_FRAGMENT);
+	gpu_pipeline_init(&p->pipe);
+	p->pipe.input_layout           = &mm_buffers_structure;
+	p->pipe.vertex_shader          = p->vs;
+	p->pipe.fragment_shader        = p->fs;
+	p->pipe.color_attachment_count = 1;
+	p->pipe.color_attachment[0]    = p->format;
+}
+
+// The pipeline of a pass: found, or made new, nothing translated or compiled yet (mm_buffers_pipe_make, on any thread)
+static mm_buffers_pipe_t *mm_buffers_pipe_get(char *glsl, u64 glsl_hash, gpu_texture_format_t format) {
 	u64 key = mm_buffers_hash_i32(glsl_hash, (i32)format);
 	for (i32 i = 0; i < mm_buffers_npipes; ++i) {
 		if (mm_buffers_pipes[i]->key == key) {
@@ -617,119 +758,246 @@ static mm_buffers_pipe_t *mm_buffers_pipe_prepare(char *glsl, u64 glsl_hash, gpu
 			return mm_buffers_pipes[i];
 		}
 	}
+	if (mm_buffers_structure.size == 0) {
+		gpu_vertex_structure_add(&mm_buffers_structure, "pos", GPU_VERTEX_DATA_F32_2X);
+	}
 	mm_buffers_pipe_t *p = calloc(1, sizeof(mm_buffers_pipe_t));
 	p->key               = key;
 	p->used              = mm_buffers_gen;
-	p->compiled          = true; // Unless shaders are made below
-	if (glsl != NULL) {
+	p->format            = format;
+	atomic_init(&p->state, MM_PIPE_NEW);
+#ifdef WITH_GLSL
+	p->glsl = glsl != NULL ? string_copy(glsl) : NULL; // Translated by mm_buffers_pipe_make (thread safe)
+#else
+	if (glsl != NULL) { // The translator is not thread safe here: shaders made now, the pipeline compiles later
 		char *vs      = NULL;
 		char *fs      = NULL;
 		i32   vs_size = 0;
 		i32   fs_size = 0;
 		gpu_create_shaders_from_glsl(glsl, &vs, &fs, &vs_size, &fs_size);
 		if (vs != NULL && fs != NULL && (vs_size > 0 || vs[0] != '\0') && (fs_size > 0 || fs[0] != '\0')) {
-			if (mm_buffers_structure.size == 0) {
-				gpu_vertex_structure_add(&mm_buffers_structure, "pos", GPU_VERTEX_DATA_F32_2X);
-			}
-			p->vs = gpu_create_shader_from_source(vs, vs_size, GPU_SHADER_TYPE_VERTEX);
-			p->fs = gpu_create_shader_from_source(fs, fs_size, GPU_SHADER_TYPE_FRAGMENT);
-			gpu_pipeline_init(&p->pipe);
-			p->pipe.input_layout           = &mm_buffers_structure;
-			p->pipe.vertex_shader          = p->vs;
-			p->pipe.fragment_shader        = p->fs;
-			p->pipe.color_attachment_count = 1;
-			p->pipe.color_attachment[0]    = format;
-			p->compiled                    = false;
+			mm_buffers_pipe_shaders(p, vs, fs, vs_size, fs_size);
 		}
 	}
+#endif
 	mm_buffers_pipes                      = realloc(mm_buffers_pipes, sizeof(mm_buffers_pipe_t *) * (mm_buffers_npipes + 1));
 	mm_buffers_pipes[mm_buffers_npipes++] = p;
 	return p;
 }
 
-static void mm_buffers_pipe_compile(mm_buffers_pipe_t *p) {
-	if (p->compiled) {
+// Translates the GLSL, makes the shaders, compiles the pipeline: on a worker thread or this one
+static void mm_buffers_pipe_make(mm_buffers_pipe_t *p) {
+#ifdef WITH_GLSL
+	if (p->glsl != NULL) {
+		char *vs = NULL;
+		char *fs = NULL;
+		if (iron_glsl_translate(p->glsl, &vs, &fs)) {
+			mm_buffers_pipe_shaders(p, vs, fs, 0, 0);
+		}
+		free(vs);
+		free(fs);
+		free(p->glsl);
+		p->glsl = NULL;
+	}
+#endif
+	if (p->vs != NULL && p->fs != NULL) {
+		gpu_pipeline_compile(&p->pipe);
+		p->ok = p->pipe.impl.pipeline != NULL;
+	}
+	atomic_store(&p->state, MM_PIPE_READY);
+}
+
+static bool mm_buffers_pipe_ready(mm_buffers_pipe_t *p) {
+	return atomic_load(&p->state) == MM_PIPE_READY;
+}
+
+// Worker threads make the pipelines requested, they end when there are none left (mm_buffers_workers_start starts them
+// again). A pipeline needed at once is made on this thread when no worker took it yet, waited for otherwise.
+#define MM_BUFFERS_WORKERS 4
+
+static iron_mutex_t        mm_buffers_jobs_mutex;
+static bool                mm_buffers_jobs_init = false;
+static mm_buffers_pipe_t **mm_buffers_jobs      = NULL;
+static i32                 mm_buffers_njobs     = 0;
+static i32                 mm_buffers_jobs_cap  = 0;
+static iron_thread_t       mm_buffers_worker_threads[MM_BUFFERS_WORKERS];
+static bool                mm_buffers_worker_alive[MM_BUFFERS_WORKERS];
+static atomic_bool         mm_buffers_worker_done[MM_BUFFERS_WORKERS];
+
+static void mm_buffers_jobs_lock(void) {
+	if (!mm_buffers_jobs_init) {
+		iron_mutex_init(&mm_buffers_jobs_mutex);
+		mm_buffers_jobs_init = true;
+	}
+	iron_mutex_lock(&mm_buffers_jobs_mutex);
+}
+
+static mm_buffers_pipe_t *mm_buffers_jobs_pop(void) {
+	mm_buffers_jobs_lock();
+	mm_buffers_pipe_t *p = NULL;
+	if (mm_buffers_njobs > 0) {
+		p = mm_buffers_jobs[0];
+		memmove(mm_buffers_jobs, mm_buffers_jobs + 1, sizeof(mm_buffers_pipe_t *) * (mm_buffers_njobs - 1));
+		mm_buffers_njobs--;
+	}
+	iron_mutex_unlock(&mm_buffers_jobs_mutex);
+	return p;
+}
+
+static void mm_buffers_worker(void *param) {
+	i32 i = (i32)(size_t)param;
+#ifdef __APPLE__
+	pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0); // The material waits for them: performance cores
+#endif
+	while (true) {
+		mm_buffers_pipe_t *p = mm_buffers_jobs_pop();
+		if (p == NULL) {
+			break;
+		}
+		mm_buffers_pipe_make(p);
+	}
+	atomic_store(&mm_buffers_worker_done[i], true);
+}
+
+static i32 mm_buffers_workers_max(void) {
+	i32 n = iron_hardware_threads() - 1;
+	n     = n > MM_BUFFERS_WORKERS ? MM_BUFFERS_WORKERS : n;
+	return n < 1 ? 1 : n;
+}
+
+// Joins the workers that ended, starts workers for the pipelines waiting
+static void mm_buffers_workers_start(void) {
+	i32 alive = 0;
+	for (i32 i = 0; i < MM_BUFFERS_WORKERS; ++i) {
+		if (mm_buffers_worker_alive[i] && atomic_load(&mm_buffers_worker_done[i])) {
+			iron_thread_wait_and_destroy(&mm_buffers_worker_threads[i]);
+			mm_buffers_worker_alive[i] = false;
+		}
+		alive += mm_buffers_worker_alive[i];
+	}
+	mm_buffers_jobs_lock();
+	i32 waiting = mm_buffers_njobs;
+	iron_mutex_unlock(&mm_buffers_jobs_mutex);
+	i32 max = mm_buffers_workers_max();
+	for (i32 i = 0; i < MM_BUFFERS_WORKERS && alive < max && alive < waiting; ++i) {
+		if (!mm_buffers_worker_alive[i]) {
+			atomic_store(&mm_buffers_worker_done[i], false);
+			mm_buffers_worker_alive[i] = true;
+			iron_thread_init(&mm_buffers_worker_threads[i], mm_buffers_worker, (void *)(size_t)i);
+			alive++;
+		}
+	}
+}
+
+// The pipeline is made on a worker
+static void mm_buffers_pipe_request(mm_buffers_pipe_t *p) {
+	if (atomic_load(&p->state) != MM_PIPE_NEW) {
 		return;
 	}
-	gpu_pipeline_compile(&p->pipe);
-	p->ok       = p->pipe.impl.pipeline != NULL;
-	p->compiled = true;
+	atomic_store(&p->state, MM_PIPE_QUEUED);
+	mm_buffers_jobs_lock();
+	if (mm_buffers_njobs == mm_buffers_jobs_cap) {
+		mm_buffers_jobs_cap = mm_buffers_jobs_cap * 2 + 16;
+		mm_buffers_jobs     = realloc(mm_buffers_jobs, sizeof(mm_buffers_pipe_t *) * mm_buffers_jobs_cap);
+	}
+	mm_buffers_jobs[mm_buffers_njobs++] = p;
+	iron_mutex_unlock(&mm_buffers_jobs_mutex);
+}
+
+// The pipeline, made now: here when no worker took it, waited for otherwise
+static void mm_buffers_pipe_wait(mm_buffers_pipe_t *p) {
+	if (mm_buffers_pipe_ready(p)) {
+		return;
+	}
+	bool mine = atomic_load(&p->state) == MM_PIPE_NEW;
+	if (!mine) { // Queued: taken back unless a worker has it
+		mm_buffers_jobs_lock();
+		for (i32 i = 0; i < mm_buffers_njobs; ++i) {
+			if (mm_buffers_jobs[i] == p) {
+				memmove(mm_buffers_jobs + i, mm_buffers_jobs + i + 1, sizeof(mm_buffers_pipe_t *) * (mm_buffers_njobs - i - 1));
+				mm_buffers_njobs--;
+				mine = true;
+				break;
+			}
+		}
+		iron_mutex_unlock(&mm_buffers_jobs_mutex);
+	}
+	if (mine) {
+		mm_buffers_pipe_make(p);
+		return;
+	}
+	while (!mm_buffers_pipe_ready(p)) {
+#ifdef _WIN32
+		Sleep(1);
+#else
+		usleep(500);
+#endif
+	}
+}
+
+// Every pipeline requested made, the workers joined
+static void mm_buffers_workers_drain(void) {
+	while (true) {
+		mm_buffers_pipe_t *p = mm_buffers_jobs_pop();
+		if (p == NULL) {
+			break;
+		}
+		mm_buffers_pipe_make(p);
+	}
+	for (i32 i = 0; i < MM_BUFFERS_WORKERS; ++i) {
+		if (mm_buffers_worker_alive[i]) {
+			iron_thread_wait_and_destroy(&mm_buffers_worker_threads[i]);
+			mm_buffers_worker_alive[i] = false;
+		}
+	}
 }
 
 static mm_buffers_pipe_t *mm_buffers_pipeline(char *glsl, u64 glsl_hash, gpu_texture_format_t format) {
-	mm_buffers_pipe_t *p = mm_buffers_pipe_prepare(glsl, glsl_hash, format);
-	mm_buffers_pipe_compile(p);
+	mm_buffers_pipe_t *p = mm_buffers_pipe_get(glsl, glsl_hash, format);
+	mm_buffers_pipe_wait(p);
 	return p;
 }
 
 // Compiling a material's pipelines one after another as its passes render made the main thread wait on Metal's compiler
 // for each in turn (seconds for library materials the first time after an install, ~85 ms each on the iPad). The passes
 // a render will draw get their pipelines compiled together on worker threads first.
-#define MM_BUFFERS_COMPILE_THREADS 8
-
-typedef struct {
-	mm_buffers_pipe_t **items;
-	i32                 count;
-	i32                 next;
-	iron_mutex_t        mutex;
-} mm_buffers_compile_jobs_t;
-
-static void mm_buffers_compile_worker(void *param) {
-	mm_buffers_compile_jobs_t *j = param;
-	while (true) {
-		iron_mutex_lock(&j->mutex);
-		i32 i = j->next++;
-		iron_mutex_unlock(&j->mutex);
-		if (i >= j->count) {
-			return;
-		}
-		mm_buffers_pipe_compile(j->items[i]);
-	}
-}
-
 static gpu_texture_format_t mm_buffers_format(mm_buffers_recipe_t *r);
 
+// The recipe's pipelines (its pass, its loop): requested from the workers, true when all are ready
+static bool mm_buffers_recipe_pipes(mm_buffers_recipe_t *r) {
+	if (r->cpu) {
+		return true;
+	}
+	bool ready = true;
+	for (i32 k = 0; k < (r->iterate ? 2 : 1); ++k) {
+		mm_buffers_pipe_t *p = mm_buffers_pipe_get(k == 0 ? r->glsl : r->glsl_loop, k == 0 ? r->glsl_hash : r->loop_hash, mm_buffers_format(r));
+		mm_buffers_pipe_request(p);
+		ready = ready && mm_buffers_pipe_ready(p);
+	}
+	return ready;
+}
+
+// A unit's pipelines: its own and its loop passes'
+static bool mm_buffers_unit_pipes(mm_buffers_recipe_t *u) {
+	bool ready = mm_buffers_recipe_pipes(u);
+	for (i32 j = 0; j < u->nloop; ++j) {
+		mm_buffers_recipe_t *l = mm_buffers_find(u->loop[j]);
+		if (l != NULL) {
+			ready = mm_buffers_recipe_pipes(l) && ready;
+		}
+	}
+	return ready;
+}
+
+// The passes a synchronous render will draw get their pipelines made together first, on the workers and this thread
 static void mm_buffers_precompile(mm_buffers_recipe_t **rs, i32 count) {
-	mm_buffers_pipe_t **todo = malloc(sizeof(mm_buffers_pipe_t *) * (count * 2 + 1));
-	i32                 n    = 0;
 	for (i32 i = 0; i < count; ++i) {
-		mm_buffers_recipe_t *r = rs[i];
-		if (r->cpu || r->tex != NULL) { // Nothing to draw: a CPU texture, or cached
-			continue;
-		}
-		for (i32 k = 0; k < (r->iterate ? 2 : 1); ++k) {
-			mm_buffers_pipe_t *p = mm_buffers_pipe_prepare(k == 0 ? r->glsl : r->glsl_loop, k == 0 ? r->glsl_hash : r->loop_hash, mm_buffers_format(r));
-			bool               listed = p->compiled;
-			for (i32 m = 0; m < n && !listed; ++m) {
-				listed = todo[m] == p;
-			}
-			if (!listed) {
-				todo[n++] = p;
-			}
+		if (!mm_buffers_sat(rs[i], 2)) {
+			mm_buffers_recipe_pipes(rs[i]);
 		}
 	}
-	i32 threads = iron_hardware_threads();
-	threads     = threads > n ? n : threads;
-	threads     = threads > MM_BUFFERS_COMPILE_THREADS ? MM_BUFFERS_COMPILE_THREADS : threads;
-	if (threads > 1) {
-		mm_buffers_compile_jobs_t j = {.items = todo, .count = n};
-		iron_mutex_init(&j.mutex);
-		iron_thread_t workers[MM_BUFFERS_COMPILE_THREADS];
-		for (i32 i = 1; i < threads; ++i) {
-			iron_thread_init(&workers[i], mm_buffers_compile_worker, &j);
-		}
-		mm_buffers_compile_worker(&j);
-		for (i32 i = 1; i < threads; ++i) {
-			iron_thread_wait_and_destroy(&workers[i]);
-		}
-		iron_mutex_destroy(&j.mutex);
-	}
-	else {
-		for (i32 i = 0; i < n; ++i) {
-			mm_buffers_pipe_compile(todo[i]);
-		}
-	}
-	free(todo);
+	mm_buffers_workers_start();
+	mm_buffers_workers_drain(); // This thread makes its share
 }
 
 static mm_buffers_pipe_t *mm_buffers_pipe_of(mm_buffers_recipe_t *r, bool loop) {
@@ -775,11 +1043,18 @@ static void mm_buffers_detach(gpu_texture_t *t) {
 	}
 }
 
+// Frees the scratch targets not in use (busy ones: an iterate buffer's render in progress)
 static void mm_buffers_scratch_free(void) {
+	i32 n = 0;
 	for (i32 i = 0; i < mm_buffers_nscratch; ++i) {
-		mm_buffers_texture_free(mm_buffers_scratch[i].tex);
+		if (mm_buffers_scratch[i].busy) {
+			mm_buffers_scratch[n++] = mm_buffers_scratch[i];
+		}
+		else {
+			mm_buffers_texture_free(mm_buffers_scratch[i].tex);
+		}
 	}
-	mm_buffers_nscratch = 0;
+	mm_buffers_nscratch = n;
 }
 
 // Drawing
@@ -798,9 +1073,13 @@ static double mm_buffers_pixels   = 0;
 static i32    mm_buffers_max_size = 0;
 static char  *mm_buffers_drawing  = NULL; // Name of the pass being drawn
 
-static void mm_buffers_draw(mm_buffers_pipe_t *pipe, gpu_texture_t *target, gpu_texture_t **inputs, i32 n, i32 size, i32 iteration) {
+// Rows y0 to y1 of the target: cleared with the first band, the others keep what is there
+static void mm_buffers_draw(mm_buffers_pipe_t *pipe, gpu_texture_t *target, gpu_texture_t **inputs, i32 n, i32 size, i32 iteration, i32 y0, i32 y1) {
 	gpu_texture_t *targets[1] = {target};
-	gpu_begin(targets, 1, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0f);
+	gpu_begin(targets, 1, NULL, y0 == 0 ? GPU_CLEAR_COLOR : GPU_CLEAR_NONE, 0x00000000, 0.0f);
+	if (y0 > 0 || y1 < size) {
+		gpu_scissor(0, y0, size, y1 - y0);
+	}
 	if (pipe != NULL && pipe->ok && n <= GPU_MAX_TEXTURES) { // Did not compile: the texture stays cleared, as in Material Maker
 		gpu_set_pipeline(&pipe->pipe);
 		gpu_set_vertex_buffer(const_data_screen_aligned_vb);
@@ -813,7 +1092,7 @@ static void mm_buffers_draw(mm_buffers_pipe_t *pipe, gpu_texture_t *target, gpu_
 	}
 	gpu_end();
 	mm_buffers_stats[3]++;
-	mm_buffers_pixels += (double)size * size;
+	mm_buffers_pixels += (double)size * (y1 - y0);
 	if (size > mm_buffers_max_size) {
 		mm_buffers_max_size = size;
 	}
@@ -828,21 +1107,21 @@ static void mm_buffers_draw(mm_buffers_pipe_t *pipe, gpu_texture_t *target, gpu_
 		         (iron_time() - t0) * 1000.0);
 		return;
 	}
-	if (++mm_buffers_draws % MM_BUFFERS_FLUSH == 0) {
+	if (++mm_buffers_draws % MM_BUFFERS_FLUSH == 0 && !mm_buffers_stepping) { // A step's draws go with the frame
 		gpu_execute_and_wait();
 	}
 }
 
-static gpu_texture_t *mm_buffers_ensure(mm_buffers_recipe_t *r);
+static gpu_texture_t *mm_buffers_ensure(mm_buffers_recipe_t *r, i32 level);
 
 static bool mm_buffers_owner_rendering(mm_buffers_recipe_t *r) {
 	mm_buffers_recipe_t *o = r->in_loop ? mm_buffers_find(r->owner) : NULL;
 	return o != NULL && o->rendering;
 }
 
-// An input's texture: a loop pass's or an iterate buffer's current one while it renders, others rendered when missing.
-// NULL (an empty texture) when none: missing recipe, a loop pass not rendered yet in its loop.
-static gpu_texture_t *mm_buffers_input(u64 key) {
+// An input's texture: a loop pass's or an iterate buffer's current one while it renders, others rendered when missing
+// or below the level. NULL (an empty texture) when none: missing recipe, a loop pass not rendered yet in its loop.
+static gpu_texture_t *mm_buffers_input(u64 key, i32 level) {
 	mm_buffers_recipe_t *r = key != 0 ? mm_buffers_find(key) : NULL;
 	if (r == NULL) {
 		return NULL;
@@ -853,13 +1132,13 @@ static gpu_texture_t *mm_buffers_input(u64 key) {
 	if (r->rendering || mm_buffers_owner_rendering(r)) {
 		return NULL;
 	}
-	return mm_buffers_ensure(r);
+	return mm_buffers_ensure(r, level);
 }
 
-static i32 mm_buffers_inputs(i32 n, u64 *keys, gpu_texture_t **out) {
+static i32 mm_buffers_inputs(i32 n, u64 *keys, gpu_texture_t **out, i32 level) {
 	n = n > GPU_MAX_TEXTURES ? GPU_MAX_TEXTURES : n;
 	for (i32 k = 0; k < n; ++k) {
-		out[k] = mm_buffers_input(keys[k]);
+		out[k] = mm_buffers_input(keys[k], level);
 	}
 	for (i32 k = 0; k < n; ++k) { // After: rendering an input may need the empty texture made
 		out[k] = out[k] != NULL ? out[k] : mm_buffers_empty_texture();
@@ -867,105 +1146,275 @@ static i32 mm_buffers_inputs(i32 n, u64 *keys, gpu_texture_t **out) {
 	return n;
 }
 
-// A scratch target, or a new texture for CPU textures
-static gpu_texture_t *mm_buffers_render_recipe(mm_buffers_recipe_t *r) {
-	if (r->cpu) { // Image or text node: its pixels as RGBA8 unorm
-		gpu_texture_t *t    = calloc(1, sizeof(gpu_texture_t));
-		u32            len  = r->w * r->h * 4;
-		buffer_t      *px   = r->raw ? r->pixels : lz4_decode(r->pixels, len);
-		gpu_texture_init_from_bytes(t, px->buffer, r->w, r->h, GPU_TEXTURE_FORMAT_RGBA32, false);
-		if (px != r->pixels) {
-			iron_delete_blob(px);
-		}
-		return t;
+// The keys a unit (a pass, or an iterate buffer with its loop passes) reads from outside it: its inputs, its loop
+// inputs, its loop passes' inputs. Returns the count, the keys in *out (malloc'd).
+static i32 mm_buffers_unit_deps(mm_buffers_recipe_t *u, u64 **out) {
+	i32 max = u->textures + u->loop_textures;
+	for (i32 j = 0; j < u->nloop; ++j) {
+		mm_buffers_recipe_t *l = mm_buffers_find(u->loop[j]);
+		max += l != NULL ? l->textures : 0;
 	}
-	r->rendering                = true;
-	gpu_texture_format_t format = mm_buffers_format(r);
-	gpu_texture_t       *in[GPU_MAX_TEXTURES];
-	i32                  n    = mm_buffers_inputs(r->textures, r->inputs, in);
-	mm_buffers_pipe_t   *pipe = mm_buffers_pipe_of(r, false);
-	gpu_texture_t       *t    = mm_buffers_target(format, r->size);
-	mm_buffers_drawing        = r->name;
-	mm_buffers_draw(pipe, t, in, n, r->size, 0);
-	if (r->iterate) {
-		mm_buffers_recipe_t **loop = calloc(r->nloop + 1, sizeof(mm_buffers_recipe_t *));
-		for (i32 j = 0; j < r->nloop; ++j) {
-			loop[j] = mm_buffers_find(r->loop[j]);
-		}
-		for (i32 k = 1; k <= r->iterations; ++k) {
-			r->cur = t; // The loop's buffers and loop source read the previous iteration
-			for (i32 j = 0; j < r->nloop; ++j) {
-				if (loop[j] != NULL) {
-					gpu_texture_t *old = loop[j]->cur;
-					gpu_texture_t *now = mm_buffers_render_recipe(loop[j]);
-					if (old != NULL) {
-						mm_buffers_release(old);
-					}
-					loop[j]->cur = now;
-				}
+	u64 *d = malloc(sizeof(u64) * (max + 1));
+	i32  n = 0;
+	for (i32 s = -1; s <= u->nloop; ++s) {
+		mm_buffers_recipe_t *r    = s < 0 ? u : s < u->nloop ? mm_buffers_find(u->loop[s]) : NULL;
+		i32                  m    = s == u->nloop ? u->loop_textures : r != NULL ? r->textures : 0;
+		u64                 *keys = s == u->nloop ? u->loop_inputs : r != NULL ? r->inputs : NULL;
+		for (i32 k = 0; k < m && n < max; ++k) {
+			mm_buffers_recipe_t *dr = keys[k] != 0 ? mm_buffers_find(keys[k]) : NULL;
+			if (dr == NULL || dr == u || (dr->in_loop && dr->owner == u->key)) {
+				continue;
 			}
-			i32 s = r->size;
-			if (r->shrink) {
-				s = k < 31 ? s >> k : 0;
-				s = s < 4 ? 4 : s;
-			}
-			n                       = mm_buffers_inputs(r->loop_textures, r->loop_inputs, in);
-			mm_buffers_pipe_t *lp   = mm_buffers_pipe_of(r, true);
-			gpu_texture_t     *next = mm_buffers_target(format, s);
-			mm_buffers_drawing      = r->name;
-			mm_buffers_draw(lp, next, in, n, s, k);
-			mm_buffers_release(t);
-			t = next;
+			d[n++] = keys[k];
 		}
-		r->cur = NULL;
-		for (i32 j = 0; j < r->nloop; ++j) { // The last iteration's textures become the loop passes'
-			if (loop[j] != NULL && loop[j]->cur != NULL) {
-				mm_buffers_detach(loop[j]->cur);
-				mm_buffers_texture_free(loop[j]->tex);
-				loop[j]->tex      = loop[j]->cur;
-				loop[j]->cur      = NULL;
-				loop[j]->used     = mm_buffers_gen;
-				loop[j]->rendered      = mm_buffers_gen;
-				loop[j]->rendered_call = mm_buffers_calls;
-			}
-		}
-		free(loop);
 	}
-	r->rendering = false;
+	*out = d;
+	return n;
+}
+
+// Everything the unit reads is full
+static bool mm_buffers_deps_full(mm_buffers_recipe_t *u) {
+	u64 *d    = NULL;
+	i32  n    = mm_buffers_unit_deps(u, &d);
+	bool full = true;
+	for (i32 i = 0; i < n && full; ++i) {
+		mm_buffers_recipe_t *r = mm_buffers_find(d[i]);
+		full                   = r == NULL || mm_buffers_sat(r, 2);
+	}
+	free(d);
+	return full;
+}
+
+static i32  mm_buffers_landed = 0;     // Textures rendered by steps (redraws)
+static bool mm_buffers_stale  = false; // A link resolved to a texture not full (or none): redraw when better ones land
+
+// The texture becomes the recipe's, replacing the one it had
+static void mm_buffers_set_tex(mm_buffers_recipe_t *r, gpu_texture_t *t, i32 size, i32 level) {
+	mm_buffers_detach(t);
+	if (r->tex != t) {
+		mm_buffers_texture_free(r->tex);
+	}
+	r->tex           = t;
+	r->tex_size      = size;
+	r->tex_level     = level;
+	r->used          = mm_buffers_gen;
+	r->rendered      = mm_buffers_gen;
+	r->rendered_call = mm_buffers_calls;
+	mm_buffers_landed++;
+}
+
+// Image or text node: its pixels as RGBA8 unorm
+static gpu_texture_t *mm_buffers_cpu_texture(mm_buffers_recipe_t *r) {
+	gpu_texture_t *t   = calloc(1, sizeof(gpu_texture_t));
+	u32            len = r->w * r->h * 4;
+	buffer_t      *px  = r->raw ? r->pixels : lz4_decode(r->pixels, len);
+	gpu_texture_init_from_bytes(t, px->buffer, r->w, r->h, GPU_TEXTURE_FORMAT_RGBA32, false);
+	if (px != r->pixels) {
+		iron_delete_blob(px);
+	}
 	return t;
 }
 
-// Renders the recipe's texture again, replacing it
-static i32 mm_buffers_again = 0; // IRON_SHADER_TIMING: recipes of the render in progress rendered before (evicted since)
+// GPU cost: ms per Mpx drawn, measured per unit (mm_buffers_learn), the average for units not measured yet
+static double mm_buffers_cost_default = 25.0; // Material Maker passes measured 10 to 40 on the iPad, more for some
 
-static void mm_buffers_produce(mm_buffers_recipe_t *r) {
-	if (r->rendered != 0) {
-		mm_buffers_again++;
-	}
-	gpu_texture_t *t = mm_buffers_render_recipe(r);
-	mm_buffers_detach(t);
-	mm_buffers_texture_free(r->tex);
-	r->tex      = t;
-	r->used     = mm_buffers_gen;
-	r->rendered      = mm_buffers_gen;
-	r->rendered_call = mm_buffers_calls;
+static void mm_buffers_commit(u64 key, double px);
+
+static double mm_buffers_cost(mm_buffers_recipe_t *u) {
+	return u->cost > 0 ? u->cost : mm_buffers_cost_default;
 }
 
-// The recipe's texture, rendered (and the inputs it needs) when missing. A loop pass's comes from rendering its
-// iterate buffer again.
-static gpu_texture_t *mm_buffers_ensure(mm_buffers_recipe_t *r) {
-	r->used = mm_buffers_gen;
-	if (r->tex != NULL) {
-		return r->tex;
+static void mm_buffers_job_cancel(mm_buffers_recipe_t *u) {
+	if (!u->job) {
+		return;
 	}
-	if (r->in_loop) {
-		mm_buffers_recipe_t *o = mm_buffers_find(r->owner);
-		if (o != NULL && !o->rendering) {
-			mm_buffers_produce(o);
+	mm_buffers_release(u->job_t);
+	mm_buffers_release(u->job_draw);
+	u->job_t    = NULL;
+	u->job_draw = NULL;
+	for (i32 j = 0; j < u->nloop; ++j) {
+		mm_buffers_recipe_t *l = mm_buffers_find(u->loop[j]);
+		if (l != NULL && l->job_cur != NULL) {
+			mm_buffers_release(l->job_cur);
+			l->job_cur = NULL;
 		}
+	}
+	u->job = false;
+}
+
+// A unit's render, at the level: its draws run by mm_buffers_job_run
+static void mm_buffers_job_start(mm_buffers_recipe_t *u, i32 level) {
+	mm_buffers_job_cancel(u);
+	i32  size  = mm_buffers_level_size(u, level);
+	bool exact = level >= 2 || (size == mm_buffers_full_size(u) && mm_buffers_deps_full(u));
+	for (i32 j = 0; j < u->nloop && exact && level < 2; ++j) {
+		mm_buffers_recipe_t *l = mm_buffers_find(u->loop[j]);
+		exact                  = l == NULL || mm_buffers_level_size(l, level) == mm_buffers_full_size(l);
+	}
+	u->job       = true;
+	u->job_level = level;
+	u->job_exact = exact;
+	u->job_k     = 0;
+	u->job_phase = 0;
+	u->job_band  = 0;
+	u->job_draw  = NULL;
+	u->job_t     = NULL;
+}
+
+#define MM_BUFFERS_MIN_BAND 32 // Rows: a draw split over frames goes in bands of at least this
+
+// Runs a unit's draws until all are done, or (budget_ms > 0) until their estimated GPU time (added to *spent_ms) reaches
+// the budget: a draw that does not fit goes in bands of rows. An iterate buffer's loop passes and loop source read the
+// previous iteration. True when done: the last draws' textures become the unit's (an iterate buffer's loop passes').
+static bool mm_buffers_job_run(mm_buffers_recipe_t *u, double budget_ms, double *spent_ms) {
+	i32                   level = u->job_level;
+	mm_buffers_recipe_t **loop  = calloc(u->nloop + 1, sizeof(mm_buffers_recipe_t *));
+	for (i32 j = 0; j < u->nloop; ++j) {
+		loop[j] = mm_buffers_find(u->loop[j]);
+		if (loop[j] != NULL) {
+			loop[j]->cur = loop[j]->job_cur;
+		}
+	}
+	bool done = false;
+	gpu_texture_t *in[GPU_MAX_TEXTURES];
+	u->rendering = true;
+	while (true) {
+		// The draw: the first one, a loop pass, or the loop source
+		mm_buffers_recipe_t *r    = u;
+		bool                 src  = false;
+		i32                  size = mm_buffers_level_size(u, level);
+		if (u->job_k > 0 && u->job_phase < u->nloop) {
+			r = loop[u->job_phase];
+			if (r == NULL) { // Gone: skipped
+				u->job_phase++;
+				continue;
+			}
+			size = mm_buffers_level_size(r, level);
+		}
+		else if (u->job_k > 0) {
+			src = true;
+			if (u->shrink) {
+				size = u->job_k < 31 ? size >> u->job_k : 0;
+				size = size < 4 ? 4 : size;
+			}
+		}
+		i32    rows = size - u->job_band;
+		double cost = mm_buffers_cost(src ? u : r); // The loop source's cost is the iterate buffer's (its first draw's)
+		if (budget_ms > 0) {
+			double row_ms = cost * size / 1e6;
+			double fit    = (budget_ms - *spent_ms) / row_ms;
+			if (fit < rows) {
+				i32 min = size < MM_BUFFERS_MIN_BAND ? size : MM_BUFFERS_MIN_BAND;
+				if (fit < min && *spent_ms > 0) {
+					break; // Next frame
+				}
+				rows = fit < min ? min : (i32)fit;
+				rows = rows > size - u->job_band ? size - u->job_band : rows;
+			}
+		}
+		if (u->job_draw == NULL) {
+			u->job_draw = mm_buffers_target(mm_buffers_format(r), size);
+		}
+		u->cur         = u->job_k > 0 ? u->job_t : NULL;
+		bool rendering = r->rendering;
+		r->rendering   = true;
+		i32 n = src ? mm_buffers_inputs(u->loop_textures, u->loop_inputs, in, level) : mm_buffers_inputs(r->textures, r->inputs, in, level);
+		r->rendering   = rendering;
+		mm_buffers_drawing = r->name;
+		mm_buffers_draw(mm_buffers_pipe_of(r, src), u->job_draw, in, n, size, src ? u->job_k : 0, u->job_band, u->job_band + rows);
+		*spent_ms += cost * size * rows / 1e6;
+		if (budget_ms > 0 && (double)size * rows >= 0.05e6) { // A step: each draw in a command buffer of its own, timed, to
+			mm_buffers_commit(r->key, (double)size * rows);   // learn its cost (small ones go with the next)
+		}
+		u->job_band += rows;
+		if (u->job_band < size) {
+			continue;
+		}
+		// The draw is done
+		gpu_texture_t *t = u->job_draw;
+		u->job_draw      = NULL;
+		u->job_band      = 0;
+		if (u->job_k == 0) {
+			u->job_t = t;
+			u->job_k = 1;
+			done     = !u->iterate || u->iterations < 1;
+		}
+		else if (!src) {
+			if (r->cur != NULL) {
+				mm_buffers_release(r->cur);
+			}
+			r->cur = t;
+			u->job_phase++;
+		}
+		else {
+			mm_buffers_release(u->job_t);
+			u->job_t     = t;
+			u->job_phase = 0;
+			u->job_k++;
+			done = u->job_k > u->iterations;
+			if (!done && budget_ms > 0 && u->cost <= 0) { // Its cost not measured yet: one iteration a frame until it is
+				*spent_ms = budget_ms;
+				break;
+			}
+		}
+		if (done || (budget_ms > 0 && *spent_ms >= budget_ms)) {
+			break;
+		}
+	}
+	u->cur       = NULL;
+	u->rendering = false;
+	for (i32 j = 0; j < u->nloop; ++j) {
+		if (loop[j] != NULL) {
+			loop[j]->job_cur = loop[j]->cur;
+			loop[j]->cur     = NULL;
+		}
+	}
+	if (done) {
+		i32 got = u->job_exact ? 2 : 1;
+		for (i32 j = 0; j < u->nloop; ++j) {
+			if (loop[j] != NULL && loop[j]->job_cur != NULL) {
+				mm_buffers_set_tex(loop[j], loop[j]->job_cur, mm_buffers_level_size(loop[j], level), got);
+				loop[j]->job_cur = NULL;
+			}
+		}
+		mm_buffers_set_tex(u, u->job_t, mm_buffers_level_size(u, level), got);
+		u->job   = false;
+		u->job_t = NULL;
+	}
+	free(loop);
+	return done;
+}
+
+// Renders a unit's texture (an iterate buffer's: its loop passes' too) at the level, replacing what it had
+static i32 mm_buffers_again = 0; // IRON_SHADER_TIMING: recipes of the render in progress rendered before (evicted since)
+
+static void mm_buffers_produce(mm_buffers_recipe_t *u, i32 level) {
+	if (u->rendered != 0) {
+		mm_buffers_again++;
+	}
+	if (u->cpu) {
+		mm_buffers_set_tex(u, mm_buffers_cpu_texture(u), mm_buffers_full_size(u), 2);
+		return;
+	}
+	if (!u->job || u->job_level < level) {
+		mm_buffers_job_start(u, level);
+	}
+	double spent = 0;
+	mm_buffers_job_run(u, 0, &spent);
+}
+
+// The recipe's texture at the level, rendered now (and the inputs it needs) when missing or below. A loop pass's
+// comes from rendering its iterate buffer.
+static gpu_texture_t *mm_buffers_ensure(mm_buffers_recipe_t *r, i32 level) {
+	r->used = mm_buffers_gen;
+	if (mm_buffers_sat(r, level)) {
 		return r->tex;
 	}
-	mm_buffers_produce(r);
+	mm_buffers_recipe_t *u = r->in_loop ? mm_buffers_find(r->owner) : r;
+	if (u == NULL || u->rendering) {
+		return r->tex;
+	}
+	mm_buffers_produce(u, level);
 	return r->tex;
 }
 
@@ -987,8 +1436,12 @@ static void mm_buffers_gpu_begin(void) {
 	gpu_use_linear_sampling(true);
 }
 
+static i32 mm_buffers_nq[2] = {0, 0}; // Queued recipes, stage 0 and 1
+
 static void mm_buffers_gpu_end(void) {
-	mm_buffers_scratch_free();
+	if (mm_buffers_nq[0] + mm_buffers_nq[1] == 0) { // Kept while steps render, they need them again next frame
+		mm_buffers_scratch_free();
+	}
 	if (mm_buffers_saved_in_use) {
 		draw_begin(mm_buffers_saved_target, false, 0);
 		draw_set_color(mm_buffers_saved_color);
@@ -1019,6 +1472,300 @@ void mm_buffers_batch_begin(void) {
 	mm_buffers_batch_end(); // A parse that did not finalize
 	mm_buffers_batch         = true;
 	mm_buffers_batch_started = false;
+}
+
+// The queues: stage 0 the recipes with no texture (rendered low), stage 1 those not full. Keys, in the order queued.
+static u64   *mm_buffers_q[2]   = {NULL, NULL};
+static i32    mm_buffers_qcap[2] = {0, 0};
+static bool   mm_buffers_step_on = false; // mm_buffers_step registered
+static double mm_buffers_wave_t0 = 0;     // The queue's work since it was last empty: start, stats
+static i32    mm_buffers_wave_frames = 0;
+static i32    mm_buffers_wave_passes = 0;
+static i32    mm_buffers_wave_max_passes = 0;
+static double mm_buffers_wave_max_ms = 0;
+static double mm_buffers_wave_px = 0;
+static double mm_buffers_wave_gpu = 0; // Measured GPU ms
+static bool   mm_buffers_wave_usable = false;
+
+static void mm_buffers_step(void *_);
+
+static void mm_buffers_enqueue(mm_buffers_recipe_t *r, i32 stage) {
+	if (r->queued[stage]) {
+		return;
+	}
+	if (mm_buffers_nq[0] + mm_buffers_nq[1] == 0) {
+		mm_buffers_wave_t0         = iron_time();
+		mm_buffers_wave_frames     = 0;
+		mm_buffers_wave_passes     = 0;
+		mm_buffers_wave_max_passes = 0;
+		mm_buffers_wave_max_ms     = 0;
+		mm_buffers_wave_px         = 0;
+		mm_buffers_wave_gpu        = 0;
+		mm_buffers_wave_usable     = false;
+	}
+	if (mm_buffers_nq[stage] == mm_buffers_qcap[stage]) {
+		mm_buffers_qcap[stage] = mm_buffers_qcap[stage] * 2 + 64;
+		mm_buffers_q[stage]    = realloc(mm_buffers_q[stage], sizeof(u64) * mm_buffers_qcap[stage]);
+	}
+	mm_buffers_q[stage][mm_buffers_nq[stage]++] = r->key;
+	r->queued[stage]                            = true;
+	if (!mm_buffers_step_on) {
+		mm_buffers_step_on = true;
+		sys_notify_on_update(mm_buffers_step, NULL);
+	}
+}
+
+static void mm_buffers_queue_clear(void) {
+	for (i32 s = 0; s < 2; ++s) {
+		for (i32 i = 0; i < mm_buffers_nq[s]; ++i) {
+			mm_buffers_recipe_t *r = mm_buffers_find(mm_buffers_q[s][i]);
+			if (r != NULL) {
+				r->queued[s] = false;
+			}
+		}
+		mm_buffers_nq[s] = 0;
+	}
+}
+
+static bool mm_buffers_timing(void) {
+	static int timing = -1;
+	if (timing < 0) {
+		timing = getenv("IRON_SHADER_TIMING") != NULL;
+	}
+	return timing == 1;
+}
+
+// Stage 0 is done: every queued pass has a texture
+static void mm_buffers_usable(void) {
+	if (mm_buffers_wave_usable) {
+		return;
+	}
+	mm_buffers_wave_usable = true;
+	iron_profile_mark("mm buffers usable");
+	if (mm_buffers_timing()) {
+		iron_log("[buffers] usable (low) after %.1f ms: %d frames, %d passes", (iron_time() - mm_buffers_wave_t0) * 1000.0, mm_buffers_wave_frames, mm_buffers_wave_passes);
+	}
+}
+
+// The queue is empty: what used textures not full draws again, eviction runs (unless in a batch)
+static void mm_buffers_drained(void) {
+	mm_buffers_usable();
+	iron_profile_mark("mm buffers full");
+	if (mm_buffers_timing()) {
+		iron_log("[buffers] full after %.1f ms: %d frames, %d passes, at most %d passes and %.1f ms (main thread) a frame, %.1f Mpx, %.1f ms of GPU measured, "
+		         "%.1f ms/Mpx average", (iron_time() - mm_buffers_wave_t0) * 1000.0, mm_buffers_wave_frames, mm_buffers_wave_passes, mm_buffers_wave_max_passes,
+		         mm_buffers_wave_max_ms, mm_buffers_wave_px / 1e6, mm_buffers_wave_gpu, mm_buffers_cost_default);
+	}
+	if (mm_buffers_stale) {
+		mm_buffers_stale  = false;
+		g_context->ddirty = 2;
+	}
+	mm_buffers_scratch_free();
+	if (!mm_buffers_batch) {
+		mm_buffers_evict(false);
+	}
+}
+
+static i32 mm_buffers_search = 0; // mm_buffers_work's stamp
+
+// The next pass to render for the unit at the level, in dependency order: the unit itself once what it reads is good
+// for the level and its pipelines are ready, else the first such pass among what it reads. NULL when everything left
+// waits for pipelines.
+static mm_buffers_recipe_t *mm_buffers_work(mm_buffers_recipe_t *u, i32 level) {
+	if (u->visit == mm_buffers_search) { // Seen in this search: waiting, or in the path to it
+		return NULL;
+	}
+	u->visit = mm_buffers_search;
+	if (u->job) { // Continued at its level
+		return u;
+	}
+	u64 *d       = NULL;
+	i32  n       = mm_buffers_unit_deps(u, &d);
+	bool waiting = false;
+	for (i32 i = 0; i < n; ++i) {
+		mm_buffers_recipe_t *dr = mm_buffers_find(d[i]);
+		if (dr == NULL || mm_buffers_sat(dr, level)) {
+			continue;
+		}
+		mm_buffers_recipe_t *du = dr->in_loop ? mm_buffers_find(dr->owner) : dr;
+		if (du == NULL || du == u) {
+			continue;
+		}
+		mm_buffers_recipe_t *w = mm_buffers_work(du, level);
+		if (w != NULL) {
+			free(d);
+			return w;
+		}
+		waiting = true;
+	}
+	free(d);
+	if (waiting) {
+		return NULL;
+	}
+	return mm_buffers_unit_pipes(u) ? u : NULL;
+}
+
+// GPU time measurements: a step's draws for a unit go in a command buffer of their own, its GPU time comes back when
+// it completes (on a Metal thread) and teaches the unit's cost
+#define MM_BUFFERS_SLOTS 256
+
+typedef struct {
+	atomic_int state; // 0 free, 1 waiting for the GPU, 2 measured
+	u64        key;
+	double     px;
+	double     ms;
+} mm_buffers_slot_t;
+
+static mm_buffers_slot_t mm_buffers_slots[MM_BUFFERS_SLOTS];
+
+static void mm_buffers_measured(void *data, double ms) {
+	mm_buffers_slot_t *s = data;
+	s->ms                = ms;
+	atomic_store(&s->state, 2);
+}
+
+// Submits the draws recorded so far, timed for the unit when key is not 0
+static void mm_buffers_commit(u64 key, double px) {
+#ifdef IRON_METAL
+	for (i32 i = 0; key != 0 && px > 0 && i < MM_BUFFERS_SLOTS; ++i) {
+		mm_buffers_slot_t *s = &mm_buffers_slots[i];
+		if (atomic_load(&s->state) == 0) {
+			s->key = key;
+			s->px  = px;
+			atomic_store(&s->state, 1);
+			gpu_commit(mm_buffers_measured, s);
+			return;
+		}
+	}
+	gpu_commit(NULL, NULL);
+#endif
+}
+
+static void mm_buffers_learn(void) {
+	for (i32 i = 0; i < MM_BUFFERS_SLOTS; ++i) {
+		mm_buffers_slot_t *s = &mm_buffers_slots[i];
+		if (atomic_load(&s->state) != 2) {
+			continue;
+		}
+		mm_buffers_wave_gpu += s->ms > 0 ? s->ms : 0;
+		if (s->ms > 0 && s->px >= 0.05e6) { // Small draws measure their overhead more than their pixels
+			double               c = s->ms / (s->px / 1e6);
+			mm_buffers_recipe_t *r = mm_buffers_find(s->key);
+			if (r != NULL) {
+				r->cost = r->cost > 0 ? (f32)(0.5 * r->cost + 0.5 * c) : (f32)c;
+			}
+			mm_buffers_cost_default = 0.8 * mm_buffers_cost_default + 0.2 * c;
+		}
+		atomic_store(&s->state, 0);
+	}
+}
+
+// Per frame budget: estimated GPU time of the draws, main thread time
+#define MM_BUFFERS_STEP_GPU_MS 10.0 // On the iPad: 685 full in 1.4 s, frames as without (6 ms: 3.5 s, no better frames)
+#define MM_BUFFERS_STEP_MS     6.0
+
+// Renders queued passes, a frame's share (sys_notify_on_update)
+static void mm_buffers_step(void *_) {
+	mm_buffers_learn();
+	if (mm_buffers_nq[0] + mm_buffers_nq[1] == 0) {
+		return;
+	}
+	double t0 = iron_time();
+	static double gpu_ms = -1, step_ms = -1; // Env MM_BUFFERS_STEP_GPU_MS, MM_BUFFERS_STEP_MS: the budgets
+	if (gpu_ms < 0) {
+		gpu_ms  = getenv("MM_BUFFERS_STEP_GPU_MS") != NULL ? atof(getenv("MM_BUFFERS_STEP_GPU_MS")) : MM_BUFFERS_STEP_GPU_MS;
+		step_ms = getenv("MM_BUFFERS_STEP_MS") != NULL ? atof(getenv("MM_BUFFERS_STEP_MS")) : MM_BUFFERS_STEP_MS;
+	}
+	mm_buffers_workers_start();
+	static double pipes_t0 = -1; // IRON_SHADER_TIMING: when the wave's pipelines were all made
+	if (mm_buffers_timing() && pipes_t0 != mm_buffers_wave_t0) {
+		bool busy = false;
+		for (i32 i = 0; i < MM_BUFFERS_WORKERS; ++i) {
+			busy = busy || (mm_buffers_worker_alive[i] && !atomic_load(&mm_buffers_worker_done[i]));
+		}
+		if (!busy) {
+			pipes_t0 = mm_buffers_wave_t0;
+			iron_log("[buffers] pipelines made after %.1f ms", (t0 - mm_buffers_wave_t0) * 1000.0);
+		}
+	}
+	double px0    = mm_buffers_pixels;
+	double spent  = 0;
+	i32    passes = 0;
+	bool   began  = false;
+	while (true) {
+		mm_buffers_recipe_t *w     = NULL;
+		i32                  level = 1;
+		mm_buffers_search++;
+		for (i32 s = 0; s < 2 && w == NULL; ++s) {
+			level = s + 1;
+			i32 n = 0;
+			for (i32 i = 0; i < mm_buffers_nq[s]; ++i) { // Done ones leave the queue
+				u64                  key = mm_buffers_q[s][i];
+				mm_buffers_recipe_t *r   = mm_buffers_find(key);
+				mm_buffers_recipe_t *u   = r != NULL && r->in_loop ? mm_buffers_find(r->owner) : r;
+				if (r == NULL || u == NULL || mm_buffers_sat(r, level)) {
+					if (r != NULL) {
+						r->queued[s] = false;
+					}
+					continue;
+				}
+				mm_buffers_q[s][n++] = key;
+				if (w == NULL) {
+					w = mm_buffers_work(u, level);
+				}
+			}
+			mm_buffers_nq[s] = n;
+			if (s == 0 && n == 0) {
+				mm_buffers_usable();
+			}
+			if (s == 0 && n > 0) { // Full textures wait for every pass to have one
+				break;
+			}
+		}
+		if (w == NULL) {
+			break;
+		}
+		if (!began) {
+			mm_buffers_gpu_begin();
+			mm_buffers_commit(0, 0); // The frame's work so far, apart from the timed draws
+			mm_buffers_stepping = true;
+			began               = true;
+		}
+		w->used    = mm_buffers_gen;
+		double px1 = mm_buffers_pixels;
+		if (w->cpu) {
+			mm_buffers_produce(w, level);
+		}
+		else {
+			if (!w->job) {
+				mm_buffers_job_start(w, level);
+			}
+			mm_buffers_job_run(w, gpu_ms, &spent);
+			if (mm_buffers_pixels == px1) { // Nothing more fits this frame
+				break;
+			}
+		}
+		passes++;
+		if (spent >= gpu_ms || (iron_time() - t0) * 1000.0 >= step_ms) {
+			break;
+		}
+	}
+	if (began) {
+		mm_buffers_stepping = false;
+		mm_buffers_gpu_end();
+		double ms = (iron_time() - t0) * 1000.0;
+		mm_buffers_wave_frames++;
+		mm_buffers_wave_passes += passes;
+		mm_buffers_wave_px += mm_buffers_pixels - px0;
+		mm_buffers_wave_max_passes = passes > mm_buffers_wave_max_passes ? passes : mm_buffers_wave_max_passes;
+		mm_buffers_wave_max_ms     = ms > mm_buffers_wave_max_ms ? ms : mm_buffers_wave_max_ms;
+		if (mm_buffers_stale) {
+			g_context->ddirty = 2; // What showed textures not full draws again with the better ones
+		}
+	}
+	if (mm_buffers_nq[0] + mm_buffers_nq[1] == 0) {
+		mm_buffers_drained();
+	}
 }
 
 gpu_texture_t **mm_buffers_render(mm_plan_t *plan) {
@@ -1068,19 +1815,48 @@ gpu_texture_t **mm_buffers_render(mm_plan_t *plan) {
 		}
 		rs[i]->recipe_used = mm_buffers_gen;
 	}
-	mm_buffers_precompile(rs, count);
-	bool began = false;
-	for (i32 i = 0; i < count; ++i) {
-		mm_buffers_recipe_t *r = rs[i];
-		if (r->tex != NULL) {
-			r->used = mm_buffers_gen;
-			continue;
+	bool began  = false;
+	bool sync   = mm_buffers_sync() || mm_buffers_forced;
+	i32  queued = 0;
+	if (sync) { // Every pass full, now
+		mm_buffers_precompile(rs, count);
+		for (i32 i = 0; i < count; ++i) {
+			mm_buffers_recipe_t *r = rs[i];
+			if (mm_buffers_sat(r, 2)) {
+				r->used = mm_buffers_gen;
+				continue;
+			}
+			if (!began) {
+				mm_buffers_gpu_begin();
+				began = true;
+			}
+			mm_buffers_ensure(r, 2);
 		}
-		if (!began) {
-			mm_buffers_gpu_begin();
-			began = true;
+	}
+	else if (mm_buffers_needed() > 0) { // A preview or a thumbnail: its draw renders what it needs, the pipelines start now
+		for (i32 i = 0; i < count; ++i) {
+			rs[i]->used = mm_buffers_gen;
+			if (!mm_buffers_sat(rs[i], mm_buffers_needed())) {
+				mm_buffers_recipe_pipes(rs[i]);
+			}
 		}
-		mm_buffers_ensure(r);
+		mm_buffers_workers_start();
+	}
+	else { // Queued: low textures first, then full ones, mm_buffers_step renders them over the next frames
+		for (i32 i = 0; i < count; ++i) {
+			mm_buffers_recipe_t *r = rs[i];
+			r->used                = mm_buffers_gen;
+			if (mm_buffers_sat(r, 2)) {
+				continue;
+			}
+			queued += !r->queued[1];
+			if (r->tex == NULL) {
+				mm_buffers_enqueue(r, 0);
+			}
+			mm_buffers_enqueue(r, 1);
+			mm_buffers_recipe_pipes(r); // Made by the workers meanwhile
+		}
+		// The workers start with the next step: the material's own shaders compile first, Metal's compiler not shared
 	}
 	for (i32 i = 0; i < count; ++i) {
 		bool dup = false; // A pass twice in the plan (same key) counts once
@@ -1101,15 +1877,16 @@ gpu_texture_t **mm_buffers_render(mm_plan_t *plan) {
 				iterating++;
 				iterations += rs[i]->iterations;
 			}
-			biggest = rs[i]->size > biggest ? rs[i]->size : biggest;
+			i32 s   = mm_buffers_full_size(rs[i]);
+			biggest = s > biggest ? s : biggest;
 		}
 		if (began) {
 			gpu_execute_and_wait(); // The GPU time of this render lands here, not in the next one
 		}
-		iron_log("[buffers] %d passes (%d rendered, %d of them again after eviction, %d cached, %d failed), %d draws, %.1f Mpx drawn, largest target %d (plan %d), "
-		         "%d iterate buffers with %d iterations, budget %d MB, %.1f ms",
-		         count, mm_buffers_stats[0], mm_buffers_again, mm_buffers_stats[1], mm_buffers_stats[2], mm_buffers_stats[3], mm_buffers_pixels / 1e6, mm_buffers_max_size,
-		         biggest, iterating, iterations, (i32)(mm_buffers_budget() / (1024 * 1024)), (iron_time() - t_render) * 1000.0);
+		iron_log("[buffers] %d passes (%d rendered, %d of them again after eviction, %d cached, %d failed, %d queued), %d draws, %.1f Mpx drawn, largest target %d "
+		         "(plan %d), %d iterate buffers with %d iterations, budget %d MB, %.1f ms",
+		         count, mm_buffers_stats[0], mm_buffers_again, mm_buffers_stats[1], mm_buffers_stats[2], queued, mm_buffers_stats[3], mm_buffers_pixels / 1e6,
+		         mm_buffers_max_size, biggest, iterating, iterations, (i32)(mm_buffers_budget() / (1024 * 1024)), (iron_time() - t_render) * 1000.0);
 	}
 	free(rs);
 	if (began) {
@@ -1129,56 +1906,38 @@ char *mm_buffers_link(mm_plan_t *plan, i32 pass) {
 	return string("%s%016llx", MM_BUFFERS_LINK, (unsigned long long)mm_buffers_last_keys[pass]);
 }
 
-#ifndef IRON_METAL
-// No gpu_suspend: links resolved during a pass render on the next frame
-static u64 *mm_buffers_queue  = NULL;
-static i32  mm_buffers_queued = 0;
-
-static void mm_buffers_render_queued(void *_) {
-	mm_buffers_gpu_begin();
-	for (i32 i = 0; i < mm_buffers_queued; ++i) {
-		mm_buffers_recipe_t *r = mm_buffers_find(mm_buffers_queue[i]);
-		if (r != NULL) {
-			mm_buffers_ensure(r);
-			mm_buffers_rerenders++;
-		}
-	}
-	mm_buffers_queued = 0;
-	mm_buffers_gpu_end();
-	g_context->ddirty = 2;
-}
-#endif
-
-// An evicted texture, rendered again from the recipes
-static gpu_texture_t *mm_buffers_rerender(mm_buffers_recipe_t *r) {
+// A texture at the level, rendered now: inside a material's render pass on Metal, which is suspended meanwhile
+static gpu_texture_t *mm_buffers_rerender(mm_buffers_recipe_t *r, i32 level) {
 	bool suspended = false;
 	if (gpu_in_use) {
 #ifdef IRON_METAL
 		gpu_suspend(); // Between gpu_begin and gpu_draw of a material
 		suspended = true;
-#else
-		if (mm_buffers_queued == 0) {
-			sys_notify_on_next_frame(&mm_buffers_render_queued, NULL);
+#else // No gpu_suspend: the best texture there is, the rest renders over the next frames
+		if (r->tex == NULL) {
+			mm_buffers_enqueue(r, 0);
 		}
-		mm_buffers_queue                      = realloc(mm_buffers_queue, sizeof(u64) * (mm_buffers_queued + 1));
-		mm_buffers_queue[mm_buffers_queued++] = r->key;
-		return NULL;
+		mm_buffers_enqueue(r, 1);
+		mm_buffers_stale = true;
+		return r->tex;
 #endif
 	}
+	bool had = r->rendered != 0;
 	mm_buffers_gpu_begin();
-	mm_buffers_ensure(r);
+	mm_buffers_ensure(r, level);
 	mm_buffers_gpu_end();
 	if (suspended) {
 #ifdef IRON_METAL
 		gpu_resume();
 #endif
 	}
-	mm_buffers_rerenders++;
+	mm_buffers_rerenders += had;
 	return r->tex;
 }
 
-// The texture of a link, rendered again when it was evicted; NULL when it is not one or its recipe is gone. Marks it
-// used: bound textures stay.
+// The texture of a link: the best one rendered, NULL (an empty texture) when none yet; what is missing is queued. When
+// links need usable or full textures (mm_buffers_require), they render now. NULL when it is not a link or its recipe
+// is gone. Marks it used: bound textures stay.
 gpu_texture_t *mm_buffers_texture(char *link) {
 	if (link == NULL || !starts_with(link, MM_BUFFERS_LINK)) {
 		return NULL;
@@ -1189,12 +1948,49 @@ gpu_texture_t *mm_buffers_texture(char *link) {
 		return NULL;
 	}
 	mm_buffers_touch(r);
-	r->used = mm_buffers_gen;
-	return r->tex != NULL ? r->tex : mm_buffers_rerender(r);
+	r->used   = mm_buffers_gen;
+	i32 level = mm_buffers_needed();
+	if (level > 0 && !mm_buffers_sat(r, level)) {
+		return mm_buffers_rerender(r, level);
+	}
+	if (!mm_buffers_sat(r, 2)) { // The best there is, the rest over the next frames
+		if (r->tex == NULL) {
+			mm_buffers_enqueue(r, 0);
+		}
+		mm_buffers_enqueue(r, 1);
+		mm_buffers_stale = true;
+	}
+	return r->tex;
+}
+
+// Every queued pass rendered full now
+void mm_buffers_finish(void) {
+	if (mm_buffers_nq[0] + mm_buffers_nq[1] == 0) {
+		return;
+	}
+	mm_buffers_gpu_begin();
+	for (i32 s = 0; s < 2; ++s) {
+		for (i32 i = 0; i < mm_buffers_nq[s]; ++i) {
+			mm_buffers_recipe_t *r = mm_buffers_find(mm_buffers_q[s][i]);
+			if (r != NULL) {
+				mm_buffers_ensure(r, 2);
+			}
+		}
+	}
+	mm_buffers_queue_clear();
+	mm_buffers_gpu_end();
+	mm_buffers_drained();
 }
 
 // Frees every texture, recipe and pipeline
 void mm_buffers_clear(void) {
+	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
+		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
+			mm_buffers_job_cancel(r);
+		}
+	}
+	mm_buffers_queue_clear();
+	mm_buffers_scratch_free();
 	mm_buffers_evict(true);
 	mm_buffers_last_plan  = NULL;
 	mm_buffers_last_count = 0;
@@ -1202,7 +1998,8 @@ void mm_buffers_clear(void) {
 
 // 0: passes rendered by the last render, 1: found in the cache, 2: failed shaders, 3: draws, 4: cached textures,
 // 5: cached pipelines, 6: cached texture memory in KB, 7: the texture budget in KB, 8: textures rendered again on
-// demand (since start), 9: recipes, 10: recipe memory in KB
+// demand (since start), 9: recipes, 10: recipe memory in KB, 11: queued passes, 12: 1 in the synchronous mode
+// (MM_BUFFERS_SYNC)
 i32 mm_buffers_stat(i32 what) {
 	if (what >= 0 && what < 4) {
 		return mm_buffers_stats[what];
@@ -1218,6 +2015,12 @@ i32 mm_buffers_stat(i32 what) {
 	}
 	if (what == 9) {
 		return mm_buffers_nrecipes;
+	}
+	if (what == 11) {
+		return mm_buffers_nq[0] + mm_buffers_nq[1];
+	}
+	if (what == 12) {
+		return mm_buffers_sync() ? 1 : 0;
 	}
 	i64 textures = 0, bytes = 0, recipes = 0;
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
@@ -1392,9 +2195,12 @@ static char *mm_buffers_test_run(char *path_or_id, i32 size, bool other) {
 		mm_arena_release(mark);
 		return e;
 	}
-	f64             t0  = iron_time();
+	f64 t0            = iron_time();
+	mm_buffers_forced = true; // Rendered full now, as the checker's maps are
 	gpu_texture_t **tex = mm_buffers_render(plan);
-	f64             ms  = (iron_time() - t0) * 1000.0;
+	mm_buffers_forced   = false;
+	f64 ms              = (iron_time() - t0) * 1000.0;
+	i32 need            = mm_buffers_require(2); // Links resolve to full textures
 	// Every texture is found again by its link, through the app's texture link resolution
 	i32 links = 0, bad_links = 0;
 	for (i32 i = 0; i < plan->count; ++i) {
@@ -1429,6 +2235,7 @@ static char *mm_buffers_test_run(char *path_or_id, i32 size, bool other) {
 			         p->iterate ? " iterate" : "", p->texture_gen != NULL ? " cpu" : "", p->loop_of, p->textures);
 		}
 	}
+	mm_buffers_require(need);
 	mm_arena_release(mark);
 	return s;
 }
@@ -1463,9 +2270,11 @@ i32 mm_buffers_test_resolve(i32 in_pass) {
 		gpu_begin(targets, 1, NULL, GPU_CLEAR_COLOR, color, 0.0f);
 	}
 	gpu_texture_t *got[MM_MAP_COUNT] = {0};
+	i32            need              = mm_buffers_require(2); // Rendered full now, as for painting
 	for (i32 k = 0; k < MM_MAP_COUNT; ++k) {
 		got[k] = mm_buffers_test_links[k] != NULL ? uniforms_ext_tex_link(NULL, NULL, mm_buffers_test_links[k]) : NULL;
 	}
+	mm_buffers_require(need);
 	i32 n = 0;
 	if (in_pass) {
 		gpu_end();

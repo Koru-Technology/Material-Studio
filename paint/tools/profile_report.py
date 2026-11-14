@@ -169,8 +169,15 @@ def main():
         print(f"  {t / 1000.0:9.0f} ms  {m}")
 
     if a.frm or a.to:
-        lo = next((t for t, m in marks if a.frm and m == a.frm), samples[0][0])
-        hi = next((t for t, m in marks if a.to and m == a.to), samples[-1][0])
+        # A mark name, or a time in ms from the start (as the marks and the timeline print them)
+        def at(v, default):
+            if v is None:
+                return default
+            if v.replace(".", "", 1).isdigit():
+                return float(v) * 1000.0
+            return next((t for t, m in marks if m == v), default)
+        lo = at(a.frm, samples[0][0])
+        hi = at(a.to, samples[-1][0])
         report(f"{a.frm or 'start'} -> {a.to or 'end'}", [s for s in samples if lo <= s[0] <= hi], names, a.tree_min, ms_per_sample)
         return
     report("whole run", samples, names, a.tree_min, ms_per_sample)

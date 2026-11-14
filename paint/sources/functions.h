@@ -83,6 +83,9 @@ slot_layer_t          *layers_new_layer(bool clear, i32 position, slot_layer_t *
 slot_layer_t          *layers_new_mask(bool clear, slot_layer_t *parent, i32 position);
 slot_layer_t          *layers_new_group();
 bool                   layers_fill_paint_to_mask();
+bool                   layers_fill_paint_needs_new_layer();
+bool                   layers_fill_paint_to_new_layer();
+void                   layers_fill_paint_confirm_new_layer();
 void                   layers_refresh_fill_layer(slot_layer_t *l);
 void                   util_mesh_sort_hierarchy();
 void                   layers_refresh_fill_layer_later(slot_layer_t *l);
@@ -546,6 +549,8 @@ void                   script_brush_set(char *name, f32 value);
 f32                    script_brush_get(char *name);
 void                   script_brush_use(i32 id);
 void                   script_brush_swap(void);
+bool                   script_brush_taken(void);
+void                   config_brush_save_update();
 void                   ui_popovers_update();
 void                   ui_popovers_render_ui();
 void                   history_mask_height_blend();
@@ -923,6 +928,7 @@ void                   util_render_resize_asset_icons(void *_);
 bool                   util_render_load_material_icon(slot_material_t *m, buffer_t *icon);
 void                   util_render_set_material_preview(slot_material_t *m, gpu_texture_t *src);
 void                   import_arm_set_preview_given(slot_material_t *m);
+void                   layers_history_with_prev(void (*push)(void));
 void   util_render_make_node_preview(ui_node_canvas_t *canvas, ui_node_t *node, gpu_texture_t *image, ui_node_canvas_t *group, ui_node_t_array_t *parents);
 void   util_render_pick_pos_nor_tex();
 bool   util_render_picked_on_mesh();
@@ -1224,6 +1230,8 @@ void                      mm_buffers_set_size_cap(i32 size);
 void                      mm_buffers_trim(void);
 void                      mm_buffers_batch_begin(void);
 void                      mm_buffers_batch_end(void);
+i32                       mm_buffers_require(i32 level); // What links need: 0 any, 1 usable (low), 2 full; returns the previous
+void                      mm_buffers_finish(void);       // Every queued pass rendered full now
 extern buffer_t          *parser_material_capture; // parser_material.c: code written there instead of the shader
 i32                       parser_material_socket_index(ui_node_t *node, ui_node_socket_t *socket);
 void                      mm_bridge_init(void); // nodes_material/mm_bridge.c: Material Maker nodes' code in material shaders

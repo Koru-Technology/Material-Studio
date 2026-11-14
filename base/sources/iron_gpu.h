@@ -181,6 +181,9 @@ void gpu_begin_internal(gpu_clear_t flags, unsigned color, float depth);
 void gpu_end(void);
 void gpu_end_internal(void);
 void gpu_execute_and_wait(void);
+// Submits the work recorded so far without waiting (outside a render pass); done, when given, gets its GPU time in ms
+// (-1 when unknown), on any thread. Elsewhere than Metal: gpu_execute_and_wait.
+void gpu_commit(void (*done)(void *data, double gpu_ms), void *data);
 void gpu_cleanup(void);
 bool gpu_cleanup_pending(void);
 void gpu_acquire_framebuffer(void);

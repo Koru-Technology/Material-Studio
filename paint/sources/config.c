@@ -54,6 +54,23 @@ void config_save() {
 	script_brush_swap();
 }
 
+// Saves the brush settings once a change is let go of (a slider released, a shortcut). iOS saves the config when the
+// app goes to the background, but an app ended without that (an install, a debugger, a crash) would start again with
+// the brush of an older session.
+void config_brush_save_update() {
+	if (g_context == NULL || base_player || script_brush_taken()) {
+		return;
+	}
+	if (g_context->brush_radius == g_config->brush_radius && g_context->brush_opacity == g_config->brush_opacity &&
+	    g_context->brush_strength == g_config->brush_strength && g_context->brush_selected == g_config->brush_selected) {
+		return;
+	}
+	if (g_context->brush_time > 0 || mouse_down("left") || pen_down("tip")) {
+		return; // Still dragging
+	}
+	config_save();
+}
+
 static void config_save_now() {
 	if (g_context != NULL) { // Brush settings kept across launches
 		g_config->brush_radius   = g_context->brush_radius;

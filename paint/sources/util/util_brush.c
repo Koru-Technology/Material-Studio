@@ -236,6 +236,8 @@ static void util_brush_update_motion() {
 	}
 }
 
+static bool util_brush_stroke_dropped = false;
+
 void util_brush_update() {
 	bool paint_down = keymap_shortcut(any_map_get(g_keymap, "action_paint"), SHORTCUT_TYPE_DOWN);
 #if defined(IRON_IOS) || defined(IRON_ANDROID)
@@ -287,6 +289,16 @@ void util_brush_update() {
 		down = false;
 	}
 
+	// A dropped stroke paints nothing until the touch is lifted. A new touch always paints: the update does not run
+	// while the dialog that dropped the stroke is open, and may not run between touches (idle frames sleep), so the
+	// lift is not always seen.
+	if (util_brush_stroke_dropped) {
+		if (down && !mouse_started("left") && !pen_started("tip")) {
+			return;
+		}
+		util_brush_stroke_dropped = false;
+	}
+
 	if (down) {
 		i32 mx = mouse_x - base_paint_view_x();
 		i32 my = mouse_y - base_paint_view_y();
@@ -304,8 +316,14 @@ void util_brush_update() {
 				if (g_context->brush_time == 0 && !base_is_dragging && !base_is_resizing && !ui_dock_is_dragging() &&
 				    g_ui->combo_selected_id == 0) { // Paint started
 
-					// A fill layer is painted through its mask
+					// A fill layer is painted through its mask. Another material than the fill layer's asks for a new fill
+					// layer, and the stroke is dropped.
 					if (layers_fill_paint_tool(g_context->tool)) {
+						if (layers_fill_paint_needs_new_layer()) {
+							layers_fill_paint_confirm_new_layer();
+							util_brush_stroke_dropped = true;
+							return;
+						}
 						layers_fill_paint_to_mask();
 					}
 

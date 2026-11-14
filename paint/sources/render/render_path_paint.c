@@ -136,11 +136,21 @@ void render_path_paint_init() {
 	render_path_load_shader("Scene/dilate_pass/dilateRGBA128_pass");
 }
 
+// Paint draws write layers: Material Maker buffers the material samples render full first (mm_buffers_require), a
+// stroke or fill never bakes placeholders or low resolution textures. The live brush preview takes what is there.
+static bool render_path_paint_live_brush = false;
+
+static void render_path_paint_draw_material(mesh_object_t *o) {
+	i32 need = mm_buffers_require(render_path_paint_live_brush ? 0 : 2);
+	mesh_object_draw(o, make_material_paint_scon, _render_path_bind_params);
+	mm_buffers_require(need);
+}
+
 void render_path_paint_draw_fullscreen_triangle() {
 	// Vertices are mangled in vertex shader to form a fullscreen triangle,
 	// so plane transform does not matter
 	if (make_material_paint_scon != NULL) {
-		mesh_object_draw(scene_get_child(".Plane")->ext, make_material_paint_scon, _render_path_bind_params);
+		render_path_paint_draw_material(scene_get_child(".Plane")->ext);
 	}
 	render_path_end();
 }
@@ -167,7 +177,7 @@ void render_path_paint_draw_target() {
 #ifdef IRON_METAL
 		render_path_paint_cull(o);
 #endif
-		mesh_object_draw(o, make_material_paint_scon, _render_path_bind_params);
+		render_path_paint_draw_material(o);
 	}
 	render_path_end();
 }
@@ -211,7 +221,7 @@ static void render_path_paint_draw_fill_object() {
 		if (submesh) {
 			o->data->_->index_buffer = render_path_paint_fill_indices;
 		}
-		mesh_object_draw(o, make_material_paint_scon, _render_path_bind_params);
+		render_path_paint_draw_material(o);
 		o->data->_->index_buffer = indices;
 	}
 	render_path_end();
@@ -505,6 +515,29 @@ void render_path_paint_batch_flush(bool dilation) {
 
 static void render_path_paint_commands_paint_internal(bool dilation);
 
+// IRON_PAINT_TIMING: the GPU time of the paint draws apart from the rest of the frame. The work before them and the
+// draws go in command buffers of their own, the draws' GPU time is logged when they complete (with IRON_FRAME_TIMING,
+// on the same clock as the frames).
+static i32 render_path_paint_timing = -1;
+
+typedef struct {
+	f64 t;
+	f64 cpu;
+	i32 dabs;
+} render_path_paint_timing_t;
+
+static void render_path_paint_timing_done(void *data, f64 gpu_ms) {
+	render_path_paint_timing_t *p = data;
+	fprintf(stderr, "[paint] t %.1f dabs %d cpu %.2f gpu %.2f ms\n", p->t, p->dabs, p->cpu, gpu_ms);
+	free(p);
+}
+
+static void render_path_paint_timing_flush() { // The open pass ends: what was drawn so far can be committed
+	if (_render_path_current_image != NULL) {
+		render_path_end();
+	}
+}
+
 void render_path_paint_commands_paint(bool dilation) {
 	if (g_context->pdirty <= 0) {
 		render_path_paint_batch_count = 0;
@@ -516,8 +549,31 @@ void render_path_paint_commands_paint(bool dilation) {
 		render_path_paint_batch_add();
 		render_path_paint_batch_upload();
 	}
+	if (render_path_paint_timing < 0) {
+		render_path_paint_timing = getenv("IRON_PAINT_TIMING") != NULL ? 1 : 0;
+	}
+	if (!render_path_paint_timing) {
+		render_path_paint_commands_paint_internal(dilation);
+		render_path_paint_batch_ready = false;
+		return;
+	}
+	render_path_paint_timing_t *p = malloc(sizeof(render_path_paint_timing_t));
+	p->t                          = iron_glsl_now_ms();
+	p->dabs                       = render_path_paint_batch_count;
+	render_path_paint_timing_flush();
+	if (!gpu_in_use) {
+		gpu_commit(NULL, NULL);
+	}
 	render_path_paint_commands_paint_internal(dilation);
 	render_path_paint_batch_ready = false;
+	render_path_paint_timing_flush();
+	p->cpu = iron_glsl_now_ms() - p->t;
+	if (gpu_in_use) { // Inside a pass of the caller: no time of its own
+		p->cpu = -p->cpu;
+		render_path_paint_timing_done(p, -1.0);
+		return;
+	}
+	gpu_commit(&render_path_paint_timing_done, p);
 }
 
 // Picker results: surface values under the cursor into the picked color, the material and fill layers with picker nodes.
@@ -1011,7 +1067,9 @@ void render_path_paint_commands_live_brush() {
 	g_context->pdirty = 2;
 
 	render_path_paint_commands_symmetry();
+	render_path_paint_live_brush = true; // A preview: Material Maker buffers as they are, better ones redraw it
 	render_path_paint_commands_paint(true);
+	render_path_paint_live_brush = false;
 
 	render_path_paint_use_live_layer(false);
 

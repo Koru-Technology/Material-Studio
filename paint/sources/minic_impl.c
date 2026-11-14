@@ -194,8 +194,13 @@ static bool script_paint_allowed(void) {
 	if (g_context == NULL || g_context->layer == NULL || g_context->material == NULL) {
 		return false;
 	}
-	if (!script_paint_active && layers_fill_paint_tool(g_context->tool)) {
-		layers_fill_paint_to_mask(); // A fill layer is painted through its mask
+	if (!script_paint_active && layers_fill_paint_tool(g_context->tool)) { // A fill layer is painted through its mask
+		if (layers_fill_paint_needs_new_layer()) {
+			layers_fill_paint_to_new_layer(); // Scripts answer the new fill layer dialog with yes
+		}
+		else {
+			layers_fill_paint_to_mask();
+		}
 	}
 	if (slot_layer_is_group(g_context->layer)) {
 		return false;
@@ -441,7 +446,7 @@ slot_layer_t *script_layer_new_fill(void) {
 	if (l != NULL) {
 		history_new_layer();
 		l->uv_type = UV_TYPE_UVMAP;
-		history_to_fill_layer();
+		layers_history_with_prev(history_to_fill_layer); // One undo, as the Fill Layer menu
 		slot_layer_to_fill_layer(l);
 	}
 	script_gpu_end(current, in_use);
@@ -958,6 +963,11 @@ static void script_brush_apply(script_brush_state_t *s) {
 	g_context->brush_strength = s->strength;
 	g_context->mask_value     = s->mask_value;
 	brush_library_apply_settings(&s->s, s->tip_image);
+}
+
+// A script runs with its own test brush in place of the user's
+bool script_brush_taken(void) {
+	return script_brush_saved.taken;
 }
 
 static void script_brush_put_back(void) {
