@@ -426,7 +426,7 @@ void ui_nodes_make_node_preview(ui_node_t *node) {
 	}
 
 	ui_nodes_hwnd->redraws = 2;
-	i32 need               = mm_buffers_require(1); // A preview: Material Maker buffers at least at the low resolution
+	i32 need               = mm_buffers_require(MM_BUFFERS_LOW); // A preview: Material Maker buffers at least at the low resolution
 	util_render_make_node_preview(current_canvas, node, img, group_canvas, group_parents);
 	mm_buffers_require(need);
 	array_delete(group_parents); // The parser copies the path

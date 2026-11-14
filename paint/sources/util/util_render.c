@@ -333,7 +333,7 @@ void util_render_make_decal_preview() {
 	make_material_parse_mesh_preview_material();
 	void (*_commands)(void) = render_path_commands;
 	render_path_commands    = render_path_preview_commands_decal;
-	i32 mm_need             = mm_buffers_require(1); // A preview: Material Maker buffers at least at the low resolution
+	i32 mm_need             = mm_buffers_require(MM_BUFFERS_LOW); // A preview: Material Maker buffers at least at the low resolution
 	render_path_render_frame();
 	mm_buffers_require(mm_need);
 	render_path_commands = _commands;

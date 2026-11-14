@@ -315,6 +315,14 @@ void history_tiles_begin(history_step_t *step, slot_layer_t *l) {
 #endif
 }
 
+// The step whose tiles are still to be taken (the last stroke's, until the next push, undo or redo) and its layer
+history_step_t *history_tiles_pending_step(slot_layer_t **layer) {
+	if (layer != NULL) {
+		*layer = history_tiles_pending_l;
+	}
+	return history_tiles_pending;
+}
+
 // While a tiled stroke paints, the layer as it was before the stroke (blending reads it), NULL otherwise
 gpu_texture_t *history_tiles_stroke_source(i32 i) {
 	if (history_tiles_pending == NULL || history_tiles_pending_l != g_context->layer) {

@@ -106,6 +106,7 @@ void layers_resize() {
 
 // Undo layers, live layer and paint targets that follow the texture resolution
 void layers_resize_targets() {
+	stroke_refine_reset(); // Records of the old size go
 	if (history_undo_layers != NULL) {
 		for (i32 i = 0; i < history_undo_layers->length; ++i) {
 			slot_layer_t *l = history_undo_layers->buffer[i];
@@ -343,6 +344,7 @@ void layers_update_fill_layers() {
 					slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 					render_path_paint_commands_paint(false);
 					render_path_paint_dilate(true, true);
+					stroke_refine_fill_track(l); // Painted again as better buffers land
 				}
 			}
 		}
@@ -360,6 +362,7 @@ void layers_update_fill_layers() {
 					slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 					render_path_paint_commands_paint(false);
 					render_path_paint_dilate(true, true);
+					stroke_refine_fill_track(l);
 				}
 			}
 		}
@@ -419,6 +422,7 @@ void layers_update_fill_layer(bool parse_paint) {
 	}
 	render_path_paint_commands_paint(false);
 	render_path_paint_dilate(true, true);
+	stroke_refine_fill_track(g_context->layer); // Painted again as better Material Maker buffers land
 
 	g_context->tool      = _tool;
 	g_context->fill_type = _fill_type;

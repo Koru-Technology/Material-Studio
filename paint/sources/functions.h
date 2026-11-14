@@ -147,6 +147,15 @@ void                   history_tiles_set_enabled(bool on);
 void                   paint_cull_set_enabled(bool on);
 f32                    paint_cull_last_kept();
 gpu_texture_t         *history_tiles_stroke_source(i32 i);
+history_step_t        *history_tiles_pending_step(slot_layer_t **layer);
+void                   stroke_refine_stroke_begin(history_step_t *step); // util/util_stroke_refine.c: strokes sharpen as buffers land
+void                   stroke_refine_fold(void);
+void                   stroke_refine_end_all(void);
+void                   stroke_refine_history_pushed(history_action_t action);
+void                   stroke_refine_reset(void);
+void                   stroke_refine_fill_track(slot_layer_t *l);
+i32                    stroke_refine_stat(i32 what);
+void                   render_path_paint_set_stamp_seed(i32 seed);
 void                   history_tiles_swap(history_step_t *step, slot_layer_t *l);
 void                   history_tiles_release(history_step_t *step);
 void                   history_tiles_reset();
@@ -1057,6 +1066,8 @@ char                     *blur_node_input_alpha(ui_node_t *node);
 i32                       blur_node_seamless_passes(ui_node_t *node);
 char                     *make_material_node_preview_id(ui_node_t *node, ui_node_t_array_t *parents);
 void                      make_material_save_paint_material();
+shader_context_t         *make_material_parse_paint_material_kept(bool deferred);
+void                      make_material_free_paint_scon(shader_context_t *scon);
 void                      make_material_restore_paint_material();
 shader_context_t         *make_material_parse_node_preview_material(ui_node_t *node, ui_node_canvas_t *group, ui_node_t_array_t *parents);
 void                      make_material_parse_brush();
@@ -1231,8 +1242,15 @@ void                      mm_buffers_set_size_cap(i32 size);
 void                      mm_buffers_trim(void);
 void                      mm_buffers_batch_begin(void);
 void                      mm_buffers_batch_end(void);
-i32                       mm_buffers_require(i32 level); // What links need: 0 any, 1 usable (low), 2 full; returns the previous
+#define MM_BUFFERS_TINY 1 // Tiers of a Material Maker buffer: tiny (on the spot, ~300 ms for the whole material),
+#define MM_BUFFERS_LOW  2 // low (512),
+#define MM_BUFFERS_FULL 3 // full (the pass's own size, from full inputs)
+i32                       mm_buffers_require(i32 level); // What links need: 0 any, else at least that tier now; returns the previous
 void                      mm_buffers_finish(void);       // Every queued pass rendered full now
+i32                       mm_buffers_paint_keys(shader_context_t *scon, u64 *out, i32 max); // The buffer keys a shader samples
+i32                       mm_buffers_links_tier(u64 *keys, i32 n); // The lowest tier among them (0: one has no texture, -1: one is gone)
+i32                       mm_buffers_landed_count(void);           // Grows whenever a buffer texture lands
+i32                       mm_buffers_rush_skipped(void); // Grows when a paint draw's on-the-spot render is skipped or cut short
 extern buffer_t          *parser_material_capture; // parser_material.c: code written there instead of the shader
 i32                       parser_material_socket_index(ui_node_t *node, ui_node_socket_t *socket);
 void                      mm_bridge_init(void); // nodes_material/mm_bridge.c: Material Maker nodes' code in material shaders

@@ -95,6 +95,19 @@ static void shader_batch_push(shader_context_t *raw) {
 	shader_batch_items[shader_batch_count++] = raw;
 }
 
+// Ends a batch without compiling it: the caller compiles the contexts returned (gpu_pipeline_compile of their pipe, on any
+// thread), then binds them (shader_context_bind) before drawing with them. The array is valid until the next batch.
+shader_context_t **shader_compile_batch_take(int *count) {
+	shader_batch_active = false;
+	*count              = shader_batch_count;
+	shader_batch_count  = 0;
+	return shader_batch_items;
+}
+
+void shader_context_bind(shader_context_t *raw) {
+	shader_context_bind_constants(raw);
+}
+
 void shader_compile_batch_end(void) {
 	if (!shader_batch_active) {
 		return;

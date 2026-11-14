@@ -209,6 +209,7 @@
 #include "util/util_render.c"
 #include "util/util_shortcut.c"
 #include "util/util_stencil.c"
+#include "util/util_stroke_refine.c"
 #include "util/util_texture.c"
 #include "util/util_touch.c"
 #include "util/util_pencil.c"

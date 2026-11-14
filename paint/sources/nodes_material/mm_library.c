@@ -283,7 +283,7 @@ u8 *mm_thumbs_render(i32 id, i32 *failures) {
 	bool             height_used = make_material_height_used;
 	g_context->material          = m;
 	make_material_height_used    = true; // Show the relief in the preview
-	i32 need                     = mm_buffers_require(2); // Thumbnails are kept: full Material Maker buffers
+	i32 need                     = mm_buffers_require(MM_BUFFERS_FULL); // Thumbnails are kept: full Material Maker buffers
 	util_render_make_material_preview();
 	mm_buffers_require(need);
 	make_material_height_used = height_used;

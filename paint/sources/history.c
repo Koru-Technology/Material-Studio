@@ -404,6 +404,7 @@ void history_swap_canvas(history_step_t *step) {
 void history_undo() {
 	history_tiles_finalize();
 	if (history_undos > 0) {
+		stroke_refine_end_all(); // Strokes keep the tier they reached
 		project_modified = true;
 		render_path_base_redraw();
 		i32             active = history_steps->length - 1 - history_redos;
@@ -702,6 +703,7 @@ void history_swap_active() {
 void history_redo() {
 	history_tiles_finalize();
 	if (history_redos > 0) {
+		stroke_refine_end_all();
 		project_modified = true;
 		render_path_base_redraw();
 		i32             active = history_steps->length - history_redos;
@@ -920,6 +922,7 @@ void history_reset() {
 	history_undo_i = 0;
 	history_ring_pending = 0;
 	history_tiles_reset();
+	stroke_refine_reset();
 }
 
 history_step_t *history_push(history_action_t action) {
@@ -970,6 +973,7 @@ history_step_t *history_push(history_action_t action) {
 	step->undo_ring      = history_ring_pending;
 	history_ring_pending = 0;
 	any_array_push(history_steps, step);
+	stroke_refine_history_pushed(action); // Layers changed otherwise than by strokes: their records end
 
 	// Whole layer copies are a ring of undo_steps layers, a step whose copy would be overwritten goes first
 	while (history_steps->length > history_max_steps() + 1 || (history_steps->length > 2 && history_ring_used() > g_config->undo_steps)) {
@@ -1003,6 +1007,8 @@ void history_paint() {
 	if (g_context->tool == TOOL_TYPE_ERASER && g_context->layer == g_project->_->layers->buffer[0]) {
 		layers_enable_translucency();
 	}
+
+	stroke_refine_stroke_begin(step); // Painted before the material's buffers are full: it sharpens as they land
 }
 
 void history_new_layer() {

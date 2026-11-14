@@ -258,7 +258,7 @@ void make_material_bake_node_previews() {
 		g_context->node_previews = any_map_create();
 	}
 	ui_node_t_array_t *empty = any_array_create_from_raw((void *[]){}, 0);
-	i32                need  = mm_buffers_require(2); // Blur and warp previews feed the material: full Material Maker buffers
+	i32                need  = mm_buffers_require(MM_BUFFERS_FULL); // Blur and warp previews feed the material: full Material Maker buffers
 	make_material_traverse_nodes(g_context->material->canvas->nodes, NULL, empty);
 	mm_buffers_require(need);
 
@@ -330,6 +330,38 @@ void make_material_use_pick_material() {
 		return;
 	}
 	make_material_set_paint_scon(make_material_pick_scon);
+}
+
+// A paint shader for the context as it is now, kept by the caller (make_material_free_paint_scon): the current one stays.
+// deferred: its pipeline is not compiled, the caller compiles it (gpu_pipeline_compile of its pipe, on any thread: a
+// heavy material's takes hundreds of ms on the iPad), then binds it (shader_context_bind) before drawing with it.
+shader_context_t *make_material_parse_paint_material_kept(bool deferred) {
+	shader_context_t *current = make_material_paint_scon;
+	shader_context_t *saved   = make_material_saved_scon;
+	make_material_saved_scon  = current; // Not deleted by the parse
+	if (deferred) {
+		shader_compile_batch_begin();
+	}
+	make_material_parse_paint_material(false);
+	shader_context_t *kept = make_material_paint_scon;
+	if (deferred) {
+		i32                count = 0;
+		shader_context_t **items = shader_compile_batch_take(&count);
+		for (i32 i = 0; i < count; ++i) {
+			if (items[i] != kept) { // Others the parse made, compiled now
+				shader_context_finish_compile(items[i]);
+			}
+		}
+	}
+	make_material_paint_scon = current;
+	make_material_saved_scon = saved;
+	return kept != current ? kept : NULL;
+}
+
+void make_material_free_paint_scon(shader_context_t *scon) {
+	if (scon != NULL && scon != make_material_paint_scon && scon != make_material_default_scon && scon != make_material_pick_scon) {
+		make_material_delete_context(scon);
+	}
 }
 
 void make_material_save_paint_material() {

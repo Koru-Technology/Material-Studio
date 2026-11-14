@@ -136,12 +136,13 @@ void render_path_paint_init() {
 	render_path_load_shader("Scene/dilate_pass/dilateRGBA128_pass");
 }
 
-// Paint draws write layers: Material Maker buffers the material samples render full first (mm_buffers_require), a
-// stroke or fill never bakes placeholders or low resolution textures. The live brush preview takes what is there.
+// Paint draws write layers: Material Maker buffers the material samples render first when missing (mm_buffers_require),
+// at the tiny tier, on the spot: a stroke started before they are done paints at once, util_stroke_refine.c sharpens it
+// (and fill layers) as better tiers land. Bakes take full ones. The live brush preview takes what is there.
 static bool render_path_paint_live_brush = false;
 
 static void render_path_paint_draw_material(mesh_object_t *o) {
-	i32 need = mm_buffers_require(render_path_paint_live_brush ? 0 : 2);
+	i32 need = mm_buffers_require(render_path_paint_live_brush ? 0 : g_context->tool == TOOL_TYPE_BAKE ? MM_BUFFERS_FULL : MM_BUFFERS_TINY);
 	mesh_object_draw(o, make_material_paint_scon, _render_path_bind_params);
 	mm_buffers_require(need);
 }
@@ -704,6 +705,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 	}
 
 	if (g_context->brush_time == 0 && g_context->tool != TOOL_TYPE_PARTICLE && !g_context->pick_pos_nor_tex) {
+		stroke_refine_fold(); // Before this draw (live brush preview, fill layer) adds to the coverage of the stroke that ended
 		g_context->brush_blend_dirty = true;
 	}
 
@@ -1384,6 +1386,9 @@ void render_path_paint_draw_bake_derivative(void *_) {
 void render_path_paint_clear_blend() {
 	if (g_context->brush_blend_dirty) {
 		g_context->brush_blend_dirty = false;
+		if (g_context->brush_time == 0) {
+			stroke_refine_fold(); // The stroke's coverage, for strokes that sharpen as better buffers land
+		}
 		render_path_set_target("texpaint_blend0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_end();
@@ -1392,6 +1397,11 @@ void render_path_paint_clear_blend() {
 
 // Brush stamps: spacing, jitter, fall off and taper
 static u32 render_path_paint_stamp_seed = 1;
+
+// Tests: strokes painted again jitter alike, 0 seeds from the time
+void render_path_paint_set_stamp_seed(i32 seed) {
+	render_path_paint_stamp_seed_fixed = (u32)seed;
+}
 
 static f32 render_path_paint_stamp_random() {
 	render_path_paint_stamp_seed = render_path_paint_stamp_seed * 1664525u + 1013904223u;
