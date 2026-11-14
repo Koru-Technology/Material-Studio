@@ -615,6 +615,10 @@ static void studio_apply_paint() {
 	ui_nodes_hwnd->redraws = 2;
 }
 
+static void studio_apply_paint_next(void *_) {
+	studio_apply_paint();
+}
+
 // Commits and applies right away, for scripts checking the fill layers while the studio is open
 void material_studio_apply() {
 	if (studio_need_commit && studio_canvas() != NULL) {
@@ -748,7 +752,7 @@ void material_studio_close() {
 	if (studio_need_commit && studio_material != NULL && studio_canvas() != NULL) {
 		studio_commit();
 	}
-	studio_apply_paint();
+	sys_notify_on_next_frame(&studio_apply_paint_next, NULL); // Close is tapped while the windows draw: render after
 	material_studio_show = false;
 	studio_closing       = true;
 	studio_anim_start    = iron_time();
