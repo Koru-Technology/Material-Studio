@@ -11,6 +11,8 @@
 int shard  = 0;
 int shards = 1;
 int first  = 0; // Index in the controls list to start from (after a crash)
+int only_n = 0; // When above 0, only the materials of these ids
+int only[1] = {0};
 
 int step     = 0;
 int wait     = 0;
@@ -42,6 +44,15 @@ char            *why    = "";
 int sockets[8] = {0, 7, 3, 5, 4, 6, 1, 2};
 
 int mine(int i) {
+	if (only_n > 0) {
+		int id = mm_controls_material_id(i);
+		for (int k = 0; k < only_n; ++k) {
+			if (only[k] == id) {
+				return 1;
+			}
+		}
+		return 0;
+	}
 	return i - (i / shards) * shards == shard;
 }
 

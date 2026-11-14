@@ -16,11 +16,18 @@ TEST = os.path.join(PAINT, 'tests', 'material_controls_all.c')
 MAC_APP = os.path.join(PAINT, 'build/dd_mac/Build/Products/Release/MaterialStudio.app/Contents/MacOS/MaterialStudio')
 
 
+IDS = []  # --ids: only these materials
+
+
 def script(shard, shards, first):
     s = open(TEST).read()
     s = s.replace('int shard  = 0;', 'int shard  = %d;' % shard, 1)
     s = s.replace('int shards = 1;', 'int shards = %d;' % shards, 1)
-    return s.replace('int first  = 0;', 'int first  = %d;' % first, 1)
+    s = s.replace('int first  = 0;', 'int first  = %d;' % first, 1)
+    if IDS:
+        s = s.replace('int only_n = 0;', 'int only_n = %d;' % len(IDS), 1)
+        s = s.replace('int only[1] = {0};', 'int only[%d] = {%s};' % (len(IDS), ', '.join(IDS)), 1)
+    return s
 
 
 def stop_ipad_app(a):
@@ -115,7 +122,11 @@ def main():
     ap.add_argument('--out', default=os.path.join(PAINT, 'build', 'controls_bulk'))
     ap.add_argument('--device')
     ap.add_argument('--bundle', default='technology.koru.materialstudio')
+    ap.add_argument('--ids')  # Only these materials (comma separated), in one shard: give its own --out
     a = ap.parse_args()
+    if a.ids:
+        IDS[:] = [x.strip() for x in a.ids.split(',')]
+        a.shards, a.only = 1, '0'
     os.makedirs(a.out, exist_ok=True)
     shards = [int(x) for x in a.only.split(',')] if a.only else list(range(a.shards))
     if a.device:
