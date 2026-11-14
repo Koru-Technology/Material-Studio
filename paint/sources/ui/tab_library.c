@@ -38,7 +38,8 @@ static void tab_library_draw_header() {
 typedef struct tab_library_grid {
 	i32          num;
 	f32          imgh;
-	i32          text_h;
+	i32          text_h; // Two lines of name
+	i32          head_h; // A section header
 	i32          row_h;
 	f32_array_t *ratios;
 } tab_library_grid_t;
@@ -51,7 +52,8 @@ static tab_library_grid_t tab_library_grid() {
 		g.num = 1;
 	}
 	g.imgh   = 64 * UI_SCALE();
-	g.text_h = UI_ELEMENT_H() + UI_ELEMENT_OFFSET();
+	g.text_h = UI_ELEMENT_H() + draw_font_height(g_ui->ops->font, g_ui->font_size) + UI_ELEMENT_OFFSET();
+	g.head_h = UI_ELEMENT_H() + UI_ELEMENT_OFFSET();
 	g.row_h  = math_floor(g.imgh + g.text_h + 8 * UI_SCALE());
 	g.ratios = f32_array_create_from_raw_tmp(NULL, g.num);
 	for (i32 i = 0; i < g.num; ++i) {
@@ -60,13 +62,58 @@ static tab_library_grid_t tab_library_grid() {
 	return g;
 }
 
+// The name under a preview, centered, wrapped at a space onto a second line when it is too wide (that line cut with
+// ".." when still too wide, the full name in the tooltip). Always two lines high, so every item of a row lines up.
+static void tab_library_label(char *name, tab_library_grid_t *g) {
+	static char first[256];
+	f32         max_w = g_ui->_w - 6.0 * UI_SCALE();
+	char       *rest  = NULL;
+	draw_set_font(g_ui->ops->font, g_ui->font_size);
+	snprintf(first, sizeof(first), "%s", name);
+	if (draw_string_width(g_ui->ops->font, g_ui->font_size, first) > max_w) {
+		i32 cut = -1; // The last space the text before fits
+		for (i32 i = 0; first[i] != 0; ++i) {
+			if (first[i] == ' ') {
+				first[i] = 0;
+				bool fits = draw_string_width(g_ui->ops->font, g_ui->font_size, first) <= max_w;
+				first[i] = ' ';
+				if (!fits) {
+					break;
+				}
+				cut = i;
+			}
+		}
+		if (cut > 0) {
+			first[cut] = 0;
+			rest       = &first[cut + 1];
+			while (*rest == ' ') {
+				rest++;
+			}
+		}
+	}
+	ui_get_hover(g->text_h); // The tooltip of a cut name is this item's
+	draw_set_color(g_theme->TEXT_COL);
+	ui_draw_string(first, -1, 0, UI_ALIGN_CENTER, true);
+	if (rest != NULL && rest[0] != 0) {
+		ui_draw_string(rest, -1, draw_font_height(g_ui->ops->font, g_ui->font_size), UI_ALIGN_CENTER, true);
+	}
+	ui_end_element_of_size(g->text_h);
+}
+
 // Rows out of view only take their space, their previews are not loaded
 static bool tab_library_row_hidden(tab_library_grid_t *g) {
 	return g_ui->_y + g->row_h < 0 || g_ui->_y > g_ui->_window_h;
 }
 
+// Centered in its cell: moved right by half the space left over, and the cell narrowed by as much so the next one starts
+// where it did
 static ui_state_t tab_library_image(gpu_texture_t *icon, f32 imgh, u32 tint) {
 	ui_state_t state;
+	f32        spare = g_ui->_w - imgh;
+	if (spare > 0) {
+		g_ui->_x += spare / 2.0;
+		g_ui->_w -= spare / 2.0;
+	}
 	g_ui->image_scroll_align = false;
 	if (icon != NULL) {
 		state = ui_image(icon, tint, imgh);
@@ -215,8 +262,8 @@ static void tab_library_draw_mm(tab_library_grid_t *g) {
 		if (shown == 0) {
 			continue;
 		}
-		if (g_ui->_y + g->text_h < 0 || g_ui->_y > g_ui->_window_h) {
-			g_ui->_y += g->text_h;
+		if (g_ui->_y + g->head_h < 0 || g_ui->_y > g_ui->_window_h) {
+			g_ui->_y += g->head_h;
 		}
 		else {
 			char *section = mm_library_section_name(grp % sections);
@@ -250,7 +297,7 @@ static void tab_library_draw_mm(tab_library_grid_t *g) {
 					ui_end_element_of_size(g->text_h);
 					continue;
 				}
-				ui_text(mm_library_name(items[k]), UI_ALIGN_CENTER, 0x00000000);
+				tab_library_label(mm_library_name(items[k]), g);
 			}
 			g_ui->_y += 8 * UI_SCALE();
 		}
@@ -312,7 +359,7 @@ static void tab_library_draw_saved(tab_library_grid_t *g) {
 				ui_end_element_of_size(g->text_h);
 				continue;
 			}
-			ui_text(saved_materials_name(items[k]), UI_ALIGN_CENTER, 0x00000000);
+			tab_library_label(saved_materials_name(items[k]), g);
 		}
 		g_ui->_y += 8 * UI_SCALE();
 	}
@@ -387,7 +434,7 @@ static void tab_library_draw_local() {
 				ui_end_element_of_size(g.text_h);
 				continue;
 			}
-			ui_text(library_entry_name(library_entry_get(visible[k])), UI_ALIGN_CENTER, 0x00000000);
+			tab_library_label(library_entry_name(library_entry_get(visible[k])), &g);
 		}
 		g_ui->_y += 8 * UI_SCALE();
 	}
@@ -418,8 +465,8 @@ static void tab_library_draw_progress(f32 cx, f32 cy, f32 r, f32 progress) {
 // One group of cloud items: a header with the type, then the grid
 static void tab_library_draw_cloud_group(tab_library_grid_t *g, i32 *items, i32 shown, char *title) {
 	if (title != NULL) {
-		if (g_ui->_y + g->text_h < 0 || g_ui->_y > g_ui->_window_h) {
-			g_ui->_y += g->text_h;
+		if (g_ui->_y + g->head_h < 0 || g_ui->_y > g_ui->_window_h) {
+			g_ui->_y += g->head_h;
 		}
 		else {
 			ui_text(title, UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
@@ -440,7 +487,7 @@ static void tab_library_draw_cloud_group(tab_library_grid_t *g, i32 *items, i32 
 			}
 			cloud_item_t *it    = library_cloud_get(items[k]);
 			bool          busy  = library_cloud_item_busy(it);
-			f32           x     = g_ui->_x;
+			f32           x     = g_ui->_x + (g_ui->_w > g->imgh ? (g_ui->_w - g->imgh) / 2.0 : 0); // Where the centered preview is
 			f32           y     = g_ui->_y;
 			ui_state_t    state = tab_library_image(library_cloud_item_icon(it), g->imgh, busy ? 0xff666666 : 0xffffffff);
 			if (state == UI_STATE_RELEASED && !g_ui->is_scrolling) {
@@ -474,7 +521,7 @@ static void tab_library_draw_cloud_group(tab_library_grid_t *g, i32 *items, i32 
 				ui_end_element_of_size(g->text_h);
 				continue;
 			}
-			ui_text(library_cloud_item_name(library_cloud_get(items[k])), UI_ALIGN_CENTER, 0x00000000);
+			tab_library_label(library_cloud_item_name(library_cloud_get(items[k])), g);
 		}
 		g_ui->_y += 8 * UI_SCALE();
 	}
