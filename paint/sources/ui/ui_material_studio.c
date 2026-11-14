@@ -741,6 +741,7 @@ void material_studio_open(slot_material_t *m) {
 		studio_ctrl_handle = ui_window_create();
 	}
 	studio_ctrl_handle->scroll_offset = 0;
+	studio_redraw(); // The windows keep their last drawing, which may be another material's
 	ui_end_input(); // The tap that opened it does not reach the studio
 	base_redraw_ui();
 }
