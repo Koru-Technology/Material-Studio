@@ -464,6 +464,26 @@ ui_node_t *variable_find(ui_node_canvas_t *canvas, char *id) {
 	return NULL;
 }
 
+// For scripts: the i-th Variable in panel order (group, then order), NULL past the end
+ui_node_t *variable_at(ui_node_canvas_t *canvas, i32 i) {
+	ui_node_t_array_t *vars = variable_list(canvas);
+	return i >= 0 && i < vars->length ? vars->buffer[i] : NULL;
+}
+
+// For scripts: 0 min, 1 max, 2 step, 3 number of choice options, 4 length of the value array
+f32 variable_param(ui_node_t *node, i32 what) {
+	f32 min = 0.0, max = 1.0, step = 0.0;
+	variable_range(node, &min, &max, &step);
+	if (what == 3) {
+		return variable_options(node)->length;
+	}
+	if (what == 4) {
+		f32_array_t *arr = variable_value_array(node);
+		return arr != NULL ? arr->length : 0;
+	}
+	return what == 0 ? min : what == 1 ? max : step;
+}
+
 // Set up: a Variable of the kind, its label, id, group (VARIABLE_GROUP_* key), unit key and order
 void variable_setup(ui_node_t *node, i32 kind, char *label, char *id, char *group, char *unit, i32 order) {
 	variable_set_num(node, "Type", 0, kind);

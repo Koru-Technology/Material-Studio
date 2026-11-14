@@ -825,6 +825,32 @@ void mm_import_save_png(gpu_texture_t *t, char *path) {
 }
 
 // Mean absolute difference of two previews of the same size, per channel 0..255, -1 when they do not compare
+// For scripts: frees a preview made by mm_import_preview
+void mm_import_texture_free(gpu_texture_t *t) {
+	if (t != NULL) {
+		gpu_delete_texture(t);
+	}
+}
+
+// Pixels of a and b that differ by more than 2 levels in a color channel, per thousand (-1 when they cannot be read)
+i32 mm_import_image_changed(gpu_texture_t *a, gpu_texture_t *b) {
+	buffer_t *pa = mm_import_texels(a);
+	buffer_t *pb = mm_import_texels(b);
+	if (pa == NULL || pb == NULL || pa->length != pb->length || pa->length == 0) {
+		return -1;
+	}
+	i64 n = 0;
+	for (u32 i = 0; i < pa->length; i += 4) {
+		for (i32 c = 0; c < 3; ++c) {
+			if (abs((i32)pa->buffer[i + c] - (i32)pb->buffer[i + c]) > 2) {
+				n++;
+				break;
+			}
+		}
+	}
+	return (i32)(n * 1000 / (pa->length / 4));
+}
+
 i32 mm_import_image_diff(gpu_texture_t *a, gpu_texture_t *b) {
 	buffer_t *pa = mm_import_texels(a);
 	buffer_t *pb = mm_import_texels(b);

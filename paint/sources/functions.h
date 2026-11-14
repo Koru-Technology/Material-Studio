@@ -1197,6 +1197,9 @@ i32                       mm_node_export_count(ui_node_t *node);
 bool                      mm_node_export_param_at(ui_node_t *node, i32 i, char **name, char **label, i32 *kind);
 void                      mm_nodes_gradient_edit(ui_node_t *node, i32 button, char *label);
 bool                      mm_controls_apply(slot_material_t *m, i32 id); // nodes_material/mm_controls.c: the library's controls as Variables
+i32                       mm_controls_material_count(void);
+i32                       mm_controls_material_id(i32 i);
+i32                       mm_controls_material_controls(i32 i);
 ui_node_t                *mm_node_export_param(ui_node_canvas_t *canvas, ui_node_t *node, char *param, i32 stop);
 f32                       mm_node_param_value(ui_node_canvas_t *canvas, char *name, char *param, i32 stop, i32 i);
 i32                       mm_nodes_count_all();
@@ -1239,6 +1242,8 @@ bool                      mm_thumbs_has(i32 id);
 f32                       mm_library_search_ms(char *search);
 void                      mm_import_save_png(gpu_texture_t *t, char *path);
 i32                       mm_import_image_diff(gpu_texture_t *a, gpu_texture_t *b);
+i32                       mm_import_image_changed(gpu_texture_t *a, gpu_texture_t *b);
+void                      mm_import_texture_free(gpu_texture_t *t);
 char                     *mm_nodes_skipped();
 struct mm_plan;
 gpu_texture_t           **mm_buffers_render(struct mm_plan *plan);         // nodes_material/mm_buffers.c: Material Maker buffers
@@ -1596,6 +1601,8 @@ bool              variable_propagate(ui_node_t_array_t *nodes, ui_node_link_t_ar
 ui_node_t_array_t *variable_list(ui_node_canvas_t *canvas);
 i32               variable_count(ui_node_canvas_t *canvas);
 ui_node_t        *variable_find(ui_node_canvas_t *canvas, char *id);
+ui_node_t        *variable_at(ui_node_canvas_t *canvas, i32 i);
+f32               variable_param(ui_node_t *node, i32 what);
 void              variable_setup(ui_node_t *node, i32 kind, char *label, char *id, char *group, char *unit, i32 order);
 void              variable_set_range(ui_node_t *node, f32 min, f32 max, f32 step);
 void              variable_set_options(ui_node_t *node, char *options);

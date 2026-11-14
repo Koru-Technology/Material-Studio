@@ -252,6 +252,50 @@ bool mm_controls_apply(slot_material_t *m, i32 id) {
 	return any;
 }
 
+// For scripts: the library materials with controls (ids in the order of controls.json) and their number of controls
+static i32 *mm_controls_ids    = NULL;
+static i32 *mm_controls_counts = NULL;
+static i32  mm_controls_n      = -1;
+
+static void mm_controls_index(void) {
+	if (mm_controls_n >= 0) {
+		return;
+	}
+	mm_controls_n  = 0;
+	buffer_t *blob = data_get_blob("material_maker/controls.json");
+	if (blob == NULL || blob->length == 0) {
+		return;
+	}
+	mm_mark_t  mk  = mm_arena_mark();
+	mm_json_t *all = mm_json_parse((char *)blob->buffer, blob->length);
+	if (all != NULL && all->type == MM_JSON_OBJECT) {
+		mm_controls_ids    = malloc(sizeof(i32) * (all->count + 1));
+		mm_controls_counts = malloc(sizeof(i32) * (all->count + 1));
+		for (i32 i = 0; i < all->count; ++i) {
+			mm_json_t *list                   = all->items[i];
+			mm_controls_ids[mm_controls_n]    = atoi(all->keys[i]);
+			mm_controls_counts[mm_controls_n] = list != NULL && list->type == MM_JSON_ARRAY ? list->count : 0;
+			mm_controls_n++;
+		}
+	}
+	mm_arena_release(mk);
+}
+
+i32 mm_controls_material_count(void) {
+	mm_controls_index();
+	return mm_controls_n;
+}
+
+i32 mm_controls_material_id(i32 i) {
+	mm_controls_index();
+	return i >= 0 && i < mm_controls_n ? mm_controls_ids[i] : -1;
+}
+
+i32 mm_controls_material_controls(i32 i) {
+	mm_controls_index();
+	return i >= 0 && i < mm_controls_n ? mm_controls_counts[i] : 0;
+}
+
 // For scripts: one float of a parameter of the node named name (stop >= 0: of that gradient stop)
 f32 mm_node_param_value(ui_node_canvas_t *canvas, char *name, char *param, i32 stop, i32 i) {
 	ui_node_t *node = mm_node_named(canvas, name);
