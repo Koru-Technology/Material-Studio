@@ -713,8 +713,14 @@ static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 	bool hit = library != nil;
 	atomic_fetch_add(hit ? &metal_precompiled_hits : &metal_precompiled_misses, 1);
 	if (!hit) {
-		error   = nil;
-		library = [get_metal_device() newLibraryWithSource:source options:nil error:&error];
+		error = nil;
+		// Env IRON_METAL_COLD: sources compile as the first time (measurements), Metal's own cache across runs does not have them
+		static int cold = -1;
+		if (cold < 0) {
+			cold = getenv("IRON_METAL_COLD") != NULL;
+		}
+		NSString *compiled = cold ? [source stringByAppendingFormat:@"\n// %d %f\n", getpid(), metal_now_ms()] : source;
+		library            = [get_metal_device() newLibraryWithSource:compiled options:nil error:&error];
 	}
 	if (metal_timing()) { // Hits and misses so far: how much of what is compiled the pack has
 		fprintf(stderr, "[shader] metal library: %d chars, %.1f ms, %s (precompiled: %d hits, %d misses, %u blocks read)\n", (int)shader->impl.length,
@@ -747,6 +753,14 @@ static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 		library_cache[source] = library;
 	}
 	return library;
+}
+
+// The shader's library compiled into the cache, any thread: the two stages of a pipeline compile side by side, then
+// gpu_pipeline_compile finds both
+void gpu_shader_precompile(gpu_shader_t *shader) {
+	if (shader != NULL && shader->impl.length > 0 && metal_shader_has_code(shader)) {
+		metal_library(shader);
+	}
 }
 
 void gpu_pipeline_compile(gpu_pipeline_t *pipeline) {

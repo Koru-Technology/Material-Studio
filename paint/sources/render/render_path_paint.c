@@ -545,6 +545,7 @@ void render_path_paint_commands_paint(bool dilation) {
 		render_path_paint_batch_ready = false;
 		return;
 	}
+	material_cache_paint_check(); // A paint shader reading a material cache that no longer fits paints live
 	if (render_path_paint_batched() && !render_path_paint_batch_ready) { // Single draw, from the current brush state
 		render_path_paint_batch_count = 0;
 		render_path_paint_batch_add();
@@ -1025,6 +1026,10 @@ void render_path_paint_commands_live_brush() {
 		return;
 	}
 
+	if (make_material_paint_pending()) { // The material just picked compiles: its preview once it is ready, not the previous one's
+		return;
+	}
+
 	if (render_path_paint_live_layer == NULL) {
 		render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
 	}
@@ -1183,22 +1188,24 @@ void render_path_paint_commands_cursor() {
 		return;
 	}
 
+	// Dragging a radius slider shows the brush size in the middle of the view, where the model usually is
+	bool sizing = ui_panels_radius_dragging();
+
+	// Hidden while painting, it covers the paint (also the first frame of a touch, before the stroke counts its time)
+	if ((g_context->brush_time > 0 || pen_down("tip") || mouse_down("left")) && !sizing) {
+		return;
+	}
+
 	// The pencil hovered away from the screen and nothing touches it
 	if (pen_hover_left && !pen_down("tip") && !mouse_down_any()) {
 		return;
 	}
 
-	f32 mx = g_context->paint_vec.x;
-	f32 my = 1.0 - g_context->paint_vec.y;
-
-	// Ahead of the pencil where it is expected next, the stroke feels less behind. Only drawn, never painted.
-	if (pen_down("tip") && pen_predicted && g_context->brush_lazy_radius <= 0.0 && !context_is_ruler_paint()) {
-		mx = base_paint_x(pen_predicted_x);
-		my = 1.0 - base_paint_y(pen_predicted_y);
-	}
+	f32 mx = sizing ? 0.5 : g_context->paint_vec.x;
+	f32 my = sizing ? 0.5 : 1.0 - g_context->paint_vec.y;
 
 	// Fainter the higher the pencil hovers
-	f32 tint = pen_hover >= 0.0 && !pen_down("tip") ? 1.0 - 0.6 * pen_hover : 1.0;
+	f32 tint = pen_hover >= 0.0 && !pen_down("tip") && !sizing ? 1.0 - 0.6 * pen_hover : 1.0;
 
 	// Prevent cursor jumping constantly if randomness is used in brush nodes
 	f32 brush_nodes_radius = g_context->brush_nodes_radius;
@@ -1276,6 +1283,12 @@ void render_path_paint_begin() {
 
 	if (!render_path_paint_paint_enabled()) {
 		return;
+	}
+
+	// Painting with the paint shader of a material just picked, still compiling on a thread: waits for it (strokes
+	// waited in util_brush_update already, this is for other paint)
+	if (g_context->pdirty > 0 && make_material_paint_pending()) {
+		make_material_paint_ready(-1.0);
 	}
 
 	render_path_paint_push_undo_last = history_push_undo;

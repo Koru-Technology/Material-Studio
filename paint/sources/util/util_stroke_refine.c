@@ -51,7 +51,7 @@ typedef struct {
 	bool             folding;   // A stroke in progress: its coverage folds in when it ends
 	i32              fold_wait; // Frames since the stroke ended, not folded yet
 	i32              skipped;   // mm_buffers_rush_skipped() when the stroke started
-	struct stroke_refine_shader *shader; // The material's paint shader into the scratch layer, from the first sharpening
+	make_material_async_t *shader; // The material's paint shader into the scratch layer, from the first sharpening
 } stroke_refine_t;
 
 typedef struct {
@@ -60,62 +60,26 @@ typedef struct {
 	u64                          keys[STROKE_REFINE_KEYS];
 	i32                          nkeys;
 	i32                          tier;
-	struct stroke_refine_shader *shader; // Its fill shader, from its first repaint
+	make_material_async_t       *shader; // Its fill shader, from its first repaint
 } stroke_refine_fill_t;
 
 // A paint shader kept for a record or a fill layer: parsed once (a heavy material's parse is a long frame), its buffer
-// links resolve to whichever tier is there. Its pipeline compiles on a thread (hundreds of ms on the iPad for a heavy
-// material), the sharpening waits for it.
-typedef struct stroke_refine_shader {
-	shader_context_t *scon;
-	iron_thread_t     thread;
-	atomic_bool       done;
-	bool              compiling;
-	bool              ready;
-} stroke_refine_shader_t;
-
-static void stroke_refine_shader_worker(void *param) {
-	stroke_refine_shader_t *sh = param;
-	gpu_pipeline_compile(sh->scon->_->pipe);
-	atomic_store(&sh->done, true);
-}
+// links resolve to whichever tier is there. Its GLSL translates and its pipeline compiles on a thread (hundreds of ms on
+// the iPad for a heavy material, make_material_async_start), the sharpening waits for it.
+typedef make_material_async_t stroke_refine_shader_t;
 
 static void stroke_refine_shader_free(stroke_refine_shader_t *sh) {
-	if (sh == NULL) {
-		return;
-	}
-	if (sh->compiling) {
-		iron_thread_wait_and_destroy(&sh->thread);
-	}
-	make_material_free_paint_scon(sh->scon);
-	free(sh);
+	make_material_async_free(sh);
 }
 
-// The paint shader of the context as it is now (the caller sets it up): parsed, its pipeline compiling on a thread
+// The paint shader of the context as it is now (the caller sets it up): parsed, translated and compiled on a thread
 static stroke_refine_shader_t *stroke_refine_shader_start(void) {
-	stroke_refine_shader_t *sh = calloc(1, sizeof(stroke_refine_shader_t));
-	sh->scon                   = make_material_parse_paint_material_kept(true);
-	if (sh->scon != NULL && sh->scon->_ != NULL && sh->scon->_->pipe != NULL) {
-		atomic_init(&sh->done, false);
-		sh->compiling = true;
-		iron_thread_init(&sh->thread, stroke_refine_shader_worker, sh);
-	}
-	return sh;
+	return make_material_async_start();
 }
 
-// True once its pipeline is compiled and bound
+// True once its pipeline is compiled and bound, false when the parse made none (failed)
 static bool stroke_refine_shader_ready(stroke_refine_shader_t *sh) {
-	if (sh->ready) {
-		return true;
-	}
-	if (!sh->compiling || !atomic_load(&sh->done)) {
-		return false;
-	}
-	iron_thread_wait_and_destroy(&sh->thread);
-	sh->compiling = false;
-	shader_context_bind(sh->scon);
-	sh->ready = true;
-	return true;
+	return make_material_async_started(sh) && make_material_async_ready(sh);
 }
 
 #define STROKE_REFINE_FAILED  -1
@@ -652,7 +616,7 @@ static slot_layer_t *stroke_refine_scratch_layer(i32 w, i32 h, i32 format) {
 // buffers).
 static i32 stroke_refine_render_material(stroke_refine_t *r, slot_layer_t *s) {
 	if (r->shader != NULL && !stroke_refine_shader_ready(r->shader)) {
-		return r->shader->compiling ? STROKE_REFINE_PENDING : STROKE_REFINE_FAILED;
+		return make_material_async_started(r->shader) ? STROKE_REFINE_PENDING : STROKE_REFINE_FAILED;
 	}
 	slot_layer_t    *_layer       = g_context->layer;
 	slot_material_t *_material    = g_context->material;
@@ -688,8 +652,8 @@ static i32 stroke_refine_render_material(stroke_refine_t *r, slot_layer_t *s) {
 	if (r->shader == NULL) { // Parsed once a record
 		r->shader = stroke_refine_shader_start();
 		u64 keys[STROKE_REFINE_KEYS];
-		i32 nkeys = mm_buffers_paint_keys(r->shader->scon, keys, STROKE_REFINE_KEYS);
-		if (!r->shader->compiling || !stroke_refine_keys_equal(keys, nkeys, r->keys, r->nkeys)) {
+		i32 nkeys = mm_buffers_paint_keys(make_material_async_scon(r->shader), keys, STROKE_REFINE_KEYS);
+		if (!make_material_async_started(r->shader) || !stroke_refine_keys_equal(keys, nkeys, r->keys, r->nkeys)) {
 			result = STROKE_REFINE_FAILED;
 		}
 	}
@@ -697,7 +661,7 @@ static i32 stroke_refine_render_material(stroke_refine_t *r, slot_layer_t *s) {
 	if (result != STROKE_REFINE_FAILED && stroke_refine_shader_ready(r->shader)) {
 		result                   = STROKE_REFINE_DONE;
 		shader_context_t *brush  = make_material_paint_scon;
-		make_material_paint_scon = r->shader->scon;
+		make_material_paint_scon = make_material_async_scon(r->shader);
 		render_path_set_target("texpaint_blend0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0); // The fill reads it as its coverage so far
 		render_path_end();
 		slot_layer_clear(s, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
@@ -824,7 +788,7 @@ static void stroke_refine_fill_remove(i32 i) {
 // is parsed once, compiled on a thread (pending meanwhile), its buffer links resolve to the better textures
 static i32 stroke_refine_fill_paint(stroke_refine_fill_t *f) {
 	if (f->shader != NULL && !stroke_refine_shader_ready(f->shader)) {
-		return f->shader->compiling ? STROKE_REFINE_PENDING : STROKE_REFINE_FAILED;
+		return make_material_async_started(f->shader) ? STROKE_REFINE_PENDING : STROKE_REFINE_FAILED;
 	}
 	i32              result     = STROKE_REFINE_PENDING;
 	slot_layer_t    *l          = f->layer;
@@ -845,14 +809,14 @@ static i32 stroke_refine_fill_paint(stroke_refine_fill_t *f) {
 	layers_set_object_mask();
 	if (f->shader == NULL) {
 		f->shader = stroke_refine_shader_start();
-		if (!f->shader->compiling) {
+		if (!make_material_async_started(f->shader)) {
 			result = STROKE_REFINE_FAILED;
 		}
 	}
 	if (result != STROKE_REFINE_FAILED && stroke_refine_shader_ready(f->shader)) {
 		result                   = STROKE_REFINE_DONE;
 		shader_context_t *brush  = make_material_paint_scon;
-		make_material_paint_scon = f->shader->scon;
+		make_material_paint_scon = make_material_async_scon(f->shader);
 		render_path_set_target("texpaint_blend0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_end();
 		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);

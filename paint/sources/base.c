@@ -34,6 +34,7 @@ void base_on_memory_warning() {
 		render_path_paint_release_scratch();
 	}
 	mm_buffers_trim(); // Material Maker buffer textures the last render did not use, they render again when needed
+	material_cache_trim(); // Material caches but the current material's
 #ifdef IRON_METAL
 	gpu_release_staging_buffers();
 #endif

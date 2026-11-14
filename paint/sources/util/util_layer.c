@@ -107,6 +107,7 @@ void layers_resize() {
 // Undo layers, live layer and paint targets that follow the texture resolution
 void layers_resize_targets() {
 	stroke_refine_reset(); // Records of the old size go
+	material_cache_reset(); // And material caches
 	if (history_undo_layers != NULL) {
 		for (i32 i = 0; i < history_undo_layers->length; ++i) {
 			slot_layer_t *l = history_undo_layers->buffer[i];

@@ -417,6 +417,7 @@ void                 shader_compile_batch_begin(void);
 void                 shader_compile_batch_end(void);
 shader_context_t   **shader_compile_batch_take(int *count);
 void                 shader_context_bind(shader_context_t *raw);
+void                 shader_context_set_sources(shader_context_t *raw, char *vs, char *fs);
 gpu_vertex_data_t    shader_context_parse_data(char *data);
 void                 shader_context_parse_vertex_struct(shader_context_t *raw);
 void                 shader_context_delete(shader_context_t *raw);

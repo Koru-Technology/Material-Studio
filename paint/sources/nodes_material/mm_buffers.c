@@ -882,12 +882,29 @@ static mm_buffers_pipe_t *mm_buffers_jobs_pop(void) {
 	return p;
 }
 
+// Held while the paint shader of a material just picked compiles (make_material.c): strokes wait for that one, Metal's
+// compiler gets to it first. A pipeline needed at once meanwhile is still made (mm_buffers_pipe_wait takes it back).
+static atomic_bool mm_buffers_held = false;
+
+void mm_buffers_hold_workers(bool hold) {
+	atomic_store(&mm_buffers_held, hold);
+}
+
 static void mm_buffers_worker(void *param) {
 	i32 i = (i32)(size_t)param;
 #ifdef __APPLE__
 	pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0); // The material waits for them: performance cores
 #endif
 	while (true) {
+		while (atomic_load(&mm_buffers_held)) { // Ends with the jobs (mm_buffers_workers_drain takes them all and joins)
+			mm_buffers_jobs_lock();
+			i32 n = mm_buffers_njobs;
+			iron_mutex_unlock(&mm_buffers_jobs_mutex);
+			if (n == 0) {
+				break;
+			}
+			usleep(1000);
+		}
 		mm_buffers_pipe_t *p = mm_buffers_jobs_pop();
 		if (p == NULL) {
 			break;
@@ -903,8 +920,27 @@ static i32 mm_buffers_workers_max(void) {
 	return n < 1 ? 1 : n;
 }
 
+// At exit: the pipelines waiting are dropped, the workers joined. glslang's tables go with the process's static
+// destructors, a translation still running then crashed (the app quit by a test script).
+static void mm_buffers_workers_exit(void) {
+	mm_buffers_jobs_lock();
+	mm_buffers_njobs = 0;
+	iron_mutex_unlock(&mm_buffers_jobs_mutex);
+	for (i32 i = 0; i < MM_BUFFERS_WORKERS; ++i) {
+		if (mm_buffers_worker_alive[i]) {
+			iron_thread_wait_and_destroy(&mm_buffers_worker_threads[i]);
+			mm_buffers_worker_alive[i] = false;
+		}
+	}
+}
+
 // Joins the workers that ended, starts workers for the pipelines waiting
 static void mm_buffers_workers_start(void) {
+	static bool at_exit = false;
+	if (!at_exit) {
+		at_exit = true;
+		atexit(mm_buffers_workers_exit);
+	}
 	i32 alive = 0;
 	for (i32 i = 0; i < MM_BUFFERS_WORKERS; ++i) {
 		if (mm_buffers_worker_alive[i] && atomic_load(&mm_buffers_worker_done[i])) {

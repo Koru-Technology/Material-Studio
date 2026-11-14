@@ -384,6 +384,9 @@ static gpu_texture_t *uniforms_layer_tex(gpu_texture_t *t) {
 }
 
 gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char *link) {
+	if (starts_with(link, "_matcache")) { // The current material's outputs, see util_material_cache.c
+		return material_cache_texture(link[9] - '0');
+	}
 	// The layer before the stroke: the snapshot of a tiled paint step, the newest whole layer copy otherwise
 	if (string_equals(link, "_texpaint_undo") || string_equals(link, "_texpaint_nor_undo") || string_equals(link, "_texpaint_pack_undo")) {
 		gpu_texture_t *snap = history_tiles_stroke_source(string_equals(link, "_texpaint_undo") ? 0 : string_equals(link, "_texpaint_nor_undo") ? 1 : 2);

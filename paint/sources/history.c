@@ -923,6 +923,7 @@ void history_reset() {
 	history_ring_pending = 0;
 	history_tiles_reset();
 	stroke_refine_reset();
+	material_cache_reset(); // A new project: every material cache goes
 }
 
 history_step_t *history_push(history_action_t action) {
