@@ -112,6 +112,11 @@ def params_of(defs, nd):
         label = clean_label(pd, name)
         if any(w in label.lower() for w in QUALITY_WORDS):
             continue
+        if '#' in name:  # A template of a node with a variable number of layers: its real parameters (amount1, amount2...)
+            pat = re.compile('^' + re.escape(name).replace('\\#', r'\d+') + '$')
+            for real in sorted(k for k in vals if pat.match(k)):
+                out[real] = (pd, vals[real])
+            continue
         v = vals.get(name, pd.get('default'))
         out[name] = (pd, v)
     return out

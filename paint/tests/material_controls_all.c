@@ -4,13 +4,13 @@
 // control, every target found, the same look as without them at the defaults, each control changes the material when it
 // moves, and the material compiles without shader failures with every control moved.
 //
-// Long: run in shards, each in its own app, with full Material Maker buffers rendered as they are asked for:
-//   sed 's/^int shard  = 0;/int shard  = 2;/; s/^int shards = 1;/int shards = 6;/' tests/material_controls_all.c > shard2.c
-//   MM_BUFFERS_SYNC=1 MaterialStudio --script $PWD/shard2.c
-// Lines start with [bulk]; a failing material is listed with FAIL and the reasons.
+// Long: run in shards (tools/material_maker/run_controls_bulk.py), set by replacing the first lines. Previews are compared
+// once the Material Maker buffers they ask for have landed. Lines start with [bulk]; "[bulk] begin" before each material
+// (a crash is in the last one begun), a failing material is listed with FAIL and the reasons.
 
 int shard  = 0;
 int shards = 1;
+int first  = 0; // Index in the controls list to start from (after a crash)
 
 int step     = 0;
 int wait     = 0;
@@ -19,11 +19,20 @@ int tested   = 0;
 int failed   = 0;
 int controls = 0;
 int inert    = 0; // Controls that change nothing visible
+int ci       = -1; // Control being tried, -1 the defaults
+int settling = 0;  // Frames waited for buffers
+int tries    = 0;  // Comparisons redone because they asked for buffers (rendered from a lower tier)
+int unsure   = 0;  // Comparisons left unsure: the buffers of both copies do not fit the budget together
+float beat   = 0.0; // Last heartbeat: the runner counts 10 s without output as too heavy
+int   warm   = 60;  // Frames before the first material, for the app's own start
 
 slot_material_t *m      = NULL; // With controls
 slot_material_t *p      = NULL; // Without
 any_array_t     *trash  = NULL; // Previews, freed a step later
 int              before = 0;
+float            began  = 0.0; // sys_time when the material's import began
+float            t_import  = 0.0; // What adding it from the library costs: the import, then its compile
+float            t_compile = 0.0;
 char            *why    = "";
 
 // Material node outputs compared: Base Color, Height, Roughness, Normal Map, Metallic, Emission, Opacity, Occlusion
@@ -40,17 +49,53 @@ gpu_texture_t *preview(slot_material_t *s, int socket) {
 	return t;
 }
 
-// Pixels per thousand that differ between the material with controls and the one without, on one output
-int changed(int socket) {
-	gpu_texture_t *b = preview(p, socket);
-	gpu_texture_t *a = preview(m, socket);
+// The outputs of the material without controls, made once
+any_array_t *plain = NULL;
+
+gpu_texture_t *plain_preview(int k) {
+	if (plain == NULL) {
+		plain = any_array_create(0);
+		for (int i = 0; i < 8; ++i) {
+			any_array_push(plain, NULL);
+		}
+	}
+	if (plain->buffer[k] == NULL) {
+		script_material_set(p);
+		plain->buffer[k] = mm_import_preview(mm_import_material_node(p), sockets[k], 64);
+	}
+	return plain->buffer[k];
+}
+
+void free_plain() {
+	if (plain != NULL) {
+		for (int i = 0; i < 8; ++i) {
+			if (plain->buffer[i] != NULL) {
+				mm_import_texture_free(plain->buffer[i]);
+			}
+		}
+	}
+	plain = NULL;
+}
+
+// Pixels per thousand that differ between the material with controls and the one without, on output k of sockets
+int changed(int k) {
+	gpu_texture_t *b = plain_preview(k);
+	gpu_texture_t *a = preview(m, sockets[k]);
 	return mm_import_image_changed(a, b);
+}
+
+// Previews of every output, so the buffers they need are asked for
+void prime() {
+	for (int k = 0; k < 8; ++k) {
+		preview(m, sockets[k]);
+		plain_preview(k);
+	}
 }
 
 // The first output that differs, -1 when none does
 int differs() {
 	for (int k = 0; k < 8; ++k) {
-		if (changed(sockets[k]) > 3) {
+		if (changed(k) > 3) {
 			return sockets[k];
 		}
 	}
@@ -137,10 +182,10 @@ void step_import() {
 	int id = mm_controls_material_id(at);
 	why    = "";
 	before = gpu_shader_failures();
-	m      = mm_import_library(id);
+	began    = sys_time();
+	m        = mm_import_library(id);
+	t_import = sys_time() - began;
 	char *report = string_copy(mm_import_report());
-	p      = script_material_create(string("plain_%d", id));
-	mm_import_library_into(id, p);
 	int want = mm_controls_material_controls(at);
 	int vars = m != NULL ? variable_count(m->canvas) : -1;
 	controls = controls + want;
@@ -152,32 +197,80 @@ void step_import() {
 	}
 }
 
-// Defaults look the same, then each control alone changes the material
-void step_controls() {
+any_array_t *kept = NULL;
+
+// The same material without controls, a frame later: one import per frame, as in the app
+void step_import_plain() {
+	int id = mm_controls_material_id(at);
+	p      = script_material_create(string("plain_%d", id));
+	mm_import_library_into(id, p);
+}
+
+// A comparison that asked for buffers saw a lower tier somewhere: redone once they land (true), at most 3 times
+int redo() {
+	if (mm_buffers_stat(11) == 0) {
+		tries = 0;
+		return 0;
+	}
+	tries = tries + 1;
+	if (tries <= 3) {
+		free_plain(); // Made again too, from the landed buffers
+		return 1;
+	}
+	tries  = 0;
+	unsure = unsure + 1;
+	printf("[bulk] unsure: buffers over budget");
+	return 0;
+}
+
+// Defaults look the same (after prime and the buffers landed). True when it must be redone.
+int step_defaults() {
 	if (m == NULL) {
-		return;
+		return 0;
 	}
 	int same = changed(0);
-	if (same < 0 || same > 10) {
+	int k    = differs();
+	if (redo()) {
+		return 1;
+	}
+	if (tries == 0 && mm_buffers_stat(11) == 0 && (same < 0 || same > 10)) {
 		fail(string("looks different at the defaults (%d per thousand of the base color)", same));
 	}
-	int k = differs();
 	if (k >= 0 && k != 0) {
 		fail(string("output %d looks different at the defaults", k));
 	}
-	ui_node_canvas_t *c = m->canvas;
-	for (int i = 0; i < variable_count(c); ++i) {
-		ui_node_t   *v    = variable_at(c, i);
-		any_array_t *keep = save(v);
-		move(v);
-		variable_propagate_canvas(c);
-		if (differs() < 0) {
-			inert = inert + 1;
-			fail(string("%s changes nothing", variable_name(v)));
-		}
-		restore(v, keep);
+	return 0;
+}
+
+// One control moved alone
+void step_move() {
+	ui_node_t *v = variable_at(m->canvas, ci);
+	kept         = save(v);
+	move(v);
+	variable_propagate_canvas(m->canvas);
+	preview(m, 0); // Asks for the buffers the change needs
+	printf("[bulk] . %d", ci);
+}
+
+// True when it must be redone
+int step_moved_check() {
+	ui_node_t *v = variable_at(m->canvas, ci);
+	int        k = differs();
+	if (redo()) {
+		return 1;
 	}
-	// Every control moved at once, the paint shader
+	if (k < 0) {
+		inert = inert + 1;
+		fail(string("%s changes nothing", variable_name(v)));
+	}
+	restore(v, kept);
+	variable_propagate_canvas(m->canvas);
+	return 0;
+}
+
+// Every control moved at once, the paint shader
+void step_all() {
+	ui_node_canvas_t *c = m->canvas;
 	for (int i = 0; i < variable_count(c); ++i) {
 		move(variable_at(c, i));
 	}
@@ -193,14 +286,16 @@ void step_check() {
 	tested = tested + 1;
 	if (string_length(why) > 0) {
 		failed = failed + 1;
-		printf("[bulk] FAIL %d %s:%s", id, mm_import_library_name(id), why);
+		printf("[bulk] FAIL %d %s (import %.2f s, compile %.2f s, test %.1f s):%s", id, mm_import_library_name(id), t_import, t_compile, sys_time() - began, why);
 	}
 	else {
-		printf("[bulk] ok   %d %s", id, mm_import_library_name(id));
+		printf("[bulk] ok   %d %s (import %.2f s, compile %.2f s, test %.1f s)", id, mm_import_library_name(id), t_import, t_compile, sys_time() - began);
 	}
 	if (m != NULL) {
 		script_material_delete(m);
 	}
+	free_plain();
+	empty_trash();
 	if (p != NULL) {
 		script_material_delete(p);
 	}
@@ -208,34 +303,96 @@ void step_check() {
 	p = NULL;
 }
 
+// Waits until the buffers asked for have landed (at most 10 s)
+int buffers_busy() {
+	if (mm_buffers_stat(11) > 0 && settling < 600) {
+		settling = settling + 1;
+		return 1;
+	}
+	settling = 0;
+	return 0;
+}
+
 void next() {
+	if (sys_time() - beat > 0.5) {
+		beat = sys_time();
+		printf("[bulk] ~");
+	}
 	if (wait > 0) {
 		wait = wait - 1;
 		script_notify_on_next_frame(next);
 		return;
 	}
-	while (at < mm_controls_material_count() && !mine(at)) {
+	if (buffers_busy()) {
+		script_notify_on_next_frame(next);
+		return;
+	}
+	while (at < mm_controls_material_count() && (!mine(at) || at < first)) {
 		at = at + 1;
 	}
 	if (at >= mm_controls_material_count()) {
-		printf("[bulk] shard %d of %d: %d materials, %d failed, %d controls, %d change nothing", shard, shards, tested, failed, controls, inert);
+		printf("[bulk] shard %d of %d: %d materials, %d failed, %d controls, %d change nothing, %d unsure", shard, shards, tested, failed, controls, inert, unsure);
 		printf(failed == 0 ? "BULK PASS" : "BULK FAIL");
 		script_quit();
 		return;
 	}
 	wait = 2;
+	if (warm > 0) {
+		warm = warm - 1;
+		script_notify_on_next_frame(next);
+		return;
+	}
 	if (step == 0) {
+		printf("[bulk] begin %d %d", at, mm_controls_material_id(at));
 		step_import();
+		step = m != NULL ? 6 : 5;
+	}
+	else if (step == 6) {
+		printf("[bulk] . plain");
+		step_import_plain();
+		step = 1;
 	}
 	else if (step == 1) {
-		step_controls();
+		float t0 = sys_time();
+		script_material_set(m);
+		script_material_update();
+		t_compile = sys_time() - t0;
+		if (t_import > 5.0 || t_compile > 5.0) {
+			fail(string("heavy: import %.1f s, compile %.1f s", t_import, t_compile));
+		}
+		prime();
+		free_plain(); // Made again once the buffers have landed
+		step = 2;
+	}
+	else if (step == 2) {
+		if (!step_defaults()) {
+			ci   = 0;
+			step = 3;
+		}
+		empty_trash();
+	}
+	else if (step == 3) {
+		if (ci < variable_count(m->canvas)) {
+			step_move();
+			step = 4;
+		}
+		else {
+			step_all();
+			step = 5;
+		}
+	}
+	else if (step == 4) {
+		if (!step_moved_check()) {
+			ci   = ci + 1;
+			step = 3;
+		}
+		empty_trash();
 	}
 	else {
 		step_check();
-		at = at + 1;
-		step = -1;
+		at   = at + 1;
+		step = 0;
 	}
-	step = step + 1;
 	script_notify_on_next_frame(next);
 }
 
