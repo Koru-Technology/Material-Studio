@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Builds the Material Maker library shipped with the app (paint/assets/material_maker):
-#   library.pack  the community materials (.ptex) with an index: name, author, license, tags, section, material kind
+#   library.pack  the community materials (.ptex) with an index: name, author, license, tags, section, style, material kind
 #   nodes.pack    Material Maker's node library (.mmg), io types, shader functions, the library tree (library_base, from
 #                 material_maker/library/base.json) and the website nodes the materials use
 # and writes credits (paint/assets/licenses/license_material_maker_library.md) and a report of what was left out.
@@ -8,6 +8,13 @@
 # build_library.py --cache <dir> --mm <material-maker checkout> [--fetch]
 #   --fetch downloads the catalogue and every material from materialmaker.org into the cache (first run, or to update)
 #   --mm    a checkout of https://github.com/RodZill4/material-maker at the pinned commit (MM_COMMIT)
+# build_library.py --curation
+#   only applies curation.json to the index of the existing library.pack (no cache or checkout needed)
+#
+# curation.json gives each material id its display name in the app, its section and its style ("stylized" or
+# "realistic"), chosen by hand and by Claude from the preview (the names: no colors, no style words). Materials not
+# listed keep their materialmaker.org name, and get a section and a style from keywords in their tags and name. The
+# credits keep the original titles. overrides.json lists the materials left out.
 #
 # Pack format (little endian): "MMPK", u32 version, u32 count, u32 index size, index (json), then the blobs. The index
 # is a json array of entries with "o" (blob offset after the index), "n" (deflated size) and "u" (inflated size); each
@@ -42,10 +49,11 @@ SECTIONS = [
                           'weave', 'woven', 'quilt', 'lace']),
     ('Creatures & Organic', ['skin', 'scales', 'scale', 'fur', 'flesh', 'organic', 'alien', 'reptile', 'dragon', 'snake',
                              'feather', 'feathers', 'bone', 'bones', 'coral', 'creature', 'monster']),
-    ('Stylized', ['stylized', 'stylised', 'handpainted', 'toon', 'cartoon']),
     ('Patterns', ['pattern', 'patterns', 'geometric', 'ornament', 'tribal', 'celtic', 'runes', 'rune', 'mandala', 'truchet',
                   'voronoi', 'hexagon', 'hexagons', 'stripes', 'checker']),
 ]
+# Words of a stylized material, for materials not in curation.json
+STYLIZED = ['stylized', 'stylised', 'handpainted', 'toon', 'toonish', 'cartoon', 'painterly', 'pixel']
 SURFACE_KINDS = {'material', 'material_tesselated', 'material_unlit', 'material_dynamic', 'material_export'}
 # Names of things that are not surfaces to paint: emblems, signs, lettering (more are listed by id in overrides.json)
 NOT_SURFACES = ['symbol', 'symbols', 'logo', 'icon', 'emoji', 'button', 'badge', 'sticker', 'stickers', 'decal', 'letters',
@@ -112,6 +120,11 @@ def classify(meta, overrides):
     return None
 
 
+def guess_style(meta):
+    w = words(meta['name']) | words(meta.get('tags') or '')
+    return 'stylized' if w & set(STYLIZED) else 'realistic'
+
+
 def write_pack(path, entries, blobs):
     data = b''
     for e, b in zip(entries, blobs):
@@ -129,12 +142,49 @@ def minify(obj):
     return json.dumps(obj, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
 
 
+def load_curation():
+    path = os.path.join(HERE, 'curation.json')
+    return json.load(open(path, encoding='utf-8')) if os.path.exists(path) else {}
+
+
+def curate(curation, entry):
+    """Name, section and style of curation.json, when it lists the material."""
+    c = curation.get(str(entry['id']))
+    if c is not None:
+        entry.update(name=c['name'], section=c['section'], style=c['style'])
+    return entry
+
+
+def curate_pack():
+    """Applies curation.json to the index of library.pack, the blobs are kept as they are."""
+    path = os.path.join(OUT, 'library.pack')
+    d = open(path, 'rb').read()
+    _, count, index_size = struct.unpack('<III', d[4:16])
+    entries = json.loads(d[16:16 + index_size])
+    curation = load_curation()
+    changed = 0
+    for e in entries:
+        before = dict(e)
+        curate(curation, e)
+        changed += e != before
+    index = json.dumps(entries, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    with open(path, 'wb') as f:
+        f.write(b'MMPK' + struct.pack('<III', 1, count, len(index)) + index + d[16 + index_size:])
+    print('%d of %d entries changed' % (changed, count))
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--cache', required=True)
-    ap.add_argument('--mm', required=True)
+    ap.add_argument('--cache')
+    ap.add_argument('--mm')
     ap.add_argument('--fetch', action='store_true')
+    ap.add_argument('--curation', action='store_true')
     args = ap.parse_args()
+    if args.curation:
+        curate_pack()
+        return
+    if not args.cache or not args.mm:
+        ap.error('--cache and --mm are required')
     cache = args.cache
     os.makedirs(os.path.join(cache, 'ptex'), exist_ok=True)
 
@@ -149,8 +199,10 @@ def main():
 
     overrides_path = os.path.join(HERE, 'overrides.json')
     overrides = json.load(open(overrides_path)) if os.path.exists(overrides_path) else {}
+    curation = load_curation()
 
     entries, blobs, report, website = [], [], {}, set()
+    titles = {}  # Original names, for the credits
     for m in sorted(materials, key=lambda m: int(m['id'])):
         p = os.path.join(cache, 'ptex', '%s.json' % m['id'])
         if not os.path.exists(p):
@@ -168,7 +220,7 @@ def main():
             report.setdefault('needs files from its author', []).append(dict(m, missing=missing))
             continue
         section = classify(m, overrides)
-        if section is None:
+        if section is None and (overrides.get(str(m['id'])) == 'exclude' or str(m['id']) not in curation):
             report.setdefault('not categorised', []).append(m)
             continue
         size = 10
@@ -176,8 +228,10 @@ def main():
             if n.get('name') == 'Material':
                 size = int(n.get('parameters', {}).get('size', 10))
         website |= {n['type'] for n in nodes if str(n.get('type', '')).startswith('website:')}
-        entries.append({'id': int(m['id']), 'name': m['name'], 'author': m['author'], 'license': m['license'],
-                        'tags': m.get('tags') or '', 'section': section, 'kind': kind, 'size': size})
+        titles[int(m['id'])] = m['name']
+        entries.append(curate(curation, {'id': int(m['id']), 'name': m['name'].strip(), 'author': m['author'], 'license': m['license'],
+                                         'tags': m.get('tags') or '', 'section': section, 'style': guess_style(m), 'kind': kind,
+                                         'size': size}))
         blobs.append(minify(graph))
 
     os.makedirs(OUT, exist_ok=True)
@@ -216,9 +270,9 @@ def main():
     credits = ['# Material Maker community materials', '',
                'From https://www.materialmaker.org, under the license shown for each material: CC0 1.0, CC BY 4.0 or '
                'CC BY-SA 4.0. The CC-BY-SA materials stay under CC BY-SA 4.0.', '']
-    for e in sorted(entries, key=lambda e: (e['author'].lower(), e['name'].lower())):
+    for e in sorted(entries, key=lambda e: (e['author'].lower(), titles[e['id']].lower())):
         if e['license'] != 'CC0':
-            credits.append('- "%s" by %s, %s, https://www.materialmaker.org/material?id=%d' % (e['name'], e['author'], e['license'], e['id']))
+            credits.append('- "%s" by %s, %s, https://www.materialmaker.org/material?id=%d' % (titles[e['id']], e['author'], e['license'], e['id']))
     open(os.path.join(ROOT, 'assets', 'licenses', 'license_material_maker_library.md'), 'w').write('\n'.join(credits) + '\n')
 
     lines = ['# Material Maker library report', '', '%d of %d materials included.' % (len(entries), len(materials)), '']

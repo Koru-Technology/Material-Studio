@@ -1193,6 +1193,7 @@ i32                       mm_library_count(); // nodes_material/mm_library.c: Ma
 i32                       mm_library_section_count();
 char                     *mm_library_section_name(i32 s);
 i32                       mm_library_section(i32 i);
+bool                      mm_library_stylized(i32 i);
 i32                       mm_library_id(i32 i);
 char                     *mm_library_name(i32 i);
 char                     *mm_library_credit(i32 i);

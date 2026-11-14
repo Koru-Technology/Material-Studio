@@ -1,19 +1,18 @@
 # Material Maker library report
 
-1001 of 1776 materials included.
+989 of 1776 materials included.
 
-- Bricks & Walls: 166
-- Stone & Rock: 157
-- Tiles & Floors: 151
-- Metal: 132
-- Wood: 99
-- Ground & Nature: 91
-- Food: 49
-- Fabric & Leather: 49
-- Sci-Fi & Tech: 36
-- Creatures & Organic: 28
-- Patterns: 24
-- Stylized: 19
+- Tiles & Floors: 165
+- Bricks & Walls: 149
+- Stone & Rock: 148
+- Ground & Nature: 115
+- Metal: 115
+- Wood: 102
+- Fabric & Leather: 54
+- Food: 44
+- Patterns: 37
+- Creatures & Organic: 36
+- Sci-Fi & Tech: 24
 
 ## Left out: needs files from its author (87)
 
@@ -804,3 +803,20 @@
 - 1982 "Capitole du Libre" by RodZilla
 - 1987 "Chrome Bricks" by Adamyuyuyu
 - 1996 "RGB Wheel" by DJAAA2026
+
+## Left out: renders broken (12)
+
+Shader that does not compile, or hangs the GPU (by id in overrides.json).
+
+- 79 "Cliff Light Ocre" by leonard7e
+- 80 "Cliff Light Ocre (1K version)" by leonard7e
+- 100 "Circuit Board" by Arnklit
+- 166 "Fur (Mayterial Day3 ''Primative"" by Qubit
+- 255 "brick.test" by free_king
+- 414 "Space Ship Panels" by Arnklit
+- 853 "leather" by free_king
+- 973 "Shattered" by DroppedBeat
+- 1421 "Stylized Tropical Grass" by rubberduck
+- 1422 "Stylized Moss" by rubberduck
+- 1699 "Yellow tread plate floor" by any_other
+- 1723 "temple stones" by any_other

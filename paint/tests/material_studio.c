@@ -266,7 +266,7 @@ void next() {
 	else if (step == 19 + PRESETS) {
 		check(lib_a != NULL && lib_b != NULL && mm_import_material_node(lib_a) != NULL && mm_import_material_node(lib_b) != NULL && script_material_get() == lib_b,
 		      "library materials are added to the project and selected");
-		check(mm_library_count() >= 1000 && mm_library_find(2) >= 0, string("the library lists %d materials", mm_library_count()));
+		check(mm_library_count() >= 980 && mm_library_find(2) >= 0, string("the library lists %d materials", mm_library_count()));
 		slot_material_t *last = material_studio_new();
 		material_studio_preset(2);
 	}

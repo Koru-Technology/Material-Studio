@@ -4,8 +4,8 @@
 #include <iron_profile.h>
 
 
-// Material Maker's library in the Library tab: the materials of library.pack (mm_import.c) by section, searched by name,
-// tags and author, with thumbnails from thumbs.pack. A thumbnail missing from the pack is rendered when first shown and
+// Material Maker's library in the Library tab: the materials of library.pack (mm_import.c) by style (stylized or
+// realistic) and section, searched by name, tags, author and style, with thumbnails from thumbs.pack. A thumbnail missing from the pack is rendered when first shown and
 // cached in the save folder. Thumbnails load a few per frame as they are shown, the ones not seen for the longest are
 // unloaded past MM_LIBRARY_MAX_ICONS.
 //
@@ -24,14 +24,15 @@ typedef struct mm_library_entry {
 	char          *author;
 	char          *license;
 	i32            section;
-	char          *search; // Name, tags and author, lower case
+	bool           stylized;
+	char          *search; // Name, tags, author and style, lower case
 	gpu_texture_t *icon;
 	i32            icon_state; // 0 none, 1 requested, 2 ready, 3 failed
 	i32            seen;       // Frame it was last drawn
 } mm_library_entry_t;
 
 static const char *mm_library_sections[] = {"Bricks & Walls", "Stone & Rock",     "Tiles & Floors", "Metal",    "Ground & Nature", "Wood",
-                                            "Food",           "Fabric & Leather", "Sci-Fi & Tech",  "Stylized", "Patterns",        "Creatures & Organic"};
+                                            "Food",           "Fabric & Leather", "Sci-Fi & Tech",  "Patterns", "Creatures & Organic"};
 #define MM_LIBRARY_SECTIONS ((i32)(sizeof(mm_library_sections) / sizeof(mm_library_sections[0])))
 
 static mm_library_entry_t *mm_library_entries = NULL;
@@ -85,8 +86,10 @@ static void mm_library_open() {
 		l->id      = (i32)mm_json_num(mm_json_get(e, "id"), -1);
 		l->name    = string_copy((char *)mm_json_str(mm_json_get(e, "name"), ""));
 		l->author  = string_copy((char *)mm_json_str(mm_json_get(e, "author"), ""));
-		l->license = string_copy((char *)mm_json_str(mm_json_get(e, "license"), ""));
-		l->search  = mm_library_lower(string_tmp("%s %s %s", l->name, mm_json_str(mm_json_get(e, "tags"), ""), l->author));
+		l->license  = string_copy((char *)mm_json_str(mm_json_get(e, "license"), ""));
+		l->stylized = strcmp(mm_json_str(mm_json_get(e, "style"), ""), "stylized") == 0;
+		l->search   = mm_library_lower(string_tmp("%s %s %s %s", l->name, mm_json_str(mm_json_get(e, "tags"), ""), l->author,
+		                                          l->stylized ? "stylized" : "realistic"));
 		mm_library_n++;
 	}
 }
@@ -106,6 +109,10 @@ char *mm_library_section_name(i32 s) {
 
 i32 mm_library_section(i32 i) {
 	return mm_library_entries[i].section;
+}
+
+bool mm_library_stylized(i32 i) {
+	return mm_library_entries[i].stylized;
 }
 
 i32 mm_library_id(i32 i) {

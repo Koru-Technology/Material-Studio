@@ -1,7 +1,7 @@
 #include "global.h"
 
-// Material Maker's library in the Library tab (nodes_material/mm_library.c): every material by section, searched by name,
-// tags and author, credited, thumbnails shipped in thumbs.pack and loaded as they are shown (a bounded number held),
+// Material Maker's library in the Library tab (nodes_material/mm_library.c): every material by style and section, searched
+// by name, tags, author and style, credited, thumbnails shipped in thumbs.pack and loaded as they are shown (a bounded number held),
 // tapping one adds it to the project.
 
 int fails  = 0;
@@ -37,12 +37,13 @@ void next() {
 	}
 	int n = mm_library_count();
 	if (step == 0) {
-		check(n >= 1000, string("the library lists %d materials", n));
+		check(n >= 980, string("the library lists %d materials", n));
 		int sections_ok = 1;
 		int per[12];
 		for (int s = 0; s < 12; ++s) {
 			per[s] = 0;
 		}
+		int styled = 0;
 		for (int i = 0; i < n; ++i) {
 			int s = mm_library_section(i);
 			if (s < 0 || s >= mm_library_section_count()) {
@@ -51,16 +52,22 @@ void next() {
 			else {
 				per[s] = per[s] + 1;
 			}
+			if (mm_library_stylized(i)) {
+				styled = styled + 1;
+			}
 		}
 		int empty = 0;
-		for (int s = 0; s < 12; ++s) {
+		for (int s = 0; s < mm_library_section_count(); ++s) {
 			if (per[s] == 0) {
 				empty = empty + 1;
 			}
 		}
-		check(sections_ok && mm_library_section_count() == 12 && empty == 0, string("every material in one of the 12 sections (%d empty)", empty));
+		check(sections_ok && mm_library_section_count() == 11 && empty == 0, string("every material in one of the 11 sections (%d empty)", empty));
+		check(styled > 100 && n - styled > 100, string("stylized and realistic materials (%d stylized of %d)", styled, n));
 		int candy = mm_library_find(2);
-		check(candy >= 0 && string_equals(mm_library_name(candy), "Candy"), "library id 2 is Candy");
+		check(candy >= 0 && string_equals(mm_library_name(candy), "Candy Corn") && mm_library_stylized(candy), "library id 2 is the stylized Candy Corn");
+		int stylized_found = count_matches("stylized");
+		check(stylized_found >= styled && stylized_found < n, string("searching stylized finds the stylized materials (%d of %d)", stylized_found, styled));
 		char *credit = mm_library_credit(candy);
 		check(string_index_of(credit, "Candy") >= 0 && (string_index_of(credit, "CC0") >= 0 || string_index_of(credit, "CC-BY") >= 0 || string_index_of(credit, "CC BY") >= 0),
 		      string("credited with author and licence (%s)", credit));

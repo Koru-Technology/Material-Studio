@@ -248,8 +248,6 @@ From https://www.materialmaker.org, under the license shown for each material: C
 - "Thatch" by kelpana, CC-BY, https://www.materialmaker.org/material?id=206
 - "Wood Planks Floor from Deus Ex Mankind Divided" by Kyrylo, CC-BY, https://www.materialmaker.org/material?id=161
 - "Basic Rust" by leonard7e, CC-BY, https://www.materialmaker.org/material?id=99
-- "Cliff Light Ocre" by leonard7e, CC-BY, https://www.materialmaker.org/material?id=79
-- "Cliff Light Ocre (1K version)" by leonard7e, CC-BY, https://www.materialmaker.org/material?id=80
 - "Concrete" by leonard7e, CC-BY, https://www.materialmaker.org/material?id=64
 - "Flintstone" by leonard7e, CC-BY, https://www.materialmaker.org/material?id=60
 - "Rust" by leonard7e, CC-BY, https://www.materialmaker.org/material?id=110

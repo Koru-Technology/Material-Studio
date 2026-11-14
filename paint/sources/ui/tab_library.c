@@ -79,52 +79,106 @@ static ui_state_t tab_library_image(gpu_texture_t *icon, f32 imgh, u32 tint) {
 	return state;
 }
 
-// Section of Material Maker's library picked in the type menu, -1 for all. Its counts are kept for the menu, which draws
-// outside of the tab.
+// Groups of the type menus, of Material Maker's library and of the cloud: all, all of a style, or one type of a style.
+// The stylized types come first, then the realistic ones.
+#define TAB_LIBRARY_ALL           -1
+#define TAB_LIBRARY_ALL_STYLIZED  -2
+#define TAB_LIBRARY_ALL_REALISTIC -3
+
+static char *tab_library_style_name(bool stylized) {
+	return stylized ? tr("Stylized") : tr("Realistic");
+}
+
+// Group of Material Maker's library picked in the type menu: TAB_LIBRARY_ALL..., or a section of a style, the stylized
+// sections first. Its counts are kept for the menu, which draws outside of the tab.
 #define TAB_LIBRARY_MM_SECTIONS 32
-static i32  tab_library_mm_section = -1;
-static i32  tab_library_mm_counts[TAB_LIBRARY_MM_SECTIONS];
-static i32  tab_library_mm_total   = 0;
-static bool tab_library_mm_picked  = false;
+static i32  tab_library_mm_group = TAB_LIBRARY_ALL;
+static i32  tab_library_mm_counts[TAB_LIBRARY_MM_SECTIONS * 2];
+static i32  tab_library_mm_styled = 0; // Stylized materials matching the search
+static i32  tab_library_mm_total  = 0;
+static bool tab_library_mm_picked = false;
+
+static i32 tab_library_mm_sections() {
+	i32 n = mm_library_section_count();
+	return n < TAB_LIBRARY_MM_SECTIONS ? n : TAB_LIBRARY_MM_SECTIONS;
+}
+
+static i32 tab_library_mm_group_of(i32 i) {
+	return (mm_library_stylized(i) ? 0 : tab_library_mm_sections()) + mm_library_section(i);
+}
 
 static void tab_library_mm_count() {
-	char *search         = to_lower_case(tab_library_search);
-	tab_library_mm_total = 0;
-	for (i32 s = 0; s < TAB_LIBRARY_MM_SECTIONS; ++s) {
-		tab_library_mm_counts[s] = 0;
+	char *search          = to_lower_case(tab_library_search);
+	i32   sections        = tab_library_mm_sections();
+	tab_library_mm_total  = 0;
+	tab_library_mm_styled = 0;
+	for (i32 g = 0; g < TAB_LIBRARY_MM_SECTIONS * 2; ++g) {
+		tab_library_mm_counts[g] = 0;
 	}
 	for (i32 i = 0; i < mm_library_count(); ++i) {
 		i32 s = mm_library_section(i);
-		if (s >= 0 && s < TAB_LIBRARY_MM_SECTIONS && mm_library_matches(i, search)) {
-			tab_library_mm_counts[s]++;
+		if (s >= 0 && s < sections && mm_library_matches(i, search)) {
+			tab_library_mm_counts[tab_library_mm_group_of(i)]++;
+			tab_library_mm_styled += mm_library_stylized(i) ? 1 : 0;
 			tab_library_mm_total++;
 		}
 	}
-	// The picked section, all when it has nothing to show now
-	if (tab_library_mm_section >= 0 && (tab_library_mm_section >= TAB_LIBRARY_MM_SECTIONS || tab_library_mm_counts[tab_library_mm_section] == 0)) {
-		tab_library_mm_section = -1;
+	// The picked group, all when it has nothing to show now
+	i32  g     = tab_library_mm_group;
+	bool empty = g >= 0 ? (g >= sections * 2 || tab_library_mm_counts[g] == 0)
+	                    : (g == TAB_LIBRARY_ALL_STYLIZED && tab_library_mm_styled == 0) ||
+	                          (g == TAB_LIBRARY_ALL_REALISTIC && tab_library_mm_total - tab_library_mm_styled == 0);
+	if (empty) {
+		tab_library_mm_group = TAB_LIBRARY_ALL;
 	}
 }
 
+static char *tab_library_mm_group_name(i32 g) {
+	i32 sections = tab_library_mm_sections();
+	if (g >= 0) {
+		return string("%s %s (%d)", tab_library_style_name(g < sections), mm_library_section_name(g % sections), tab_library_mm_counts[g]);
+	}
+	if (g == TAB_LIBRARY_ALL) {
+		return string("%s (%d)", tr("All Types"), tab_library_mm_total);
+	}
+	bool stylized = g == TAB_LIBRARY_ALL_STYLIZED;
+	return string("%s (%d)", tab_library_style_name(stylized), stylized ? tab_library_mm_styled : tab_library_mm_total - tab_library_mm_styled);
+}
+
+static void tab_library_mm_pick(i32 g, char *name) {
+	bool current = g == tab_library_mm_group;
+	if (ui_menu_button(name, "", current ? ICON_CHECK : ICON_NONE) && !current) {
+		tab_library_mm_group  = g;
+		tab_library_mm_picked = true;
+		ui_dock_redraw(TAB_AREA_SIDEBAR1);
+	}
+}
+
+// All, then a heading per style with all of it and its sections
 static void tab_library_mm_menu() {
-	for (i32 s = -1; s < mm_library_section_count() && s < TAB_LIBRARY_MM_SECTIONS; ++s) {
-		if (s >= 0 && tab_library_mm_counts[s] == 0) {
+	i32 sections = tab_library_mm_sections();
+	tab_library_mm_pick(TAB_LIBRARY_ALL, tab_library_mm_group_name(TAB_LIBRARY_ALL));
+	for (i32 st = 0; st < 2; ++st) {
+		bool stylized = st == 0;
+		i32  n        = stylized ? tab_library_mm_styled : tab_library_mm_total - tab_library_mm_styled;
+		if (n == 0) {
 			continue;
 		}
-		char *name    = s < 0 ? string("%s (%d)", tr("All Types"), tab_library_mm_total) : string("%s (%d)", mm_library_section_name(s), tab_library_mm_counts[s]);
-		bool  current = s == tab_library_mm_section;
-		if (ui_menu_button(name, "", current ? ICON_CHECK : ICON_NONE) && !current) {
-			tab_library_mm_section = s;
-			tab_library_mm_picked  = true;
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
+		ui_menu_separator();
+		ui_menu_label(tab_library_style_name(stylized), NULL);
+		tab_library_mm_pick(stylized ? TAB_LIBRARY_ALL_STYLIZED : TAB_LIBRARY_ALL_REALISTIC, string("%s (%d)", tr("All"), n));
+		for (i32 s = 0; s < sections; ++s) {
+			i32 g = st * sections + s;
+			if (tab_library_mm_counts[g] > 0) {
+				tab_library_mm_pick(g, string("%s (%d)", mm_library_section_name(s), tab_library_mm_counts[g]));
+			}
 		}
 	}
 }
 
 // Looks like a combo, opens the type menu under it
 static void tab_library_mm_type_button() {
-	char *picked = tab_library_mm_section < 0 ? string("%s (%d)", tr("All Types"), tab_library_mm_total)
-	                                          : string("%s (%d)", mm_library_section_name(tab_library_mm_section), tab_library_mm_counts[tab_library_mm_section]);
+	char *picked = tab_library_mm_group_name(tab_library_mm_group);
 	f32   by     = g_ui->_y;
 	if (ui_button(picked, UI_ALIGN_LEFT, "")) {
 		i32 menu_w = math_floor(base_default_element_w * UI_SCALE() * 2.3);
@@ -136,19 +190,25 @@ static void tab_library_mm_type_button() {
 	draw_filled_triangle(ax, ay, ax + UI_ARROW_SIZE(), ay, ax + UI_ARROW_SIZE() / 2.0, ay + UI_ARROW_SIZE() / 2.0);
 }
 
-// Material Maker's library (nodes_material/mm_library.c), one section per kind, or the picked one. Only the rows in view
-// load their thumbnails.
+// Material Maker's library (nodes_material/mm_library.c), one group per style and section, or the picked ones. Only the
+// rows in view load their thumbnails.
 static void tab_library_draw_mm(tab_library_grid_t *g) {
-	char *search = to_lower_case(tab_library_search);
-	i32   total  = mm_library_count();
-	i32  *items  = malloc(sizeof(i32) * (total > 0 ? total : 1));
-	for (i32 s = 0; s < mm_library_section_count(); ++s) {
-		if (tab_library_mm_section >= 0 && s != tab_library_mm_section) {
+	char *search   = to_lower_case(tab_library_search);
+	i32   total    = mm_library_count();
+	i32   sections = tab_library_mm_sections();
+	i32   only     = tab_library_mm_group;
+	i32  *items    = malloc(sizeof(i32) * (total > 0 ? total : 1));
+	for (i32 grp = 0; grp < sections * 2; ++grp) {
+		bool stylized = grp < sections;
+		bool show     = only == TAB_LIBRARY_ALL || only == grp || (only == TAB_LIBRARY_ALL_STYLIZED && stylized) ||
+		            (only == TAB_LIBRARY_ALL_REALISTIC && !stylized);
+		if (!show) {
 			continue;
 		}
 		i32 shown = 0;
 		for (i32 i = 0; i < total; ++i) {
-			if (mm_library_section(i) == s && mm_library_matches(i, search)) {
+			i32 s = mm_library_section(i);
+			if (s >= 0 && s < sections && tab_library_mm_group_of(i) == grp && mm_library_matches(i, search)) {
 				items[shown++] = i;
 			}
 		}
@@ -159,7 +219,9 @@ static void tab_library_draw_mm(tab_library_grid_t *g) {
 			g_ui->_y += g->text_h;
 		}
 		else {
-			ui_text(string("%s (%d)", mm_library_section_name(s), shown), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+			char *section = mm_library_section_name(grp % sections);
+			char *header  = only == TAB_LIBRARY_ALL ? string("%s %s (%d)", tab_library_style_name(stylized), section, shown) : string("%s (%d)", section, shown);
+			ui_text(header, UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
 		}
 		for (i32 row = 0; row * g->num < shown; ++row) {
 			if (tab_library_row_hidden(g)) {
@@ -275,7 +337,7 @@ static void tab_library_draw_local() {
 	ui_separator(3, false);
 
 	tab_library_grid_t g = tab_library_grid();
-	if (tab_library_mm_section >= 0) { // A type of Material Maker's library picked: only that
+	if (tab_library_mm_group != TAB_LIBRARY_ALL) { // A group of Material Maker's library picked: only that
 		tab_library_draw_mm(&g);
 		return;
 	}
@@ -416,15 +478,6 @@ static void tab_library_draw_cloud_group(tab_library_grid_t *g, i32 *items, i32 
 		}
 		g_ui->_y += 8 * UI_SCALE();
 	}
-}
-
-// Cloud groups: the stylized types, then the realistic ones
-#define TAB_LIBRARY_ALL           -1
-#define TAB_LIBRARY_ALL_STYLIZED  -2
-#define TAB_LIBRARY_ALL_REALISTIC -3
-
-static char *tab_library_style_name(bool stylized) {
-	return stylized ? tr("Stylized") : tr("Realistic");
 }
 
 #define TAB_LIBRARY_HEADING -100
