@@ -62,6 +62,7 @@ void nodes_material_init() {
 	combine_xyz_node_init();
 	float_curve_node_init();
 	map_range_node_init();
+	select_value_node_init();
 	material_mix_node_init();
 	mapping_node_init();
 	math2_node_init();

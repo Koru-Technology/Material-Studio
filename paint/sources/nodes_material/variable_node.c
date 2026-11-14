@@ -696,6 +696,16 @@ void variable_node_init() {
 	any_array_push(nodes_material_input, def);
 	any_map_set(parser_material_node_outputs, "VARIABLE", variable_output);
 
+	any_map_set(ui_nodes_custom_buttons, "variable_name", variable_name_button);
+	any_map_set(ui_nodes_custom_buttons, "variable_value", variable_value_button);
+	any_map_set(ui_nodes_custom_buttons, "variable_range", variable_range_button);
+	any_map_set(ui_nodes_custom_buttons, "variable_options", variable_options_button);
+	any_map_set(ui_nodes_custom_buttons, "variable_show", variable_show_button);
+	any_map_set(ui_nodes_custom_buttons, "variable_id", variable_hidden_button);
+}
+
+// Under Utilities: registered once nodes_material_utilities exists
+void select_value_node_init() {
 	ui_node_t *select = ALLOC_INIT(ui_node_t, {.id     = 0,
 	                                           .name   = _tr("Select Value"),
 	                                           .type   = "SELECT_VALUE",
@@ -739,12 +749,5 @@ void variable_node_init() {
 	                                           .flags = 0});
 	any_array_push(nodes_material_utilities, select);
 	any_map_set(parser_material_node_outputs, "SELECT_VALUE", select_value_output);
-
-	any_map_set(ui_nodes_custom_buttons, "variable_name", variable_name_button);
-	any_map_set(ui_nodes_custom_buttons, "variable_value", variable_value_button);
-	any_map_set(ui_nodes_custom_buttons, "variable_range", variable_range_button);
-	any_map_set(ui_nodes_custom_buttons, "variable_options", variable_options_button);
-	any_map_set(ui_nodes_custom_buttons, "variable_show", variable_show_button);
-	any_map_set(ui_nodes_custom_buttons, "variable_id", variable_hidden_button);
 	any_map_set(ui_nodes_custom_buttons, "select_values", select_value_button);
 }

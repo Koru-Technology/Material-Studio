@@ -1573,6 +1573,7 @@ void              layer_mask_node_init();
 void              camera_texture_node_init();
 void              value_node_init();
 void              variable_node_init(); // nodes_material/variable_node.c: exported values, controls of the material
+void              select_value_node_init();
 bool              variable_is(ui_node_t *node);
 i32               variable_kind(ui_node_t *node); // 0 Number, 1 Whole Number, 2 Toggle, 3 Choice, 4 Color, 5 Gradient
 char             *variable_name(ui_node_t *node);
