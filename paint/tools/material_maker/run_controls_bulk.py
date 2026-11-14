@@ -72,13 +72,15 @@ def run_once(a, shard, first, log):
     return hung
 
 
-def run_shard(a, shard):
+def run_shard(a, shard, first=0):
     log = os.path.join(a.out, 'shard%d.log' % shard)
-    open(log, 'w').close()
-    first = 0
+    open(log, 'a' if first > 0 else 'w').close()
+    retried = set()
     while True:
+        start = os.path.getsize(log)
         hung = run_once(a, shard, first, log)
-        text = open(log, errors='replace').read()
+        raw = open(log, 'rb').read()
+        text, tail = raw.decode(errors='replace'), raw[start:].decode(errors='replace')  # Sizes are bytes
         if 'BULK PASS' in text[-2000:] or 'BULK FAIL' in text[-2000:]:
             break
         begins = re.findall(r'\[bulk\] begin (\d+) (\d+)', text)
@@ -86,6 +88,16 @@ def run_shard(a, shard):
             print('shard %d stopped without progress' % shard, flush=True)
             break
         index, mid = begins[-1]
+        if hung and a.device:
+            time.sleep(20)  # iOS keeps ignoring the app's GPU work for a while after a hang
+        # Only ignored for an earlier hang (not its own): tried again once
+        if hung and 'SubmissionsIgnored' in tail and 'ErrorHang' not in tail and 'ErrorInnocentVictim' not in tail and mid not in retried:
+            retried.add(mid)
+            print('shard %d: %s blocked by an earlier GPU hang, trying it again' % (shard, mid), flush=True)
+            if a.device:
+                time.sleep(30)
+            first = int(index)
+            continue
         what = 'hung (GPU error or frozen for %d s)' % HANG_S if hung else 'crashed the app'
         with open(log, 'a') as f:
             f.write('\n[bulk] FAIL %s: %s\n' % (mid, what))
@@ -99,6 +111,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--shards', type=int, default=8)
     ap.add_argument('--only')
+    ap.add_argument('--first', type=int, default=0)  # Index to resume the first shard listed from
     ap.add_argument('--out', default=os.path.join(PAINT, 'build', 'controls_bulk'))
     ap.add_argument('--device')
     ap.add_argument('--bundle', default='technology.koru.materialstudio')
@@ -106,8 +119,8 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     shards = [int(x) for x in a.only.split(',')] if a.only else list(range(a.shards))
     if a.device:
-        for s in shards:
-            run_shard(a, s)
+        for i, s in enumerate(shards):
+            run_shard(a, s, a.first if i == 0 else 0)
     else:
         with ThreadPoolExecutor(len(shards)) as ex:
             list(ex.map(lambda s: run_shard(a, s), shards))
