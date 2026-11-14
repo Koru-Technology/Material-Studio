@@ -8,10 +8,8 @@ char *material_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 		return result;
 	}
 	slot_material_t        *m      = g_project->_->materials->buffer[mi];
-	ui_node_t_array_t      *_nodes = parser_material_nodes;
-	ui_node_link_t_array_t *_links = parser_material_links;
-	parser_material_nodes          = m->canvas->nodes;
-	parser_material_links          = m->canvas->links;
+	// Entered like a group: a group inside the material pops back to this canvas, not to the one holding the node
+	parser_material_push_group(m->canvas);
 	any_array_push(parser_material_parents, node);
 	ui_node_t *output_node = parser_material_node_by_type(parser_material_nodes, "OUTPUT_MATERIAL_PBR");
 	if (socket == node->outputs->buffer[0]) { // Base
@@ -20,8 +18,7 @@ char *material_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	else if (socket == node->outputs->buffer[5]) { // Normal
 		result = string_copy(parser_material_parse_vector_input(output_node->inputs->buffer[5]));
 	}
-	parser_material_nodes = _nodes;
-	parser_material_links = _links;
+	parser_material_pop_group();
 	array_pop(parser_material_parents);
 	return result;
 }
@@ -32,10 +29,8 @@ char *material_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	if (mi >= g_project->_->materials->length)
 		return result;
 	slot_material_t        *m      = g_project->_->materials->buffer[mi];
-	ui_node_t_array_t      *_nodes = parser_material_nodes;
-	ui_node_link_t_array_t *_links = parser_material_links;
-	parser_material_nodes          = m->canvas->nodes;
-	parser_material_links          = m->canvas->links;
+	// Entered like a group: a group inside the material pops back to this canvas, not to the one holding the node
+	parser_material_push_group(m->canvas);
 	any_array_push(parser_material_parents, node);
 	ui_node_t *output_node = parser_material_node_by_type(parser_material_nodes, "OUTPUT_MATERIAL_PBR");
 	if (socket == node->outputs->buffer[1]) { // Opac
@@ -53,8 +48,7 @@ char *material_node_value(ui_node_t *node, ui_node_socket_t *socket) {
 	else if (socket == node->outputs->buffer[7]) { // Height
 		result = string_copy(parser_material_parse_value_input(output_node->inputs->buffer[7], false));
 	}
-	parser_material_nodes = _nodes;
-	parser_material_links = _links;
+	parser_material_pop_group();
 	array_pop(parser_material_parents);
 	return result;
 }

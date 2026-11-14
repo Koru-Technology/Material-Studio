@@ -21,7 +21,7 @@ static bool          ui_touch_drag   = false;
 static bool          ui_box_select   = false;
 static int           ui_box_select_x = 0;
 static int           ui_box_select_y = 0;
-static const int     ui_max_buttons  = 9;
+static const int     ui_max_buttons  = 8192; // Widget id slots: buttons use [0, max * 4), inputs [max * 4, 65536)
 static int           ui_node_id      = -1;
 static ui_node_t    *node_resize     = NULL;
 
@@ -32,6 +32,7 @@ string_array_t *(*ui_nodes_enum_texts)(char *)           = NULL; // Retrieve com
 any_array_t *(*ui_nodes_enum_textures)(char *)           = NULL;
 gpu_texture_t *(*ui_nodes_preview_texture)(ui_node_t *)  = NULL; // Retrieve preview image
 void (*ui_nodes_on_custom_button)(int, char *)           = NULL; // Call external function
+int ui_nodes_custom_button_index                         = -1;   // Index in node->buttons of the custom button being drawn
 ui_canvas_control_t *(*ui_nodes_on_canvas_control)(void) = NULL;
 void (*ui_nodes_on_canvas_released)(void)                = NULL;
 void (*ui_nodes_on_socket_released)(int)                 = NULL;
@@ -223,6 +224,29 @@ int ui_get_link_index(ui_node_link_array_t *links, int id) {
 		}
 	}
 	return -1;
+}
+
+static bool ui_nodes_is_mm_type(char *type) {
+	return strncmp(type, "MM_", 3) == 0;
+}
+
+// Material Maker socket types (MM_*) link only to their own type, plus sdf3d <-> sdf3dc and tex3d <-> tex3d_gs, which the
+// material parser converts like Material Maker does. The other types keep linking freely.
+bool ui_nodes_socket_types_compatible(char *from_type, char *to_type) {
+	if (from_type == NULL || to_type == NULL || strcmp(from_type, to_type) == 0) {
+		return true;
+	}
+	if (!ui_nodes_is_mm_type(from_type) && !ui_nodes_is_mm_type(to_type)) {
+		return true;
+	}
+	if (strcmp(from_type, "MM_ANY") == 0 || strcmp(to_type, "MM_ANY") == 0) { // Material Maker's "any": reroute, switch, portal
+		return true;
+	}
+	bool sdf3d = (strcmp(from_type, "MM_SDF3D") == 0 && strcmp(to_type, "MM_SDF3DC") == 0) ||
+	             (strcmp(from_type, "MM_SDF3DC") == 0 && strcmp(to_type, "MM_SDF3D") == 0);
+	bool tex3d = (strcmp(from_type, "MM_TEX3D") == 0 && strcmp(to_type, "MM_TEX3D_GS") == 0) ||
+	             (strcmp(from_type, "MM_TEX3D_GS") == 0 && strcmp(to_type, "MM_TEX3D") == 0);
+	return sdf3d || tex3d;
 }
 
 int ui_next_link_id(ui_node_link_array_t *links) {
@@ -431,7 +455,8 @@ static ui_color_state_t *ui_nodes_color_state(ui_node_t *node) {
 
 // Node values are edited through temporaries or armpack buffers that can move, key the controls by node and slot instead
 static void ui_nodes_next_id(ui_node_t *node, int slot) {
-	ui_set_next_id(((ui_id_t)node->id << 16) + slot + 1);
+	// Slot stays below 1 << 16 so ids of different nodes never overlap
+	ui_set_next_id(((ui_id_t)node->id << 16) + (slot & 0xffff) + 1);
 }
 
 static float ui_nodes_snap(float f) {
@@ -618,7 +643,11 @@ void ui_node_draw_body(ui_node_t *node, ui_node_canvas_t *canvas, float nx, floa
 			current->_x = nx;
 			current->_y = ny;
 			current->_w = w;
-			ui_nodes_on_custom_button(node->id, but->name);
+			if (ui_nodes_on_custom_button != NULL) {
+				ui_nodes_custom_button_index = buti;
+				ui_nodes_on_custom_button(node->id, but->name);
+				ui_nodes_custom_button_index = -1;
+			}
 			ny += lineh * (but->height - 1); // but->height specifies vertical button size
 		}
 	}
@@ -940,7 +969,8 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 							float sy = wy + UI_NODE_Y(node) + UI_OUTPUT_Y(node, k);
 							float rx = sx - UI_LINE_H() / 2;
 							float ry = sy - UI_LINE_H() / 2;
-							if (ui_input_in_rect(rx, ry, UI_LINE_H(), UI_LINE_H())) {
+							char *to_type = link->to_socket >= 0 && link->to_socket < to->inputs->length ? to->inputs->buffer[link->to_socket]->type : NULL;
+							if (ui_input_in_rect(rx, ry, UI_LINE_H(), UI_LINE_H()) && ui_nodes_socket_types_compatible(node->outputs->buffer[k]->type, to_type)) {
 								current_nodes->snap_x       = sx;
 								current_nodes->snap_y       = sy;
 								current_nodes->snap_from_id = node->id;
@@ -955,7 +985,9 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 							float sy = wy + UI_NODE_Y(node) + UI_INPUT_Y(canvas, node, k) + UI_OUTPUTS_H(node, -1) + UI_BUTTONS_H(node);
 							float rx = sx - UI_LINE_H() / 2.0;
 							float ry = sy - UI_LINE_H() / 2.0;
-							if (ui_input_in_rect(rx, ry, UI_LINE_H(), UI_LINE_H())) {
+							char *from_type =
+							    link->from_socket >= 0 && link->from_socket < from->outputs->length ? from->outputs->buffer[link->from_socket]->type : NULL;
+							if (ui_input_in_rect(rx, ry, UI_LINE_H(), UI_LINE_H()) && ui_nodes_socket_types_compatible(from_type, node->inputs->buffer[k]->type)) {
 								current_nodes->snap_x      = sx;
 								current_nodes->snap_y      = sy;
 								current_nodes->snap_to_id  = node->id;
@@ -1208,24 +1240,14 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 				top    = bottom;
 				bottom = t;
 			}
-			ui_node_t *nodes[32];
-			int        nodes_count = 0;
+			// Select directly instead of collecting into a fixed array, any number of nodes can be inside the box
+			if (!current->is_shift_down && !current->is_ctrl_down) {
+				current_nodes->nodes_selected_id->length = 0;
+			}
 			for (int j = 0; j < canvas->nodes->length; ++j) {
 				ui_node_t *n = canvas->nodes->buffer[j];
 				if (UI_NODE_X(n) + UI_NODE_W(n) > left && UI_NODE_X(n) < right && UI_NODE_Y(n) + UI_NODE_H(canvas, n) > top && UI_NODE_Y(n) < bottom) {
-					nodes[nodes_count] = n;
-					nodes_count++;
-				}
-			}
-			if (current->is_shift_down || current->is_ctrl_down) {
-				for (int j = 0; j < nodes_count; ++j) {
-					add_to_selection(nodes[j]);
-				}
-			}
-			else {
-				current_nodes->nodes_selected_id->length = 0;
-				for (int j = 0; j < nodes_count; ++j) {
-					add_to_selection(nodes[j]);
+					add_to_selection(n);
 				}
 			}
 		}
@@ -1242,8 +1264,9 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 	// Node copy & paste
 	bool cut_selected = false;
 	if (ui_is_copy && !current->is_typing) {
-		ui_node_t *copy_nodes[32];
-		int        copy_nodes_count = 0;
+		// Sized to the selection and link count, large graphs can copy hundreds of nodes
+		ui_node_t **copy_nodes       = malloc(sizeof(ui_node_t *) * (current_nodes->nodes_selected_id->length + 1));
+		int         copy_nodes_count = 0;
 		for (int i = 0; i < current_nodes->nodes_selected_id->length; ++i) {
 			int        id = current_nodes->nodes_selected_id->buffer[i];
 			ui_node_t *n  = ui_get_node(canvas->nodes, id);
@@ -1253,8 +1276,8 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 			copy_nodes[copy_nodes_count] = n;
 			copy_nodes_count++;
 		}
-		ui_node_link_t *copy_links[64];
-		int             copy_links_count = 0;
+		ui_node_link_t **copy_links       = malloc(sizeof(ui_node_link_t *) * (canvas->links->length + 1));
+		int              copy_links_count = 0;
 		for (int i = 0; i < canvas->links->length; ++i) {
 			ui_node_link_t *l    = canvas->links->buffer[i];
 			ui_node_t      *from = NULL;
@@ -1287,6 +1310,8 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 			ui_clipboard                 = ui_node_canvas_to_json(&copy_canvas);
 			iron_copy_to_clipboard(ui_clipboard);
 		}
+		free(copy_nodes);
+		free(copy_links);
 		cut_selected = ui_is_cut;
 		ui_is_copy   = false;
 		ui_is_cut    = false;
@@ -1742,7 +1767,12 @@ f32 ui_nodes_INPUT_Y(ui_node_canvas_t *canvas, ui_node_t *node, i32 pos) {
 extern any_map_t *ui_nodes_custom_buttons;
 
 void nodes_on_custom_button(i32 node_id, char *button_name) {
-	void (*f)(i32) = any_map_get(ui_nodes_custom_buttons, button_name);
+	void (*f)(i32) = ui_nodes_custom_buttons != NULL ? any_map_get(ui_nodes_custom_buttons, button_name) : NULL;
+	if (f == NULL) {
+		// Unregistered button (unknown node type from a project), show its name instead of calling NULL
+		ui_text(ui_tr(button_name), UI_ALIGN_LEFT, 0);
+		return;
+	}
 	f(node_id);
 }
 

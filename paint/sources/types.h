@@ -322,7 +322,6 @@ typedef struct config {
 	bool                 library_cloud;      // Library tab shows the cloud materials
 	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
 	f32                  library_scroll;     // Scroll position of the Library tab
-	bool                 hide_builtin_materials; // Library tab hides the built-in procedural materials
 	f32                  brush_radius; // Brush settings kept across launches, the others come with the picked brush
 	f32                  brush_opacity;
 	f32                  brush_strength;

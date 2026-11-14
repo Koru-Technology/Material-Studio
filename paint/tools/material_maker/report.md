@@ -1,0 +1,806 @@
+# Material Maker library report
+
+1001 of 1776 materials included.
+
+- Bricks & Walls: 166
+- Stone & Rock: 157
+- Tiles & Floors: 151
+- Metal: 132
+- Wood: 99
+- Ground & Nature: 91
+- Food: 49
+- Fabric & Leather: 49
+- Sci-Fi & Tech: 36
+- Creatures & Organic: 28
+- Patterns: 24
+- Stylized: 19
+
+## Left out: needs files from its author (87)
+
+- 19 "Terminator Ball" by PauloFalcao
+- 20 "Fractal" by PauloFalcao
+- 52 "Custom Union" by PauloFalcao
+- 128 "Object Space Cracked Black Alien Metal" by Promethia27
+- 163 "Scrap wood" by pixelpoops
+- 169 "Woven (Mayterials Day_6)" by Qubit
+- 172 "Reaction Diffusion" by Qubit
+- 179 "Noise + Patterns + Grunge Nodes" by Takanu
+- 180 "2D SDF Nodes" by Takanu
+- 250 "Stencil" by unfa
+- 279 "moon cake" by free_king
+- 287 "4k hq wall" by 2kohm
+- 336 "Unmoving Plaid Example - By Arnklit" by Amirtha
+- 354 "Massive Stone Wall" by SkinCarver
+- 358 "Medieval Brick Wall" by SkinCarver
+- 366 "Generic Bark" by pelatho
+- 430 "Mayterials'22 / 04 Travel" by DroppedBeat
+- 468 "Vending Machines" by DroppedBeat
+- 536 "刺绣" by free_king
+- 664 "Lace generator" by Tarox
+- 687 "Metro Ticket Machines" by DroppedBeat
+- 714 "Calculators" by DroppedBeat
+- 734 "Magical eruption" by Tarox
+- 741 "Leaves Pattern" by Nic
+- 783 "ground HxH style" by aaws424
+- 793 "piastrellacce" by joeantani
+- 972 "Clutter" by DroppedBeat
+- 977 "Industrial rustic red brick wall with a shattered window" by Stan
+- 1013 " Wood Herringbone" by yassine.ids
+- 1018 "Momentum #17" by PauloFalcao
+- 1071 "Snake Scales" by Lezzzbean
+- 1163 "Stylized Plank 5" by Saurav72
+- 1168 "Stylized Cheese" by Saurav72
+- 1171 "Stylized Bricks 3" by Saurav72
+- 1201 "Stylized Beehive " by Saurav72
+- 1204 "Console" by Saurav72
+- 1288 "apocalyptic_rusty_metal_d_surface" by leoskateman
+- 1294 "broken_tiles_ckeckr_adhesive_layer" by leoskateman
+- 1297 "plastic_mesh_barrier_restricted_zone" by leoskateman
+- 1299 "sewer_plate_retro_sf_atom_city" by leoskateman
+- 1311 "ahah inception " by leoskateman
+- 1313 "Fun Gang 1963 Photography - 2008 Timeline" by Adamyuyuyu
+- 1320 "Skystone" by renderfz
+- 1321 "porcelain blue" by renderfz
+- 1331 "kid_playground_erea" by leoskateman
+- 1369 "Road Asphalt Atlas" by Picorims
+- 1388 "Project "ARK" Copper Disc" by Adamyuyuyu
+- 1508 "Procedural Playing Cards" by DroppedBeat
+- 1524 "Stone Mandala" by nullMeansNull
+- 1541 "Crying obsidian" by Tarox
+- 1546 "Subway Station Floor" by Funkschy
+- 1557 "scots pine bark" by spaghetti
+- 1563 "spruce" by spaghetti
+- 1589 "classica_stone_trim" by leoskateman
+- 1640 "Grass" by Varjopappi
+- 1648 "sci-fi_surface_js_placement_style" by leoskateman
+- 1700 "Subway wall" by Tarox
+- 1743 "Taboo (Day 27,28)" by Saurav72
+- 1745 "Chevron Wallpaper" by izz
+- 1752 "Color Palette" by Evophon Media
+- 1771 "cabbage" by leoskateman
+- 1783 "Color Palette v2" by Evophon Media
+- 1790 "Color Palette v3" by Evophon Media
+- 1822 "norway spruce" by spaghetti
+- 1833 "european beech" by spaghetti
+- 1836 "Sandy Tiles" by Cactus
+- 1843 "DJAAA2026" by DJAAA2026
+- 1865 "DVD Bounce Coutning" by DroppedBeat
+- 1870 "Chocolate" by Saurav72
+- 1877 "basketball" by leoskateman
+- 1883 "WARRIOR CATS v0" by Blauschweif
+- 1902 "E with Bent Topbar" by DJAAA2026
+- 1904 "Blend Node Icon" by DJAAA2026
+- 1905 "Blend Node Icon" by DJAAA2026
+- 1906 "O with Curl" by DJAAA2026
+- 1907 "Roundtop A" by DJAAA2026
+- 1908 "U+26B99 Symbol" by DJAAA2026
+- 1909 "U with Notch at Bottom" by DJAAA2026
+- 1911 "64 Textures" by DJAAA2026
+- 1912 "Linux Mint" by DJAAA2026
+- 1913 "DJAAA2026 (New Design)" by DJAAA2026
+- 1920 "U+8930 Symbol" by DJAAA2026
+- 1921 "U+1CED0 Symbol" by DJAAA2026
+- 1924 "U+2387D Symbol" by DJAAA2026
+- 1956 "Genshin Impact_TrimSheet" by ChibiGhost
+- 1962 "brick_wall" by Clemilia123
+- 1992 "Doc Tools" by DJAAA2026
+
+## Left out: not a surface (None) (1)
+
+- 1696 "hair" by Landreo
+
+## Left out: not a surface (material_dynamic_sky) (3)
+
+- 1832 "Night Sky" by DroppedBeat
+- 1851 "Night Sky Planets" by DroppedBeat
+- 1881 "Dynamic Sky Material" by DJAAA2026
+
+## Left out: not a surface (material_raymarching) (27)
+
+- 272 "Lava lamp" by RodZilla
+- 311 "Moving Voronoi Shards" by Arnklit
+- 314 "Fractal Metal" by PauloFalcao
+- 325 "Burger" by Arnklit
+- 330 "Snowman" by Arnklit
+- 347 "Lava Ball" by PauloFalcao
+- 520 "Animated Skeleton Hand" by Arnklit
+- 524 "mooncake maker" by free_king
+- 525 "Strawberry Cake" by DroppedBeat
+- 539 "Rotating Cogs" by Arnklit
+- 554 "Pumpkin" by RodZilla
+- 563 "Space Junkyard Lego" by Zibox
+- 577 "Soft dip" by PauloFalcao
+- 754 "Tea Maker" by DroppedBeat
+- 759 "Lemon" by DroppedBeat
+- 1050 "MFSDF displace" by PauloFalcao
+- 1606 "Traffic Cone" by DroppedBeat
+- 1638 "3d_banana" by leoskateman
+- 1658 "spray_paint_can" by leoskateman
+- 1660 "Naval Mine" by DJAAA2026
+- 1915 "Brick" by DJAAA2026
+- 1916 "Staircase" by DJAAA2026
+- 1917 "Donut" by DJAAA2026
+- 1918 "Diamond" by DJAAA2026
+- 1919 "Diamond" by DJAAA2026
+- 1928 "Sun Shape 3D" by DJAAA2026
+- 1929 "Moon Shape 3D" by DJAAA2026
+
+## Left out: not categorised (657)
+
+- 1 "Cookie" by RodZilla
+- 5 "Pastry" by RodZilla
+- 6 "Drawing" by RodZilla
+- 7 "Print" by RodZilla
+- 8 "Layered" by RodZilla
+- 14 "Crater" by RodZilla
+- 15 "Museum wall" by RodZilla
+- 16 "Stained glass" by RodZilla
+- 17 "Chair" by PauloFalcao
+- 18 "City" by PauloFalcao
+- 21 "Painted Torus" by PauloFalcao
+- 25 "Cookie" by wojtekpil
+- 48 "Raymarching fun" by RodZilla
+- 50 "Portal" by RodZilla
+- 51 "Pigs in a blanket" by pixelpoops
+- 57 "Padded material" by RodZilla
+- 61 "Forest Ground" by wojtekpil
+- 62 "Shattered glass generator" by Tarox
+- 65 "Grunge_01" by Tarox
+- 67 "3D multiple textures" by RodZilla
+- 68 "Tiler++" by ydobemos
+- 69 "Flames [animated]" by ydobemos
+- 70 "Candle light [animated]" by ydobemos
+- 71 "Gears [animated]" by ydobemos
+- 76 "Plain Grunge" by leonard7e
+- 77 "Damage" by leonard7e
+- 83 "Mingle nodes upgrade" by leonard7e
+- 84 "Wicker" by capt_eatbones
+- 90 "Moon / Asteroid" by vreon
+- 91 "Erosion Node" by Arnklit
+- 103 "bullet hole" by pixelpoops
+- 109 "Peeling Paint" by leonard7e
+- 115 "Grass Cluster" by wojtekpil
+- 119 "Animated 3D Smoke" by unfa
+- 132 "Rodz Labs Logo [animated]" by vreon
+- 134 "Merit badge" by pixelpoops
+- 139 "Bullet Holes In Concrete" by unfa
+- 141 "Bullet Holes In Concrete 2" by unfa
+- 145 "Mingle nodes" by leonard7e
+- 152 "Rectangular Remapper" by Promethia27
+- 156 "Damask Cloth" by Arnklit
+- 164 "Beach (#Mayterials_DAY2)" by Qubit
+- 167 "Keyboard Material (Mayterials Day4 Space)" by Qubit
+- 168 "Color_Splater (Mayerials Day 4)" by Qubit
+- 175 "Wrinkles" by Arnklit
+- 181 "编织" by free_king
+- 182 "Drab Office Wall" by BurritoLord69
+- 185 "Displaced Star" by PauloFalcao
+- 186 "Volcano" by PauloFalcao
+- 187 "Fractal" by PauloFalcao
+- 188 "First_Project" by mgdegenhardt
+- 192 "Blood Stain" by unfa
+- 193 "Stylized Ornamented Wall" by ninao
+- 194 "Treasure map" by pixelpoops
+- 195 "Ancient talisman" by pixelpoops
+- 198 "Some base material" by Tarox
+- 200 "Leaks generator" by Tarox
+- 202 "PBR散布" by free_king
+- 209 "Scratches" by Tarox
+- 211 "Magic Cast Pentagram" by ninao
+- 219 "Rusty Drip Marks" by unfa
+- 221 "Grass Foliage Tileset" by unfa
+- 226 "Base material mockup" by Tarox
+- 229 "Rot grunge" by Tarox
+- 231 "Animated Parameters Example" by ninao
+- 232 "Clock" by ninao
+- 233 "Holographic noise" by svensk007
+- 234 "test for mac" by ROYALKINGSJ
+- 235 "Animated clock" by RodZilla
+- 238 "Obsidian" by UnreliableChimp
+- 242 "Stylized Flowers" by unfa
+- 243 "Pansy" by kelpana
+- 254 "sheng_gua_dan_zi" by free_king
+- 256 "Flowmap example" by wojtekpil
+- 257 "color_ball" by free_king
+- 259 "slop_bur*N" by free_king
+- 260 "Blow up" by free_king
+- 262 "Mold" by unfa
+- 265 "Smooth Blend" by Tarox
+- 266 "Stained glass with scratches" by Jael137
+- 271 "Gears panel" by RodZilla
+- 284 "Blood Splash" by unfa
+- 285 "Leaf Generator" by ninao
+- 286 "Flower Generator" by ninao
+- 297 "Scorch Mark" by unfa
+- 298 "Ambient Occlusion alternative" by Arnklit
+- 302 "Shader parameters" by RodZilla
+- 315 "Stained Glass Hearts" by LitmusZest
+- 318 "Christmas Wreath" by Arnklit
+- 320 "Luscious Lips" by LitmusZest
+- 321 "Mice" by RodZilla
+- 323 "fluffy_" by free_king
+- 326 "energy shield" by grandpa1991
+- 327 "Round Brick Window" by Arnklit
+- 328 "Gift Wrap Paper" by RodZilla
+- 335 "Mondriaan painting" by Jael137
+- 337 "粗糙塑料(Rough plastic)" by free_king
+- 344 "Slime Thing" by Arnklit
+- 345 "Medieval Wall" by SkinCarver
+- 348 "Animated Fire" by unfa
+- 349 "Transform PBR" by Tarox
+- 350 "Animated Fire 2" by unfa
+- 351 "Pavel Oliva's Brush Library" by Tarox
+- 355 "Mountain and Lakes" by capt_eatbones
+- 359 "Pipe trim sheet" by Tarox
+- 362 "MFSDF Fractal " by PauloFalcao
+- 363 "LineGrid" by Jane Cormier
+- 364 "Grid_with_Points" by Jane Cormier
+- 376 "Weapon Slash Erosion Texture" by Arnklit
+- 384 "Muzzle Flash VFX Texture" by Arnklit
+- 393 "Cozy Bookcase" by Arnklit
+- 394 "Fireplace - Mayterials2022" by Tarox
+- 395 "Mayterials 2022 entry- old safe" by pixelpoops
+- 396 "Smaug's Treasure" by Arnklit
+- 398 "Animated fireplace" by RodZilla
+- 399 "Secure" by RodZilla
+- 402 "Animated Radar" by pixelpoops
+- 403 "Desert cliff - Mayterials2022" by Tarox
+- 404 "Ammo Belt" by Arnklit
+- 405 "Beach - Mayterials2022" by Tarox
+- 406 "Animated Waves on Beach" by Arnklit
+- 410 "Mayterials 2022 entry- Animated black hole" by pixelpoops
+- 413 "Rose Bush" by Arnklit
+- 417 "Ornamental Celtic Stone Pattern" by Arnklit
+- 418 "Stacks of Bones" by Arnklit
+- 419 "Rosette - Mayterials22" by Tarox
+- 420 "cement" by free_king
+- 421 "Manhole cover (Mayterials 2022 entry)" by pixelpoops
+- 422 "Floppy disks" by pixelpoops
+- 424 "Bird poop generator" by pixelpoops
+- 426 "Ancient pedestal - Mayterials2022" by Tarox
+- 427 "Arcane compass - Mayterials2022" by wojtekpil
+- 428 "Mayterials'22 / 01 Cozy" by DroppedBeat
+- 429 "Mayterials'22 / 03 Western" by DroppedBeat
+- 431 "Mayterials'22 / 05 Fairytale" by DroppedBeat
+- 432 "Mayterials'22 / 06 Cosmic" by DroppedBeat
+- 433 "Mayterials'22 / 07 Ornamental" by DroppedBeat
+- 434 "Mayterials'22 / 08 Stack" by DroppedBeat
+- 435 "Mayterials'22 / 10 Journey" by DroppedBeat
+- 436 "FakeQrGenerator" by Jael137
+- 445 "break" by free_king
+- 446 "leaf" by free_king
+- 447 "SDF Metal Grid" by Arnklit
+- 449 "Shattered glass generator" by pixelpoops
+- 458 "2x2 random_word" by free_king
+- 464 "Dynamically flashing numbers" by free_king
+- 480 "Among Us" by DroppedBeat
+- 488 "gradient descent" by free_king
+- 492 "Temporal Displacement" by DroppedBeat
+- 494 "Matrix Rain Code" by DroppedBeat
+- 495 "Procedural material" by DroppedBeat
+- 496 "Dance Dance Revolution" by DroppedBeat
+- 497 "Stylized Rock Cliff" by wojtekpil
+- 498 "Stylized Gray Rock Cliff " by wojtekpil
+- 500 "DVD Screensaver" by DroppedBeat
+- 501 "Keyboard Fever" by DroppedBeat
+- 502 "Sci signs with connected arcs" by Imarion
+- 503 "Old Clocks" by DroppedBeat
+- 505 "Connecting blender nodes" by DroppedBeat
+- 514 "Iceberg" by Arnklit
+- 515 "Matrix Rain v2" by DroppedBeat
+- 518 "Rendering" by DroppedBeat
+- 528 "red bean mooncake" by DroppedBeat
+- 531 "Number Plates" by DroppedBeat
+- 534 "Cardboard" by MatteoKip
+- 537 "simple map generator" by DroppedBeat
+- 540 "-pattern" by free_king
+- 543 "Circular Wave" by DroppedBeat
+- 546 "flame effect" by DroppedBeat
+- 549 "Spooky" by DroppedBeat
+- 552 "Island Generator" by ValerioMarty
+- 553 "SDF Gargoyle" by Arnklit
+- 555 "Animated Ghosts" by Arnklit
+- 559 "Dark Bat" by Zibox
+- 560 "Pumpkin Side" by Schrottkatze
+- 561 "Jack'o'Lantern" by Schrottkatze
+- 562 "Rusty metal plating" by Schrottkatze
+- 564 "Psychedelic Alley" by pixelpoops
+- 565 "Psychedelic Alley" by Zibox
+- 579 "Windows moment (Digital ruins - Nodevember 2022)" by Schrottkatze
+- 582 "Verified" by DroppedBeat
+- 584 "Meteorite" by Zibox
+- 588 "Wood with broken paint" by Schrottkatze
+- 592 "Fairy Wings" by Stan
+- 596 "Scifi tank windows" by Schrottkatze
+- 601 "Stained glass flower pattern" by effectrix
+- 602 "Ceramic Floor Tiles with floral pattern" by effectrix
+- 606 "Basic Hearth SDF" by Imarion
+- 621 "Colorful Tiles" by DroppedBeat
+- 622 "The Point" by DroppedBeat
+- 623 "Colorful Point" by DroppedBeat
+- 625 "Pixelated Flame" by DroppedBeat
+- 626 "Radar" by DroppedBeat
+- 627 "Dead Cell - Cells texture" by Amirtha
+- 628 "Circular Progress" by DroppedBeat
+- 630 "Energy Orb" by DroppedBeat
+- 635 "Pixel Water Shader" by Amirtha
+- 637 "Dust" by muhuk
+- 638 "Tornado" by DroppedBeat
+- 639 "Maurya Trimsheet" by Stan
+- 640 "Lens Flare" by DroppedBeat
+- 641 "propeller motion" by DroppedBeat
+- 642 "simple trail" by DroppedBeat
+- 645 "Stylized Road" by Swiperino
+- 646 "Matrix Tunnel" by DroppedBeat
+- 647 "Simple Matrix Rain" by DroppedBeat
+- 648 "Scifi Rings" by DroppedBeat
+- 649 "BeamHead01" by TheMaxee
+- 652 "simple map generator" by DroppedBeat
+- 656 "planet" by DroppedBeat
+- 658 "rainy puddle" by DroppedBeat
+- 660 "Electrocardiogram" by DroppedBeat
+- 662 "Star Trails" by DroppedBeat
+- 663 "Speed Lines" by DroppedBeat
+- 666 "Motion Blur" by DroppedBeat
+- 667 "Ocean Waves" by DroppedBeat
+- 668 "Pixelated Terrain" by DroppedBeat
+- 669 "Star Prison" by DroppedBeat
+- 670 "Flare Generator" by DroppedBeat
+- 671 "Timecode Display" by DroppedBeat
+- 674 "1D Noisescape" by DroppedBeat
+- 675 "Flappy Bird" by DroppedBeat
+- 677 "Mario Bros - Original Question Mark Block" by Hugemagichands
+- 679 "Hollow Sphere" by DroppedBeat
+- 681 "Aurora" by DroppedBeat
+- 682 "Dust Cloud" by muhuk
+- 683 "Underground sign" by pixelpoops
+- 686 "Metro train" by Tarox
+- 690 "ghost flame" by DroppedBeat
+- 694 "Ivy wall" by Tarox
+- 695 "Scrolling Light" by DroppedBeat
+- 696 "Falling Particles" by DroppedBeat
+- 699 "Node-preset" by TheMaxee
+- 700 "Underwater" by DroppedBeat
+- 701 "Fiery Gate" by DroppedBeat
+- 707 "Target Lock" by DroppedBeat
+- 709 "Victorian wall" by Tarox
+- 711 "Swirling Particles" by DroppedBeat
+- 715 "There must be some treasures" by Tarox
+- 716 "Colorful Terminals" by DroppedBeat
+- 717 "Triangle Grid Pulse" by DroppedBeat
+- 721 "Nixie Tubes" by DroppedBeat
+- 724 "Gothic Window" by Evophon Media
+- 726 "Sealing Talismans" by DroppedBeat
+- 727 "Color Burst" by DroppedBeat
+- 728 "Alien Nest" by Zibox
+- 731 "Spiral Trails" by DroppedBeat
+- 735 "Displaced Waves" by DroppedBeat
+- 736 "Tornado" by DroppedBeat
+- 737 "Dark Energy" by DroppedBeat
+- 739 "Yucky Bacteria" by Nic
+- 740 "Doped Cells" by Nic
+- 747 "Carbon Fiber" by Tom3s
+- 749 "ChainMail_flat" by Vizzen117
+- 755 "Steam" by DroppedBeat
+- 756 "Mandelbrot" by DroppedBeat
+- 757 "Light Rays" by luizgfx
+- 758 "Glitching" by DroppedBeat
+- 760 "Bouncing Glyphs" by DroppedBeat
+- 762 "Connections" by DroppedBeat
+- 767 "Paint_01" by yosoyfreeman
+- 768 "Plastic_01" by yosoyfreeman
+- 772 "Sparkles" by DroppedBeat
+- 774 "Old doors trim" by cgmytro
+- 775 "Charging" by DroppedBeat
+- 776 "Crystal" by DroppedBeat
+- 777 "Ruby" by DroppedBeat
+- 778 "Linear Progress" by DroppedBeat
+- 780 "Drill" by DroppedBeat
+- 782 "Open Your Eyes" by antourenein
+- 785 "nunning stitch double" by aaws424
+- 786 "cross stitch brush" by aaws424
+- 788 "stitch maker" by aaws424
+- 794 "polygon burst" by DroppedBeat
+- 795 "lowpoly flame" by DroppedBeat
+- 797 "Instances on Disk" by DroppedBeat
+- 798 "Point Plotting" by DroppedBeat
+- 800 "Liked" by DroppedBeat
+- 802 "minecraft map" by aaws424
+- 803 "Drowning" by DroppedBeat
+- 804 "Goo" by DroppedBeat
+- 805 "DDR2" by DroppedBeat
+- 807 "Summer" by DroppedBeat
+- 808 "Image Cutter" by DroppedBeat
+- 809 "Exhaust" by DroppedBeat
+- 810 "Target Locks" by DroppedBeat
+- 811 "Boxes" by DroppedBeat
+- 812 "lazy triangle voronoi" by DroppedBeat
+- 813 "Barbie Movie" by antourenein
+- 814 "Kishimisu Pattern" by realvjy
+- 815 "Celestial" by DroppedBeat
+- 816 "Voronoi Diagram" by DroppedBeat
+- 819 "Orb" by DroppedBeat
+- 820 "DigitalTunnel" by m21-cerutti
+- 823 "Magic Star" by m21-cerutti
+- 824 "Protostar" by DroppedBeat
+- 827 "Unreleased" by DroppedBeat
+- 829 "Blue Flame" by DroppedBeat
+- 830 "Hadouken" by DroppedBeat
+- 832 "Waterfall" by DroppedBeat
+- 833 "LCD" by DroppedBeat
+- 834 "Minimal Matrix" by DroppedBeat
+- 835 "Rain Drops" by DroppedBeat
+- 848 "bamboo " by free_king
+- 852 "Buffer Trails" by DroppedBeat
+- 856 "paper "M"" by free_king
+- 859 "Game of Life" by DroppedBeat
+- 860 "Cloudy Game of Life" by DroppedBeat
+- 862 "Energy Ball" by DroppedBeat
+- 864 "Dirty Countertop surface" by xpehik
+- 870 "Triangle Grid" by DroppedBeat
+- 874 "Meteor Shower" by DroppedBeat
+- 880 "Hex Shield" by DroppedBeat
+- 884 "Flare" by DroppedBeat
+- 888 "Time Maker" by DroppedBeat
+- 889 "Random Shiny Material" by Bravo 0-7
+- 891 "Zoom" by DroppedBeat
+- 892 "matel_poly_flower" by free_king
+- 897 "Puddle" by DroppedBeat
+- 900 "Hemispherical SDF AO" by DroppedBeat
+- 901 "Raymarching AO Shadows" by DroppedBeat
+- 902 "Animated Clock v2" by DroppedBeat
+- 903 "Beach" by DroppedBeat
+- 904 "Simpler Ocean Waves" by DroppedBeat
+- 912 "Brain" by DroppedBeat
+- 922 "Instant" by DroppedBeat
+- 924 "Aura" by DroppedBeat
+- 927 "OkLab vs hsv" by DroppedBeat
+- 929 "Simpler Matrix Rain" by DroppedBeat
+- 930 "Water Rings" by DroppedBeat
+- 931 "Rasengan" by DroppedBeat
+- 933 "Pixel Waterfall" by DroppedBeat
+- 934 "Pixel Waterfall 2" by DroppedBeat
+- 935 "Material Maker QR" by DroppedBeat
+- 938 "Turing Runes" by DroppedBeat
+- 940 "Enchantment Glyphs" by DroppedBeat
+- 941 "Pixel Capitals" by DroppedBeat
+- 945 "StylizedWall" by Saurav72
+- 953 "Shield" by DroppedBeat
+- 954 "Crate" by Saurav72
+- 958 "Square Tunnel" by DroppedBeat
+- 959 "Path tracing sandbox" by PauloFalcao
+- 960 "GlassPane" by Rev21
+- 965 "lut-based display" by DroppedBeat
+- 967 "Flappy Bird v1.4" by DroppedBeat
+- 968 "Surprised Pikachu" by DroppedBeat
+- 974 "Shattered Floor" by DroppedBeat
+- 978 "Happy Mosaic" by Richard_S
+- 979 "Oil Pollution" by Richard_S
+- 980 "Nautical Origin" by DroppedBeat
+- 981 "Spider eggs" by Tarox
+- 984 "Written Material" by DroppedBeat
+- 986 "Kanji Practice" by DroppedBeat
+- 987 "Perlin sin sphere" by PauloFalcao
+- 993 "Compressed" by DroppedBeat
+- 994 "Frieren Circle" by DroppedBeat
+- 995 "Fancy Doorway" by Richard_S
+- 998 "Kryptonite" by Tarox
+- 1000 "Soul Flame" by DroppedBeat
+- 1003 "Voronoi Diagram" by DroppedBeat
+- 1007 "Play Button" by RYUN
+- 1008 "Impact decal" by Tarox
+- 1009 "Particle Flames" by DroppedBeat
+- 1010 "Transmutation circle" by werfer
+- 1014 "Hex Shield 2" by DroppedBeat
+- 1015 "Minimal Flame" by DroppedBeat
+- 1016 "Momentum16" by PauloFalcao
+- 1017 "Multiline text" by ogbog
+- 1032 "Spooky cubes" by PauloFalcao
+- 1033 "Eyeball" by aphoenicis
+- 1037 "custome UVmapMesh streching" by helloworld_tiger94
+- 1039 "Curtains colour" by helloworld_tiger94
+- 1040 "Red Royal Palace tiles" by helloworld_tiger94
+- 1041 "Black and white dotted sofa" by helloworld_tiger94
+- 1042 "fast test for FPS" by helloworld_tiger94
+- 1044 "Fake Wood Flooring" by untoldbumpkins
+- 1046 "simple road sign" by helloworld_tiger94
+- 1048 "dots" by war
+- 1049 "dots" by war
+- 1051 "minecraft bedrock texture" by helloworld_tiger94
+- 1052 "blood" by helloworld_tiger94
+- 1053 "death_star" by helloworld_tiger94
+- 1058 "bend" by csmcslnc
+- 1060 "Cartoon Stone Floor" by agarebara
+- 1063 "Opening dark eye VFX" by NotArme
+- 1064 "Debugging Hell" by DroppedBeat
+- 1065 "PastelClouds" by PabloJomer
+- 1067 "Stonks" by DroppedBeat
+- 1068 "Number Generator" by DroppedBeat
+- 1069 "Cosmos" by DroppedBeat
+- 1079 "Candle Flame" by DroppedBeat
+- 1091 "cement scratch" by not_leaf_lover
+- 1094 "Cutting Mat" by NotArme
+- 1102 "Glow-in-the-dark Star Stickers" by UnamiFox
+- 1109 "Gauze Bandages (Bloody)" by SJHooks
+- 1110 "Gauze Bandages (Clean)" by SJHooks
+- 1114 "Overgrown Star" by DroppedBeat
+- 1116 "Illuminated Fish Pond" by DroppedBeat
+- 1118 "Tiled floor with splatters" by NotArme
+- 1119 "Crystalline Scree" by NotArme
+- 1123 "Potion" by NotArme
+- 1127 "Tactical Trimsheet" by NotArme
+- 1128 "Manjerico" by PauloFalcao
+- 1131 "Rubber flooring" by marcatore
+- 1132 "1" by Jirkji11
+- 1133 "Enigma Stream" by unfa
+- 1134 "Gear Box" by DroppedBeat
+- 1135 "Procedural MM Logo" by DroppedBeat
+- 1142 "Souls" by DroppedBeat
+- 1144 "Cleaving Eyes" by neoNote
+- 1145 "Black Hole" by DroppedBeat
+- 1147 "Nordic Rune Pattern" by DroppedBeat
+- 1150 "Smoke Puff (Animated)" by unfa
+- 1154 "FSL" by PauloFalcao
+- 1157 "Pixel Tomb" by HXSoft
+- 1161 "Jim14" by jim14
+- 1173 "Ornaments in box" by Saurav72
+- 1174 "Cool Material" by jim14
+- 1175 "Starbox" by jim14
+- 1178 "Hollow Knight Infection" by jim14
+- 1180 "Halloween Pumpkin" by Saurav72
+- 1190 "Better Scratches (Generator)" by rubberduck
+- 1191 "Splat Generators" by rubberduck
+- 1192 "Grunge Dirty Wet" by rubberduck
+- 1194 "Stylized Rivetted Material" by Saurav72
+- 1196 "Precious (Vedic Yantra)" by Saurav72
+- 1198 "Buffer Iteration Experiments" by rubberduck
+- 1199 "Animated Bubbling Slime" by rubberduck
+- 1200 "Pumpkin" by DroppedBeat
+- 1203 "Rivetted (Animated)" by DroppedBeat
+- 1207 "Opal" by CaptainMarv3l
+- 1233 "Rope" by Saurav72
+- 1234 "Warped Time" by DroppedBeat
+- 1245 "Free Custom Nodes (V2)" by rubberduck
+- 1247 "Stylized Ripple" by DroppedBeat
+- 1248 "Basket Material" by Saurav72
+- 1249 "Fluid Noise" by TSTXD777
+- 1250 "Sample UV Coords" by TSTXD777
+- 1252 "Presents" by DroppedBeat
+- 1253 "2d depth" by DroppedBeat
+- 1254 "Connection Issue vfx" by menotso
+- 1256 "Paint Brush Patterns #1" by rubberduck
+- 1267 "Drop Ceiling" by Adamyuyuyu
+- 1272 "bandage with blood" by jix
+- 1274 "low poly mesh fence" by jix
+- 1275 "Ixo Moon Gravestone" by D-Meat
+- 1278 "Marble" by DroppedBeat
+- 1279 "Rock Salt Bricks" by Adamyuyuyu
+- 1280 "Jade" by Adamyuyuyu
+- 1303 "tennis_baall" by leoskateman
+- 1304 "Kiwi Material" by Saurav72
+- 1327 "Stained Glass" by any_other
+- 1333 "parking_lot_mm_trainning" by leoskateman
+- 1336 "moulded_foam_ceilling" by leoskateman
+- 1342 "Clay Brown" by Adamyuyuyu
+- 1343 "Clay White" by Adamyuyuyu
+- 1344 "Clay Dark" by Adamyuyuyu
+- 1372 "Marvel_Material" by Saurav72
+- 1373 "Marvel" by Saurav72
+- 1374 "Marvel" by Saurav72
+- 1375 "Pitaya" by Saurav72
+- 1376 "Lime" by Saurav72
+- 1377 "Orange" by Saurav72
+- 1378 "Onion" by Saurav72
+- 1379 "Kiwi" by Saurav72
+- 1381 "empire_first_death_star" by leoskateman
+- 1407 "Fingerprint Generator" by Saurav72
+- 1409 "dry_lake_bed" by leoskateman
+- 1415 "Graph Generator" by Saurav72
+- 1423 "Stylized Limestone Cliff" by rubberduck
+- 1424 "air conditionner box" by leoskateman
+- 1425 "No Parking" by any_other
+- 1426 "pokéball" by leoskateman
+- 1427 "Bitwise Spaghetti (read desc.!)" by HAZPUNK
+- 1428 "Stylized Flame" by Saurav72
+- 1432 "HeartPulseRate_1" by Saurav72
+- 1433 "HeartPulseRate_2" by Saurav72
+- 1434 "HeartPulseRate_3" by Saurav72
+- 1435 "Matrix Wireframe" by Adamyuyuyu
+- 1446 "Matrix001" by Saurav72
+- 1454 "Abstract_Material_001" by Saurav72
+- 1455 "Abstract_Material_002" by Saurav72
+- 1456 "Abstract_Material_003" by Saurav72
+- 1457 "Red Mirror" by Adamyuyuyu
+- 1458 "Blind Mirror" by Adamyuyuyu
+- 1459 "Corrupted Mirror" by Adamyuyuyu
+- 1460 "Abstract_Material_004" by Saurav72
+- 1461 "Abstract_Material_005" by Saurav72
+- 1462 "Abstract_Material_006" by Saurav72
+- 1466 "Abstract_Material_007" by Saurav72
+- 1470 "Abstract_Material_008" by Saurav72
+- 1471 "Basic Mirror" by Adamyuyuyu
+- 1476 "No Signal" by DroppedBeat
+- 1477 "Stylized Clouds Generator" by Saurav72
+- 1478 "Stylized Landscape" by Saurav72
+- 1479 "Pacman_Animation" by Saurav72
+- 1482 "Architectural_facade_001" by Saurav72
+- 1483 "Architectural_facade_002" by Saurav72
+- 1484 "Architectural_facade_003" by Saurav72
+- 1497 "Drapes" by Saurav72
+- 1498 "AbstractWoodenMaterial" by Saurav72
+- 1503 "Sulphur" by Adamyuyuyu
+- 1504 "Paper_Folded" by Saurav72
+- 1505 "Paper_Clean" by Saurav72
+- 1506 "Paper (Page)" by Saurav72
+- 1510 "snowfield" by owen
+- 1511 "Camouflage" by Saurav72
+- 1512 "Camouflage" by Saurav72
+- 1513 "Faceless Deck" by DroppedBeat
+- 1514 "Sci_fi_Radar" by Saurav72
+- 1527 "Floating Cube" by PauloFalcao
+- 1540 "Godot SDF" by DroppedBeat
+- 1543 "Acrylic oil painting" by Saurav72
+- 1544 "Acrylic oil painting" by Saurav72
+- 1545 "Robot Eye" by dan3008
+- 1551 "Pattern" by Saurav72
+- 1552 "Jigsaw" by DroppedBeat
+- 1553 "PatternGenerator" by Saurav72
+- 1555 "Stylized Meteor " by Saurav72
+- 1556 "Interlock" by DroppedBeat
+- 1558 "Coding" by DroppedBeat
+- 1559 "Radioactive_Pattern (Improved)" by Saurav72
+- 1567 "Proceduralism" by DroppedBeat
+- 1568 "StylizedTiles" by Saurav72
+- 1570 "KitchenTiles" by Saurav72
+- 1571 "KitchenTiles" by Saurav72
+- 1572 "KitchenTiles" by Saurav72
+- 1574 "Stars Sky" by D-Meat
+- 1579 "Animated Text Tiles" by DroppedBeat
+- 1584 "YinYang Pattern" by Saurav72
+- 1586 "Circuits" by DroppedBeat
+- 1594 "Stylized Cloud generator" by Saurav72
+- 1595 "Playing with Controlled Variations" by rubberduck
+- 1602 "skateboard" by leoskateman
+- 1608 "Appartements" by spaghetti
+- 1610 "tau_ceti_decals" by leoskateman
+- 1612 "broken_lcd_screen" by leoskateman
+- 1616 "Foliage" by DroppedBeat
+- 1620 "Circuit Board" by DroppedBeat
+- 1626 "Skyscraper Window Panel" by Varjopappi
+- 1628 "european beech branch" by spaghetti
+- 1641 "Spikes" by Adamyuyuyu
+- 1642 "Lapis Lazuli" by Adamyuyuyu
+- 1643 "Cinnabar" by Adamyuyuyu
+- 1646 "Soviet Appartment" by spaghetti
+- 1652 "cardboard_box_adhesive" by leoskateman
+- 1654 "Diamond" by DJAAA2026
+- 1659 "Ukraine House Window" by spaghetti
+- 1662 "simple_facade" by leoskateman
+- 1663 "golf_ball" by leoskateman
+- 1671 "Cute Planet" by Saurav72
+- 1679 "Animation Pattern" by DJAAA2026
+- 1683 "Industrial (Day 1,2)" by Saurav72
+- 1685 "Terrestrial (Day 5,6)" by Saurav72
+- 1686 "Chiseled (Day 7,8)" by Saurav72
+- 1687 "Marine (Day 9,10)" by Saurav72
+- 1688 "Opulent (Day 11,12)" by Saurav72
+- 1689 "Opulent (Day 11,12)" by Saurav72
+- 1690 "Desolate (Day 13,14)" by Saurav72
+- 1691 "Academy (Day 15,16)" by Saurav72
+- 1692 "Academy (Day 15,16)" by Saurav72
+- 1694 "to_do_list" by leoskateman
+- 1697 "Desolate" by any_other
+- 1703 "Blackout Poetry" by DroppedBeat
+- 1705 "backrooms wallpaper" by error 404
+- 1706 "Christmas Ball" by Saurav72
+- 1707 "backrooms drop ceiling" by error 404
+- 1711 "verdant" by any_other
+- 1712 "ivy_branch_upward" by leoskateman
+- 1715 "damaged metal" by any_other
+- 1718 "ball_face" by leoskateman
+- 1727 "Blue tarp" by Tarox
+- 1729 "paper_lantern" by leoskateman
+- 1732 "Pearl" by Adamyuyuyu
+- 1735 "lovely_hearts" by leoskateman
+- 1737 "Scrawled (Day 17-18)" by Saurav72
+- 1738 "Turd, Putrid (Day 19 , 20)" by Saurav72
+- 1739 "Verdant (Day 21,22 )" by Saurav72
+- 1740 "Verdant (Day 21,22)" by Saurav72
+- 1741 "Organized (Day 23,24)" by Saurav72
+- 1742 "Makeshift (Day 25,26 )" by Saurav72
+- 1749 "fields from satellite" by spaghetti
+- 1750 "tasty_broccoli" by leoskateman
+- 1751 "carrot" by leoskateman
+- 1755 "garlic" by leoskateman
+- 1756 "brown_boletus" by leoskateman
+- 1758 "tomatoe" by leoskateman
+- 1759 "cucumber" by leoskateman
+- 1760 "peanut" by leoskateman
+- 1762 "red_meat" by leoskateman
+- 1763 "egg_cellent" by leoskateman
+- 1766 "lemon" by leoskateman
+- 1767 "turnip" by leoskateman
+- 1768 "strawberry" by leoskateman
+- 1770 "potato" by leoskateman
+- 1775 "pumpkin" by leoskateman
+- 1779 "pear" by leoskateman
+- 1780 "pineapple" by leoskateman
+- 1781 "apple" by leoskateman
+- 1782 "chessnut" by leoskateman
+- 1786 "artichoke" by leoskateman
+- 1787 "bread" by leoskateman
+- 1788 "Lego" by Saurav72
+- 1789 "donut" by leoskateman
+- 1792 "rosette_dry_sausage" by leoskateman
+- 1793 "Sci-Fi Vent" by SquidSushi_
+- 1797 "red_barrel" by leoskateman
+- 1799 "Picnic Tablecloth" by Saurav72
+- 1801 "RoadPavement" by Saurav72
+- 1802 "Trampoline Mesh" by Aowood
+- 1805 "Tank Paint" by spaghetti
+- 1808 "hamburger" by leoskateman
+- 1810 "kde plasma wallpaper" by spaghetti
+- 1812 "KDE wallpaper 2" by spaghetti
+- 1820 "companion_cube" by leoskateman
+- 1821 "blue_portal" by leoskateman
+- 1826 "planter pot" by leoskateman
+- 1840 "Candle Flame (Animated)" by unfa
+- 1841 "Candle Flame (static)" by unfa
+- 1842 "cheeseburger" by leoskateman
+- 1848 "Lively Waveform" by unfa
+- 1849 "Pacman Maze" by Saurav72
+- 1853 "Opacity Lower" by jim14
+- 1854 "Fireworks" by DroppedBeat
+- 1856 "Simple Uneven Glass" by gyoza
+- 1857 "Animated Clock v3" by DroppedBeat
+- 1858 "Minimal Flame" by DroppedBeat
+- 1862 "Matrix Golf" by DroppedBeat
+- 1866 "CartoonWOOD" by whyoda
+- 1867 "MissingTiles" by Saurav72
+- 1871 "Grapes" by Saurav72
+- 1875 "grass_card" by leoskateman
+- 1878 "Paint Strokes" by nullMeansNull
+- 1880 "Germany" by DJAAA2026
+- 1882 "Maze of Colors" by DJAAA2026
+- 1884 "Fireball (animated)" by unfa
+- 1887 "trashbag_v1" by leoskateman
+- 1889 "Crate" by Saurav72
+- 1891 "strawberry_smarties_gelato" by leoskateman
+- 1899 "Metal Container" by Saurav72
+- 1901 "Old Wrinkled Paper" by Saurav72
+- 1903 "Blue Shapes" by DJAAA2026
+- 1910 "Rainbow Flare" by DJAAA2026
+- 1914 "Rainbow Animation" by DJAAA2026
+- 1922 "Rainbow Animation (Noise Fluid)" by DJAAA2026
+- 1923 "Mandelbrot" by DJAAA2026
+- 1931 "barb_wire" by leoskateman
+- 1935 "Genshin Impact_fiber_01" by ChibiGhost
+- 1940 "Plastic Bathroom Ceiling" by Adamyuyuyu
+- 1944 "Backrooms Ceiling" by Adamyuyuyu
+- 1946 "Backrooms Ceiling 2" by Adamyuyuyu
+- 1959 "Infinite Fractal Forms" by PauloFalcao
+- 1963 "Norway Spruce" by spaghetti
+- 1975 "Obsidian" by Adamyuyuyu
+- 1982 "Capitole du Libre" by RodZilla
+- 1987 "Chrome Bricks" by Adamyuyuyu
+- 1996 "RGB Wheel" by DJAAA2026

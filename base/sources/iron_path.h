@@ -31,6 +31,7 @@ bool  path_is_texture(char *path);
 bool  path_is_sound(char *path);
 bool  path_is_font(char *path);
 bool  path_is_project(char *path);
+bool  path_is_ptex(char *path); // Material Maker graph
 bool  path_is_script(char *path);
 bool  path_is_json(char *path);
 bool  path_is_text(char *path);

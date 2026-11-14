@@ -52,6 +52,8 @@ void parser_material_init() {
 	parser_material_out_normaltan = "vec3(0.5, 0.5, 1.0)";
 
 	parser_material_parsing_basecolor = false;
+	mm_bridge_begin(); // Material Maker nodes (mm_bridge.c): a new shader, node previews call init directly
+	mm_buffers_batch_begin(); // Its buffer renders share one generation, eviction waits for the finalize
 }
 
 bool parser_material_is_default_normal(char *s) {
@@ -146,10 +148,7 @@ shader_out_t *parser_material_parse(ui_node_canvas_t *canvas, node_shader_contex
 	parser_material_shader  = _shader;
 
 	if (parser_material_start_group != NULL) {
-		parser_material_push_group(parser_material_start_group);
-		array_delete(parser_material_parents);
-		parser_material_parents      = parser_material_start_parents;
-		parser_material_owns_parents = false;
+		parser_material_enter_parents(parser_material_start_parents); // Every group from the outermost in, not just start_group
 	}
 
 	if (parser_material_start_node != NULL) {
@@ -176,6 +175,7 @@ shader_out_t *parser_material_parse(ui_node_canvas_t *canvas, node_shader_contex
 
 void parser_material_finalize(node_shader_context_t *con) {
 	node_shader_t *shader = con->shader;
+	mm_bridge_request_builtins(shader); // Built-ins Material Maker nodes read at other uvs
 
 	if (shader->frag_dotnv) {
 		shader->frag_vvec = true;
@@ -266,6 +266,8 @@ void parser_material_finalize(node_shader_context_t *con) {
 		node_shader_add_out(shader, "vec3 vcolor");
 		node_shader_write_attrib_vert(shader, "output.vcolor = input.col.rgb;");
 	}
+	mm_bridge_finalize(shader); // Copies of the built-ins Material Maker nodes evaluate elsewhere, after their declarations
+	mm_buffers_batch_end();
 }
 
 ui_node_canvas_t *parser_material_get_group(char *name) {
@@ -291,20 +293,180 @@ void parser_material_pop_group() {
 	parser_material_links = g->links;
 }
 
+// Canvas a parent node opens: the group of a GROUP node, the material of a MATERIAL node
+static ui_node_canvas_t *parser_material_parent_canvas(ui_node_t *p) {
+	if (string_equals(p->type, "MATERIAL")) {
+		i32 mi = p->buttons->length > 0 ? p->buttons->buffer[0]->default_value->buffer[0] : -1;
+		return mi >= 0 && mi < g_project->_->materials->length ? g_project->_->materials->buffer[mi]->canvas : NULL;
+	}
+	return parser_material_get_group(p->name);
+}
+
+// Starts parsing inside nested groups: parents lists the group nodes from the outermost in, each one's canvas is entered.
+// The list is copied, the caller keeps it. Entering only the innermost canvas would leave group inputs of nested groups
+// reading the links of the root canvas instead of the enclosing group.
+void parser_material_enter_parents(ui_node_t_array_t *parents) {
+	for (i32 i = 0; parents != NULL && i < parents->length; ++i) {
+		ui_node_t        *p = parents->buffer[i];
+		ui_node_canvas_t *g = parser_material_parent_canvas(p);
+		if (g == NULL) {
+			break;
+		}
+		any_array_push(parser_material_parents, p);
+		parser_material_push_group(g);
+	}
+}
+
+// ███████╗ ██████╗  ██████╗██╗  ██╗███████╗████████╗███████╗
+// ██╔════╝██╔═══██╗██╔════╝██║ ██╔╝██╔════╝╚══██╔══╝██╔════╝
+// ███████╗██║   ██║██║     █████╔╝ █████╗     ██║   ███████╗
+// ╚════██║██║   ██║██║     ██╔═██╗ ██╔══╝     ██║   ╚════██║
+// ███████║╚██████╔╝╚██████╗██║  ██╗███████╗   ██║   ███████║
+// ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝   ╚═╝   ╚══════╝
+
+// Socket types and the GLSL type of their values:
+//   VALUE float, RGB vec3, VECTOR vec3, RGBA vec4
+//   Material Maker: MM_SDF2D float, MM_SDF3D float, MM_SDF3DC vec2, MM_TEX3D_GS float, MM_TEX3D vec3, MM_V4V4 vec4, MM_FILL vec4
+// An output's result variable has the GLSL type of its socket. RGB, RGBA, VECTOR and VALUE convert into each other,
+// a Material Maker type only links to itself and to the pairs sdf3d / sdf3dc and tex3d / tex3d_gs.
+
+char *parser_material_socket_glsl_type(char *type) {
+	if (type == NULL) {
+		return "float";
+	}
+	if (string_equals(type, "RGBA") || string_equals(type, "MM_V4V4") || string_equals(type, "MM_FILL")) {
+		return "vec4";
+	}
+	if (string_equals(type, "RGB") || string_equals(type, "VECTOR") || string_equals(type, "MM_TEX3D")) {
+		return "vec3";
+	}
+	if (string_equals(type, "MM_SDF3DC")) {
+		return "vec2";
+	}
+	return "float"; // VALUE, MM_SDF2D, MM_SDF3D, MM_TEX3D_GS
+}
+
+static bool parser_material_is_color_type(char *type) {
+	return string_equals(type, "RGB") || string_equals(type, "RGBA") || string_equals(type, "VECTOR") || string_equals(type, "VALUE");
+}
+
+// Zero of the socket type's GLSL type, RGBA gets an opaque alpha
+char *parser_material_socket_zero(char *type) {
+	char *t = parser_material_socket_glsl_type(type);
+	return string_equals(t, "vec4")   ? (string_equals(type, "RGBA") ? "vec4(0.0, 0.0, 0.0, 1.0)" : "vec4(0.0, 0.0, 0.0, 0.0)")
+	       : string_equals(t, "vec3") ? "vec3(0.0, 0.0, 0.0)"
+	       : string_equals(t, "vec2") ? "vec2(0.0, 0.0)"
+	                                  : "0.0";
+}
+
+char *parser_material_greyscale(char *s) {
+	return string_tmp("dot(%s.rgb, vec3(0.299, 0.587, 0.114))", s);
+}
+
+// Converts s, an expression of socket type from, to socket type to. NULL when the two types do not link.
+char *parser_material_convert(char *s, char *from, char *to) {
+	if (from == NULL || to == NULL || string_equals(from, to)) {
+		return s;
+	}
+	if (parser_material_is_color_type(from) && parser_material_is_color_type(to)) {
+		bool from_rgba = string_equals(from, "RGBA");
+		bool from_val  = string_equals(from, "VALUE");
+		if (string_equals(to, "VALUE")) {
+			return string_equals(from, "VECTOR") ? string_tmp("%s.x", s) : parser_material_greyscale(s);
+		}
+		if (string_equals(to, "RGBA")) {
+			return from_val ? string_tmp("vec4(vec3(%s), 1.0)", s) : string_tmp("vec4(%s, 1.0)", s);
+		}
+		// RGB or VECTOR
+		return from_rgba ? string_tmp("%s.xyz", s) : from_val ? string_tmp("vec3(%s)", s) : s;
+	}
+	// Material Maker conversions
+	if (string_equals(from, "MM_SDF3D") && string_equals(to, "MM_SDF3DC")) {
+		return string_tmp("vec2(%s, 0.0)", s);
+	}
+	if (string_equals(from, "MM_SDF3DC") && string_equals(to, "MM_SDF3D")) {
+		return string_tmp("%s.x", s);
+	}
+	if (string_equals(from, "MM_TEX3D_GS") && string_equals(to, "MM_TEX3D")) {
+		return string_tmp("vec3(%s)", s);
+	}
+	if (string_equals(from, "MM_TEX3D") && string_equals(to, "MM_TEX3D_GS")) {
+		return string_tmp("(dot(%s, vec3(1.0)) / 3.0)", s);
+	}
+	return NULL;
+}
+
+// Expression of the socket's own default_value in its own type
+static char *parser_material_socket_default(ui_node_socket_t *inp) {
+	char        *t = parser_material_socket_glsl_type(inp->type);
+	f32_array_t *d = inp->default_value;
+	i32          n = d != NULL ? d->length : 0;
+	if (n == 0) {
+		return parser_material_socket_zero(inp->type);
+	}
+	char *c[4];
+	for (i32 i = 0; i < 4; ++i) {
+		// Missing components repeat the first one, a missing RGBA alpha is opaque
+		c[i] = f32_to_string_with_zeros(i < n ? d->buffer[i] : (i == 3 && string_equals(inp->type, "RGBA")) ? 1.0 : d->buffer[0]);
+	}
+	return string_equals(t, "vec4")   ? string_tmp("vec4(%s, %s, %s, %s)", c[0], c[1], c[2], c[3])
+	       : string_equals(t, "vec3") ? string_tmp("vec3(%s, %s, %s)", c[0], c[1], c[2])
+	       : string_equals(t, "vec2") ? string_tmp("vec2(%s, %s)", c[0], c[1])
+	                                  : c[0];
+}
+
+// Unlinked input in its own type, read from the live values texture when the canvas has live values
+static char *parser_material_unlinked_input(ui_node_socket_t *inp) {
+	char *live = parser_material_live_input(inp);
+	if (live == NULL) {
+		return parser_material_socket_default(inp);
+	}
+	char *t = parser_material_socket_glsl_type(inp->type);
+	if (string_equals(t, "vec4")) {
+		bool has_alpha = inp->default_value != NULL && inp->default_value->length >= 4;
+		return has_alpha ? live : string_tmp("vec4(%s.xyz, 1.0)", live);
+	}
+	return string_tmp(string_equals(t, "vec3") ? "%s.xyz" : string_equals(t, "vec2") ? "%s.xy" : "%s.x", live);
+}
+
+// Input as an expression of socket type `type` (GLSL type from parser_material_socket_glsl_type). A linked input converts
+// the linked output to the type, an unlinked one or a link the type does not accept returns default_expr, or the socket's
+// own value converted to the type when default_expr is NULL. This is how Material Maker nodes read their inputs.
+char *parser_material_parse_input_as(ui_node_socket_t *inp, char *type, char *default_expr) {
+	ui_node_link_t *l         = parser_material_get_input_link(inp);
+	ui_node_t      *from_node = l != NULL ? parser_material_get_node(l->from_id) : NULL;
+	if (from_node != NULL && l->from_socket < from_node->outputs->length) {
+		char *res_var = parser_material_write_result(l);
+		char *res     = parser_material_convert(res_var, from_node->outputs->buffer[l->from_socket]->type, type);
+		if (res != NULL) {
+			return res;
+		}
+	}
+	if (default_expr != NULL) {
+		return default_expr;
+	}
+	char *res = parser_material_convert(parser_material_unlinked_input(inp), inp->type, type);
+	return res != NULL ? res : parser_material_socket_zero(type);
+}
+
+// Input in its own socket type. RGB and VECTOR read as vec3 and VALUE as float the way they always have, RGBA as vec4.
 char *parser_material_parse_input(ui_node_socket_t *inp) {
-	if (string_equals(inp->type, "RGB")) {
-		return parser_material_parse_vector_input(inp);
-	}
-	else if (string_equals(inp->type, "RGBA")) {
-		return parser_material_parse_vector_input(inp);
-	}
-	else if (string_equals(inp->type, "VECTOR")) {
+	if (string_equals(inp->type, "RGB") || string_equals(inp->type, "VECTOR")) {
 		return parser_material_parse_vector_input(inp);
 	}
 	else if (string_equals(inp->type, "VALUE")) {
 		return parser_material_parse_value_input(inp, false);
 	}
-	return NULL;
+	return parser_material_parse_input_as(inp, inp->type, NULL);
+}
+
+// Result of a node output as RGB for the node previews
+char *parser_material_preview_rgb(char *res, char *type) {
+	char *t = parser_material_socket_glsl_type(type);
+	return string_equals(t, "vec4")   ? string_tmp("%s.rgb", res)
+	       : string_equals(t, "vec3") ? res
+	       : string_equals(t, "vec2") ? string_tmp("vec3(%s.x)", res)
+	                                  : parser_material_to_vec3(res);
 }
 
 i32 parser_material_socket_index(ui_node_t *node, ui_node_socket_t *socket) {
@@ -316,33 +478,53 @@ i32 parser_material_socket_index(ui_node_t *node, ui_node_socket_t *socket) {
 	return -1;
 }
 
+// Output of a group node, in the type of the socket
 char *parser_material_parse_group(ui_node_t *node, ui_node_socket_t *socket) {
-	any_array_push(parser_material_parents, node); // Entering group
-	parser_material_push_group(parser_material_get_group(node->name));
-	ui_node_t *output_node = parser_material_node_by_type(parser_material_nodes, "GROUP_OUTPUT");
-	if (output_node == NULL) {
-		return NULL;
+	ui_node_canvas_t *g           = parser_material_get_group(node->name);
+	ui_node_t        *output_node = g != NULL ? parser_material_node_by_type(g->nodes, "GROUP_OUTPUT") : NULL;
+	i32               index       = parser_material_socket_index(node, socket);
+	if (output_node == NULL || index < 0 || index >= output_node->inputs->length) {
+		return parser_material_socket_zero(socket->type); // Group deleted, renamed or out of sync
 	}
-	i32               index     = parser_material_socket_index(node, socket);
+	any_array_push(parser_material_parents, node); // Entering group
+	parser_material_push_group(g);
 	ui_node_socket_t *inp       = output_node->inputs->buffer[index];
-	char             *out_group = parser_material_parse_input(inp);
+	char             *out_group = parser_material_convert(parser_material_parse_input(inp), inp->type, socket->type);
 	array_pop(parser_material_parents);
 	parser_material_pop_group();
-	return out_group;
+	return out_group != NULL ? out_group : parser_material_socket_zero(socket->type);
 }
 
+// Group input, parsed from the input of the group node in the enclosing canvas
 char *parser_material_parse_group_input(ui_node_t *node, ui_node_socket_t *socket) {
-	ui_node_t *parent = array_pop(parser_material_parents); // Leaving group
+	i32 index = parser_material_socket_index(node, socket);
+	if (parser_material_parents->length == 0 || parser_material_canvases->length < 2) {
+		return parser_material_socket_zero(socket->type); // Group canvas parsed on its own
+	}
+	ui_node_t *parent = parser_material_parents->buffer[parser_material_parents->length - 1];
+	if (index < 0 || index >= parent->inputs->length) {
+		return parser_material_socket_zero(socket->type);
+	}
+	ui_node_canvas_t *g = parser_material_canvases->buffer[parser_material_canvases->length - 1];
+	array_pop(parser_material_parents); // Leaving group
 	parser_material_pop_group();
-	i32               index = parser_material_socket_index(node, socket);
-	ui_node_socket_t *inp   = parent->inputs->buffer[index];
-	char             *res   = parser_material_parse_input(inp);
+	ui_node_socket_t *inp = parent->inputs->buffer[index];
+	char             *res = parser_material_convert(parser_material_parse_input(inp), inp->type, socket->type);
 	any_array_push(parser_material_parents, parent); // Return to group
-	parser_material_push_group(parser_material_get_group(parent->name));
-	return res;
+	parser_material_push_group(g);
+	return res != NULL ? res : parser_material_socket_zero(socket->type);
 }
+
+// While set, written code goes there instead of the shader (Material Maker evaluating a node at another uv, see
+// mm_bridge.c)
+buffer_t *parser_material_capture = NULL;
 
 void parser_material_write(node_shader_t *raw, char *s) {
+	if (parser_material_capture != NULL) {
+		string_buffer_append(parser_material_capture, s);
+		string_buffer_append(parser_material_capture, "\n");
+		return;
+	}
 	if (parser_material_is_frag) {
 		node_shader_write_frag(raw, s);
 	}
@@ -357,12 +539,17 @@ char *parser_material_parse_vector_input(ui_node_socket_t *inp) {
 	if (from_node != NULL) {
 		char *res_var = parser_material_write_result(l);
 		char *st      = from_node->outputs->buffer[l->from_socket]->type;
-		if (string_equals(st, "RGB") || string_equals(st, "RGBA") || string_equals(st, "VECTOR")) {
+		if (string_equals(st, "RGB") || string_equals(st, "VECTOR")) {
 			return res_var;
 		}
-		else { // VALUE
+		else if (string_equals(st, "RGBA")) {
+			return string_tmp("%s.xyz", res_var);
+		}
+		else if (string_equals(st, "VALUE")) {
 			return parser_material_to_vec3(res_var);
 		}
+		char *res = parser_material_convert(res_var, st, "VECTOR");
+		return res != NULL ? res : "vec3(0.0, 0.0, 0.0)"; // Material Maker types do not link here
 	}
 	else {
 		char *live = parser_material_live_input(inp);
@@ -394,15 +581,17 @@ char *parser_material_parse_value_input(ui_node_socket_t *inp, bool vector_as_gr
 		char *st      = from_node->outputs->buffer[l->from_socket]->type;
 		if (string_equals(st, "RGB") || string_equals(st, "RGBA") || string_equals(st, "VECTOR")) {
 			if (vector_as_grayscale) {
-				return string_tmp("dot(%s.rbg, vec3(0.299, 0.587, 0.114))", res_var);
+				return parser_material_greyscale(res_var);
 			}
 			else {
 				return string_tmp("%s.x", res_var);
 			}
 		}
-		else { // VALUE
+		else if (string_equals(st, "VALUE")) {
 			return res_var;
 		}
+		char *res = parser_material_convert(res_var, st, "VALUE");
+		return res != NULL ? res : "0.0"; // Material Maker types do not link here
 	}
 	else {
 		char *live = parser_material_live_input(inp);
@@ -454,31 +643,49 @@ char *parser_material_safesrc(char *s) {
 	return r;
 }
 
+// The output index is part of the name: outputs can share a name (group outputs added as "Color", "Color"), the name
+// alone made the second output reuse the first one's result
 char *parser_material_res_var_name(ui_node_t *node, ui_node_socket_t *socket) {
-	return string_tmp("%s_%s_res", parser_material_node_name(node, NULL), parser_material_safesrc(socket->name));
+	i32 index = parser_material_socket_index(node, socket);
+	return string_tmp("%s_%d_%s_res", parser_material_node_name(node, NULL), index < 0 ? 0 : index, parser_material_safesrc(socket->name));
 }
 
+// Declares the result variable of the linked output once, typed by the socket (see parser_material_socket_glsl_type)
 char *parser_material_write_result(ui_node_link_t *l) {
 	ui_node_t        *from_node   = parser_material_get_node(l->from_id);
 	ui_node_socket_t *from_socket = from_node->outputs->buffer[l->from_socket];
 	char             *res_var     = parser_material_res_var_name(from_node, from_socket);
 	char             *st          = from_socket->type;
-	if (string_array_index_of(parser_material_parsed, res_var) < 0) {
+	bool              known       = parser_material_is_color_type(st) || string_index_of(st, "MM_") == 0;
+	if (known && string_array_index_of(parser_material_parsed, res_var) < 0) { // Other types (MESH, STRING) have no value
 		any_array_push(parser_material_parsed, res_var);
-		if (string_equals(st, "RGB") || string_equals(st, "RGBA") || string_equals(st, "VECTOR")) {
-			char *res = parser_material_parse_vector(from_node, from_socket);
-			if (res == NULL) {
-				return NULL;
-			}
-			parser_material_write(parser_material_shader, string_tmp("vec3 %s = %s;", res_var, res));
+		char *(*node_output)(ui_node_t *, ui_node_socket_t *) = any_map_get(parser_material_node_outputs, from_node->type);
+		char *res                                              = NULL;
+		if (node_output != NULL) { // Native: returns the socket's own type
+			res = node_output(from_node, from_socket);
+		}
+		else if (string_equals(from_node->type, "GROUP_INPUT")) {
+			res = parser_material_parse_group_input(from_node, from_socket);
+		}
+		else if (string_equals(st, "RGB") || string_equals(st, "VECTOR")) {
+			res = parser_material_parse_vector(from_node, from_socket);
+		}
+		else if (string_equals(st, "RGBA")) { // Node callbacks return the rgb, alpha is opaque
+			res = parser_material_parse_vector(from_node, from_socket);
+			res = res != NULL ? string_tmp("vec4(%s, 1.0)", res) : NULL;
 		}
 		else if (string_equals(st, "VALUE")) {
-			char *res = parser_material_parse_value(from_node, from_socket);
-			if (res == NULL) {
-				return NULL;
-			}
-			parser_material_write(parser_material_shader, string_tmp("float %s = %s;", res_var, res));
+			res = parser_material_parse_value(from_node, from_socket);
 		}
+		else if (any_map_get(parser_material_custom_nodes, from_node->type) != NULL) { // Script node, other types are native
+			void       *cb      = any_map_get(parser_material_custom_nodes, from_node->type);
+			minic_val_t args[2] = {minic_val_ptr(from_node), minic_val_ptr(from_socket->name)};
+			res                 = minic_call_fn(cb, args, 2).p;
+		}
+		if (res == NULL) { // Still declared, later uses of the cached name must compile
+			res = parser_material_socket_zero(st);
+		}
+		parser_material_write(parser_material_shader, string_tmp("%s %s = %s;", parser_material_socket_glsl_type(st), res_var, res));
 	}
 	return res_var;
 }

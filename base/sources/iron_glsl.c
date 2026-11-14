@@ -14,6 +14,13 @@ void       iron_log(const char *format, ...);
 
 #define IRON_GLSL_MAX_TEXTURES 32
 
+// Wall time, the translation runs on the main thread while pipelines compile on workers (clock() would sum their cpu time)
+double iron_glsl_now_ms(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+
 static bool  glsl_ready = false;
 static char *glsl_error = NULL;
 
@@ -137,22 +144,22 @@ char *iron_glsl_to_msl(const char *glsl, iron_glsl_stage_t stage, const char *de
 		glslang_initialize_process();
 		glsl_ready = true;
 	}
-	static int timing = -1; // Env IRON_GLSL_TIMING logs the time of each step
+	static int timing = -1; // Env IRON_SHADER_TIMING (or IRON_GLSL_TIMING) logs the time of each step
 	if (timing < 0) {
-		timing = getenv("IRON_GLSL_TIMING") != NULL;
+		timing = getenv("IRON_SHADER_TIMING") != NULL || getenv("IRON_GLSL_TIMING") != NULL;
 	}
-	clock_t   t0    = clock();
+	double    t0    = iron_glsl_now_ms();
 	size_t    words = 0;
 	unsigned *spirv = glsl_to_spirv(glsl, stage, defines, &words);
-	clock_t   t1    = clock();
+	double    t1    = iron_glsl_now_ms();
 	char     *msl   = NULL;
 	if (spirv != NULL) {
 		msl = glsl_spirv_to_msl(spirv, words, stage, ios);
 		free(spirv);
 	}
 	if (timing) {
-		fprintf(stderr, "[glsl] %s: %d chars, glslang %.1f ms, spirv-cross %.1f ms\n", stage == IRON_GLSL_VERTEX ? "vert" : "frag", (int)strlen(glsl),
-		        (t1 - t0) * 1000.0 / CLOCKS_PER_SEC, (clock() - t1) * 1000.0 / CLOCKS_PER_SEC);
+		fprintf(stderr, "[shader] translate %s: %d chars, glslang %.1f ms, spirv-cross %.1f ms\n", stage == IRON_GLSL_VERTEX ? "vert" : "frag",
+		        (int)strlen(glsl), t1 - t0, iron_glsl_now_ms() - t1);
 	}
 	if (error != NULL) {
 		*error = msl == NULL ? glsl_error : NULL;

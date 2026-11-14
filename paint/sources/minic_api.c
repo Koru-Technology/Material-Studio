@@ -31,6 +31,7 @@
 
 gpu_texture_t *gpu_create_render_target(i32 width, i32 height, i32 format);
 void           iron_delay_idle_sleep();
+extern bool    ui_nodes_show; // globals.h, read by scripts that need the node editor open
 
 static const char *minic_read_str(minic_val_t v) {
 	if (v.type == MINIC_T_PTR && v.p != NULL) {
@@ -697,8 +698,13 @@ void minic_register_builtins() {
 	MINIC_F(height_blend_reach);
 	MINIC_END();
 
+	MINIC_STRUCT(ui_nodes_t);
+	MINIC_O(nodes_selected_id, i32_array_t);
+	MINIC_END();
+
 	MINIC_STRUCT(slot_material_t);
 	MINIC_O(canvas, ui_node_canvas_t);
+	MINIC_O(nodes, ui_nodes_t);
 	MINIC_O(image, gpu_texture_t);
 	MINIC_F(uv_scale);
 	MINIC_F(uv_angle);
@@ -992,6 +998,7 @@ void minic_register_builtins() {
 	minic_register_global("mouse_wheel_delta", &mouse_wheel_delta, MINIC_T_FLOAT);
 	minic_register_global("mouse_movement_x", &mouse_movement_x, MINIC_T_FLOAT);
 	minic_register_global("mouse_movement_y", &mouse_movement_y, MINIC_T_FLOAT);
+	minic_register_global("ui_nodes_show", &ui_nodes_show, MINIC_T_BOOL);
 
 	// minic_api_list.h
 	for (int i = 0; i < (int)(sizeof(minic_api_entries) / sizeof(minic_api_entries[0])); ++i) {

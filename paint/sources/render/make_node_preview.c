@@ -42,8 +42,12 @@ node_shader_context_t *make_node_preview_run(material_t *data, ui_node_t *node, 
 	parser_material_nodes = g_context->material->canvas->nodes;
 	parser_material_links = g_context->material->canvas->links;
 	if (group != NULL) {
-		parser_material_push_group(group);
-		parser_material_parents = parents;
+		// Enters every group of the path, group is the innermost. Copies parents: the parser frees its own list on the next
+		// parse, which used to free the caller's traversal list while it was still in use
+		parser_material_enter_parents(parents);
+		if (parser_material_nodes != group->nodes) {
+			parser_material_push_group(group); // Path did not resolve
+		}
 	}
 	ui_node_link_t_array_t *links          = parser_material_links;
 	i32                     socket_preview = i32_imap_get(g_context->node_preview_socket_map, node->id);
@@ -62,9 +66,7 @@ node_shader_context_t *make_node_preview_run(material_t *data, ui_node_t *node, 
 	char *res                             = parser_material_write_result(link);
 	parser_material_transform_color_space = true;
 	char *st                              = node->outputs->buffer[link->from_socket]->type;
-	if (!string_equals(st, "RGB") && !string_equals(st, "RGBA") && !string_equals(st, "VECTOR")) {
-		res = string_copy(parser_material_to_vec3(res));
-	}
+	res = string_copy(parser_material_preview_rgb(res, st)); // RGBA results are vec4, Material Maker ones float to vec4
 	array_remove(links, link);
 
 	shader->frag_out = "vec4";

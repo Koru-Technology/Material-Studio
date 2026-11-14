@@ -175,7 +175,16 @@ void nodes_material_sync_sockets(ui_node_t *node) {
 }
 
 i32 nodes_material_get_socket_color(char *type) {
-	return string_equals(type, "RGBA") ? 0xffc7c729 : string_equals(type, "VECTOR") ? 0xff6363c7 : 0xffa1a1a1;
+	return string_equals(type, "RGBA")          ? 0xffc7c729
+	       : string_equals(type, "VECTOR")      ? 0xff6363c7
+	       : string_equals(type, "MM_SDF2D")    ? 0xff4fc35b // Material Maker types, they only link to their own kind
+	       : string_equals(type, "MM_SDF3D")    ? 0xffb05ad6
+	       : string_equals(type, "MM_SDF3DC")   ? 0xffd66ac8
+	       : string_equals(type, "MM_TEX3D_GS") ? 0xff7ab8a4
+	       : string_equals(type, "MM_TEX3D")    ? 0xff3fb6e0
+	       : string_equals(type, "MM_V4V4")     ? 0xffe08a3f
+	       : string_equals(type, "MM_FILL")     ? 0xffe05a5a
+	                                            : 0xffa1a1a1;
 }
 
 f32_array_t *nodes_material_get_socket_default_value(char *type) {
@@ -232,6 +241,7 @@ void group_node_init() {
 	any_array_push(nodes_material_group, group_node_def);
 	any_map_set(parser_material_node_vectors, "GROUP", group_node_vector);
 	any_map_set(parser_material_node_values, "GROUP", group_node_value);
+	any_map_set(parser_material_node_outputs, "GROUP", group_node_vector); // Returns the output's own type, RGBA as vec4
 	any_map_set(ui_nodes_custom_buttons, "nodes_material_new_group_button", nodes_material_new_group_button);
 	any_map_set(ui_nodes_custom_buttons, "nodes_material_group_input_button", nodes_material_group_input_button);
 	any_map_set(ui_nodes_custom_buttons, "nodes_material_group_output_button", nodes_material_group_output_button);

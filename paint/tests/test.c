@@ -1547,6 +1547,104 @@ void step_render_pass() {
 	check(f >= 0.0 && f < 0.05, string("removed render pass is gone (%.2f)", f));
 }
 
+// Node editor at Material Maker scale: nodes with many buttons, an unregistered custom button,
+// selecting and copying more nodes and links than the old fixed arrays held
+
+char            *scale_node_type = "TEST_MANY_BUTTONS";
+slot_material_t *scale_mat       = NULL;
+i32_array_t     *scale_ids       = NULL;
+int              scale_nodes     = 0;
+int              scale_links     = 0;
+int              scale_shown     = 0; // The step opened the node editor
+
+void step_node_editor_scale() {
+	if (sub == 0) {
+		any_array_t *list = any_array_create(0);
+		ui_node_t   *n    = calloc(1, sizeof(ui_node_t));
+		n->name           = "Test Many Buttons";
+		n->type           = scale_node_type;
+		n->color          = 0xffb34f5a;
+		n->inputs         = any_array_create(0);
+		n->outputs        = any_array_create(0);
+		n->buttons        = any_array_create(0);
+		for (int i = 0; i < 6; ++i) {
+			any_array_push(n->inputs, custom_socket("Value", "VALUE"));
+		}
+		any_array_push(n->outputs, custom_socket("Color", "RGBA"));
+		for (int i = 0; i < 40; ++i) {
+			ui_node_button_t *b = calloc(1, sizeof(ui_node_button_t));
+			b->name             = "Amount";
+			b->type             = "VALUE";
+			b->output           = -1;
+			b->default_value    = f32_array_create_x(0.5);
+			b->max              = 1.0;
+			b->precision        = 100.0;
+			any_array_push(n->buttons, b);
+		}
+		ui_node_button_t *cb = calloc(1, sizeof(ui_node_button_t));
+		cb->name             = "test_unregistered_button";
+		cb->type             = "CUSTOM";
+		cb->output           = -1;
+		cb->default_value    = f32_array_create_x(0.0);
+		cb->height           = 1.0;
+		any_array_push(n->buttons, cb);
+		any_array_push(list, n);
+		script_material_category_add("Test Scale", list);
+		script_material_custom_nodes_set(scale_node_type, custom_node);
+
+		scale_mat      = script_material_create("test_scale");
+		scale_ids      = i32_array_create(0);
+		ui_node_t *prv = NULL;
+		for (int i = 0; i < 60; ++i) {
+			ui_node_t *m = script_material_create_node_at(scale_node_type, -400.0 + (i % 10) * 40.0, (i / 10) * 40.0);
+			if (m == NULL) {
+				break;
+			}
+			i32_array_push(scale_ids, m->id);
+			if (prv != NULL) {
+				script_material_connect(prv, 0, m, 0);
+				script_material_connect(prv, 0, m, 1);
+			}
+			prv = m;
+		}
+		scale_nodes = scale_mat->canvas->nodes->length;
+		scale_links = scale_mat->canvas->links->length;
+		if (!ui_nodes_show) {
+			ui_base_show_material_nodes();
+			scale_shown = 1;
+		}
+	}
+	if (sub == 4) { // Drawn for a few frames, select the new nodes and copy them
+		i32_array_t *sel = scale_mat->nodes->nodes_selected_id;
+		for (int i = 0; i < scale_ids->length; ++i) {
+			if (i32_array_index_of(sel, scale_ids->buffer[i]) < 0) {
+				i32_array_push(sel, scale_ids->buffer[i]);
+			}
+		}
+		ui_copy();
+	}
+	if (sub == 8) {
+		ui_paste("");
+	}
+	if (sub < 14) {
+		base_redraw_ui();
+		step_again = 1;
+		return;
+	}
+	int nodes = scale_mat->canvas->nodes->length;
+	int links = scale_mat->canvas->links->length;
+	check(scale_ids->length == 60 && nodes == scale_nodes + 60 && links == scale_links + 118,
+	      string("60 nodes with 41 buttons copied and pasted (%d to %d nodes, %d to %d links)", scale_nodes, nodes, scale_links, links));
+
+	if (scale_shown) {
+		ui_base_show_material_nodes();
+	}
+	script_material_delete(scale_mat);
+	script_material_custom_nodes_remove(scale_node_type);
+	script_material_category_remove("Test Scale");
+	script_material_set(mat_blue);
+}
+
 void run_step(int s) {
 	if (s == 0)
 		step_tools();
@@ -1664,10 +1762,12 @@ void run_step(int s) {
 		step_layer_paths_verify();
 	else if (s == 57)
 		step_render_pass();
+	else if (s == 58)
+		step_node_editor_scale();
 }
 
-int step_count      = 58;
-int expected_checks = 137;
+int step_count      = 59;
+int expected_checks = 138;
 
 void next_frame() {
 	if (sub == 0) {

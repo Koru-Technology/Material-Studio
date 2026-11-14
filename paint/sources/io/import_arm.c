@@ -1,5 +1,6 @@
 
 #include "../global.h"
+#include <iron_profile.h>
 
 // Deleted textures are only freed at the end of the frame, loading a project would hold the old layers,
 // the new ones and their upload copies at once
@@ -12,6 +13,82 @@ static void import_arm_free_deleted() {
 }
 
 static i32 import_arm_progress_unpacked = 0;
+
+// Materials whose preview was given before their import compiles on the next frame (a library thumbnail, the preview
+// saved in the material file): that compile does not render their preview
+static slot_material_t_array_t *import_arm_previews_given = NULL;
+
+void import_arm_set_preview_given(slot_material_t *m) {
+	if (import_arm_previews_given == NULL) {
+		import_arm_previews_given = any_array_create_from_raw((void *[]){}, 0);
+	}
+	any_array_push(import_arm_previews_given, m);
+}
+
+// Whether m's preview was given, forgetting it
+static bool import_arm_take_preview_given(slot_material_t *m) {
+	if (import_arm_previews_given == NULL || array_index_of(import_arm_previews_given, m) < 0) {
+		return false;
+	}
+	array_remove(import_arm_previews_given, m);
+	return true;
+}
+
+// Materials of the opened project whose preview was not saved with it, rendered one per frame after the load
+static slot_material_t_array_t *import_arm_preview_queue   = NULL;
+static project_t               *import_arm_preview_project = NULL;
+static bool                     import_arm_preview_pending = false;
+
+static void import_arm_preview_queue_clear() {
+	if (import_arm_preview_queue != NULL) {
+		import_arm_preview_queue->length = 0;
+	}
+}
+
+static void import_arm_preview_next(void *_) {
+	import_arm_preview_pending = false;
+	if (import_arm_preview_queue == NULL || import_arm_preview_queue->length == 0 || g_project != import_arm_preview_project) {
+		import_arm_preview_queue_clear();
+		return;
+	}
+	slot_material_t *m = import_arm_preview_queue->buffer[0];
+	array_remove(import_arm_preview_queue, m);
+	if (array_index_of(g_project->_->materials, m) >= 0 && !m->preview_ready) { // Not deleted, not rendered meanwhile
+		slot_material_t *selected = g_context->material;
+		gpu_texture_t   *current  = _draw_current;
+		bool             in_use   = gpu_in_use;
+		if (in_use) {
+			draw_end();
+		}
+		g_context->material = m;
+		make_material_bake_node_previews();
+		util_render_make_material_preview();
+		g_context->material = selected;
+		if (selected != m) {
+			make_material_bake_node_previews(); // The selected material's node previews again (the bake replaced them)
+		}
+		if (in_use) {
+			draw_begin(current, false, 0);
+		}
+		ui_dock_redraw(TAB_AREA_SIDEBAR1);
+	}
+	if (import_arm_preview_queue->length > 0) {
+		import_arm_preview_pending = true;
+		sys_notify_on_next_frame(&import_arm_preview_next, NULL);
+	}
+}
+
+static void import_arm_preview_queue_add(slot_material_t *m) {
+	if (import_arm_preview_queue == NULL) {
+		import_arm_preview_queue = any_array_create_from_raw((void *[]){}, 0);
+	}
+	any_array_push(import_arm_preview_queue, m);
+	import_arm_preview_project = g_project;
+	if (!import_arm_preview_pending) {
+		import_arm_preview_pending = true;
+		sys_notify_on_next_frame(&import_arm_preview_next, NULL);
+	}
+}
 
 void import_arm_run_project_on_next_frame(void *_) {
 	// Once envmap is imported
@@ -221,10 +298,16 @@ void import_arm_run_mesh_append(char *path) {
 
 void import_arm_run_material_from_project_on_next_frame(slot_material_t_array_t *imported) {
 	for (i32 i = 0; i < imported->length; ++i) {
-		slot_material_t *m = imported->buffer[i];
-		context_set_material(m);
-		make_material_parse_paint_material(true);
-		util_render_make_material_preview();
+		slot_material_t *m  = imported->buffer[i];
+		double           t0 = iron_time();
+		context_set_material(m); // Compiles its paint material, node previews baked
+		if (!import_arm_take_preview_given(m)) { // Given: a library thumbnail, the preview saved in the material file
+			util_render_make_material_preview();
+		}
+		if (getenv("IRON_SHADER_TIMING") != NULL) {
+			iron_log("[shader] imported material compiled and previewed: %.1f ms", (iron_time() - t0) * 1000.0);
+		}
+		iron_profile_mark("imported material ready");
 	}
 }
 
@@ -583,6 +666,11 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 		any_array_push(g_project->_->materials, g_context->material);
 		any_array_push(imported, g_context->material);
 		history_new_material();
+		// The preview saved in the file (export_arm material_icons) instead of rendering it when the import compiles
+		if (project->material_icons != NULL && i < project->material_icons->length &&
+		    util_render_load_material_icon(g_context->material, project->material_icons->buffer[i])) {
+			import_arm_set_preview_given(g_context->material);
+		}
 	}
 
 	if (project->material_groups != NULL) {
@@ -672,6 +760,7 @@ void import_arm_run_swatches_from_project(project_t *project, char *path, bool r
 }
 
 void import_arm_run_project(char *path) {
+	iron_profile_mark("project load start");
 	ui_header_draw_progress(0.0);
 	buffer_t *b = data_get_blob(path);
 	if (b == NULL) {
@@ -1078,14 +1167,17 @@ void import_arm_run_project(char *path) {
 
 	bool make_previews = !base_player;
 
+	// Previews saved with the project are used as they are. The others render after the load, one per frame: rendering
+	// a preview compiles the material and renders its Material Maker buffers, seconds for heavy ones on the iPad.
+	buffer_t_array_t *icons = g_project->material_icons;
+	import_arm_preview_queue_clear();
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		g_context->material = g_project->_->materials->buffer[i];
-		if (make_previews) {
-			make_material_bake_node_previews();
-			util_render_make_material_preview();
+		if (make_previews && !(icons != NULL && i < icons->length && util_render_load_material_icon(g_context->material, icons->buffer[i]))) {
+			import_arm_preview_queue_add(g_context->material);
 		}
 	}
-	make_material_parse_paint_material(!make_previews);
+	make_material_parse_paint_material(true); // The selected material: compiled, its node previews baked
 
 	g_project->_->brushes = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < g_project->brush_nodes->length; ++i) {
@@ -1145,6 +1237,7 @@ void import_arm_run_project(char *path) {
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	g_context->ddirty = 4;
 	data_delete_blob(path);
+	iron_profile_mark("project load end");
 }
 
 void import_arm_run_material(char *path) {

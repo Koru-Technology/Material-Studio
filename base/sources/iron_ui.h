@@ -598,6 +598,7 @@ extern string_array_t *(*ui_nodes_enum_texts)(char *);
 extern any_array_t *(*ui_nodes_enum_textures)(char *);
 extern gpu_texture_t *(*ui_nodes_preview_texture)(ui_node_t *);
 extern void (*ui_nodes_on_custom_button)(int, char *);
+extern int ui_nodes_custom_button_index; // Set while ui_nodes_on_custom_button runs, -1 otherwise
 extern ui_canvas_control_t *(*ui_nodes_on_canvas_control)(void);
 extern void (*ui_nodes_on_canvas_released)(void);
 extern void (*ui_nodes_on_socket_released)(int);
@@ -626,5 +627,6 @@ float           ui_p(float f);
 int             ui_get_socket_id(ui_node_array_t *nodes);
 ui_node_link_t *ui_get_link(ui_node_link_array_t *links, int id);
 int             ui_next_link_id(ui_node_link_array_t *links);
+bool            ui_nodes_socket_types_compatible(char *from_type, char *to_type);
 ui_node_t      *ui_get_node(ui_node_array_t *nodes, int id);
 int             ui_next_node_id(ui_node_array_t *nodes);

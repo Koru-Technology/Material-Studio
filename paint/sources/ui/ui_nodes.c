@@ -88,101 +88,208 @@ void ui_viewnodes_on_link_drag_on_node_search_done() {
 	ui_node_t_array_t *nodes     = ui_nodes_get_canvas(true)->nodes;
 	ui_node_t         *n         = ui_get_node(nodes, node_selected_id);
 	if (link_drag->to_id == -1 && n->inputs->length > 0) {
-		link_drag->to_id = n->id;
-		char *from_type  = _ui_nodes_on_link_drag_node->outputs->buffer[link_drag->from_socket]->type;
-		// Connect to the first socket
-		link_drag->to_socket = 0;
-		// Try to find the first type-matching socket and use it if present
-		for (i32 i = 0; i < n->inputs->length; ++i) {
-			ui_node_socket_t *socket = n->inputs->buffer[i];
-			if (string_equals(socket->type, from_type)) {
-				link_drag->to_socket = array_index_of(n->inputs, socket);
-				break;
+		char *from_type = _ui_nodes_on_link_drag_node->outputs->buffer[link_drag->from_socket]->type;
+		// The first type-matching socket, else the first one the type can link to (Material Maker types link to few)
+		i32 to_socket = -1;
+		for (i32 i = 0; i < n->inputs->length && to_socket == -1; ++i) {
+			if (string_equals(n->inputs->buffer[i]->type, from_type)) {
+				to_socket = i;
 			}
 		}
-		any_array_push(ui_nodes_get_canvas(true)->links, link_drag);
+		for (i32 i = 0; i < n->inputs->length && to_socket == -1; ++i) {
+			if (ui_nodes_socket_types_compatible(from_type, n->inputs->buffer[i]->type)) {
+				to_socket = i;
+			}
+		}
+		if (to_socket >= 0) {
+			link_drag->to_id     = n->id;
+			link_drag->to_socket = to_socket;
+			any_array_push(ui_nodes_get_canvas(true)->links, link_drag);
+		}
 	}
 	else if (link_drag->from_id == -1 && n->outputs->length > 0) {
-		link_drag->from_id     = n->id;
-		link_drag->from_socket = 0;
-		any_array_push(ui_nodes_get_canvas(true)->links, link_drag);
+		char *to_type     = _ui_nodes_on_link_drag_node->inputs->buffer[link_drag->to_socket]->type;
+		i32   from_socket = -1;
+		for (i32 i = 0; i < n->outputs->length && from_socket == -1; ++i) {
+			if (ui_nodes_socket_types_compatible(n->outputs->buffer[i]->type, to_type)) {
+				from_socket = i;
+			}
+		}
+		if (from_socket >= 0) {
+			link_drag->from_id     = n->id;
+			link_drag->from_socket = from_socket;
+			any_array_push(ui_nodes_get_canvas(true)->links, link_drag);
+		}
 	}
 }
 
-static char *_ui_nodes_node_search_text = "";
+static char *_ui_nodes_node_search_text   = "";
+static i32   _ui_nodes_node_search_scroll = 0; // First result shown, the list scrolls with the selection and the mouse wheel
+any_map_t   *ui_nodes_menu_paths          = NULL;
+
+// Node type to an add menu path like "Material Maker/Noise/Fbm", kept outside ui_node_t as canvases are decoded positionally.
+// The folders of the path become sub menus of the node's category, a leading folder named like the category is skipped.
+void ui_nodes_set_menu_path(char *node_type, char *path) {
+	if (ui_nodes_menu_paths == NULL) {
+		ui_nodes_menu_paths = any_map_create();
+	}
+	any_map_set(ui_nodes_menu_paths, string_copy(node_type), path != NULL ? string_copy(path) : NULL);
+}
+
+char *ui_nodes_get_menu_path(char *node_type) {
+	return ui_nodes_menu_paths != NULL ? any_map_get(ui_nodes_menu_paths, node_type) : NULL;
+}
+
+static char ui_nodes_lower(char c) {
+	return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+}
+
+// Case insensitive substring test, to_lower_case would allocate for every node on every frame
+static bool ui_nodes_search_has(char *s, char *search) {
+	if (search[0] == '\0') {
+		return true;
+	}
+	for (i32 i = 0; s != NULL && s[i] != '\0'; ++i) {
+		i32 j = 0;
+		while (search[j] != '\0' && ui_nodes_lower(s[i + j]) == ui_nodes_lower(search[j])) {
+			j++;
+		}
+		if (search[j] == '\0') {
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool ui_nodes_search_match(ui_node_t *n, char *search) {
+	return ui_nodes_search_has(tr(n->name), search) || ui_nodes_search_has(n->type, search) || ui_nodes_search_has(ui_nodes_get_menu_path(n->type), search);
+}
+
+// Last folder of a menu path, shown next to search results to tell apart nodes with the same name
+static char *ui_nodes_menu_path_folder(char *path) {
+	char *last = path != NULL ? strrchr(path, '/') : NULL;
+	if (last == NULL) {
+		return "";
+	}
+	char *first = last;
+	while (first > path && first[-1] != '/') {
+		first--;
+	}
+	i32   len    = (i32)(last - first);
+	char *folder = string_tmp_alloc(len + 1);
+	memcpy(folder, first, len);
+	return folder;
+}
 
 void ui_nodes_node_search_menu() {
-	ui_menu_h            = UI_ELEMENT_H() * 8;
-	char *search         = to_lower_case(ui_text_input(&_ui_nodes_node_search_text, "", UI_ALIGN_LEFT, true, true));
+	i32 rows             = math_floor(math_min(20, math_max(4, iron_window_height() / UI_ELEMENT_H() - 3)));
+	ui_menu_h            = UI_ELEMENT_H() * (rows + 1);
+	char *search         = ui_text_input(&_ui_nodes_node_search_text, "", UI_ALIGN_LEFT, true, true);
 	bool  search_changed = ui_item_changed();
 	g_ui->changed        = false;
 	if (_ui_nodes_node_search_first) {
-		_ui_nodes_node_search_first = false;
-		_ui_nodes_node_search_text  = "";
+		_ui_nodes_node_search_first  = false;
+		_ui_nodes_node_search_text   = "";
+		_ui_nodes_node_search_scroll = 0;
+		ui_nodes_node_search_offset  = 0;
 		ui_start_text_edit(&_ui_nodes_node_search_text, UI_ALIGN_LEFT); // Focus search bar
 	}
 
 	if (search_changed) {
-		ui_nodes_node_search_offset = 0;
+		ui_nodes_node_search_offset  = 0;
+		_ui_nodes_node_search_scroll = 0;
 	}
 
+	node_list_t_array_t *node_list = ui_nodes_get_node_list();
+	i32                  total     = 0;
+	for (i32 i = 0; i < node_list->length; ++i) {
+		ui_node_t_array_t *list = node_list->buffer[i];
+		for (i32 j = 0; j < list->length; ++j) {
+			if (ui_nodes_search_match(list->buffer[j], search)) {
+				total++;
+			}
+		}
+	}
+
+	bool key_moved = false;
 	if (g_ui->is_key_pressed) { // Move selection
-		if (g_ui->key_code == KEY_CODE_DOWN && ui_nodes_node_search_offset < 6) {
+		if (g_ui->key_code == KEY_CODE_DOWN && ui_nodes_node_search_offset < total - 1) {
 			ui_nodes_node_search_offset++;
+			key_moved = true;
 		}
 		if (g_ui->key_code == KEY_CODE_UP && ui_nodes_node_search_offset > 0) {
 			ui_nodes_node_search_offset--;
+			key_moved = true;
 		}
 	}
+	if (key_moved) { // Keep the selection in view
+		if (ui_nodes_node_search_offset < _ui_nodes_node_search_scroll) {
+			_ui_nodes_node_search_scroll = ui_nodes_node_search_offset;
+		}
+		if (ui_nodes_node_search_offset >= _ui_nodes_node_search_scroll + rows) {
+			_ui_nodes_node_search_scroll = ui_nodes_node_search_offset - rows + 1;
+		}
+	}
+	else if (g_ui->input_wheel_delta != 0) {
+		_ui_nodes_node_search_scroll += g_ui->input_wheel_delta > 0 ? 3 : -3;
+	}
+	_ui_nodes_node_search_scroll = math_floor(math_max(0, math_min(_ui_nodes_node_search_scroll, total - rows)));
+	// Scrolling drags the selection along, enter picks what is shown highlighted
+	ui_nodes_node_search_offset = math_floor(math_max(_ui_nodes_node_search_scroll, math_min(ui_nodes_node_search_offset, _ui_nodes_node_search_scroll + rows - 1)));
+	ui_nodes_node_search_offset = math_floor(math_max(0, math_min(ui_nodes_node_search_offset, total - 1)));
+
 	bool enter              = keyboard_down("enter");
 	i32  count              = 0;
+	bool done               = false;
 	i32  _BUTTON_COL        = g_theme->BUTTON_COL;
 	bool _FILL_BUTTON_BG    = g_theme->FILL_BUTTON_BG;
 	g_theme->FILL_BUTTON_BG = true;
 	bool _SHADOWS           = g_theme->SHADOWS;
 	g_theme->SHADOWS        = false;
 
-	node_list_t_array_t *node_list = ui_nodes_get_node_list();
-
-	for (i32 i = 0; i < node_list->length; ++i) {
+	for (i32 i = 0; i < node_list->length && !done; ++i) {
 		ui_node_t_array_t *list = node_list->buffer[i];
-		for (i32 i = 0; i < list->length; ++i) {
-			ui_node_t *n = list->buffer[i];
-			if (string_index_of(to_lower_case(tr(n->name)), search) >= 0) {
-				g_theme->BUTTON_COL = count == ui_nodes_node_search_offset ? g_theme->HIGHLIGHT_COL : g_theme->SEPARATOR_COL;
+		for (i32 j = 0; j < list->length && !done; ++j) {
+			ui_node_t *n = list->buffer[j];
+			if (!ui_nodes_search_match(n, search)) {
+				continue;
+			}
+			i32 index = count++;
+			if (index < _ui_nodes_node_search_scroll) {
+				continue;
+			}
+			if (index >= _ui_nodes_node_search_scroll + rows) {
+				done = true;
+				break;
+			}
+			g_theme->BUTTON_COL = index == ui_nodes_node_search_offset ? g_theme->HIGHLIGHT_COL : g_theme->SEPARATOR_COL;
 
-				if (ui_button(tr(n->name), UI_ALIGN_LEFT, "") || (enter && count == ui_nodes_node_search_offset)) {
-					ui_nodes_push_undo(NULL);
-					ui_nodes_t       *nodes    = ui_nodes_get_nodes();
-					ui_node_canvas_t *canvas   = ui_nodes_get_canvas(true);
-					ui_nodes_node_search_spawn = ui_nodes_make_node(n, nodes, canvas); // Spawn selected node
-					any_array_push(canvas->nodes, ui_nodes_node_search_spawn);
-					nodes->nodes_selected_id = i32_array_create_from_raw(
-					    (i32[]){
-					        ui_nodes_node_search_spawn->id,
-					    },
-					    1);
-					nodes->nodes_drag = true;
+			char *folder = ui_nodes_menu_path_folder(ui_nodes_get_menu_path(n->type));
+			if (ui_button(tr(n->name), UI_ALIGN_LEFT, folder) || (enter && index == ui_nodes_node_search_offset)) {
+				ui_nodes_push_undo(NULL);
+				ui_nodes_t       *nodes    = ui_nodes_get_nodes();
+				ui_node_canvas_t *canvas   = ui_nodes_get_canvas(true);
+				ui_nodes_node_search_spawn = ui_nodes_make_node(n, nodes, canvas); // Spawn selected node
+				any_array_push(canvas->nodes, ui_nodes_node_search_spawn);
+				nodes->nodes_selected_id = i32_array_create_from_raw(
+				    (i32[]){
+				        ui_nodes_node_search_spawn->id,
+				    },
+				    1);
+				nodes->nodes_drag = true;
 
-					ui_nodes_hwnd->redraws = 2;
-					if (enter) {
-						g_ui->changed = true;
-						count         = 6; // Trigger break
-					}
-					if (_ui_nodes_node_search_done != NULL) {
-						_ui_nodes_node_search_done();
-					}
+				ui_nodes_hwnd->redraws = 2;
+				if (enter) {
+					g_ui->changed = true;
+					done          = true;
 				}
-				if (++count > 6) {
-					break;
+				if (_ui_nodes_node_search_done != NULL) {
+					_ui_nodes_node_search_done();
 				}
 			}
 		}
-		if (count > 6) {
-			break;
-		}
 	}
-	if (enter && count == 0) { // Hide popup on enter when node is not found
+	if (enter && total == 0) { // Hide popup on enter when node is not found
 		g_ui->changed              = true;
 		_ui_nodes_node_search_text = "";
 	}
@@ -631,8 +738,259 @@ void ui_nodes_render_color_picker_callback(swatch_color_t *color) {
 	}
 }
 
+static char ui_nodes_menu_open[256]  = "";    // Open sub menu folder of the add menu, like "Noise/Simple/"
+static bool ui_nodes_menu_keep       = false; // A sub menu button was pressed, keep the add menu open
+static i32  ui_nodes_menu_more_first = 0;     // First category listed in the "..." menu
+
+// As ui_menubar_button sizes itself, plus the gap to the next button
+static f32 ui_nodes_menubar_button_w(char *text) {
+	return draw_string_width(g_ui->ops->font, g_ui->font_size, text) + 25.0 * UI_SCALE() + 3;
+}
+
+// Opens the add menu of a category under the menubar button just drawn
+static void ui_nodes_open_category(i32 i, i32 ew) {
+	if (i >= 0) {
+		if (ui_nodes_menu_category != i) {
+			ui_nodes_menu_open[0] = '\0';
+		}
+		ui_nodes_show_menu     = true;
+		ui_nodes_menu_category = i;
+	}
+	ui_nodes_popup_x = ui_nodes_wx + g_ui->_x;
+	ui_nodes_popup_y = ui_nodes_wy + g_ui->_y;
+	i32 menuw = math_floor(ew * 2.3);
+	if (g_config->touch_ui) {
+		ui_nodes_show_menu_first = true;
+		ui_nodes_popup_x -= menuw / 2.0;
+		ui_nodes_popup_x += g_ui->_w / 2.0;
+	}
+	// The last buttons of a full row would open it under the docked panels
+	ui_nodes_popup_x = math_max(ui_nodes_wx, math_min(ui_nodes_popup_x, ui_nodes_wx + ui_nodes_ww - menuw));
+}
+
+static void ui_nodes_menu_more() {
+	string_array_t *cats = ui_nodes_get_categories();
+	for (i32 i = ui_nodes_menu_more_first; i < cats->length; ++i) {
+		if (ui_menu_button(tr(cats->buffer[i]), "", ICON_NONE)) {
+			ui_nodes_menu_open[0]    = '\0';
+			ui_nodes_show_menu       = true;
+			ui_nodes_show_menu_first = true; // Skip the release that picked the category
+			ui_nodes_menu_category   = i;
+		}
+	}
+}
+
+// Entry of the add menu, a node or a sub menu named by its folder path like "Noise/"
+typedef struct ui_nodes_menu_entry {
+	ui_node_t *node;
+	char      *sub;
+} ui_nodes_menu_entry_t;
+
+// Folder of a node below its category, "Noise/" for "Material Maker/Noise/Fbm" in the "Material Maker" category, "" for the top level
+static char *ui_nodes_menu_dir(ui_node_t *n, char *cat_name) {
+	char *path = ui_nodes_get_menu_path(n->type);
+	char *last = path != NULL ? strrchr(path, '/') : NULL;
+	if (last == NULL) {
+		return "";
+	}
+	i32 cl = strlen(cat_name);
+	if (strncmp(path, cat_name, cl) == 0 && path[cl] == '/') {
+		path += cl + 1;
+	}
+	i32 len = (i32)(last - path) + 1; // Keep the trailing slash
+	if (len <= 0) {
+		return "";
+	}
+	char *dir = string_tmp_alloc(len + 1);
+	memcpy(dir, path, len);
+	return dir;
+}
+
+// Entries of one menu level: its nodes and one sub menu per folder below it, in registration order.
+// Categories without menu paths have only nodes, listed as before.
+static ui_nodes_menu_entry_t *ui_nodes_menu_entries(ui_node_t_array_t *category, char *cat_name, char *prefix, i32 *count) {
+	ui_nodes_menu_entry_t *entries = (ui_nodes_menu_entry_t *)string_tmp_alloc(sizeof(ui_nodes_menu_entry_t) * (category->length + 1));
+	i32                    n       = 0;
+	i32                    pl      = strlen(prefix);
+	for (i32 i = 0; i < category->length; ++i) {
+		ui_node_t *node = category->buffer[i];
+		char      *dir  = ui_nodes_menu_dir(node, cat_name);
+		if (strncmp(dir, prefix, pl) != 0) {
+			continue;
+		}
+		char *slash = strchr(dir + pl, '/');
+		if (slash == NULL) {
+			entries[n].node = node;
+			entries[n].sub  = NULL;
+			n++;
+			continue;
+		}
+		i32  len  = (i32)(slash - dir) + 1;
+		bool seen = false;
+		for (i32 j = 0; j < n && !seen; ++j) {
+			seen = entries[j].sub != NULL && strncmp(entries[j].sub, dir, len) == 0 && entries[j].sub[len] == '\0';
+		}
+		if (!seen) {
+			char *sub = string_tmp_alloc(len + 1);
+			memcpy(sub, dir, len);
+			entries[n].node = node;
+			entries[n].sub  = sub;
+			n++;
+		}
+	}
+	*count = n;
+	return entries;
+}
+
+static void ui_nodes_menu_spawn(ui_node_t *n) {
+	ui_nodes_push_undo(NULL);
+	ui_node_canvas_t *canvas = ui_nodes_get_canvas(true);
+	ui_nodes_t       *nodes  = ui_nodes_get_nodes();
+	ui_node_t        *node   = ui_nodes_make_node(n, nodes, canvas);
+	any_array_push(canvas->nodes, node);
+	nodes->nodes_selected_id = i32_array_create_from_raw(
+	    (i32[]){
+	        node->id,
+	    },
+	    1);
+	nodes->nodes_drag = true;
+}
+
+// Draws one entry at the cursor, reports the open sub menu of this level and where its button is
+static void ui_nodes_menu_entry(ui_nodes_menu_entry_t *e, char *prefix, i32 *open_y, char **open_sub) {
+	if (e->sub == NULL) {
+		g_ui->is_hovered = false;
+		if (ui_menu_button(tr(e->node->name), "", ICON_NONE)) {
+			ui_nodes_menu_spawn(e->node);
+		}
+		// Hovering a node closes deeper sub menus of this level, unless the pointer heads sideways into one
+		i32 pl = strlen(prefix);
+		if (g_ui->is_hovered && math_abs(g_ui->input_dy) > math_abs(g_ui->input_dx) && strlen(ui_nodes_menu_open) > pl &&
+		    strncmp(ui_nodes_menu_open, prefix, pl) == 0) {
+			ui_nodes_menu_open[pl] = '\0';
+		}
+		return;
+	}
+	i32 y   = g_ui->_y;
+	i32 len = strlen(e->sub) - 1; // Label is the last folder, without the slash
+	i32 beg = len;
+	while (beg > 0 && e->sub[beg - 1] != '/') {
+		beg--;
+	}
+	char *label = string_tmp_alloc(len - beg + 1);
+	memcpy(label, e->sub + beg, len - beg);
+	bool keep_open   = ui_menu_keep_open; // ui_menu_button sets it for ">" buttons, it belongs to ui_menu
+	g_ui->is_hovered = false;
+	if (ui_menu_button(tr(label), ">", ICON_NONE)) {
+		snprintf(ui_nodes_menu_open, sizeof(ui_nodes_menu_open), "%s", e->sub);
+		ui_nodes_menu_keep = true;
+	}
+	ui_menu_keep_open = keep_open;
+	if (g_ui->is_hovered && !g_config->touch_ui) {
+		snprintf(ui_nodes_menu_open, sizeof(ui_nodes_menu_open), "%s", e->sub);
+	}
+	if (strncmp(ui_nodes_menu_open, e->sub, strlen(e->sub)) == 0) {
+		*open_y   = y;
+		*open_sub = e->sub;
+	}
+}
+
+// Sub menu level next to its parent, wraps into columns when taller than the node view, then draws its open sub menu.
+// Kept inside the node view like the top level, the docked panels are drawn over it and take its input.
+static void ui_nodes_menu_level(ui_node_t_array_t *category, char *cat_name, char *prefix, i32 x, i32 y, i32 menuw, i32 parent_x, bool left) {
+	i32                    count   = 0;
+	ui_nodes_menu_entry_t *entries = ui_nodes_menu_entries(category, cat_name, prefix, &count);
+	if (count == 0) {
+		return;
+	}
+	i32 pad  = ui_menu_padding();
+	i32 eh   = UI_ELEMENT_H();
+	i32 rows = math_floor(math_max(1, (ui_nodes_wh - pad * 2) / eh));
+	if (rows > count) {
+		rows = count;
+	}
+	i32 cols = (count + rows - 1) / rows;
+	i32 w    = cols * menuw;
+	i32 h    = rows * eh + pad * 2;
+	// Opens on the right of the parent, or on its left when there is no room, and keeps that side for deeper levels
+	if (left ? parent_x - w >= ui_nodes_wx : x + w > ui_nodes_wx + ui_nodes_ww) {
+		left = true;
+		x    = math_floor(math_max(ui_nodes_wx, parent_x - w));
+	}
+	else {
+		left = false;
+	}
+	y -= pad;
+	if (y + h > ui_nodes_wy + ui_nodes_wh) {
+		y = math_floor(math_max(ui_nodes_wy, ui_nodes_wy + ui_nodes_wh - h));
+	}
+	ui_draw_shadow(x, y, w, h);
+	draw_set_color(g_theme->SEPARATOR_COL);
+	ui_draw_rect(true, true, x, y, w, h);
+	draw_set_color(0xffffffff);
+	i32   open_y   = 0;
+	char *open_sub = NULL;
+	for (i32 i = 0; i < count; ++i) {
+		g_ui->_x = x + (i / rows) * menuw + pad;
+		g_ui->_y = y + pad + (i % rows) * eh;
+		g_ui->_w = menuw - pad * 2;
+		ui_nodes_menu_entry(&entries[i], prefix, &open_y, &open_sub);
+	}
+	if (open_sub != NULL) {
+		ui_nodes_menu_level(category, cat_name, open_sub, x + w, open_y, menuw, x, left);
+	}
+}
+
 void ui_nodes_draw_menubar_search(void *_) {
 	ui_nodes_node_search(math_floor(ui_nodes_node_search_x), math_floor(ui_nodes_node_search_y), NULL);
+}
+
+// Editing a material from the Materials tab (its Edit): the graph when the edit began, for Cancel. Save to Library and
+// Cancel end the edit and close the editor, as in the Material Studio.
+static slot_material_t  *ui_nodes_edit_mat      = NULL;
+static ui_node_canvas_t *ui_nodes_edit_snapshot = NULL;
+
+void ui_nodes_edit_material(slot_material_t *m) {
+	ui_nodes_edit_mat            = m;
+	ui_nodes_edit_snapshot       = util_clone_canvas(m->canvas);
+	ui_nodes_group_stack->length = 0;
+	if (!ui_nodes_show || ui_nodes_canvas_type != CANVAS_TYPE_MATERIAL) {
+		ui_base_show_material_nodes();
+	}
+}
+
+static bool ui_nodes_editing() {
+	return ui_nodes_edit_mat != NULL && ui_nodes_edit_mat == g_context->material && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL &&
+	       ui_nodes_group_stack->length == 0 && array_index_of(g_project->_->materials, ui_nodes_edit_mat) >= 0;
+}
+
+static void ui_nodes_edit_end() {
+	ui_nodes_edit_mat      = NULL;
+	ui_nodes_edit_snapshot = NULL;
+	if (ui_nodes_show && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
+		ui_base_show_material_nodes(); // Closes the editor
+	}
+	ui_dock_redraw(-1);
+}
+
+static void ui_nodes_edit_save(void *_) {
+	slot_material_t *m = ui_nodes_edit_mat;
+	if (m != NULL && saved_materials_save(m)) {
+		console_info(string("%s %s", tr("Saved to the library:"), m->canvas->name));
+	}
+	ui_nodes_edit_end();
+}
+
+static void ui_nodes_edit_cancel(void *_) {
+	slot_material_t *m = ui_nodes_edit_mat;
+	if (m != NULL && ui_nodes_edit_snapshot != NULL) {
+		history_edit_nodes(m->canvas, CANVAS_TYPE_MATERIAL, -1); // Cancel can be undone
+		m->canvas = ui_nodes_edit_snapshot;
+		ui_nodes_t *nodes                = ui_nodes_get_nodes();
+		nodes->nodes_selected_id->length = 0;
+		ui_nodes_canvas_changed();
+	}
+	ui_nodes_edit_end();
 }
 
 void ui_nodes_draw_menubar() {
@@ -727,23 +1085,41 @@ void ui_nodes_draw_menubar() {
 	g_theme->BUTTON_COL  = g_theme->WINDOW_BG_COL;
 	g_theme->SHADOWS     = false;
 	string_array_t *cats = ui_nodes_get_categories();
+	// Categories that do not fit the row go to a "..." menu, scripts and node libraries can add many
+	f32 search_w = g_config->touch_ui ? 36 * UI_SCALE() : ui_nodes_menubar_button_w(tr("Search"));
+	f32 back_w   = ui_nodes_group_stack->length > 0 ? ew : 0;
+	bool editing = ui_nodes_editing();
+	f32  save_w  = ui_nodes_menubar_button_w(tr("Save to Library"));
+	f32  cancel_w = ui_nodes_menubar_button_w(tr("Cancel"));
+	f32  edit_w  = editing ? save_w + cancel_w + 9 : 0;
+	f32 avail    = ui_nodes_ww - g_ui->_x - search_w - back_w - edit_w;
+	f32 used     = 0;
 	for (i32 i = 0; i < cats->length; ++i) {
-
-		if (!full && i == 4) { // MATERIAL_NODE_CATEGORY_GROUP
-			break;
+		used += ui_nodes_menubar_button_w(tr(cats->buffer[i]));
+	}
+	i32 shown = cats->length;
+	if (used > avail) {
+		avail -= ui_nodes_menubar_button_w("...");
+		used  = 0;
+		shown = 0;
+		while (shown < cats->length && used + ui_nodes_menubar_button_w(tr(cats->buffer[shown])) <= avail) {
+			used += ui_nodes_menubar_button_w(tr(cats->buffer[shown]));
+			shown++;
 		}
-
+	}
+	for (i32 i = 0; i < shown; ++i) {
+		g_ui->is_hovered = false; // Not updated when the pointer is outside the window, a stale value would switch the category
 		if ((ui_menubar_button(tr(cats->buffer[i]))) || (g_ui->is_hovered && ui_nodes_show_menu)) {
-			ui_nodes_show_menu     = true;
-			ui_nodes_menu_category = i;
-			ui_nodes_popup_x       = ui_nodes_wx + g_ui->_x;
-			ui_nodes_popup_y       = ui_nodes_wy + g_ui->_y;
-			if (g_config->touch_ui) {
-				ui_nodes_show_menu_first = true;
-				i32 menuw                = math_floor(ew * 2.3);
-				ui_nodes_popup_x -= menuw / 2.0;
-				ui_nodes_popup_x += g_ui->_w / 2.0;
-			}
+			ui_nodes_open_category(i, ew);
+		}
+		g_ui->_x += g_ui->_w + 3;
+		g_ui->_y = 2 + start_y;
+	}
+	if (shown < cats->length) {
+		if (ui_menubar_button("...")) {
+			ui_nodes_menu_more_first = shown;
+			ui_nodes_open_category(-1, ew); // Only places the popup, the category is picked from the menu
+			ui_menu_draw(&ui_nodes_menu_more, math_floor(ui_nodes_wx + g_ui->_x), math_floor(ui_nodes_wy + g_ui->_y));
 		}
 		g_ui->_x += g_ui->_w + 3;
 		g_ui->_y = 2 + start_y;
@@ -778,6 +1154,22 @@ void ui_nodes_draw_menubar() {
 	g_ui->_w = ew;
 	if (ui_nodes_group_stack->length > 0 && ui_icon_button(tr("Back"), ICON_ARROW_LEFT, UI_ALIGN_CENTER)) {
 		array_pop(ui_nodes_group_stack);
+	}
+
+	// Editing a material: at the right end
+	if (editing) {
+		g_ui->_x = ui_nodes_ww - edit_w;
+		g_ui->_y = 2 + start_y;
+		g_ui->_w = cancel_w;
+		if (ui_button(tr("Cancel"), UI_ALIGN_CENTER, "")) {
+			sys_notify_on_next_frame(&ui_nodes_edit_cancel, NULL);
+		}
+		g_ui->_x = ui_nodes_ww - save_w - 3;
+		g_ui->_y = 2 + start_y;
+		g_ui->_w = save_w;
+		if (ui_button(tr("Save to Library"), UI_ALIGN_CENTER, "")) {
+			sys_notify_on_next_frame(&ui_nodes_edit_save, NULL);
+		}
 	}
 }
 
@@ -991,6 +1383,7 @@ void ui_nodes_update(void *_) {
 		}
 
 		// Remove nodes with unknown id for this canvas type
+		// The live node lists are searched, categories registered at runtime (script_material_category_add) are found too
 		if (ui_is_paste) {
 			node_list_t_array_t *node_list = ui_nodes_get_node_list();
 
@@ -1078,13 +1471,20 @@ void ui_nodes_update(void *_) {
 
 	ui_end();
 
+	if (ui_nodes_show_menu && ui_nodes_menu_category >= ui_nodes_get_node_list()->length) { // Category removed by a script
+		ui_nodes_show_menu = false;
+	}
+
 	if (ui_nodes_show_menu) {
-		node_list_t_array_t *list     = ui_nodes_get_node_list();
-		ui_node_t_array_t   *category = list->buffer[ui_nodes_menu_category];
-		bool is_group_category = ui_nodes_canvas_type != CANVAS_TYPE_BRUSH && string_equals(ui_nodes_get_categories()->buffer[ui_nodes_menu_category], "Group");
-		node_group_t_array_t *groups = ui_nodes_groups();
-		i32                   py     = ui_nodes_popup_y;
-		i32                   menuw  = math_floor(ew * 2.3);
+		node_list_t_array_t   *list              = ui_nodes_get_node_list();
+		ui_node_t_array_t     *category          = list->buffer[ui_nodes_menu_category];
+		char                  *cat_name          = ui_nodes_get_categories()->buffer[ui_nodes_menu_category];
+		bool                   is_group_category = ui_nodes_canvas_type != CANVAS_TYPE_BRUSH && string_equals(cat_name, "Group");
+		i32                    root_count        = 0;
+		ui_nodes_menu_entry_t *root              = ui_nodes_menu_entries(category, cat_name, "", &root_count);
+		node_group_t_array_t  *groups            = ui_nodes_groups();
+		i32                    py                = ui_nodes_popup_y;
+		i32                    menuw             = math_floor(ew * 2.3);
 		draw_begin(NULL, false, 0);
 		ui_begin_region(g_ui, math_floor(ui_nodes_popup_x), math_floor(py), menuw);
 		i32 _FILL_BUTTON_BG     = g_theme->FILL_BUTTON_BG;
@@ -1093,30 +1493,21 @@ void ui_nodes_update(void *_) {
 		g_theme->ELEMENT_OFFSET = 0;
 		i32 _ELEMENT_H          = g_theme->ELEMENT_H;
 		g_theme->ELEMENT_H      = g_config->touch_ui ? (28 + 2) : 28;
-		ui_menu_h               = category->length * UI_ELEMENT_H();
+		ui_menu_h               = root_count * UI_ELEMENT_H();
 		if (is_group_category) {
 			ui_menu_h += groups->length * UI_ELEMENT_H();
 		}
 		ui_menu_begin();
-		for (i32 i = 0; i < category->length; ++i) {
-			ui_node_t *n = category->buffer[i];
-			if (ui_menu_button(tr(n->name), "", ICON_NONE)) {
-				ui_nodes_push_undo(NULL);
-				ui_node_canvas_t *canvas = ui_nodes_get_canvas(true);
-				ui_nodes_t       *nodes  = ui_nodes_get_nodes();
-				ui_node_t        *node   = ui_nodes_make_node(n, nodes, canvas);
-				any_array_push(canvas->nodes, node);
-				nodes->nodes_selected_id = i32_array_create_from_raw(
-				    (i32[]){
-				        node->id,
-				    },
-				    1);
-				nodes->nodes_drag = true;
-			}
+		i32   cols     = 1;
+		i32   open_y   = 0;
+		char *open_sub = NULL;
+		for (i32 i = 0; i < root_count; ++i) {
+			ui_nodes_menu_entry(&root[i], "", &open_y, &open_sub);
 			// Next column
 			if (g_ui->_y - ui_nodes_wy + UI_ELEMENT_H() / 2.0 > ui_nodes_wh) {
 				g_ui->_x += menuw;
 				g_ui->_y = py;
+				cols++;
 			}
 		}
 		if (is_group_category) {
@@ -1151,9 +1542,14 @@ void ui_nodes_update(void *_) {
 				g_ui->enabled = true;
 			}
 		}
-		ui_nodes_hide_menu = g_ui->combo_selected_id == 0 && !ui_nodes_show_menu_first &&
+		if (open_sub != NULL) {
+			i32 popup_x = math_floor(ui_nodes_popup_x);
+			ui_nodes_menu_level(category, cat_name, open_sub, popup_x + cols * menuw, open_y, menuw, popup_x, false);
+		}
+		ui_nodes_hide_menu = g_ui->combo_selected_id == 0 && !ui_nodes_show_menu_first && !ui_nodes_menu_keep &&
 		                     (g_ui->changed || g_ui->input_released || g_ui->input_released_r || g_ui->is_escape_down);
 		ui_nodes_show_menu_first = false;
+		ui_nodes_menu_keep       = false;
 		g_theme->FILL_BUTTON_BG  = _FILL_BUTTON_BG;
 		g_theme->ELEMENT_OFFSET  = _ELEMENT_OFFSET;
 		g_theme->ELEMENT_H       = _ELEMENT_H;
@@ -1165,6 +1561,7 @@ void ui_nodes_update(void *_) {
 	if (ui_nodes_hide_menu) {
 		ui_nodes_show_menu       = false;
 		ui_nodes_show_menu_first = true;
+		ui_nodes_menu_open[0]    = '\0';
 	}
 
 	g_ui->input_enabled = true;

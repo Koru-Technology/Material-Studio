@@ -5,6 +5,13 @@ char *rgb_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	return parser_material_vec3(socket->default_value);
 }
 
+// Native RGBA result, the color keeps its alpha
+char *rgb_node_rgba(ui_node_t *node, ui_node_socket_t *socket) {
+	f32_array_t *v = socket->default_value;
+	f32          a = v->length > 3 ? v->buffer[3] : 1.0;
+	return string_tmp("vec4(%s, %s)", parser_material_vec3(v), f32_to_string_with_zeros(a));
+}
+
 void rgb_node_init() {
 
 	ui_node_t *rgb_node_def =
@@ -47,4 +54,5 @@ void rgb_node_init() {
 
 	any_array_push(nodes_material_input, rgb_node_def);
 	any_map_set(parser_material_node_vectors, "RGB", rgb_node_vector);
+	any_map_set(parser_material_node_outputs, "RGB", rgb_node_rgba);
 }

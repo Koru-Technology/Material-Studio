@@ -147,6 +147,12 @@ void ui_popovers_show(i32 p) {
 	base_redraw_ui();
 }
 
+// Opens the materials popover on its tab i: 0 materials, 1 library, 2 smart materials
+void ui_popovers_show_materials_tab(i32 i) {
+	ui_popovers_tab[POPOVER_MATERIALS] = i;
+	ui_popovers_show(POPOVER_MATERIALS);
+}
+
 void ui_popovers_close() {
 	if (ui_popovers_open != POPOVER_NONE) {
 		ui_popovers_set_open(POPOVER_NONE);

@@ -9,6 +9,9 @@ i32 uniforms_ext_i32_link(object_t *object, shader_data_t *mat, char *link) {
 }
 
 f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
+	if (string_equals(link, "_mm_zero")) { // Added to Material Maker parameters, so the compiler does not fold them (see
+		return 0.0;                        // mm_uniform_runtime_declaration)
+	}
 	if (starts_with(link, "_layer_opacity")) { // _layer_opacity<layer id>, see make_mesh_opacity
 		i32 id = atoi(link + 14);
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
@@ -520,6 +523,10 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
 			return rt->_image;
 		}
+	}
+	if (starts_with(link, "_mmbuf")) { // Material Maker buffers, see mm_buffers_link
+		gpu_texture_t *buf = mm_buffers_texture(link);
+		return buf != NULL ? buf : ((render_target_t *)any_map_get(render_path_render_targets, "empty_black"))->_image;
 	}
 	if (starts_with(link, "_texlive")) { // Material Studio preview values
 		gpu_texture_t *live = parser_material_live_texture(link);

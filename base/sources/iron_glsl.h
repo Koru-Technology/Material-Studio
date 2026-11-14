@@ -18,5 +18,8 @@ typedef enum {
 // The returned strings stay valid until the next call.
 char *iron_glsl_to_msl(const char *glsl, iron_glsl_stage_t stage, const char *defines, bool ios, char **error);
 
+// Monotonic wall time in milliseconds, for the IRON_SHADER_TIMING logs
+double iron_glsl_now_ms(void);
+
 // Both stages: *vs = "//>vert\n" + msl, *fs = "//>frag\n" + msl, or "" on error
 void gpu_create_shaders_from_glsl(char *glsl, char **vs, char **fs, int *vs_size, int *fs_size);

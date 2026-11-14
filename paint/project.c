@@ -33,6 +33,14 @@ project_t *main() {
 	add_cfiles(project, "sources/startup.c");
 	add_cfiles(project, "sources/minic_api.c");
 	add_cfiles(project, "sources/main.c");
+	// Material Maker generator, own translation units (their file-local helpers share names), mm_core.c is in main.c
+	add_cfiles(project, "sources/material_maker/mm_gen.c");
+	add_cfiles(project, "sources/material_maker/mm_graph.c");
+	add_cfiles(project, "sources/material_maker/mm_plan.c");
+	add_cfiles(project, "sources/material_maker/mm_sdf.c");
+	add_cfiles(project, "sources/material_maker/mm_types_extra.c");
+	add_cfiles(project, "sources/material_maker/mm_texture.c");
+	add_cfiles(project, "sources/material_maker/mm_embed.c");
 	add_shaders(project, "shaders/*.shader");
 	add_shaders(project, "shaders/*.glsl");
 	add_assets(project, "assets/*", "data/{name}", 0);
@@ -42,6 +50,11 @@ project_t *main() {
 	add_assets(project, "assets/meshes/*", "data/meshes/{name}", ASSET_NOEMBED);
 	add_assets(project, "assets/meshes/default/*", "data/meshes/{name}", 0); // Embed default mesh
 	add_assets(project, "assets/locale/*", "data/locale/{name}", 0);
+	add_assets(project, "assets/material_maker/*", "data/material_maker/{name}", 0); // nodes.pack, library.pack
+	// The library's buffer passes precompiled for Metal (tools/material_maker/build_metallib.py, read by
+	// metal_msl_pack.h) are not shipped: ~35 MB per platform for a first-use-only saving, iOS caches compiled shaders.
+	// To ship them: generate assets/material_maker/msl/msl_<platform>.pack and add it here as data/material_maker/{name},
+	// ASSET_NOEMBED.
 	if (with_tcc) {
 		add_define(project, "WITH_TCC");
 		add_cfiles(project, "../base/sources/libs/minic_tcc.c");

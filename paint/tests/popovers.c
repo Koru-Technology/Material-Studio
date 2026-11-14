@@ -6,7 +6,7 @@ int fails  = 0;
 int checks = 0;
 int step   = 0;
 int frame  = 0;
-int hold   = 0; // Long press frames
+double hold_start = 0.0; // When the long press started (the UI opens the menu after 0.5 s held, by the clock)
 int lx     = 0; // Layer row in the layers popover
 int ly     = 0;
 
@@ -62,10 +62,10 @@ void next() {
 		lx = ui_popovers_rect_get(0) + ui_popovers_rect_get(2) / 2;
 		ly = ui_popovers_rect_get(1) + ui_popovers_rect_get(3) - (int)(30 * UI_SCALE());
 		script_mouse_press(lx, ly, 0);
+		hold_start = sys_time();
 	}
 	else if (step == 2) {
-		if (hold < 25) { // 150 frames, past the layer lift on 120 Hz screens too
-			hold = hold + 1;
+		if (sys_time() - hold_start < 1.0) { // Held past the 0.5 s long press, whatever the frame rate
 			script_mouse_move(lx, ly);
 			script_notify_on_next_frame(next);
 			return;

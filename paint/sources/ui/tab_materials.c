@@ -154,12 +154,25 @@ static void tab_materials_open_studio(void *m) {
 	material_studio_open(m);
 }
 
+// Studio materials open in the Material Studio, the others (Material Maker's library, node graphs) in the node editor.
+// Both have Save to Library and Cancel.
+static void tab_materials_edit(void *m) {
+	if (studio_graph_is(((slot_material_t *)m)->canvas)) {
+		material_studio_open(m);
+	}
+	else {
+		ui_popovers_close();
+		ui_nodes_edit_material(m);
+	}
+}
+
 void tab_materials_draw_slots_menu() {
 	i32              i = _tab_materials_draw_slots;
 	slot_material_t *m = g_project->_->materials->buffer[i];
 
-	if (studio_graph_is(m->canvas) && ui_menu_button(tr("Edit in Studio"), "", ICON_EDIT)) {
-		sys_notify_on_next_frame(&tab_materials_open_studio, m);
+	if (ui_menu_button(tr("Edit"), "", ICON_EDIT)) {
+		context_select_material(i);
+		sys_notify_on_next_frame(&tab_materials_edit, m);
 	}
 
 	if (ui_menu_button(tr("To Fill Layer"), "", ICON_SPHERE)) {
@@ -189,6 +202,15 @@ void tab_materials_draw_slots_menu() {
 
 	if (g_project->_->materials->length > 1 && ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
 		tab_materials_delete_material(m);
+	}
+
+	// What the tab's Edit button held
+	ui_menu_separator();
+	if (ui_menu_button(tr("New Studio Material"), "", ICON_PLUS)) {
+		sys_notify_on_next_frame(&tab_materials_new_studio, NULL);
+	}
+	if (ui_menu_button(tr("Import"), "", ICON_IMPORT)) {
+		project_import_material();
 	}
 
 	ui_menu_separator();
@@ -440,15 +462,6 @@ void tab_materials_draw_mini(i32 *htab) {
 	tab_materials_draw_slots(true);
 }
 
-void tab_materials_draw_edit() {
-	if (ui_menu_button(tr("New Studio Material"), "", ICON_PLUS)) {
-		sys_notify_on_next_frame(&tab_materials_new_studio, NULL);
-	}
-	if (ui_menu_button(tr("Import"), "", ICON_IMPORT)) {
-		project_import_material();
-	}
-}
-
 void tab_materials_draw_full(i32 *htab) {
 	if (ui_tab(htab, tr("Materials"), false, -1, false)) {
 		ui_begin_sticky();
@@ -456,16 +469,12 @@ void tab_materials_draw_full(i32 *htab) {
 		    (f32[]){
 		        -64,
 		        -64,
-		        -64,
 		    },
-		    3);
+		    2);
 		ui_row(row);
 
 		tab_materials_button_new(tr("New"));
 		tab_materials_button_nodes();
-		if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
-			ui_menu_draw(&tab_materials_draw_edit, -1, -1);
-		}
 
 		ui_end_sticky();
 		ui_separator(3, false);

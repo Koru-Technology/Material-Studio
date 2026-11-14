@@ -431,6 +431,7 @@ void ui_node_params_draw(i32 canvas_type, bool *show) {
 		}
 		g_ui->_w -= ui_node_params_socket_w();
 		ui_node_params_draw_buttons(node);
+		mm_node_update(node, ui_node_params_get_canvas(canvas_type)); // A Material Maker switch or remote follows its edited values
 		ui_node_params_draw_inputs(canvas_type, node);
 		g_ui->_w += ui_node_params_socket_w();
 		ui_node_params_end();

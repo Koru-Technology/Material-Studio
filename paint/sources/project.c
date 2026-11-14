@@ -500,7 +500,7 @@ void project_import_asset_on_file_picked(char *path) {
 
 void project_import_asset(char *filters, bool hdr_as_envmap) {
 	if (filters == NULL) {
-		filters = string("%s,%s", string_array_join(path_texture_formats(), ","), string_array_join(path_mesh_formats(), ","));
+		filters = string("%s,%s,ptex", string_array_join(path_texture_formats(), ","), string_array_join(path_mesh_formats(), ",")); // ptex: Material Maker
 	}
 
 	_project_import_asset_hdr_as_envmap = hdr_as_envmap;

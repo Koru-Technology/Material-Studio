@@ -33,6 +33,7 @@ void base_on_memory_warning() {
 		history_tiles_trim(); // Not in the middle of a stroke
 		render_path_paint_release_scratch();
 	}
+	mm_buffers_trim(); // Material Maker buffer textures the last render did not use, they render again when needed
 #ifdef IRON_METAL
 	gpu_release_staging_buffers();
 #endif

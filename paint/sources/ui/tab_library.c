@@ -1,7 +1,8 @@
 #include "../global.h"
 
-// Materials of the library folder (library.c), or with the cloud button the Poly Haven, ambientCG and FreeStylized materials
-// (library_cloud.c): previews only, tapping one adds it to the project
+// Materials saved from the Material Studio, of the library folder (library.c) and Material Maker's library (mm_library.c),
+// or with the cloud button the Poly Haven, ambientCG and FreeStylized materials (library_cloud.c): previews only, tapping
+// one adds it to the project
 
 static char *tab_library_search = "";
 // Cloud view, its type and the scroll position are kept in the config (library_cloud, library_cloud_type, library_scroll)
@@ -78,22 +79,88 @@ static ui_state_t tab_library_image(gpu_texture_t *icon, f32 imgh, u32 tint) {
 	return state;
 }
 
-// Procedural materials (builtin_materials.c), one section per kind
-static void tab_library_draw_builtin(tab_library_grid_t *g) {
+// Section of Material Maker's library picked in the type menu, -1 for all. Its counts are kept for the menu, which draws
+// outside of the tab.
+#define TAB_LIBRARY_MM_SECTIONS 32
+static i32  tab_library_mm_section = -1;
+static i32  tab_library_mm_counts[TAB_LIBRARY_MM_SECTIONS];
+static i32  tab_library_mm_total   = 0;
+static bool tab_library_mm_picked  = false;
+
+static void tab_library_mm_count() {
+	char *search         = to_lower_case(tab_library_search);
+	tab_library_mm_total = 0;
+	for (i32 s = 0; s < TAB_LIBRARY_MM_SECTIONS; ++s) {
+		tab_library_mm_counts[s] = 0;
+	}
+	for (i32 i = 0; i < mm_library_count(); ++i) {
+		i32 s = mm_library_section(i);
+		if (s >= 0 && s < TAB_LIBRARY_MM_SECTIONS && mm_library_matches(i, search)) {
+			tab_library_mm_counts[s]++;
+			tab_library_mm_total++;
+		}
+	}
+	// The picked section, all when it has nothing to show now
+	if (tab_library_mm_section >= 0 && (tab_library_mm_section >= TAB_LIBRARY_MM_SECTIONS || tab_library_mm_counts[tab_library_mm_section] == 0)) {
+		tab_library_mm_section = -1;
+	}
+}
+
+static void tab_library_mm_menu() {
+	for (i32 s = -1; s < mm_library_section_count() && s < TAB_LIBRARY_MM_SECTIONS; ++s) {
+		if (s >= 0 && tab_library_mm_counts[s] == 0) {
+			continue;
+		}
+		char *name    = s < 0 ? string("%s (%d)", tr("All Types"), tab_library_mm_total) : string("%s (%d)", mm_library_section_name(s), tab_library_mm_counts[s]);
+		bool  current = s == tab_library_mm_section;
+		if (ui_menu_button(name, "", current ? ICON_CHECK : ICON_NONE) && !current) {
+			tab_library_mm_section = s;
+			tab_library_mm_picked  = true;
+			ui_dock_redraw(TAB_AREA_SIDEBAR1);
+		}
+	}
+}
+
+// Looks like a combo, opens the type menu under it
+static void tab_library_mm_type_button() {
+	char *picked = tab_library_mm_section < 0 ? string("%s (%d)", tr("All Types"), tab_library_mm_total)
+	                                          : string("%s (%d)", mm_library_section_name(tab_library_mm_section), tab_library_mm_counts[tab_library_mm_section]);
+	f32   by     = g_ui->_y;
+	if (ui_button(picked, UI_ALIGN_LEFT, "")) {
+		i32 menu_w = math_floor(base_default_element_w * UI_SCALE() * 2.3);
+		ui_menu_draw(&tab_library_mm_menu, iron_window_width() - menu_w, math_floor(g_ui->_window_y + g_ui->_y));
+	}
+	f32 ax = g_ui->_x + g_ui->_w - g_ui->arrow_offset_x - 8;
+	f32 ay = by + g_ui->arrow_offset_y + 3;
+	draw_set_color(g_theme->HOVER_COL);
+	draw_filled_triangle(ax, ay, ax + UI_ARROW_SIZE(), ay, ax + UI_ARROW_SIZE() / 2.0, ay + UI_ARROW_SIZE() / 2.0);
+}
+
+// Material Maker's library (nodes_material/mm_library.c), one section per kind, or the picked one. Only the rows in view
+// load their thumbnails.
+static void tab_library_draw_mm(tab_library_grid_t *g) {
 	char *search = to_lower_case(tab_library_search);
-	i32   total  = builtin_material_count();
-	i32  *items  = malloc(sizeof(i32) * total);
-	for (i32 s = 0; s < builtin_material_section_count(); ++s) {
+	i32   total  = mm_library_count();
+	i32  *items  = malloc(sizeof(i32) * (total > 0 ? total : 1));
+	for (i32 s = 0; s < mm_library_section_count(); ++s) {
+		if (tab_library_mm_section >= 0 && s != tab_library_mm_section) {
+			continue;
+		}
 		i32 shown = 0;
 		for (i32 i = 0; i < total; ++i) {
-			if (builtin_material_section(i) == s && string_index_of(to_lower_case(builtin_material_name(i)), search) >= 0) {
+			if (mm_library_section(i) == s && mm_library_matches(i, search)) {
 				items[shown++] = i;
 			}
 		}
 		if (shown == 0) {
 			continue;
 		}
-		ui_text(builtin_material_section_name(s), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+		if (g_ui->_y + g->text_h < 0 || g_ui->_y > g_ui->_window_h) {
+			g_ui->_y += g->text_h;
+		}
+		else {
+			ui_text(string("%s (%d)", mm_library_section_name(s), shown), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
+		}
 		for (i32 row = 0; row * g->num < shown; ++row) {
 			if (tab_library_row_hidden(g)) {
 				g_ui->_y += g->row_h;
@@ -106,12 +173,12 @@ static void tab_library_draw_builtin(tab_library_grid_t *g) {
 					ui_end_element_of_size(g->imgh);
 					continue;
 				}
-				ui_state_t state = tab_library_image(builtin_material_icon(items[k]), g->imgh, 0xffffffff);
+				ui_state_t state = tab_library_image(mm_library_icon(items[k]), g->imgh, 0xffffffff);
 				if (state == UI_STATE_RELEASED && !g_ui->is_scrolling) {
-					builtin_material_use(items[k]);
+					mm_library_use(items[k]);
 				}
 				if (g_ui->is_hovered) {
-					ui_tooltip(builtin_material_name(items[k]));
+					ui_tooltip(mm_library_credit(items[k]));
 				}
 			}
 			ui_row(g->ratios);
@@ -121,7 +188,7 @@ static void tab_library_draw_builtin(tab_library_grid_t *g) {
 					ui_end_element_of_size(g->text_h);
 					continue;
 				}
-				ui_text(builtin_material_name(items[k]), UI_ALIGN_CENTER, 0x00000000);
+				ui_text(mm_library_name(items[k]), UI_ALIGN_CENTER, 0x00000000);
 			}
 			g_ui->_y += 8 * UI_SCALE();
 		}
@@ -191,8 +258,15 @@ static void tab_library_draw_saved(tab_library_grid_t *g) {
 }
 
 static void tab_library_draw_local() {
+	tab_library_mm_count();
 	ui_begin_sticky();
 	tab_library_draw_header();
+	if (tab_library_mm_picked) { // Another type picked: back to the top
+		tab_library_mm_picked               = false;
+		g_ui->current_window->scroll_offset = 0;
+		g_ui->current_window->redraws       = 2;
+	}
+	tab_library_mm_type_button();
 	ui_text(library_status(), UI_ALIGN_LEFT, 0x00000000);
 	if (!library_has_folder() && ui_icon_button(tr("Choose Folder..."), ICON_FOLDER_OPEN, UI_ALIGN_CENTER)) {
 		library_pick_folder();
@@ -201,10 +275,11 @@ static void tab_library_draw_local() {
 	ui_separator(3, false);
 
 	tab_library_grid_t g = tab_library_grid();
-	tab_library_draw_saved(&g);
-	if (!g_config->hide_builtin_materials) {
-		tab_library_draw_builtin(&g);
+	if (tab_library_mm_section >= 0) { // A type of Material Maker's library picked: only that
+		tab_library_draw_mm(&g);
+		return;
 	}
+	tab_library_draw_saved(&g);
 
 	// Ready items matching the search
 	i32  count   = library_entry_count();
@@ -217,7 +292,7 @@ static void tab_library_draw_local() {
 		}
 	}
 
-	if (!g_config->hide_builtin_materials && shown > 0) {
+	if (shown > 0) {
 		ui_text(tr("My Materials"), UI_ALIGN_LEFT, g_theme->SEPARATOR_COL);
 	}
 	for (i32 row = 0; row * g.num < shown; ++row) {
@@ -255,6 +330,9 @@ static void tab_library_draw_local() {
 		g_ui->_y += 8 * UI_SCALE();
 	}
 	free(visible);
+
+	// Material Maker's library, after the user's own materials
+	tab_library_draw_mm(&g);
 }
 
 // Download arrow inside a ring that fills up clockwise with the progress

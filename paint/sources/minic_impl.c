@@ -1462,6 +1462,129 @@ void script_material_remove_node(ui_node_t *node) {
 	}
 }
 
+// Node groups from scripts: a group canvas, nodes and links in any canvas (NULL is the current material's), group sockets
+
+void nodes_material_sync_group_sockets(ui_node_canvas_t *canvas, char *group_name, ui_node_t *node);
+
+static ui_node_t *script_group_io_node(i32 id, char *name, char *type, char *button) {
+	return ALLOC_INIT(ui_node_t, {.id      = id,
+	                              .name    = name,
+	                              .type    = type,
+	                              .x       = id == 0 ? 50 : 450,
+	                              .y       = 200,
+	                              .color   = 0xff448c6d,
+	                              .inputs  = any_array_create_from_raw((void *[]){}, 0),
+	                              .outputs = any_array_create_from_raw((void *[]){}, 0),
+	                              .buttons = any_array_create_from_raw(
+	                                  (void *[]){
+	                                      ALLOC_INIT(ui_node_button_t,
+	                                                 {.name = button, .type = "CUSTOM", .height = 1, .output = -1, .default_value = f32_array_create_x(0.0)}),
+	                                  },
+	                                  1)});
+}
+
+ui_node_canvas_t *script_material_group_create(char *name) {
+	if (name == NULL || parser_material_get_group(name) != NULL) {
+		return NULL;
+	}
+	ui_node_canvas_t *canvas = ALLOC_INIT(ui_node_canvas_t, {.name  = string_copy(name),
+	                                                         .nodes = any_array_create_from_raw(
+	                                                             (void *[]){
+	                                                                 script_group_io_node(0, "Group Input", "GROUP_INPUT", "nodes_material_group_input_button"),
+	                                                                 script_group_io_node(1, "Group Output", "GROUP_OUTPUT", "nodes_material_group_output_button"),
+	                                                             },
+	                                                             2),
+	                                                         .links = any_array_create_from_raw((void *[]){}, 0)});
+	node_group_t     *ng     = ALLOC_INIT(node_group_t, {.canvas = canvas, .nodes = ui_nodes_create()});
+	any_array_push(g_project->_->material_groups, ng);
+	return canvas;
+}
+
+void script_material_group_remove(ui_node_canvas_t *group) {
+	for (i32 i = 0; group != NULL && i < g_project->_->material_groups->length; ++i) {
+		if (g_project->_->material_groups->buffer[i]->canvas == group) {
+			array_splice(g_project->_->material_groups, i, 1);
+			return;
+		}
+	}
+}
+
+// Adds a socket to the group's inputs (Group Input outputs) or outputs (Group Output inputs), group nodes follow
+ui_node_socket_t *script_material_group_add_socket(ui_node_canvas_t *group, bool is_output, char *type, char *name) {
+	if (group == NULL || type == NULL) {
+		return NULL;
+	}
+	ui_node_t *io = parser_material_node_by_type(group->nodes, is_output ? "GROUP_OUTPUT" : "GROUP_INPUT");
+	if (io == NULL) {
+		return NULL;
+	}
+	ui_node_socket_t *s = nodes_material_create_socket(NULL, io, name != NULL ? string_copy(name) : NULL, string_copy(type), group, 0.0, 1.0, NULL);
+	any_array_push(is_output ? io->inputs : io->outputs, s);
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		nodes_material_sync_group_sockets(g_project->_->materials->buffer[i]->canvas, group->name, io);
+	}
+	for (i32 i = 0; i < g_project->_->material_groups->length; ++i) {
+		nodes_material_sync_group_sockets(g_project->_->material_groups->buffer[i]->canvas, group->name, io);
+	}
+	return s;
+}
+
+// Node of the type in the canvas, or with type "GROUP" a group node of the group group_name
+ui_node_t *script_canvas_create_node(ui_node_canvas_t *canvas, char *type, char *group_name) {
+	canvas = canvas != NULL ? canvas : script_material_canvas();
+	if (canvas == NULL || type == NULL || g_context->material == NULL) {
+		return NULL;
+	}
+	ui_node_t *node = NULL;
+	if (string_equals(type, "GROUP")) {
+		ui_node_canvas_t *g = group_name != NULL ? parser_material_get_group(group_name) : NULL;
+		if (g == NULL) {
+			return NULL;
+		}
+		node = ui_nodes_make_group_node(g, g_context->material->nodes, canvas);
+	}
+	else {
+		nodes_material_init();
+		ui_node_t *n = nodes_material_get_node_t(type);
+		if (n == NULL) {
+			return NULL;
+		}
+		node = ui_nodes_make_node(n, g_context->material->nodes, canvas);
+	}
+	any_array_push(canvas->nodes, node);
+	return node;
+}
+
+void script_canvas_connect(ui_node_canvas_t *canvas, ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket) {
+	canvas = canvas != NULL ? canvas : script_material_canvas();
+	if (canvas == NULL || from == NULL || to == NULL || from_socket < 0 || from_socket >= from->outputs->length || to_socket < 0 ||
+	    to_socket >= to->inputs->length) {
+		return;
+	}
+	script_material_remove_links_to(canvas, to->id, to_socket);
+	any_array_push(canvas->links, project_create_node_link(canvas->links, from->id, from_socket, to->id, to_socket));
+}
+
+// Renders the flat node preview of the node's first output into a new RGBA32 target of size x size. parents lists the
+// group nodes from the current material's canvas into the node's canvas, NULL or empty for a node of the material.
+gpu_texture_t *script_material_node_preview(ui_node_t *node, any_array_t *parents, i32 size) {
+	if (node == NULL || g_context->material == NULL) {
+		return NULL;
+	}
+	ui_node_canvas_t *group = NULL;
+	if (parents != NULL && parents->length > 0) {
+		ui_node_t *p = parents->buffer[parents->length - 1];
+		group        = parser_material_get_group(p->name);
+	}
+	gpu_texture_t *image = gpu_create_render_target(size, size, GPU_TEXTURE_FORMAT_RGBA32);
+	gpu_texture_t *current;
+	bool           in_use;
+	script_gpu_begin(&current, &in_use);
+	util_render_make_node_preview(g_context->material->canvas, node, image, group, group != NULL ? (ui_node_t_array_t *)parents : NULL);
+	script_gpu_end(current, in_use);
+	return image;
+}
+
 static ui_node_socket_t *script_material_socket(ui_node_t *node, bool is_input, i32 socket) {
 	if (node == NULL) {
 		return NULL;

@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Golden images: renders material node previews, Material Studio presets, built-in materials and the viewport in every
+// Golden images: renders material node previews, Material Studio presets, library materials and the viewport in every
 // mode to <save>/golden/*.png. Run once to make the baseline, again after a change, then compare the two folders
 // (pixel differences show what the change did to the rendering). Shader compile failures are counted.
 
@@ -17,6 +17,8 @@ slot_material_t *mat     = NULL;
 any_array_t     *types   = NULL;
 int              PRESETS = 16;
 int              MODES   = 16; // Path trace (16) accumulates noise, left out
+int              LIBRARY = 8;
+int              library_ids[8] = {2, 4, 129, 171, 290, 542, 836, 1535}; // Material Maker library materials of different kinds
 
 char *node_types = "RGB,TEX_BRICK,TEX_CHECKER,TEX_GABOR,TEX_GRADIENT,TEX_MAGIC,TEX_NOISE,TEX_VORONOI,TEX_WAVE,BRIGHTCONTRAST,"
                    "VALTORGB,COMBINE_COLOR,GAMMA,HUE_SAT,INVERT_COLOR,MIX_RGB,QUANTIZE,CURVE_RGB,RGBTOBW,REPLACECOL,"
@@ -112,19 +114,19 @@ void next() {
 		}
 	}
 	else if (step == 2) {
-		// Built-in materials, their sphere icon
+		// Material Maker library materials, their sphere icon
 		if (sub > 0) {
-			save(mat->image, string("builtin_%d", sub - 1));
+			save(mat->image, string("library_%d", library_ids[sub - 1]));
 		}
-		if (sub < builtin_material_count()) {
-			mat  = builtin_material_add(sub);
+		if (sub < LIBRARY) {
+			mat  = mm_import_library(library_ids[sub]);
 			sub  = sub + 1;
-			wait = 3;
+			wait = 6;
 		}
 		else {
 			step = 3;
 			sub  = 0;
-			printf("[golden] built-ins done");
+			printf("[golden] library materials done");
 		}
 	}
 	else if (step == 3) {
@@ -136,7 +138,7 @@ void next() {
 		}
 		else if (sub == 1) {
 			script_layer_new_fill();
-			script_material_set(builtin_material_add(5));
+			script_material_set(mm_import_library(1535));
 			script_fill_layer();
 			slot_layer_t *l = script_layer_new();
 			script_material_set(material_studio_new());

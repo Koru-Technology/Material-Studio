@@ -85,6 +85,11 @@ void nodes_material_init() {
 
 #endif
 
+	nodes_material_mm = any_array_create_from_raw((void *[]){}, 0);
+	mm_nodes_init();
+	mm_bridge_init(); // Their code in material shaders
+	mm_material_init(); // MM Material nodes, their own code (after mm_bridge_init, which takes every other MM_ type)
+
 	nodes_material_group = any_array_create_from_raw((void *[]){}, 0);
 	group_node_init();
 
@@ -97,9 +102,10 @@ void nodes_material_init() {
 	        nodes_material_color,
 	        nodes_material_utilities,
 	        nodes_material_neural,
+	        nodes_material_mm,
 	        nodes_material_group,
 	    },
-	    6);
+	    7);
 
 #else
 
@@ -109,9 +115,10 @@ void nodes_material_init() {
 	        nodes_material_texture,
 	        nodes_material_color,
 	        nodes_material_utilities,
+	        nodes_material_mm,
 	        nodes_material_group,
 	    },
-	    5);
+	    6);
 
 #endif
 }

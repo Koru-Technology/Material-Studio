@@ -27,6 +27,7 @@ static bool              studio_need_render   = false; // The preview image is o
 static bool              studio_need_commit   = false; // An edit to commit once the touch ends
 static bool              studio_hooked        = false;
 static ui_node_canvas_t *studio_undo_canvas   = NULL; // Canvas before the edit, for undo
+static ui_node_canvas_t *studio_open_canvas   = NULL; // Canvas when the studio opened, for Cancel
 static f32               studio_yaw           = 0.65;
 static f32               studio_pitch         = 0.4;
 static f32               studio_dist          = 1.75; // Camera distance, pinch or wheel to zoom
@@ -645,6 +646,7 @@ void material_studio_open(slot_material_t *m) {
 	studio_need_compile  = true;
 	studio_need_commit   = false;
 	studio_undo_canvas   = NULL;
+	studio_open_canvas   = util_clone_canvas(m->canvas);
 	studio_sel           = 0;
 	studio_stop          = 0;
 	studio_known_struct  = studio_hash_struct(m->canvas);
@@ -705,6 +707,25 @@ void material_studio_save() {
 	}
 	material_studio_close(); // Commits, applies to the paint and renders the icon
 	sys_notify_on_next_frame(&studio_save_next, m);
+}
+
+// Closes the studio and puts the material back as it was when the studio opened. One undo step, Cancel can be undone.
+void material_studio_cancel() {
+	slot_material_t *m = studio_material;
+	if (!material_studio_show || m == NULL) {
+		return;
+	}
+	if (studio_open_canvas != NULL && (studio_hash_struct(m->canvas) != studio_hash_struct(studio_open_canvas) ||
+	                                   studio_hash_values(m->canvas) != studio_hash_values(studio_open_canvas))) {
+		history_edit_nodes(m->canvas, CANVAS_TYPE_MATERIAL, -1);
+		m->canvas          = studio_open_canvas;
+		studio_paint_stale = true; // The paint shader, the fill layers and the icon follow when it closes
+	}
+	studio_open_canvas = NULL;
+	studio_need_commit = false; // Nothing to commit, the edits are gone
+	studio_undo_canvas = NULL;
+	material_studio_close();
+	ui_dock_redraw(-1);
 }
 
 bool material_studio_is_open() {
@@ -1585,14 +1606,21 @@ static void studio_draw_header(f32 w) {
 	f32          gap  = math_floor(8 * UI_SCALE());
 	f32          by   = math_floor(y0 + (h - UI_ELEMENT_H()) / 2.0);
 
-	studio_draw_title(w - bw * 2 - gap * 3, h);
+	studio_draw_title(w - bw * 3 - gap * 4, h);
 
 	g_ui->_y = by;
-	g_ui->_x = _x + w - bw * 2 - gap;
+	g_ui->_x = _x + w - bw * 3 - gap * 2;
 	g_ui->_w = bw;
 	if (ui_icon_button(tr("Edit Nodes"), ICON_NODES, UI_ALIGN_CENTER)) {
 		material_studio_close();
 		sys_notify_on_next_frame(&studio_open_nodes, NULL);
+	}
+
+	g_ui->_y = by;
+	g_ui->_x = _x + w - bw * 2 - gap;
+	g_ui->_w = bw;
+	if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
+		material_studio_cancel();
 	}
 
 	g_ui->_y = by;

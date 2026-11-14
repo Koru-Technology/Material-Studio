@@ -1,6 +1,11 @@
 
 #include "global.h"
 
+#ifndef WITH_COMPRESS
+#define MM_STANDALONE // No iron_compress.c (Android): mm_core.c brings its own inflate
+#endif
+#include "material_maker/mm_core.c"
+
 #include "io/export_arm.c"
 #include "io/export_exr.c"
 #include "io/export_mesh.c"
@@ -72,6 +77,11 @@
 #include "nodes_material/material_node.c"
 #include "nodes_material/material_output_node.c"
 #include "nodes_material/math2_node.c"
+#include "nodes_material/mm_nodes.c"
+#include "nodes_material/mm_import.c"
+#include "nodes_material/mm_library.c"
+#include "nodes_material/mm_bridge.c"
+#include "nodes_material/mm_buffers.c"
 #include "nodes_material/mix_color_node.c"
 #include "nodes_material/mix_normal_map_node.c"
 #include "nodes_material/noise_texture_node.c"
@@ -212,7 +222,6 @@
 #include "config.c"
 #include "library.c"
 #include "library_cloud.c"
-#include "builtin_materials.c"
 #include "builtin_brushes.c"
 #include "brush_library.c"
 #include "brush_pad.c"
@@ -343,6 +352,7 @@ void _kickstart() {
 	parser_material_node_values  = any_map_create();
 	parser_material_node_vectors = any_map_create();
 	parser_material_custom_nodes = any_map_create();
+	parser_material_node_outputs = any_map_create();
 	ui_header_h                  = ui_header_default_h;
 	ui_header_handle             = ui_window_create();
 	ui_header_split_handle       = ui_window_create();
@@ -365,9 +375,10 @@ void _kickstart() {
 	        _tr("Color"),
 	        _tr("Utilities"),
 	        _tr("Neural"),
+	        _tr("Material Maker"),
 	        _tr("Group"),
 	    },
-	    6);
+	    7);
 #else
 	nodes_material_categories = any_array_create_from_raw(
 	    (void *[]){
@@ -375,9 +386,10 @@ void _kickstart() {
 	        _tr("Texture"),
 	        _tr("Color"),
 	        _tr("Utilities"),
+	        _tr("Material Maker"),
 	        _tr("Group"),
 	    },
-	    5);
+	    6);
 #endif
 
 #if defined(IRON_ANDROID) || defined(IRON_IOS)

@@ -529,6 +529,7 @@ void                   ui_base_cycle_view_mode();
 i32                    ui_base_view_mode();
 void                   ui_dock_render_resize_line();
 bool                   ui_popovers_enabled();
+void                   ui_popovers_show_materials_tab(i32 i);
 bool                   ui_popovers_has_tab(i32 id);
 i32                    ui_popovers_bar_bottom();
 void                   ui_popovers_redraw(i32 area);
@@ -738,6 +739,12 @@ ui_node_t             *script_material_create_node_at(char *type, f32 x, f32 y);
 ui_node_t             *script_material_get_node(char *type);
 ui_node_t             *script_material_get_node_id(i32 id);
 void                   script_material_connect(ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket);
+ui_node_canvas_t      *script_material_group_create(char *name);
+void                   script_material_group_remove(ui_node_canvas_t *group);
+ui_node_socket_t      *script_material_group_add_socket(ui_node_canvas_t *group, bool is_output, char *type, char *name);
+ui_node_t             *script_canvas_create_node(ui_node_canvas_t *canvas, char *type, char *group_name);
+void                   script_canvas_connect(ui_node_canvas_t *canvas, ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket);
+gpu_texture_t         *script_material_node_preview(ui_node_t *node, any_array_t *parents, i32 size);
 void                   script_material_disconnect(ui_node_t *to, i32 to_socket);
 void                   script_material_remove_node(ui_node_t *node);
 void                   script_material_set_float(ui_node_t *node, i32 is_input, i32 socket, f32 value);
@@ -870,6 +877,16 @@ shader_out_t          *parser_material_parse(ui_node_canvas_t *canvas, node_shad
 void                   parser_material_finalize(node_shader_context_t *con);
 void                   parser_material_push_group(ui_node_canvas_t *g);
 char                  *parser_material_parse_group(ui_node_t *node, ui_node_socket_t *socket);
+void                   parser_material_pop_group();
+ui_node_canvas_t      *parser_material_get_group(char *name);
+void                   parser_material_enter_parents(ui_node_t_array_t *parents);
+char                  *parser_material_socket_glsl_type(char *type);
+char                  *parser_material_socket_zero(char *type);
+char                  *parser_material_greyscale(char *s);
+char                  *parser_material_convert(char *s, char *from, char *to);
+char                  *parser_material_parse_input_as(ui_node_socket_t *inp, char *type, char *default_expr);
+char                  *parser_material_parse_input(ui_node_socket_t *inp);
+char                  *parser_material_preview_rgb(char *res, char *type);
 void                   parser_material_write(node_shader_t *raw, char *s);
 char                  *parser_material_parse_vector_input(ui_node_socket_t *inp);
 char                  *parser_material_parse_value_input(ui_node_socket_t *inp, bool vector_as_grayscale);
@@ -903,6 +920,9 @@ void                   util_render_make_brush_preview();
 void                   util_render_brush_scene_begin(util_render_brush_scene_t *sc);
 void                   util_render_brush_scene_end(util_render_brush_scene_t *sc);
 void                   util_render_resize_asset_icons(void *_);
+bool                   util_render_load_material_icon(slot_material_t *m, buffer_t *icon);
+void                   util_render_set_material_preview(slot_material_t *m, gpu_texture_t *src);
+void                   import_arm_set_preview_given(slot_material_t *m);
 void   util_render_make_node_preview(ui_node_canvas_t *canvas, ui_node_t *node, gpu_texture_t *image, ui_node_canvas_t *group, ui_node_t_array_t *parents);
 void   util_render_pick_pos_nor_tex();
 bool   util_render_picked_on_mesh();
@@ -1124,6 +1144,93 @@ mesh_geo_t               *util_geo_create(i32 vertex_count, i32 index_count);
 void                      util_geo_free(mesh_geo_t *g);
 node_list_t_array_t      *ui_nodes_get_node_list();
 string_array_t           *ui_nodes_get_categories();
+void                      ui_nodes_set_menu_path(char *node_type, char *path);
+char                     *ui_nodes_get_menu_path(char *node_type);
+void                      mm_nodes_init();                          // nodes_material/mm_nodes.c: Material Maker nodes
+void                      mm_node_def_ensure(ui_node_t *def);       // Builds the sockets and buttons of a node type
+void                      mm_node_created(ui_node_t *node);         // Gives a new node its seed
+bool                      mm_node_is(ui_node_t *node);              // A Material Maker node
+struct mm_json           *mm_node_parameters(ui_node_t *node);      // Its parameters in Material Maker's format
+struct mm_json           *mm_node_data(ui_node_t *node);            // As a Material Maker node: type, parameters, seed
+double                    mm_node_seed(ui_node_t *node, bool *locked);
+char                     *mm_node_input_expression(ui_node_t *node, i32 input);
+i32                       mm_nodes_count();
+f32                       mm_nodes_init_ms();
+i32                       mm_nodes_build_all();
+f32                       mm_nodes_build_ms();
+char                     *mm_node_parameters_json(ui_node_t *node);
+char                     *mm_node_data_json(ui_node_t *node);
+void                      mm_node_set_data(ui_node_t *node, struct mm_json *data, ui_node_canvas_t *canvas); // From a Material Maker node
+void                      mm_node_set_data_json(ui_node_t *node, char *json, ui_node_canvas_t *canvas);
+void                      mm_node_update(ui_node_t *node, ui_node_canvas_t *canvas); // Switch sockets, "any" types, remotes
+void                      mm_nodes_sync(ui_node_canvas_t *canvas);
+char                     *mm_node_name(ui_node_t *node); // Its name in Material Maker's graph
+i32                       mm_nodes_count_all();
+void                      mm_material_init();                               // nodes_material/mm_import.c: MM Material, .ptex import
+bool                      mm_material_is(ui_node_t *n);
+char                     *mm_material_parameters_json(ui_node_t *node);
+bool                      mm_import_ptex(char *ptex_text, slot_material_t *target);
+bool                      mm_import_graph(struct mm_json *graph, slot_material_t *target);
+slot_material_t          *mm_import_file(char *path);
+slot_material_t          *mm_import_library(i32 id);
+bool                      mm_import_library_into(i32 id, slot_material_t *target);
+i32                       mm_import_library_count();
+i32                       mm_import_library_id(i32 i);
+char                     *mm_import_library_name(i32 id);
+char                     *mm_import_library_kind(i32 id);
+i32                       mm_import_count(i32 what);
+char                     *mm_import_report();
+ui_node_t                *mm_import_material_node(slot_material_t *m);
+gpu_texture_t            *mm_import_preview(ui_node_t *node, i32 socket, i32 size);
+void                      mm_import_compile(slot_material_t *m);
+i32                       mm_library_count(); // nodes_material/mm_library.c: Material Maker's library in the Library tab
+i32                       mm_library_section_count();
+char                     *mm_library_section_name(i32 s);
+i32                       mm_library_section(i32 i);
+i32                       mm_library_id(i32 i);
+char                     *mm_library_name(i32 i);
+char                     *mm_library_credit(i32 i);
+bool                      mm_library_matches(i32 i, char *search);
+i32                       mm_library_find(i32 id);
+void                      mm_library_use(i32 i);
+gpu_texture_t            *mm_library_icon(i32 i);
+i32                       mm_library_icons_loaded();
+void                      mm_thumbs_generate(char *out, i32 first, i32 count);
+i32                       mm_thumbs_progress();
+bool                      mm_thumbs_finished();
+char                     *mm_thumbs_report();
+i32                       mm_thumbs_count(i32 what);
+bool                      mm_thumbs_has(i32 id);
+f32                       mm_library_search_ms(char *search);
+void                      mm_import_save_png(gpu_texture_t *t, char *path);
+i32                       mm_import_image_diff(gpu_texture_t *a, gpu_texture_t *b);
+char                     *mm_nodes_skipped();
+struct mm_plan;
+gpu_texture_t           **mm_buffers_render(struct mm_plan *plan);         // nodes_material/mm_buffers.c: Material Maker buffers
+char                     *mm_buffers_link(struct mm_plan *plan, i32 pass); // "_mmbuf<key>", the texture link of a rendered pass
+gpu_texture_t            *mm_buffers_texture(char *link);
+void                      mm_buffers_clear();
+void                      mm_buffers_init(); // Image node files, the text node's font
+i32                       mm_buffers_stat(i32 what);
+char                     *mm_buffers_test_ptex(char *path_or_id, i32 size);
+i32                       mm_buffers_test_map_size(i32 map);
+f32                       mm_buffers_test_texel(i32 map, i32 x, i32 y, i32 channel);
+void                      mm_buffers_test_write(char *prefix);
+i32                       mm_buffers_test_resident(i32 map);
+char                     *mm_buffers_test_other(char *path_or_id, i32 size);
+i32                       mm_buffers_test_resolve(i32 in_pass);
+void                      mm_buffers_test_budget(i32 kb);
+void                      mm_buffers_set_size_cap(i32 size);
+void                      mm_buffers_trim(void);
+void                      mm_buffers_batch_begin(void);
+void                      mm_buffers_batch_end(void);
+extern buffer_t          *parser_material_capture; // parser_material.c: code written there instead of the shader
+i32                       parser_material_socket_index(ui_node_t *node, ui_node_socket_t *socket);
+void                      mm_bridge_init(void); // nodes_material/mm_bridge.c: Material Maker nodes' code in material shaders
+void                      mm_bridge_begin(void);
+void                      mm_bridge_request_builtins(node_shader_t *shader);
+void                      mm_bridge_finalize(node_shader_t *shader);
+char                     *mm_bridge_output(ui_node_t *node, ui_node_socket_t *socket);
 ui_node_t                *nodes_brush_create_node(char *node_type);
 void                      import_obj_run(char *path, bool replace_existing);
 void                      import_obj_parse(buffer_t *b, bool replace_existing);
@@ -1373,6 +1480,8 @@ void              studio_graph_apply_preset(ui_node_canvas_t *c, i32 i);
 void              material_studio_open(slot_material_t *m);
 void              material_studio_close();
 void              material_studio_save();
+void              material_studio_cancel();
+void              ui_nodes_edit_material(slot_material_t *m); // ui/ui_nodes.c: the node editor on m, with Save to Library and Cancel
 bool              material_studio_is_open();
 slot_material_t  *material_studio_new();
 void              material_studio_preset(i32 i);
@@ -1494,15 +1603,6 @@ bool             library_cloud_item_downloaded(cloud_item_t *it);
 bool             library_cloud_item_matches(cloud_item_t *it, char *search);
 char            *library_cloud_item_source(cloud_item_t *it);
 bool             library_cloud_item_stylized(cloud_item_t *it);
-void             builtin_material_use(i32 i);
-slot_material_t *builtin_material_add(i32 i);
-slot_material_t *builtin_make_material(i32 i);
-i32              builtin_material_count();
-char            *builtin_material_name(i32 i);
-i32              builtin_material_section(i32 i);
-i32              builtin_material_section_count();
-char            *builtin_material_section_name(i32 s);
-gpu_texture_t   *builtin_material_icon(i32 i);
 gpu_texture_t   *brush_tip_texture(i32 tip);
 brush_settings_t brush_settings_default();
 void             brush_library_save();

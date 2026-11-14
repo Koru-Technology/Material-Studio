@@ -8,6 +8,7 @@ int step   = 0;
 int frame  = 0;
 int count0 = 0; // Brushes in the library at the start
 int made   = 0; // Id of the brush made
+double close_start = 0.0;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -100,8 +101,13 @@ void next() {
 	}
 	else if (step == 1) {
 		ui_brush_creator_close(0);
+		close_start = sys_time();
 	}
 	else if (step == 2) {
+		if (ui_brush_creator_shown() && sys_time() - close_start < 1.0) { // Its 0.22 s close animation, by the clock
+			script_notify_on_next_frame(next);
+			return;
+		}
 		check(!ui_brush_creator_shown(), "Cancel closes the Brush Creator");
 		check(brush_library_count() == count0, "Cancel adds no brush");
 		ui_brush_creator_new(1);

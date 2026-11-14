@@ -1092,13 +1092,6 @@ void box_preferences_library_tab() {
 		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 
-	box_preferences_section(tr("Built-in Materials"));
-	ui_text(tr("Procedural creature and sci-fi materials shown at the top of the Library tab."), UI_ALIGN_LEFT, 0x00000000);
-	ui_check(&g_config->hide_builtin_materials, tr("Hide Built-in Materials"), "");
-	if (ui_item_changed()) {
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	}
-
 	box_preferences_section(tr("Cloud"));
 	ui_text(tr("Materials from Poly Haven, ambientCG and FreeStylized, shown with the cloud button of the Library tab."), UI_ALIGN_LEFT, 0x00000000);
 	string_array_t *sizes = any_array_create_from_raw_tmp((void *[]){"1K", "2K", "4K", "8K"}, 4);

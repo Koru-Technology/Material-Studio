@@ -123,6 +123,10 @@ static slot_layer_t_array_t *smart_materials_subtree(slot_layer_t *root) {
 	return out;
 }
 
+#define SMART_MATERIALS_ICON_RES 128 // Library icons (saved and smart materials), as the Material Maker library's thumbnails
+
+// The material's preview as a SMART_MATERIALS_ICON_RES PNG: box filtered down from the preview, averaged premultiplied so
+// the transparent background does not darken the edge
 static void smart_materials_write_icon(slot_material_t *m, char *path) {
 	if (m == NULL || m->image == NULL) {
 		return;
@@ -131,7 +135,36 @@ static void smart_materials_write_icon(slot_material_t *m, char *path) {
 #ifdef IRON_BGRA
 	buf = buffer_bgra_swap(buf);
 #endif
-	iron_write_png(path, buf, m->image->width, m->image->height, 0);
+	i32 w = m->image->width;
+	i32 f = w / SMART_MATERIALS_ICON_RES;
+	if (f < 2) {
+		iron_write_png(path, buf, w, m->image->height, 0);
+		return;
+	}
+	i32       s   = SMART_MATERIALS_ICON_RES;
+	buffer_t *out = buffer_create(s * s * 4);
+	for (i32 y = 0; y < s; ++y) {
+		for (i32 x = 0; x < s; ++x) {
+			i32 sum[4] = {0, 0, 0, 0};
+			for (i32 j = 0; j < f; ++j) {
+				for (i32 i = 0; i < f; ++i) {
+					u8 *p = &buf->buffer[((y * f + j) * w + x * f + i) * 4];
+					for (i32 c = 0; c < 3; ++c) {
+						sum[c] += p[c] * p[3];
+					}
+					sum[3] += p[3];
+				}
+			}
+			u8 *o = &out->buffer[(y * s + x) * 4];
+			for (i32 c = 0; c < 3; ++c) {
+				o[c] = sum[3] > 0 ? (u8)(sum[c] / sum[3]) : 0;
+			}
+			o[3] = (u8)(sum[3] / (f * f));
+		}
+	}
+	iron_write_png(path, out, s, s, 0);
+	array_free(out);
+	free(out);
 }
 
 // Saves root (a fill layer with its masks, or a group) as smart material name, one of that name is replaced

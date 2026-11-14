@@ -3,9 +3,13 @@
 #include <iron_gpu.h>
 #include <iron_math.h>
 #include <iron_system.h>
+#include <iron_file.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include "metal_msl_pack.h"
 
 id get_metal_layer(void);
 id get_metal_device(void);
@@ -30,6 +34,8 @@ static int                         readback_buffer_size = 0;
 static bool                        linear_sampling      = true;
 static id<MTLCommandBuffer>        frames_pending[GPU_FRAMES_IN_FLIGHT];
 static bool                        discard_depth_store = false;
+
+static bool metal_timing(void);
 
 static void wait_for_frames() {
 	for (int i = 0; i < GPU_FRAMES_IN_FLIGHT; ++i) {
@@ -354,10 +360,82 @@ void gpu_execute_and_wait() {
 	}
 }
 
+// gpu_suspend / gpu_resume: the pass ends storing everything, continues in a new encoder loading it
+static MTLRenderPassDescriptor *suspended_desc = nil;
+static MTLViewport              suspended_viewport;
+static MTLScissorRect           suspended_scissor;
+static gpu_buffer_t            *suspended_vb      = NULL;
+static gpu_buffer_t            *suspended_ib      = NULL;
+static bool                     suspended_discard = false;
+
+void gpu_suspend_internal(void) {
+	suspended_desc     = render_pass_desc;
+	suspended_viewport = current_viewport;
+	suspended_scissor  = current_scissor;
+	suspended_vb       = current_vb;
+	suspended_ib       = current_ib;
+	suspended_discard  = discard_depth_store;
+	if (discard_depth_store) {
+		[command_encoder setDepthStoreAction:MTLStoreActionStore];
+	}
+	[command_encoder endEncoding];
+	discard_depth_store = false;
+}
+
+void gpu_resume_internal(void) {
+	end_kept_encoder();
+	for (int i = 0; i < current_render_targets_count; ++i) {
+		suspended_desc.colorAttachments[i].loadAction = MTLLoadActionLoad;
+	}
+	suspended_desc.depthAttachment.loadAction = MTLLoadActionLoad;
+	render_pass_desc                          = suspended_desc;
+	suspended_desc                            = nil;
+	if (command_buffer == nil) {
+		command_buffer = [get_metal_queue() commandBuffer];
+	}
+	command_encoder     = [command_buffer renderCommandEncoderWithDescriptor:render_pass_desc];
+	discard_depth_store = suspended_discard;
+	current_viewport    = suspended_viewport;
+	current_scissor     = suspended_scissor;
+	current_vb          = suspended_vb;
+	current_ib          = suspended_ib;
+	[command_encoder setViewport:current_viewport];
+	[command_encoder setScissorRect:current_scissor];
+	if (current_pipeline != NULL && current_pipeline->impl.pipeline != NULL) {
+		gpu_set_pipeline_internal(current_pipeline);
+	}
+	if (current_vb != NULL) {
+		[command_encoder setVertexBuffer:(__bridge id<MTLBuffer>)current_vb->impl.metal_buffer offset:0 atIndex:0];
+	}
+}
+
+bool gpu_float32_filtering_supported(void) {
+	static int supported = -1;
+	if (supported < 0) {
+#ifdef IRON_IOS
+		supported = 0;
+#else
+		supported = 1;
+#endif
+		if (@available(macOS 11.0, iOS 14.0, *)) {
+			supported = [get_metal_device() supports32BitFloatFiltering] ? 1 : 0;
+		}
+	}
+	return supported == 1;
+}
+
 void gpu_present_internal() {
 	end_kept_encoder();
 	if (drawable != nil) {
 		[command_buffer presentDrawable:drawable];
+	}
+	if (metal_timing()) { // Frames with more than 20 ms of GPU work
+		[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+		  double ms = (cb.GPUEndTime - cb.GPUStartTime) * 1000.0;
+		  if (ms > 20.0) {
+			  fprintf(stderr, "[shader] frame gpu %.1f ms\n", ms);
+		  }
+		}];
 	}
 	[command_buffer commit];
 	frames_pending[gpu_frame_index] = command_buffer;
@@ -545,13 +623,37 @@ static bool metal_shader_has_code(gpu_shader_t *shader) {
 	return false;
 }
 
+// Env IRON_SHADER_TIMING logs the time of each Metal compile
+static bool metal_timing(void) {
+	static int timing = -1;
+	if (timing < 0) {
+		timing = getenv("IRON_SHADER_TIMING") != NULL;
+	}
+	return timing;
+}
+
+static double metal_now_ms(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+
 // Compiling msl takes tens of ms, materials and tools switch back and forth between the same shaders. Pipelines can
 // compile on worker threads, the cache is locked.
+// Least recently used go first past the limit: Material Maker materials compile dozens of buffer shaders, clearing the
+// whole cache when it filled made the shaders of the previous material compile again.
+#define METAL_LIBRARY_CACHE 512
+
+static atomic_int metal_precompiled_hits   = 0;
+static atomic_int metal_precompiled_misses = 0;
+
 static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 	static NSMutableDictionary<NSString *, id<MTLLibrary>> *library_cache = nil;
+	static NSMutableArray<NSString *>                      *library_order = nil; // Oldest use first
 	static dispatch_once_t                                  once;
 	dispatch_once(&once, ^{
 		library_cache = [NSMutableDictionary new];
+		library_order = [NSMutableArray new];
 	});
 	NSString *source = [[NSString alloc] initWithBytes:shader->impl.source length:shader->impl.length encoding:NSUTF8StringEncoding];
 	if (source == nil) {
@@ -561,12 +663,33 @@ static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 	id<MTLLibrary> library = nil;
 	@synchronized(library_cache) {
 		library = library_cache[source];
+		if (library != nil) {
+			[library_order removeObject:source];
+			[library_order addObject:source];
+		}
 	}
 	if (library != nil) {
 		return library;
 	}
 	NSError *error = nil;
-	library        = [get_metal_device() newLibraryWithSource:source options:nil error:&error];
+	double   t0    = metal_now_ms();
+	// Compiled offline (metal_msl_pack.h): loads without compiling. A source the pack does not have, or a library that
+	// does not load on this device, compiles.
+	dispatch_data_t precompiled = metal_msl_pack_find(shader->impl.source, shader->impl.length);
+	if (precompiled != nil) {
+		library = [get_metal_device() newLibraryWithData:precompiled error:&error];
+	}
+	bool hit = library != nil;
+	atomic_fetch_add(hit ? &metal_precompiled_hits : &metal_precompiled_misses, 1);
+	if (!hit) {
+		error   = nil;
+		library = [get_metal_device() newLibraryWithSource:source options:nil error:&error];
+	}
+	if (metal_timing()) { // Hits and misses so far: how much of what is compiled the pack has
+		fprintf(stderr, "[shader] metal library: %d chars, %.1f ms, %s (precompiled: %d hits, %d misses, %u blocks read)\n", (int)shader->impl.length,
+		        metal_now_ms() - t0, hit ? "precompiled" : precompiled != nil ? "compiled (the precompiled library did not load)" : "compiled",
+		        atomic_load(&metal_precompiled_hits), atomic_load(&metal_precompiled_misses), metal_msl_pack.decompressed);
+	}
 	if (library == nil) {
 		iron_error("%s", error.localizedDescription.UTF8String);
 		gpu_shader_failure_count += 1;
@@ -583,8 +706,12 @@ static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 		return nil;
 	}
 	@synchronized(library_cache) {
-		if (library_cache.count >= 128) {
-			[library_cache removeAllObjects];
+		if (library_cache[source] == nil) {
+			while (library_order.count >= METAL_LIBRARY_CACHE) {
+				[library_cache removeObjectForKey:library_order[0]];
+				[library_order removeObjectAtIndex:0];
+			}
+			[library_order addObject:source];
 		}
 		library_cache[source] = library;
 	}
@@ -686,10 +813,14 @@ void gpu_pipeline_compile(gpu_pipeline_t *pipeline) {
 	NSError                     *errors     = nil;
 	MTLRenderPipelineReflection *reflection = nil;
 
+	double t_pipe           = metal_now_ms();
 	pipeline->impl.pipeline = (__bridge_retained void *)[device newRenderPipelineStateWithDescriptor:render_pipeline_desc
 	                                                                                         options:MTLPipelineOptionBufferTypeInfo
 	                                                                                      reflection:&reflection
 	                                                                                           error:&errors];
+	if (metal_timing()) {
+		fprintf(stderr, "[shader] metal pipeline: %.1f ms\n", metal_now_ms() - t_pipe);
+	}
 
 	MTLDepthStencilDescriptor *depth_descriptor = [MTLDepthStencilDescriptor new];
 	depth_descriptor.depthCompareFunction       = convert_compare_mode(pipeline->depth_mode);

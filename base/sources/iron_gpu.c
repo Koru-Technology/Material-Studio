@@ -332,6 +332,41 @@ void gpu_texture_destroy(gpu_texture_t *texture) {
 	}
 }
 
+#ifdef IRON_METAL
+static struct {
+	gpu_texture_t  *targets[8];
+	uint32_t        count;
+	gpu_texture_t  *depth;
+	gpu_pipeline_t *pipeline;
+	gpu_texture_t  *textures[GPU_MAX_TEXTURES];
+	uint8_t         constants[GPU_CONSTANT_BUFFER_SIZE];
+} gpu_suspended;
+
+void gpu_suspend(void) {
+	memcpy(gpu_suspended.targets, current_render_targets, sizeof(current_render_targets));
+	gpu_suspended.count    = current_render_targets_count;
+	gpu_suspended.depth    = current_depth_buffer;
+	gpu_suspended.pipeline = current_pipeline;
+	memcpy(gpu_suspended.textures, current_textures, sizeof(current_textures));
+	memcpy(gpu_suspended.constants, constant_buffer.data, GPU_CONSTANT_BUFFER_SIZE);
+	gpu_suspend_internal();
+	gpu_in_use                   = false;
+	current_render_targets_count = 0;
+	current_depth_buffer         = NULL;
+}
+
+void gpu_resume(void) {
+	memcpy(current_render_targets, gpu_suspended.targets, sizeof(current_render_targets));
+	current_render_targets_count = gpu_suspended.count;
+	current_depth_buffer         = gpu_suspended.depth;
+	current_pipeline             = gpu_suspended.pipeline;
+	gpu_in_use                   = true;
+	gpu_resume_internal();
+	memcpy(current_textures, gpu_suspended.textures, sizeof(current_textures));
+	memcpy(constant_buffer.data, gpu_suspended.constants, GPU_CONSTANT_BUFFER_SIZE); // The draw's constants, set before
+}
+#endif
+
 void gpu_set_pipeline(gpu_pipeline_t *pipeline) {
 	current_pipeline = pipeline;
 	for (int i = 0; i < GPU_MAX_TEXTURES; ++i) {

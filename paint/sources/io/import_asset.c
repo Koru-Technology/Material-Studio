@@ -35,6 +35,9 @@ void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hd
 	else if (path_is_project(path)) {
 		import_arm_run_project(path);
 	}
+	else if (path_is_ptex(path)) { // Material Maker graph, a new material (nodes_material/mm_import.c)
+		mm_import_file(path);
+	}
 	else if (path_is_font(path)) {
 		import_font_run(path);
 	}

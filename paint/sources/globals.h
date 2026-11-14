@@ -9,7 +9,7 @@ char *manifest_title           = "Material Studio";
 i32   brush_previews_group       = -1; // Group shown in the brush list, its strokes render first
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "29";
-char *manifest_version_config  = "18";
+char *manifest_version_config  = "19";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
 char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
@@ -236,6 +236,7 @@ f32                       parser_material_eps = 0.000001;
 any_map_t                *parser_material_node_values;
 any_map_t                *parser_material_node_vectors;
 any_map_t                *parser_material_custom_nodes;
+any_map_t                *parser_material_node_outputs; // Node type to char *(*)(ui_node_t *, ui_node_socket_t *), result in the socket's own type
 bool                      parser_material_parse_height       = false;
 bool                      parser_material_parse_emission     = false;
 bool                      parser_material_parse_subsurface   = false;

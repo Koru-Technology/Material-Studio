@@ -154,7 +154,6 @@ static void config_save_now() {
 	json_encode_bool("library_cloud", g_config->library_cloud);
 	json_encode_i32("library_cloud_type", g_config->library_cloud_type);
 	json_encode_f32("library_scroll", g_config->library_scroll);
-	json_encode_bool("hide_builtin_materials", g_config->hide_builtin_materials);
 	json_encode_f32("brush_radius", g_config->brush_radius);
 	json_encode_f32("brush_opacity", g_config->brush_opacity);
 	json_encode_f32("brush_strength", g_config->brush_strength);
@@ -333,7 +332,6 @@ config_t *config_create_default() {
 	c->library_cloud      = false;
 	c->library_cloud_type = -1;
 	c->library_scroll     = 0.0;
-	c->hide_builtin_materials = false;
 	c->brush_radius = 0.5;
 	c->brush_opacity = 1.0;
 	c->brush_strength = 0.5;
@@ -456,7 +454,6 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->library_cloud         = armpack_map_get_i32(old, "library_cloud") > 0;
 	c->library_cloud_type    = armpack_map_get_i32(old, "library_cloud_type");
 	c->library_scroll        = armpack_map_get_f32(old, "library_scroll");
-	c->hide_builtin_materials = armpack_map_get_i32(old, "hide_builtin_materials") > 0;
 	c->brush_radius = armpack_map_get_f32(old, "brush_radius");
 	c->brush_opacity = armpack_map_get_f32(old, "brush_opacity");
 	c->brush_strength = armpack_map_get_f32(old, "brush_strength");
@@ -473,6 +470,11 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->quick_menu_slots = any_map_get(old, "quick_menu_slots");
 	c->undo_memory_mb = armpack_map_get_i32(old, "undo_memory_mb");
 	return c;
+}
+
+// The built-in materials were replaced by Material Maker's library, hide_builtin_materials is dropped
+config_t *config_from_version_18(any_map_t *old) {
+	return config_from_map_to_config(old);
 }
 
 // Stroke settings and pen dynamics moved into the brushes (brush library), their keys are dropped
@@ -624,6 +626,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_15,
 	    config_from_version_16,
 	    config_from_version_17,
+	    config_from_version_18,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {

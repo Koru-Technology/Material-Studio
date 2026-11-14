@@ -253,6 +253,9 @@ void util_render_make_material_preview() {
 	camera_object_build_proj(scene_camera, -1.0);
 	camera_object_build_mat(scene_camera);
 
+	// Material Maker buffers at most the preview's size: rendering them at the material's size (2048 and more) for a
+	// 256 px sphere cost seconds on the iPad. Also while the frame draws: an evicted pass renders again then.
+	mm_buffers_set_size_cap(util_render_material_preview_size);
 	make_material_parse_mesh_preview_material();
 	void (*_commands)(void) = render_path_commands;
 	render_path_commands    = render_path_preview_commands_preview;
@@ -260,6 +263,7 @@ void util_render_make_material_preview() {
 	render_path_render_frame();
 	curvature_mask_preview_end();
 	render_path_commands = _commands;
+	mm_buffers_set_size_cap(0);
 
 	g_context->material_preview = false;
 	_render_path_last_w         = _last_w; // Keep a pending viewport resize
@@ -785,6 +789,64 @@ static gpu_texture_t *util_render_resize_icon(gpu_texture_t *image, gpu_texture_
 	render_path_bind_target("texpreview", "tex");
 	render_path_draw_shader(shader);
 	return icon;
+}
+
+void util_render_set_material_preview(slot_material_t *m, gpu_texture_t *src);
+
+// A preview saved with the project (export_arm material_icons) into the material's preview and icon, instead of
+// rendering it. False when it does not fit (other preview size, empty, damaged): the preview is rendered then.
+bool util_render_load_material_icon(slot_material_t *m, buffer_t *icon) {
+	i32 w    = util_render_material_preview_size;
+	u32 size = (u32)w * w * 8; // RGBA64
+	if (icon == NULL || icon->length == 0 || m->image == NULL || m->image_icon == NULL || (i32)m->image->width != w) {
+		return false;
+	}
+	buffer_t *pixels = lz4_decode(icon, size);
+	if (pixels == NULL || pixels->length != size) {
+		return false;
+	}
+#ifdef IRON_BGRA
+	pixels = buffer_bgra64_swap(pixels);
+#endif
+	gpu_texture_t *saved = gpu_create_texture_from_bytes_raw(pixels, w, w, GPU_TEXTURE_FORMAT_RGBA64);
+	util_render_set_material_preview(m, saved);
+	gpu_delete_texture(saved);
+	array_free(pixels);
+	free(pixels);
+	return true;
+}
+
+// An existing picture of the material (straight alpha, any size: sampled with filtering) as its preview and icon, instead
+// of rendering the preview: a preview saved with the project, a library thumbnail
+void util_render_set_material_preview(slot_material_t *m, gpu_texture_t *src) {
+	if (m->image == NULL || m->image_icon == NULL || src == NULL) {
+		return;
+	}
+	gpu_texture_t *current = _draw_current;
+	bool           in_use  = gpu_in_use;
+	if (in_use) {
+		draw_end();
+	}
+	render_target_t *texpreview      = any_map_get(render_path_render_targets, "texpreview");
+	render_target_t *texpreview_icon = any_map_get(render_path_render_targets, "texpreview_icon");
+	gpu_texture_t   *_preview        = texpreview->_image;
+	gpu_texture_t   *_icon           = texpreview_icon->_image;
+	// Copy into the preview, then the icon from it as the preview render makes it (render_path_preview_commands_preview)
+	texpreview_icon->_image = src;
+	texpreview->_image      = m->image;
+	render_path_set_target("texpreview", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	render_path_bind_target("texpreview_icon", "tex");
+	render_path_draw_shader("Scene/copy_pass/copyRGBA64_pass");
+	texpreview_icon->_image = m->image_icon;
+	render_path_set_target("texpreview_icon", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	render_path_bind_target("texpreview", "tex");
+	render_path_draw_shader("Scene/supersample_resolve/supersample_resolveRGBA64");
+	texpreview->_image      = _preview;
+	texpreview_icon->_image = _icon;
+	if (in_use) {
+		draw_begin(current, false, 0);
+	}
+	m->preview_ready = true;
 }
 
 void util_render_resize_asset_icons(void *_) {

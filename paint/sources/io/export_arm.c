@@ -326,7 +326,28 @@ buffer_t *export_arm_encode_project(char *path) {
 		}
 	}
 
+	// Material previews, so that opening the project does not render every material again (its buffers too). Empty for a
+	// material whose preview is not rendered yet. Stored as the material export stores its icon.
+	buffer_t_array_t *micons = any_array_create_from_raw((void *[]){}, 0);
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		slot_material_t *m = g_project->_->materials->buffer[i];
+		buffer_t        *icon;
+		if (m->preview_ready && m->image != NULL) {
+#ifdef IRON_BGRA
+			icon = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
+#else
+			icon = lz4_encode(gpu_get_texture_pixels(m->image));
+#endif
+			gpu_release_texture_pixels(m->image);
+		}
+		else {
+			icon = buffer_create(0);
+		}
+		any_array_push(micons, icon);
+	}
+
 	g_project->material_nodes = mnodes;
+	g_project->material_icons = micons;
 	g_project->brush_nodes    = bnodes;
 	g_project->layer_datas    = ld;
 	g_project->font_assets    = font_files;
@@ -365,6 +386,12 @@ buffer_t *export_arm_encode_project(char *path) {
 	array_free(ld);
 	free(ld);
 	g_project->layer_datas = NULL;
+	for (i32 i = 0; i < micons->length; ++i) {
+		export_arm_free_buffer(micons->buffer[i]);
+	}
+	array_free(micons);
+	free(micons);
+	g_project->material_icons = NULL;
 	return buffer;
 }
 

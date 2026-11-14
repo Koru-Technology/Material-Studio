@@ -250,6 +250,16 @@ void  gpu_use_linear_sampling(bool b);
 char *gpu_device_name();
 bool  gpu_bc7_supported(int width, int height, gpu_texture_format_t format);
 
+#ifdef IRON_METAL
+// Ends the render pass in progress so that other passes can render (between gpu_begin and gpu_draw: a texture made on
+// demand), gpu_resume continues it: targets kept, pipeline, textures, constants, buffers, viewport and scissor restored
+void gpu_suspend(void);
+void gpu_resume(void);
+void gpu_suspend_internal(void);
+void gpu_resume_internal(void);
+bool gpu_float32_filtering_supported(void); // Linear filtering of R32F / RGBA32F textures (older ios gpus can not)
+#endif
+
 #ifdef WITH_BC7
 void *gpu_bc7_compress(void *data, int width, int height);
 #endif

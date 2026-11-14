@@ -427,9 +427,11 @@ void ui_nodes_make_node_preview(ui_node_t *node) {
 
 	ui_nodes_hwnd->redraws = 2;
 	util_render_make_node_preview(current_canvas, node, img, group_canvas, group_parents);
+	array_delete(group_parents); // The parser copies the path
 }
 
 ui_node_t *ui_nodes_make_node(ui_node_t *n, ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
+	mm_node_def_ensure(n); // Material Maker node types build their sockets and buttons when first used
 	ui_node_t *node = ALLOC_INIT(ui_node_t, {0});
 	node->id        = ui_next_node_id(canvas->nodes);
 	node->name      = string_copy(n->name);
@@ -488,6 +490,7 @@ ui_node_t *ui_nodes_make_node(ui_node_t *n, ui_nodes_t *nodes, ui_node_canvas_t 
 		but->height    = n->buttons->buffer[i]->height;
 		any_array_push(node->buttons, but);
 	}
+	mm_node_created(node);
 	ui_nodes_node_changed = node;
 	return node;
 }
