@@ -302,6 +302,9 @@ void context_set_layer(slot_layer_t *l) {
 }
 
 void context_select_tool(i32 i) {
+	if (!(i >= 0 && i <= TOOL_TYPE_INPAINT)) {
+		return;
+	}
 	g_context->tool = i;
 	make_material_parse_paint_material(true);
 	g_context->ddirty              = 3; // The mesh material is parsed by context_set_viewport_mode below

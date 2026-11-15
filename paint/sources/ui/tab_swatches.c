@@ -198,7 +198,7 @@ void tab_swatches_draw_menu() {
 
 void tab_swatches_draw_color_picker_callback(swatch_color_t *color) {
 	i32 i = _tab_swatches_draw_i;
-	if (i >= g_project->swatches->length) {
+	if (!(i >= 0 && i < g_project->swatches->length)) {
 		return;
 	}
 	history_edit_swatch(i, g_project->swatches->buffer[i]);
