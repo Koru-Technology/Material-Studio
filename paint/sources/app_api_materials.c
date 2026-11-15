@@ -1,3 +1,1052 @@
-// app_api_materials.h, #included by main.c after app_api.c
+// app_api_materials.h, #included by main.c after app_api.c (it reuses the script_* helpers of minic_impl.c)
 
 #include "app_api_materials.h"
+
+extern i32 _tab_materials_draw_slots; // ui/tab_materials.c
+void       tab_materials_draw_slots_duplicate(void *_);
+
+static uint32_t app_mat_hash(uint32_t h, uint32_t v) {
+	return (h ^ v) * 16777619u; // FNV-1a step
+}
+
+static uint32_t app_mat_hash_str(uint32_t h, const char *s) {
+	for (; s != NULL && *s != '\0'; ++s) {
+		h = app_mat_hash(h, (uint8_t)*s);
+	}
+	return h;
+}
+
+static uint32_t app_mat_hash_ptr(uint32_t h, const void *p) {
+	uint64_t v = (uint64_t)(uintptr_t)p;
+	return app_mat_hash(app_mat_hash(h, (uint32_t)v), (uint32_t)(v >> 32));
+}
+
+static uint32_t app_mat_hash_floats(uint32_t h, f32_array_t *a) {
+	if (a == NULL) {
+		return app_mat_hash(h, 0xfffffffu);
+	}
+	for (i32 i = 0; i < a->length; ++i) {
+		uint32_t bits;
+		memcpy(&bits, &a->buffer[i], 4);
+		h = app_mat_hash(h, bits);
+	}
+	return h;
+}
+
+static bool app_mat_project_ready(void) {
+	return g_project != NULL && g_project->_ != NULL && g_project->_->materials != NULL && g_context != NULL;
+}
+
+static slot_material_t *app_mat_by_id(int32_t id) {
+	if (!app_mat_project_ready()) {
+		return NULL;
+	}
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		slot_material_t *m = g_project->_->materials->buffer[i];
+		if (m->id == id) {
+			return m;
+		}
+	}
+	return NULL;
+}
+
+// ██████╗ ██╗██╗  ██╗███████╗██╗     ███████╗
+// Texture read back to RGBA8 premultiplied, box filtered down by an integer factor
+
+static float app_mat_half(uint16_t h) {
+	uint32_t sign = (h >> 15) & 1;
+	int32_t  exp  = (h >> 10) & 0x1f;
+	uint32_t mant = h & 0x3ff;
+	float    v;
+	if (exp == 0) {
+		v = mant / 1024.0f / 16384.0f; // Subnormal
+	}
+	else if (exp == 31) {
+		v = mant == 0 ? 65504.0f : 0.0f;
+	}
+	else {
+		v = (1.0f + mant / 1024.0f) * ldexpf(1.0f, exp - 15);
+	}
+	return sign ? -v : v;
+}
+
+static float app_mat_clamp01(float v) {
+	return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
+}
+
+// RGBA of texel i as 0..1, straight alpha
+static void app_mat_texel(gpu_texture_t *t, uint8_t *px, i32 i, float *c) {
+	switch (t->format) {
+	case GPU_TEXTURE_FORMAT_RGBA64: { // Reads back in RGBA order
+		uint16_t *s = (uint16_t *)px + i * 4;
+		for (i32 k = 0; k < 4; ++k) {
+			c[k] = app_mat_clamp01(app_mat_half(s[k]));
+		}
+		break;
+	}
+	case GPU_TEXTURE_FORMAT_RGBA128: {
+		float *s = (float *)px + i * 4;
+		for (i32 k = 0; k < 4; ++k) {
+			c[k] = app_mat_clamp01(s[k]);
+		}
+		break;
+	}
+	case GPU_TEXTURE_FORMAT_R8:
+		c[0] = c[1] = c[2] = px[i] / 255.0f;
+		c[3]               = 1.0f;
+		break;
+	default: // RGBA32 textures made from pixels (icons) and BC7 ones (decompressed) read back in RGBA order
+		for (i32 k = 0; k < 4; ++k) {
+			c[k] = px[i * 4 + k] / 255.0f;
+		}
+		break;
+	}
+}
+
+static int32_t app_mat_pixels(gpu_texture_t *t, int32_t max_size, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
+	if (t == NULL || t->width <= 0 || t->height <= 0 || t->format == GPU_TEXTURE_FORMAT_D32 || t->format == GPU_TEXTURE_FORMAT_R16 ||
+	    t->format == GPU_TEXTURE_FORMAT_R32) {
+		return 0;
+	}
+	i32 f = 1;
+	if (max_size > 0) {
+		i32 big = t->width > t->height ? t->width : t->height;
+		f       = (big + max_size - 1) / max_size;
+	}
+	i32 ow    = t->width / f;
+	i32 oh    = t->height / f;
+	i32 bytes = ow * oh * 4;
+	if (ow <= 0 || oh <= 0) {
+		return 0;
+	}
+	if (out == NULL) {
+		return bytes; // Known from the size, nothing read back
+	}
+	if (capacity < bytes) {
+		return 0;
+	}
+	buffer_t *pixels = script_get_texture_pixels(t);
+	i32       need   = t->width * t->height * (t->format == GPU_TEXTURE_FORMAT_R8 ? 1 : t->format == GPU_TEXTURE_FORMAT_RGBA64 ? 8 : t->format == GPU_TEXTURE_FORMAT_RGBA128 ? 16 : 4);
+	if (pixels == NULL || pixels->buffer == NULL || pixels->length < need) {
+		gpu_release_texture_pixels(t);
+		return 0;
+	}
+	float n = (float)(f * f);
+	for (i32 y = 0; y < oh; ++y) {
+		for (i32 x = 0; x < ow; ++x) {
+			float s[4] = {0, 0, 0, 0}; // Premultiplied sums, the transparent background does not darken the edge
+			for (i32 j = 0; j < f; ++j) {
+				for (i32 i = 0; i < f; ++i) {
+					float c[4];
+					app_mat_texel(t, pixels->buffer, (y * f + j) * t->width + x * f + i, c);
+					s[0] += c[0] * c[3];
+					s[1] += c[1] * c[3];
+					s[2] += c[2] * c[3];
+					s[3] += c[3];
+				}
+			}
+			uint8_t *o = &out[(y * ow + x) * 4];
+			for (i32 k = 0; k < 4; ++k) {
+				o[k] = (uint8_t)(app_mat_clamp01(s[k] / n) * 255.0f + 0.5f);
+			}
+		}
+	}
+	gpu_release_texture_pixels(t);
+	*w = ow;
+	*h = oh;
+	return bytes;
+}
+
+// ███╗   ███╗ █████╗ ████████╗███████╗██████╗ ██╗ █████╗ ██╗     ███████╗
+// Previews are redrawn from many places, at times a frame or more after the edit: a material's version changes when its
+// nodes or values change, and again a couple of frames and some more frames later, so a late redraw is read too.
+
+typedef struct {
+	slot_material_t *m;
+	uint32_t         shallow; // Pointers, counts, name, readiness: every frame
+	uint32_t         deep;    // Node values: every frame for the selected material, one other material per frame
+	uint32_t         version;
+	int32_t          settle[2]; // Frames to change the version again at, 0 none
+	bool             seen;
+} app_mat_track_t;
+
+#define APP_MAT_SETTLE_SOON  2
+#define APP_MAT_SETTLE_LATER 12
+
+static app_mat_track_t *app_mat_tracks    = NULL;
+static i32              app_mat_tracks_n  = 0;
+static i32              app_mat_tracks_c  = 0;
+static uint32_t         app_mat_versions  = 0; // Versions handed out
+static uint32_t         app_mat_previews  = 0; // Changes whenever a version changes
+static int32_t          app_mat_frame     = 0;
+static i32              app_mat_deep_next = 0; // Round robin of the deep hash of the other materials
+
+static uint32_t app_mat_shallow_hash(slot_material_t *m) {
+	uint32_t h = 2166136261u;
+	h          = app_mat_hash_ptr(h, m->canvas);
+	h          = app_mat_hash_ptr(h, m->image);
+	h          = app_mat_hash(h, m->preview_ready);
+	if (m->canvas != NULL) {
+		h = app_mat_hash(h, m->canvas->nodes != NULL ? m->canvas->nodes->length : 0);
+		h = app_mat_hash(h, m->canvas->links != NULL ? m->canvas->links->length : 0);
+	}
+	return h;
+}
+
+static uint32_t app_mat_deep_hash(slot_material_t *m) {
+	uint32_t h = 2166136261u;
+	if (m->canvas == NULL) {
+		return h;
+	}
+	ui_node_array_t *nodes = m->canvas->nodes;
+	for (i32 i = 0; nodes != NULL && i < nodes->length; ++i) {
+		ui_node_t *n = nodes->buffer[i];
+		h            = app_mat_hash(h, n->id);
+		h            = app_mat_hash_ptr(h, n->type);
+		for (i32 k = 0; n->inputs != NULL && k < n->inputs->length; ++k) {
+			h = app_mat_hash_floats(h, n->inputs->buffer[k]->default_value);
+		}
+		for (i32 k = 0; n->buttons != NULL && k < n->buttons->length; ++k) {
+			ui_node_button_t *b = n->buttons->buffer[k];
+			h                   = app_mat_hash_floats(h, b->default_value);
+			h                   = app_mat_hash_ptr(h, b->data);
+			h                   = app_mat_hash(h, b->data != NULL ? b->data->length : 0);
+		}
+	}
+	ui_node_link_array_t *links = m->canvas->links;
+	for (i32 i = 0; links != NULL && i < links->length; ++i) {
+		ui_node_link_t *l = links->buffer[i];
+		h                 = app_mat_hash(h, l->from_id);
+		h                 = app_mat_hash(h, l->from_socket);
+		h                 = app_mat_hash(h, l->to_id);
+		h                 = app_mat_hash(h, l->to_socket);
+	}
+	return h;
+}
+
+static void app_mat_bump(app_mat_track_t *t, bool settle) {
+	t->version = ++app_mat_versions;
+	app_mat_previews++;
+	if (settle) {
+		t->settle[0] = app_mat_frame + APP_MAT_SETTLE_SOON;
+		t->settle[1] = app_mat_frame + APP_MAT_SETTLE_LATER;
+	}
+}
+
+static app_mat_track_t *app_mat_track_of(slot_material_t *m) {
+	for (i32 i = 0; i < app_mat_tracks_n; ++i) {
+		if (app_mat_tracks[i].m == m) {
+			return &app_mat_tracks[i];
+		}
+	}
+	return NULL;
+}
+
+// Once per frame
+static void app_mat_track_update(void) {
+	app_mat_frame++;
+	for (i32 i = 0; i < app_mat_tracks_n; ++i) {
+		app_mat_tracks[i].seen = false;
+	}
+	i32 count = g_project->_->materials->length;
+	for (i32 i = 0; i < count; ++i) {
+		slot_material_t *m = g_project->_->materials->buffer[i];
+		app_mat_track_t *t = app_mat_track_of(m);
+		if (t == NULL) {
+			if (app_mat_tracks_n == app_mat_tracks_c) {
+				app_mat_tracks_c = app_mat_tracks_c * 2 + 16;
+				app_mat_tracks   = realloc(app_mat_tracks, sizeof(app_mat_track_t) * app_mat_tracks_c);
+			}
+			t          = &app_mat_tracks[app_mat_tracks_n++];
+			*t         = (app_mat_track_t){0};
+			t->m       = m;
+			t->shallow = app_mat_shallow_hash(m);
+			t->deep    = app_mat_deep_hash(m);
+			app_mat_bump(t, true);
+		}
+		t->seen     = true;
+		uint32_t sh = app_mat_shallow_hash(m);
+		bool     changed = sh != t->shallow;
+		t->shallow  = sh;
+		if (m == g_context->material || i == app_mat_deep_next % count) {
+			uint32_t dh = app_mat_deep_hash(m);
+			changed |= dh != t->deep;
+			t->deep = dh;
+		}
+		if (changed) {
+			app_mat_bump(t, true);
+		}
+		else {
+			for (i32 k = 0; k < 2; ++k) {
+				if (t->settle[k] != 0 && app_mat_frame >= t->settle[k]) {
+					t->settle[k] = 0;
+					app_mat_bump(t, false);
+				}
+			}
+		}
+	}
+	app_mat_deep_next++;
+	// Materials gone (deleted, another project)
+	i32 kept = 0;
+	for (i32 i = 0; i < app_mat_tracks_n; ++i) {
+		if (app_mat_tracks[i].seen) {
+			app_mat_tracks[kept++] = app_mat_tracks[i];
+		}
+	}
+	app_mat_tracks_n = kept;
+}
+
+static uint32_t app_mat_signature(void) {
+	uint32_t h = 2166136261u;
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		slot_material_t *m = g_project->_->materials->buffer[i];
+		h                  = app_mat_hash(h, (uint32_t)m->id);
+		h                  = app_mat_hash_ptr(h, m);
+		h                  = app_mat_hash(h, m->preview_ready);
+		h                  = app_mat_hash_str(h, m->canvas != NULL ? m->canvas->name : "");
+	}
+	h = app_mat_hash(h, g_context->material != NULL ? (uint32_t)g_context->material->id : 0xffffffffu);
+	return h;
+}
+
+// The layer smart materials save: the selected fill layer or group, the fill layer of a selected mask
+static slot_layer_t *app_smart_target(void) {
+	slot_layer_t *l = g_context->layer;
+	if (l == NULL) {
+		return NULL;
+	}
+	if (slot_layer_is_mask(l)) {
+		l = l->parent;
+	}
+	if (l == NULL || slot_layer_is_mask(l)) {
+		return NULL;
+	}
+	return slot_layer_is_group(l) || l->fill_material != NULL ? l : NULL;
+}
+
+void app_materials_get_state(app_materials_state_t *out) {
+	*out             = (app_materials_state_t){0};
+	out->selected_id = -1;
+	if (!app_engine_ready || !app_mat_project_ready()) {
+		return;
+	}
+	app_mat_track_update();
+	out->ready               = true;
+	out->selected_id         = g_context->material != NULL ? g_context->material->id : -1;
+	out->materials_signature = app_mat_signature();
+	out->previews_version    = app_mat_previews;
+	out->smart_can_save      = app_smart_target() != NULL;
+	out->can_apply_to_fill   = tab_layers_fill_target(g_context->layer) != NULL;
+	out->studio_open         = material_studio_show;
+}
+
+int32_t app_material_count(void) {
+	return app_mat_project_ready() ? g_project->_->materials->length : 0;
+}
+
+bool app_material_info(int32_t index, app_material_info_t *out) {
+	if (index < 0 || index >= app_material_count()) {
+		return false;
+	}
+	slot_material_t *m    = g_project->_->materials->buffer[index];
+	app_mat_track_t *t    = app_mat_track_of(m);
+	out->id               = m->id;
+	out->preview_version  = t != NULL ? t->version : 0;
+	out->selected         = m == g_context->material;
+	out->preview_ready    = m->preview_ready;
+	out->can_open_studio  = material_studio_can_open(m);
+	out->name             = m->canvas != NULL && m->canvas->name != NULL ? m->canvas->name : "";
+	return true;
+}
+
+int32_t app_material_id_at(int32_t index) {
+	app_material_info_t info;
+	return app_material_info(index, &info) ? info.id : -1;
+}
+
+int32_t app_material_preview_version(int32_t id) {
+	slot_material_t *m = app_mat_by_id(id);
+	app_mat_track_t *t = m != NULL ? app_mat_track_of(m) : NULL;
+	return t != NULL ? (int32_t)t->version : -1;
+}
+
+bool app_material_select(int32_t id) {
+	slot_material_t *m = app_mat_by_id(id);
+	if (m == NULL) {
+		return false;
+	}
+	if (m != g_context->material) {
+		context_set_material(m);
+	}
+	return true;
+}
+
+int32_t app_material_new(void) {
+	slot_material_t *m = script_material_create(NULL);
+	return m != NULL ? m->id : -1;
+}
+
+static void app_material_new_studio_next(void *_) {
+	material_studio_new();
+}
+
+void app_material_new_studio(void) {
+	sys_notify_on_next_frame(&app_material_new_studio_next, NULL);
+}
+
+int32_t app_material_duplicate(int32_t id) {
+	slot_material_t *m = app_mat_by_id(id);
+	if (m == NULL) {
+		return -1;
+	}
+	_tab_materials_draw_slots = array_index_of(g_project->_->materials, m);
+	gpu_texture_t *current;
+	bool           in_use;
+	script_gpu_begin(&current, &in_use);
+	tab_materials_draw_slots_duplicate(NULL);
+	script_gpu_end(current, in_use);
+	ui_dock_redraw(1);
+	return g_context->material != NULL ? g_context->material->id : -1;
+}
+
+bool app_material_can_delete(int32_t id) {
+	return app_mat_by_id(id) != NULL && g_project->_->materials->length > 1;
+}
+
+bool app_material_delete(int32_t id) {
+	slot_material_t *m = app_mat_by_id(id);
+	if (m == NULL || g_project->_->materials->length <= 1) {
+		return false;
+	}
+	script_material_delete(m);
+	iron_delay_idle_sleep();
+	return app_mat_by_id(id) == NULL || app_mat_by_id(id) != m;
+}
+
+int32_t app_material_delete_unused(void) {
+	if (!app_mat_project_ready()) {
+		return 0;
+	}
+	i32 before = g_project->_->materials->length;
+	tab_materials_delete_unused();
+	iron_delay_idle_sleep();
+	return before - g_project->_->materials->length;
+}
+
+bool app_material_rename(int32_t id, const char *name) {
+	slot_material_t *m = app_mat_by_id(id);
+	if (m == NULL || m->canvas == NULL || name == NULL || name[0] == '\0') {
+		return false;
+	}
+	if (m->canvas->name != NULL && string_equals(m->canvas->name, (char *)name)) {
+		return true;
+	}
+	m->canvas->name  = string_copy(slot_material_unique_name(m->canvas, (char *)name));
+	project_modified = true;
+	ui_dock_redraw(1);
+	return true;
+}
+
+// Editing waits for the next frame as in the old tab, the material is found again by id then
+
+static void app_material_edit_next(void *data) {
+	slot_material_t *m = app_mat_by_id((int32_t)(intptr_t)data);
+	if (m == NULL) {
+		return;
+	}
+	if (material_studio_can_open(m)) {
+		material_studio_open(m);
+	}
+	else {
+		ui_nodes_edit_material(m);
+	}
+}
+
+bool app_material_edit(int32_t id) {
+	if (!app_material_select(id)) {
+		return false;
+	}
+	sys_notify_on_next_frame(&app_material_edit_next, (void *)(intptr_t)id);
+	return true;
+}
+
+static void app_material_open_studio_next(void *data) {
+	slot_material_t *m = app_mat_by_id((int32_t)(intptr_t)data);
+	if (m != NULL) {
+		material_studio_open(m);
+	}
+}
+
+bool app_material_open_studio(int32_t id) {
+	slot_material_t *m = app_mat_by_id(id);
+	if (m == NULL || !material_studio_can_open(m)) {
+		return false;
+	}
+	app_material_select(id);
+	sys_notify_on_next_frame(&app_material_open_studio_next, (void *)(intptr_t)id);
+	return true;
+}
+
+bool app_material_show_nodes(int32_t id) {
+	if (!app_material_select(id)) {
+		return false;
+	}
+	if (!ui_nodes_show || ui_nodes_canvas_type != CANVAS_TYPE_MATERIAL) { // It toggles
+		ui_base_show_material_nodes();
+	}
+	iron_delay_idle_sleep();
+	return true;
+}
+
+bool app_material_to_fill_layer(int32_t id) {
+	if (!app_material_select(id)) {
+		return false;
+	}
+	layers_create_fill_layer(UV_TYPE_UVMAP, mat4_nan(), -1);
+	return true;
+}
+
+bool app_material_apply_to_fill(int32_t id) {
+	slot_material_t *m      = app_mat_by_id(id);
+	slot_layer_t    *target = g_context != NULL ? tab_layers_fill_target(g_context->layer) : NULL;
+	if (m == NULL || target == NULL) {
+		return false;
+	}
+	if (target->fill_material != m) {
+		tab_layers_set_fill_material_later(target, m);
+	}
+	return true;
+}
+
+int32_t app_material_thumbnail(int32_t id, int32_t max_size, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
+	slot_material_t *m = app_mat_by_id(id);
+	if (m == NULL || !m->preview_ready) {
+		return 0;
+	}
+	return app_mat_pixels(m->image, max_size, out, capacity, w, h);
+}
+
+int32_t app_material_thumbnail_size(int32_t id, int32_t max_size) {
+	int32_t w, h;
+	return app_material_thumbnail(id, max_size, NULL, 0, &w, &h);
+}
+
+// ██╗     ██╗██████╗ ██████╗  █████╗ ██████╗ ██╗   ██╗
+// The items of the current view, rebuilt when its signature changes
+
+typedef struct {
+	int8_t  source;
+	int32_t index; // In its source
+	int32_t section;
+	int32_t group;
+	bool    stylized;
+	char   *rel; // Folder items, how they are found again
+} app_lib_ref_t;
+
+static app_lib_ref_t *app_lib_items     = NULL;
+static i32            app_lib_n         = 0;
+static i32            app_lib_cap       = 0;
+static uint32_t       app_lib_built     = 0;
+static bool           app_lib_has_built = false;
+static uint32_t       app_lib_sig       = 0;
+
+#define APP_LIB_MM_SECTIONS_MAX 64
+
+static void app_lib_push(int8_t source, i32 index, i32 section, i32 group, bool stylized, char *rel) {
+	if (app_lib_n == app_lib_cap) {
+		app_lib_cap   = app_lib_cap * 2 + 256;
+		app_lib_items = realloc(app_lib_items, sizeof(app_lib_ref_t) * app_lib_cap);
+	}
+	app_lib_items[app_lib_n++] = (app_lib_ref_t){.source = source, .index = index, .section = section, .group = group, .stylized = stylized, .rel = rel};
+}
+
+static i32 app_lib_mm_sections(void) {
+	i32 n = mm_library_section_count();
+	return n < APP_LIB_MM_SECTIONS_MAX ? n : APP_LIB_MM_SECTIONS_MAX;
+}
+
+static uint32_t app_lib_compute_signature(void) {
+	uint32_t h = 2166136261u;
+	h          = app_mat_hash(h, g_config->library_cloud);
+	if (g_config->library_cloud) {
+		library_cloud_open();
+		i32 n = library_cloud_count();
+		h     = app_mat_hash(h, n);
+		h     = app_mat_hash_str(h, library_cloud_status());
+		for (i32 i = 0; i < n; ++i) {
+			cloud_item_t *it = library_cloud_get(i);
+			h                = app_mat_hash_ptr(h, it);
+			h                = app_mat_hash(h, (library_cloud_item_busy(it) ? 1 : 0) | (library_cloud_item_downloaded(it) ? 2 : 0));
+		}
+		return h;
+	}
+	i32 saved = saved_materials_count();
+	h         = app_mat_hash(h, saved);
+	for (i32 i = 0; i < saved; ++i) {
+		h = app_mat_hash_str(h, saved_materials_name(i));
+		h = app_mat_hash_ptr(h, saved_materials_icon(i)); // A material saved again under its name gets a new icon
+	}
+	i32 folder = library_entry_count();
+	h          = app_mat_hash(h, folder);
+	for (i32 i = 0; i < folder; ++i) {
+		library_entry_t *e = library_entry_get(i);
+		h                  = app_mat_hash_ptr(h, e);
+		h                  = app_mat_hash(h, (library_entry_ready(e) ? 1 : 0) | (library_entry_broken(e) ? 2 : 0));
+	}
+	h = app_mat_hash(h, mm_library_count());
+	return h;
+}
+
+static void app_lib_build(void) {
+	for (i32 i = 0; i < app_lib_n; ++i) {
+		free(app_lib_items[i].rel);
+	}
+	app_lib_n = 0;
+	if (g_config->library_cloud) {
+		i32 n     = library_cloud_count();
+		i32 types = library_cloud_type_count();
+		for (i32 st = 0; st < 2; ++st) { // Stylized first, then by type, the items keep their name order
+			for (i32 t = 0; t < types; ++t) {
+				for (i32 i = 0; i < n; ++i) {
+					cloud_item_t *it       = library_cloud_get(i);
+					bool          stylized = library_cloud_item_stylized(it);
+					if ((stylized ? 0 : 1) == st && library_cloud_item_type(it) == t) {
+						app_lib_push(APP_LIBRARY_CLOUD, i, st * types + t, t, stylized, NULL);
+					}
+				}
+			}
+		}
+		return;
+	}
+	for (i32 i = 0; i < saved_materials_count(); ++i) {
+		app_lib_push(APP_LIBRARY_SAVED, i, 0, -1, false, NULL);
+	}
+	for (i32 i = 0; i < library_entry_count(); ++i) {
+		library_entry_t *e = library_entry_get(i);
+		if (library_entry_ready(e) && !library_entry_broken(e)) {
+			app_lib_push(APP_LIBRARY_FOLDER, i, 1, -1, false, strdup(library_entry_rel(e)));
+		}
+	}
+	i32 n        = mm_library_count();
+	i32 sections = app_lib_mm_sections();
+	for (i32 st = 0; st < 2; ++st) {
+		for (i32 s = 0; s < sections; ++s) {
+			for (i32 i = 0; i < n; ++i) {
+				bool stylized = mm_library_stylized(i);
+				if ((stylized ? 0 : 1) == st && mm_library_section(i) == s) {
+					app_lib_push(APP_LIBRARY_MM, i, 2 + st * sections + s, s, stylized, NULL);
+				}
+			}
+		}
+	}
+}
+
+static void app_lib_ensure(void) {
+	if (!app_lib_has_built || app_lib_built != app_lib_sig) {
+		app_lib_has_built = true;
+		app_lib_built     = app_lib_sig;
+		app_lib_build();
+	}
+}
+
+uint32_t app_library_signature(void) {
+	if (!app_engine_ready || !app_mat_project_ready()) {
+		return 0;
+	}
+	app_lib_sig = app_lib_compute_signature();
+	app_lib_ensure();
+	return app_lib_sig;
+}
+
+bool app_library_cloud(void) {
+	return g_config != NULL && g_config->library_cloud;
+}
+
+void app_library_set_cloud(bool on) {
+	if (g_config == NULL || g_config->library_cloud == on) {
+		return;
+	}
+	g_config->library_cloud = on;
+	config_save();
+	app_library_signature();
+}
+
+int32_t app_library_count(void) {
+	if (!app_lib_has_built) {
+		app_library_signature();
+	}
+	return app_lib_n;
+}
+
+static app_lib_ref_t *app_lib_ref(int32_t index) {
+	if (index < 0 || index >= app_library_count()) {
+		return NULL;
+	}
+	app_lib_ref_t *r = &app_lib_items[index];
+	// The sources keep their items while the signature stays, a stale index is not found
+	switch (r->source) {
+	case APP_LIBRARY_SAVED:
+		return r->index < saved_materials_count() ? r : NULL;
+	case APP_LIBRARY_FOLDER:
+		return r->index < library_entry_count() && string_equals(library_entry_rel(library_entry_get(r->index)), r->rel) ? r : NULL;
+	case APP_LIBRARY_MM:
+		return r->index < mm_library_count() ? r : NULL;
+	default:
+		return g_config->library_cloud && r->index < library_cloud_count() ? r : NULL;
+	}
+}
+
+static char *app_lib_style_name(bool stylized) {
+	return stylized ? tr("Stylized") : tr("Realistic");
+}
+
+bool app_library_item(int32_t index, app_library_item_t *out) {
+	static char section[256];
+	static char detail[512];
+	app_lib_ref_t *r = app_lib_ref(index);
+	if (r == NULL) {
+		return false;
+	}
+	*out          = (app_library_item_t){0};
+	out->source   = r->source;
+	out->section  = r->section;
+	out->group    = r->group;
+	out->stylized = r->stylized;
+	uint32_t key  = app_mat_hash(2166136261u, (uint32_t)r->source);
+	switch (r->source) {
+	case APP_LIBRARY_SAVED: {
+		char *name      = saved_materials_name(r->index);
+		out->name       = name;
+		out->group_name = "";
+		out->detail     = tr("Saved");
+		out->can_delete = true;
+		snprintf(section, sizeof(section), "%s", tr("Saved"));
+		key = app_mat_hash_ptr(app_mat_hash_str(key, name), saved_materials_icon(r->index));
+		break;
+	}
+	case APP_LIBRARY_FOLDER: {
+		library_entry_t *e = library_entry_get(r->index);
+		out->name          = library_entry_name(e);
+		out->group_name    = "";
+		out->detail        = library_entry_rel(e);
+		snprintf(section, sizeof(section), "%s", tr("My Materials"));
+		key = app_mat_hash_str(key, library_entry_rel(e));
+		break;
+	}
+	case APP_LIBRARY_MM: {
+		out->name       = mm_library_name(r->index);
+		out->group_name = mm_library_section_name(r->group);
+		snprintf(detail, sizeof(detail), "%s", mm_library_credit(r->index));
+		out->detail = detail;
+		snprintf(section, sizeof(section), "%s %s", app_lib_style_name(r->stylized), out->group_name);
+		key = app_mat_hash(key, (uint32_t)mm_library_id(r->index));
+		break;
+	}
+	default: {
+		cloud_item_t *it  = library_cloud_get(r->index);
+		out->name         = library_cloud_item_name(it);
+		out->group_name   = library_cloud_type_name(r->group);
+		out->detail       = library_cloud_item_source(it);
+		out->busy         = library_cloud_item_busy(it);
+		out->downloaded   = library_cloud_item_downloaded(it);
+		out->progress     = out->busy ? library_cloud_item_progress(it) : 0.0f;
+		snprintf(section, sizeof(section), "%s %s", app_lib_style_name(r->stylized), out->group_name);
+		key = app_mat_hash_str(app_mat_hash_str(key, out->detail), out->name);
+		break;
+	}
+	}
+	out->section_name = section;
+	out->key          = key;
+	if (out->name == NULL) {
+		out->name = "";
+	}
+	return true;
+}
+
+// Lower case, ASCII
+static char *app_lib_lower(const char *s) {
+	static char buf[256];
+	i32         i = 0;
+	for (; s != NULL && s[i] != '\0' && i < (i32)sizeof(buf) - 1; ++i) {
+		char c = s[i];
+		buf[i] = c >= 'A' && c <= 'Z' ? c + 32 : c;
+	}
+	buf[i] = '\0';
+	return buf;
+}
+
+static bool app_lib_contains(const char *text, const char *lower_search) {
+	static char hay[1024];
+	i32         i = 0;
+	for (; text != NULL && text[i] != '\0' && i < (i32)sizeof(hay) - 1; ++i) {
+		char c = text[i];
+		hay[i] = c >= 'A' && c <= 'Z' ? c + 32 : c;
+	}
+	hay[i] = '\0';
+	return strstr(hay, lower_search) != NULL;
+}
+
+bool app_library_matches(int32_t index, const char *search) {
+	app_lib_ref_t *r = app_lib_ref(index);
+	if (r == NULL) {
+		return false;
+	}
+	if (search == NULL || search[0] == '\0') {
+		return true;
+	}
+	char *s = app_lib_lower(search);
+	switch (r->source) {
+	case APP_LIBRARY_SAVED:
+		return app_lib_contains(saved_materials_name(r->index), s);
+	case APP_LIBRARY_FOLDER:
+		return app_lib_contains(library_entry_rel(library_entry_get(r->index)), s);
+	case APP_LIBRARY_MM:
+		return mm_library_matches(r->index, s);
+	default:
+		return library_cloud_item_matches(library_cloud_get(r->index), s);
+	}
+}
+
+int32_t app_library_group_count(void) {
+	return app_library_cloud() ? library_cloud_type_count() : app_lib_mm_sections();
+}
+
+const char *app_library_group_name(int32_t group) {
+	if (group < 0 || group >= app_library_group_count()) {
+		return "";
+	}
+	return app_library_cloud() ? library_cloud_type_name(group) : mm_library_section_name(group);
+}
+
+static void app_lib_use_saved_next(void *data) {
+	char *name = data;
+	for (i32 i = 0; i < saved_materials_count(); ++i) {
+		if (string_equals(saved_materials_name(i), name)) {
+			saved_materials_use(i);
+			break;
+		}
+	}
+	free(name);
+}
+
+static void app_lib_use_folder_next(void *data) {
+	char *rel = data;
+	for (i32 i = 0; i < library_entry_count(); ++i) {
+		library_entry_t *e = library_entry_get(i);
+		if (string_equals(library_entry_rel(e), rel)) {
+			library_use(e);
+			break;
+		}
+	}
+	free(rel);
+}
+
+bool app_library_use(int32_t index) {
+	app_lib_ref_t *r = app_lib_ref(index);
+	if (r == NULL) {
+		return false;
+	}
+	switch (r->source) {
+	case APP_LIBRARY_SAVED: // Imports render: they run when the frame starts, as from the old tab
+		sys_notify_on_next_frame(&app_lib_use_saved_next, strdup(saved_materials_name(r->index)));
+		break;
+	case APP_LIBRARY_FOLDER:
+		sys_notify_on_next_frame(&app_lib_use_folder_next, strdup(r->rel));
+		break;
+	case APP_LIBRARY_MM:
+		mm_library_use(r->index); // On the next frame
+		break;
+	default:
+		library_cloud_use(library_cloud_get(r->index)); // Queued for download
+		break;
+	}
+	iron_delay_idle_sleep();
+	return true;
+}
+
+bool app_library_delete(int32_t index) {
+	app_lib_ref_t *r = app_lib_ref(index);
+	if (r == NULL || r->source != APP_LIBRARY_SAVED) {
+		return false;
+	}
+	saved_materials_delete(r->index);
+	app_library_signature();
+	return true;
+}
+
+const char *app_library_status(void) {
+	if (app_library_cloud()) {
+		return library_cloud_status();
+	}
+	if (!library_has_folder()) {
+		return "";
+	}
+	return library_status();
+}
+
+bool app_library_has_folder(void) {
+	return library_has_folder();
+}
+
+void app_library_pick_folder(void) {
+	library_pick_folder();
+}
+
+int32_t app_library_busy(void) {
+	if (!app_library_cloud()) {
+		return 0;
+	}
+	i32 n = 0;
+	for (i32 i = 0; i < app_lib_n; ++i) {
+		if (app_lib_items[i].source == APP_LIBRARY_CLOUD && app_lib_items[i].index < library_cloud_count() &&
+		    library_cloud_item_busy(library_cloud_get(app_lib_items[i].index))) {
+			n++;
+		}
+	}
+	return n;
+}
+
+int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
+	app_lib_ref_t *r = app_lib_ref(index);
+	if (r == NULL) {
+		return -1;
+	}
+	gpu_texture_t *icon;
+	switch (r->source) {
+	case APP_LIBRARY_SAVED:
+		icon = saved_materials_icon(r->index);
+		if (icon == NULL) {
+			return -1; // Saved without a preview
+		}
+		break;
+	case APP_LIBRARY_FOLDER: {
+		library_entry_t *e = library_entry_get(r->index);
+		icon               = library_entry_icon(e); // Requests it
+		if (icon == NULL && library_entry_broken(e)) {
+			return -1;
+		}
+		break;
+	}
+	case APP_LIBRARY_MM:
+		icon = mm_library_icon(r->index); // Requests it, loaded a few per frame
+		break;
+	default:
+		icon = library_cloud_item_icon(library_cloud_get(r->index)); // Downloads it
+		break;
+	}
+	if (icon == NULL) {
+		return 0;
+	}
+	return app_mat_pixels(icon, 128, out, capacity, w, h);
+}
+
+int32_t app_library_icon_size(int32_t index) {
+	int32_t w, h;
+	return app_library_icon(index, NULL, 0, &w, &h);
+}
+
+int32_t app_library_find(const char *name) {
+	app_library_item_t item;
+	for (i32 i = 0; i < app_library_count(); ++i) {
+		if (app_library_item(i, &item) && name != NULL && strcmp(item.name, name) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// ███████╗███╗   ███╗ █████╗ ██████╗ ████████╗
+
+uint32_t app_smart_signature(void) {
+	uint32_t h = 2166136261u;
+	if (!app_engine_ready || !app_mat_project_ready()) {
+		return h;
+	}
+	i32 n = smart_materials_count();
+	h     = app_mat_hash(h, n);
+	for (i32 i = 0; i < n; ++i) {
+		h = app_mat_hash_str(h, smart_materials_name(i));
+		h = app_mat_hash_ptr(h, smart_materials_icon(i)); // Saved again under its name: a new icon
+	}
+	return h;
+}
+
+int32_t app_smart_count(void) {
+	return app_engine_ready ? smart_materials_count() : 0;
+}
+
+bool app_smart_info(int32_t index, app_smart_info_t *out) {
+	if (index < 0 || index >= app_smart_count()) {
+		return false;
+	}
+	out->name = smart_materials_name(index);
+	out->key  = app_mat_hash_ptr(app_mat_hash_str(2166136261u, out->name), smart_materials_icon(index));
+	return true;
+}
+
+int32_t app_smart_find(const char *name) {
+	return name != NULL ? smart_materials_find((char *)name) : -1;
+}
+
+int32_t app_smart_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
+	if (index < 0 || index >= app_smart_count()) {
+		return -1;
+	}
+	gpu_texture_t *icon = smart_materials_icon(index);
+	if (icon == NULL) {
+		return -1;
+	}
+	return app_mat_pixels(icon, 128, out, capacity, w, h);
+}
+
+int32_t app_smart_icon_size(int32_t index) {
+	int32_t w, h;
+	return app_smart_icon(index, NULL, 0, &w, &h);
+}
+
+// Applying and saving draw to layers and export materials: they run when the frame starts, as from the old tab
+
+static void app_smart_apply_next(void *name) {
+	smart_materials_apply(name);
+	free(name);
+}
+
+bool app_smart_apply(int32_t index) {
+	char *name = index >= 0 && index < app_smart_count() ? smart_materials_name(index) : NULL;
+	if (name == NULL) {
+		return false;
+	}
+	sys_notify_on_next_frame(&app_smart_apply_next, strdup(name));
+	iron_delay_idle_sleep();
+	return true;
+}
+
+bool app_smart_delete(int32_t index) {
+	if (index < 0 || index >= app_smart_count()) {
+		return false;
+	}
+	smart_materials_delete(index);
+	return true;
+}
+
+const char *app_smart_default_name(void) {
+	slot_layer_t *l = app_engine_ready && app_mat_project_ready() ? app_smart_target() : NULL;
+	if (l == NULL) {
+		return "";
+	}
+	return l->fill_material != NULL && l->fill_material->canvas != NULL ? l->fill_material->canvas->name : l->name;
+}
+
+static void app_smart_save_next(void *name) {
+	smart_materials_save(app_smart_target(), name);
+	free(name);
+}
+
+bool app_smart_save(const char *name) {
+	if (name == NULL || name[0] == '\0' || app_smart_target() == NULL) {
+		return false;
+	}
+	sys_notify_on_next_frame(&app_smart_save_next, strdup(name));
+	iron_delay_idle_sleep();
+	return true;
+}

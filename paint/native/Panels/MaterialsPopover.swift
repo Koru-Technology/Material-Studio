@@ -1,9 +1,220 @@
 import SwiftUI
 
-// Project materials, Library and Smart materials
+// Project materials, Library and Smart materials: the toolbar's materials popover on iPad (about 380 points wide), a panel
+// on the Mac
 struct MaterialsPopover: View {
+	enum Segment: String, CaseIterable, Identifiable {
+		case project, library, smart
+
+		var id: Self { self }
+
+		var title: String {
+			switch self {
+			case .project: "Project"
+			case .library: "Library"
+			case .smart: "Smart"
+			}
+		}
+	}
+
+	@AppStorage("materials.segment") private var segment = Segment.project
+
 	var body: some View {
-		Text("Materials")
-			.padding()
+		VStack(spacing: 0) {
+			Picker("Materials", selection: $segment) {
+				ForEach(Segment.allCases) { s in
+					Text(s.title).tag(s)
+				}
+			}
+			.pickerStyle(.segmented)
+			.labelsHidden()
+			.padding(.horizontal, 12)
+			.padding(.top, 12)
+			.padding(.bottom, 8)
+
+			switch segment {
+			case .project:
+				MaterialsProjectView()
+			case .library:
+				MaterialsLibraryView {
+					segment = .project // The new material shows selected there
+				}
+			case .smart:
+				MaterialsSmartView()
+			}
+		}
+		.frame(idealWidth: 380, maxWidth: .infinity, minHeight: 420, idealHeight: 560, maxHeight: .infinity)
+	}
+}
+
+// The project's materials: tap to paint with one, the context menu edits, duplicates and deletes
+struct MaterialsProjectView: View {
+	@Environment(\.dismiss) private var dismiss
+	private var store = MaterialsStore.shared
+	@State private var renaming: MaterialRow?
+	@State private var newName = ""
+
+	var body: some View {
+		VStack(spacing: 0) {
+			header
+			Divider()
+			ScrollViewReader { proxy in
+				ScrollView {
+					LazyVGrid(columns: materialColumns, spacing: 12) {
+						ForEach(store.materials) { m in
+							MaterialTile(image: store.thumbnail(for: m), name: m.name, selected: m.selected, loading: !m.previewReady)
+								.id(m.id)
+								.onTapGesture {
+									select(m)
+								}
+								.contextMenu {
+									menu(for: m)
+								}
+								.help(m.name)
+								.accessibilityAddTraits(m.selected ? [.isSelected, .isButton] : .isButton)
+						}
+					}
+					.padding(12)
+				}
+				.onAppear {
+					proxy.scrollTo(store.selectedID, anchor: .center)
+				}
+				.onChange(of: store.selectedID) { _, id in
+					withAnimation {
+						proxy.scrollTo(id, anchor: .center)
+					}
+				}
+			}
+		}
+		.alert("Rename Material", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+			TextField("Name", text: $newName)
+			Button("Rename") {
+				if let m = renaming {
+					act { _ = app_material_rename(m.id, newName) }
+				}
+				renaming = nil
+			}
+			Button("Cancel", role: .cancel) {
+				renaming = nil
+			}
+		}
+	}
+
+	private var header: some View {
+		HStack(spacing: 8) {
+			Text(store.materials.count == 1 ? "1 Material" : "\(store.materials.count) Materials")
+				.font(.subheadline.weight(.semibold))
+				.foregroundStyle(.secondary)
+			Spacer()
+			if let m = store.selectedMaterial {
+				Button {
+					edit(m)
+				} label: {
+					Label("Edit", systemImage: "slider.horizontal.3")
+				}
+				.help("Edit the selected material")
+			}
+			Menu {
+				Button {
+					act { _ = app_material_new() }
+				} label: {
+					Label("New Material", systemImage: "circle.fill")
+				}
+				Button {
+					app_material_new_studio()
+					dismiss()
+				} label: {
+					Label("New Studio Material", systemImage: "wand.and.stars")
+				}
+				Divider()
+				Button(role: .destructive) {
+					act { _ = app_material_delete_unused() }
+				} label: {
+					Label("Delete Unused", systemImage: "trash.slash")
+				}
+				.disabled(store.materials.count < 2)
+			} label: {
+				Label("New Material", systemImage: "plus")
+			} primaryAction: {
+				act { _ = app_material_new() }
+			}
+			.menuIndicator(.hidden)
+			.fixedSize()
+		}
+		.labelStyle(.iconOnly)
+		.buttonStyle(.borderless)
+		.font(.body)
+		.padding(.horizontal, 14)
+		.padding(.vertical, 6)
+	}
+
+	@ViewBuilder private func menu(for m: MaterialRow) -> some View {
+		Button {
+			edit(m)
+		} label: {
+			Label("Edit", systemImage: "slider.horizontal.3")
+		}
+		if m.canOpenStudio {
+			Button {
+				act { _ = app_material_open_studio(m.id) }
+				dismiss()
+			} label: {
+				Label("Edit in Material Studio", systemImage: "wand.and.stars")
+			}
+		}
+		Button {
+			act { _ = app_material_show_nodes(m.id) }
+			dismiss()
+		} label: {
+			Label("Edit Nodes", systemImage: "point.3.connected.trianglepath.dotted")
+		}
+		Divider()
+		Button {
+			act { _ = app_material_to_fill_layer(m.id) }
+		} label: {
+			Label("New Fill Layer", systemImage: "square.stack.3d.up.fill")
+		}
+		if store.canApplyToFill {
+			Button {
+				act { _ = app_material_apply_to_fill(m.id) }
+			} label: {
+				Label("Apply to Fill Layer", systemImage: "square.fill.on.square")
+			}
+		}
+		Divider()
+		Button {
+			newName  = m.name
+			renaming = m
+		} label: {
+			Label("Rename…", systemImage: "pencil")
+		}
+		Button {
+			act { _ = app_material_duplicate(m.id) }
+		} label: {
+			Label("Duplicate", systemImage: "plus.square.on.square")
+		}
+		Button(role: .destructive) {
+			act { _ = app_material_delete(m.id) }
+		} label: {
+			Label("Delete", systemImage: "trash")
+		}
+		.disabled(!app_material_can_delete(m.id))
+	}
+
+	private func select(_ m: MaterialRow) {
+		guard !m.selected else {
+			return
+		}
+		act { _ = app_material_select(m.id) }
+	}
+
+	// The Material Studio when it opens the material, the node editor otherwise
+	private func edit(_ m: MaterialRow) {
+		act { _ = app_material_edit(m.id) }
+		dismiss()
+	}
+
+	private func act(_ action: () -> Void) {
+		AppStore.shared.perform(action)
 	}
 }
