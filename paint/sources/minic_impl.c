@@ -217,7 +217,12 @@ static void script_paint_begin_stroke(void) {
 		return;
 	}
 	base_init_undo_layers(); // Allocated on the first stroke, a new project has none yet
-	make_material_parse_paint_material(false);
+	if (make_material_paint_pending()) {
+		make_material_paint_ready(-1.0); // A material just picked: its shader compiles on a thread, the stroke waits for it
+	}
+	else {
+		make_material_parse_paint_material(false);
+	}
 	render_path_paint_clear_blend();
 	render_path_base_draw_gbuffer();
 
@@ -934,6 +939,7 @@ typedef struct script_brush_state {
 	f32              opacity;
 	f32              strength;
 	f32              mask_value;
+	bool             live; // Live brush preview (a config setting)
 	brush_settings_t s;
 	gpu_texture_t   *tip_image;
 } script_brush_state_t;
@@ -950,7 +956,8 @@ void script_brush_take(void) {
 	s->opacity              = g_context->brush_opacity;
 	s->strength             = g_context->brush_strength;
 	s->mask_value           = g_context->mask_value;
-	s->tip_image            = brush_library_tip_image_get();
+	s->live                 = g_config->brush_live;
+	s->tip_image           = brush_library_tip_image_get();
 	brush_library_capture_settings(&s->s);
 }
 
@@ -962,6 +969,7 @@ static void script_brush_apply(script_brush_state_t *s) {
 	g_context->brush_opacity  = s->opacity;
 	g_context->brush_strength = s->strength;
 	g_context->mask_value     = s->mask_value;
+	g_config->brush_live      = s->live;
 	brush_library_apply_settings(&s->s, s->tip_image);
 }
 

@@ -454,6 +454,7 @@ static void _util_mesh_merge(mesh_object_t_array_t *paint_objects, bool paintabl
 	if (paint_objects->length == 0) {
 		return;
 	}
+	material_cache_mesh_changed(); // Material caches of the old mesh no longer match
 	g_context->merged_object_is_atlas = paint_objects->length < g_project->_->paint_objects->length;
 
 	// Meshes rendered with an override material are not painted

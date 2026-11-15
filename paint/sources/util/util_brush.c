@@ -238,6 +238,8 @@ static void util_brush_update_motion() {
 
 static bool util_brush_stroke_dropped = false;
 
+#define UTIL_BRUSH_SHADER_WAIT 0.25 // Seconds a stroke start waits for the paint shader of a material just picked
+
 void util_brush_update() {
 	bool paint_down = keymap_shortcut(any_map_get(g_keymap, "action_paint"), SHORTCUT_TYPE_DOWN);
 #if defined(IRON_IOS) || defined(IRON_ANDROID)
@@ -297,6 +299,26 @@ void util_brush_update() {
 			return;
 		}
 		util_brush_stroke_dropped = false;
+	}
+
+	// A material just picked compiles its paint shader on a thread (make_material_parse_paint_material_async). A stroke
+	// starting meanwhile waits for it, at most UTIL_BRUSH_SHADER_WAIT and once a touch: a longer frame would make a finger
+	// stroke a touch and hold. Still compiling then, the stroke starts on the first frame it is ready (as a pencil stroke
+	// waits for its first sample), where the touch is then. It never paints with the previous material's shader.
+	static bool util_brush_shader_waited = false;
+	if (!down || mouse_started("left") || pen_started("tip")) {
+		util_brush_shader_waited = false;
+	}
+	if (down && g_context->brush_time == 0 && make_material_paint_pending()) {
+		i32 mx = mouse_x - base_paint_view_x();
+		i32 my = mouse_y - base_paint_view_y();
+		if (mx < base_paint_view_w() && mx > 0 && my < base_paint_view_h() && my > 0) {
+			bool ready               = make_material_paint_ready(util_brush_shader_waited ? 0.0 : UTIL_BRUSH_SHADER_WAIT);
+			util_brush_shader_waited = true;
+			if (!ready) {
+				return;
+			}
+		}
 	}
 
 	if (down) {

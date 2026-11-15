@@ -220,7 +220,7 @@ void context_set_material(slot_material_t *m) {
 		return;
 	}
 	g_context->material = m;
-	make_material_parse_paint_material(true);
+	make_material_parse_paint_material_async(true); // Compiles on a thread, strokes wait for it (util_brush_update)
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	ui_header_handle->redraws = 2;
 	ui_nodes_hwnd->redraws    = 2;

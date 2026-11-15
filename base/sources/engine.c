@@ -108,6 +108,20 @@ void shader_context_bind(shader_context_t *raw) {
 	shader_context_bind_constants(raw);
 }
 
+// New sources (text, as gpu_create_shader_from_source takes them) for a context loaded in a batch, before its pipeline
+// compiles: a context loaded with empty sources while its GLSL translates on a thread. Any thread.
+void shader_context_set_sources(shader_context_t *raw, char *vs, char *fs) {
+	gpu_pipeline_t *pipe = raw->_->pipe;
+	if (pipe->vertex_shader != NULL) {
+		gpu_delete_shader(pipe->vertex_shader);
+	}
+	if (pipe->fragment_shader != NULL) {
+		gpu_delete_shader(pipe->fragment_shader);
+	}
+	pipe->vertex_shader   = gpu_create_shader_from_source(vs, 0, GPU_SHADER_TYPE_VERTEX);
+	pipe->fragment_shader = gpu_create_shader_from_source(fs, 0, GPU_SHADER_TYPE_FRAGMENT);
+}
+
 void shader_compile_batch_end(void) {
 	if (!shader_batch_active) {
 		return;

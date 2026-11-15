@@ -26,6 +26,31 @@ static char *make_paint_copy_shader(char *s, i32 size) {
 	return res;
 }
 
+static void make_paint_cache_add(char *shader, char *vs, char *fs, i32 vs_size, i32 fs_size) {
+	make_paint_cached_shader_t *c = &make_paint_cache[make_paint_cache_next];
+	make_paint_cache_next         = (make_paint_cache_next + 1) % MAKE_PAINT_CACHE_SIZE;
+	free(c->shader);
+	free(c->vs);
+	free(c->fs);
+	c->shader  = string_copy(shader);
+	c->vs      = make_paint_copy_shader(vs, vs_size);
+	c->fs      = make_paint_copy_shader(fs, fs_size);
+	c->vs_size = vs_size;
+	c->fs_size = fs_size;
+}
+
+// make_material.c: a paint shader whose GLSL translates on a thread. Its shaders are left empty, the GLSL is kept in
+// make_paint_deferred_glsl (malloc'd, NULL when the cache had the shaders: they are there).
+bool  make_paint_defer_translation = false;
+char *make_paint_deferred_glsl     = NULL;
+
+// Text shaders translated on a thread from a deferred parse's GLSL, for the next parse of the same shader
+void make_paint_cache_put(char *shader, char *vs, char *fs) {
+	if (shader != NULL && vs != NULL && fs != NULL) {
+		make_paint_cache_add(shader, vs, fs, 0, 0);
+	}
+}
+
 // Callers own the returned shaders
 static void make_paint_create_shaders(char *shader, char **vs, char **fs, i32 *vs_size, i32 *fs_size) {
 	for (i32 i = 0; i < MAKE_PAINT_CACHE_SIZE; ++i) {
@@ -39,21 +64,21 @@ static void make_paint_create_shaders(char *shader, char **vs, char **fs, i32 *v
 		}
 	}
 
+	if (make_paint_defer_translation) {
+		free(make_paint_deferred_glsl);
+		make_paint_deferred_glsl = strdup(shader);
+		*vs                      = calloc(1, 1);
+		*fs                      = calloc(1, 1);
+		*vs_size                 = 0;
+		*fs_size                 = 0;
+		return;
+	}
+
 	gpu_create_shaders_from_glsl(shader, vs, fs, vs_size, fs_size);
 	if (*vs == NULL || *fs == NULL || (*vs_size == 0 && (*vs)[0] == '\0')) {
 		return; // Failed to compile
 	}
-
-	make_paint_cached_shader_t *c = &make_paint_cache[make_paint_cache_next];
-	make_paint_cache_next         = (make_paint_cache_next + 1) % MAKE_PAINT_CACHE_SIZE;
-	free(c->shader);
-	free(c->vs);
-	free(c->fs);
-	c->shader    = string_copy(shader);
-	c->vs      = make_paint_copy_shader(*vs, *vs_size);
-	c->fs      = make_paint_copy_shader(*fs, *fs_size);
-	c->vs_size = *vs_size;
-	c->fs_size = *fs_size;
+	make_paint_cache_add(shader, *vs, *fs, *vs_size, *fs_size);
 }
 
 bool make_paint_is_zero_constant(char *s) {
@@ -190,6 +215,158 @@ node_shader_context_t *make_paint_run_context(material_t *data, char *context_id
 	return make_paint_run_context_internal(data, context_id, is_atlas);
 }
 
+// The material's outputs read from its cache (util_material_cache.c) instead of evaluating its graph: the texel of the
+// layer the fragment paints, the cache has the layer's size (paint draws rasterize the mesh at its uv coordinates as
+// the cache was rendered). The same variables as the parsed material's, what follows is the same.
+static void make_paint_material_from_cache(node_shader_t *shader, bool emis_used, bool subs_used, bool height_used) {
+	node_shader_add_texture(shader, "matcache0", "_matcache0");
+	node_shader_add_texture(shader, "matcache1", "_matcache1");
+	node_shader_add_texture(shader, "matcache2", "_matcache2");
+	node_shader_write_frag(shader, "ivec2 mcache_p = ivec2(int(gl_FragCoord.x), int(gl_FragCoord.y));");
+	node_shader_write_frag(shader, "vec4 mcache0 = texelFetch(sampler2D(matcache0, sampler_linear), mcache_p, 0);");
+	node_shader_write_frag(shader, "vec4 mcache1 = texelFetch(sampler2D(matcache1, sampler_linear), mcache_p, 0);");
+	node_shader_write_frag(shader, "vec4 mcache2 = texelFetch(sampler2D(matcache2, sampler_linear), mcache_p, 0);");
+	node_shader_write_frag(shader, "vec3 basecol = mcache0.rgb;");
+	node_shader_write_frag(shader, "float roughness = mcache2.g;");
+	node_shader_write_frag(shader, "float metallic = mcache2.b;");
+	node_shader_write_frag(shader, "float occlusion = mcache2.r;");
+	node_shader_write_frag(shader, "vec3 nortan = mcache1.rgb;");
+	node_shader_write_frag(shader, "float height = mcache2.a;");
+	node_shader_write_frag(shader, "float mat_opacity = mcache0.a;");
+	node_shader_write_frag(shader, "float opacity = mat_opacity;");
+	if (!make_paint_batched) { // Paint layers only: batched, the opacity of each dab
+		node_shader_write_frag(shader, "opacity *= constants.brush_opacity;");
+	}
+	// The flag the matid branch below tests: emission > 0, else subsurface > 0 (make_paint_cache_bake_run)
+	if (g_context->material->paint_emis) {
+		node_shader_write_frag(shader, "float emis = mcache1.a;");
+	}
+	if (g_context->material->paint_subs) {
+		node_shader_write_frag(shader, "float subs = mcache1.a;");
+	}
+	if (!make_material_height_used && height_used) {
+		make_material_height_used = true;
+	}
+	make_material_emis_used = emis_used;
+	make_material_subs_used = subs_used;
+}
+
+// The material's outputs alone for its cache (util_material_cache.c), rasterized at the paint layer's uv coordinates
+// exactly as paint draws are (the same vertex positions, texture coordinates, scale and rotation constants): base color
+// and opacity, tangent normal and the emission / subsurface flag paint draws test, occlusion, roughness, metallic and
+// height, into three targets of format. The parsed GLSL in *glsl (malloc'd). When the material reads anything but the
+// uv coordinates and constant textures (position, normal, view, layers, time, picker...) *why says what and there is
+// no GLSL. The context is not loaded: the caller loads it or frees it (make_material_free_context).
+node_shader_context_t *make_paint_cache_bake_run(material_t *data, char *format, bool *emis_used, bool *subs_used, bool *height_used, char **glsl,
+                                                 char **why) {
+	*glsl                         = NULL;
+	*why                          = NULL;
+	shader_context_t      *props  = ALLOC_INIT(shader_context_t, {.name              = "paint",
+	                                                              .depth_write       = false,
+	                                                              .compare_mode      = "always",
+	                                                              .cull_mode         = "none",
+	                                                              .vertex_elements   = any_array_create_from_raw(
+                                                                  (void *[]){
+                                                                      ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
+                                                                      ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
+                                                                      ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
+                                                                  },
+                                                                  3),
+	                                                              .color_attachments = any_array_create_from_raw(
+	                                                                  (void *[]){
+	                                                                      format,
+	                                                                      format,
+	                                                                      format,
+	                                                                  },
+	                                                                  3)});
+	node_shader_context_t *con    = node_shader_context_create(data, props);
+	bool                   vcols  = mesh_data_get_vertex_array(g_context->paint_object->data, "col") != NULL;
+	if (vcols) {
+		node_shader_context_add_elem(con, "col", "short4norm");
+	}
+	if (mesh_data_get_vertex_array(g_context->paint_object->data, "tex1") != NULL) {
+		node_shader_context_add_elem(con, "tex1", "short2norm");
+	}
+	con->data->color_writes_red   = u8_array_create_from_raw((u8[]){true, true, true}, 3);
+	con->data->color_writes_green = u8_array_create_from_raw((u8[]){true, true, true}, 3);
+	con->data->color_writes_blue  = u8_array_create_from_raw((u8[]){true, true, true}, 3);
+	con->data->color_writes_alpha = u8_array_create_from_raw((u8[]){true, true, true}, 3);
+	con->allow_vcols              = vcols;
+
+	node_shader_t *shader = node_shader_context_make_shader(con);
+	char          *tuv    = g_context->layer->uv_map == 1 ? "input.tex1" : "input.tex";
+	node_shader_write_vert(shader, string_tmp("vec2 tpos = vec2(%s.x * 2.0 - 1.0, (1.0 - %s.y) * 2.0 - 1.0);", tuv, tuv));
+	node_shader_write_vert(shader, "output.pos = vec4(tpos, 0.0, 1.0);");
+	shader->frag_out = "vec4[3]";
+	make_texcoord_run(shader, false);
+
+	slot_material_t *m                 = g_context->material;
+	parser_material_parse_emission     = m->paint_emis;
+	parser_material_parse_subsurface   = m->paint_subs;
+	parser_material_parse_height       = m->paint_height;
+	parser_material_triplanar          = false;
+	parser_material_sample_keep_aspect = false;
+	parser_material_sample_uv_scale    = "constants.brush_scale";
+	shader_out_t *sout                 = parser_material_parse(data->canvas, con, shader);
+	parser_material_parse_emission     = false;
+	parser_material_parse_subsurface   = false;
+	parser_material_parse_height       = false;
+	node_shader_write_frag(shader, string_tmp("vec3 basecol = %s;", sout->out_basecol));
+	node_shader_write_frag(shader, string_tmp("float roughness = %s;", sout->out_roughness));
+	node_shader_write_frag(shader, string_tmp("float metallic = %s;", sout->out_metallic));
+	node_shader_write_frag(shader, string_tmp("float occlusion = %s;", sout->out_occlusion));
+	node_shader_write_frag(shader, string_tmp("vec3 nortan = %s;", parser_material_out_normaltan));
+	node_shader_write_frag(shader, string_tmp("float height = %s;", sout->out_height));
+	node_shader_write_frag(shader, string_tmp("float mat_opacity = %s;", sout->out_opacity));
+	*height_used = !make_paint_is_zero_constant(sout->out_height);
+	*emis_used   = parse_float(sout->out_emission) != 0.0;
+	*subs_used   = parse_float(sout->out_subsurface) != 0.0;
+	if (m->paint_emis) {
+		node_shader_write_frag(shader, string_tmp("float emis = %s;", sout->out_emission));
+	}
+	if (m->paint_subs) {
+		node_shader_write_frag(shader, string_tmp("float subs = %s;", sout->out_subsurface));
+	}
+	if (m->paint_emis && *emis_used) { // As the matid branch of paint draws picks
+		node_shader_write_frag(shader, "float mcache_flag = emis > 0.0 ? 1.0 : 0.0;");
+	}
+	else if (m->paint_subs && *subs_used) {
+		node_shader_write_frag(shader, "float mcache_flag = subs > 0.0 ? 1.0 : 0.0;");
+	}
+	else {
+		node_shader_write_frag(shader, "float mcache_flag = 0.0;");
+	}
+	node_shader_write_frag(shader, "output[0] = vec4(basecol, mat_opacity);");
+	node_shader_write_frag(shader, "output[1] = vec4(nortan, mcache_flag);");
+	node_shader_write_frag(shader, "output[2] = vec4(occlusion, roughness, metallic, height);");
+	parser_material_finalize(con);
+
+	if (shader->frag_bposition || shader->frag_wposition || shader->frag_mposition || shader->frag_vposition || shader->frag_wvpposition ||
+	    shader->frag_ndcpos || shader->frag_wtangent || shader->frag_vvec || shader->frag_vvec_cam || shader->frag_n || shader->frag_nattr ||
+	    shader->frag_dotnv || shader->vert_n) {
+		*why = "it reads the position, normal or view";
+	}
+	for (i32 i = 0; *why == NULL && i < con->data->constants->length; ++i) {
+		char *link = ((shader_const_t *)con->data->constants->buffer[i])->link;
+		bool  ok   = link != NULL && (string_equals(link, "_brush_scale") || string_equals(link, "_uv_angle") || string_equals(link, "_mm_zero") ||
+                                   starts_with(link, "_size("));
+		if (!ok) {
+			*why = string_tmp("it reads the constant %s", link != NULL ? link : "(unlinked)");
+		}
+	}
+	for (i32 i = 0; *why == NULL && i < con->data->texture_units->length; ++i) {
+		char *link = con->data->texture_units->buffer[i]->link;
+		if (link != NULL && !starts_with(link, "_mmbuf")) { // Images are bound by name
+			*why = string_tmp("it reads the texture %s", link);
+		}
+	}
+	char *source = node_shader_get(shader); // Also frees the shader's buffers
+	if (*why == NULL) {
+		*glsl = string_copy(source);
+	}
+	return con;
+}
+
 static node_shader_context_t *make_paint_run_context_internal(material_t *data, char *context_id, bool is_atlas) {
 	shader_context_t      *props     = ALLOC_INIT(shader_context_t, {.name            = context_id,
 	                                                                 .depth_write     = false,
@@ -273,6 +450,9 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		return con_paint;
 	}
 
+	bool cache_emis     = false; // The material's outputs come from its cache (util_material_cache.c)
+	bool cache_subs     = false;
+	bool cache_height   = false;
 	bool face_fill      = g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_FACE;
 	bool uv_island_fill = g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_UV_ISLAND;
 	bool decal          = context_is_decal();
@@ -432,6 +612,9 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		else { // Blur, Smudge
 			make_blur_run(shader);
 		}
+	}
+	else if (material_cache_paint_info(is_atlas, &cache_emis, &cache_subs, &cache_height)) {
+		make_paint_material_from_cache(shader, cache_emis, cache_subs, cache_height);
 	}
 	else {
 		parser_material_parse_emission     = g_context->material->paint_emis;

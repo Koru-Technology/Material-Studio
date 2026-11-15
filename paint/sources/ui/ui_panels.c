@@ -102,7 +102,31 @@ static bool ui_panels_tool_has_opacity() {
 	       t == TOOL_TYPE_BLUR || t == TOOL_TYPE_PARTICLE;
 }
 
+// Radius sliders of the brush panel (0) and the header (1): while one is dragged the view shows the brush circle
+static ui_id_t ui_panels_radius_ids[2] = {0, 0};
+
+// Called right before drawing a radius slider, in its window
+void ui_panels_radius_slider_id(i32 which, f32 *radius) {
+	ui_panels_radius_ids[which] = ui_widget_id(radius, UI_ID_SLIDER);
+}
+
+bool ui_panels_radius_dragging() {
+	ui_id_t id = g_ui->slider_id;
+	return id != 0 && (id == ui_panels_radius_ids[0] || id == ui_panels_radius_ids[1]);
+}
+
+// The view draws the circle while a radius slider is dragged, and once more to clear it on release
+static void ui_panels_radius_redraw() {
+	static bool was = false;
+	bool        now = ui_panels_radius_dragging();
+	if (now || was) {
+		render_path_base_redraw();
+	}
+	was = now;
+}
+
 static void ui_panels_draw_brush() {
+	ui_panels_radius_redraw();
 	if (!ui_panels_tool_has_opacity()) {
 		return;
 	}
@@ -149,6 +173,7 @@ static void ui_panels_draw_brush() {
 			ui_row2();
 		}
 		if (has_radius) {
+			ui_panels_radius_slider_id(0, radius);
 			ui_slider(radius, tr("Radius"), 0.01, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 			changed |= ui_item_changed();
 		}

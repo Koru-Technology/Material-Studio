@@ -952,6 +952,7 @@ void minic_register_builtins() {
 	MINIC_F(brush_smoothing);
 	MINIC_F(brush_strength);
 	MINIC_I(brush_blending);
+	MINIC_I(brush_paint);
 	MINIC_I(viewport_mode);
 	MINIC_I(xray);
 	MINIC_B(sym_x);

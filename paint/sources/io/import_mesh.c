@@ -146,6 +146,7 @@ void import_mesh_finish_import(void *_) {
 		g_context->paint_object->base->name = "Object";
 	}
 
+	material_cache_mesh_changed();
 	make_material_parse_paint_material(true);
 	make_material_parse_mesh_material();
 	ui_view2d_hwnd->redraws    = 2;

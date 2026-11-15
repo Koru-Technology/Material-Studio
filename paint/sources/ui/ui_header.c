@@ -273,6 +273,7 @@ void ui_header_draw_tool_properties() {
 		bool decal_mask = context_is_decal_mask();
 		if (g_context->tool != TOOL_TYPE_FILL) {
 			if (decal_mask) {
+				ui_panels_radius_slider_id(1, &g_context->brush_decal_mask_radius);
 				ui_slider(&g_context->brush_decal_mask_radius, tr("Radius"), 0.01, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 				if (g_ui->is_hovered) {
 					any_map_t *vars = any_map_create();
@@ -287,6 +288,7 @@ void ui_header_draw_tool_properties() {
 				}
 			}
 			else {
+				ui_panels_radius_slider_id(1, &g_context->brush_radius);
 				ui_slider(&g_context->brush_radius, tr("Radius"), 0.01, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 				if (g_ui->is_hovered) {
 					any_map_t *vars = any_map_create();
