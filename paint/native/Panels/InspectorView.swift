@@ -34,7 +34,7 @@ struct InspectorView: View {
 				slider("Opacity", value: store.brushOpacity, range: 0...1) { app_set_brush_opacity($0) }
 				slider("Hardness", value: store.brushHardness, range: 0...1) { app_set_brush_hardness($0) }
 			}
-			if let layer = store.selectedLayer {
+			if let layer = LayersStore.shared.selectedLayer {
 				Section("Layer") {
 					LabeledContent("Name", value: layer.name)
 					Slider(value: Binding(get: { Double(layer.opacity) }, set: { v in

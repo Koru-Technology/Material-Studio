@@ -1,16 +1,17 @@
 import SwiftUI
 
 struct LayersView: View {
-	private var store = AppStore.shared
+	private var store  = AppStore.shared
+	private var layers = LayersStore.shared
 
 	var body: some View {
-		List(selection: Binding(get: { store.selectedLayerID }, set: { id in
+		List(selection: Binding(get: { layers.selectedLayerID }, set: { id in
 			if let id {
 				store.perform { _ = app_layer_select(id) }
 			}
 		})) {
-			ForEach(store.layers) { layer in
-				LayerRowView(layer: layer, thumbnail: store.thumbnail(for: layer.id), version: store.thumbnailsVersion)
+			ForEach(layers.layers) { layer in
+				LayerRowView(layer: layer, thumbnail: layers.thumbnail(for: layer.id), version: layers.thumbnailsVersion)
 					.tag(layer.id)
 			}
 		}
@@ -22,11 +23,11 @@ struct LayersView: View {
 					Label("New Layer", systemImage: "plus")
 				}
 				Button {
-					store.perform { _ = app_layer_delete(store.selectedLayerID) }
+					store.perform { _ = app_layer_delete(layers.selectedLayerID) }
 				} label: {
 					Label("Delete Layer", systemImage: "trash")
 				}
-				.disabled(!app_layer_can_delete(store.selectedLayerID))
+				.disabled(!app_layer_can_delete(layers.selectedLayerID))
 				Spacer()
 			}
 			.labelStyle(.iconOnly)

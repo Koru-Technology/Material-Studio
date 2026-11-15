@@ -580,6 +580,18 @@ X1(app_set_brush_radius, "v(f value)", v, f)
 X1(app_set_brush_opacity, "v(f value)", v, f)
 X1(app_set_brush_hardness, "v(f value)", v, f)
 
+// app_api_layers.h
+
+// (end of app_api_layers.h)
+
+// app_api_materials.h
+
+// (end of app_api_materials.h)
+
+// app_api_brushes.h
+
+// (end of app_api_brushes.h)
+
 X0(script_layer_count, "i()", i)
 X0(config_save, "v()", v)
 X1(ui_popovers_show, "v(i popover)", v, i)
