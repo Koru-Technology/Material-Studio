@@ -1782,13 +1782,14 @@ mesh_data_t *data_get_mesh(char *file, char *name) {
 	if (data_cached_meshes == NULL) {
 		data_cached_meshes = any_map_create();
 	}
-	char        *handle = string("%s%s", file, name);
+	char        *handle = string_tmp("%s%s", file, name); // No allocation on a cache hit
 	mesh_data_t *cached = (mesh_data_t *)any_map_get(data_cached_meshes, handle);
 	if (cached != NULL) {
 		return cached;
 	}
 	mesh_data_t *b = mesh_data_parse(file, name);
-	any_map_set(data_cached_meshes, string_copy(handle), b);
+	handle         = string_copy(handle);
+	any_map_set(data_cached_meshes, handle, b);
 	b->_->handle = handle;
 	return b;
 }
@@ -1797,7 +1798,7 @@ camera_data_t *data_get_camera(char *file, char *name) {
 	if (data_cached_cameras == NULL) {
 		data_cached_cameras = any_map_create();
 	}
-	char          *handle = string("%s%s", file, name);
+	char          *handle = string_tmp("%s%s", file, name);
 	camera_data_t *cached = (camera_data_t *)any_map_get(data_cached_cameras, handle);
 	if (cached != NULL) {
 		return cached;
@@ -1811,7 +1812,7 @@ world_data_t *data_get_world(char *file, char *name) {
 	if (data_cached_worlds == NULL) {
 		data_cached_worlds = any_map_create();
 	}
-	char         *handle = string("%s%s", file, name);
+	char         *handle = string_tmp("%s%s", file, name);
 	world_data_t *cached = (world_data_t *)any_map_get(data_cached_worlds, handle);
 	if (cached != NULL) {
 		return cached;
