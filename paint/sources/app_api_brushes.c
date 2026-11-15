@@ -113,7 +113,7 @@ bool app_brush_group_info(int32_t index, app_brush_group_info_t *out) {
 	out->id      = g->id;
 	out->builtin = g->builtin;
 	out->hidden  = app_brush_group_hidden(g);
-	out->name    = brush_group_name(g);
+	out->name    = app_str(brush_group_name(g));
 	return true;
 }
 
@@ -164,7 +164,7 @@ bool app_brush_info(int32_t index, app_brush_info_t *out) {
 	out->selected      = g_context->brush_selected == d->id;
 	out->preview_ready = d->row_state == BRUSH_PREVIEW_READY && d->image_row != NULL;
 	out->preview_key   = app_brush_preview_key(d);
-	out->name          = brush_library_name(d);
+	out->name          = app_str(brush_library_name(d));
 	return true;
 }
 
@@ -271,12 +271,12 @@ int32_t app_brush_group_of(int32_t id) {
 
 const char *app_brush_name(int32_t id) {
 	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
-	return d != NULL ? brush_library_name(d) : "";
+	return app_str(d != NULL ? brush_library_name(d) : NULL);
 }
 
 const char *app_brush_group_name(int32_t id) {
 	brush_group_t *g = app_ready() ? brush_group_find(id) : NULL;
-	return g != NULL ? brush_group_name(g) : "";
+	return app_str(g != NULL ? brush_group_name(g) : NULL);
 }
 
 bool app_brush_group_builtin(int32_t id) {

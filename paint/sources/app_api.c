@@ -19,6 +19,11 @@ static bool app_ready(void) {
 	return app_engine_ready && g_context != NULL && g_project != NULL && g_project->_ != NULL;
 }
 
+// Strings handed to Swift are never NULL: String(cString:) crashes on one
+static const char *app_str(const char *s) {
+	return s != NULL ? s : "";
+}
+
 static uint32_t app_hash(uint32_t h, uint32_t v) {
 	return (h ^ v) * 16777619u; // FNV-1a step
 }
@@ -356,7 +361,7 @@ const char *app_undo_name(void) {
 		return "";
 	}
 	history_step_t *step = history_steps->buffer[history_steps->length - 1 - history_redos];
-	return step->name != NULL ? step->name : "";
+	return app_str(step->name);
 }
 
 void app_undo(void) {
@@ -406,7 +411,7 @@ bool app_layer_info(int32_t index, app_layer_info_t *out) {
 	out->selected   = l == g_context->layer;
 	out->is_fill    = l->fill_material != NULL;
 	out->opacity    = l->mask_opacity;
-	out->name       = l->name;
+	out->name       = app_str(l->name);
 	return true;
 }
 

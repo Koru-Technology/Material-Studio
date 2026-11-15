@@ -624,7 +624,7 @@ const char *app_layer_material_name(int32_t index) {
 	if (index < 0 || index >= app_layer_material_count()) {
 		return "";
 	}
-	return g_project->_->materials->buffer[index]->canvas->name;
+	return app_str(g_project->_->materials->buffer[index]->canvas->name);
 }
 
 bool app_layer_set_fill_material(int32_t id, int32_t material_index) {
@@ -868,7 +868,7 @@ bool app_mask_effect_param(int32_t type, int32_t p, app_mask_param_t *out) {
 		return false;
 	}
 	*out = (app_mask_param_t){
-	    .name    = tr(ps[p].name),
+	    .name    = app_str(tr(ps[p].name)),
 	    .index   = ps[p].index,
 	    .kind    = ps[p].kind,
 	    .min     = ps[p].min,
@@ -1034,7 +1034,7 @@ int32_t app_mask_anchor_layer_id(int32_t id, int32_t i) {
 
 const char *app_mask_anchor_layer_name(int32_t id, int32_t i) {
 	slot_layer_t *l = app_mask_anchor_layer(id, i);
-	return l != NULL ? l->name : "";
+	return app_str(l != NULL ? l->name : NULL);
 }
 
 // Slider drags

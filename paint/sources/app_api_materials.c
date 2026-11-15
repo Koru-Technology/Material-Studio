@@ -355,7 +355,7 @@ bool app_material_info(int32_t index, app_material_info_t *out) {
 	out->selected         = m == g_context->material;
 	out->preview_ready    = m->preview_ready;
 	out->can_open_studio  = material_studio_can_open(m);
-	out->name             = m->canvas != NULL && m->canvas->name != NULL ? m->canvas->name : "";
+	out->name             = app_str(m->canvas != NULL ? m->canvas->name : NULL);
 	return true;
 }
 
@@ -701,9 +701,9 @@ bool app_library_item(int32_t index, app_library_item_t *out) {
 	}
 	out->section_name = section;
 	out->key          = key;
-	if (out->name == NULL) {
-		out->name = "";
-	}
+	out->name         = app_str(out->name);
+	out->group_name   = app_str(out->group_name);
+	out->detail       = app_str(out->detail);
 	return true;
 }
 
@@ -757,7 +757,7 @@ const char *app_library_group_name(int32_t group) {
 	if (group < 0 || group >= app_library_group_count()) {
 		return "";
 	}
-	return mm_library_section_name(group);
+	return app_str(mm_library_section_name(group));
 }
 
 static void app_lib_use_saved_next(void *data) {
@@ -817,7 +817,7 @@ const char *app_library_status(void) {
 	if (!library_has_folder()) {
 		return "";
 	}
-	return library_status();
+	return app_str(library_status());
 }
 
 bool app_library_has_folder(void) {
@@ -898,7 +898,7 @@ bool app_smart_info(int32_t index, app_smart_info_t *out) {
 	if (index < 0 || index >= app_smart_count()) {
 		return false;
 	}
-	out->name = smart_materials_name(index);
+	out->name = app_str(smart_materials_name(index));
 	out->key  = app_mat_hash_ptr(app_mat_hash_str(2166136261u, out->name), smart_materials_icon(index));
 	return true;
 }
@@ -953,7 +953,7 @@ const char *app_smart_default_name(void) {
 	if (l == NULL) {
 		return "";
 	}
-	return l->fill_material != NULL && l->fill_material->canvas != NULL ? l->fill_material->canvas->name : l->name;
+	return app_str(l->fill_material != NULL && l->fill_material->canvas != NULL ? l->fill_material->canvas->name : l->name);
 }
 
 static void app_smart_save_next(void *name) {
