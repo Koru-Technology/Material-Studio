@@ -185,7 +185,7 @@ void node_shader_rename(buffer_t *out, char *code, char *from, char *to) {
 		}
 		bool word_start = hit == code || !(isalnum((unsigned char)hit[-1]) || hit[-1] == '_' || hit[-1] == '.');
 		bool word_end   = !(isalnum((unsigned char)from[n - 1]) || from[n - 1] == '_') || !(isalnum((unsigned char)hit[n]) || hit[n] == '_');
-		string_buffer_append_n(out, s, hit - s);
+		string_buffer_append_n(out, s, (int)(hit - s));
 		string_buffer_append(out, word_start && word_end ? to : from);
 		s = hit + n;
 	}

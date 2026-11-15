@@ -45,7 +45,7 @@ node_shader_context_t *make_node_preview_run(material_t *data, ui_node_t *node, 
 		// Enters every group of the path, group is the innermost. Copies parents: the parser frees its own list on the next
 		// parse, which used to free the caller's traversal list while it was still in use
 		parser_material_enter_parents(parents);
-		if (parser_material_nodes != group->nodes) {
+		if ((void *)parser_material_nodes != (void *)group->nodes) {
 			parser_material_push_group(group); // Path did not resolve
 		}
 	}
