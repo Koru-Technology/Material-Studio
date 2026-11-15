@@ -428,8 +428,19 @@ static bool import_arm_has_alpha(buffer_t *pixels, i32 format) {
 	return false;
 }
 
-static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 res, u32 size, i32 format, bool *has_alpha) {
-	buffer_t *pixels = lz4_decode(b, size);
+// A layer texture of res x res texels of bytes_per_texel, empty when its data is missing or corrupt
+static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 res, i32 bytes_per_texel, i32 format, bool *has_alpha) {
+	u64       size   = (u64)res * (u64)res * (u64)bytes_per_texel; // 16K layers pass 2^31 bytes
+	buffer_t *pixels = res > 0 && size <= UINT32_MAX ? lz4_decode(b, (u32)size) : NULL;
+	if (pixels == NULL) {
+		iron_log("Layer data could not be read, the layer starts empty");
+		if (res <= 0 || size > UINT32_MAX) {
+			res  = 1;
+			size = bytes_per_texel;
+		}
+		pixels = buffer_create((u32)size);
+		memset(pixels->buffer, 0, pixels->length);
+	}
 	if (has_alpha != NULL) {
 		*has_alpha = import_arm_has_alpha(pixels, format);
 	}
@@ -1030,7 +1041,7 @@ void import_arm_run_project(char *path) {
 			gpu_texture_t *_texpaint_pack = NULL;
 
 			if (is_mask) {
-				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, ld->res * ld->res * 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
+				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
 				draw_begin(l->texpaint, false, 0);
 				// draw_set_pipeline(pipes_copy8);
 				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy); // Full bits for undo support, R8 is used
@@ -1041,7 +1052,7 @@ void import_arm_run_project(char *path) {
 			else { // Layer
 				// TODO: create render target from bytes
 				// See-through meshes when the bottom layer is not fully opaque
-				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, ld->res * ld->res * 4 * bytes_per_pixel, format,
+				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, 4 * bytes_per_pixel, format,
 				                                        i == 0 ? &g_project->_->translucency : NULL);
 				draw_begin(l->texpaint, false, 0);
 				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
@@ -1049,14 +1060,14 @@ void import_arm_run_project(char *path) {
 				draw_set_pipeline(NULL);
 				draw_end();
 
-				_texpaint_nor = import_arm_texture_from_lz4(ld->texpaint_nor, ld->res, ld->res * ld->res * 4 * bytes_per_pixel, format, NULL);
+				_texpaint_nor = import_arm_texture_from_lz4(ld->texpaint_nor, ld->res, 4 * bytes_per_pixel, format, NULL);
 				draw_begin(l->texpaint_nor, false, 0);
 				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
 				draw_image(_texpaint_nor, 0, 0);
 				draw_set_pipeline(NULL);
 				draw_end();
 
-				_texpaint_pack = import_arm_texture_from_lz4(ld->texpaint_pack, ld->res, ld->res * ld->res * 4 * bytes_per_pixel, format, NULL);
+				_texpaint_pack = import_arm_texture_from_lz4(ld->texpaint_pack, ld->res, 4 * bytes_per_pixel, format, NULL);
 				draw_begin(l->texpaint_pack, false, 0);
 				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
 				draw_image(_texpaint_pack, 0, 0);
