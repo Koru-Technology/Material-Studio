@@ -43,7 +43,6 @@ typedef struct {
 
 int32_t app_brush_count(void);
 bool    app_brush_info(int32_t index, app_brush_info_t *out);
-int32_t app_brush_id_at(int32_t index);
 bool    app_brush_use(int32_t id);         // Paint with it, selects the brush tool unless the eraser is
 int32_t app_brush_duplicate(int32_t id);   // An editable copy (in a group of your own for a built-in brush), its id or -1
 bool    app_brush_delete(int32_t id);      // A brush of your own
@@ -53,12 +52,6 @@ void    app_brush_new(int32_t group_id);   // Opens the Brush Creator on a new b
 bool    app_brush_edit(int32_t id);        // Opens the Brush Creator on a brush of your own
 bool    app_brush_creator_shown(void);
 int32_t app_brush_recent(int32_t index);   // Brushes painted with lately, the latest first, index 0..2, -1 when none
-
-// For scripts (tests/app_api_brushes.c): "" / -1 when not found
-int32_t     app_brush_group_of(int32_t id);
-const char *app_brush_name(int32_t id);
-const char *app_brush_group_name(int32_t id);
-bool        app_brush_group_builtin(int32_t id);
 
 // Stroke previews: render one per frame in the engine, the group asked for first. preview_key tells when to read again.
 void app_brush_previews_request(int32_t group_id);
@@ -87,8 +80,6 @@ typedef struct {
 } app_color_t;
 
 bool     app_color_get(app_color_t *out);
-uint32_t app_color_base(void);
-float    app_color_value(int32_t which); // app_color_value_t
 void     app_color_set_base(uint32_t rgb);  // 0xRRGGBB, the alpha is ignored
 void     app_color_set_value(int32_t which, float value);
 bool     app_color_can_apply(void); // The selected material takes the picked color
@@ -98,7 +89,6 @@ void     app_color_new_material(void); // A new plain material of the picked col
 // Swatches of the project
 int32_t  app_swatch_count(void);
 bool     app_swatch_info(int32_t index, app_color_t *out);
-uint32_t app_swatch_base(int32_t index);
 int32_t  app_swatch_selected(void); // Index of the swatch picked last, -1 when none
 bool     app_swatch_pick(int32_t index); // Becomes the picked color, applied to the material
 int32_t  app_swatch_add(void);           // The picked color as a new swatch, its index

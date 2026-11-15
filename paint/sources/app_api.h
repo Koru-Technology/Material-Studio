@@ -154,11 +154,8 @@ typedef struct {
 
 int32_t app_layer_count(void);
 bool    app_layer_info(int32_t index, app_layer_info_t *out);
-bool    app_layer_select(int32_t id);
 bool    app_layer_set_visible(int32_t id, bool visible);
-bool    app_layer_add(void);   // A paint layer above the selected one
 bool    app_layer_delete(int32_t id);
-bool    app_layer_can_delete(int32_t id);
 
 // A slider drag: one undo step for the whole gesture. Begin, set any number of times, end.
 // A set without a begin is its own undo step. app_drag_end ends any drag (opacity, layer values, mask effect values).
@@ -167,9 +164,5 @@ bool app_layer_set_opacity(int32_t id, float value);
 void app_drag_end(void);
 
 // Thumbnail pixels, RGBA8 rows top to bottom. Returns the byte count written (0: none), sizes in w / h.
-// With out NULL: reads the thumbnail back and returns the byte count it needs.
+// With out NULL: the byte count it needs, nothing read back.
 int32_t app_layer_thumbnail(int32_t id, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h);
-
-// For scripts (tests/app_api.c)
-int32_t app_layer_id_at(int32_t index);
-int32_t app_layer_thumbnail_size(int32_t id);

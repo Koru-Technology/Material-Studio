@@ -244,6 +244,7 @@
 #include "app_api_brushes.c"
 #include "app_api_layers.c"
 #include "app_api_materials.c"
+#include "app_api_scripts.c"
 #include "node_shader.c"
 #include "nodes_brush.c"
 #include "nodes_material.c"

@@ -32,6 +32,7 @@
 #include "app_api_brushes.h"
 #include "app_api_layers.h"
 #include "app_api_materials.h"
+#include "app_api_scripts.h"
 
 gpu_texture_t *gpu_create_render_target(i32 width, i32 height, i32 format);
 void           iron_delay_idle_sleep();

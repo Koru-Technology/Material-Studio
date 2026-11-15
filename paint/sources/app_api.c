@@ -558,25 +558,6 @@ bool app_layer_info(int32_t index, app_layer_info_t *out) {
 	return true;
 }
 
-int32_t app_layer_id_at(int32_t index) {
-	app_layer_info_t info;
-	return app_layer_info(index, &info) ? info.id : -1;
-}
-
-int32_t app_layer_thumbnail_size(int32_t id) {
-	int32_t w, h;
-	return app_layer_thumbnail(id, NULL, 0, &w, &h);
-}
-
-bool app_layer_select(int32_t id) {
-	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL) {
-		return false;
-	}
-	script_layer_set(l);
-	return true;
-}
-
 bool app_layer_set_visible(int32_t id, bool visible) {
 	slot_layer_t *l = app_layer_by_id(id);
 	if (l == NULL || l->visible == visible) {
@@ -585,15 +566,6 @@ bool app_layer_set_visible(int32_t id, bool visible) {
 	tab_layers_layer_toggle_visible(l);
 	iron_delay_idle_sleep();
 	return true;
-}
-
-bool app_layer_add(void) {
-	return app_ready() && script_layer_new() != NULL;
-}
-
-bool app_layer_can_delete(int32_t id) {
-	slot_layer_t *l = app_layer_by_id(id);
-	return l != NULL && tab_layers_can_delete(l);
 }
 
 bool app_layer_delete(int32_t id) {

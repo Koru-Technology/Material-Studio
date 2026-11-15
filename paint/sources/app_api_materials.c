@@ -251,17 +251,6 @@ bool app_material_info(int32_t index, app_material_info_t *out) {
 	return true;
 }
 
-int32_t app_material_id_at(int32_t index) {
-	app_material_info_t info;
-	return app_material_info(index, &info) ? info.id : -1;
-}
-
-int32_t app_material_preview_version(int32_t id) {
-	slot_material_t *m = app_mat_by_id(id);
-	app_mat_track_t *t = m != NULL ? app_mat_track_of(m) : NULL;
-	return t != NULL ? (int32_t)t->version : -1;
-}
-
 bool app_material_select(int32_t id) {
 	slot_material_t *m = app_mat_by_id(id);
 	if (m == NULL) {
@@ -408,11 +397,6 @@ int32_t app_material_thumbnail(int32_t id, int32_t max_size, uint8_t *out, int32
 		return 0;
 	}
 	return app_read_rgba8(m->image, max_size, true, false, out, capacity, w, h);
-}
-
-int32_t app_material_thumbnail_size(int32_t id, int32_t max_size) {
-	int32_t w, h;
-	return app_material_thumbnail(id, max_size, NULL, 0, &w, &h);
 }
 
 // ██╗     ██╗██████╗ ██████╗  █████╗ ██████╗ ██╗   ██╗
@@ -728,21 +712,6 @@ int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t 
 	return app_read_rgba8(icon, 128, true, false, out, capacity, w, h);
 }
 
-int32_t app_library_icon_size(int32_t index) {
-	int32_t w, h;
-	return app_library_icon(index, NULL, 0, &w, &h);
-}
-
-int32_t app_library_find(const char *name) {
-	app_library_item_t item;
-	for (i32 i = 0; i < app_library_count(); ++i) {
-		if (app_library_item(i, &item) && name != NULL && strcmp(item.name, name) == 0) {
-			return i;
-		}
-	}
-	return -1;
-}
-
 // ███████╗███╗   ███╗ █████╗ ██████╗ ████████╗
 
 uint32_t app_smart_signature(void) {
@@ -785,11 +754,6 @@ int32_t app_smart_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w
 		return -1;
 	}
 	return app_read_rgba8(icon, 128, true, false, out, capacity, w, h);
-}
-
-int32_t app_smart_icon_size(int32_t index) {
-	int32_t w, h;
-	return app_smart_icon(index, NULL, 0, &w, &h);
 }
 
 // Applying and saving draw to layers and export materials: they run when the frame starts, as from the old tab

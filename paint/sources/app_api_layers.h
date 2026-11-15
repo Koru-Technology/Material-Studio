@@ -141,10 +141,6 @@ typedef enum {
 void app_layer_value_begin(int32_t id, int32_t value);
 bool app_layer_set_value(int32_t id, int32_t value, float v);
 
-// For scripts (tests/app_api_layers.c), Swift reads app_layer_props
-bool    app_layer_expanded(int32_t id);
-int32_t app_layer_uv_type(int32_t id);
-
 // Mask effects: a mask is a stack of effects evaluated bottom to top (util_mask_stack.c). An effect is named by its
 // mask's id and its index in the list as shown, 0 is the top. A mask nothing was added to is the stack of its one
 // Paint effect, which brush strokes paint. Every edit is one undo step.
@@ -236,13 +232,3 @@ const char *app_mask_anchor_layer_name(int32_t id, int32_t i); // Valid until th
 // setting's range, a layer setting takes -1 or an app_mask_anchor_layer_id. A set without a begin is its own undo step.
 void app_mask_effect_value_begin(int32_t id, int32_t index, int32_t field);
 bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v); // app_drag_end ends the drag
-
-// For scripts (tests/app_api_masks.c), Swift reads app_mask_effect
-int32_t  app_mask_effect_type(int32_t id, int32_t index); // -1: none
-bool     app_mask_effect_visible(int32_t id, int32_t index);
-int32_t  app_mask_effect_blending(int32_t id, int32_t index);
-float    app_mask_effect_value(int32_t id, int32_t index, int32_t field);
-bool     app_mask_effect_needs_ao(int32_t id, int32_t index);
-bool     app_mask_effect_needs_thickness(int32_t id, int32_t index);
-bool     app_mask_effect_needs_id_map(int32_t id, int32_t index);
-uint32_t app_layer_previews_version(void); // app_state_t.previews_version

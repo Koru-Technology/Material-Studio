@@ -760,16 +760,6 @@ bool app_layer_set_value(int32_t id, int32_t value, float v) {
 	return true;
 }
 
-bool app_layer_expanded(int32_t id) {
-	slot_layer_t *l = app_layer_by_id(id);
-	return l != NULL && l->show_panel;
-}
-
-int32_t app_layer_uv_type(int32_t id) {
-	slot_layer_t *l = app_layer_by_id(id);
-	return l != NULL ? (int32_t)l->uv_type : -1;
-}
-
 // Mask effects. The stack is listed bottom first in slot_layer_t.mask_effects, the API counts from the top.
 
 _Static_assert((i32)APP_MASK_EFFECT_DIRECTIONAL == (i32)MASK_EFFECT_DIRECTIONAL && (i32)APP_MASK_EFFECT_ANCHOR == (i32)MASK_EFFECT_ANCHOR &&
@@ -1077,48 +1067,6 @@ bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v
 	mask_stack_set(m, i, e);
 	iron_delay_idle_sleep();
 	return true;
-}
-
-int32_t app_mask_effect_type(int32_t id, int32_t index) {
-	app_mask_effect_t e;
-	return app_mask_effect(id, index, &e) ? e.type : -1;
-}
-
-bool app_mask_effect_visible(int32_t id, int32_t index) {
-	app_mask_effect_t e;
-	return app_mask_effect(id, index, &e) && e.visible;
-}
-
-int32_t app_mask_effect_blending(int32_t id, int32_t index) {
-	app_mask_effect_t e;
-	return app_mask_effect(id, index, &e) ? e.blending : -1;
-}
-
-float app_mask_effect_value(int32_t id, int32_t index, int32_t field) {
-	app_mask_effect_t e;
-	if (!app_mask_effect(id, index, &e) || field < -1 || field >= APP_MASK_EFFECT_PARAMS) {
-		return 0.0;
-	}
-	return field < 0 ? e.opacity : e.params[field];
-}
-
-bool app_mask_effect_needs_ao(int32_t id, int32_t index) {
-	app_mask_effect_t e;
-	return app_mask_effect(id, index, &e) && e.needs_ao;
-}
-
-bool app_mask_effect_needs_thickness(int32_t id, int32_t index) {
-	app_mask_effect_t e;
-	return app_mask_effect(id, index, &e) && e.needs_thickness;
-}
-
-bool app_mask_effect_needs_id_map(int32_t id, int32_t index) {
-	app_mask_effect_t e;
-	return app_mask_effect(id, index, &e) && e.needs_id_map;
-}
-
-uint32_t app_layer_previews_version(void) {
-	return app_previews_counter;
 }
 
 // An effect from a layer's menu: into its mask, a black mask made first when it has none (one undo step)

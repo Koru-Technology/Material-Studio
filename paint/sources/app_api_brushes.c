@@ -168,11 +168,6 @@ bool app_brush_info(int32_t index, app_brush_info_t *out) {
 	return true;
 }
 
-int32_t app_brush_id_at(int32_t index) {
-	app_brush_info_t info;
-	return app_brush_info(index, &info) ? info.id : -1;
-}
-
 bool app_brush_use(int32_t id) {
 	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
 	if (d == NULL) {
@@ -264,26 +259,6 @@ int32_t app_brush_recent(int32_t index) {
 	return brush_library_find(id) != NULL ? id : -1;
 }
 
-int32_t app_brush_group_of(int32_t id) {
-	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
-	return d != NULL ? d->group : -1;
-}
-
-const char *app_brush_name(int32_t id) {
-	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
-	return app_str(d != NULL ? brush_library_name(d) : NULL);
-}
-
-const char *app_brush_group_name(int32_t id) {
-	brush_group_t *g = app_ready() ? brush_group_find(id) : NULL;
-	return app_str(g != NULL ? brush_group_name(g) : NULL);
-}
-
-bool app_brush_group_builtin(int32_t id) {
-	brush_group_t *g = app_ready() ? brush_group_find(id) : NULL;
-	return g != NULL && g->builtin;
-}
-
 // Stroke previews
 
 void app_brush_previews_request(int32_t group_id) {
@@ -339,19 +314,6 @@ bool app_color_get(app_color_t *out) {
 	}
 	app_color_fill(g_context->picked_color, out);
 	return true;
-}
-
-uint32_t app_color_base(void) {
-	app_color_t c;
-	return app_color_get(&c) ? c.base : 0;
-}
-
-float app_color_value(int32_t which) {
-	if (!app_ready() || g_context->picked_color == NULL) {
-		return 0.0f;
-	}
-	f32 *v = app_color_field(g_context->picked_color, which);
-	return v != NULL ? *v : 0.0f;
 }
 
 static void app_color_changed(void) {
@@ -445,11 +407,6 @@ bool app_swatch_info(int32_t index, app_color_t *out) {
 	}
 	app_color_fill(s, out);
 	return true;
-}
-
-uint32_t app_swatch_base(int32_t index) {
-	app_color_t c;
-	return app_swatch_info(index, &c) ? c.base : 0;
 }
 
 int32_t app_swatch_selected(void) {

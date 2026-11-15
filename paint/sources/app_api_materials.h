@@ -34,7 +34,6 @@ typedef struct {
 
 int32_t app_material_count(void);
 bool    app_material_info(int32_t index, app_material_info_t *out);
-int32_t app_material_id_at(int32_t index);
 bool    app_material_select(int32_t id);
 int32_t app_material_new(void);        // A node material, selected. Returns its id, -1 when none
 int32_t app_material_duplicate(int32_t id); // Returns the copy's id, selected
@@ -53,7 +52,6 @@ bool app_material_apply_to_fill(int32_t id);    // The selected fill layer takes
 
 // Its preview sphere, box filtered down to max_size or less (0: full size, 256)
 int32_t app_material_thumbnail(int32_t id, int32_t max_size, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h);
-int32_t app_material_preview_version(int32_t id); // For scripts
 
 // Library: saved materials, the materials folder and Material Maker's library.
 // Ordered by section (style, then type): items of a section are next to each other.
@@ -106,9 +104,3 @@ bool        app_smart_apply(int32_t index); // On top of the layers, its top lay
 bool        app_smart_delete(int32_t index);
 const char *app_smart_default_name(void);   // For the save field: the selected fill layer's material or group name
 bool        app_smart_save(const char *name); // The selected fill layer or group (next frame), one of that name is replaced
-
-// For scripts (tests/app_api_materials.c)
-int32_t app_material_thumbnail_size(int32_t id, int32_t max_size);
-int32_t app_library_icon_size(int32_t index);
-int32_t app_library_find(const char *name); // First item of that name, -1 when none
-int32_t app_smart_icon_size(int32_t index);
