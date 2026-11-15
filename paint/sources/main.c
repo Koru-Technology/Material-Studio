@@ -81,6 +81,7 @@
 #include "nodes_material/material_node.c"
 #include "nodes_material/math2_node.c"
 #include "nodes_material/mm_nodes.c"
+#include "nodes_material/mm_material_node.c"
 #include "nodes_material/mm_import.c"
 #include "nodes_material/mm_library.c"
 #include "nodes_material/mm_controls.c"

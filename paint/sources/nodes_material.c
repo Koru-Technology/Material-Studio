@@ -165,3 +165,42 @@ ui_node_socket_t *nodes_material_socket_ex(char *name, char *type, u32 color, f3
 	                                     .precision     = precision,
 	                                     .display       = display});
 }
+
+// Sockets added to nodes (group sockets): color, default value and name of a type
+i32 nodes_material_get_socket_color(char *type) {
+	return string_equals(type, "RGBA")          ? 0xffc7c729
+	       : string_equals(type, "VECTOR")      ? 0xff6363c7
+	       : string_equals(type, "MM_SDF2D")    ? 0xff4fc35b // Material Maker types, they only link to their own kind
+	       : string_equals(type, "MM_SDF3D")    ? 0xffb05ad6
+	       : string_equals(type, "MM_SDF3DC")   ? 0xffd66ac8
+	       : string_equals(type, "MM_TEX3D_GS") ? 0xff7ab8a4
+	       : string_equals(type, "MM_TEX3D")    ? 0xff3fb6e0
+	       : string_equals(type, "MM_V4V4")     ? 0xffe08a3f
+	       : string_equals(type, "MM_FILL")     ? 0xffe05a5a
+	                                            : 0xffa1a1a1;
+}
+
+f32_array_t *nodes_material_get_socket_default_value(char *type) {
+	return string_equals(type, "RGBA")     ? f32_array_create_xyzw(0.8, 0.8, 0.8, 1.0)
+	       : string_equals(type, "VECTOR") ? f32_array_create_xyz(0.0, 0.0, 0.0)
+	                                       : f32_array_create_x(0.0);
+}
+
+char *nodes_material_get_socket_name(char *type) {
+	return string_equals(type, "RGBA") ? _tr("Color") : string_equals(type, "VECTOR") ? _tr("Vector") : _tr("Value");
+}
+
+ui_node_socket_t *nodes_material_create_socket(ui_nodes_t *nodes, ui_node_t *node, char *name, char *type, ui_node_canvas_t *canvas, f32 min, f32 max,
+                                               void *default_value) {
+	ui_node_socket_t *soc =
+	    ALLOC_INIT(ui_node_socket_t, {.id            = ui_get_socket_id(canvas->nodes),
+	                                  .node_id       = node->id,
+	                                  .name          = name == NULL ? nodes_material_get_socket_name(type) : name,
+	                                  .type          = type,
+	                                  .color         = nodes_material_get_socket_color(type),
+	                                  .default_value = default_value == NULL ? nodes_material_get_socket_default_value(type) : default_value,
+	                                  .min           = min,
+	                                  .max           = max,
+	                                  .precision     = 100});
+	return soc;
+}
