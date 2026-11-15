@@ -229,7 +229,7 @@ static mat4_t import_arm_mesh_world_matrix(project_t *project, i32 mesh_i) {
 	return m;
 }
 
-static void import_arm_run_mesh_append_from_project(project_t *project, i32_array_t *selected, i32_array_t *src_to_dest_mat) {
+static void import_arm_run_mesh_append_from_project(project_t *project, i32_array_t *selected) {
 	if (project->mesh_datas == NULL || project->mesh_datas->length == 0) {
 		return;
 	}
@@ -289,13 +289,6 @@ static void import_arm_run_mesh_append_from_project(project_t *project, i32_arra
 	g_context->ddirty          = 4;
 	mesh_maps_mesh_changed(); // The registered maps miss the appended meshes
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-}
-
-void import_arm_run_mesh_append(char *path) {
-	buffer_t  *b       = data_get_blob(path);
-	project_t *project = import_arm_decode_project(b);
-	import_arm_run_mesh_append_from_project(project, NULL, NULL);
-	data_delete_blob(path);
 }
 
 void import_arm_run_material_from_project_on_next_frame(slot_material_t_array_t *imported) {
@@ -709,28 +702,13 @@ void import_arm_run_material_from_project(project_t *project, char *path) {
 }
 
 void import_arm_append(project_t *project, char *path, i32_array_t *mesh_selected, i32_array_t *material_selected) {
-	i32_array_t *src_to_dest_mat = NULL;
-	i32          mat_base        = g_project->_->materials->length;
-
 	if (project->material_nodes != NULL && project->material_nodes->length > 0) {
+		// Selected materials not already in the project (by name)
 		i32_array_t *to_import = i32_array_create(project->material_nodes->length);
-		src_to_dest_mat        = i32_array_create(project->material_nodes->length);
-		i32 dest               = mat_base;
-		for (i32 i = 0; i < src_to_dest_mat->length; ++i) {
-			ui_node_canvas_t *c        = project->material_nodes->buffer[i];
-			i32               existing = import_arm_material_name_index(c != NULL ? c->name : NULL);
-			if (existing >= 0) {
-				to_import->buffer[i]       = 0;
-				src_to_dest_mat->buffer[i] = existing;
-			}
-			else if (import_arm_is_selected(material_selected, i)) {
-				to_import->buffer[i]       = 1;
-				src_to_dest_mat->buffer[i] = dest++;
-			}
-			else {
-				to_import->buffer[i]       = 0;
-				src_to_dest_mat->buffer[i] = -1;
-			}
+		for (i32 i = 0; i < to_import->length; ++i) {
+			ui_node_canvas_t *c  = project->material_nodes->buffer[i];
+			bool              in = import_arm_material_name_index(c != NULL ? c->name : NULL) >= 0;
+			to_import->buffer[i] = !in && import_arm_is_selected(material_selected, i) ? 1 : 0;
 		}
 		if (import_arm_has_selected(to_import)) {
 			import_arm_import_materials(project, path, to_import, false);
@@ -738,7 +716,7 @@ void import_arm_append(project_t *project, char *path, i32_array_t *mesh_selecte
 	}
 
 	if (project->mesh_datas != NULL && import_arm_has_selected(mesh_selected)) {
-		import_arm_run_mesh_append_from_project(project, mesh_selected, src_to_dest_mat);
+		import_arm_run_mesh_append_from_project(project, mesh_selected);
 	}
 	data_delete_blob(path);
 }
@@ -1089,7 +1067,6 @@ void import_arm_run_project(char *path) {
 			if (is_mask) {
 				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
 				draw_begin(l->texpaint, false, 0);
-				// draw_set_pipeline(pipes_copy8);
 				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy); // Full bits for undo support, R8 is used
 				draw_image(_texpaint, 0, 0);
 				draw_set_pipeline(NULL);

@@ -23,7 +23,6 @@ static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
 
 	if (type == PAINT_TEX_BASE) {
 		draw_begin(target, true, 0x00000000);
-		// draw_set_pipeline(l.is_mask() ? pipes_copy8 : pipes_copy);
 		draw_set_pipeline(pipes_copy); // texpaint_preview is always RGBA32 for now
 		draw_scaled_image(slot_layer_is_mask(l) ? slot_layer_mask_texture(l) : l->texpaint, 0, 0, target->width, target->height);
 		draw_set_pipeline(NULL);
@@ -211,7 +210,6 @@ void layers_make_temp_mask_img() {
 	}
 
 	if (pipes_temp_mask_image == NULL) {
-		// pipes_temp_mask_image = gpu_create_render_target(config_get_texture_res_x(), config_get_texture_res_y(), GPU_TEXTURE_FORMAT_R8);
 		pipes_temp_mask_image = gpu_create_render_target(config_get_texture_res_x(), config_get_texture_res_y(), GPU_TEXTURE_FORMAT_RGBA32);
 	}
 }
@@ -1127,9 +1125,6 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 	gpu_texture_t        *mask     = empty;
 	slot_layer_t_array_t *l1masks  = use_mask ? slot_layer_get_masks(l1, true) : NULL;
 	if (l1masks != NULL) {
-		// for (let i: i32 = 1; i < l1masks.length - 1; ++i) {
-		// 	merge_layer(l1masks[i + 1], l1masks[i]);
-		// }
 		gpu_texture_t *m0 = slot_layer_mask_texture(l1masks->buffer[0]);
 		layers_make_temp_mask_img();
 		_gpu_begin(pipes_temp_mask_image, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
@@ -1456,15 +1451,6 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 			draw_set_pipeline(NULL);
 			draw_end();
 
-			// if (g_context->tool == TOOL_TYPE_CURSOR) {
-			// 	// Do not multiply basecol by alpha
-			// 	draw_begin(layers_expa, false, 0); // Copy to temp
-			// 	draw_set_pipeline(pipes_copy);
-			// 	draw_image(l1->texpaint, 0, 0);
-			// 	draw_set_pipeline(NULL);
-			// 	draw_end();
-			// }
-			// else {
 			_gpu_begin(layers_expa, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			gpu_set_pipeline(l1->paint_base ? pipes_merge : pipes_get_merge_a());
 			gpu_set_texture(pipes_tex0, l1->texpaint);
@@ -1478,7 +1464,6 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 			gpu_set_index_buffer(const_data_screen_aligned_ib);
 			gpu_draw();
 			gpu_end();
-			// }
 		}
 
 		if (l1->paint_nor) {
