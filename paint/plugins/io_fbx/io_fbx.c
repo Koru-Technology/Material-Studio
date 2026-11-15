@@ -96,7 +96,7 @@ static raw_mesh_t *mat_build_raw(char *name, fbuf_t *pf, fbuf_t *nf, fbuf_t *tf)
 	}
 
 	short *texa = NULL;
-	if (tf->count > 0) {
+	if (tf->count >= vertex_count * 2 && vertex_count > 0) {
 		texa = malloc(sizeof(short) * vertex_count * 2);
 		for (int i = 0; i < vertex_count; ++i) {
 			texa[i * 2]     = tf->data[i * 2] * 32767.0f;
@@ -140,6 +140,7 @@ static void build_material_split(ufbx_scene *scene) {
 	fbuf_t pf[MAT_SPLIT_MAX]    = {0};
 	fbuf_t nf[MAT_SPLIT_MAX]    = {0};
 	fbuf_t tf[MAT_SPLIT_MAX]    = {0};
+	bool   uv[MAT_SPLIT_MAX]    = {0}; // A mesh of the split has uvs, the others get zero ones
 	int    num_mats             = 0;
 
 	uint32_t max_tris = 1;
@@ -171,9 +172,10 @@ static void build_material_split(ufbx_scene *scene) {
 					break;
 				}
 			}
+			if (m == -1 && num_mats >= MAT_SPLIT_MAX) {
+				m = MAT_SPLIT_MAX - 1; // Materials past the last split go with it
+			}
 			if (m == -1) {
-				if (num_mats >= MAT_SPLIT_MAX)
-					continue;
 				m        = num_mats++;
 				names[m] = malloc(strlen(mat_name) + 1);
 				strcpy(names[m], mat_name);
@@ -190,11 +192,10 @@ static void build_material_split(ufbx_scene *scene) {
 				fbuf_push(&nf[m], nv.x);
 				fbuf_push(&nf[m], -nv.z);
 				fbuf_push(&nf[m], nv.y);
-				if (has_tex) {
-					ufbx_vec2 uv = ufbx_get_vertex_vec2(&mesh->vertex_uv, a);
-					fbuf_push(&tf[m], uv.x);
-					fbuf_push(&tf[m], uv.y);
-				}
+				ufbx_vec2 t = has_tex ? ufbx_get_vertex_vec2(&mesh->vertex_uv, a) : (ufbx_vec2){0};
+				fbuf_push(&tf[m], t.x);
+				fbuf_push(&tf[m], t.y);
+				uv[m] = uv[m] || has_tex;
 			}
 		}
 	}
@@ -204,7 +205,8 @@ static void build_material_split(ufbx_scene *scene) {
 	mat_split_meshes = malloc(sizeof(raw_mesh_t *) * num_mats);
 	mat_split_count  = num_mats;
 	for (int m = 0; m < num_mats; ++m) {
-		mat_split_meshes[m] = mat_build_raw(names[m], &pf[m], &nf[m], &tf[m]);
+		fbuf_t no_uv        = {0};
+		mat_split_meshes[m] = mat_build_raw(names[m], &pf[m], &nf[m], uv[m] ? &tf[m] : &no_uv);
 		free(names[m]);
 		free(pf[m].data);
 		free(nf[m].data);
@@ -217,6 +219,7 @@ static void build_udim_split(ufbx_scene *scene) {
 	fbuf_t pf[MAX_UDIM_TILES]       = {0};
 	fbuf_t nf[MAX_UDIM_TILES]       = {0};
 	fbuf_t tf[MAX_UDIM_TILES]       = {0};
+	bool   uv[MAX_UDIM_TILES]       = {0};
 	int    num_tiles                = 0;
 
 	const char *base_name = "Mesh";
@@ -288,11 +291,10 @@ static void build_udim_split(ufbx_scene *scene) {
 					fbuf_push(&nf[t], nv.x);
 					fbuf_push(&nf[t], -nv.z);
 					fbuf_push(&nf[t], nv.y);
-					if (has_tex) {
-						ufbx_vec2 uv = ufbx_get_vertex_vec2(&mesh->vertex_uv, a);
-						fbuf_push(&tf[t], uv.x - tile_u);
-						fbuf_push(&tf[t], uv.y - tile_v);
-					}
+					ufbx_vec2 c = has_tex ? ufbx_get_vertex_vec2(&mesh->vertex_uv, a) : (ufbx_vec2){0};
+					fbuf_push(&tf[t], has_tex ? c.x - tile_u : 0.0f);
+					fbuf_push(&tf[t], has_tex ? c.y - tile_v : 0.0f);
+					uv[t] = uv[t] || has_tex;
 				}
 			}
 		}
@@ -305,7 +307,8 @@ static void build_udim_split(ufbx_scene *scene) {
 	mat_split_count  = num_tiles;
 	for (int t = 0; t < num_tiles; ++t) {
 		snprintf(tile_name, sizeof(tile_name), "%s.%d", base_name, tile_ids[t]);
-		mat_split_meshes[t] = mat_build_raw(tile_name, &pf[t], &nf[t], &tf[t]);
+		fbuf_t no_uv        = {0};
+		mat_split_meshes[t] = mat_build_raw(tile_name, &pf[t], &nf[t], uv[t] ? &tf[t] : &no_uv);
 		free(pf[t].data);
 		free(nf[t].data);
 		free(tf[t].data);
@@ -502,8 +505,13 @@ void io_fbx_parse_mesh(raw_mesh_t *raw, ufbx_mesh *mesh, ufbx_matrix *to_world, 
 void *io_fbx_parse(char *buf, size_t size) {
 	if (active_base_scene == NULL) {
 		ufbx_load_opts opts = {.generate_missing_normals = true};
+		scale_pos           = 1.0; // A new file
 		active_base_scene = active_eval_scene = ufbx_load_memory(buf, size, &opts, NULL);
-		active_tex1                           = true;
+		if (active_base_scene == NULL) { // Not an fbx, or a corrupt one
+			current_node = 0;
+			return NULL;
+		}
+		active_tex1 = true;
 		for (size_t i = 0; i < active_eval_scene->nodes.count; ++i) {
 			ufbx_node *n = active_eval_scene->nodes.data[i];
 			if (valid_mesh(n) && n->mesh->uv_sets.count < 2) {
@@ -522,6 +530,17 @@ void *io_fbx_parse(char *buf, size_t size) {
 	}
 
 	if (plugins_split_by == 1 /* SPLIT_TYPE_MATERIAL */ || plugins_split_by == 2 /* SPLIT_TYPE_UDIM */) {
+		if (mat_split_count == 0) { // No mesh in the file
+			ufbx_free_scene(active_base_scene);
+			active_base_scene = NULL;
+			active_eval_scene = NULL;
+			current_node      = 0;
+			active_tex1       = false;
+			free(mat_split_meshes);
+			mat_split_meshes = NULL;
+			mat_split_idx    = 0;
+			return NULL;
+		}
 		raw_mesh_t *raw = mat_split_meshes[mat_split_idx++];
 		raw->has_next   = (mat_split_idx < mat_split_count);
 		if (!raw->has_next) {

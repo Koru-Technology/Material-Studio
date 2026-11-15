@@ -323,17 +323,43 @@ typedef struct {
 } json_buf_t;
 
 static void json_buf_append(json_buf_t *j, const char *fmt, ...) {
-	char    tmp[1024];
 	va_list ap;
 	va_start(ap, fmt);
-	int tl = vsnprintf(tmp, sizeof(tmp), fmt, ap);
+	int tl = vsnprintf(NULL, 0, fmt, ap); // Any length, names included
 	va_end(ap);
+	if (tl <= 0) {
+		return;
+	}
 	while (j->len + (size_t)tl + 1 > j->cap) {
 		j->cap *= 2;
 		j->buf = (char *)realloc(j->buf, j->cap);
 	}
-	memcpy(j->buf + j->len, tmp, (size_t)tl);
+	va_start(ap, fmt);
+	vsnprintf(j->buf + j->len, (size_t)tl + 1, fmt, ap);
+	va_end(ap);
 	j->len += (size_t)tl;
+}
+
+// name as a json string body: quotes, backslashes and control characters escaped
+static char *json_escape(const char *name) {
+	size_t n   = strlen(name);
+	char  *out = malloc(n * 6 + 1);
+	char  *o   = out;
+	for (size_t i = 0; i < n; ++i) {
+		unsigned char c = (unsigned char)name[i];
+		if (c == '"' || c == '\\') {
+			*o++ = '\\';
+			*o++ = (char)c;
+		}
+		else if (c < 0x20) {
+			o += snprintf(o, 7, "\\u%04x", c);
+		}
+		else {
+			*o++ = (char)c;
+		}
+	}
+	*o = '\0';
+	return out;
 }
 
 void export_glb_run(char *path, any_array_t *paint_objects) {
@@ -474,7 +500,9 @@ void export_glb_run(char *path, any_array_t *paint_objects) {
 		if (i > 0)
 			json_buf_append(&j, ",");
 		mesh_object_t *p = (mesh_object_t *)paint_objects->buffer[i];
-		json_buf_append(&j, "{\"mesh\":%d,\"name\":\"%s\"}", i, p->base->name);
+		char          *name = json_escape(p->base->name);
+		json_buf_append(&j, "{\"mesh\":%d,\"name\":\"%s\"}", i, name);
+		free(name);
 	}
 	json_buf_append(&j, "],");
 
@@ -485,8 +513,10 @@ void export_glb_run(char *path, any_array_t *paint_objects) {
 			json_buf_append(&j, ",");
 		mesh_object_t *p       = (mesh_object_t *)paint_objects->buffer[i];
 		int            base_ac = i * 4;
+		char          *name    = json_escape(p->base->name);
 		json_buf_append(&j, "{\"name\":\"%s\",\"primitives\":[{\"attributes\":{\"POSITION\":%d,\"NORMAL\":%d,\"TEXCOORD_0\":%d},\"indices\":%d}]}",
-		                p->base->name, base_ac, base_ac + 1, base_ac + 2, base_ac + 3);
+		                name, base_ac, base_ac + 1, base_ac + 2, base_ac + 3);
+		free(name);
 	}
 	json_buf_append(&j, "],");
 

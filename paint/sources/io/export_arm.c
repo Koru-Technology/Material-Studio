@@ -224,7 +224,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
-		                              .res                = l->texpaint != NULL ? l->texpaint->width : g_project->_->layers->buffer[0]->texpaint->width,
+		                              .res                = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
 		                              .bpp                = bpp,
 		                              .texpaint           = l->texpaint != NULL ? export_arm_encode_layer_texture(l->texpaint) : NULL,
 		                              .uv_scale           = l->scale,

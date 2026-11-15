@@ -760,8 +760,9 @@ void export_texture_run(char *path, bool bake_material) {
 		string_array_t *object_names = any_array_create_from_raw((void *[]){}, 0);
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 			slot_layer_t *l = g_project->_->layers->buffer[i];
-			if (slot_layer_get_object_mask(l) > 0) {
-				char *name = g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l) - 1]->base->name;
+			i32           o = slot_layer_get_object_mask(l);
+			if (o > 0 && o <= g_project->_->paint_objects->length) { // Larger masks are atlases
+				char *name = g_project->_->paint_objects->buffer[o - 1]->base->name;
 				if (string_array_index_of(object_names, name) == -1) {
 					any_array_push(object_names, name);
 				}

@@ -41,7 +41,7 @@ void import_mesh_run(char *path, bool _clear_layers, bool replace_existing, bool
 			console_error(string("Failed to import '%s'", path));
 			return;
 		}
-		if (string_equals(mesh->name, "")) {
+		if (mesh->name == NULL || string_equals(mesh->name, "")) {
 			mesh->name = string_copy(path_base_name(path));
 		}
 
@@ -50,7 +50,10 @@ void import_mesh_run(char *path, bool _clear_layers, bool replace_existing, bool
 		bool has_next = mesh->has_next;
 		while (has_next) {
 			raw_mesh_t *mesh = importer(path);
-			if (string_equals(mesh->name, "")) {
+			if (mesh == NULL) { // The rest of the file could not be read
+				break;
+			}
+			if (mesh->name == NULL || string_equals(mesh->name, "")) {
 				mesh->name = string_copy(path_base_name(path));
 			}
 			has_next = mesh->has_next;
@@ -286,6 +289,10 @@ void import_mesh_make_mesh(raw_mesh_t *mesh) {
 }
 
 void import_mesh_add_mesh(raw_mesh_t *mesh) {
+	if (mesh == NULL || mesh->posa == NULL || mesh->nora == NULL || mesh->inda == NULL || mesh->posa->length == 0) {
+		console_error(strings_failed_to_read_mesh_data());
+		return;
+	}
 	if (mesh->texa == NULL) {
 		i32 verts  = mesh->posa->length / 4;
 		mesh->texa = i16_array_create(verts * 2);

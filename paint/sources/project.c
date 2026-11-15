@@ -588,7 +588,8 @@ string_array_t *project_get_used_atlases() {
 	if (used.length > 1) {
 		res.length = 0;
 		for (i32 i = 0; i < used.length; ++i) {
-			string_array_push(&res, g_project->atlas_names->buffer[used.buffer[i]]);
+			i32 a = used.buffer[i];
+			string_array_push(&res, g_project->atlas_names != NULL && a >= 0 && a < g_project->atlas_names->length ? g_project->atlas_names->buffer[a] : "");
 		}
 		return &res;
 	}
@@ -599,9 +600,14 @@ bool project_is_atlas_object(mesh_object_t *p) {
 	if (g_context->layer_filter <= g_project->_->paint_objects->length) {
 		return false;
 	}
-	char *atlas_name = project_get_used_atlases()->buffer[g_context->layer_filter - g_project->_->paint_objects->length - 1];
-	i32   atlas_i    = string_array_index_of(g_project->atlas_names, atlas_name);
-	return atlas_i == g_project->atlas_objects->buffer[array_index_of(g_project->_->paint_objects, p)];
+	string_array_t *atlases = project_get_used_atlases();
+	i32             i       = g_context->layer_filter - g_project->_->paint_objects->length - 1;
+	i32             o       = array_index_of(g_project->_->paint_objects, p);
+	if (atlases == NULL || i >= atlases->length || o < 0 || o >= g_project->atlas_objects->length) {
+		return false;
+	}
+	i32 atlas_i = string_array_index_of(g_project->atlas_names, atlases->buffer[i]);
+	return atlas_i == g_project->atlas_objects->buffer[o];
 }
 
 mesh_object_t_array_t *project_get_atlas_objects(i32 object_mask) {
@@ -613,7 +619,7 @@ mesh_object_t_array_t *project_get_atlas_objects(i32 object_mask) {
 	char                  *atlas_name = atlases->buffer[i];
 	i32                    atlas_i    = string_array_index_of(g_project->atlas_names, atlas_name);
 	mesh_object_t_array_t *visibles   = any_array_create_from_raw((void *[]){}, 0);
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
+	for (i32 i = 0; i < g_project->_->paint_objects->length && i < g_project->atlas_objects->length; ++i) {
 		if (g_project->atlas_objects->buffer[i] == atlas_i) {
 			any_array_push(visibles, g_project->_->paint_objects->buffer[i]);
 		}
