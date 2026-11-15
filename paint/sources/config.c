@@ -1,5 +1,6 @@
 
 #include "global.h"
+#include <float.h>
 
 typedef struct version {
 	char *sha;
@@ -55,105 +56,152 @@ void config_brush_save_update() {
 	config_save();
 }
 
-// The config as JSON, every key in the order of config_t
+// Every key of config.json in the order of config_t: X(kind, field, min, max). A loaded number outside min..max gets
+// the default value, CONFIG_ANY takes any.
+#define CONFIG_FIELDS                                                                            \
+	X(STRING, version, CONFIG_ANY)                                                               \
+	X(STRING, sha, CONFIG_ANY)                                                                   \
+	X(STRING, locale, CONFIG_ANY)                                                                \
+	X(I32, window_mode, 0, 1)                                                                    \
+	X(I32, window_w, CONFIG_ANY)                                                                 \
+	X(I32, window_h, CONFIG_ANY)                                                                 \
+	X(I32, window_x, CONFIG_ANY)                                                                 \
+	X(I32, window_y, CONFIG_ANY)                                                                 \
+	X(BOOL, window_resizable, CONFIG_ANY)                                                        \
+	X(BOOL, window_maximizable, CONFIG_ANY)                                                      \
+	X(BOOL, window_minimizable, CONFIG_ANY)                                                      \
+	X(BOOL, window_vsync, CONFIG_ANY)                                                            \
+	X(I32, window_frequency, CONFIG_ANY)                                                         \
+	X(F32, window_scale, 0.25, 10)                                                               \
+	X(F32, rp_supersample, 0.25, 4)                                                              \
+	X(F32, rp_ssao, CONFIG_ANY)                                                                  \
+	X(F32, rp_bloom, CONFIG_ANY)                                                                 \
+	X(F32, rp_vignette, CONFIG_ANY)                                                              \
+	X(F32, rp_grain, CONFIG_ANY)                                                                 \
+	X(F32, rp_contrast, CONFIG_ANY)                                                              \
+	X(F32, rp_gamma, CONFIG_ANY)                                                                 \
+	X(STRING, lut_path, CONFIG_ANY)                                                              \
+	X(BOOL, texture_filter, CONFIG_ANY)                                                          \
+	X(STRINGS, recent_projects, CONFIG_ANY)                                                      \
+	X(STRINGS, bookmarks, CONFIG_ANY)                                                            \
+	X(STRING, keymap, CONFIG_ANY)                                                                \
+	X(STRING, theme, CONFIG_ANY)                                                                 \
+	X(I32, undo_steps, 1, 1000)                                                                  \
+	X(F32, camera_fov, 0.01, 3.1)                                                                \
+	X(F32, camera_pan_speed, CONFIG_ANY)                                                         \
+	X(F32, camera_zoom_speed, CONFIG_ANY)                                                        \
+	X(F32, camera_rotation_speed, CONFIG_ANY)                                                    \
+	X(BOOL, camera_upside_down, CONFIG_ANY)                                                      \
+	X(I32, zoom_direction, ZOOM_DIRECTION_VERTICAL, ZOOM_DIRECTION_VERTICAL_HORIZONTAL_INVERTED) \
+	X(BOOL, wrap_mouse, CONFIG_ANY)                                                              \
+	X(BOOL, show_asset_names, CONFIG_ANY)                                                        \
+	X(BOOL, material_params, CONFIG_ANY)                                                         \
+	X(BOOL, touch_ui, CONFIG_ANY)                                                                \
+	X(BOOL, splash_screen, CONFIG_ANY)                                                           \
+	X(BOOL, header_pinned, CONFIG_ANY)                                                           \
+	X(I32S, layout_tabs, CONFIG_ANY)                                                             \
+	X(I32, camera_pivot, CAMERA_PIVOT_CURSOR, CAMERA_PIVOT_CENTER)                               \
+	X(I32, camera_controls, CAMERA_CONTROLS_ORBIT, CAMERA_CONTROLS_FLY)                          \
+	X(I32, viewport_mode, VIEWPORT_MODE_LIT, VIEWPORT_MODE_PLUGIN)                               \
+	X(I32, pathtrace_mode, PATHTRACE_MODE_FAST, PATHTRACE_MODE_FULL)                             \
+	X(I32, pathtrace_frames, 1, 100000)                                                          \
+	X(F32, pressure_sensitivity, CONFIG_ANY)                                                     \
+	X(I32, layer_res, TEXTURE_RES_RES2048, TEXTURE_RES_RES16384)                                 \
+	X(BOOL, brush_live, CONFIG_ANY)                                                              \
+	X(BOOL, node_previews, CONFIG_ANY)                                                           \
+	X(BOOL, material_live, CONFIG_ANY)                                                           \
+	X(BOOL, brush_depth_reject, CONFIG_ANY)                                                      \
+	X(BOOL, brush_angle_reject, CONFIG_ANY)                                                      \
+	X(F32, brush_alpha_discard, CONFIG_ANY)                                                      \
+	X(I32, dilate_radius, 0, 64)                                                                 \
+	X(STRING, blender, CONFIG_ANY)                                                               \
+	X(BOOL, grid_snap, CONFIG_ANY)                                                               \
+	X(BOOL, experimental, CONFIG_ANY)                                                            \
+	X(I32, neural_res, 1, 16384)                                                                 \
+	X(BOOL, view2d_grid_show, CONFIG_ANY)                                                        \
+	X(I32, view2d_grid_cell, 1, 16384)                                                           \
+	X(BOOL, view2d_grid_snap, CONFIG_ANY)                                                        \
+	X(BOOL, pixel_snap, CONFIG_ANY)                                                              \
+	X(BOOL, large_asset_previews, CONFIG_ANY)                                                    \
+	X(BOOL, tooltips, CONFIG_ANY)                                                                \
+	X(STRING, materials_folder, CONFIG_ANY)                                                      \
+	X(BOOL, reload_project, CONFIG_ANY)                                                          \
+	X(I32, cloud_resolution, CONFIG_ANY)                                                         \
+	X(BOOL, library_cloud, CONFIG_ANY)                                                           \
+	X(I32, library_cloud_type, CONFIG_ANY)                                                       \
+	X(F32, library_scroll, CONFIG_ANY)                                                           \
+	X(F32, brush_radius, 0, 1)                                                                   \
+	X(F32, brush_opacity, 0, 1)                                                                  \
+	X(F32, brush_strength, 0, 1)                                                                 \
+	X(F32, pressure_curve, 0.01, 100)                                                            \
+	X(F32, pressure_min, 0, 1)                                                                   \
+	X(I32, brush_selected, CONFIG_ANY)                                                           \
+	X(BOOL, hide_builtin_brushes, CONFIG_ANY)                                                    \
+	X(I32, rp_view_transform, 0, 3)                                                              \
+	X(BOOL, autosave, CONFIG_ANY)                                                                \
+	X(I32, autosave_interval, 1, 1440)                                                           \
+	X(I32, finger_paint, 0, 2)                                                                   \
+	X(I32, pencil_double_tap, PENCIL_ACTION_SYSTEM, PENCIL_ACTION_OFF)                           \
+	X(I32, pencil_squeeze, PENCIL_ACTION_SYSTEM, PENCIL_ACTION_OFF)                              \
+	X(I32S, quick_menu_slots, CONFIG_ANY)                                                        \
+	X(I32, undo_memory_mb, 1, 1048576)
+
+#define CONFIG_ANY -FLT_MAX, FLT_MAX
+
+typedef enum {
+	CONFIG_STRING,
+	CONFIG_STRINGS, // string_array_t
+	CONFIG_I32S,    // i32_array_t, null when not set
+	CONFIG_I32,
+	CONFIG_F32,
+	CONFIG_BOOL,
+} config_kind_t;
+
+typedef struct {
+	char         *key;
+	config_kind_t kind;
+	i32           offset;
+	f32           min;
+	f32           max;
+} config_field_t;
+
+#define X(kind, name, ...) {#name, CONFIG_##kind, (i32)offsetof(config_t, name), __VA_ARGS__},
+static const config_field_t config_fields[] = {CONFIG_FIELDS};
+#undef X
+#define CONFIG_FIELD_COUNT (i32)(sizeof(config_fields) / sizeof(config_fields[0]))
+
+// The config as JSON
 static char *config_to_json(config_t *c) {
 	json_encode_begin();
-	json_encode_string("version", c->version);
-	json_encode_string("sha", c->sha);
-	json_encode_string("locale", c->locale);
-	json_encode_i32("window_mode", c->window_mode);
-	json_encode_i32("window_w", c->window_w);
-	json_encode_i32("window_h", c->window_h);
-	json_encode_i32("window_x", c->window_x);
-	json_encode_i32("window_y", c->window_y);
-	json_encode_bool("window_resizable", c->window_resizable);
-	json_encode_bool("window_maximizable", c->window_maximizable);
-	json_encode_bool("window_minimizable", c->window_minimizable);
-	json_encode_bool("window_vsync", c->window_vsync);
-	json_encode_i32("window_frequency", c->window_frequency);
-	json_encode_f32("window_scale", c->window_scale);
-	json_encode_f32("rp_supersample", c->rp_supersample);
-	json_encode_f32("rp_ssao", c->rp_ssao);
-	json_encode_f32("rp_bloom", c->rp_bloom);
-	json_encode_f32("rp_vignette", c->rp_vignette);
-	json_encode_f32("rp_grain", c->rp_grain);
-	json_encode_f32("rp_contrast", c->rp_contrast);
-	json_encode_f32("rp_gamma", c->rp_gamma);
-	json_encode_string("lut_path", c->lut_path);
-	json_encode_bool("texture_filter", c->texture_filter);
-	json_encode_string_array("recent_projects", c->recent_projects);
-	json_encode_string_array("bookmarks", c->bookmarks);
-	json_encode_string("keymap", c->keymap);
-	json_encode_string("theme", c->theme);
-	json_encode_i32("undo_steps", c->undo_steps);
-	json_encode_f32("camera_fov", c->camera_fov);
-	json_encode_f32("camera_pan_speed", c->camera_pan_speed);
-	json_encode_f32("camera_zoom_speed", c->camera_zoom_speed);
-	json_encode_f32("camera_rotation_speed", c->camera_rotation_speed);
-	json_encode_bool("camera_upside_down", c->camera_upside_down);
-	json_encode_i32("zoom_direction", c->zoom_direction);
-	json_encode_bool("wrap_mouse", c->wrap_mouse);
-	json_encode_bool("show_asset_names", c->show_asset_names);
-	json_encode_bool("material_params", c->material_params);
-	json_encode_bool("touch_ui", c->touch_ui);
-	json_encode_bool("splash_screen", c->splash_screen);
-	json_encode_bool("header_pinned", c->header_pinned);
-	if (c->layout_tabs != NULL) {
-		json_encode_i32_array("layout_tabs", c->layout_tabs);
+	for (i32 i = 0; i < CONFIG_FIELD_COUNT; ++i) {
+		const config_field_t *f = &config_fields[i];
+		void                 *p = (u8 *)c + f->offset;
+		switch (f->kind) {
+		case CONFIG_STRING:
+			json_encode_string(f->key, *(char **)p);
+			break;
+		case CONFIG_STRINGS:
+			json_encode_string_array(f->key, *(string_array_t **)p);
+			break;
+		case CONFIG_I32S:
+			if (*(i32_array_t **)p != NULL) {
+				json_encode_i32_array(f->key, *(i32_array_t **)p);
+			}
+			else {
+				json_encode_null(f->key);
+			}
+			break;
+		case CONFIG_I32:
+			json_encode_i32(f->key, *(i32 *)p);
+			break;
+		case CONFIG_F32:
+			json_encode_f32(f->key, *(f32 *)p);
+			break;
+		case CONFIG_BOOL:
+			json_encode_bool(f->key, *(bool *)p);
+			break;
+		}
 	}
-	else {
-		json_encode_null("layout_tabs");
-	}
-	json_encode_i32("camera_pivot", c->camera_pivot);
-	json_encode_i32("camera_controls", c->camera_controls);
-	json_encode_i32("viewport_mode", c->viewport_mode);
-	json_encode_i32("pathtrace_mode", c->pathtrace_mode);
-	json_encode_i32("pathtrace_frames", c->pathtrace_frames);
-	json_encode_f32("pressure_sensitivity", c->pressure_sensitivity);
-	json_encode_i32("layer_res", c->layer_res);
-	json_encode_bool("brush_live", c->brush_live);
-	json_encode_bool("node_previews", c->node_previews);
-	json_encode_bool("material_live", c->material_live);
-	json_encode_bool("brush_depth_reject", c->brush_depth_reject);
-	json_encode_bool("brush_angle_reject", c->brush_angle_reject);
-	json_encode_f32("brush_alpha_discard", c->brush_alpha_discard);
-	json_encode_i32("dilate_radius", c->dilate_radius);
-	json_encode_string("blender", c->blender);
-	json_encode_bool("grid_snap", c->grid_snap);
-	json_encode_bool("experimental", c->experimental);
-	json_encode_i32("neural_res", c->neural_res);
-	json_encode_bool("view2d_grid_show", c->view2d_grid_show);
-	json_encode_i32("view2d_grid_cell", c->view2d_grid_cell);
-	json_encode_bool("view2d_grid_snap", c->view2d_grid_snap);
-	json_encode_bool("pixel_snap", c->pixel_snap);
-	json_encode_bool("large_asset_previews", c->large_asset_previews);
-	json_encode_bool("tooltips", c->tooltips);
-	json_encode_string("materials_folder", c->materials_folder);
-	json_encode_bool("reload_project", c->reload_project);
-	json_encode_i32("cloud_resolution", c->cloud_resolution);
-	json_encode_bool("library_cloud", c->library_cloud);
-	json_encode_i32("library_cloud_type", c->library_cloud_type);
-	json_encode_f32("library_scroll", c->library_scroll);
-	json_encode_f32("brush_radius", c->brush_radius);
-	json_encode_f32("brush_opacity", c->brush_opacity);
-	json_encode_f32("brush_strength", c->brush_strength);
-	json_encode_f32("pressure_curve", c->pressure_curve);
-	json_encode_f32("pressure_min", c->pressure_min);
-	json_encode_i32("brush_selected", c->brush_selected);
-	json_encode_bool("hide_builtin_brushes", c->hide_builtin_brushes);
-	json_encode_i32("rp_view_transform", c->rp_view_transform);
-	json_encode_bool("autosave", c->autosave);
-	json_encode_i32("autosave_interval", c->autosave_interval);
-	json_encode_i32("finger_paint", c->finger_paint);
-	json_encode_i32("pencil_double_tap", c->pencil_double_tap);
-	json_encode_i32("pencil_squeeze", c->pencil_squeeze);
-	if (c->quick_menu_slots != NULL) {
-		json_encode_i32_array("quick_menu_slots", c->quick_menu_slots);
-	}
-	else {
-		json_encode_null("quick_menu_slots");
-	}
-	json_encode_i32("undo_memory_mb", c->undo_memory_mb);
 	return json_encode_end();
 }
 
@@ -358,95 +406,62 @@ void config_init() {
 	keymap_load();
 }
 
+// A config from the keys of a loaded one: missing keys and numbers out of their range get the default value, unknown
+// keys are ignored. The keys are read by name, not by json_parse's key order: a config of the same version written
+// by a build with other keys (another branch) would shift every later field.
 config_t *config_from_map_to_config(any_map_t *old) {
-	config_t *c              = ALLOC_INIT(config_t, {0});
-	c->version               = string_copy(manifest_version_config);
-	c->sha                   = string_copy(config_get_sha());
-	c->locale                = string_copy(any_map_get(old, "locale"));
-	c->window_mode           = armpack_map_get_i32(old, "window_mode");
-	c->window_w              = armpack_map_get_i32(old, "window_w");
-	c->window_h              = armpack_map_get_i32(old, "window_h");
-	c->window_x              = armpack_map_get_i32(old, "window_x");
-	c->window_y              = armpack_map_get_i32(old, "window_y");
-	c->window_resizable      = armpack_map_get_i32(old, "window_resizable") > 0;
-	c->window_maximizable    = armpack_map_get_i32(old, "window_maximizable") > 0;
-	c->window_minimizable    = armpack_map_get_i32(old, "window_minimizable") > 0;
-	c->window_vsync          = armpack_map_get_i32(old, "window_vsync") > 0;
-	c->window_frequency      = armpack_map_get_i32(old, "window_frequency");
-	c->window_scale          = armpack_map_get_f32(old, "window_scale");
-	c->rp_supersample        = armpack_map_get_f32(old, "rp_supersample");
-	c->rp_ssao               = armpack_map_get_f32(old, "rp_ssao");
-	c->rp_bloom              = armpack_map_get_f32(old, "rp_bloom");
-	c->rp_vignette           = armpack_map_get_f32(old, "rp_vignette");
-	c->rp_grain              = armpack_map_get_f32(old, "rp_grain");
-	c->rp_contrast           = armpack_map_get_f32(old, "rp_contrast");
-	c->rp_gamma              = armpack_map_get_f32(old, "rp_gamma");
-	c->lut_path              = string_copy(any_map_get(old, "lut_path"));
-	c->texture_filter        = armpack_map_get_i32(old, "texture_filter") > 0;
-	c->recent_projects       = any_map_get(old, "recent_projects");
-	c->bookmarks             = any_map_get(old, "bookmarks");
-	c->keymap                = string_copy(any_map_get(old, "keymap"));
-	c->theme                 = string_copy(any_map_get(old, "theme"));
-	c->undo_steps            = armpack_map_get_i32(old, "undo_steps");
-	c->camera_fov            = armpack_map_get_f32(old, "camera_fov");
-	c->camera_pan_speed      = armpack_map_get_f32(old, "camera_pan_speed");
-	c->camera_zoom_speed     = armpack_map_get_f32(old, "camera_zoom_speed");
-	c->camera_rotation_speed = armpack_map_get_f32(old, "camera_rotation_speed");
-	c->camera_upside_down    = armpack_map_get_i32(old, "camera_upside_down") > 0;
-	c->zoom_direction        = armpack_map_get_i32(old, "zoom_direction");
-	c->wrap_mouse            = armpack_map_get_i32(old, "wrap_mouse") > 0;
-	c->show_asset_names      = armpack_map_get_i32(old, "show_asset_names") > 0;
-	c->material_params       = armpack_map_get_i32(old, "material_params") > 0;
-	c->touch_ui              = armpack_map_get_i32(old, "touch_ui") > 0;
-	c->splash_screen         = armpack_map_get_i32(old, "splash_screen") > 0;
-	c->header_pinned         = armpack_map_get_i32(old, "header_pinned") > 0;
-	c->layout_tabs           = any_map_get(old, "layout_tabs");
-	c->camera_pivot          = armpack_map_get_i32(old, "camera_pivot");
-	c->camera_controls       = armpack_map_get_i32(old, "camera_controls");
-	c->viewport_mode         = armpack_map_get_i32(old, "viewport_mode");
-	c->pathtrace_mode        = armpack_map_get_i32(old, "pathtrace_mode");
-	c->pathtrace_frames      = armpack_map_get_i32(old, "pathtrace_frames");
-	c->pressure_sensitivity  = armpack_map_get_f32(old, "pressure_sensitivity");
-	c->layer_res             = armpack_map_get_i32(old, "layer_res");
-	c->brush_live            = armpack_map_get_i32(old, "brush_live") > 0;
-	c->node_previews         = armpack_map_get_i32(old, "node_previews") > 0;
-	c->material_live         = armpack_map_get_i32(old, "material_live") > 0;
-	c->brush_depth_reject    = armpack_map_get_i32(old, "brush_depth_reject") > 0;
-	c->brush_angle_reject    = armpack_map_get_i32(old, "brush_angle_reject") > 0;
-	c->brush_alpha_discard   = armpack_map_get_f32(old, "brush_alpha_discard");
-	c->dilate_radius         = armpack_map_get_i32(old, "dilate_radius");
-	c->blender               = string_copy(any_map_get(old, "blender"));
-	c->grid_snap             = armpack_map_get_i32(old, "grid_snap") > 0;
-	c->experimental          = armpack_map_get_i32(old, "experimental") > 0;
-	c->neural_res            = armpack_map_get_i32(old, "neural_res");
-	c->view2d_grid_show      = armpack_map_get_i32(old, "view2d_grid_show") > 0;
-	c->view2d_grid_cell      = armpack_map_get_i32(old, "view2d_grid_cell");
-	c->view2d_grid_snap      = armpack_map_get_i32(old, "view2d_grid_snap") > 0;
-	c->pixel_snap            = armpack_map_get_i32(old, "pixel_snap") > 0;
-	c->large_asset_previews  = armpack_map_get_i32(old, "large_asset_previews") > 0;
-	c->tooltips              = armpack_map_get_i32(old, "tooltips") > 0;
-	char *materials_folder   = any_map_get(old, "materials_folder");
-	c->materials_folder      = string_copy(materials_folder != NULL ? materials_folder : "");
-	c->reload_project        = armpack_map_get_i32(old, "reload_project") > 0;
-	c->cloud_resolution      = armpack_map_get_i32(old, "cloud_resolution");
-	c->library_cloud         = armpack_map_get_i32(old, "library_cloud") > 0;
-	c->library_cloud_type    = armpack_map_get_i32(old, "library_cloud_type");
-	c->library_scroll        = armpack_map_get_f32(old, "library_scroll");
-	c->brush_radius = armpack_map_get_f32(old, "brush_radius");
-	c->brush_opacity = armpack_map_get_f32(old, "brush_opacity");
-	c->brush_strength = armpack_map_get_f32(old, "brush_strength");
-	c->pressure_curve = armpack_map_get_f32(old, "pressure_curve");
-	c->pressure_min = armpack_map_get_f32(old, "pressure_min");
-	c->brush_selected = any_map_get(old, "brush_selected") != NULL ? armpack_map_get_i32(old, "brush_selected") : 1;
-	c->hide_builtin_brushes = armpack_map_get_i32(old, "hide_builtin_brushes") > 0;
-	c->rp_view_transform = armpack_map_get_i32(old, "rp_view_transform");
-	c->autosave = armpack_map_get_i32(old, "autosave") > 0;
-	c->autosave_interval = armpack_map_get_i32(old, "autosave_interval");
-	c->finger_paint = armpack_map_get_i32(old, "finger_paint");
-	c->pencil_double_tap = armpack_map_get_i32(old, "pencil_double_tap");
-	c->pencil_squeeze = armpack_map_get_i32(old, "pencil_squeeze");
-	c->quick_menu_slots = any_map_get(old, "quick_menu_slots");
-	c->undo_memory_mb = armpack_map_get_i32(old, "undo_memory_mb");
+	config_t    *c    = config_create_default();
+	any_array_t *have = map_keys(old);
+	for (i32 i = 0; i < CONFIG_FIELD_COUNT; ++i) {
+		const config_field_t *f = &config_fields[i];
+		if (string_equals(f->key, "version") || string_equals(f->key, "sha")) {
+			continue; // This build's
+		}
+		bool found = false;
+		for (i32 j = 0; j < have->length && !found; ++j) {
+			found = string_equals(have->buffer[j], f->key);
+		}
+		if (!found) {
+			continue;
+		}
+		void *p = (u8 *)c + f->offset;
+		switch (f->kind) {
+		case CONFIG_STRING: {
+			char *v = any_map_get(old, f->key);
+			if (v != NULL) {
+				*(char **)p = string_copy(v);
+			}
+			break;
+		}
+		case CONFIG_STRINGS: {
+			string_array_t *v = any_map_get(old, f->key);
+			if (v != NULL) {
+				*(string_array_t **)p = v;
+			}
+			break;
+		}
+		case CONFIG_I32S:
+			*(i32_array_t **)p = any_map_get(old, f->key);
+			break;
+		case CONFIG_I32: {
+			i32 v = armpack_map_get_i32(old, f->key);
+			if (v >= f->min && v <= f->max) {
+				*(i32 *)p = v;
+			}
+			break;
+		}
+		case CONFIG_F32: {
+			f32 v = armpack_map_get_f32(old, f->key);
+			if (v >= f->min && v <= f->max) { // false for NaN too
+				*(f32 *)p = v;
+			}
+			break;
+		}
+		case CONFIG_BOOL:
+			*(bool *)p = armpack_map_get_i32(old, f->key) > 0;
+			break;
+		}
+	}
 	return c;
 }
 
@@ -614,30 +629,12 @@ config_t *config_from_old(char *s) {
 	return NULL;
 }
 
-// The current version by key name, not json_parse's key order: a config of the same version written by a build with other
-// keys (another branch) would shift every later field. Missing keys get the defaults, unknown ones are ignored.
 static config_t *config_from_current(char *s) {
 	buffer_t *b = json_encode_to_armpack(s);
 	if (b == NULL) {
 		return NULL;
 	}
-	any_map_t   *old  = armpack_decode_to_map(b);
-	char        *dj   = config_to_json(config_create_default());
-	any_map_t   *def  = armpack_decode_to_map(json_encode_to_armpack(dj));
-	any_array_t *have = map_keys(old);
-	any_array_t *keys = map_keys(def);
-	for (i32 i = 0; i < keys->length; ++i) {
-		char *k     = keys->buffer[i];
-		bool  found = false;
-		for (i32 j = 0; j < have->length && !found; ++j) {
-			found = string_equals(have->buffer[j], k);
-		}
-		if (!found) {
-			any_map_set(old, k, any_map_get(def, k));
-		}
-	}
-	free(dj);
-	return config_from_map_to_config(old);
+	return config_from_map_to_config(armpack_decode_to_map(b));
 }
 
 config_t *config_from_json(char *s) {
