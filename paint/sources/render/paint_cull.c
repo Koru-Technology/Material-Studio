@@ -28,6 +28,9 @@ void gpu_draw_ranges_next(gpu_buffer_t *ib, i32 *starts, i32 *counts, i32 n);
 typedef struct {
 	mesh_data_t  *data;
 	i32           index_count;
+	u32_array_t  *indices;   // With the positions and their hash: a mesh freed and another allocated at its address
+	i16_array_t  *positions; // does not get the chunks of the old one
+	u32           hash;
 	gpu_buffer_t *ib;      // Indices by chunk
 	i32           chunks;
 	f32          *spheres; // Center xyz and radius of each chunk, normalized object space
@@ -68,20 +71,34 @@ static i16_array_t *paint_cull_positions(mesh_data_t *data) {
 	return NULL;
 }
 
+// Indices and positions sampled across the mesh
+static u32 paint_cull_hash(u32_array_t *ia, i16_array_t *pos) {
+	u32 h = 2166136261u ^ ia->length ^ (pos->length << 1);
+	for (i32 k = 0; k < 64; ++k) {
+		u32 v = ia->buffer[(u32)((u64)ia->length * k / 64)];
+		h     = (h ^ v) * 16777619u;
+		if (v * 4 + 2 < pos->length) {
+			h = (h ^ (u16)pos->buffer[v * 4] ^ ((u32)(u16)pos->buffer[v * 4 + 2] << 16)) * 16777619u;
+		}
+	}
+	return h;
+}
+
 static paint_cull_mesh_t *paint_cull_get(mesh_data_t *data) {
 	u32_array_t *ia = data->index_array;
 	if (ia == NULL || ia->length < PAINT_CULL_CHUNK * 3 * 8) {
 		return NULL; // Small meshes draw whole
 	}
-	for (i32 i = 0; i < PAINT_CULL_MESHES; ++i) {
-		paint_cull_mesh_t *m = &paint_cull_meshes[i];
-		if (m->data == data && m->index_count == ia->length) {
-			return m;
-		}
-	}
 	i16_array_t *pos = paint_cull_positions(data);
 	if (pos == NULL) {
 		return NULL;
+	}
+	u32 hash = paint_cull_hash(ia, pos);
+	for (i32 i = 0; i < PAINT_CULL_MESHES; ++i) {
+		paint_cull_mesh_t *m = &paint_cull_meshes[i];
+		if (m->data == data && m->index_count == ia->length && m->indices == ia && m->positions == pos && m->hash == hash) {
+			return m;
+		}
 	}
 
 	// Triangles sorted along a z-order curve of their centers, neighbours in the order are neighbours in space
@@ -114,6 +131,9 @@ static paint_cull_mesh_t *paint_cull_get(mesh_data_t *data) {
 	}
 	m->data        = data;
 	m->index_count = ia->length;
+	m->indices     = ia;
+	m->positions   = pos;
+	m->hash        = hash;
 	m->chunks      = (tris + PAINT_CULL_CHUNK - 1) / PAINT_CULL_CHUNK;
 	m->spheres     = malloc(sizeof(f32) * 4 * m->chunks);
 	m->ib          = gpu_create_index_buffer(ia->length);
