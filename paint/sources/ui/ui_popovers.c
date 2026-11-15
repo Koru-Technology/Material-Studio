@@ -464,7 +464,7 @@ static void ui_popovers_draw_popover() {
 
 void ui_popovers_render_ui() {
 	// Under the Brush Creator nothing shows, the popover is back as it was once the Creator closes
-	if (!ui_popovers_enabled() || !ui_popovers_view_shown() || base_player || g_context->capturing_screenshot || ui_brush_creator_shown()) {
+	if (!ui_popovers_enabled() || !ui_popovers_view_shown() || g_context->capturing_screenshot || ui_brush_creator_shown()) {
 		ui_popovers_pop_rect[2] = 0;
 		ui_popovers_rect[2]     = 0;
 		return;

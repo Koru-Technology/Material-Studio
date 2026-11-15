@@ -288,15 +288,11 @@ void ui_base_init_tabs() {
 }
 
 void ui_base_toggle_distract_free() {
-	if (base_player_lock || app_native_chrome) {
+	if (app_native_chrome) {
 		return;
 	}
 
 	ui_base_show = !ui_base_show;
-	if (ui_base_show && base_player) {
-		base_player = false;
-		base_set_workspace(WORKSPACE_PRESET_NONE);
-	}
 	base_resize();
 }
 

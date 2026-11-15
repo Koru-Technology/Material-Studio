@@ -172,8 +172,7 @@ slot_material_t *base_drag_material = NULL;
 slot_layer_t    *base_drag_layer    = NULL;
 slot_brush_t    *base_drag_brush    = NULL;
 slot_font_t     *base_drag_font     = NULL;
-bool             base_player        = false;
-bool             base_player_lock   = false;
+bool             base_player        = false; // Never set: player mode is gone, the other areas still test it
 
 bool                    ui_base_show = true;
 i32                     ui_base_viewport_col;

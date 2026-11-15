@@ -46,9 +46,6 @@ void config_load() {
 static void config_save_now();
 
 void config_save() {
-	if (base_player) {
-		return;
-	}
 	script_brush_swap(); // A running script's test brush is not saved
 	config_save_now();
 	script_brush_swap();
@@ -58,7 +55,7 @@ void config_save() {
 // app goes to the background, but an app ended without that (an install, a debugger, a crash) would start again with
 // the brush of an older session.
 void config_brush_save_update() {
-	if (g_context == NULL || base_player || script_brush_taken()) {
+	if (g_context == NULL || script_brush_taken()) {
 		return;
 	}
 	if (g_context->brush_radius == g_config->brush_radius && g_context->brush_opacity == g_config->brush_opacity &&

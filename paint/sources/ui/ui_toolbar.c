@@ -157,7 +157,7 @@ static bool _ui_toolbar_right_click = false;
 
 void ui_toolbar_update() {
 	if (mouse_started("right")) {
-		_ui_toolbar_right_click = context_is_floating_toolbar() && context_in_paint_area() && !g_config->touch_ui && !base_player && !ui_menu_show &&
+		_ui_toolbar_right_click = context_is_floating_toolbar() && context_in_paint_area() && !g_config->touch_ui && !ui_menu_show &&
 		                          !ui_box_show && !g_ui->is_typing;
 	}
 	else if (mouse_down("right") && mouse_moved) {

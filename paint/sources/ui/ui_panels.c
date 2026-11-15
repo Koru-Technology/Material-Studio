@@ -529,11 +529,11 @@ static void ui_panels_draw_view_tools() {
 }
 
 void ui_panels_render_ui() {
-	if (base_view3d_show && !base_player && !base_is_split() && !g_context->capturing_screenshot) {
+	if (base_view3d_show && !base_is_split() && !g_context->capturing_screenshot) {
 		ui_panels_draw_view_tools();
 	}
 	// 2D view alone: no cube, the view button stays at the top right
-	else if (!base_view3d_show && ui_view2d_show && ui_popovers_enabled() && ui_popovers_current() == 0 && !base_player) {
+	else if (!base_view3d_show && ui_view2d_show && ui_popovers_enabled() && ui_popovers_current() == 0) {
 		i32 margin = math_floor(12 * UI_SCALE());
 		i32 bsize  = math_floor(30 * UI_SCALE());
 		ui_panels_draw_view_mode_button(iron_window_width() - bsize - margin * 2, ui_popovers_bar_bottom() + margin);

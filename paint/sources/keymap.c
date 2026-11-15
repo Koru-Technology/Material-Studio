@@ -113,7 +113,7 @@ any_map_t *keymap_get_default() {
 }
 
 bool keymap_shortcut(char *s, shortcut_type_t type) {
-	if (string_equals(s, "") || base_player) {
+	if (string_equals(s, "")) {
 		return false;
 	}
 	bool shift = string_index_of(s, "shift") >= 0;

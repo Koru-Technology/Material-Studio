@@ -125,14 +125,6 @@ static i32 dock_leaf_open_index(dock_node_t *l, i32 id) {
 }
 
 static i32 dock_leaf_active_tab(dock_node_t *l) {
-	if (base_player) {
-		for (i32 i = 0; i < l->tab_count; ++i) {
-			if (l->tabs[i] == TAB_VIEW3D) {
-				return TAB_VIEW3D;
-			}
-		}
-		return -1;
-	}
 	return dock_leaf_open_tab(l, l->active);
 }
 
@@ -413,7 +405,7 @@ static void dock_save_node(i32_array_t *a, dock_node_t *n) {
 
 // Not stored while a workspace preset is being set up or the player runs
 void ui_dock_save() {
-	if (ui_dock_root == NULL || base_player || ui_dock_preset || base_workspace_pending) {
+	if (ui_dock_root == NULL || ui_dock_preset || base_workspace_pending) {
 		return;
 	}
 	if (g_config->layout_tabs == NULL) {
