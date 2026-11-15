@@ -771,7 +771,7 @@ int draw_font_get_char_index_internal(int char_code) {
 bool draw_font_get_baked_quad(draw_font_t *font, int size, draw_font_aligned_quad_t *q, int char_code, float xpos, float ypos) {
 	draw_font_image_t *img        = draw_font_get_image_internal(font, size);
 	int                char_index = draw_font_get_char_index_internal(char_code);
-	if (char_index >= draw_font_glyphs->length) {
+	if (char_index < 0 || char_index >= draw_font_glyphs->length) {
 		return false;
 	}
 	float           ipw     = 1.0f / (float)img->width;

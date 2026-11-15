@@ -166,17 +166,27 @@ void i32_array_sort(i32_array_t *ar, int (*compare)(const void *, const void *))
 	qsort(ar->buffer, ar->length, sizeof(ar->buffer[0]), compare);
 }
 
+// NULL / 0 for an empty array
 void *array_pop(any_array_t *ar) {
+	if (ar->length == 0) {
+		return NULL;
+	}
 	ar->length--;
 	return ar->buffer[ar->length];
 }
 
 int i32_array_pop(i32_array_t *ar) {
+	if (ar->length == 0) {
+		return 0;
+	}
 	ar->length--;
 	return ar->buffer[ar->length];
 }
 
 void *array_shift(any_array_t *ar) {
+	if (ar->length == 0) {
+		return NULL;
+	}
 	void *first = ar->buffer[0];
 	for (uint32_t i = 0; i < ar->length - 1; ++i) {
 		ar->buffer[i] = ar->buffer[i + 1];
@@ -186,6 +196,12 @@ void *array_shift(any_array_t *ar) {
 }
 
 void array_splice(any_array_t *ar, uint32_t start, uint32_t delete_count) {
+	if (start >= ar->length) {
+		return;
+	}
+	if (delete_count > ar->length - start) {
+		delete_count = ar->length - start;
+	}
 	for (uint32_t i = start; i < ar->length; ++i) {
 		if (i + delete_count >= ar->length) {
 			ar->buffer[i] = NULL;
@@ -198,6 +214,12 @@ void array_splice(any_array_t *ar, uint32_t start, uint32_t delete_count) {
 }
 
 void i32_array_splice(i32_array_t *ar, uint32_t start, uint32_t delete_count) {
+	if (start >= ar->length) {
+		return;
+	}
+	if (delete_count > ar->length - start) {
+		delete_count = ar->length - start;
+	}
 	for (uint32_t i = start; i < ar->length; ++i) {
 		if (i + delete_count >= ar->length) {
 			ar->buffer[i] = 0;
