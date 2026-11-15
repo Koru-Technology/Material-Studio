@@ -43,9 +43,9 @@ struct MaterialTile<Overlay: View>: View {
 			}
 			.animation(.easeOut(duration: 0.15), value: image == nil)
 			Text(name)
-				.font(.caption2)
-				.fontWeight(selected ? .semibold : .regular)
-				.foregroundStyle(selected ? .primary : .secondary)
+				.font(.caption)
+				.fontWeight(selected ? .semibold : .medium)
+				.foregroundStyle(Color.primary) // A plain color: the popover's glass makes the vibrant styles too faint on gray
 				.multilineTextAlignment(.center)
 				.lineLimit(2, reservesSpace: true)
 				.truncationMode(.tail)

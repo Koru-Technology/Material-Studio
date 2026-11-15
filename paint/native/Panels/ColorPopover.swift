@@ -118,15 +118,11 @@ private struct ColorValueSlider: View {
 			Text(title)
 				.font(.subheadline)
 				.frame(width: 76, alignment: .leading)
-			Slider(value: Binding(get: { Double(value) }, set: { v in
-				AppStore.shared.perform { app_color_set_value(Int32(which.rawValue), Float(v)) }
-			}), in: 0...1) {
-				Text(title)
-			} onEditingChanged: { editing in
+			TipSlider(title: title, value: value, range: 0...1, editingChanged: { editing in
 				if !editing {
 					AppStore.shared.perform { app_color_apply() }
 				}
-			}
+			}, set: { v in app_color_set_value(Int32(which.rawValue), v) })
 			Text("\(Int((value * 100).rounded()))%")
 				.font(.caption.monospacedDigit())
 				.foregroundStyle(.secondary)

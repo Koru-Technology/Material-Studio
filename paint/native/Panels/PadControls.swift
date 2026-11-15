@@ -97,22 +97,64 @@ struct PadMenuBar: View {
 						.frame(width: 44, height: 44)
 				}
 				.glassEffect(.regular.interactive(), in: .circle)
-
-				Menu {
-					Picker("Viewport", selection: Binding(get: { store.viewportMode }, set: { m in store.perform { app_set_viewport_mode(m) } })) {
-						ForEach(viewportModes, id: \.0) { mode in
-							Text(mode.1).tag(mode.0)
-						}
-					}
-				} label: {
-					Image(systemName: viewportModeSymbol(store.viewportMode))
-						.frame(width: 44, height: 44)
-				}
-				.glassEffect(.regular.interactive(), in: .circle)
-				.accessibilityLabel("Viewport: \(viewportModes.first { $0.0 == store.viewportMode }?.1 ?? "Lit")")
+				.accessibilityLabel("Actions")
 			}
 		}
 		.foregroundStyle(.primary)
+	}
+}
+
+// Lit, path traced or a channel: a popover list, the 17 modes overflow a menu, which does not scroll
+struct ViewportButton: View {
+	private var store = AppStore.shared
+	@State private var shown = false
+
+	var body: some View {
+		Button {
+			shown.toggle()
+		} label: {
+			Image(systemName: viewportModeSymbol(store.viewportMode))
+				.frame(width: 44, height: 44)
+		}
+		.glassEffect(.regular.interactive(), in: .circle)
+		.accessibilityLabel("Viewport: \(viewportModes.first { $0.0 == store.viewportMode }?.1 ?? "Lit")")
+		.popover(isPresented: $shown) {
+			ViewportModeList {
+				shown = false
+			}
+			.frame(width: 240, height: 520)
+			.presentationCompactAdaptation(.popover)
+		}
+	}
+}
+
+struct ViewportModeList: View {
+	private var store = AppStore.shared
+	let picked: () -> Void
+
+	init(picked: @escaping () -> Void) {
+		self.picked = picked
+	}
+
+	var body: some View {
+		List(viewportModes, id: \.0) { mode in
+			Button {
+				store.perform { app_set_viewport_mode(mode.0) }
+				picked()
+			} label: {
+				HStack {
+					Text(mode.1)
+						.foregroundStyle(Color.primary)
+					Spacer()
+					if store.viewportMode == mode.0 {
+						Image(systemName: "checkmark")
+							.foregroundStyle(Color.accentColor)
+					}
+				}
+			}
+		}
+		.listStyle(.plain)
+		.scrollContentBackground(.hidden)
 	}
 }
 
@@ -200,7 +242,7 @@ struct PadToolColumn: View {
 				.glassEffect(.regular, in: .rect(cornerRadius: 16))
 
 				HStack(spacing: 8) {
-					VerticalSlider(value: store.brushRadius, range: 0.01...2, symbol: "circle.fill") { v in
+					VerticalSlider(value: store.brushRadius, range: 0.01...2, symbol: "circle.fill", format: radiusText, bubbleX: 76) { v in
 						app_set_brush_radius(v)
 					}
 					VerticalSlider(value: store.brushOpacity, range: 0...1, symbol: "circle.lefthalf.filled") { v in
@@ -241,14 +283,22 @@ struct PadHistoryControls: View {
 	}
 }
 
+// The brush radius as the old header showed it (0.01 to 2)
+nonisolated func radiusText(_ v: Float) -> String {
+	String(format: "%.2f", v)
+}
+
 // A slider standing up, dragged anywhere on its track; the brush size and opacity
 struct VerticalSlider: View {
 	let value: Float
 	let range: ClosedRange<Float>
 	let symbol: String
+	var format: (Float) -> String = percent
+	var bubbleX: CGFloat = 48 // The bubble's distance to the right, past the other slider of the pair
 	let set: (Float) -> Void
 
 	@State private var start: Float?
+	@State private var height: CGFloat = 0
 
 	var body: some View {
 		GeometryReader { geo in
@@ -276,6 +326,16 @@ struct VerticalSlider: View {
 		.frame(width: 18)
 		.padding(6)
 		.glassEffect(.regular.interactive(), in: .capsule)
+		.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+		.overlay(alignment: .bottom) {
+			if start != nil { // While dragged: the value to the right of the sliders, level with the fill
+				let f = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+				ValueBubble(text: format(value))
+					.offset(x: bubbleX, y: -max(12, (height - 12) * min(1, max(0, f))))
+					.transition(.opacity)
+			}
+		}
+		.animation(.easeOut(duration: 0.12), value: start != nil)
 	}
 }
 
@@ -287,6 +347,7 @@ struct PadViewControls: View {
 	var body: some View {
 		GlassEffectContainer(spacing: 10) {
 			HStack(alignment: .bottom, spacing: 10) {
+				ViewportButton()
 				VStack(spacing: 10) {
 					Button {
 						run(APP_COMMAND_VIEW_FRAME)
@@ -368,7 +429,7 @@ struct ViewCube: View {
 		.contentShape(Circle())
 		.gesture(DragGesture(minimumDistance: 4)
 			.onChanged { g in
-				let dx = Float(g.translation.width - last.width) * 0.02
+				let dx = -Float(g.translation.width - last.width) * 0.02 // Drag right turns the view right
 				let dy = -Float(g.translation.height - last.height) * 0.02 // Drag up turns the view up
 				last   = g.translation
 				store.perform { app_view_orbit(dx, dy) }
@@ -421,13 +482,13 @@ struct ToolPropertiesView: View {
 	var body: some View {
 		Form {
 			Section(paintTools.first { $0.id == store.tool }?.name ?? "Tool") {
-				slider("Radius", store.brushRadius, 0.01...2) { app_set_brush_radius($0) }
-				slider("Opacity", store.brushOpacity, 0...1) { app_set_brush_opacity($0) }
+				slider("Radius", store.brushRadius, 0.01...2, radiusText) { app_set_brush_radius($0) }
+				slider("Opacity", store.brushOpacity, 0...1, percent) { app_set_brush_opacity($0) }
 				if [0, 1, 5, 7].contains(store.tool) { // Brush, eraser, clone, particle
-					slider("Hardness", store.brushHardness, 0...1) { app_set_brush_hardness($0) }
+					slider("Hardness", store.brushHardness, 0...1, percent) { app_set_brush_hardness($0) }
 				}
 				if [1, 5].contains(store.tool) { // Eraser, clone
-					slider("Angle", store.brushAngle, 0...360) { app_set_brush_angle($0) }
+					slider("Angle", store.brushAngle, 0...360, { "\(Int($0.rounded()))°" }) { app_set_brush_angle($0) }
 				}
 			}
 			Section("Symmetry") {
@@ -446,9 +507,10 @@ struct ToolPropertiesView: View {
 		.formStyle(.grouped)
 	}
 
-	private func slider(_ title: String, _ value: Float, _ range: ClosedRange<Float>, set: @escaping (Float) -> Void) -> some View {
+	private func slider(_ title: String, _ value: Float, _ range: ClosedRange<Float>, _ format: @escaping (Float) -> String,
+	                    set: @escaping (Float) -> Void) -> some View {
 		LabeledContent {
-			Slider(value: Binding(get: { value }, set: { v in store.perform { set(v) } }), in: range)
+			TipSlider(title: title, value: value, range: range, format: format, set: set)
 		} label: {
 			Text(title)
 		}

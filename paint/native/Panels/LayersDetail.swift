@@ -172,12 +172,9 @@ struct LayerSlider: View {
 					.foregroundStyle(.secondary)
 					.monospacedDigit()
 			}
-			Slider(value: Binding(get: { value }, set: { v in AppStore.shared.perform { set(v) } }), in: range) {
-				Text(title)
-			} onEditingChanged: { editing in
+			TipSlider(title: title, value: value, range: range, format: format, editingChanged: { editing in
 				editing ? begin() : end()
-			}
-			.labelsHidden()
+			}, set: set)
 		}
 	}
 }

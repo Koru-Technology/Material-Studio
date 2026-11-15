@@ -43,8 +43,9 @@ struct InspectorView: View {
 	}
 
 	private func slider(_ title: String, value: Float, range: ClosedRange<Double>, set: @escaping (Float) -> Void) -> some View {
-		Slider(value: Binding(get: { Double(value) }, set: { v in store.perform { set(Float(v)) } }), in: range) {
-			Text(title)
+		let format: (Float) -> String = range.upperBound > 1 ? { radiusText($0) } : { percent($0) }
+		return LabeledContent(title) {
+			TipSlider(title: title, value: value, range: Float(range.lowerBound)...Float(range.upperBound), format: format, set: set)
 		}
 	}
 }
