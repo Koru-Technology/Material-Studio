@@ -342,11 +342,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		}
 
 		if (l1->paint_base || l1->paint_opac) {
-			draw_begin(layers_temp_image, false, 0); // Copy to temp
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expa, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expa, pipes_copy); // Copy to temp
 
 			_gpu_begin(layers_expa, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			gpu_set_pipeline(l1->paint_base ? pipes_merge : pipes_get_merge_a());
@@ -364,11 +360,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		}
 
 		if (l1->paint_nor) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expb, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expb, pipes_copy);
 
 			_gpu_begin(layers_expb, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			gpu_set_pipeline(pipes_merge);
@@ -386,11 +378,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		}
 
 		if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expc, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expc, pipes_copy);
 
 			// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
 			bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;

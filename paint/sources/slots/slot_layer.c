@@ -3,13 +3,26 @@
 
 bool slot_layer_defer_alloc = false;
 
+// Layer textures at bits per channel (base_bits): texture format, render target format and copy pipeline
+gpu_texture_format_t layers_format(texture_bits_t bits) {
+	return bits == TEXTURE_BITS_BITS8 ? GPU_TEXTURE_FORMAT_RGBA32 : bits == TEXTURE_BITS_BITS16 ? GPU_TEXTURE_FORMAT_RGBA64 : GPU_TEXTURE_FORMAT_RGBA128;
+}
+
+char *layers_format_name(texture_bits_t bits) {
+	return bits == TEXTURE_BITS_BITS8 ? "RGBA32" : bits == TEXTURE_BITS_BITS16 ? "RGBA64" : "RGBA128";
+}
+
+gpu_pipeline_t *layers_copy_pipe(texture_bits_t bits) {
+	return bits == TEXTURE_BITS_BITS8 ? pipes_copy : bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;
+}
+
 void slot_layer_alloc_textures(slot_layer_t *raw) {
 	if (raw->texpaint != NULL) {
 		return;
 	}
 
 	char *ext    = raw->ext;
-	char *format = base_bits == TEXTURE_BITS_BITS8 ? "RGBA32" : base_bits == TEXTURE_BITS_BITS16 ? "RGBA64" : "RGBA128";
+	char *format = layers_format_name(base_bits);
 
 	{
 		render_target_t *t = render_target_create();
@@ -289,11 +302,7 @@ static void slot_layer_set_target(slot_layer_t *raw, char *prefix, gpu_texture_t
 
 void slot_layer_invert_mask(slot_layer_t *raw) {
 	gpu_texture_t *inverted = gpu_create_render_target(raw->texpaint->width, raw->texpaint->height, GPU_TEXTURE_FORMAT_RGBA32);
-	draw_begin(inverted, false, 0);
-	draw_set_pipeline(pipes_invert_mask);
-	draw_image(raw->texpaint, 0, 0);
-	draw_set_pipeline(NULL);
-	draw_end();
+	util_copy_texture(inverted, raw->texpaint, pipes_invert_mask);
 	gpu_texture_t *_texpaint = raw->texpaint;
 	gpu_delete_texture(_texpaint);
 	raw->texpaint = inverted;
@@ -325,11 +334,7 @@ void layers_apply_mask(slot_layer_t *l, slot_layer_t *m) {
 	layers_make_temp_img();
 
 	// Copy layer to temp
-	draw_begin(layers_temp_image, false, 0);
-	draw_set_pipeline(pipes_copy);
-	draw_image(l->texpaint, 0, 0);
-	draw_set_pipeline(NULL);
-	draw_end();
+	util_copy_texture(layers_temp_image, l->texpaint, pipes_copy);
 
 	// Apply mask
 	_gpu_begin(l->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
@@ -367,35 +372,17 @@ static slot_layer_t *slot_layer_copy(slot_layer_t *raw) {
 	                                    raw->parent);
 
 	if (slot_layer_is_layer(raw)) {
-		gpu_pipeline_t *pipe = base_bits == TEXTURE_BITS_BITS8 ? pipes_copy : base_bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;
-		draw_begin(l->texpaint, false, 0);
-		draw_set_pipeline(pipe);
-		draw_image(raw->texpaint, 0, 0);
-		draw_set_pipeline(NULL);
-		draw_end();
-
+		gpu_pipeline_t *pipe = layers_copy_pipe(base_bits);
+		util_copy_texture(l->texpaint, raw->texpaint, pipe);
 		if (l->texpaint_nor != NULL) {
-			draw_begin(l->texpaint_nor, false, 0);
-			draw_set_pipeline(pipe);
-			draw_image(raw->texpaint_nor, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(l->texpaint_nor, raw->texpaint_nor, pipe);
 		}
-
 		if (l->texpaint_pack != NULL) {
-			draw_begin(l->texpaint_pack, false, 0);
-			draw_set_pipeline(pipe);
-			draw_image(raw->texpaint_pack, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(l->texpaint_pack, raw->texpaint_pack, pipe);
 		}
 	}
 	else if (slot_layer_is_mask(raw)) {
-		draw_begin(l->texpaint, false, 0);
-		draw_set_pipeline(pipes_copy); // Masks are RGBA32
-		draw_image(raw->texpaint, 0, 0);
-		draw_set_pipeline(NULL);
-		draw_end();
+		util_copy_texture(l->texpaint, raw->texpaint, pipes_copy); // Masks are RGBA32
 	}
 
 	if (l->texpaint_preview != NULL) {
@@ -477,11 +464,8 @@ void slot_layer_resize_and_set_bits(slot_layer_t *raw) {
 	i32        res_y = config_get_texture_res_y();
 
 	if (slot_layer_is_layer(raw)) {
-		gpu_texture_format_t format = base_bits == TEXTURE_BITS_BITS8    ? GPU_TEXTURE_FORMAT_RGBA32
-		                              : base_bits == TEXTURE_BITS_BITS16 ? GPU_TEXTURE_FORMAT_RGBA64
-		                                                                 : GPU_TEXTURE_FORMAT_RGBA128;
-
-		gpu_pipeline_t *pipe = format == GPU_TEXTURE_FORMAT_RGBA32 ? pipes_copy : format == GPU_TEXTURE_FORMAT_RGBA64 ? pipes_copy64 : pipes_copy128;
+		gpu_texture_format_t format = layers_format(base_bits);
+		gpu_pipeline_t      *pipe   = layers_copy_pipe(base_bits);
 
 		gpu_texture_t *_texpaint = raw->texpaint;
 		raw->texpaint            = gpu_create_render_target(res_x, res_y, format);

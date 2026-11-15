@@ -1066,36 +1066,20 @@ void import_arm_run_project(char *path) {
 
 			if (is_mask) {
 				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
-				draw_begin(l->texpaint, false, 0);
-				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy); // Full bits for undo support, R8 is used
-				draw_image(_texpaint, 0, 0);
-				draw_set_pipeline(NULL);
-				draw_end();
+				util_copy_texture(l->texpaint, _texpaint, g_project->is_bgra ? pipes_copy_bgra : pipes_copy); // Full bits for undo support, R8 is used
 			}
 			else { // Layer
 				// TODO: create render target from bytes
 				// See-through meshes when the bottom layer is not fully opaque
 				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, 4 * bytes_per_pixel, format,
 				                                        i == 0 ? &g_project->_->translucency : NULL);
-				draw_begin(l->texpaint, false, 0);
-				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
-				draw_image(_texpaint, 0, 0);
-				draw_set_pipeline(NULL);
-				draw_end();
+				util_copy_texture(l->texpaint, _texpaint, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
 
 				_texpaint_nor = import_arm_texture_from_lz4(ld->texpaint_nor, ld->res, 4 * bytes_per_pixel, format, NULL);
-				draw_begin(l->texpaint_nor, false, 0);
-				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
-				draw_image(_texpaint_nor, 0, 0);
-				draw_set_pipeline(NULL);
-				draw_end();
+				util_copy_texture(l->texpaint_nor, _texpaint_nor, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
 
 				_texpaint_pack = import_arm_texture_from_lz4(ld->texpaint_pack, ld->res, 4 * bytes_per_pixel, format, NULL);
-				draw_begin(l->texpaint_pack, false, 0);
-				draw_set_pipeline(g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
-				draw_image(_texpaint_pack, 0, 0);
-				draw_set_pipeline(NULL);
-				draw_end();
+				util_copy_texture(l->texpaint_pack, _texpaint_pack, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
 
 			}
 

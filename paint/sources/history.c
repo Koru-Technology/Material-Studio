@@ -95,6 +95,15 @@ char *history_action_to_string(history_action_t action) {
 	return tr("Paint");
 }
 
+// Slots of the undo ring before and after history_undo_i
+i32 history_ring_prev() {
+	return history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+}
+
+i32 history_ring_next() {
+	return (history_undo_i + 1) % g_config->undo_steps;
+}
+
 static bool history_in(i32 i, i32 length) {
 	return i >= 0 && i < length;
 }
@@ -269,7 +278,21 @@ static void history_restore_applied_mask(history_step_t *step, slot_layer_t *m) 
 void history_swap_layer_props(history_step_t *step) {
 	slot_layer_t *l = g_project->_->layers->buffer[step->layer];
 
-	if (step->action == HISTORY_ACTION_LAYER_VISIBLE) {
+	if (step->action == HISTORY_ACTION_LAYER_OPACITY) {
+		context_set_layer(l);
+		f32 t               = l->mask_opacity;
+		l->mask_opacity     = step->layer_opacity;
+		step->layer_opacity = t;
+		make_material_parse_mesh_material();
+	}
+	else if (step->action == HISTORY_ACTION_LAYER_BLENDING) {
+		context_set_layer(l);
+		blend_type_t t       = l->blending;
+		l->blending          = step->layer_blending;
+		step->layer_blending = t;
+		make_material_parse_mesh_material();
+	}
+	else if (step->action == HISTORY_ACTION_LAYER_VISIBLE) {
 		context_set_layer(l);
 		l->visible = !l->visible;
 		make_material_parse_mesh_material();
@@ -522,7 +545,7 @@ void history_undo() {
 		}
 		else if (step->action == HISTORY_ACTION_CLEAR_LAYER) {
 			context_set_layer(g_project->_->layers->buffer[step->layer]); // The cleared layer, not the selected one
-			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+			history_undo_i    = history_ring_prev();
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
 			mask_stack_mark_dirty(g_context->layer);
@@ -568,13 +591,13 @@ void history_undo() {
 				slot_layer_t *layer = layers_to_restore->buffer[i];
 				// Replace the current layer's content with the old one
 				g_context->layer        = layer;
-				history_undo_i          = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+				history_undo_i          = history_ring_prev();
 				slot_layer_t *old_layer = history_undo_slot(history_undo_i);
 				slot_layer_swap(g_context->layer, old_layer);
 			}
 
 			// Now restore the applied mask
-			history_undo_i     = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+			history_undo_i     = history_ring_prev();
 			slot_layer_t *mask = history_undo_slot(history_undo_i);
 			layers_new_mask(false, current_layer, mask_pos);
 			slot_layer_swap(g_context->layer, mask);
@@ -588,34 +611,21 @@ void history_undo() {
 		else if (step->action == HISTORY_ACTION_TO_FILL_LAYER || step->action == HISTORY_ACTION_TO_FILL_MASK) {
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_to_paint_layer(g_context->layer);
-			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+			history_undo_i    = history_ring_prev();
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
 			mask_stack_mark_dirty(g_context->layer);
 		}
 		else if (step->action == HISTORY_ACTION_TO_PAINT_LAYER || step->action == HISTORY_ACTION_TO_PAINT_MASK) {
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
-			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+			history_undo_i    = history_ring_prev();
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
 			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer->fill_material = step->material >= 0 && step->material < g_project->_->materials->length ? g_project->_->materials->buffer[step->material] : NULL;
 		}
-		else if (step->action == HISTORY_ACTION_LAYER_OPACITY) {
-			context_set_layer(g_project->_->layers->buffer[step->layer]);
-			f32 t                          = g_context->layer->mask_opacity;
-			g_context->layer->mask_opacity = step->layer_opacity;
-			step->layer_opacity            = t;
-			make_material_parse_mesh_material();
-		}
-		else if (step->action == HISTORY_ACTION_LAYER_BLENDING) {
-			context_set_layer(g_project->_->layers->buffer[step->layer]);
-			blend_type_t t             = g_context->layer->blending;
-			g_context->layer->blending = step->layer_blending;
-			step->layer_blending       = t;
-			make_material_parse_mesh_material();
-		}
-		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
+		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
+		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
 		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
@@ -663,7 +673,7 @@ void history_undo() {
 			g_context->layer_preview_dirty = true;
 		}
 		else { // Paint operation
-			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+			history_undo_i    = history_ring_prev();
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
@@ -738,16 +748,14 @@ void history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask) {
 		render_path_bind_target(string("texpaint_nor%s", from_id_s), "tex1");
 		render_path_bind_target(string("texpaint_pack%s", from_id_s), "tex2");
 
-		gpu_texture_format_t format = base_bits == TEXTURE_BITS_BITS8    ? GPU_TEXTURE_FORMAT_RGBA32
-		                              : base_bits == TEXTURE_BITS_BITS16 ? GPU_TEXTURE_FORMAT_RGBA64
-		                                                                 : GPU_TEXTURE_FORMAT_RGBA128;
+		gpu_texture_format_t format = layers_format(base_bits);
 
 		char *pipe = format == GPU_TEXTURE_FORMAT_RGBA32   ? "copy_mrt3_pass"
 		             : format == GPU_TEXTURE_FORMAT_RGBA64 ? "copy_mrt3RGBA64_pass"
 		                                                   : "copy_mrt3RGBA128_pass";
 		render_path_draw_shader(string_tmp("Scene/copy_mrt3_pass/%s", pipe));
 	}
-	history_undo_i = (history_undo_i + 1) % g_config->undo_steps;
+	history_undo_i = history_ring_next();
 	history_ring_pending++;
 }
 
@@ -784,7 +792,7 @@ void history_swap_active() {
 	history_tiles_finalize(); // The tiles of the last stroke, before the layer changes
 	slot_layer_t *undo_layer = history_undo_slot(history_undo_i);
 	slot_layer_swap(undo_layer, g_context->layer);
-	history_undo_i = (history_undo_i + 1) % g_config->undo_steps;
+	history_undo_i = history_ring_next();
 	history_ring_pending++;
 }
 
@@ -884,30 +892,17 @@ void history_redo() {
 			slot_layer_swap(g_context->layer, lay);
 			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer->fill_material = g_project->_->materials->buffer[step->material];
-			history_undo_i                  = (history_undo_i + 1) % g_config->undo_steps;
+			history_undo_i                  = history_ring_next();
 		}
 		else if (step->action == HISTORY_ACTION_TO_PAINT_LAYER || step->action == HISTORY_ACTION_TO_PAINT_MASK) {
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_to_paint_layer(g_context->layer);
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
-			history_undo_i = (history_undo_i + 1) % g_config->undo_steps;
+			history_undo_i = history_ring_next();
 		}
-		else if (step->action == HISTORY_ACTION_LAYER_OPACITY) {
-			context_set_layer(g_project->_->layers->buffer[step->layer]);
-			f32 t                          = g_context->layer->mask_opacity;
-			g_context->layer->mask_opacity = step->layer_opacity;
-			step->layer_opacity            = t;
-			make_material_parse_mesh_material();
-		}
-		else if (step->action == HISTORY_ACTION_LAYER_BLENDING) {
-			context_set_layer(g_project->_->layers->buffer[step->layer]);
-			blend_type_t t             = g_context->layer->blending;
-			g_context->layer->blending = step->layer_blending;
-			step->layer_blending       = t;
-			make_material_parse_mesh_material();
-		}
-		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
+		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
+		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
 		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
@@ -962,7 +957,7 @@ void history_redo() {
 			slot_layer_swap(g_context->layer, lay);
 			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
-			history_undo_i                 = (history_undo_i + 1) % g_config->undo_steps;
+			history_undo_i                 = history_ring_next();
 		}
 
 		history_undos++;

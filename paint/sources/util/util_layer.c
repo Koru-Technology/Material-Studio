@@ -15,6 +15,15 @@ f32       _layers_occlusion;
 f32       _layers_roughness;
 f32       _layers_metallic;
 
+// dst becomes src through pipe (a copy pipeline of dst's format, or a filter such as invert)
+void util_copy_texture(gpu_texture_t *dst, gpu_texture_t *src, gpu_pipeline_t *pipe) {
+	draw_begin(dst, false, 0);
+	draw_set_pipeline(pipe);
+	draw_image(src, 0, 0);
+	draw_set_pipeline(NULL);
+	draw_end();
+}
+
 static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
 	paint_tex_t type = tab_layers_preview_tex;
 	if (slot_layer_is_mask(l) || (type == PAINT_TEX_NORMAL && l->texpaint_nor == NULL) || (type >= PAINT_TEX_OCCLUSION && l->texpaint_pack == NULL)) {
@@ -190,7 +199,7 @@ void layers_make_temp_img() {
 	}
 
 	if (layers_temp_image == NULL) {
-		char            *format = base_bits == TEXTURE_BITS_BITS8 ? "RGBA32" : base_bits == TEXTURE_BITS_BITS16 ? "RGBA64" : "RGBA128";
+		char            *format = layers_format_name(base_bits);
 		render_target_t *t      = render_target_create();
 		t->name                 = "temptex0";
 		t->width                = l->texpaint->width;
@@ -232,7 +241,7 @@ void layers_make_export_img() {
 		map_delete(render_path_render_targets, "expc");
 	}
 	if (layers_expa == NULL) {
-		char *format = base_bits == TEXTURE_BITS_BITS8 ? "RGBA32" : base_bits == TEXTURE_BITS_BITS16 ? "RGBA64" : "RGBA128";
+		char *format = layers_format_name(base_bits);
 		{
 			render_target_t *t  = render_target_create();
 			t->name             = "expa";
@@ -978,21 +987,13 @@ void layers_apply_masks(slot_layer_t *l) {
 static void layers_bake_opacity(slot_layer_t *l) {
 	if (slot_layer_is_mask(l) && !mask_stack_is_trivial(l)) { // The evaluated stack becomes the paint
 		gpu_texture_t *eval = slot_layer_mask_texture(l);
-		draw_begin(l->texpaint, false, 0);
-		draw_set_pipeline(pipes_copy);
-		draw_image(eval, 0, 0);
-		draw_set_pipeline(NULL);
-		draw_end();
+		util_copy_texture(l->texpaint, eval, pipes_copy);
 		l->mask_effects = NULL;
 		mask_stack_free_texture(l);
 	}
 	if (l->mask_opacity < 1.0 && slot_layer_is_mask(l)) {
 		layers_make_temp_img();
-		draw_begin(layers_temp_image, false, 0);
-		draw_set_pipeline(pipes_copy);
-		draw_image(l->texpaint, 0, 0);
-		draw_set_pipeline(NULL);
-		draw_end();
+		util_copy_texture(layers_temp_image, l->texpaint, pipes_copy);
 		render_target_t *white = any_map_get(render_path_render_targets, "empty_white");
 		_gpu_begin(l->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		gpu_set_pipeline(pipes_merge_mask);
@@ -1113,11 +1114,7 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 
 	layers_make_temp_img();
 
-	draw_begin(layers_temp_image, false, 0); // Copy to temp
-	draw_set_pipeline(pipes_copy);
-	draw_image(l0->texpaint, 0, 0);
-	draw_set_pipeline(NULL);
-	draw_end();
+	util_copy_texture(layers_temp_image, l0->texpaint, pipes_copy); // Copy to temp
 
 	render_target_t      *empty_rt = any_map_get(render_path_render_targets, "empty_white");
 	gpu_texture_t        *empty    = empty_rt->_image;
@@ -1186,11 +1183,7 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 		}
 
 		if (l0->texpaint_nor != NULL) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(l0->texpaint_nor, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, l0->texpaint_nor, pipes_copy);
 
 			if (l1->paint_nor) {
 				_gpu_begin(l0->texpaint_nor, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
@@ -1210,11 +1203,7 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 		}
 
 		if (l0->texpaint_pack != NULL) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(l0->texpaint_pack, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, l0->texpaint_pack, pipes_copy);
 
 			if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
 				if (l1->paint_occ && l1->paint_rough && l1->paint_met && l1->paint_height) {
@@ -1251,11 +1240,7 @@ void layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer,
 		return;
 	}
 	layers_make_temp_img();
-	draw_begin(layers_temp_image, false, 0); // Copy to temp
-	draw_set_pipeline(pipes_copy);
-	draw_image(dst, 0, 0);
-	draw_set_pipeline(NULL);
-	draw_end();
+	util_copy_texture(layers_temp_image, dst, pipes_copy); // Copy to temp
 
 	render_target_t *empty_rt = any_map_get(render_path_render_targets, "empty_white");
 	gpu_texture_t   *mask_tex = slot_layer_mask_texture(m); // Evaluated stack
@@ -1384,7 +1369,7 @@ static slot_layer_t *layers_move_preview(slot_layer_t *l) {
 		moved.texmask      = NULL;
 	}
 	else {
-		gpu_pipeline_t *pipe = base_bits == TEXTURE_BITS_BITS8 ? pipes_copy : base_bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;
+		gpu_pipeline_t *pipe = layers_copy_pipe(base_bits);
 		moved.texpaint       = _layers_move_copy(&layers_move_a, l->texpaint, pipe, dx, dy);
 		moved.texpaint_nor   = _layers_move_copy(&layers_move_b, l->texpaint_nor, pipe, dx, dy);
 		moved.texpaint_pack  = _layers_move_copy(&layers_move_c, l->texpaint_pack, pipe, dx, dy);
@@ -1444,11 +1429,7 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 
 		// Opacity still counts without the base color channel, the path tracer and export read the alpha as opacity
 		if (l1->paint_base || l1->paint_opac) {
-			draw_begin(layers_temp_image, false, 0); // Copy to temp
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expa, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expa, pipes_copy); // Copy to temp
 
 			_gpu_begin(layers_expa, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			gpu_set_pipeline(l1->paint_base ? pipes_merge : pipes_get_merge_a());
@@ -1466,11 +1447,7 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 		}
 
 		if (l1->paint_nor) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expb, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expb, pipes_copy);
 
 			_gpu_begin(layers_expb, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			gpu_set_pipeline(pipes_merge);
@@ -1488,11 +1465,7 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 		}
 
 		if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expc, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expc, pipes_copy);
 
 			// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
 			bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
@@ -1523,11 +1496,7 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 
 	// Merge height map into normal map
 	if (height_to_normal && make_material_height_used) {
-		draw_begin(layers_temp_image, false, 0);
-		draw_set_pipeline(pipes_copy);
-		draw_image(l0->texpaint_nor, 0, 0);
-		draw_set_pipeline(NULL);
-		draw_end();
+		util_copy_texture(layers_temp_image, l0->texpaint_nor, pipes_copy);
 
 		_gpu_begin(l0->texpaint_nor, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		gpu_set_pipeline(pipes_merge);
