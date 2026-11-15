@@ -171,7 +171,7 @@ final class LayersStore: ChangeOnly {
 	@ObservationIgnored private var layersSignature: UInt32 = 0
 	@ObservationIgnored private var propsSignature: UInt32 = 0
 	@ObservationIgnored private var thumbnails: [Int32: CGImage] = [:]
-	@ObservationIgnored private var thumbnailBuffer = [UInt8](repeating: 0, count: 512 * 512 * 4)
+	@ObservationIgnored private let thumbnailReader = PixelReader(capacity: 512 * 512 * 4)
 
 	static let blendingNames: [String] = (0..<app_layer_blending_count()).map { String(cString: app_layer_blending_name($0)) }
 	static let maskBlendingNames: [String] = (0..<app_mask_blending_count()).map { String(cString: app_mask_blending_name($0)) }
@@ -251,23 +251,14 @@ final class LayersStore: ChangeOnly {
 		if let image = thumbnails[id] {
 			return image
 		}
-		var w: Int32 = 0
-		var h: Int32 = 0
-		let bytes = thumbnailBuffer.withUnsafeMutableBufferPointer {
-			app_layer_thumbnail(id, $0.baseAddress, Int32($0.count), &w, &h)
-		}
-		guard bytes > 0 else {
-			return nil
-		}
-		var pixels = Array(thumbnailBuffer[0..<Int(bytes)])
-		if mask {
+		let gray: (inout [UInt8]) -> Void = { pixels in
 			for i in stride(from: 0, to: pixels.count, by: 4) {
 				pixels[i + 1] = pixels[i]
 				pixels[i + 2] = pixels[i]
 				pixels[i + 3] = 255
 			}
 		}
-		guard let image = makeImage(pixels, width: Int(w), height: Int(h)) else {
+		guard let image = thumbnailReader.read(premultiplied: true, adjust: mask ? gray : nil, { app_layer_thumbnail(id, $0, $1, &$2, &$3) }).image else {
 			return nil
 		}
 		thumbnails[id] = image
@@ -300,15 +291,4 @@ final class LayersStore: ChangeOnly {
 		}
 		return false
 	}
-}
-
-// RGBA8 rows top to bottom, as the app_api thumbnail functions return them
-func makeImage(_ bytes: [UInt8], width: Int, height: Int) -> CGImage? {
-	guard let provider = CGDataProvider(data: Data(bytes) as CFData) else {
-		return nil
-	}
-	return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
-	               space: CGColorSpace(name: CGColorSpace.sRGB)!,
-	               bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-	               provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
 }

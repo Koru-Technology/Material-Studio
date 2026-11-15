@@ -32,7 +32,7 @@ final class BrushesStore: ChangeOnly {
 	@ObservationIgnored private var librarySignature: UInt32 = 0
 	@ObservationIgnored private var previewsSignature: UInt32 = 0
 	@ObservationIgnored private var previews: [Int32: (key: UInt32, image: CGImage)] = [:]
-	@ObservationIgnored private var previewBuffer = [UInt8]()
+	@ObservationIgnored private let previewReader = PixelReader()
 
 	func refresh() {
 		var s = app_brushes_state_t()
@@ -98,29 +98,11 @@ final class BrushesStore: ChangeOnly {
 		guard size > 0 else {
 			return nil
 		}
-		if previewBuffer.count < size {
-			previewBuffer = [UInt8](repeating: 0, count: size)
-		}
-		var w: Int32 = 0
-		var h: Int32 = 0
-		let bytes = previewBuffer.withUnsafeMutableBufferPointer {
-			app_brush_preview(brush.id, $0.baseAddress, Int32($0.count), &w, &h)
-		}
-		guard bytes > 0, let image = makeStraightImage(Array(previewBuffer[0..<Int(bytes)]), width: Int(w), height: Int(h)) else {
+		// Straight alpha, a white stroke
+		guard let image = previewReader.read(need: size, premultiplied: false, { app_brush_preview(brush.id, $0, $1, &$2, &$3) }).image else {
 			return nil
 		}
 		previews[brush.id] = (brush.previewKey, image)
 		return image
 	}
-}
-
-// RGBA8 rows top to bottom, alpha not premultiplied (the brush strokes)
-private func makeStraightImage(_ bytes: [UInt8], width: Int, height: Int) -> CGImage? {
-	guard let provider = CGDataProvider(data: Data(bytes) as CFData) else {
-		return nil
-	}
-	return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
-	               space: CGColorSpace(name: CGColorSpace.sRGB)!,
-	               bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-	               provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
 }

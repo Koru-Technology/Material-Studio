@@ -123,7 +123,7 @@ final class MaterialsStore: ChangeOnly {
 	@ObservationIgnored private var iconClock = 0
 	@ObservationIgnored private var libraryIndex: [UInt32: Int32] = [:]
 	@ObservationIgnored private var smartIndex: [UInt32: Int32] = [:]
-	@ObservationIgnored private var buffer = [UInt8](repeating: 0, count: 256 * 256 * 4)
+	@ObservationIgnored private let reader = PixelReader(capacity: 256 * 256 * 4)
 
 	private let maxIcons      = 400 // 64 KB each
 	private let iconsPerFrame = 8
@@ -172,12 +172,7 @@ final class MaterialsStore: ChangeOnly {
 		if let t = thumbnails[row.id], t.version == row.previewVersion {
 			return t.image
 		}
-		var w: Int32 = 0
-		var h: Int32 = 0
-		let bytes = buffer.withUnsafeMutableBufferPointer {
-			app_material_thumbnail(row.id, 256, $0.baseAddress, Int32($0.count), &w, &h)
-		}
-		guard bytes > 0, let image = makeImage(Array(buffer[0..<Int(bytes)]), width: Int(w), height: Int(h)) else {
+		guard let image = reader.read(premultiplied: true, { app_material_thumbnail(row.id, 256, $0, $1, &$2, &$3) }).image else {
 			return thumbnails[row.id]?.image
 		}
 		thumbnails[row.id] = (row.previewVersion, image)
@@ -372,22 +367,20 @@ final class MaterialsStore: ChangeOnly {
 			if icons[key] != nil || iconsMissing.contains(key) {
 				continue
 			}
-			var w: Int32 = 0
-			var h: Int32 = 0
-			var bytes: Int32
+			let read: (bytes: Int32, image: CGImage?)
 			if let index = libraryIndex[key], libraryShown {
-				bytes = buffer.withUnsafeMutableBufferPointer { app_library_icon(index, $0.baseAddress, Int32($0.count), &w, &h) }
+				read = reader.read(premultiplied: true) { app_library_icon(index, $0, $1, &$2, &$3) }
 			}
 			else if let index = smartIndex[key], smartShown {
-				bytes = buffer.withUnsafeMutableBufferPointer { app_smart_icon(index, $0.baseAddress, Int32($0.count), &w, &h) }
+				read = reader.read(premultiplied: true) { app_smart_icon(index, $0, $1, &$2, &$3) }
 			}
 			else {
 				continue
 			}
-			if bytes < 0 {
+			if read.bytes < 0 {
 				missing.append(key)
 			}
-			else if bytes > 0, let image = makeImage(Array(buffer[0..<Int(bytes)]), width: Int(w), height: Int(h)) {
+			else if let image = read.image {
 				loaded[key] = image
 				reads += 1
 				if reads >= iconsPerFrame {
