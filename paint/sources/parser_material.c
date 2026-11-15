@@ -282,6 +282,12 @@ ui_node_canvas_t *parser_material_get_group(char *name) {
 	return NULL;
 }
 
+// The canvas is being parsed: a group or material reached again from inside itself (a file can hold a group that
+// contains itself, a Material node can pick its own material)
+bool parser_material_is_open(ui_node_canvas_t *g) {
+	return parser_material_canvases != NULL && array_index_of((any_array_t *)parser_material_canvases, g) >= 0;
+}
+
 void parser_material_push_group(ui_node_canvas_t *g) {
 	any_array_push(parser_material_canvases, g);
 	parser_material_nodes = g->nodes;
@@ -485,8 +491,8 @@ char *parser_material_parse_group(ui_node_t *node, ui_node_socket_t *socket) {
 	ui_node_canvas_t *g           = parser_material_get_group(node->name);
 	ui_node_t        *output_node = g != NULL ? parser_material_node_by_type(g->nodes, "GROUP_OUTPUT") : NULL;
 	i32               index       = parser_material_socket_index(node, socket);
-	if (output_node == NULL || index < 0 || index >= output_node->inputs->length) {
-		return parser_material_socket_zero(socket->type); // Group deleted, renamed or out of sync
+	if (output_node == NULL || index < 0 || index >= output_node->inputs->length || parser_material_is_open(g)) {
+		return parser_material_socket_zero(socket->type); // Group deleted, renamed, out of sync or inside itself
 	}
 	any_array_push(parser_material_parents, node); // Entering group
 	parser_material_push_group(g);

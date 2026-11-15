@@ -9,8 +9,11 @@ static ui_node_socket_t *material_node_source(ui_node_t *node, ui_node_socket_t 
 	if (mi < 0 || mi >= g_project->_->materials->length || index < 0) {
 		return NULL;
 	}
-	slot_material_t *m           = g_project->_->materials->buffer[mi];
-	ui_node_t       *output_node = parser_material_node_by_type(m->canvas->nodes, "OUTPUT_MATERIAL_PBR");
+	slot_material_t *m = g_project->_->materials->buffer[mi];
+	if (parser_material_is_open(m->canvas)) { // The material itself, or a material it is in
+		return NULL;
+	}
+	ui_node_t *output_node = parser_material_node_by_type(m->canvas->nodes, "OUTPUT_MATERIAL_PBR");
 	return output_node != NULL && index < output_node->inputs->length ? output_node->inputs->buffer[index] : NULL;
 }
 

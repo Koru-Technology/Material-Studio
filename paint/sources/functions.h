@@ -917,6 +917,7 @@ ui_node_link_t        *parser_material_get_input_link(ui_node_socket_t *inp);
 void                   parser_material_init();
 shader_out_t          *parser_material_parse(ui_node_canvas_t *canvas, node_shader_context_t *_con, node_shader_t *_shader);
 void                   parser_material_finalize(node_shader_context_t *con);
+bool                   parser_material_is_open(ui_node_canvas_t *g);
 void                   parser_material_push_group(ui_node_canvas_t *g);
 char                  *parser_material_parse_group(ui_node_t *node, ui_node_socket_t *socket);
 void                   parser_material_pop_group();
