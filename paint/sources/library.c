@@ -123,6 +123,19 @@ static bool library_in(const char *tag, const char **list) {
 	return false;
 }
 
+// The folder import's tags of each map (iron_path.c), in the order of IMPORT_FOLDER_MAPS. Made on the main thread before
+// the scan thread reads them (library_rescan).
+static string_array_t *library_tags[IMPORT_FOLDER_MAPS];
+
+static void library_tags_init() {
+	if (library_tags[0] != NULL) {
+		return;
+	}
+	string_array_t *tags[IMPORT_FOLDER_MAPS] = {path_base_color_ext(), path_opacity_ext(),     path_occlusion_ext(),    path_roughness_ext(),
+	                                            path_metallic_ext(),   path_normal_map_ext(), path_displacement_ext()};
+	memcpy(library_tags, tags, sizeof(tags));
+}
+
 // Which material map a file is, -1 when none. Same tags as the folder import (iron_path.c)
 static i32 library_map_type(const char *file) {
 	const char *dot = strrchr(file, '.');
@@ -157,17 +170,9 @@ static i32 library_map_type(const char *file) {
 	if (sep == NULL) {
 		return -1;
 	}
-	const char        *tag              = sep + 1;
-	static const char *base_color[]     = {"albedo", "alb", "basecol", "basecolor", "diffuse", "diff", "base", "bc", "d", "color", "col", NULL};
-	static const char *opacity[]        = {"opac", "opacity", "alpha", NULL};
-	static const char *occlusion[]      = {"ao", "occlusion", "ambientocclusion", "o", "occ", NULL};
-	static const char *roughness[]      = {"roughness", "rough", "r", "rgh", NULL};
-	static const char *metallic[]       = {"metallic", "metal", "metalness", "m", "met", NULL};
-	static const char *normal[]         = {"normal", "normals", "nor", "n", "nrm", "normalgl", NULL};
-	static const char *height[]         = {"displacement", "height", "h", "disp", NULL};
-	static const char **lists[]         = {base_color, opacity, occlusion, roughness, metallic, normal, height};
+	char *tag = (char *)sep + 1;
 	for (i32 i = 0; i < IMPORT_FOLDER_MAPS; ++i) {
-		if (library_in(tag, lists[i])) {
+		if (string_array_index_of(library_tags[i], tag) >= 0) {
 			return i;
 		}
 	}
@@ -875,6 +880,7 @@ void library_rescan() {
 	for (i32 i = 0; i < library_count; ++i) {
 		library_scan_cache[i] = library_entry_copy(library_entries[i]);
 	}
+	library_tags_init();
 	library_scan_state = 1;
 	iron_thread_init(&library_scan_thread, library_scan_run, NULL);
 }

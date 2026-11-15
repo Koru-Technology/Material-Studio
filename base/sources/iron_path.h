@@ -18,6 +18,13 @@ extern bool path_is_protected_linux;
 string_array_t *path_mesh_formats(void);
 string_array_t *path_texture_formats(void);
 string_array_t *path_text_formats(void);
+string_array_t *path_base_color_ext(void); // Tags of the material maps in lower case file names: wood_albedo.png
+string_array_t *path_opacity_ext(void);
+string_array_t *path_normal_map_ext(void);
+string_array_t *path_occlusion_ext(void);
+string_array_t *path_roughness_ext(void);
+string_array_t *path_metallic_ext(void);
+string_array_t *path_displacement_ext(void);
 
 char *path_data(void);
 char *path_to_relative(char *from, char *to);
