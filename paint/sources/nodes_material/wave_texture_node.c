@@ -2,27 +2,15 @@
 #include "../global.h"
 
 char *str_tex_wave = "\
-float tex_wave_hash(float n) { return fract(sin(n) * 10000.0); } \
-float tex_wave_noise_f(vec3 x) { \
-	vec3 step = vec3(110.0, 241.0, 171.0); \
-	vec3 i = floor(x); \
-	vec3 f = fract(x); \
-	float n = dot(i, step); \
-	vec3 u = f * f * (3.0 - 2.0 * f); \
-	return mix(mix(mix(tex_wave_hash(n + dot(step, vec3(0.0, 0.0, 0.0))), tex_wave_hash(n + dot(step, vec3(1.0, 0.0, 0.0))), u.x), \
-	                     mix(tex_wave_hash(n + dot(step, vec3(0.0, 1.0, 0.0))), tex_wave_hash(n + dot(step, vec3(1.0, 1.0, 0.0))), u.x), u.y), \
-	                mix(mix(tex_wave_hash(n + dot(step, vec3(0.0, 0.0, 1.0))), tex_wave_hash(n + dot(step, vec3(1.0, 0.0, 1.0))), u.x), \
-	                     mix(tex_wave_hash(n + dot(step, vec3(0.0, 1.0, 1.0))), tex_wave_hash(n + dot(step, vec3(1.0, 1.0, 1.0))), u.x), u.y), u.z); \
-} \
 float tex_wave_fbm(vec3 p, float roughness) { \
 	float amp = 1.0; \
 	float s = 0.0; \
 	float ma = 0.0; \
 	vec3 pp = p; \
-	s = s + amp * tex_wave_noise_f(pp); ma = ma + amp; amp = amp * roughness; pp = pp * 2.0; \
-	s = s + amp * tex_wave_noise_f(pp); ma = ma + amp; amp = amp * roughness; pp = pp * 2.0; \
-	s = s + amp * tex_wave_noise_f(pp); ma = ma + amp; amp = amp * roughness; pp = pp * 2.0; \
-	s = s + amp * tex_wave_noise_f(pp); ma = ma + amp; \
+	s = s + amp * tex_noise_f(pp); ma = ma + amp; amp = amp * roughness; pp = pp * 2.0; \
+	s = s + amp * tex_noise_f(pp); ma = ma + amp; amp = amp * roughness; pp = pp * 2.0; \
+	s = s + amp * tex_noise_f(pp); ma = ma + amp; amp = amp * roughness; pp = pp * 2.0; \
+	s = s + amp * tex_noise_f(pp); ma = ma + amp; \
 	return s / ma; \
 } \
 float tex_wave(vec3 co, float scale, float distortion, float detail_scale, float detail_roughness, float phase, int wave_type, int direction, int profile) { \
@@ -53,6 +41,7 @@ float tex_wave(vec3 co, float scale, float distortion, float detail_scale, float
 ";
 
 static char *wave_texture_node_result(ui_node_t *node) {
+	node_shader_add_function(parser_material_shader, str_tex_noise_f);
 	node_shader_add_function(parser_material_shader, str_tex_wave);
 	char             *co           = parser_material_get_coord(node);
 	char             *scale        = parser_material_parse_value_input(node->inputs->buffer[1], false);

@@ -1,7 +1,8 @@
 
 #include "../global.h"
 
-char *str_tex_noise = "\
+// Value noise, also read by the Wave Texture
+char *str_tex_noise_f = "\
 float hash(float n) { return fract(sin(n) * 10000.0); } \
 float tex_noise_f(vec3 x) { \
 	vec3 step = vec3(110.0, 241.0, 171.0); \
@@ -14,6 +15,9 @@ float tex_noise_f(vec3 x) { \
 	                mix(mix(hash(n + dot(step, vec3(0.0, 0.0, 1.0))), hash(n + dot(step, vec3(1.0, 0.0, 1.0))), u.x), \
 	                     mix(hash(n + dot(step, vec3(0.0, 1.0, 1.0))), hash(n + dot(step, vec3(1.0, 1.0, 1.0))), u.x), u.y), u.z); \
 } \
+";
+
+char *str_tex_noise = "\
 float tex_noise_fbm(vec3 p, float detail, float roughness, float lacunarity) { \
 	float fscale = 1.0; \
 	float amp = 1.0; \
@@ -46,6 +50,7 @@ vec3 tex_noise(vec3 p, float scale, float detail, float roughness, float lacunar
 ";
 
 static char *noise_texture_node_result(ui_node_t *node) {
+	node_shader_add_function(parser_material_shader, str_tex_noise_f);
 	node_shader_add_function(parser_material_shader, str_tex_noise);
 	char *co         = parser_material_get_coord(node);
 	char *scale      = parser_material_parse_value_input(node->inputs->buffer[1], false);
