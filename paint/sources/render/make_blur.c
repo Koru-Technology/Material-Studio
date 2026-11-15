@@ -33,6 +33,25 @@ float get_blur_tool_weight(int i) { \
 } \
 ";
 
+// Adds the layer sampled at uv, weighted, to the sums of every channel
+static void make_blur_sample(node_shader_t *shader, char *uv, char *weight, char *weight_value, bool is_mask) {
+	node_shader_write_frag(shader, string_tmp("vec4 texpaint_sample = texture(sampler2D(texpaint_ref, sampler_linear), %s);", uv));
+	node_shader_write_frag(shader, string_tmp("float %s = %s;", weight, weight_value));
+	if (is_mask) {
+		node_shader_write_frag(shader, string_tmp("basecol += texpaint_sample.rgb * %s;", weight));
+	}
+	else {
+		node_shader_write_frag(shader, string_tmp("opacity += texpaint_sample.a * %s;", weight));
+		node_shader_write_frag(shader, string_tmp("basecol += texpaint_sample.rgb * texpaint_sample.a * %s;", weight));
+	}
+	node_shader_write_frag(shader, string_tmp("vec4 texpaint_pack_sample = texture(sampler2D(texpaint_pack_ref, sampler_linear), %s) * %s;", uv, weight));
+	node_shader_write_frag(shader, "roughness += texpaint_pack_sample.g;");
+	node_shader_write_frag(shader, "metallic += texpaint_pack_sample.b;");
+	node_shader_write_frag(shader, "occlusion += texpaint_pack_sample.r;");
+	node_shader_write_frag(shader, "height += texpaint_pack_sample.a;");
+	node_shader_write_frag(shader, string_tmp("nortan += texture(sampler2D(texpaint_nor_ref, sampler_linear), %s).rgb * %s;", uv, weight));
+}
+
 void make_blur_run(node_shader_t *shader) {
 	node_shader_write_frag(shader, "vec3 basecol = vec3(0.0, 0.0, 0.0);");
 	node_shader_write_frag(shader, "float roughness = 0.0;");
@@ -66,21 +85,7 @@ void make_blur_run(node_shader_t *shader) {
 		                             "uint(smudge_sp.y * constants.gbuffer_size.y)), 0);");
 		node_shader_write_frag(shader, "tex_coord_inp2 = tex_coord_inp24.ba + tex_coord_inp24.rg;");
 		node_shader_write_frag(shader, "}");
-		node_shader_write_frag(shader, "vec4 texpaint_sample = texture(sampler2D(texpaint_ref, sampler_linear), tex_coord_inp2);");
-		node_shader_write_frag(shader, "float blur_weight_i = get_smudge_tool_weight(i);");
-		if (is_mask) {
-			node_shader_write_frag(shader, "basecol += texpaint_sample.rgb * blur_weight_i;");
-		}
-		else {
-			node_shader_write_frag(shader, "opacity += texpaint_sample.a * blur_weight_i;");
-			node_shader_write_frag(shader, "basecol += texpaint_sample.rgb * texpaint_sample.a * blur_weight_i;");
-		}
-		node_shader_write_frag(shader, "vec4 texpaint_pack_sample = texture(sampler2D(texpaint_pack_ref, sampler_linear), tex_coord_inp2) * blur_weight_i;");
-		node_shader_write_frag(shader, "roughness += texpaint_pack_sample.g;");
-		node_shader_write_frag(shader, "metallic += texpaint_pack_sample.b;");
-		node_shader_write_frag(shader, "occlusion += texpaint_pack_sample.r;");
-		node_shader_write_frag(shader, "height += texpaint_pack_sample.a;");
-		node_shader_write_frag(shader, "nortan += texture(sampler2D(texpaint_nor_ref, sampler_linear), tex_coord_inp2).rgb * blur_weight_i;");
+		make_blur_sample(shader, "tex_coord_inp2", "blur_weight_i", "get_smudge_tool_weight(i)", is_mask);
 		node_shader_write_frag(shader, "}");
 	}
 	else {
@@ -90,43 +95,11 @@ void make_blur_run(node_shader_t *shader) {
 		node_shader_add_function(shader, str_get_blur_tool_weight);
 		// X
 		node_shader_write_frag(shader, "for (int i = 0; i <= 14; i += 1) {");
-		node_shader_write_frag(shader, "vec4 texpaint_sample = texture(sampler2D(texpaint_ref, sampler_linear), tex_coord_inp + vec2(blur_step * float(i - 7), 0.0));");
-		node_shader_write_frag(shader, "float blur_weight_i = get_blur_tool_weight(i);");
-		if (is_mask) {
-			node_shader_write_frag(shader, "basecol += texpaint_sample.rgb * blur_weight_i;");
-		}
-		else {
-			node_shader_write_frag(shader, "opacity += texpaint_sample.a * blur_weight_i;");
-			node_shader_write_frag(shader, "basecol += texpaint_sample.rgb * texpaint_sample.a * blur_weight_i;");
-		}
-		node_shader_write_frag(shader, "vec4 texpaint_pack_sample = texture(sampler2D(texpaint_pack_ref, sampler_linear), tex_coord_inp + vec2(blur_step * "
-		                             "float(i - 7), 0.0)) * blur_weight_i;");
-		node_shader_write_frag(shader, "roughness += texpaint_pack_sample.g;");
-		node_shader_write_frag(shader, "metallic += texpaint_pack_sample.b;");
-		node_shader_write_frag(shader, "occlusion += texpaint_pack_sample.r;");
-		node_shader_write_frag(shader, "height += texpaint_pack_sample.a;");
-		node_shader_write_frag(
-		    shader, "nortan += texture(sampler2D(texpaint_nor_ref, sampler_linear), tex_coord_inp + vec2(blur_step * float(i - 7), 0.0)).rgb * blur_weight_i;");
+		make_blur_sample(shader, "tex_coord_inp + vec2(blur_step * float(i - 7), 0.0)", "blur_weight_i", "get_blur_tool_weight(i)", is_mask);
 		node_shader_write_frag(shader, "}");
 		// Y
 		node_shader_write_frag(shader, "for (int j = 0; j <= 14; j += 1) {");
-		node_shader_write_frag(shader, "vec4 texpaint_sample = texture(sampler2D(texpaint_ref, sampler_linear), tex_coord_inp + vec2(0.0, blur_step * float(j - 7)));");
-		node_shader_write_frag(shader, "float blur_weight_j = get_blur_tool_weight(j);");
-		if (is_mask) {
-			node_shader_write_frag(shader, "basecol += texpaint_sample.rgb * blur_weight_j;");
-		}
-		else {
-			node_shader_write_frag(shader, "opacity += texpaint_sample.a * blur_weight_j;");
-			node_shader_write_frag(shader, "basecol += texpaint_sample.rgb * texpaint_sample.a * blur_weight_j;");
-		}
-		node_shader_write_frag(shader, "vec4 texpaint_pack_sample = texture(sampler2D(texpaint_pack_ref, sampler_linear), tex_coord_inp + vec2(0.0, blur_step * "
-		                             "float(j - 7))) * blur_weight_j;");
-		node_shader_write_frag(shader, "roughness += texpaint_pack_sample.g;");
-		node_shader_write_frag(shader, "metallic += texpaint_pack_sample.b;");
-		node_shader_write_frag(shader, "occlusion += texpaint_pack_sample.r;");
-		node_shader_write_frag(shader, "height += texpaint_pack_sample.a;");
-		node_shader_write_frag(
-		    shader, "nortan += texture(sampler2D(texpaint_nor_ref, sampler_linear), tex_coord_inp + vec2(0.0, blur_step * float(j - 7))).rgb * blur_weight_j;");
+		make_blur_sample(shader, "tex_coord_inp + vec2(0.0, blur_step * float(j - 7))", "blur_weight_j", "get_blur_tool_weight(j)", is_mask);
 		node_shader_write_frag(shader, "}");
 	}
 	node_shader_write_frag(shader, "float blur_src_alpha = opacity;");
