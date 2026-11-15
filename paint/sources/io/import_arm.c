@@ -1235,15 +1235,13 @@ void import_arm_run_project(char *path) {
 		}
 	}
 
-	bool make_previews = !base_player;
-
 	// Previews saved with the project are used as they are. The others render after the load, one per frame: rendering
 	// a preview compiles the material and renders its Material Maker buffers, seconds for heavy ones on the iPad.
 	buffer_t_array_t *icons = g_project->material_icons;
 	import_arm_preview_queue_clear();
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		g_context->material = g_project->_->materials->buffer[i];
-		if (make_previews && !(icons != NULL && i < icons->length && util_render_load_material_icon(g_context->material, icons->buffer[i]))) {
+		if (!(icons != NULL && i < icons->length && util_render_load_material_icon(g_context->material, icons->buffer[i]))) {
 			import_arm_preview_queue_add(g_context->material);
 		}
 	}
@@ -1257,9 +1255,7 @@ void import_arm_run_project(char *path) {
 		any_array_push(g_project->_->brushes, g_context->brush);
 		make_material_parse_brush();
 		brush_output_node_parse_inputs();
-		if (make_previews) {
-			util_render_make_brush_preview();
-		}
+		util_render_make_brush_preview();
 	}
 
 	// Fill layers and path layers materials
