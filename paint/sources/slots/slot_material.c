@@ -79,7 +79,7 @@ slot_material_t *slot_material_create(shader_data_t *m, ui_node_canvas_t *c) {
 		}
 	}
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	raw->nodes->pan_x -= 50; // Center initial position
 #else
 	raw->nodes->pan_x += 110;

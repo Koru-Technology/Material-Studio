@@ -1,7 +1,7 @@
 
 #include "../global.h"
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 i32 layers_max_layers = 18;
 #else
 i32 layers_max_layers = 255;

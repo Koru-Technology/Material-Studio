@@ -240,7 +240,7 @@ static void export_texture_set_channel(f32 value, buffer_t *to, i32 to_channel, 
 static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, char *object_name, bool bake_material) {
 	i32 texture_size_x = config_get_texture_res_x();
 	i32 texture_size_y = config_get_texture_res_y();
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	char *f = sys_title();
 #else
 	char *f = ui_files_filename;
@@ -856,8 +856,6 @@ void export_texture_run(char *path, bool bake_material) {
 	else {
 		console_info(string("%s (\"Files/On My iPad/%s\")", tr("Textures exported"), manifest_title));
 	}
-#elif defined(IRON_ANDROID)
-	console_info(string("%s (\"Files/Internal storage/Pictures/%s\")", tr("Textures exported"), manifest_title));
 #else
 	console_info(tr("Textures exported"));
 #endif

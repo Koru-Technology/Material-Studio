@@ -363,9 +363,6 @@ buffer_t *export_arm_encode_project(char *path) {
 #endif
 
 	bool pack_assets = g_context->pack_assets_on_save;
-#ifdef IRON_WASM
-	pack_assets = true;
-#endif
 	export_arm_progress(0.7);
 	if (pack_assets) {
 		export_arm_pack_assets(g_project, g_project->_->assets);
@@ -414,12 +411,8 @@ void export_arm_run_project(char *path) {
 	export_arm_show_progress = false;
 	base_redraw_ui();
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS) || defined(IRON_WASM)
-#ifdef IRON_WASM
-	if (box_projects_is_cloud_path(path)) { // Icons are shown in the cloud projects box only
-#else
+#ifdef IRON_IOS
 	{
-#endif
 		render_target_t *rt        = any_map_get(render_path_render_targets, "buf");
 		gpu_texture_t   *tex       = rt->_image;
 		gpu_texture_t   *mesh_icon = gpu_create_render_target(256, 256, GPU_TEXTURE_FORMAT_RGBA32);
@@ -449,9 +442,6 @@ void export_arm_run_project(char *path) {
 	char *recent_path = path;
 #endif
 
-#ifdef IRON_WINDOWS
-	recent_path = string_copy(string_replace_all(recent_path, "\\", "/"));
-#endif
 	string_array_t *recent = g_config->recent_projects;
 	string_array_remove(recent, recent_path);
 	array_insert(recent, 0, recent_path);

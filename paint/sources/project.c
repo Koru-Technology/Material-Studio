@@ -44,9 +44,6 @@ static bool project_set_default_path() {
 	g_project->_->filepath   = string("%s/%s.arm", document_directory, title);
 	sys_title_set(title);
 	return true;
-#elif defined(IRON_ANDROID)
-	g_project->_->filepath = string("%s/%s.arm", iron_internal_save_path(), sys_title());
-	return true;
 #else
 	return false;
 #endif
@@ -77,7 +74,7 @@ void project_autosave_update() {
 	if (!project_autosave_due() || project_autosave_busy()) {
 		return;
 	}
-#if !defined(IRON_IOS) && !defined(IRON_ANDROID)
+#ifndef IRON_IOS
 	if (string_equals(g_project->_->filepath, "")) {
 		return; // No surprise save dialog
 	}
@@ -101,7 +98,6 @@ void project_autosave_init() {
 
 // Saves right away instead of on the next frame, for when the app is about to be suspended or closed
 void project_save_now() {
-#ifndef IRON_WASM
 	if (!g_config->autosave || !project_modified || project_autosave_busy()) {
 		return;
 	}
@@ -110,23 +106,15 @@ void project_save_now() {
 	}
 	export_arm_run_project(g_project->_->filepath);
 	project_autosave_since = 0.0;
-#endif
 }
 
 void project_save(bool save_and_quit) {
-#ifdef IRON_WASM
-	if (!box_projects_is_cloud_path(g_project->_->filepath) && !starts_with(g_project->_->filepath, "/files/")) {
-		box_projects_cloud_save_show(save_and_quit);
-		return;
-	}
-#endif
-
 	if (string_equals(g_project->_->filepath, "") && !project_set_default_path()) {
 		project_save_as(save_and_quit);
 		return;
 	}
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS) || defined(IRON_WASM)
+#ifdef IRON_MACOS
 	char *filename = substring(g_project->_->filepath, string_last_index_of(g_project->_->filepath, PATH_SEP) + 1, string_length(g_project->_->filepath) - 4);
 	sys_title_set(string("%s - %s", filename, manifest_title));
 #endif
@@ -483,7 +471,7 @@ void project_unwrap_mesh_box_draw() {
 	if (ui_icon_button(tr("Unwrap"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
 		ui_box_hide();
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 		console_toast(tr("Unwrapping mesh"));
 #endif
 

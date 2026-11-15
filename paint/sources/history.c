@@ -1074,7 +1074,7 @@ history_step_t *history_push(history_action_t action) {
 	project_modified = true;
 	render_path_base_redraw();
 	char *name = history_action_to_string(action);
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#ifdef IRON_MACOS
 	char *filename = string_equals(g_project->_->filepath, "") ? ui_files_filename
 	                                                           : substring(g_project->_->filepath, string_last_index_of(g_project->_->filepath, PATH_SEP) + 1,
 	                                                                       string_length(g_project->_->filepath) - 4);

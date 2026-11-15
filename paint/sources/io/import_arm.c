@@ -492,11 +492,7 @@ static packed_asset_t *import_arm_take_packed_asset(project_t *project, char *ab
 	}
 	for (i32 i = 0; i < project->packed_assets->length; ++i) {
 		packed_asset_t *pa = project->packed_assets->buffer[i];
-#ifdef IRON_WINDOWS
-		pa->name = string_copy(string_replace_all(pa->name, "/", "\\"));
-#else
 		pa->name = string_copy(string_replace_all(pa->name, "\\", "/"));
-#endif
 		pa->name     = string_copy(path_normalize(pa->name));
 		bool matches = string_equals(pa->name, file) || string_equals(pa->name, abs);
 		if (!matches) {
@@ -631,11 +627,7 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 	if (project->assets != NULL) {
 		for (i32 i = 0; i < project->assets->length; ++i) {
 			char *file = project->assets->buffer[i];
-#ifdef IRON_WINDOWS
-			file = string_copy(string_replace_all(file, "/", "\\"));
-#else
 			file = string_copy(string_replace_all(file, "\\", "/"));
-#endif
 			// Convert image path from relative to absolute
 			char *abs = import_arm_abs(file, base);
 			if (project->packed_assets != NULL) {
@@ -902,7 +894,7 @@ void import_arm_run_project(char *path) {
 	project_new(import_as_mesh);
 	g_project->_->filepath = string_copy(path);
 	ui_files_filename      = string_copy(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, ".")));
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	sys_title_set(ui_files_filename);
 #else
 	sys_title_set(string("%s - %s", ui_files_filename, manifest_title));
@@ -919,9 +911,6 @@ void import_arm_run_project(char *path) {
 	char *recent_path = substring(path, string_last_index_of(path, "/") + 1, string_length(path));
 #else
 	char *recent_path = path;
-#endif
-#ifdef IRON_WINDOWS
-	recent_path = string_copy(string_replace_all(recent_path, "\\", "/"));
 #endif
 	string_array_t *recent = g_config->recent_projects;
 	string_array_remove(recent, recent_path);
@@ -942,11 +931,7 @@ void import_arm_run_project(char *path) {
 	char *base = path_base_dir(path);
 	if (g_project->envmap != NULL) {
 		g_project->envmap = import_arm_abs(g_project->envmap, base);
-#ifdef IRON_WINDOWS
-		g_project->envmap = string_copy(string_replace_all(g_project->envmap, "/", "\\"));
-#else
 		g_project->envmap = string_copy(string_replace_all(g_project->envmap, "\\", "/"));
-#endif
 		g_project->envmap = path_normalize(g_project->envmap);
 	}
 
@@ -967,11 +952,7 @@ void import_arm_run_project(char *path) {
 	import_arm_image_t *images      = calloc(image_count > 0 ? image_count : 1, sizeof(import_arm_image_t));
 	for (i32 i = 0; i < image_count; ++i) {
 		char *file = g_project->assets->buffer[i];
-#ifdef IRON_WINDOWS
-		file = string_copy(string_replace_all(file, "/", "\\"));
-#else
 		file = string_copy(string_replace_all(file, "\\", "/"));
-#endif
 		// Convert image path from relative to absolute
 		char *abs = import_arm_abs(file, base);
 		if (g_project->packed_assets != NULL) {
@@ -1024,11 +1005,7 @@ void import_arm_run_project(char *path) {
 	if (g_project->font_assets != NULL) {
 		for (i32 i = 0; i < g_project->font_assets->length; ++i) {
 			char *file = g_project->font_assets->buffer[i];
-#ifdef IRON_WINDOWS
-			file = string_copy(string_replace_all(file, "/", "\\"));
-#else
 			file = string_copy(string_replace_all(file, "\\", "/"));
-#endif
 			// Convert font path from relative to absolute
 			char *abs = import_arm_abs(file, base);
 			if (iron_file_exists(abs)) {
@@ -1370,11 +1347,7 @@ void import_arm_run_brush_from_project(project_t *project, char *path) {
 	char *base = path_base_dir(path);
 	for (i32 i = 0; i < project->assets->length; ++i) {
 		char *file = project->assets->buffer[i];
-#ifdef IRON_WINDOWS
-		file = string_copy(string_replace_all(file, "/", "\\"));
-#else
 		file = string_copy(string_replace_all(file, "\\", "/"));
-#endif
 		// Convert image path from relative to absolute
 		char *abs = import_arm_abs(file, base);
 		if (project->packed_assets != NULL) {
