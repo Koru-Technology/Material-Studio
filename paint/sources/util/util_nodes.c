@@ -74,7 +74,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 	}
 	else if (string_equals(n->type, "MATERIAL")) {
 		i32 id = n->buttons->buffer[0]->default_value->buffer[0];
-		if (id < g_project->_->materials->length) {
+		if (id >= 0 && id < g_project->_->materials->length) {
 			img = g_project->_->materials->buffer[id]->image;
 		}
 	}
