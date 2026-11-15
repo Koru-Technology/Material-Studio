@@ -1737,6 +1737,7 @@ void script_mouse_click(i32 x, i32 y, i32 button) {
 
 // Raw mouse events at window pixel x, y, for strokes that go through the live input path
 void script_mouse_press(i32 x, i32 y, i32 button) {
+	context_script_touch = true;
 	iron_internal_mouse_trigger_move(x, y);
 	ui_mouse_move(g_ui, x, y, 0, 0);
 	iron_internal_mouse_trigger_press(button, x, y);
@@ -1752,6 +1753,7 @@ void script_mouse_move(i32 x, i32 y) {
 
 void script_mouse_release(i32 x, i32 y, i32 button) {
 	iron_internal_mouse_trigger_release(button, x, y);
+	context_script_touch = false;
 }
 
 static void script_key_press_up(void *data) {

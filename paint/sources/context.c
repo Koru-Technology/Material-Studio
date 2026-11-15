@@ -547,7 +547,12 @@ void context_set_render_path() {
 }
 
 
+bool context_script_touch = false; // A script's raw mouse press is down; it paints whatever the user set
+
 // Fingers only navigate: always, or once the pencil was used in the automatic mode
 bool context_finger_paint_blocked() {
+	if (context_script_touch) {
+		return false;
+	}
 	return g_config->finger_paint == 2 || (g_config->finger_paint == 0 && g_context->pen_painting_only);
 }

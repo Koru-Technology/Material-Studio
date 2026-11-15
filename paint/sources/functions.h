@@ -410,6 +410,7 @@ bool                   context_is_stencil_editing();
 bool                   context_is_stencil_hidden();
 bool                   context_is_ruler_paint();
 bool                   context_finger_paint_blocked();
+extern bool            context_script_touch;
 bool                   context_is_decal_mask();
 bool                   context_is_decal_mask_paint();
 bool                   context_is_decal_mask_paint_pass();

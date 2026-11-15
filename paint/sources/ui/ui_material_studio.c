@@ -405,8 +405,8 @@ static void studio_render() {
 	util_render_preview_lighting_begin(0.5, 0.65);
 	i32 _last_w         = _render_path_last_w;
 	i32 _last_h         = _render_path_last_h;
-	_render_path_last_w = STUDIO_PREVIEW_SIZE;
-	_render_path_last_h = STUDIO_PREVIEW_SIZE;
+	_render_path_last_w = sys_w(); // The preview size while material_preview is on: the viewport's targets are not resized to it
+	_render_path_last_h = sys_h();
 	camera_object_build_proj(scene_camera, -1.0);
 	camera_object_build_mat(scene_camera);
 
