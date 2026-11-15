@@ -281,23 +281,28 @@ char *ui_files_file_browser(char **path, bool drag_files, char *search, bool ref
 						is_blob = true;
 					}
 
-					if (raw != NULL && raw->material_icons != NULL) {
-						buffer_t *bytes_icon = raw->material_icons->buffer[0];
+					// A corrupt icon decodes to NULL, the file shows the empty icon then
+					if (raw != NULL && raw->material_icons != NULL && raw->material_icons->length > 0) {
+						buffer_t *buf = lz4_decode(raw->material_icons->buffer[0], 256 * 256 * 8);
 #ifdef IRON_BGRA
-						buffer_t *buf = buffer_bgra64_swap(lz4_decode(bytes_icon, 256 * 256 * 8));
-#else
-						buffer_t *buf = lz4_decode(bytes_icon, 256 * 256 * 8);
+						if (buf != NULL) {
+							buffer_bgra64_swap(buf);
+						}
 #endif
-						icon = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA64);
-						array_free(buf);
-						free(buf);
+						if (buf != NULL) {
+							icon = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA64);
+							array_free(buf);
+							free(buf);
+						}
 					}
 					else if (raw != NULL && (raw->mesh_icons != NULL || raw->brush_icons != NULL)) {
-						buffer_t *bytes_icon = raw->mesh_icons != NULL ? raw->mesh_icons->buffer[0] : raw->brush_icons->buffer[0];
-						buffer_t *buf        = lz4_decode(bytes_icon, 256 * 256 * 4);
-						icon                 = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA32);
-						array_free(buf);
-						free(buf);
+						buffer_t_array_t *icons = raw->mesh_icons != NULL ? raw->mesh_icons : raw->brush_icons;
+						buffer_t         *buf   = icons->length > 0 ? lz4_decode(icons->buffer[0], 256 * 256 * 4) : NULL;
+						if (buf != NULL) {
+							icon = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA32);
+							array_free(buf);
+							free(buf);
+						}
 					}
 
 					if (is_blob) {
