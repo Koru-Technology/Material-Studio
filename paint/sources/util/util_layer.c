@@ -48,6 +48,10 @@ static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
 void app_notify_previews(void); // app_api.c
 
 void util_layer_update_preview() {
+	if (layers_sync_nodes()) { // Nodes follow the layers they read
+		layers_update_linked_layers();
+		make_material_parse_mesh_material();
+	}
 	if (g_context->layers_preview_dirty || (g_context->layer != NULL && g_context->layer_preview_dirty)) {
 		app_notify_previews();
 	}
@@ -1588,38 +1592,69 @@ void layers_on_resized() {
 	render_path_raytrace_ready = false;
 }
 
-void tab_layers_remap_layer_pointers(ui_node_t_array_t *nodes, i32_imap_t *pointer_map) {
-	for (i32 i = 0; i < nodes->length; ++i) {
-		ui_node_t *n = nodes->buffer[i];
-		if (string_equals(n->type, "LAYER") || string_equals(n->type, "LAYER_MASK") || string_equals(n->type, "MESH_DISPLACE")) {
-			i32 i = n->buttons->buffer[0]->default_value->buffer[0];
-			if (i32_imap_get(pointer_map, i) != -1) {
-				n->buttons->buffer[0]->default_value->buffer[0] = i32_imap_get(pointer_map, i);
+// Layer, Layer Mask and Mesh Displace nodes hold a position in the layer stack. The stack as those positions were last
+// valid is kept: when layers were added, removed or moved since (by any path, undo included), each node follows its
+// layer, 9999 when it is gone.
+static slot_layer_t_array_t *layers_nodes_stack    = NULL;
+static slot_layer_t_array_t *layers_nodes_stack_of = NULL; // The project's layer array the stack is of
+
+static bool layers_node_points_at_layer(ui_node_t *n) {
+	return string_equals(n->type, "LAYER") || string_equals(n->type, "LAYER_MASK") || string_equals(n->type, "MESH_DISPLACE");
+}
+
+// True when a node changed
+bool layers_sync_nodes() {
+	slot_layer_t_array_t *layers = g_project->_->layers;
+	slot_layer_t_array_t *old    = layers_nodes_stack;
+	bool                  same   = old != NULL && layers_nodes_stack_of == layers && old->length == layers->length;
+	for (i32 i = 0; same && i < layers->length; ++i) {
+		same = old->buffer[i] == layers->buffer[i];
+	}
+	if (same) {
+		return false;
+	}
+	bool changed = false;
+	if (old != NULL && layers_nodes_stack_of == layers) { // Another project starts with its nodes as they are
+		for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+			ui_node_t_array_t *nodes = g_project->_->materials->buffer[i]->canvas->nodes;
+			for (i32 j = 0; j < nodes->length; ++j) {
+				ui_node_t *n = nodes->buffer[j];
+				if (!layers_node_points_at_layer(n)) {
+					continue;
+				}
+				f32_array_t *v = n->buttons->buffer[0]->default_value;
+				i32          k = (i32)v->buffer[0];
+				if (k < 0 || k >= old->length) {
+					continue;
+				}
+				i32 now = array_index_of(layers, old->buffer[k]);
+				if (now == -1) {
+					now = 9999;
+				}
+				if (now != k) {
+					v->buffer[0] = (f32)now;
+					changed      = true;
+				}
 			}
 		}
 	}
-}
-
-// Material and mesh nodes, after layers were added, removed or moved
-void tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers) {
-	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		slot_material_t *m = g_project->_->materials->buffer[i];
-		tab_layers_remap_layer_pointers(m->canvas->nodes, tab_layers_fill_layer_map(old_layers));
+	if (old != NULL) {
+		array_free(old);
+		free(old);
 	}
+	layers_nodes_stack    = array_slice(layers, 0, layers->length);
+	layers_nodes_stack_of = layers;
+	return changed;
 }
 
+// Before and after the layers change: kept for the call sites, layers_sync_nodes follows any change
 slot_layer_t_array_t *tab_layers_init_layer_map() {
-	return array_slice(g_project->_->layers, 0, g_project->_->layers->length);
+	layers_sync_nodes();
+	return NULL;
 }
 
-i32_imap_t *tab_layers_fill_layer_map(slot_layer_t_array_t *old_layers) {
-	// Old index -> new index, 9999 for removed layers
-	i32_imap_t *res = any_imap_create();
-	for (i32 i = 0; i < old_layers->length; ++i) {
-		i32 new_index = array_index_of(g_project->_->layers, old_layers->buffer[i]);
-		i32_imap_set(res, i, new_index > -1 ? new_index : 9999);
-	}
-	return res;
+void tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers) {
+	layers_sync_nodes();
 }
 
 void tab_layers_make_mask_preview_rgba32_on_next_frame(void *_) {

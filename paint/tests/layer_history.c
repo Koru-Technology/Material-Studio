@@ -12,6 +12,8 @@ slot_material_t *mat_blue = NULL;
 slot_layer_t    *a       = NULL;
 slot_layer_t    *b       = NULL;
 slot_layer_t    *m       = NULL;
+slot_layer_t    *c       = NULL;
+ui_node_t       *ln      = NULL;
 int              texels  = 0;
 
 void check(int ok, char *name) {
@@ -114,6 +116,34 @@ void next() {
 		check(script_layer_merge_down(b) == NULL && script_layer_count() == count, "nothing merges down into a hidden layer");
 		a->visible = 1;
 		check(script_layer_get(b->name) == b && script_layer_get(a->name) == a, "both layers kept");
+
+		// A Layer node reads a: it follows a when layers are added or removed below it
+		slot_material_t *reader = script_material_create("history_reader");
+		ln                      = script_material_create_node_at("LAYER", -300.0, 0.0);
+		script_material_set_button(ln, 0, script_layer_index(a));
+		script_material_connect(ln, 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
+		script_material_update();
+		script_layer_set(script_layer_at(0));
+		c = script_layer_new(); // Above the bottom layer, below a
+	}
+	else if (step == 13) {
+		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		check(script_layer_index(c) < script_layer_index(a) && v == script_layer_index(a), string("layer node follows a new layer below (%d)", v));
+		script_layer_delete(script_layer_at(0));
+	}
+	else if (step == 14) {
+		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		check(v == script_layer_index(a), string("layer node follows a deleted layer below (%d)", v));
+		history_undo();
+	}
+	else if (step == 15) {
+		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		check(v == script_layer_index(a), string("layer node follows an undone delete (%d)", v));
+		history_undo(); // The new layer
+	}
+	else if (step == 16) {
+		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		check(script_layer_index(c) == -1 && v == script_layer_index(a), string("layer node follows an undone new layer (%d)", v));
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
