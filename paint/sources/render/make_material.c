@@ -436,9 +436,9 @@ static void make_material_async_worker(void *param) {
 
 // Threads at work, joined at exit: glslang's tables go with the process's static destructors, a translation still
 // running then crashed
-#define MAKE_MATERIAL_THREADS_MAX 64
-static make_material_async_t *make_material_threads[MAKE_MATERIAL_THREADS_MAX];
-static i32                    make_material_nthreads = 0;
+static make_material_async_t **make_material_threads   = NULL;
+static i32                     make_material_nthreads  = 0;
+static i32                     make_material_threads_n = 0; // Capacity
 
 static void make_material_thread_ended(make_material_async_t *a) {
 	for (i32 i = 0; i < make_material_nthreads; ++i) {
@@ -476,9 +476,11 @@ make_material_async_t *make_material_async_start(void) {
 	    a->scon->_->pipe->fragment_shader != NULL) {
 		a->started   = true;
 		a->compiling = true;
-		if (make_material_nthreads < MAKE_MATERIAL_THREADS_MAX) {
-			make_material_threads[make_material_nthreads++] = a;
+		if (make_material_nthreads == make_material_threads_n) { // Every thread is joined at exit, none left out
+			make_material_threads_n = make_material_threads_n == 0 ? 64 : make_material_threads_n * 2;
+			make_material_threads   = realloc(make_material_threads, sizeof(make_material_async_t *) * make_material_threads_n);
 		}
+		make_material_threads[make_material_nthreads++] = a;
 		iron_thread_init(&a->thread, make_material_async_worker, a);
 	}
 	return a;
