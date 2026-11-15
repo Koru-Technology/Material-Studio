@@ -1047,10 +1047,31 @@ static void ui_nodes_edit_cancel(void *_) {
 	ui_nodes_edit_end();
 }
 
+extern bool app_native_chrome;      // app_api.c: the native UI has the panels, the node editor keeps its menubar
+extern i32  app_overlay_top_inset; // app_api.c: the native controls at the top of the screen, pixels
+
+// The node editor's own menubar: categories, search, group back, save and cancel
+static bool ui_nodes_menubar_shown() {
+	return ui_base_show || app_native_chrome;
+}
+
+// Top of the menubar in the node window, below the native controls floating over the canvas
+static i32 ui_nodes_menubar_top() {
+	return ui_menu_top_y() + (app_native_chrome && ui_nodes_wy < app_overlay_top_inset ? app_overlay_top_inset - ui_nodes_wy : 0);
+}
+
+// Height over the node canvas that the menubar takes, the nodes do not take input there
+static i32 ui_nodes_header_h() {
+	if (ui_base_show) {
+		return ui_header_h * 2;
+	}
+	return app_native_chrome ? ui_nodes_menubar_top() + UI_ELEMENT_H() + UI_ELEMENT_OFFSET() * 2 : 0;
+}
+
 void ui_nodes_draw_menubar() {
 	ui_node_canvas_t *c     = ui_nodes_get_canvas(true);
 	i32               ew    = math_floor(UI_ELEMENT_W() * 0.7);
-	i32               top_y = ui_menu_top_y();
+	i32               top_y = ui_nodes_menubar_top();
 	draw_set_color(g_theme->WINDOW_BG_COL);
 	draw_filled_rect(0, top_y, ui_nodes_ww, UI_ELEMENT_H() + UI_ELEMENT_OFFSET() * 2);
 	draw_set_color(0xffffffff);
@@ -1145,7 +1166,8 @@ void ui_nodes_draw_menubar() {
 	bool editing = ui_nodes_editing();
 	f32  save_w  = ui_nodes_menubar_button_w(tr("Save to Library"));
 	f32  cancel_w = ui_nodes_menubar_button_w(tr("Cancel"));
-	f32  edit_w  = editing ? save_w + cancel_w + 9 : 0;
+	f32  close_w = app_native_chrome && !editing ? ew : 0; // Native: the editor closes from its menubar
+	f32  edit_w  = editing ? save_w + cancel_w + 9 : close_w;
 	f32 avail    = ui_nodes_ww - g_ui->_x - search_w - back_w - edit_w;
 	f32 used     = 0;
 	for (i32 i = 0; i < cats->length; ++i) {
@@ -1210,6 +1232,17 @@ void ui_nodes_draw_menubar() {
 		array_pop(ui_nodes_group_stack);
 	}
 
+	// Native: closes the node editor, at the right end
+	if (close_w > 0) {
+		g_ui->_x = ui_nodes_ww - close_w;
+		g_ui->_y = 2 + start_y;
+		g_ui->_w = close_w;
+		if (ui_icon_button(tr("Close"), ICON_CLOSE, UI_ALIGN_CENTER)) {
+			g_ui->input_released = false;
+			ui_base_show_material_nodes(); // Toggles the editor off
+		}
+	}
+
 	// Editing a material: at the right end
 	if (editing) {
 		g_ui->_x = ui_nodes_ww - edit_w;
@@ -1240,7 +1273,7 @@ void ui_nodes_update(void *_) {
 		i32  mx      = mouse_x;
 		i32  my      = mouse_y;
 		bool enabled = true;
-		i32  tabs_h  = ui_base_show ? ui_header_h * 2 : 0;
+		i32  tabs_h  = ui_nodes_header_h();
 		if (mx < ui_nodes_wx || mx > ui_nodes_wx + ui_nodes_ww || my < ui_nodes_wy + tabs_h || my > ui_nodes_wy + ui_nodes_wh) {
 			enabled = false;
 		}
@@ -1413,11 +1446,11 @@ void ui_nodes_update(void *_) {
 
 		// Nodes
 		bool _input_enabled        = g_ui->input_enabled;
-		i32  header_h              = ui_base_show ? UI_ELEMENT_H() * 2 + UI_ELEMENT_OFFSET() * 2 : 0;
+		i32  header_h              = ui_base_show ? UI_ELEMENT_H() * 2 + UI_ELEMENT_OFFSET() * 2 : ui_nodes_header_h();
 		bool header_hover          = g_ui->input_y < g_ui->_window_y + header_h;
 		g_ui->input_enabled        = _input_enabled && !ui_nodes_show_menu && !header_hover;
 		g_ui->window_border_right  = iron_window_width() - ui_nodes_wx - ui_nodes_ww;
-		g_ui->window_border_top    = ui_nodes_wy + (ui_base_show ? ui_header_h * 2 : 0);
+		g_ui->window_border_top    = ui_nodes_wy + ui_nodes_header_h();
 		g_ui->window_border_bottom = iron_window_height() - ui_nodes_wy - ui_nodes_wh;
 
 		ui_node_canvas(ui_nodes, c);
@@ -1514,7 +1547,7 @@ void ui_nodes_update(void *_) {
 			}
 		}
 
-		if (ui_base_show) {
+		if (ui_nodes_menubar_shown()) {
 			ui_nodes_draw_menubar();
 		}
 

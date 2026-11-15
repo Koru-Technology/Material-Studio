@@ -45,6 +45,10 @@ void app_get_state(app_state_t *out);
 // The native UI draws the panels: the engine draws only its views (3D, 2D, nodes) and its popups
 void app_set_native_chrome(bool on);
 
+// Height of the native controls floating over the top of the canvas, in canvas pixels: the node editor's menubar goes
+// below them
+void app_set_overlay_top_inset(int32_t pixels);
+
 // Tool and brush
 void app_set_tool(int32_t tool);
 void app_set_brush_radius(float value);

@@ -94,7 +94,15 @@ void app_get_state(app_state_t *out) {
 	}
 }
 
-bool app_native_chrome = false;
+bool app_native_chrome     = false;
+i32  app_overlay_top_inset = 0;
+
+void app_set_overlay_top_inset(int32_t pixels) {
+	app_overlay_top_inset = pixels > 0 ? pixels : 0;
+	if (ui_nodes_hwnd != NULL) {
+		ui_nodes_hwnd->redraws = 2;
+	}
+}
 
 void app_set_native_chrome(bool on) {
 	app_native_chrome = on;

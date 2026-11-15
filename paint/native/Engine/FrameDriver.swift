@@ -54,6 +54,10 @@ final class FrameDriver: NSObject {
 		isStarted = true
 		iron_apple_start()
 		app_set_native_chrome(true) // The panels and menus are native, the engine draws its views only
+#if os(iOS)
+		// The menu and popover buttons float 16 + 44 points down the top of the screen: the node editor's menubar goes below
+		app_set_overlay_top_inset(Int32((16 + 44 + 8) * view.contentScaleFactor))
+#endif
 #if os(macOS)
 		let link = view.displayLink(target: self, selector: #selector(displayTick))
 #else
