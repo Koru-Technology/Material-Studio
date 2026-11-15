@@ -88,6 +88,6 @@ struct MaterialsSmartView: View {
 
 	private func apply(_ row: SmartRow) {
 		store.applySmart(row)
-		dismiss()
+		closePopover(dismiss)
 	}
 }

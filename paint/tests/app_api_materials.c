@@ -18,6 +18,18 @@ int layers0 = 0;
 int smart0  = 0;
 int tries   = 0;
 
+buffer_t *pixels = NULL;
+buffer_t *size   = NULL;
+
+// Texel x, y of the image last read into pixels: channel c
+int texel(int x, int y, int c) {
+	return buffer_get_u8(pixels, (y * buffer_get_i32(size, 0) + x) * 4 + c);
+}
+
+void print_texel(char *what, int x, int y) {
+	printf("[app_api_materials] %s texel %d %d: %d %d %d %d", what, x, y, texel(x, y, 0), texel(x, y, 1), texel(x, y, 2), texel(x, y, 3));
+}
+
 void check(bool ok, char *name) {
 	checks = checks + 1;
 	if (!ok) {
@@ -61,6 +73,13 @@ void next() {
 		script_material_update();
 	}
 	else if (step == 2) {
+		int bytes = app_material_thumbnail(created, 128, pixels->buffer, pixels->length, size->buffer, size->buffer + 4);
+		check(bytes == 128 * 128 * 4 && buffer_get_i32(size, 0) == 128 && buffer_get_i32(size, 4) == 128, "thumbnail read back at 128");
+		print_texel("green material", 64, 64);
+		print_texel("green material", 2, 2);
+		check(texel(64, 64, 1) > texel(64, 64, 0) + 40 && texel(64, 64, 1) > texel(64, 64, 2) + 40 && texel(64, 64, 3) > 240,
+		      "thumbnail RGBA order: the green sphere is green and opaque in the middle");
+		check(texel(2, 2, 3) < 16 && texel(2, 2, 0) <= texel(2, 2, 3), "transparent corner, premultiplied");
 		int v = app_material_preview_version(created);
 		check(v != version, "an edit changes the preview version");
 		version = v;
@@ -138,16 +157,26 @@ void next() {
 		}
 		printf("[app_api_materials] icon after %d frames", tries);
 		check(app_library_icon_size(item) == 128 * 128 * 4, "library icon loads");
+		int bytes = app_library_icon(item, pixels->buffer, pixels->length, size->buffer, size->buffer + 4);
+		check(bytes == 128 * 128 * 4, "library icon read back");
+		print_texel("library icon", 64, 64);
+		print_texel("library icon", 1, 1);
+		check(texel(64, 64, 3) > 240 && texel(1, 1, 3) < 16, "library icon: opaque sphere, transparent corner");
 		count0 = app_material_count();
 		check(app_library_use(item), "library item used");
 		wait = 30;
 	}
 	else if (step == 11) {
 		check(app_material_count() == count0 + 1, "the library material is in the project");
+		version = app_material_preview_version(selected_id());
+		wait    = 20;
+	}
+	else if (step == 12) {
+		check(app_material_preview_version(selected_id()) == version, "the library material's preview version stays without edits");
 		check(app_material_to_fill_layer(selected_id()), "to fill layer");
 		layers0 = app_layer_count();
 	}
-	else if (step == 12) {
+	else if (step == 13) {
 		check(script_get_context()->layer->fill_material != NULL, "a fill layer is selected");
 		int old = app_smart_find("app_api_test");
 		if (old >= 0) {
@@ -157,7 +186,7 @@ void next() {
 		check(app_smart_save("app_api_test"), "smart material saving");
 		wait = 5;
 	}
-	else if (step == 13) {
+	else if (step == 14) {
 		int i = app_smart_find("app_api_test");
 		check(app_smart_count() == smart0 + 1 && i >= 0, "smart material listed");
 		check(app_smart_icon_size(i) == 128 * 128 * 4, "smart material icon");
@@ -165,7 +194,7 @@ void next() {
 		check(app_smart_apply(i), "smart material applying");
 		wait = 5;
 	}
-	else if (step == 14) {
+	else if (step == 15) {
 		check(app_layer_count() > layers0, "smart material added layers");
 		app_undo();
 		check(app_layer_count() == layers0, "undo removes them");
@@ -184,5 +213,7 @@ void next() {
 }
 
 void main() {
+	pixels = buffer_create(256 * 256 * 4);
+	size   = buffer_create(8);
 	script_notify_on_next_frame(next);
 }

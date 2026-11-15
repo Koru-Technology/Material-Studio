@@ -16,7 +16,7 @@ struct LibraryRow: Identifiable, Equatable {
 		case saved = 0, folder = 1, materialMaker = 2, cloud = 3
 	}
 
-	var id: UInt32 { key }
+	var id: Int32 { index }
 	let index: Int32 // Valid until the library signature changes
 	let key: UInt32
 	let source: Source
@@ -131,7 +131,7 @@ final class MaterialsStore {
 	@ObservationIgnored private var smartIndex: [UInt32: Int32] = [:]
 	@ObservationIgnored private var buffer = [UInt8](repeating: 0, count: 256 * 256 * 4)
 
-	private let maxIcons      = 600
+	private let maxIcons      = 400 // 64 KB each
 	private let iconsPerFrame = 8
 
 	func refresh() {

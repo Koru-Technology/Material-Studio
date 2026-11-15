@@ -43,8 +43,20 @@ struct MaterialsPopover: View {
 				MaterialsSmartView()
 			}
 		}
-		.frame(idealWidth: 380, maxWidth: .infinity, minHeight: 420, idealHeight: 560, maxHeight: .infinity)
+#if os(iOS)
+		.frame(width: 380, height: 560)
+#else
+		.frame(minWidth: 300, idealWidth: 380, minHeight: 420, idealHeight: 560)
+#endif
 	}
+}
+
+// After an action that opens an editor over the canvas: the iPad popover closes. Not on the Mac, where dismiss would
+// close the window the panel is in.
+func closePopover(_ dismiss: DismissAction) {
+#if os(iOS)
+	dismiss()
+#endif
 }
 
 // The project's materials: tap to paint with one, the context menu edits, duplicates and deletes
@@ -122,21 +134,24 @@ struct MaterialsProjectView: View {
 				}
 				Button {
 					app_material_new_studio()
-					dismiss()
+					closePopover(dismiss)
 				} label: {
 					Label("New Studio Material", systemImage: "wand.and.stars")
 				}
-				Divider()
+			} label: {
+				Label("New Material", systemImage: "plus")
+			}
+			.menuIndicator(.hidden)
+			.fixedSize()
+			Menu {
 				Button(role: .destructive) {
 					act { _ = app_material_delete_unused() }
 				} label: {
-					Label("Delete Unused", systemImage: "trash.slash")
+					Label("Delete Unused Materials", systemImage: "trash.slash")
 				}
 				.disabled(store.materials.count < 2)
 			} label: {
-				Label("New Material", systemImage: "plus")
-			} primaryAction: {
-				act { _ = app_material_new() }
+				Label("More", systemImage: "ellipsis.circle")
 			}
 			.menuIndicator(.hidden)
 			.fixedSize()
@@ -157,14 +172,14 @@ struct MaterialsProjectView: View {
 		if m.canOpenStudio {
 			Button {
 				act { _ = app_material_open_studio(m.id) }
-				dismiss()
+				closePopover(dismiss)
 			} label: {
 				Label("Edit in Material Studio", systemImage: "wand.and.stars")
 			}
 		}
 		Button {
 			act { _ = app_material_show_nodes(m.id) }
-			dismiss()
+			closePopover(dismiss)
 		} label: {
 			Label("Edit Nodes", systemImage: "point.3.connected.trianglepath.dotted")
 		}
@@ -211,7 +226,7 @@ struct MaterialsProjectView: View {
 	// The Material Studio when it opens the material, the node editor otherwise
 	private func edit(_ m: MaterialRow) {
 		act { _ = app_material_edit(m.id) }
-		dismiss()
+		closePopover(dismiss)
 	}
 
 	private func act(_ action: () -> Void) {
