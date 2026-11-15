@@ -349,7 +349,10 @@ static i32 variable_eval_at(ui_node_t_array_t *nodes, ui_node_link_t_array_t *li
 				return 0;
 			}
 		}
-		f32 r = x[2] != x[1] ? x[3] + (x[0] - x[1]) * (x[4] - x[3]) / (x[2] - x[1]) : x[3];
+		// In doubles, rounded to 5 decimals: a control at its default lands on the graph's own value (16, not 16.000002),
+		// which Material Maker shaders scaling a pattern by it would show
+		f64 d = x[2] != x[1] ? (f64)x[3] + ((f64)x[0] - x[1]) * ((f64)x[4] - x[3]) / ((f64)x[2] - x[1]) : x[3];
+		f32 r = (f32)(round(d * 1e5) / 1e5);
 		if (node->buttons->length > 0 && node->buttons->buffer[0]->default_value->buffer[0] > 0) {
 			f32 lo = x[3] < x[4] ? x[3] : x[4];
 			f32 hi = x[3] < x[4] ? x[4] : x[3];

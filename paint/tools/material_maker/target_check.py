@@ -22,6 +22,7 @@ int   stops[%d]  = {%s};
 slot_material_t *p = NULL;
 slot_material_t *m = NULL;
 int   pid = -1;
+int   warm = 60; // Frames before the first material, for the app's own start
 
 int diff(slot_material_t *a, slot_material_t *b) {
 	script_material_set(a);
@@ -35,6 +36,11 @@ int diff(slot_material_t *a, slot_material_t *b) {
 }
 
 void next() {
+	if (warm > 0) {
+		warm = warm - 1;
+		script_notify_on_next_frame(next);
+		return;
+	}
 	if (mm_buffers_stat(11) > 0 || wait > 0) {
 		wait = wait > 0 ? wait - 1 : 0;
 		script_notify_on_next_frame(next);
