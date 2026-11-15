@@ -30,9 +30,7 @@ static KeyInputView     *key_input_view = nil;
 static float             pointer_x      = 0.0; // Last mouse position sent, for the trackpad gestures
 static float             pointer_y      = 0.0;
 static int               pointer_button = 0;   // Button of the trackpad or mouse click being held
-static char              language[3];
 static char              sysid[512];
-static const char       *video_formats[]                 = {"mp4", NULL};
 static void (*resize_callback)(int x, int y, void *data) = NULL;
 static void *resize_callback_data                        = NULL;
 static void  pencil_flush(bool all);
@@ -133,16 +131,6 @@ void iron_mouse_set_position(int x, int y) {}
 void iron_mouse_get_position(int *x, int *y) {}
 void iron_mouse_set_cursor(iron_cursor_t cursor_index) {}
 
-bool with_autoreleasepool(bool (*f)(void)) {
-	@autoreleasepool {
-		return f();
-	}
-}
-
-const char *iron_get_resource_path(void) {
-	return [[[NSBundle mainBundle] resourcePath] cStringUsingEncoding:1];
-}
-
 bool iron_internal_handle_messages(void) {
 #ifndef IRON_EXTERNAL_LOOP // Otherwise the app's run loop delivers the events
 	SInt32 result;
@@ -175,15 +163,6 @@ void iron_load_url(const char *url) {
 	[[UIApplication sharedApplication] openURL:nsURL options:@{} completionHandler:nil];
 }
 
-const char *iron_language(void) {
-	NSString   *nsstr = [[NSLocale preferredLanguages] objectAtIndex:0];
-	const char *lang  = [nsstr UTF8String];
-	language[0]       = lang[0];
-	language[1]       = lang[1];
-	language[2]       = 0;
-	return language;
-}
-
 void iron_internal_shutdown(void) {}
 
 void iron_init(iron_window_options_t *win) {
@@ -195,33 +174,6 @@ const char *iron_system_id(void) {
 	const char *vendorId = [[[[UIDevice currentDevice] identifierForVendor] UUIDString] UTF8String];
 	snprintf(sysid, sizeof(sysid), "%s-%s", name != NULL ? name : "", vendorId != NULL ? vendorId : "");
 	return sysid;
-}
-
-const char *iron_internal_save_path(void) {
-	NSArray  *paths        = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
-	NSString *resolvedPath = [paths objectAtIndex:0];
-	NSString *appName      = [NSString stringWithUTF8String:iron_application_name()];
-	resolvedPath           = [resolvedPath stringByAppendingPathComponent:appName];
-	NSFileManager *fileMgr = [[NSFileManager alloc] init];
-	NSError       *error;
-	[fileMgr createDirectoryAtPath:resolvedPath withIntermediateDirectories:YES attributes:nil error:&error];
-	resolvedPath = [resolvedPath stringByAppendingString:@"/"];
-	return [resolvedPath cStringUsingEncoding:1];
-}
-
-const char **iron_video_formats(void) {
-	return video_formats;
-}
-
-double iron_frequency(void) {
-	mach_timebase_info_data_t info;
-	mach_timebase_info(&info);
-	return (double)info.denom / (double)info.numer / 1e-9;
-}
-
-uint64_t iron_timestamp(void) {
-	uint64_t time = mach_absolute_time();
-	return time;
 }
 
 UIViewController *iron_ios_view_controller(void) {
@@ -1396,24 +1348,3 @@ volatile int iron_exec_async_done        = 1;
 char        *iron_exec_async_output_file = NULL;
 
 void iron_exec_async(const char *path, char *argv[]) {}
-
-// File of the system UI font (SF on Apple platforms), NULL when it can not be found
-const char *iron_system_font_path(void) {
-	static char path[1024] = {0};
-	static bool looked     = false;
-	if (!looked) {
-		looked         = true;
-		CTFontRef font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 0.0, NULL);
-		if (font != NULL) {
-			CFURLRef url = (CFURLRef)CTFontCopyAttribute(font, kCTFontURLAttribute);
-			if (url != NULL) {
-				if (!CFURLGetFileSystemRepresentation(url, true, (UInt8 *)path, sizeof(path))) {
-					path[0] = 0;
-				}
-				CFRelease(url);
-			}
-			CFRelease(font);
-		}
-	}
-	return path[0] != 0 ? path : NULL;
-}

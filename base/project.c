@@ -15,10 +15,8 @@ project_t *main() {
 	// Mac and iPad, Metal
 	if (platform == PLATFORM_MACOS) {
 		add_cfiles(project, "sources/backends/macos_system.*");
+		add_cfiles(project, "sources/backends/apple_system.m");
 		add_cfiles(project, "sources/backends/apple_net.*");
-		if (flags->with_audio) {
-			add_cfiles(project, "sources/backends/macos_audio.c");
-		}
 		add_cfiles(project, "sources/backends/apple_thread.*");
 		add_cfiles(project, "sources/backends/metal_gpu.*");
 		add_cfiles(project, "sources/backends/data/mac.plist");
@@ -27,6 +25,7 @@ project_t *main() {
 	}
 	else if (platform == PLATFORM_IOS) {
 		add_cfiles(project, "sources/backends/ios_system.*");
+		add_cfiles(project, "sources/backends/apple_system.m");
 		add_cfiles(project, "sources/backends/apple_net.*");
 		add_cfiles(project, "sources/backends/apple_thread.*");
 		add_cfiles(project, "sources/backends/metal_gpu.*");

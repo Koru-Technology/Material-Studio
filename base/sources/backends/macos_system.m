@@ -25,11 +25,9 @@ struct window_data {
 static struct window_data windows[1]              = {0};
 static bool               controlkey_mouse_button = false;
 static bool               keyboard_shown          = false;
-static const char        *video_formats[]         = {"ogv", NULL};
 static NSApplication     *myapp;
 static NSWindow          *window;
 static BasicMTKView      *view;
-static char               language[3];
 static int                current_cursor_index = 0;
 static int                key_translated[128];
 static bool               engine_started = false; // iron_init ran: the view may be resized into the gpu
@@ -626,31 +624,7 @@ const char *iron_system_id(void) {
 	return "macOS";
 }
 
-const char **iron_video_formats(void) {
-	return video_formats;
-}
-
 void iron_set_keep_screen_on(bool on) {}
-
-double iron_frequency(void) {
-	mach_timebase_info_data_t info;
-	mach_timebase_info(&info);
-	return (double)info.denom / (double)info.numer / 1e-9;
-}
-
-uint64_t iron_timestamp(void) {
-	return mach_absolute_time();
-}
-
-bool with_autoreleasepool(bool (*f)(void)) {
-	@autoreleasepool {
-		return f();
-	}
-}
-
-const char *iron_get_resource_path(void) {
-	return [[[NSBundle mainBundle] resourcePath] cStringUsingEncoding:NSUTF8StringEncoding];
-}
 
 @interface IronApplication : NSApplication {
 }
@@ -898,32 +872,8 @@ void iron_load_url(const char *url) {
 	[[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:[NSString stringWithUTF8String:url]]];
 }
 
-const char *iron_language(void) {
-	NSString   *nsstr = [[NSLocale preferredLanguages] objectAtIndex:0];
-	const char *lang  = [nsstr UTF8String];
-	language[0]       = lang[0];
-	language[1]       = lang[1];
-	language[2]       = 0;
-	return language;
-}
-
 void iron_internal_shutdown(void) {
 	iron_internal_shutdown_callback();
-}
-
-const char *iron_internal_save_path(void) {
-	NSArray  *paths        = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
-	NSString *resolvedPath = [paths objectAtIndex:0];
-	NSString *appName      = [NSString stringWithUTF8String:iron_application_name()];
-	resolvedPath           = [resolvedPath stringByAppendingPathComponent:appName];
-
-	NSFileManager *fileMgr = [[NSFileManager alloc] init];
-
-	NSError *error;
-	[fileMgr createDirectoryAtPath:resolvedPath withIntermediateDirectories:YES attributes:nil error:&error];
-
-	resolvedPath = [resolvedPath stringByAppendingString:@"/"];
-	return [resolvedPath cStringUsingEncoding:NSUTF8StringEncoding];
 }
 
 #ifndef IRON_EXTERNAL_LOOP // The native app has the entry point
@@ -1419,25 +1369,4 @@ void iron_exec_async(const char *path, char *argv[]) {
 		iron_exec_async_done = 1;
 	};
 	[task launch];
-}
-
-// File of the system UI font (SF on Apple platforms), NULL when it can not be found
-const char *iron_system_font_path(void) {
-	static char path[1024] = {0};
-	static bool looked     = false;
-	if (!looked) {
-		looked         = true;
-		CTFontRef font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 0.0, NULL);
-		if (font != NULL) {
-			CFURLRef url = (CFURLRef)CTFontCopyAttribute(font, kCTFontURLAttribute);
-			if (url != NULL) {
-				if (!CFURLGetFileSystemRepresentation(url, true, (UInt8 *)path, sizeof(path))) {
-					path[0] = 0;
-				}
-				CFRelease(url);
-			}
-			CFRelease(font);
-		}
-	}
-	return path[0] != 0 ? path : NULL;
 }
