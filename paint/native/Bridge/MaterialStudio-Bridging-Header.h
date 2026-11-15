@@ -2,4 +2,5 @@
 #include "../../sources/app_api.h"
 #include "../../sources/app_api_brushes.h"
 #include "../../sources/app_api_layers.h"
+#include "../../sources/app_api_masks.h"
 #include "../../sources/app_api_materials.h"

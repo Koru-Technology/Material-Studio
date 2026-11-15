@@ -194,10 +194,9 @@ final class LayersStore: ChangeOnly {
 
 	func refresh(_ s: app_state_t) {
 		update(\.selectedLayerID, s.selected_layer_id)
-		let props = app_layers_props_signature()
-		if s.layers_signature != layersSignature || props != propsSignature {
+		if s.layers_signature != layersSignature || s.layer_props_signature != propsSignature {
 			layersSignature = s.layers_signature
-			propsSignature = props
+			propsSignature = s.layer_props_signature
 			let rows = readLayers()
 			update(\.layers, rows)
 			update(\.visibleLayers, Self.visible(rows))

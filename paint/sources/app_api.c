@@ -1,6 +1,7 @@
 // The native UI's interface to the app, see app_api.h. #included by main.c after minic_impl.c (it reuses the script_* helpers).
 
 #include "app_api.h"
+#include "app_api_scripts.h"
 
 #define APP_SAME(a, b) ((i32)(a) == (i32)(b))
 _Static_assert(APP_SAME(APP_TOOL_BRUSH, TOOL_TYPE_BRUSH) && APP_SAME(APP_TOOL_ERASER, TOOL_TYPE_ERASER) && APP_SAME(APP_TOOL_FILL, TOOL_TYPE_FILL) &&
@@ -116,6 +117,7 @@ void app_get_state(app_state_t *out) {
 	out->selected_layer_id = g_context->layer != NULL ? g_context->layer->id : -1;
 	out->layers_signature  = app_layers_signature();
 	out->previews_version  = app_previews_counter;
+	out->layer_props_signature = app_layers_props_signature();
 	out->view_mode         = ui_base_view_mode();
 	out->viewport_mode     = g_context->viewport_mode;
 	out->brush_angle       = g_context->brush_angle;

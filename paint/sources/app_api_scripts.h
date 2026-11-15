@@ -13,7 +13,8 @@ bool    app_layer_select(int32_t id);
 bool    app_layer_add(void); // A paint layer above the selected one
 bool    app_layer_can_delete(int32_t id);
 
-// Layer properties and mask effects (app_api_layers.h)
+// Layer properties (app_api_layers.h) and mask effects (app_api_masks.h)
+uint32_t app_layers_props_signature(void); // app_state_t.layer_props_signature
 bool     app_layer_expanded(int32_t id);
 int32_t  app_layer_uv_type(int32_t id);
 int32_t  app_mask_effect_type(int32_t id, int32_t index); // -1: none

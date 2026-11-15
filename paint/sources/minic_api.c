@@ -31,6 +31,7 @@
 #include "app_api.h"
 #include "app_api_brushes.h"
 #include "app_api_layers.h"
+#include "app_api_masks.h"
 #include "app_api_materials.h"
 #include "app_api_scripts.h"
 

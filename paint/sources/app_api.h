@@ -21,6 +21,7 @@ typedef struct {
 	int32_t  selected_layer_id;
 	uint32_t layers_signature; // Layer ids, order, names, visibility, opacity, selection
 	uint32_t previews_version; // Layer thumbnails were redrawn
+	uint32_t layer_props_signature; // Any app_layer_props_t field of any layer (app_api_layers.h)
 	int32_t  view_mode;        // 0 3D, 1 2D alone, 2 both side by side (ui_base_view_mode)
 	int32_t  viewport_mode;    // viewport_mode_t
 	float    brush_angle;
