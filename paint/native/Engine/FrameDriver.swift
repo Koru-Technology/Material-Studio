@@ -14,7 +14,7 @@ final class FrameDriver: NSObject {
 
 	private(set) var isStarted = false
 	private(set) var isStopped = false
-	private var inTick         = false
+	private(set) var inTick    = false // In a frame: app_* calls wait for its end (app_api.h)
 	private var link: CADisplayLink?
 	private var fallback: Timer?
 	private var waitTimer: Timer?
