@@ -153,7 +153,7 @@ int kickstart(int argc, char **argv) {
 	iron_display_init();
 	_kickstart();
 
-#ifdef IRON_AUDIO
+#if defined(IRON_AUDIO) && !defined(IRON_EXTERNAL_LOOP) // An external loop returns here while the app keeps running
 	iron_a2_shutdown();
 #endif
 	return 0;
@@ -233,7 +233,7 @@ void _update() {
 	if (paused_frames > start_sleep && !input_down) {
 #ifdef IRON_WINDOWS
 		Sleep(1);
-#elif !defined(IRON_WASM)
+#elif !defined(IRON_WASM) && !defined(IRON_EXTERNAL_LOOP) // An external loop is paced by the display
 		struct timespec t;
 		t.tv_sec  = 0;
 		t.tv_nsec = 1000000;

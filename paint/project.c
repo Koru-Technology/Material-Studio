@@ -31,6 +31,7 @@ project_t *main() {
 	project_t *project = project_create(flags->name);
 	if (platform == PLATFORM_MACOS || platform == PLATFORM_IOS) {
 		add_cfiles(project, "native/**"); // SwiftUI interface: .swift sources and the bridging header
+		add_define(project, "IRON_EXTERNAL_LOOP"); // The SwiftUI app owns the run loop and drives the frames
 	}
 	add_project(project, "../base");
 	add_cfiles(project, "sources/startup.c");

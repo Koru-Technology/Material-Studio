@@ -282,10 +282,21 @@ bool iron_internal_frame(void) {
 	return running;
 }
 
+#ifdef IRON_EXTERNAL_LOOP
+// The native app owns the run loop and calls these once per display refresh (paint/native/Engine/FrameDriver.swift)
+bool iron_external_tick(void) {
+	return with_autoreleasepool(iron_internal_frame);
+}
+
+void iron_external_shutdown(void) {
+	iron_internal_shutdown();
+}
+#endif
+
 void iron_start(void) {
 	running = true;
 
-#if !defined(IRON_WASM)
+#if !defined(IRON_WASM) && !defined(IRON_EXTERNAL_LOOP)
 
 #if defined(IRON_IOS) || defined(IRON_MACOS)
 	while (with_autoreleasepool(iron_internal_frame)) {

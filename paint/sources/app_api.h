@@ -9,6 +9,3 @@
 static inline int app_api_version(void) {
 	return 1;
 }
-
-// Implemented in Swift (paint/native)
-void native_hello(void);

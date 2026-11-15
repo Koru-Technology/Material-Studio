@@ -255,14 +255,7 @@
 void plugins_init();
 #endif
 
-#if defined(IRON_MACOS) || defined(IRON_IOS)
-#include "app_api.h"
-#endif
-
 void _kickstart() {
-#if defined(IRON_MACOS) || defined(IRON_IOS)
-	native_hello();
-#endif
 	_render_path_cached_shader_contexts = any_map_create();
 	ui_nodes_custom_buttons             = any_map_create();
 

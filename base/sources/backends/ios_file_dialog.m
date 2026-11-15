@@ -4,8 +4,10 @@
 
 static UIDocumentPickerViewController *documentPicker = nil;
 
+UIViewController *iron_ios_view_controller(void); // ios_system.m, the canvas view controller (picks import files)
+
 void IOSFileDialogOpen() {
-	UIViewController<UIDocumentPickerDelegate> *myViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+	UIViewController<UIDocumentPickerDelegate> *myViewController = (UIViewController<UIDocumentPickerDelegate> *)iron_ios_view_controller();
 	if (documentPicker == nil) {
 		// public.folder lets a whole material folder be picked; multiple selection imports several at once
 		documentPicker          = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.data", @"public.folder" ]

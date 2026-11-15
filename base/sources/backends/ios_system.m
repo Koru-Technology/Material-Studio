@@ -11,6 +11,9 @@
 #include <mach/mach_time.h>
 #include <objc/runtime.h>
 #include <wchar.h>
+#ifdef IRON_EXTERNAL_LOOP
+#include "apple_host.h"
+#endif
 
 #define MAX_TOUCH_COUNT 10
 
@@ -141,10 +144,12 @@ const char *iron_get_resource_path(void) {
 }
 
 bool iron_internal_handle_messages(void) {
+#ifndef IRON_EXTERNAL_LOOP // Otherwise the app's run loop delivers the events
 	SInt32 result;
 	do {
 		result = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, TRUE);
 	} while (result == kCFRunLoopRunHandledSource);
+#endif
 	pencil_flush(false); // Samples whose final force did not arrive in time
 	return true;
 }
@@ -221,6 +226,24 @@ uint64_t iron_timestamp(void) {
 	return time;
 }
 
+UIViewController *iron_ios_view_controller(void) {
+	return my_view_controller;
+}
+
+#ifdef IRON_EXTERNAL_LOOP
+void *iron_apple_engine_view_controller(void) {
+	if (my_view_controller == nil) {
+		my_view_controller                           = [[MyViewController alloc] init];
+		my_view_controller.view.multipleTouchEnabled = YES;
+		[my_view_controller setVisible:YES];
+	}
+	return (__bridge void *)my_view_controller;
+}
+
+void *iron_apple_engine_view(void) {
+	return (__bridge void *)((__bridge UIViewController *)iron_apple_engine_view_controller()).view;
+}
+#else
 int main(int argc, char *argv[]) {
 	int res = 0;
 	@autoreleasepool {
@@ -229,6 +252,7 @@ int main(int argc, char *argv[]) {
 	}
 	return res;
 }
+#endif
 
 int iron_window_x() {
 	return 0;
@@ -648,8 +672,14 @@ static void pencil_gesture(UIView *view, int gesture, bool hovering, CGPoint at)
 }
 
 - (void)layoutSubviews {
-	backing_width  = self.frame.size.width * self.contentScaleFactor;
-	backing_height = self.frame.size.height * self.contentScaleFactor;
+	[super layoutSubviews];
+	int w = self.bounds.size.width * self.contentScaleFactor;
+	int h = self.bounds.size.height * self.contentScaleFactor;
+	if (w <= 0 || h <= 0) {
+		return;
+	}
+	backing_width  = w;
+	backing_height = h;
 	gpu_resize(backing_width, backing_height);
 	iron_internal_call_resize_callback(backing_width, backing_height);
 }
@@ -1226,23 +1256,64 @@ static void openSharedFile(NSURL *url) {
 
 @end
 
+// Launch arguments (devicectl launch ... -- --script ~/Documents/x.c), "~/" is the app container
+static void ios_kickstart(void) {
+	NSArray<NSString *> *args = [[NSProcessInfo processInfo] arguments];
+	int                  argc = (int)args.count;
+	char               **argv = calloc(argc + 1, sizeof(char *));
+	NSString            *home = NSHomeDirectory();
+	for (int i = 0; i < argc; ++i) {
+		NSString *a = args[i];
+		if ([a hasPrefix:@"~/"]) {
+			a = [home stringByAppendingPathComponent:[a substringFromIndex:2]];
+		}
+		argv[i] = strdup([a UTF8String]);
+	}
+	kickstart(argc, argv);
+}
+
+void iron_apple_resign_active(void) {
+	// Extra time for the callback to finish (saving), the gpu is not available once in the background
+	UIApplication                      *app  = [UIApplication sharedApplication];
+	__block UIBackgroundTaskIdentifier  task = [app beginBackgroundTaskWithExpirationHandler:^{
+		[app endBackgroundTask:task];
+		task = UIBackgroundTaskInvalid;
+	}];
+	iron_internal_resign_active_callback();
+	if (task != UIBackgroundTaskInvalid) {
+		[app endBackgroundTask:task];
+	}
+}
+
+void iron_apple_enter_background(void) {
+	iron_internal_background_callback();
+}
+
+void iron_apple_enter_foreground(void) {
+	iron_internal_foreground_callback();
+}
+
+void iron_apple_open_url(const char *url) {
+	openSharedFile([NSURL URLWithString:[NSString stringWithUTF8String:url]]);
+}
+
+#ifdef IRON_EXTERNAL_LOOP
+void iron_apple_start(void) {
+	@autoreleasepool {
+		ios_kickstart();
+	}
+}
+
+bool iron_apple_should_terminate(void) {
+	return true;
+}
+#endif
+
 @implementation IronSceneDelegate
 
 - (void)mainLoop {
 	@autoreleasepool {
-		// Launch arguments (devicectl launch ... -- --script ~/Documents/x.c), "~/" is the app container
-		NSArray<NSString *> *args = [[NSProcessInfo processInfo] arguments];
-		int                  argc = (int)args.count;
-		char               **argv = calloc(argc + 1, sizeof(char *));
-		NSString            *home = NSHomeDirectory();
-		for (int i = 0; i < argc; ++i) {
-			NSString *a = args[i];
-			if ([a hasPrefix:@"~/"]) {
-				a = [home stringByAppendingPathComponent:[a substringFromIndex:2]];
-			}
-			argv[i] = strdup([a UTF8String]);
-		}
-		kickstart(argc, argv);
+		ios_kickstart();
 	}
 	// The main loop ended (a script quit): nothing draws or takes input any more, a frozen app is worse than closing it
 	exit(0);
@@ -1288,24 +1359,15 @@ static void openSharedFile(NSURL *url) {
 }
 
 - (void)sceneWillResignActive:(UIScene *)scene {
-	// Extra time for the callback to finish (saving), the gpu is not available once in the background
-	UIApplication           *app  = [UIApplication sharedApplication];
-	__block UIBackgroundTaskIdentifier task = [app beginBackgroundTaskWithExpirationHandler:^{
-		[app endBackgroundTask:task];
-		task = UIBackgroundTaskInvalid;
-	}];
-	iron_internal_resign_active_callback();
-	if (task != UIBackgroundTaskInvalid) {
-		[app endBackgroundTask:task];
-	}
+	iron_apple_resign_active();
 }
 
 - (void)sceneWillEnterForeground:(UIScene *)scene {
-	iron_internal_foreground_callback();
+	iron_apple_enter_foreground();
 }
 
 - (void)sceneDidEnterBackground:(UIScene *)scene {
-	iron_internal_background_callback();
+	iron_apple_enter_background();
 }
 
 @end

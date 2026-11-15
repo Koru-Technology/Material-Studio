@@ -8,6 +8,9 @@
 #include <mach/mach_time.h>
 #include <objc/runtime.h>
 #include <stdbool.h>
+#ifdef IRON_EXTERNAL_LOOP
+#include "apple_host.h"
+#endif
 
 struct window_data {
 	id   handle;
@@ -29,6 +32,7 @@ static BasicMTKView      *view;
 static char               language[3];
 static int                current_cursor_index = 0;
 static int                key_translated[128];
+static bool               engine_started = false; // iron_init ran: the view may be resized into the gpu
 
 static void init_key_translation(void) {
 	for (int i = 0; i < 128; ++i)
@@ -249,16 +253,15 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 	}
 }
 
+// In the engine view's pixels, top left origin (the view may not fill the window)
 static int get_mouse_x(NSEvent *event) {
-	NSWindow *window = [[NSApplication sharedApplication] mainWindow];
-	float     scale  = [window backingScaleFactor];
-	return (int)([event locationInWindow].x * scale);
+	NSPoint point = [view convertPoint:[event locationInWindow] fromView:nil];
+	return (int)(point.x * [[view window] backingScaleFactor]);
 }
 
 static int get_mouse_y(NSEvent *event) {
-	NSWindow *window = [[NSApplication sharedApplication] mainWindow];
-	float     scale  = [window backingScaleFactor];
-	return (int)(iron_window_height() - [event locationInWindow].y * scale);
+	NSPoint point = [view convertPoint:[event locationInWindow] fromView:nil];
+	return (int)(([view bounds].size.height - point.y) * [[view window] backingScaleFactor]);
 }
 
 - (void)mouseDown:(NSEvent *)theEvent {
@@ -454,6 +457,43 @@ static void trackpad_release(void) {
 	[self setFrameSize:size];
 }
 
+#ifdef IRON_EXTERNAL_LOOP
+// Laid out by the native app: follow the view's own size instead of the window's
+- (void)setFrameSize:(NSSize)size {
+	[super setFrameSize:size];
+	[self engineResize];
+}
+
+- (void)viewDidChangeBackingProperties {
+	[super viewDidChangeBackingProperties];
+	[self engineResize];
+}
+
+- (void)engineResize {
+	if (!engine_started || self.window == nil) {
+		return;
+	}
+	int w = iron_window_width();
+	int h = iron_window_height();
+	if (w > 0 && h > 0) {
+		gpu_resize(w, h);
+		iron_internal_call_resize_callback(w, h);
+	}
+}
+
+- (void)updateTrackingAreas {
+	[super updateTrackingAreas];
+	for (NSTrackingArea *area in self.trackingAreas) {
+		[self removeTrackingArea:area];
+	}
+	// Hover (the brush cursor) while the pointer is over the view, without a button held
+	[self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
+	                                                   options:NSTrackingMouseMoved | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect
+	                                                     owner:self
+	                                                  userInfo:nil]];
+}
+#endif
+
 - (CAMetalLayer *)metalLayer {
 	return (CAMetalLayer *)self.layer;
 }
@@ -532,8 +572,8 @@ void iron_mouse_hide(void) {
 void iron_mouse_set_position(int x, int y) {
 	NSWindow *window      = windows[0].handle;
 	float     scale       = [window backingScaleFactor];
-	NSRect    rect        = [[window contentView] bounds];
-	NSPoint   windowpoint = NSMakePoint(x / scale, rect.size.height - y / scale);
+	NSRect    rect        = [view bounds];
+	NSPoint   windowpoint = [view convertPoint:NSMakePoint(x / scale, rect.size.height - y / scale) toView:nil];
 	NSPoint   screenpoint = [window convertPointToScreen:windowpoint];
 	CGPoint   cgpoint     = CGPointMake(screenpoint.x, [[NSScreen mainScreen] frame].size.height - screenpoint.y);
 	CGDisplayMoveCursorToPoint(kCGDirectMainDisplay, cgpoint);
@@ -543,8 +583,8 @@ void iron_mouse_set_position(int x, int y) {
 void iron_mouse_get_position(int *x, int *y) {
 	NSWindow *window = windows[0].handle;
 	float     scale  = [window backingScaleFactor];
-	NSRect    rect   = [[window contentView] bounds];
-	NSPoint   point  = [window mouseLocationOutsideOfEventStream];
+	NSRect    rect   = [view bounds];
+	NSPoint   point  = [view convertPoint:[window mouseLocationOutsideOfEventStream] fromView:nil];
 	*x               = (int)(point.x * scale);
 	*y               = (int)((rect.size.height - point.y) * scale);
 }
@@ -643,6 +683,13 @@ id get_metal_queue(void) {
 }
 
 bool iron_internal_handle_messages(void) {
+#ifdef IRON_EXTERNAL_LOOP
+	// The app's run loop delivers the events
+	if (trackpad_lift > 0.0 && [[NSProcessInfo processInfo] systemUptime] - trackpad_lift > 0.1) {
+		trackpad_release();
+	}
+	return true;
+#endif
 	NSEvent *event;
 	while ((event = [myapp nextEventMatchingMask:NSAnyEventMask untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode
 	                                     dequeue:YES]) != nil) { // distantPast: non-blocking
@@ -741,8 +788,85 @@ static void add_menubar(void) {
 	[NSApp setMainMenu:menubar];
 }
 
+#ifdef IRON_EXTERNAL_LOOP
+void *iron_apple_engine_view(void) {
+	if (view == nil) {
+		view = [[BasicMTKView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)];
+		[view registerForDraggedTypes:[NSArray arrayWithObjects:NSURLPboardType, nil]];
+	}
+	return (__bridge void *)view;
+}
+
+void *iron_apple_engine_view_controller(void) {
+	return NULL;
+}
+
+void iron_apple_start(void) {
+	NSArray<NSString *> *args = [[NSProcessInfo processInfo] arguments];
+	int                  argc = (int)args.count;
+	char               **argv = calloc(argc + 1, sizeof(char *));
+	for (int i = 0; i < argc; ++i) {
+		argv[i] = strdup([args[i] UTF8String]);
+	}
+	kickstart(argc, argv);
+}
+
+bool iron_apple_should_terminate(void) {
+	if (!engine_started) {
+		return true;
+	}
+	// The save prompt, then iron_stop: the frame driver sees the engine stop and quits
+	if (windows[0].close_callback != NULL) {
+		windows[0].close_callback(windows[0].close_callback_data);
+	}
+	else {
+		iron_stop();
+	}
+	return false;
+}
+
+void iron_apple_resign_active(void) {}
+void iron_apple_enter_background(void) {}
+void iron_apple_enter_foreground(void) {}
+void iron_apple_open_url(const char *url) {}
+
+static void adopt_host_window(void) {
+	myapp  = NSApp;
+	window = [view window];
+	[window setAcceptsMouseMovedEvents:YES];
+	windows[0].handle = window;
+	windows[0].view   = view;
+	delegate          = [[IronAppDelegate alloc] init];
+	// The app owns the window's delegate, the engine listens to the notifications instead
+	NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+	[center addObserver:delegate selector:@selector(windowWillMiniaturize:) name:NSWindowWillMiniaturizeNotification object:window];
+	[center addObserver:delegate selector:@selector(windowDidDeminiaturize:) name:NSWindowDidDeminiaturizeNotification object:window];
+	[center addObserver:delegate selector:@selector(windowDidResignKey:) name:NSWindowDidResignKeyNotification object:window];
+	[center addObserver:delegate selector:@selector(windowDidBecomeKey:) name:NSWindowDidBecomeKeyNotification object:window];
+	// Closing the window quits through the app, which asks to save first
+	NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+	[close setTarget:NSApp];
+	[close setAction:@selector(terminate:)];
+	// Key up is not delivered to the view while cmd is held, keys would stay down
+	[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp
+	                                      handler:^NSEvent *(NSEvent *event) {
+		                                      if (([event modifierFlags] & NSEventModifierFlagCommand) && [window firstResponder] == view) {
+			                                      [view keyUp:event];
+		                                      }
+		                                      return event;
+	                                      }];
+	[window makeFirstResponder:view];
+}
+#endif
+
 void iron_init(iron_window_options_t *win) {
 	init_key_translation();
+#ifdef IRON_EXTERNAL_LOOP
+	adopt_host_window();
+	engine_started = true;
+	gpu_init(win->depth_bits, true);
+	return;
+#endif
 	@autoreleasepool {
 		myapp = [IronApplication sharedApplication];
 		[myapp finishLaunching];
@@ -760,16 +884,15 @@ void iron_init(iron_window_options_t *win) {
 	gpu_init(win->depth_bits, true);
 }
 
+// The engine view's size in pixels (the view fills the window, unless a native app lays it out)
 int iron_window_width() {
-	NSWindow *window = windows[0].handle;
-	float     scale  = [window backingScaleFactor];
-	return [[window contentView] frame].size.width * scale;
+	float scale = [[view window] backingScaleFactor];
+	return [view bounds].size.width * scale;
 }
 
 int iron_window_height() {
-	NSWindow *window = windows[0].handle;
-	float     scale  = [window backingScaleFactor];
-	return [[window contentView] frame].size.height * scale;
+	float scale = [[view window] backingScaleFactor];
+	return [view bounds].size.height * scale;
 }
 
 void iron_load_url(const char *url) {
@@ -804,9 +927,11 @@ const char *iron_internal_save_path(void) {
 	return [resolvedPath cStringUsingEncoding:NSUTF8StringEncoding];
 }
 
+#ifndef IRON_EXTERNAL_LOOP // The native app has the entry point
 int main(int argc, char **argv) {
 	return kickstart(argc, argv);
 }
+#endif
 
 @implementation IronApplication
 
