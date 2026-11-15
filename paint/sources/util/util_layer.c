@@ -45,7 +45,12 @@ static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
 	draw_end();
 }
 
+void app_notify_previews(void); // app_api.c
+
 void util_layer_update_preview() {
+	if (g_context->layers_preview_dirty || (g_context->layer != NULL && g_context->layer_preview_dirty)) {
+		app_notify_previews();
+	}
 	if (g_context->layers_preview_dirty) {
 		g_context->layers_preview_dirty = false;
 		g_context->layer_preview_dirty  = false;

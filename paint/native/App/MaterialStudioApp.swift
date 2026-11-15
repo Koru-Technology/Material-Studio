@@ -12,6 +12,9 @@ struct MaterialStudioApp: App {
 			MacRootView()
 		}
 		.defaultSize(width: 1600, height: 1000)
+		.commands {
+			EditCommands()
+		}
 #else
 		WindowGroup {
 			PadRootView()
@@ -27,22 +30,14 @@ struct MacRootView: View {
 
 	var body: some View {
 		NavigationSplitView {
-			List {
-				Section("Layers") {
-					Text("Layers")
-				}
-			}
-			.navigationSplitViewColumnWidth(min: 200, ideal: 240)
+			LayersView()
+				.navigationSplitViewColumnWidth(min: 200, ideal: 260)
 		} detail: {
 			EngineCanvas()
 				.ignoresSafeArea()
 				.inspector(isPresented: $inspectorShown) {
-					Form {
-						Section("Tool") {
-							Text("Tool properties")
-						}
-					}
-					.inspectorColumnWidth(min: 220, ideal: 260)
+					InspectorView()
+						.inspectorColumnWidth(min: 240, ideal: 280)
 				}
 				.toolbar {
 					ToolbarItem(placement: .primaryAction) {
@@ -53,6 +48,25 @@ struct MacRootView: View {
 						}
 					}
 				}
+		}
+	}
+}
+
+struct EditCommands: Commands {
+	private var store = AppStore.shared
+
+	var body: some Commands {
+		CommandGroup(replacing: .undoRedo) {
+			Button(store.undoName.isEmpty ? "Undo" : "Undo \(store.undoName)") {
+				store.perform { app_undo() }
+			}
+			.keyboardShortcut("z")
+			.disabled(!store.canUndo)
+			Button("Redo") {
+				store.perform { app_redo() }
+			}
+			.keyboardShortcut("z", modifiers: [.command, .shift])
+			.disabled(!store.canRedo)
 		}
 	}
 }

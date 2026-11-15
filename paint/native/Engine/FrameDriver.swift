@@ -48,7 +48,9 @@ final class FrameDriver: NSObject {
 		inTick = false
 		if !running {
 			stop()
+			return
 		}
+		AppStore.shared.refresh()
 	}
 
 	// The engine stopped (a script quit, the user quit and saved): nothing draws or takes input any more

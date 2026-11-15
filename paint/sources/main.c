@@ -238,6 +238,7 @@
 #include "keymap.c"
 #include "logic_node.c"
 #include "minic_impl.c"
+#include "app_api.c"
 #include "node_shader.c"
 #include "nodes_brush.c"
 #include "nodes_material.c"
@@ -448,6 +449,7 @@ void _kickstart() {
 	import_stl_init();
 
 	base_init();
+	app_set_ready();
 
 #ifdef is_debug
 	iron_log("Started in %fs\n", iron_time() - t_start);
