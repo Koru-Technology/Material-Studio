@@ -95,7 +95,14 @@ char *history_action_to_string(history_action_t action) {
 	return tr("Paint");
 }
 
+static bool history_in(i32 i, i32 length) {
+	return i >= 0 && i < length;
+}
+
 void history_undo_invert_mask(history_step_t *step) {
+	if (!history_in(step->layer, g_project->_->layers->length)) {
+		return;
+	}
 	g_context->layer = g_project->_->layers->buffer[step->layer];
 	slot_layer_invert_mask(g_context->layer);
 	mask_stack_mark_dirty(g_context->layer);
@@ -210,11 +217,21 @@ static void history_swap_order(history_step_t *step) {
 	make_material_parse_mesh_material();
 }
 
+// Deferred to the next frame: a later step undone in the same frame may have removed the layer, its textures are gone
+static bool history_layer_alive(slot_layer_t *l) {
+	return array_index_of(g_project->_->layers, l) >= 0;
+}
+
 void history_update_fill_layer(slot_layer_t *l) {
-	layers_refresh_fill_layer(l);
+	if (history_layer_alive(l)) {
+		layers_refresh_fill_layer(l);
+	}
 }
 
 void history_layer_object_clear(slot_layer_t *l) {
+	if (!history_layer_alive(l)) {
+		return;
+	}
 	g_context->material = l->fill_material;
 	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	layers_update_fill_layers();
@@ -432,6 +449,64 @@ void history_swap_canvas(history_step_t *step) {
 	ui_nodes_hwnd->redraws = 2;
 }
 
+// The layers, materials and objects step points at by position are still there. A step left behind by a change made
+// without history would read out of bounds, it is skipped instead.
+static bool history_step_valid(history_step_t *step, bool undo) {
+	i32 layers    = g_project->_->layers->length;
+	i32 materials = g_project->_->materials->length;
+	switch (step->action) {
+	case HISTORY_ACTION_EDIT_NODES:
+	case HISTORY_ACTION_DELETE_NODE_GROUP:
+	case HISTORY_ACTION_NEW_BRUSH:
+	case HISTORY_ACTION_DELETE_BRUSH:
+	case HISTORY_ACTION_DUPLICATE_BRUSH:
+	case HISTORY_ACTION_NEW_SWATCH:
+	case HISTORY_ACTION_DELETE_SWATCH:
+	case HISTORY_ACTION_DUPLICATE_SWATCH:
+	case HISTORY_ACTION_REPLACE_SWATCHES:
+	case HISTORY_ACTION_EDIT_SWATCH:
+		return true;
+	case HISTORY_ACTION_NEW_LAYER:
+	case HISTORY_ACTION_NEW_BLACK_MASK:
+	case HISTORY_ACTION_NEW_WHITE_MASK:
+	case HISTORY_ACTION_NEW_FILL_MASK:
+		if (undo) {
+			return history_in(step->layer, layers);
+		}
+		return step->layer >= 0 && step->layer <= layers && step->layer_parent - 1 < layers &&
+		       (step->action != HISTORY_ACTION_NEW_FILL_MASK || history_in(step->material, materials));
+	case HISTORY_ACTION_SMART_MATERIAL:
+		return !undo || history_in(step->layer, layers);
+	case HISTORY_ACTION_NEW_GROUP:
+		return history_in(step->layer - 1, layers) && (undo ? step->layer < layers : step->layer <= layers);
+	case HISTORY_ACTION_DELETE_LAYER:
+	case HISTORY_ACTION_MERGE_LAYERS: {
+		if (step->merge_layers == NULL) {
+			return false;
+		}
+		i32 count = layers - (step->merge_length - step->merge_layers->length);
+		return step->merge_start >= 0 && count >= 0 && step->merge_start + count <= layers;
+	}
+	case HISTORY_ACTION_DUPLICATE_LAYER:
+		return history_in(step->layer, layers) &&
+		       (!undo || history_in(step->layer + 1 + slot_layer_count_descendants(g_project->_->layers->buffer[step->layer]), layers));
+	case HISTORY_ACTION_ORDER_LAYERS:
+		return history_in(step->prev_order, layers) && history_in(step->layer, layers) && step->layer_parent < layers;
+	case HISTORY_ACTION_NEW_MATERIAL:
+	case HISTORY_ACTION_DUPLICATE_MATERIAL:
+		return undo ? history_in(step->material, materials) : step->material >= 0 && step->material <= materials;
+	case HISTORY_ACTION_DELETE_MATERIAL:
+		return undo ? step->material >= 0 && step->material <= materials : history_in(step->material, materials);
+	case HISTORY_ACTION_TO_FILL_LAYER:
+	case HISTORY_ACTION_TO_FILL_MASK:
+		return history_in(step->layer, layers) && (undo || history_in(step->material, materials));
+	case HISTORY_ACTION_PAINT:
+		return history_in(step->layer, layers) && history_in(step->object, g_project->_->paint_objects->length);
+	default:
+		return history_in(step->layer, layers);
+	}
+}
+
 void history_undo() {
 	history_tiles_finalize();
 	if (history_undos > 0) {
@@ -442,7 +517,11 @@ void history_undo() {
 		i32             active = history_steps->length - 1 - history_redos;
 		history_step_t *step   = history_steps->buffer[active];
 
-		if (step->action == HISTORY_ACTION_EDIT_NODES) {
+		if (!history_step_valid(step, true)) {
+			iron_log("Undo skipped, its layer is gone: %s", step->name);
+			history_undo_i = ((history_undo_i - step->undo_ring) % g_config->undo_steps + g_config->undo_steps) % g_config->undo_steps; // Its copies
+		}
+		else if (step->action == HISTORY_ACTION_EDIT_NODES) {
 			history_swap_canvas(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_LAYER || step->action == HISTORY_ACTION_NEW_BLACK_MASK || step->action == HISTORY_ACTION_NEW_WHITE_MASK ||
@@ -658,6 +737,9 @@ void history_undo() {
 }
 
 void history_redo_invert_mask(history_step_t *step) {
+	if (!history_in(step->layer, g_project->_->layers->length)) {
+		return;
+	}
 	g_context->layer = g_project->_->layers->buffer[step->layer];
 	slot_layer_invert_mask(g_context->layer);
 	mask_stack_mark_dirty(g_context->layer);
@@ -724,15 +806,21 @@ void history_redo_duplicate_layer(void *_) {
 }
 
 void history_redo_new_fill_mask(slot_layer_t *l) {
-	slot_layer_to_fill_layer(l);
+	if (history_layer_alive(l)) {
+		slot_layer_to_fill_layer(l);
+	}
 }
 
 void history_redo_new_white_mask(slot_layer_t *l) {
-	slot_layer_clear(l, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
+	if (history_layer_alive(l)) {
+		slot_layer_clear(l, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
+	}
 }
 
 void history_redo_new_black_mask(slot_layer_t *l) {
-	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+	if (history_layer_alive(l)) {
+		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+	}
 }
 
 void history_swap_active() {
@@ -753,7 +841,11 @@ void history_redo() {
 		i32             active = history_steps->length - history_redos;
 		history_step_t *step   = history_steps->buffer[active];
 
-		if (step->action == HISTORY_ACTION_EDIT_NODES) {
+		if (!history_step_valid(step, false)) {
+			iron_log("Redo skipped, its layer is gone: %s", step->name);
+			history_undo_i = (history_undo_i + step->undo_ring) % g_config->undo_steps;
+		}
+		else if (step->action == HISTORY_ACTION_EDIT_NODES) {
 			history_swap_canvas(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_LAYER || step->action == HISTORY_ACTION_NEW_BLACK_MASK || step->action == HISTORY_ACTION_NEW_WHITE_MASK ||
