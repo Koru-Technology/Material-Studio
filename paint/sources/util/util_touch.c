@@ -12,12 +12,7 @@ void util_touch_update() {
 			util_touch_action_paint_remap = string_copy(paint_key);
 			util_render_pick_pos_nor_tex();
 			bool is_mesh = util_render_picked_on_mesh();
-#ifdef IRON_ANDROID
-			// Allow rotating with both pen and touch, because hovering a pen prevents touch input on android
-			bool pen_only = false;
-#else
 			bool pen_only = context_finger_paint_blocked() && !ui_id_mask_active; // Fingers pick ID mask parts
-#endif
 			bool is_pen = pen_only && pen_down("tip");
 			// Mesh picked - disable rotate
 			// Pen painting only - rotate with touch, paint with pen on the mesh, the pen rotates from the background

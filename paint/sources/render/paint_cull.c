@@ -17,7 +17,6 @@ f32 paint_cull_last_kept() {
 	return paint_cull_kept;
 }
 
-#ifdef IRON_METAL
 
 #define PAINT_CULL_CHUNK    128 // Triangles a chunk
 #define PAINT_CULL_MESHES   8
@@ -257,4 +256,3 @@ void paint_cull_draw_next(mesh_object_t *o, paint_cull_dab_t *dabs, i32 count) {
 	gpu_draw_ranges_next(m->ib, paint_cull_starts, paint_cull_counts, ranges);
 }
 
-#endif

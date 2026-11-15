@@ -807,9 +807,7 @@ bool util_render_load_material_icon(slot_material_t *m, buffer_t *icon) {
 	if (pixels == NULL || pixels->length != size) {
 		return false;
 	}
-#ifdef IRON_BGRA
 	pixels = buffer_bgra64_swap(pixels);
-#endif
 	gpu_texture_t *saved = gpu_create_texture_from_bytes_raw(pixels, w, w, GPU_TEXTURE_FORMAT_RGBA64);
 	util_render_set_material_preview(m, saved);
 	gpu_delete_texture(saved);

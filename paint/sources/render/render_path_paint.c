@@ -185,17 +185,13 @@ mesh_object_t *render_path_paint_target() {
 }
 
 // Texture space, the whole mesh is drawn wherever the camera looks
-#ifdef IRON_METAL
 static void render_path_paint_cull(mesh_object_t *o);
-#endif
 
 void render_path_paint_draw_target() {
 	mesh_object_t *o = render_path_paint_target();
 	if (o != NULL && make_material_paint_scon != NULL) {
 		_mesh_object_last_pipeline = NULL;
-#ifdef IRON_METAL
 		render_path_paint_cull(o);
-#endif
 		render_path_paint_draw_material(o);
 	}
 	render_path_end();
@@ -413,11 +409,7 @@ static mesh_object_t *render_path_paint_pick_object() {
 
 	buffer_t *pixel = gpu_get_texture_pixels(render_path_target_image("texpaint_picker"));
 	if (buffer_get_u8(pixel, 3) > 0) {
-#ifdef IRON_BGRA
 		i32 r_byte = buffer_get_u8(pixel, 2);
-#else
-		i32 r_byte = buffer_get_u8(pixel, 0);
-#endif
 		i32 g_byte = buffer_get_u8(pixel, 1);
 		i32 index  = r_byte + g_byte * 256 - 1;
 		if (index >= 0 && index < g_project->_->paint_objects->length) {
@@ -494,7 +486,6 @@ static void render_path_paint_batch_upload() {
 	render_path_paint_batch_ready   = true;
 }
 
-#ifdef IRON_METAL
 // Only the parts of the mesh near the dabs of this draw, see paint_cull.c
 static void render_path_paint_cull(mesh_object_t *o) {
 	tool_type_t tool = g_context->tool;
@@ -520,7 +511,6 @@ static void render_path_paint_cull(mesh_object_t *o) {
 	}
 	paint_cull_draw_next(o, dabs, count);
 }
-#endif
 
 // Paints the collected dabs
 void render_path_paint_batch_flush(bool dilation) {
@@ -602,15 +592,9 @@ void render_path_paint_commands_paint(bool dilation) {
 // Picker results: surface values under the cursor into the picked color, the material and fill layers with picker nodes.
 // tool is the tool when the pick was drawn, the values may arrive a frame later.
 static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_mask, tool_type_t tool) {
-#ifdef IRON_BGRA
 	i32 i0 = 2;
 	i32 i1 = 1;
 	i32 i2 = 0;
-#else
-	i32 i0 = 0;
-	i32 i1 = 1;
-	i32 i2 = 2;
-#endif
 	i32 i3                           = 3;
 	g_context->picked_color->base    = color_set_rb(g_context->picked_color->base, a[i0]);
 	g_context->picked_color->base    = color_set_gb(g_context->picked_color->base, a[i1]);
@@ -682,7 +666,6 @@ static gpu_texture_t *render_path_paint_picker_target(char *name) {
 	return render_path_target_image(name);
 }
 
-#ifdef IRON_METAL
 void gpu_read_textures_async(gpu_texture_t **textures, int count);
 bool gpu_read_textures_async_poll(uint8_t **data);
 
@@ -697,25 +680,14 @@ void render_path_paint_picker_poll() {
 		render_path_paint_picker_apply(data[0], mask ? NULL : data[2], mask ? NULL : data[3], data[1], mask, render_path_paint_picker_tool);
 	}
 }
-#else
-void render_path_paint_picker_poll() {}
-#endif
 
 static void render_path_paint_picker_read(bool is_mask) {
-#ifdef IRON_METAL
 	gpu_texture_t *textures[4] = {render_path_paint_picker_target("texpaint_picker"), render_path_paint_picker_target("texpaint_uv_picker"),
 	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_nor_picker"),
 	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_pack_picker")};
 	render_path_paint_picker_mask = is_mask;
 	render_path_paint_picker_tool = g_context->tool;
 	gpu_read_textures_async(textures, is_mask ? 2 : 4);
-#else
-	u8 *a = gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_picker"))->buffer;
-	u8 *d = gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_uv_picker"))->buffer;
-	u8 *b = is_mask ? NULL : gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_nor_picker"))->buffer;
-	u8 *c = is_mask ? NULL : gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_pack_picker"))->buffer;
-	render_path_paint_picker_apply(a, b, c, d, is_mask, g_context->tool);
-#endif
 }
 
 static void render_path_paint_commands_paint_internal(bool dilation) {
@@ -735,15 +707,9 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		render_path_bind_target("gbuffer2", "gbuffer2");
 		render_path_paint_draw_fullscreen_triangle();
 		buffer_t *a = gpu_get_texture_pixels(render_path_target_image("texpaint_colorid"));
-#ifdef IRON_BGRA
 		i32 i0 = 2;
 		i32 i1 = 1;
 		i32 i2 = 0;
-#else
-		i32 i0 = 0;
-		i32 i1 = 1;
-		i32 i2 = 2;
-#endif
 		if (ui_id_mask_pick_pending) {
 			ui_id_mask_pick_pending = false;
 			ui_id_mask_toggle(((u32)buffer_get_u8(a, i0) << 16) | ((u32)buffer_get_u8(a, i1) << 8) | (u32)buffer_get_u8(a, i2));
