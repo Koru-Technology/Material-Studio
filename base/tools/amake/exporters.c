@@ -761,8 +761,12 @@ static char *xc_get_dir(project_file_t *file) {
 }
 
 static bool xc_is_build_file(char *name) {
-	return ends_with(name, ".c") || ends_with(name, ".cpp") || ends_with(name, ".m") || ends_with(name, ".metal");
+	return ends_with(name, ".c") || ends_with(name, ".cpp") || ends_with(name, ".m") || ends_with(name, ".metal") || ends_with(name, ".swift");
 }
+
+// Set by xc_export: the project has Swift sources, and the bridging header found among its files ("*-Bridging-Header.h")
+static bool  xc_has_swift       = false;
+static char *xc_bridging_header = NULL;
 
 static void add_icons(any_array_t *icons, char *idiom, double *sizes, int *scales, int count) {
 	for (int i = 0; i < count; ++i) {
@@ -901,6 +905,14 @@ static void xc_target_settings(project_t *project, char *from, char *plistname, 
 	p(4, "BUILD_VERSION = \"%s\";", build);
 	xc_code_sign_identity(team[0] != '\0', ios);
 	p(4, "PRODUCT_NAME = \"$(TARGET_NAME)\";");
+	if (xc_has_swift) {
+		p(4, "SWIFT_VERSION = 6.0;");
+		p(4, "SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;");
+		p(4, "SWIFT_APPROACHABLE_CONCURRENCY = YES;");
+		if (xc_bridging_header != NULL) {
+			p(4, "SWIFT_OBJC_BRIDGING_HEADER = \"%s\";", path_resolve(from, xc_bridging_header));
+		}
+	}
 }
 
 static void xc_export(project_t *project) {
@@ -954,6 +966,12 @@ static void xc_export(project_t *project) {
 		char           *filename   = fileobject->file;
 		if (ends_with(filename, ".plist")) {
 			plistname = filename;
+		}
+		if (ends_with(filename, ".swift")) {
+			xc_has_swift = true;
+		}
+		if (ends_with(filename, "-Bridging-Header.h")) {
+			xc_bridging_header = filename;
 		}
 		xc_file_t *file = calloc(1, sizeof(xc_file_t));
 		file->name      = filename;
@@ -1087,6 +1105,9 @@ static void xc_export(project_t *project) {
 		}
 		if (ends_with(file->name, ".hpp")) {
 			filetype = "sourcecode.cpp.h";
+		}
+		if (ends_with(file->name, ".swift")) {
+			filetype = "sourcecode.swift";
 		}
 		if (ends_with(file->name, ".metal")) {
 			filetype     = "sourcecode.metal";
@@ -1293,8 +1314,10 @@ static void xc_export(project_t *project) {
 	p(4, "GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;");
 	p(4, "GCC_WARN_UNUSED_FUNCTION = YES;");
 	p(4, "GCC_WARN_UNUSED_VARIABLE = YES;");
-	p(4, ios ? "IPHONEOS_DEPLOYMENT_TARGET = 18.0;" : "MACOSX_DEPLOYMENT_TARGET = 14.0;");
+	p(4, ios ? "IPHONEOS_DEPLOYMENT_TARGET = 26.0;" : "MACOSX_DEPLOYMENT_TARGET = 26.0;");
 	p(4, "MTL_ENABLE_DEBUG_INFO = YES;");
+	p(4, "SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;");
+	p(4, "SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";");
 	p(4, "ONLY_ACTIVE_ARCH = YES;");
 	if (ios) {
 		p(4, "SDKROOT = iphoneos;");
@@ -1332,8 +1355,10 @@ static void xc_export(project_t *project) {
 	p(4, "GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;");
 	p(4, "GCC_WARN_UNUSED_FUNCTION = YES;");
 	p(4, "GCC_WARN_UNUSED_VARIABLE = YES;");
-	p(4, ios ? "IPHONEOS_DEPLOYMENT_TARGET = 18.0;" : "MACOSX_DEPLOYMENT_TARGET = 14.0;");
+	p(4, ios ? "IPHONEOS_DEPLOYMENT_TARGET = 26.0;" : "MACOSX_DEPLOYMENT_TARGET = 26.0;");
 	p(4, "MTL_ENABLE_DEBUG_INFO = NO;");
+	p(4, "SWIFT_COMPILATION_MODE = wholemodule;");
+	p(4, "SWIFT_OPTIMIZATION_LEVEL = \"-O\";");
 	p(4, "ONLY_ACTIVE_ARCH = YES;");
 	p(4, "OTHER_CFLAGS = \"-fno-unroll-loops\";");
 	if (ios) {

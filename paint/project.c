@@ -29,6 +29,9 @@ project_t *main() {
 	}
 
 	project_t *project = project_create(flags->name);
+	if (platform == PLATFORM_MACOS || platform == PLATFORM_IOS) {
+		add_cfiles(project, "native/**"); // SwiftUI interface: .swift sources and the bridging header
+	}
 	add_project(project, "../base");
 	add_cfiles(project, "sources/startup.c");
 	add_cfiles(project, "sources/minic_api.c");
