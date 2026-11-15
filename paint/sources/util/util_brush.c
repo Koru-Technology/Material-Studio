@@ -3,7 +3,7 @@
 
 static bool util_brush_clone_source_down = false;
 
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 // A finger stroke starts right away, a second finger landing shortly after (pinch, two finger drag) undoes it
 #define UTIL_BRUSH_FINGER_CANCEL 0.35
 static f64             util_brush_finger_time    = 0;
@@ -48,16 +48,18 @@ static bool util_brush_finger_allowed(bool paint_down) {
 
 // Touch and hold: a finger resting still on the canvas for half a second picks the color under it, like the picker tool,
 // until it lifts. The dab it painted while resting is taken back.
-static f64             util_brush_hold_time  = 0;
-static f32             util_brush_hold_x     = 0;
-static f32             util_brush_hold_y     = 0;
-static bool            util_brush_hold_moved = false;
-static i32             util_brush_hold_tool  = -1; // Tool to go back to, -1 when not picking
-static history_step_t *util_brush_hold_step  = NULL;
+static i32 util_brush_hold_tool = -1; // Tool to go back to, -1 when not picking
 
 bool util_brush_hold_picking() {
 	return util_brush_hold_tool >= 0;
 }
+
+#ifdef IRON_IOS // Fingers only
+static f64             util_brush_hold_time  = 0;
+static f32             util_brush_hold_x     = 0;
+static f32             util_brush_hold_y     = 0;
+static bool            util_brush_hold_moved = false;
+static history_step_t *util_brush_hold_step  = NULL;
 
 static void util_brush_hold_pick() {
 	if (util_brush_hold_tool >= 0) {
@@ -98,6 +100,7 @@ static void util_brush_hold_pick() {
 		iron_haptic_tick(mouse_x, mouse_y);
 	}
 }
+#endif
 
 // The picked color above the finger while holding
 void util_brush_render_hold_loupe() {
@@ -221,7 +224,7 @@ static void util_brush_update_motion() {
 		g_context->brush_speed = 0.0f;
 		return;
 	}
-	f32 aspect = base_paint_view_w() / (f32)base_paint_view_h();
+	f32 aspect = base_paint_view_aspect();
 	f32 dx     = (x - util_brush_last_x) * aspect;
 	f32 dy     = y - util_brush_last_y;
 	f32 d      = sqrtf(dx * dx + dy * dy);
@@ -242,7 +245,7 @@ static bool util_brush_stroke_dropped = false;
 
 void util_brush_update() {
 	bool paint_down = keymap_shortcut(any_map_get(g_keymap, "action_paint"), SHORTCUT_TYPE_DOWN);
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 	if (!util_brush_finger_allowed(paint_down)) {
 		paint_down = false;
 	}

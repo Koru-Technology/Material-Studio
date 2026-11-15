@@ -1,6 +1,23 @@
 
 #include "global.h"
 
+// Width over height of the window, 1 while it has no height
+f32 base_window_aspect() {
+	i32 h = sys_h();
+	return h > 0 ? sys_w() / (f32)h : 1.0;
+}
+
+// Width over height of the view painted in (3D or 2D), 1 while it has no height
+f32 base_paint_view_aspect() {
+	i32 h = base_paint_view_h();
+	return h > 0 ? base_paint_view_w() / (f32)h : 1.0;
+}
+
+// Screen space brush scale of a view h pixels high
+f32 base_scale2d(i32 h) {
+	return (900 / (f32)(h > 0 ? h : 1)) * g_config->window_scale;
+}
+
 void viewport_scale_to_bounds(f32 bounds) {
 	mesh_object_t *po = context_main_object();
 	for (i32 i = 0; i < po->base->children->length; ++i) {
@@ -15,6 +32,9 @@ void viewport_scale_to_bounds(f32 bounds) {
 	mesh_data_t *md            = g_context->merged_object == NULL ? po->data : g_context->merged_object->data;
 	vec4_t       aabb          = mesh_data_calculate_aabb(md);
 	f32          r             = math_sqrt(aabb.x * aabb.x + aabb.y * aabb.y + aabb.z * aabb.z);
+	if (r <= 0.0) {
+		r = 1.0; // A mesh without extent keeps its size
+	}
 	po->base->transform->scale = (vec4_t){bounds / (float)r, bounds / (float)r, bounds / (float)r, 1.0};
 	po->base->transform->loc   = (vec4_t){0, 0, 0, 1.0};
 	transform_build_matrix(po->base->transform);
@@ -61,7 +81,7 @@ void viewport_frame() {
 	center.w          = 1.0;
 	f32 radius        = vec4_len(vec4_sub(wmax, wmin)) / 2.0;
 	f32 fov           = cam->data->fov; // Vertical, the horizontal one is narrower on portrait views
-	f32 aspect        = sys_w() / (float)sys_h();
+	f32 aspect        = base_window_aspect();
 	f32 half          = aspect < 1.0 ? math_atan(math_tan(fov / 2.0) * aspect) : fov / 2.0;
 	f32 dist          = radius / math_sin(half) * 1.05;
 	vec4_t look       = vec4_norm(camera_object_look_world(cam));
@@ -137,20 +157,7 @@ void viewport_update_camera_type(i32 camera_type) {
 
 void viewport_save_texture(gpu_texture_t *screenshot) {
 	// Save into the textures tab
-	if (g_project->packed_assets == NULL) {
-		g_project->packed_assets = any_array_create_from_raw((void *[]){}, 0);
-	}
-
-	i32   num = 0;
-	char *abs = "/packed/screenshot0.png";
-	for (i32 i = 0; i < g_project->packed_assets->length; ++i) {
-		packed_asset_t *pa = g_project->packed_assets->buffer[i];
-		if (string_equals(pa->name, abs)) {
-			i = 0;
-			num++;
-			abs = string("/packed/screenshot%d.png", num);
-		}
-	}
+	char *abs = util_texture_packed_name("screenshot");
 	packed_asset_t *pa =
 	    ALLOC_INIT(packed_asset_t, {.name = abs, .bytes = iron_encode_png(gpu_get_texture_pixels(screenshot), screenshot->width, screenshot->height, 0)});
 	any_array_push(g_project->packed_assets, pa);
@@ -163,8 +170,7 @@ void viewport_save_texture_to_file(gpu_texture_t *screenshot, char *path) {
 }
 
 void viewport_capture_screenshot() {
-	render_target_t *rt  = any_map_get(render_path_render_targets, "last");
-	gpu_texture_t   *tex = rt->_image;
+	gpu_texture_t *tex = render_path_target_image("last");
 
 	gpu_texture_t *screenshot = gpu_create_render_target(tex->width, tex->height, GPU_TEXTURE_FORMAT_RGBA32);
 	draw_begin(screenshot, false, 0);
@@ -177,8 +183,7 @@ void viewport_capture_screenshot() {
 }
 
 void viewport_capture_screenshot_to(gpu_texture_t *target, float x, float y, float w, float h) {
-	render_target_t *rt  = any_map_get(render_path_render_targets, "last");
-	gpu_texture_t   *tex = rt->_image;
+	gpu_texture_t *tex = render_path_target_image("last");
 
 	// Crop the viewport texture to a square
 	float size = tex->width < tex->height ? tex->width : tex->height;

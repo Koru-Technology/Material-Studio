@@ -115,7 +115,6 @@ void util_uv_cache_dilate_map() {
 		util_uv_pipe_dilate->depth_mode          = GPU_COMPARE_MODE_ALWAYS;
 		util_uv_pipe_dilate->color_attachment[0] = GPU_TEXTURE_FORMAT_R8;
 		gpu_pipeline_compile(util_uv_pipe_dilate);
-		// dilate_tex_unpack = getConstantLocation(pipeDilate, "tex_unpack");
 	}
 
 	i32 mask = context_object_mask_used() ? slot_layer_get_object_mask(g_context->layer) : 0;

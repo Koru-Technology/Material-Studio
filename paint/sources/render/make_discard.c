@@ -14,7 +14,6 @@ void make_discard_face(node_shader_t *shader) {
 	node_shader_write_frag(shader, "vec4 face_c1 = texelFetch(sampler2D(textrianglemap, sampler_linear), ivec2(uint(tex_coord_inp.x * constants.textrianglemap_size.x), "
 	                             "uint(tex_coord_inp.y * constants.textrianglemap_size.y)), 0);");
 	node_shader_write_frag(shader, "vec4 face_c2 = textureLod(sampler2D(textrianglemap, sampler_linear), input.tex_coord_pick, 0.0);");
-	// node_shader_write_frag(shader, "if (any(face_c1 != face_c2)) { discard; }");
 	node_shader_write_frag(shader, "if (face_c1.x != face_c2.x || face_c1.y != face_c2.y || face_c1.z != face_c2.z || face_c1.w != face_c2.w) { discard; }");
 }
 

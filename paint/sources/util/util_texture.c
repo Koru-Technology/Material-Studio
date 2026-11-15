@@ -1,33 +1,36 @@
 
 #include "../global.h"
 
+// A packed asset name no packed asset of the project has yet: /packed/<basename><number>.png, the lowest number free
+char *util_texture_packed_name(char *basename) {
+	if (g_project->packed_assets == NULL) {
+		g_project->packed_assets = any_array_create_from_raw((void *[]){}, 0);
+	}
+	for (i32 num = 0;; ++num) {
+		char *abs   = string_tmp("/packed/%s%d.png", basename, num);
+		bool  taken = false;
+		for (i32 i = 0; i < g_project->packed_assets->length && !taken; ++i) {
+			packed_asset_t *pa = g_project->packed_assets->buffer[i];
+			taken              = string_equals(pa->name, abs);
+		}
+		if (!taken) {
+			return string_copy(abs);
+		}
+	}
+}
+
 void util_texture_capture_output(gpu_texture_t *img, char *basename, bool bgra) {
 	if (img == NULL) {
 		return;
 	}
 
-	if (g_project->packed_assets == NULL) {
-		g_project->packed_assets = any_array_create_from_raw((void *[]){}, 0);
-	}
-
-	i32   num = 0;
-	char *abs = string("/packed/%s0.png", basename);
-	for (i32 i = 0; i < g_project->packed_assets->length; ++i) {
-		packed_asset_t *pa = g_project->packed_assets->buffer[i];
-		if (string_equals(pa->name, abs)) {
-			i = 0;
-			num++;
-			abs = string("/packed/%s%d.png", basename, num);
-		}
-	}
+	char *abs = util_texture_packed_name(basename);
 
 	buffer_t *buf = gpu_get_texture_pixels(img);
 
-#ifdef IRON_BGRA
 	if (bgra && img->format == GPU_TEXTURE_FORMAT_RGBA32) {
 		buf = buffer_bgra_swap(buf); // Vulkan non-rt textures need a flip
 	}
-#endif
 
 	u8_array_t     *bytes = iron_encode_png(buf, img->width, img->height, 0);
 	packed_asset_t *pa    = ALLOC_INIT(packed_asset_t, {.name = abs, .bytes = bytes});

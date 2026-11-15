@@ -10,6 +10,9 @@ static string_array_t *render_path_paint_additional(char *nor, char *pack) {
 	return &ar;
 }
 
+// render_path_paint_stroke.c
+extern bool render_path_paint_tail_pending;
+
 // Translucent surfaces are discarded from "main", painting still needs to hit them
 static char *render_path_paint_depth() {
 	return render_path_base_has_paint_depth() ? "main_paint" : "main";
@@ -46,86 +49,16 @@ bake_type_t      _render_path_paint_bake_type;
 
 void render_path_paint_init() {
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_blend0"; // Stroke coverage, 16 bit so low flow builds up without banding
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = "R16";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_blend1";
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = "R16";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_colorid";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_colorid_sel"; // Colors of the parts picked for an ID mask, see ui_id_mask.c
-		t->width           = 16;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_nor_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_pack_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_uv_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_posnortex_picker0";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA128";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_posnortex_picker1";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA128";
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("texpaint_blend0", config_get_texture_res_x(), config_get_texture_res_y(), "R16", 1.0); // Stroke coverage, 16 bit so low flow builds up without banding
+	render_path_add_target("texpaint_blend1", config_get_texture_res_x(), config_get_texture_res_y(), "R16", 1.0);
+	render_path_add_target("texpaint_colorid", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_colorid_sel", 16, 1, "RGBA32", 1.0); // Colors of the parts picked for an ID mask, see ui_id_mask.c
+	render_path_add_target("texpaint_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_nor_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_pack_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_uv_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_posnortex_picker0", 1, 1, "RGBA128", 1.0);
+	render_path_add_target("texpaint_posnortex_picker1", 1, 1, "RGBA128", 1.0);
 
 	render_path_load_shader("Scene/copy_mrt3_pass/copy_mrt3_pass");
 	render_path_load_shader("Scene/copy_mrt3_pass/copy_mrt3RGBA64_pass");
@@ -185,17 +118,13 @@ mesh_object_t *render_path_paint_target() {
 }
 
 // Texture space, the whole mesh is drawn wherever the camera looks
-#ifdef IRON_METAL
 static void render_path_paint_cull(mesh_object_t *o);
-#endif
 
 void render_path_paint_draw_target() {
 	mesh_object_t *o = render_path_paint_target();
 	if (o != NULL && make_material_paint_scon != NULL) {
 		_mesh_object_last_pipeline = NULL;
-#ifdef IRON_METAL
 		render_path_paint_cull(o);
-#endif
 		render_path_paint_draw_material(o);
 	}
 	render_path_end();
@@ -297,12 +226,7 @@ static void render_path_paint_ref_target(char *name, char *format) {
 		rt = NULL;
 	}
 	if (rt == NULL) {
-		render_target_t *t = render_target_create();
-		t->name            = name;
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = format;
-		render_path_create_render_target(t);
+		render_path_add_target(name, config_get_texture_res_x(), config_get_texture_res_y(), format, 1.0);
 	}
 }
 
@@ -379,60 +303,6 @@ static void render_path_paint_clone_snapshot() {
 	render_path_draw_shader(string_tmp("Scene/copy_mrt3_pass/%s", pipe));
 }
 
-// Renders object ids and returns the paint object under the cursor, NULL on a miss.
-// Expects the cursor tool with pick_object_id set, the paint material is parsed for it here.
-static mesh_object_t *render_path_paint_pick_object() {
-	viewport_mode_t _viewport_mode = g_context->viewport_mode;
-	g_context->viewport_mode       = VIEWPORT_MODE_OBJECT_ID;
-	make_material_parse_mesh_material();
-
-	// Objects with assigned material do not write object id
-	shader_data_t *base_material     = g_project->_->materials->buffer[0]->data;
-	any_array_t   *_object_materials = any_array_create(g_project->_->paint_objects->length);
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *o             = g_project->_->paint_objects->buffer[i];
-		_object_materials->buffer[i] = o->material;
-		o->material                  = base_material;
-	}
-
-	render_path_base_draw_gbuffer();
-
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		g_project->_->paint_objects->buffer[i]->material = _object_materials->buffer[i];
-	}
-
-	g_context->viewport_mode = _viewport_mode;
-	make_material_parse_mesh_material();
-
-	g_context->pdirty = 1;
-	make_material_parse_paint_material(false);
-	render_path_set_target("texpaint_picker", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	render_path_bind_target("gbuffer1", "gbuffer1");
-	render_path_bind_target("gbuffer2", "gbuffer2");
-	render_path_paint_draw_fullscreen_triangle();
-
-	render_target_t *rt    = any_map_get(render_path_render_targets, "texpaint_picker");
-	buffer_t        *pixel = gpu_get_texture_pixels(rt->_image);
-	if (buffer_get_u8(pixel, 3) > 0) {
-#ifdef IRON_BGRA
-		i32 r_byte = buffer_get_u8(pixel, 2);
-#else
-		i32 r_byte = buffer_get_u8(pixel, 0);
-#endif
-		i32 g_byte = buffer_get_u8(pixel, 1);
-		i32 index  = r_byte + g_byte * 256 - 1;
-		if (index >= 0 && index < g_project->_->paint_objects->length) {
-			return g_project->_->paint_objects->buffer[index];
-		}
-	}
-	return NULL;
-}
-
-f32    uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link);
-vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link);
-vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link);
-
-// Dabs painted by one draw when the paint shader is batched (render_path_paint_batched): the stamps or samples of a frame
 // are collected, uploaded as a small texture and painted at once instead of a full size pass each.
 #define RENDER_PATH_PAINT_BATCH_MAX 64
 
@@ -463,19 +333,19 @@ void render_path_paint_batch_add() {
 	if (render_path_paint_batch_count == RENDER_PATH_PAINT_BATCH_MAX) {
 		render_path_paint_batch_flush(false);
 	}
-	vec4_t inp   = uniforms_ext_vec4_link(NULL, NULL, "_input_brush");
-	vec4_t last  = uniforms_ext_vec4_link(NULL, NULL, "_input_brush_last");
-	vec2_t angle = uniforms_ext_vec2_link(NULL, NULL, "_brush_angle");
-	vec2_t dab   = uniforms_ext_vec2_link(NULL, NULL, "_brush_dab_angle");
+	vec4_t inp   = uniforms_input_brush();
+	vec4_t last  = uniforms_input_brush_last();
+	vec2_t angle = uniforms_brush_angle();
+	vec2_t dab   = uniforms_brush_dab_angle();
 	f32   *d     = &render_path_paint_batch[render_path_paint_batch_count * 12];
 	d[0]         = inp.x;
 	d[1]         = inp.y;
 	d[2]         = last.x;
 	d[3]         = last.y;
-	d[4]         = uniforms_ext_f32_link(NULL, NULL, "_brush_radius");
-	d[5]         = uniforms_ext_f32_link(NULL, NULL, "_brush_opacity");
-	d[6]         = uniforms_ext_f32_link(NULL, NULL, "_brush_hardness");
-	d[7]         = uniforms_ext_f32_link(NULL, NULL, "_brush_flow");
+	d[4]         = uniforms_brush_radius();
+	d[5]         = uniforms_brush_opacity();
+	d[6]         = uniforms_brush_hardness();
+	d[7]         = uniforms_brush_flow();
 	d[8]         = angle.x * dab.x - angle.y * dab.y; // Both rotations of the mask
 	d[9]         = angle.x * dab.y + angle.y * dab.x;
 	vec2_t tilt  = util_brush_tilt_shape();
@@ -495,7 +365,6 @@ static void render_path_paint_batch_upload() {
 	render_path_paint_batch_ready   = true;
 }
 
-#ifdef IRON_METAL
 // Only the parts of the mesh near the dabs of this draw, see paint_cull.c
 static void render_path_paint_cull(mesh_object_t *o) {
 	tool_type_t tool = g_context->tool;
@@ -514,14 +383,13 @@ static void render_path_paint_cull(mesh_object_t *o) {
 		}
 	}
 	else {
-		vec4_t inp    = uniforms_ext_vec4_link(NULL, NULL, "_input_brush");
-		vec4_t last   = uniforms_ext_vec4_link(NULL, NULL, "_input_brush_last");
-		f32    radius = uniforms_ext_f32_link(NULL, NULL, "_brush_radius");
+		vec4_t inp    = uniforms_input_brush();
+		vec4_t last   = uniforms_input_brush_last();
+		f32    radius = uniforms_brush_radius();
 		dabs[count++] = (paint_cull_dab_t){inp.x * 2.0 - 1.0, 1.0 - inp.y * 2.0, last.x * 2.0 - 1.0, 1.0 - last.y * 2.0, radius * stretch};
 	}
 	paint_cull_draw_next(o, dabs, count);
 }
-#endif
 
 // Paints the collected dabs
 void render_path_paint_batch_flush(bool dilation) {
@@ -600,126 +468,6 @@ void render_path_paint_commands_paint(bool dilation) {
 	gpu_commit(&render_path_paint_timing_done, p);
 }
 
-// Picker results: surface values under the cursor into the picked color, the material and fill layers with picker nodes.
-// tool is the tool when the pick was drawn, the values may arrive a frame later.
-static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_mask, tool_type_t tool) {
-#ifdef IRON_BGRA
-	i32 i0 = 2;
-	i32 i1 = 1;
-	i32 i2 = 0;
-#else
-	i32 i0 = 0;
-	i32 i1 = 1;
-	i32 i2 = 2;
-#endif
-	i32 i3                           = 3;
-	g_context->picked_color->base    = color_set_rb(g_context->picked_color->base, a[i0]);
-	g_context->picked_color->base    = color_set_gb(g_context->picked_color->base, a[i1]);
-	g_context->picked_color->base    = color_set_bb(g_context->picked_color->base, a[i2]);
-	g_context->picked_color->opacity = a[i3] / 255.0;
-	g_context->uvx_picked            = d[i0] / 255.0;
-	g_context->uvy_picked            = d[i1] / 255.0;
-
-	if (!is_mask) {
-		g_context->picked_color->normal    = color_set_rb(g_context->picked_color->normal, b[i0]);
-		g_context->picked_color->normal    = color_set_gb(g_context->picked_color->normal, b[i1]);
-		g_context->picked_color->normal    = color_set_bb(g_context->picked_color->normal, b[i2]);
-		g_context->picked_color->occlusion = c[i0] / 255.0;
-		g_context->picked_color->roughness = c[i1] / 255.0;
-		g_context->picked_color->metallic  = c[i2] / 255.0;
-		g_context->picked_color->height    = c[i3] / 255.0;
-
-		// Pick material
-		if (g_context->color_picker_callback == NULL) {
-			// matid % 3 == 0 - normal, 1 - emission, 2 - subsurface
-			i32 id    = b[3];
-			i32 matid = math_floor((id - (id % 3)) / 3.0);
-			for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-				slot_material_t *m = g_project->_->materials->buffer[i];
-				if (m->id == matid) {
-					if (g_context->picker_select_material) {
-						context_set_material(m);
-					}
-					g_context->materialid_picked = matid;
-					break;
-				}
-			}
-		}
-	}
-
-	if (g_context->color_picker_callback != NULL) {
-		g_context->color_picker_callback(g_context->picked_color);
-	}
-
-	if (tool == TOOL_TYPE_PICKER && g_context->color_picker_callback == NULL && !g_context->picker_select_material) {
-		tab_materials_apply_picked_color(g_context->picked_color);
-	}
-
-	// Update fill layers which are using materials containing a PICKER node
-	slot_material_t *_material = g_context->material;
-	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		slot_material_t *m          = g_project->_->materials->buffer[i];
-		bool             has_picker = false;
-		for (i32 j = 0; j < m->canvas->nodes->length; ++j) {
-			ui_node_t *node = m->canvas->nodes->buffer[j];
-			if (string_equals(node->type, "PICKER")) {
-				has_picker = true;
-				break;
-			}
-		}
-		if (has_picker) {
-			g_context->material = m;
-			layers_update_fill_layers();
-			util_render_make_material_preview();
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
-		}
-	}
-	g_context->material = _material;
-	ui_header_handle->redraws = 2;
-	ui_dock_redraw(2);
-}
-
-static gpu_texture_t *render_path_paint_picker_target(char *name) {
-	render_target_t *rt = any_map_get(render_path_render_targets, name);
-	return rt->_image;
-}
-
-#ifdef IRON_METAL
-void gpu_read_textures_async(gpu_texture_t **textures, int count);
-bool gpu_read_textures_async_poll(uint8_t **data);
-
-static bool        render_path_paint_picker_mask = false;
-static tool_type_t render_path_paint_picker_tool = TOOL_TYPE_PICKER;
-
-// Applies the picker values once the gpu read them back, the pick does not wait for the gpu
-void render_path_paint_picker_poll() {
-	uint8_t *data[4];
-	if (gpu_read_textures_async_poll(data)) {
-		bool mask = render_path_paint_picker_mask;
-		render_path_paint_picker_apply(data[0], mask ? NULL : data[2], mask ? NULL : data[3], data[1], mask, render_path_paint_picker_tool);
-	}
-}
-#else
-void render_path_paint_picker_poll() {}
-#endif
-
-static void render_path_paint_picker_read(bool is_mask) {
-#ifdef IRON_METAL
-	gpu_texture_t *textures[4] = {render_path_paint_picker_target("texpaint_picker"), render_path_paint_picker_target("texpaint_uv_picker"),
-	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_nor_picker"),
-	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_pack_picker")};
-	render_path_paint_picker_mask = is_mask;
-	render_path_paint_picker_tool = g_context->tool;
-	gpu_read_textures_async(textures, is_mask ? 2 : 4);
-#else
-	u8 *a = gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_picker"))->buffer;
-	u8 *d = gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_uv_picker"))->buffer;
-	u8 *b = is_mask ? NULL : gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_nor_picker"))->buffer;
-	u8 *c = is_mask ? NULL : gpu_get_texture_pixels(render_path_paint_picker_target("texpaint_pack_picker"))->buffer;
-	render_path_paint_picker_apply(a, b, c, d, is_mask, g_context->tool);
-#endif
-}
-
 static void render_path_paint_commands_paint_internal(bool dilation) {
 	i32 tid = g_context->layer->id;
 
@@ -736,17 +484,10 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		render_path_set_target("texpaint_colorid", NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
 		render_path_bind_target("gbuffer2", "gbuffer2");
 		render_path_paint_draw_fullscreen_triangle();
-		render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid");
-		buffer_t        *a  = gpu_get_texture_pixels(rt->_image);
-#ifdef IRON_BGRA
+		buffer_t *a = gpu_get_texture_pixels(render_path_target_image("texpaint_colorid"));
 		i32 i0 = 2;
 		i32 i1 = 1;
 		i32 i2 = 0;
-#else
-		i32 i0 = 0;
-		i32 i1 = 1;
-		i32 i2 = 2;
-#endif
 		if (ui_id_mask_pick_pending) {
 			ui_id_mask_pick_pending = false;
 			ui_id_mask_toggle(((u32)buffer_get_u8(a, i0) << 16) | ((u32)buffer_get_u8(a, i1) << 8) | (u32)buffer_get_u8(a, i2));
@@ -755,7 +496,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 	else if (g_context->tool == TOOL_TYPE_PICKER) {
 		if (g_context->pick_pos_nor_tex) {
 			if (g_context->paint2d) {
-				string_array_t *additional = any_array_create_from_raw(
+				string_array_t *additional = any_array_create_from_raw_tmp(
 				    (void *[]){
 				        "gbuffer1",
 				        "gbuffer2",
@@ -764,7 +505,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				render_path_set_target("gbuffer0", additional, "main", GPU_CLEAR_NONE, 0, 0.0);
 				render_path_base_draw_meshes(render_path_base_mesh_scon(0), true);
 			}
-			string_array_t *additional = any_array_create_from_raw(
+			string_array_t *additional = any_array_create_from_raw_tmp(
 			    (void *[]){
 			        "texpaint_posnortex_picker1",
 			    },
@@ -773,10 +514,8 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			render_path_bind_target("gbuffer2", "gbuffer2");
 			render_path_bind_target("main", "gbufferD");
 			render_path_paint_draw_fullscreen_triangle();
-			render_target_t *picker0                    = any_map_get(render_path_render_targets, "texpaint_posnortex_picker0");
-			render_target_t *picker1                    = any_map_get(render_path_render_targets, "texpaint_posnortex_picker1");
-			gpu_texture_t   *texpaint_posnortex_picker0 = picker0->_image;
-			gpu_texture_t   *texpaint_posnortex_picker1 = picker1->_image;
+			gpu_texture_t *texpaint_posnortex_picker0 = render_path_target_image("texpaint_posnortex_picker0");
+			gpu_texture_t *texpaint_posnortex_picker1 = render_path_target_image("texpaint_posnortex_picker1");
 			buffer_t        *a                          = gpu_get_texture_pixels(texpaint_posnortex_picker0);
 			buffer_t        *b                          = gpu_get_texture_pixels(texpaint_posnortex_picker1);
 			g_context->posx_picked                      = buffer_get_f32(a, 0);
@@ -792,7 +531,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			tid          = g_context->layer->id;
 			bool is_mask = slot_layer_is_mask(g_context->layer);
 			if (is_mask) {
-				string_array_t *additional = any_array_create_from_raw(
+				string_array_t *additional = any_array_create_from_raw_tmp(
 				    (void *[]){
 				        "texpaint_uv_picker",
 				    },
@@ -803,7 +542,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				render_path_paint_draw_fullscreen_triangle();
 			}
 			else {
-				string_array_t *additional = any_array_create_from_raw(
+				string_array_t *additional = any_array_create_from_raw_tmp(
 				    (void *[]){
 				        "texpaint_nor_picker",
 				        "texpaint_pack_picker",
@@ -898,12 +637,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 
 		if (g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_CURVATURE && g_context->bake_curv_smooth > 0) {
 			if (any_map_get(render_path_render_targets, "texpaint_blur") == NULL) {
-				render_target_t *t = render_target_create();
-				t->name            = "texpaint_blur";
-				t->width           = math_floor(config_get_texture_res_x() * 0.95);
-				t->height          = math_floor(config_get_texture_res_y() * 0.95);
-				t->format          = "RGBA32";
-				render_path_create_render_target(t);
+				render_path_add_target("texpaint_blur", math_floor(config_get_texture_res_x() * 0.95), math_floor(config_get_texture_res_y() * 0.95), "RGBA32", 1.0);
 			}
 			i32 blurs = math_round(g_context->bake_curv_smooth);
 			for (i32 i = 0; i < blurs; ++i) {
@@ -1064,7 +798,7 @@ void render_path_paint_commands_live_brush() {
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
 	}
 	else {
-		string_array_t *additional = any_array_create_from_raw(
+		string_array_t *additional = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "texpaint_nor_live",
 		        "texpaint_pack_live",
@@ -1108,148 +842,6 @@ void render_path_paint_commands_live_brush() {
 	g_context->last_paint_vec_y  = _last_y;
 	g_context->pdirty            = _pdirty;
 	g_context->brush_blend_dirty = true;
-}
-
-void render_path_paint_draw_cursor(f32 mx, f32 my, f32 radius, f32 tint_r, f32 tint_g, f32 tint_b) {
-	mesh_object_t *plane = scene_get_child(".Plane")->ext;
-	mesh_data_t   *geom  = plane->data;
-
-	gpu_vertex_textures = true;
-	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	gpu_set_pipeline(pipes_cursor);
-	render_target_t *rt   = any_map_get(render_path_render_targets, render_path_paint_depth());
-	gpu_texture_t   *main = rt->_image;
-	gpu_set_texture(pipes_cursor_gbufferd, main);
-	gpu_set_float2(pipes_cursor_mouse, mx, my);
-	gpu_set_float2(pipes_cursor_tex_step, 1 / (float)main->width, 1 / (float)main->height);
-	gpu_set_float(pipes_cursor_radius, radius);
-	vec4_t right = vec4_norm(camera_object_right_world(scene_camera));
-	gpu_set_float3(pipes_cursor_camera_right, right.x, right.y, right.z);
-	gpu_set_float3(pipes_cursor_tint, tint_r, tint_g, tint_b);
-	vec4_t up = vec4_norm(camera_object_up_world(scene_camera));
-	gpu_set_float3(pipes_cursor_camera_up, up.x, up.y, up.z);
-	gpu_set_float(pipes_cursor_camera_align, context_is_brush_camera_align() ? 1.0f : 0.0f);
-	gpu_set_mat4(pipes_cursor_vp, scene_camera->vp);
-	mat4_t inv_vp = mat4_inv(scene_camera->vp);
-	gpu_set_mat4(pipes_cursor_inv_vp, inv_vp);
-	gpu_set_vertex_buffer(geom->_->vertex_buffer);
-	gpu_set_index_buffer(geom->_->index_buffer);
-	gpu_draw();
-	render_path_end();
-}
-
-void render_path_paint_draw_cursor_decal(f32 mx, f32 my, f32 radius, f32 opacity_scale, gpu_texture_t *image) {
-	if (image == NULL) {
-		return;
-	}
-
-	mesh_object_t *plane = scene_get_child(".Plane")->ext;
-	mesh_data_t   *geom  = plane->data;
-
-	// Prevent cursor jumping constantly if randomness is used in brush nodes
-	f32 brush_nodes_opacity = g_context->brush_nodes_opacity;
-	f32 brush_nodes_angle   = g_context->brush_nodes_angle;
-	if (g_context->brush_nodes_uses_random) {
-		brush_nodes_opacity = 1.0;
-		brush_nodes_angle   = 0.0;
-	}
-
-	gpu_vertex_textures = true;
-	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	gpu_set_pipeline(pipes_cursor_decal);
-	render_target_t *rt   = any_map_get(render_path_render_targets, render_path_paint_depth());
-	gpu_texture_t   *main = rt->_image;
-	gpu_set_texture(pipes_cursor_decal_gbufferd, main);
-	gpu_set_texture(pipes_cursor_decal_texdecal, image);
-	render_target_t *gbuffer0_rt = any_map_get(render_path_render_targets, "gbuffer0");
-	gpu_set_texture(pipes_cursor_decal_gbuffer0, gbuffer0_rt->_image);
-	gpu_set_float2(pipes_cursor_decal_mouse, mx, my);
-	gpu_set_float2(pipes_cursor_decal_tex_step, 1 / (float)main->width, 1 / (float)main->height);
-	gpu_set_float(pipes_cursor_decal_radius, radius);
-	vec4_t right = vec4_norm(camera_object_right_world(scene_camera));
-	gpu_set_float3(pipes_cursor_decal_camera_right, right.x, right.y, right.z);
-	vec4_t up = vec4_norm(camera_object_up_world(scene_camera));
-	gpu_set_float3(pipes_cursor_decal_camera_up, up.x, up.y, up.z);
-	gpu_set_float(pipes_cursor_decal_camera_align, context_is_brush_camera_align() ? 1.0f : 0.0f);
-	f32 opacity = math_max(0.0, math_min(1.0, g_context->brush_opacity * brush_nodes_opacity * opacity_scale));
-	gpu_set_float(pipes_cursor_decal_opacity, opacity);
-	f32 angle = (g_context->brush_angle + brush_nodes_angle) * (math_pi() / 180.0);
-	gpu_set_float2(pipes_cursor_decal_angle, math_cos(angle), math_sin(angle));
-	gpu_set_float(pipes_cursor_decal_scale_x, g_context->brush_scale_x);
-	gpu_set_mat4(pipes_cursor_decal_vp, scene_camera->vp);
-	mat4_t inv_vp = mat4_inv(scene_camera->vp);
-	gpu_set_mat4(pipes_cursor_decal_inv_vp, inv_vp);
-	gpu_set_vertex_buffer(geom->_->vertex_buffer);
-	gpu_set_index_buffer(geom->_->index_buffer);
-	gpu_draw();
-	render_path_end();
-}
-
-void render_path_paint_commands_cursor() {
-	bool        decal_mask = context_is_decal_mask();
-	tool_type_t tool       = g_context->tool;
-	if (tool == TOOL_TYPE_INPAINT) {
-		if (base_ui_enabled && !base_is_dragging && !base_paint_in_2d()) {
-			render_path_paint_draw_cursor(g_context->paint_vec.x, 1.0 - g_context->paint_vec.y, g_context->brush_radius / 3.4, 1.0, 1.0, 1.0);
-		}
-		return;
-	}
-	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_BLUR && tool != TOOL_TYPE_PARTICLE &&
-	    !context_is_decal() && !decal_mask) {
-		return;
-	}
-
-	bool fill_layer  = g_context->layer->fill_material != NULL && !layers_fill_paint_tool(tool); // Brushes paint its mask
-	bool group_layer = slot_layer_is_group(g_context->layer);
-	if (!base_ui_enabled || base_is_dragging || fill_layer || group_layer) {
-		return;
-	}
-
-	// Paint coordinates point into the 2D view, it draws its own cursor
-	if (base_paint_in_2d()) {
-		return;
-	}
-
-	// Dragging a radius slider shows the brush size in the middle of the view, where the model usually is
-	bool sizing = ui_panels_radius_dragging();
-
-	// Hidden while painting, it covers the paint (also the first frame of a touch, before the stroke counts its time)
-	if ((g_context->brush_time > 0 || pen_down("tip") || mouse_down("left")) && !sizing) {
-		return;
-	}
-
-	// The pencil hovered away from the screen and nothing touches it
-	if (pen_hover_left && !pen_down("tip") && !mouse_down_any()) {
-		return;
-	}
-
-	f32 mx = sizing ? 0.5 : g_context->paint_vec.x;
-	f32 my = sizing ? 0.5 : 1.0 - g_context->paint_vec.y;
-
-	// Fainter the higher the pencil hovers
-	f32 tint = pen_hover >= 0.0 && !pen_down("tip") && !sizing ? 1.0 - 0.6 * pen_hover : 1.0;
-
-	// Prevent cursor jumping constantly if randomness is used in brush nodes
-	f32 brush_nodes_radius = g_context->brush_nodes_radius;
-	if (g_context->brush_nodes_uses_random) {
-		brush_nodes_radius = 1.0;
-	}
-
-	if (context_is_decal()) {
-		f32            scale2d = (900 / (f32)base_h()) * g_config->window_scale;
-		f32            radius  = brush_nodes_radius * g_context->brush_radius / 15.0 * scale2d * 2.0;
-		f32            cmx     = decal_mask ? g_context->decal_x : mx;
-		f32            cmy     = decal_mask ? 1.0f - g_context->decal_y : my;
-		gpu_texture_t *image   = g_context->decal_image;
-		render_path_paint_draw_cursor_decal(cmx, cmy, radius, decal_mask ? 0.3f : 0.9f, image);
-		if (decal_mask) {
-			render_path_paint_draw_cursor(mx, my, brush_nodes_radius * g_context->brush_decal_mask_radius / 3.4, 1.0, 1.0, 1.0);
-		}
-		return;
-	}
-
-	f32 radius = decal_mask ? g_context->brush_decal_mask_radius : g_context->brush_radius;
-	render_path_paint_draw_cursor(mx, my, brush_nodes_radius * radius / 3.4, tint, tint, tint);
 }
 
 bool render_path_paint_paint_enabled() {
@@ -1383,7 +975,7 @@ static void render_path_paint_commands_low_poly() {
 	context_select_paint_object(_paint_object);
 }
 
-void _render_path_paint_final() {
+static void render_path_paint_bake_final() {
 	g_context->bake_type = _render_path_paint_bake_type;
 	make_material_parse_paint_material(false);
 	g_context->pdirty = 1;
@@ -1392,11 +984,11 @@ void _render_path_paint_final() {
 	render_path_paint_baking = false;
 }
 
-void _render_path_paint_deriv_on_next_frame(void *_) {
-	_render_path_paint_final();
+static void render_path_paint_bake_deriv_on_next_frame(void *_) {
+	render_path_paint_bake_final();
 }
 
-void _render_path_paint_deriv() {
+static void render_path_paint_bake_deriv() {
 	g_context->bake_type = BAKE_TYPE_HEIGHT;
 	make_material_parse_paint_material(false);
 	g_context->pdirty = 1;
@@ -1405,7 +997,7 @@ void _render_path_paint_deriv() {
 	if (render_path_paint_push_undo_last) {
 		history_paint();
 	}
-	sys_notify_on_next_frame(&_render_path_paint_deriv_on_next_frame, NULL);
+	sys_notify_on_next_frame(&render_path_paint_bake_deriv_on_next_frame, NULL);
 }
 
 bool render_path_paint_is_rt_bake() {
@@ -1414,11 +1006,11 @@ bool render_path_paint_is_rt_bake() {
 }
 
 void render_path_paint_draw_bake(void *_) {
-	_render_path_paint_final();
+	render_path_paint_bake_final();
 }
 
 void render_path_paint_draw_bake_derivative(void *_) {
-	_render_path_paint_deriv();
+	render_path_paint_bake_deriv();
 }
 
 void render_path_paint_clear_blend() {
@@ -1431,555 +1023,6 @@ void render_path_paint_clear_blend() {
 		render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_end();
 	}
-}
-
-// Brush stamps: spacing, jitter, fall off and taper
-static u32 render_path_paint_stamp_seed = 1;
-
-// Tests: strokes painted again jitter alike, 0 seeds from the time
-void render_path_paint_set_stamp_seed(i32 seed) {
-	render_path_paint_stamp_seed_fixed = (u32)seed;
-}
-
-static f32 render_path_paint_stamp_random() {
-	render_path_paint_stamp_seed = render_path_paint_stamp_seed * 1664525u + 1013904223u;
-	return (render_path_paint_stamp_seed >> 8) / 16777216.0f;
-}
-
-// Streamline and stabilization: two smoothing passes over the brush positions, timed so that pen samples and frames smooth alike
-bool render_path_paint_filter_on() {
-	return g_context->brush_smoothing > 0.0 || g_context->brush_stabilization > 0.0;
-}
-
-static f32 render_path_paint_filter_pass(f32 *v, f32 target, f32 amount, f32 dt) {
-	f32 tau = amount * amount * 0.25; // Seconds the brush takes to catch up, about
-	if (tau <= 0.0) {
-		*v = target;
-	}
-	else {
-		*v += (target - *v) * (1.0 - expf(-dt / tau));
-	}
-	return *v;
-}
-
-void render_path_paint_filter_apply(render_path_paint_filter_t *f, f32 *x, f32 *y, f32 dt) {
-	if (!f->started) {
-		f->started = true;
-		f->x = f->x2 = *x;
-		f->y = f->y2 = *y;
-		return;
-	}
-	dt = dt < 0.0005 ? 0.0005 : dt > 0.1 ? 0.1 : dt;
-	render_path_paint_filter_pass(&f->x2, *x, g_context->brush_stabilization * 0.8, dt);
-	render_path_paint_filter_pass(&f->y2, *y, g_context->brush_stabilization * 0.8, dt);
-	*x = render_path_paint_filter_pass(&f->x, f->x2, g_context->brush_smoothing, dt);
-	*y = render_path_paint_filter_pass(&f->y, f->y2, g_context->brush_smoothing, dt);
-}
-
-// Taper and fall off lengths are in paint view heights
-#define RENDER_PATH_PAINT_TAPER_LENGTH 0.6
-
-static bool render_path_paint_stroke_pen = false; // Pencil stroke, it tapers by the pencil taper, else by the touch taper
-
-static f32 render_path_paint_taper_start() {
-	return (render_path_paint_stroke_pen ? g_context->brush_taper_start : g_context->brush_touch_taper_start) * RENDER_PATH_PAINT_TAPER_LENGTH;
-}
-
-static f32 render_path_paint_taper_end() {
-	return (render_path_paint_stroke_pen ? g_context->brush_taper_end : g_context->brush_touch_taper_end) * RENDER_PATH_PAINT_TAPER_LENGTH;
-}
-
-// Spacing painted with: a continuous brush stamps closely when it tapers, fades or jitters, its stamps carry those
-f32 render_path_paint_spacing() {
-	f32 s = g_context->brush_spacing;
-	if (s <= 0.0 && (g_context->brush_taper_start > 0.0 || g_context->brush_taper_end > 0.0 || g_context->brush_touch_taper_start > 0.0 ||
-	                 g_context->brush_touch_taper_end > 0.0 || g_context->brush_falloff > 0.0 || g_context->brush_jitter_lateral > 0.0 ||
-	                 g_context->brush_jitter_linear > 0.0 || g_context->brush_jitter_size > 0.0 || g_context->brush_jitter_opacity > 0.0 ||
-	                 g_context->brush_jitter_angle > 0.0)) {
-		s = 0.03;
-	}
-	return s;
-}
-
-bool render_path_paint_stamps() {
-	bool tool = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
-	return tool && render_path_paint_spacing() > 0.0 && !slot_layer_is_path(g_context->layer) && g_context->layer->fill_material == NULL &&
-	       !context_is_decal() && !context_is_pixel_snap();
-}
-
-// A stamp to paint, kept back while the end taper may still shrink it
-typedef struct {
-	f32  x;
-	f32  y;
-	f32  len; // Stroke length at the stamp
-	f32  radius;
-	f32  opacity;
-	f32  angle;
-	f32  stroke_angle;
-	f32  pressure; // Pen state of the stamp
-	f32  altitude;
-	f32  azimuth;
-	f32  roll;
-	bool preview_pen;
-} render_path_paint_dab_t;
-
-#define RENDER_PATH_PAINT_TAIL_MAX 1024
-
-static render_path_paint_dab_t render_path_paint_tail[RENDER_PATH_PAINT_TAIL_MAX];
-static i32                     render_path_paint_tail_first     = 0;
-static i32                     render_path_paint_tail_count     = 0;
-static bool                    render_path_paint_tail_pending   = false; // The stroke ended, its tail paints with the next draw
-static f32                     render_path_paint_stamp_prev_x   = 0.0;
-static f32                     render_path_paint_stamp_prev_y   = 0.0;
-static f32                     render_path_paint_stamp_dir      = 0.0; // Screen direction of the stroke at the last stamp, radians, y down
-static bool                    render_path_paint_stamp_has_prev = false;
-static f32                     render_path_paint_step_factor    = 1.0; // Spacing jitter of the next step
-
-// First stamp of a stroke: seeds the jitter, the stroke length starts over
-static void render_path_paint_stroke_begin(f32 x, f32 y) {
-	render_path_paint_stamp_seed     = render_path_paint_stamp_seed_fixed != 0
-	                                       ? render_path_paint_stamp_seed_fixed
-	                                       : (u32)(x * 100003.0) ^ (u32)(y * 7919.0) ^ (u32)(sys_time() * 1000.0);
-	g_context->brush_stroke_length   = 0.0;
-	render_path_paint_stamp_has_prev = false;
-	render_path_paint_stamp_dir      = -g_context->brush_stroke_angle; // Until the stroke shows its own direction
-	render_path_paint_step_factor    = 1.0;
-	render_path_paint_tail_first     = 0;
-	render_path_paint_tail_count     = 0;
-	render_path_paint_tail_pending   = false;
-	render_path_paint_stroke_pen     = util_brush_pen_active();
-}
-
-static void render_path_paint_dab_paint(render_path_paint_dab_t *d, f32 size, f32 opacity, bool dilation) {
-	f32  pressure                 = util_brush_sample_pressure;
-	f32  altitude                 = util_brush_sample_altitude;
-	f32  azimuth                  = util_brush_sample_azimuth;
-	f32  roll                     = util_brush_sample_roll;
-	bool preview_pen              = util_brush_preview_pen;
-	util_brush_sample_pressure    = d->pressure;
-	util_brush_sample_altitude    = d->altitude;
-	util_brush_sample_azimuth     = d->azimuth;
-	util_brush_sample_roll        = d->roll;
-	util_brush_preview_pen        = d->preview_pen;
-	g_context->brush_dab_radius   = d->radius * size;
-	g_context->brush_dab_opacity  = d->opacity * opacity;
-	g_context->brush_dab_angle    = d->angle;
-	g_context->brush_stroke_angle = d->stroke_angle;
-	g_context->paint_vec.x        = d->x;
-	g_context->paint_vec.y        = d->y;
-	g_context->last_paint_vec_x   = d->x;
-	g_context->last_paint_vec_y   = d->y;
-	if (g_context->brush_dab_opacity > 0.001 && g_context->brush_dab_radius > 0.001) {
-		if (render_path_paint_batched()) { // Painted with the other stamps of the frame by render_path_paint_batch_flush
-			render_path_paint_batch_add();
-		}
-		else {
-			render_path_paint_commands_symmetry();
-			render_path_paint_commands_paint(dilation);
-		}
-	}
-	util_brush_sample_pressure = pressure;
-	util_brush_sample_altitude = altitude;
-	util_brush_sample_azimuth  = azimuth;
-	util_brush_sample_roll     = roll;
-	util_brush_preview_pen     = preview_pen;
-}
-
-// Smaller and fainter towards a tapered end, t 0 at the tip and 1 past the taper
-static void render_path_paint_taper_factors(f32 t, f32 *size, f32 *opacity) {
-	t        = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
-	t        = t * t * (3.0 - 2.0 * t);
-	*size    = 1.0 - g_context->brush_taper_size * (1.0 - t);
-	*opacity = 1.0 - g_context->brush_taper_opacity * (1.0 - t);
-}
-
-static render_path_paint_dab_t *render_path_paint_tail_at(i32 i) {
-	return &render_path_paint_tail[(render_path_paint_tail_first + i) % RENDER_PATH_PAINT_TAIL_MAX];
-}
-
-// Paints the kept back stamps the end taper no longer reaches, and the oldest when there is no room for another
-static void render_path_paint_tail_release(f32 len, f32 taper_end) {
-	while (render_path_paint_tail_count > 0) {
-		render_path_paint_dab_t *d = render_path_paint_tail_at(0);
-		if (render_path_paint_tail_count < RENDER_PATH_PAINT_TAIL_MAX && d->len > len - taper_end) {
-			break;
-		}
-		render_path_paint_dab_paint(d, 1.0, 1.0, false);
-		render_path_paint_tail_first = (render_path_paint_tail_first + 1) % RENDER_PATH_PAINT_TAIL_MAX;
-		render_path_paint_tail_count--;
-	}
-}
-
-// The stroke ended: its kept back stamps paint, tapered towards the end
-void render_path_paint_tail_flush() {
-	f32 taper_end = render_path_paint_taper_end();
-	f32 len       = g_context->brush_stroke_length;
-	for (i32 i = 0; i < render_path_paint_tail_count; ++i) {
-		render_path_paint_dab_t *d = render_path_paint_tail_at(i);
-		f32                      size, opacity;
-		render_path_paint_taper_factors(taper_end > 0.0 ? (len - d->len) / taper_end : 1.0, &size, &opacity);
-		render_path_paint_dab_paint(d, size, opacity, false);
-	}
-	render_path_paint_tail_first   = 0;
-	render_path_paint_tail_count   = 0;
-	render_path_paint_tail_pending = false;
-	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(true);
-	}
-	g_context->brush_dab_radius  = 1.0;
-	g_context->brush_dab_opacity = 1.0;
-	g_context->brush_dab_angle   = 0.0;
-}
-
-// The brush was released: the stamps kept back for the end taper paint with the next draw
-void render_path_paint_stroke_end() {
-	if (render_path_paint_tail_count > 0) {
-		render_path_paint_tail_pending = true;
-		g_context->pdirty              = 1;
-	}
-}
-
-static void render_path_paint_stamp(f32 x, f32 y, f32 aspect, f32 diameter, bool last) {
-	// Direction and length of the stroke so far
-	if (render_path_paint_stamp_has_prev) {
-		f32 dx = (x - render_path_paint_stamp_prev_x) * aspect;
-		f32 dy = y - render_path_paint_stamp_prev_y;
-		f32 d  = math_sqrt(dx * dx + dy * dy);
-		g_context->brush_stroke_length += d;
-		if (d > 0.000001) {
-			render_path_paint_stamp_dir = atan2f(dy, dx);
-		}
-	}
-	render_path_paint_stamp_prev_x   = x;
-	render_path_paint_stamp_prev_y   = y;
-	render_path_paint_stamp_has_prev = true;
-	f32 len                          = g_context->brush_stroke_length;
-
-	// Jitter along and across the stroke
-	f32 along  = (render_path_paint_stamp_random() * 2.0 - 1.0) * g_context->brush_jitter_linear * diameter;
-	f32 across = (render_path_paint_stamp_random() * 2.0 - 1.0) * g_context->brush_jitter_lateral * diameter;
-	f32 c      = math_cos(render_path_paint_stamp_dir);
-	f32 s      = math_sin(render_path_paint_stamp_dir);
-
-	render_path_paint_dab_t d;
-	d.x            = x + (c * along - s * across) / aspect;
-	d.y            = y + s * along + c * across;
-	d.len          = len;
-	d.radius       = 1.0 - g_context->brush_jitter_size * render_path_paint_stamp_random();
-	d.opacity      = 1.0 - g_context->brush_jitter_opacity * render_path_paint_stamp_random();
-	d.angle        = (render_path_paint_stamp_random() * 2.0 - 1.0) * math_pi() * g_context->brush_jitter_angle;
-	d.stroke_angle = g_context->brush_rotation == BRUSH_ROTATION_FOLLOW ? -render_path_paint_stamp_dir : g_context->brush_stroke_angle;
-	d.pressure     = util_brush_sample_pressure;
-	d.altitude     = util_brush_sample_altitude;
-	d.azimuth      = util_brush_sample_azimuth;
-	d.roll         = util_brush_sample_roll;
-	d.preview_pen  = util_brush_preview_pen;
-
-	// The start tapers, the stroke fades out along its length
-	f32 taper_start = render_path_paint_taper_start();
-	if (taper_start > 0.0) {
-		f32 size, opacity;
-		render_path_paint_taper_factors(len / taper_start, &size, &opacity);
-		d.radius *= size;
-		d.opacity *= opacity;
-	}
-	if (g_context->brush_falloff > 0.0) {
-		f32 k    = 1.0 - g_context->brush_falloff;
-		f32 fade = 0.05 + k * k * 3.0;
-		d.opacity *= math_max(0.0, 1.0 - len / fade);
-	}
-
-	f32 sj                        = g_context->brush_spacing_jitter;
-	render_path_paint_step_factor = sj > 0.0 ? math_max(0.1, 1.0 + sj * (render_path_paint_stamp_random() * 2.0 - 1.0)) : 1.0;
-
-	// The end taper reaches back from the pen: stamps within it wait until the pen has moved past them or the stroke ends
-	f32 taper_end = render_path_paint_taper_end();
-	if (taper_end > 0.0) {
-		render_path_paint_tail_release(len, taper_end);
-		*render_path_paint_tail_at(render_path_paint_tail_count) = d;
-		render_path_paint_tail_count++;
-		return;
-	}
-	render_path_paint_dab_paint(&d, 1.0, 1.0, last);
-}
-
-// Stamps from the last one to the brush position, one every spacing; the remainder carries over to the next frame
-void render_path_paint_commands_stamps() {
-	if (g_context->pdirty <= 0) {
-		return;
-	}
-	f32 cx       = g_context->paint_vec.x;
-	f32 cy       = g_context->paint_vec.y;
-	f32 aspect   = base_paint_view_w() / (f32)base_paint_view_h();
-	f32 diameter = util_layer_brush_screen_radius() * 2.0;
-	f32 step     = math_max(render_path_paint_spacing() * diameter, 0.0005);
-	i32 stamps   = 0;
-
-	if (g_context->brush_dab_x < 0.0) { // First stamp of the stroke
-		render_path_paint_stroke_begin(cx, cy);
-		render_path_paint_stamp(cx, cy, aspect, diameter, true);
-		g_context->brush_dab_x = cx;
-		g_context->brush_dab_y = cy;
-		stamps++;
-	}
-	else {
-		f32 dx    = (cx - g_context->brush_dab_x) * aspect;
-		f32 dy    = cy - g_context->brush_dab_y;
-		f32 dist  = math_sqrt(dx * dx + dy * dy);
-		f32 sx    = g_context->brush_dab_x;
-		f32 sy    = g_context->brush_dab_y;
-		f32 along = step * render_path_paint_step_factor;
-		while (along <= dist && stamps < 64) { // Keep the frame responsive on a fast stroke, the rest follows on the next frames
-			f32 t = along / dist;
-			f32 x = sx + (cx - sx) * t;
-			f32 y = sy + (cy - sy) * t;
-			render_path_paint_stamp(x, y, aspect, diameter, false);
-			g_context->brush_dab_x = x;
-			g_context->brush_dab_y = y;
-			stamps++;
-			along += step * render_path_paint_step_factor;
-		}
-	}
-	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(true);
-	}
-	else if (stamps > 0) {
-		render_path_paint_dilate_after_paint();
-	}
-
-	g_context->paint_vec.x       = cx;
-	g_context->paint_vec.y       = cy;
-	g_context->brush_dab_radius  = 1.0;
-	g_context->brush_dab_opacity = 1.0;
-	g_context->brush_dab_angle   = 0.0;
-}
-
-// Pen samples of the frame, drawn one by one so fast curves stay round and the pressure varies along the stroke.
-// Only for plain strokes, smoothing, rulers and snapping work on the frame position.
-typedef struct {
-	f32 x;
-	f32 y;
-	f32 p; // Pressure
-	f32 a; // Altitude, azimuth and roll of the pen
-	f32 z;
-	f32 r;
-} render_path_paint_point_t;
-
-// The brush uniforms read the pressure and angles of this point instead of the current pen
-static void render_path_paint_point_use(render_path_paint_point_t *pt) {
-	util_brush_sample_pressure = pt->p;
-	util_brush_sample_altitude = pt->a;
-	util_brush_sample_azimuth  = pt->z;
-	util_brush_sample_roll     = pt->r;
-}
-
-static void render_path_paint_point_clear() {
-	util_brush_sample_pressure = -1.0;
-	util_brush_sample_altitude = -1.0;
-}
-
-static f32 render_path_paint_angle_lerp(f32 a, f32 b, f32 t) {
-	f32 d = b - a;
-	while (d > math_pi()) {
-		d -= 2.0 * math_pi();
-	}
-	while (d < -math_pi()) {
-		d += 2.0 * math_pi();
-	}
-	return a + d * t;
-}
-
-static render_path_paint_point_t render_path_paint_point_lerp(render_path_paint_point_t *a, render_path_paint_point_t *b, f32 t) {
-	return (render_path_paint_point_t){a->x + (b->x - a->x) * t,
-	                                   a->y + (b->y - a->y) * t,
-	                                   a->p + (b->p - a->p) * t,
-	                                   a->a + (b->a - a->a) * t,
-	                                   render_path_paint_angle_lerp(a->z, b->z, t),
-	                                   render_path_paint_angle_lerp(a->r, b->r, t)};
-}
-
-#define RENDER_PATH_PAINT_POINTS_MAX 128
-
-bool render_path_paint_use_samples() {
-	tool_type_t tool = g_context->tool;
-	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_BLUR) {
-		return false;
-	}
-	if (pen_sample_count == 0 || !(pen_down("tip") || pen_released("tip")) || g_context->pdirty <= 0) {
-		return false;
-	}
-	bool in_2d = context_in_2d_view(VIEW_2D_TYPE_LAYER);
-	bool snap  = g_context->grid_snap_toggle || keymap_shortcut(any_map_get(g_keymap, "grid_snap"), SHORTCUT_TYPE_DOWN) ||
-	            (g_config->view2d_grid_snap && in_2d) || context_is_pixel_snap();
-	return g_context->brush_lazy_radius <= 0.0 && !context_is_ruler_paint() && !snap && !slot_layer_is_path(g_context->layer) &&
-	       g_context->layer->fill_material == NULL && !context_is_decal();
-}
-
-static render_path_paint_filter_t render_path_paint_samples_filter = {0};
-static f64                        render_path_paint_samples_time   = 0.0; // Of the last sample smoothed
-
-// Frame samples in paint space, smoothed by the streamline and stabilization of the brush; the last one is the brush position
-static i32 render_path_paint_points(render_path_paint_point_t *out) {
-	f32  w      = (f32)base_paint_view_w();
-	f32  h      = (f32)base_paint_view_h();
-	i32  count  = 0;
-	bool filter = render_path_paint_filter_on();
-	for (i32 i = 0; i < pen_sample_count; ++i) {
-		pen_sample_t *s = &pen_samples[i];
-		f32           x = base_paint_x(s->x);
-		f32           y = base_paint_y(s->y);
-		if (filter) {
-			f32 dt = render_path_paint_samples_filter.started ? (f32)(s->time - render_path_paint_samples_time) : 0.0;
-			render_path_paint_filter_apply(&render_path_paint_samples_filter, &x, &y, dt > 0.0 ? dt : 1.0 / 240.0);
-			render_path_paint_samples_time = s->time;
-		}
-		if (count > 0) {
-			f32 dx = (x - out[count - 1].x) * w;
-			f32 dy = (y - out[count - 1].y) * h;
-			if (dx * dx + dy * dy < 0.25) { // Closer than half a pixel
-				out[count - 1].p = s->pressure;
-				out[count - 1].a = s->altitude;
-				out[count - 1].z = s->azimuth;
-				out[count - 1].r = s->roll;
-				continue;
-			}
-		}
-		if (count == RENDER_PATH_PAINT_POINTS_MAX) { // Too many for a frame, keep every other one
-			for (i32 k = 0; k < count / 2; ++k) {
-				out[k] = out[k * 2 + 1];
-			}
-			count /= 2;
-		}
-		out[count++] = (render_path_paint_point_t){x, y, s->pressure, s->altitude, s->azimuth, s->roll};
-		// Drop the middle of three points when it adds nothing: within a third of a pixel of the line and the pressure about linear,
-		// each point is a draw over the whole layer
-		if (count >= 3) {
-			render_path_paint_point_t *a  = &out[count - 3];
-			render_path_paint_point_t *b  = &out[count - 2];
-			render_path_paint_point_t *c  = &out[count - 1];
-			f32                        ax = a->x * w, ay = a->y * h, bx = b->x * w, by = b->y * h, cx = c->x * w, cy = c->y * h;
-			f32                        lx = cx - ax, ly = cy - ay;
-			f32                        ll = lx * lx + ly * ly;
-			f32                        t  = ll > 0.0 ? ((bx - ax) * lx + (by - ay) * ly) / ll : 0.0;
-			t                             = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
-			f32 dx = ax + lx * t - bx, dy = ay + ly * t - by;
-			f32 dp = a->p + (c->p - a->p) * t - b->p;
-			f32 da = a->a + (c->a - a->a) * t - b->a;
-			if (dx * dx + dy * dy < 0.11 && dp < 0.02 && dp > -0.02 && da < 0.02 && da > -0.02) {
-				*b = *c;
-				count--;
-			}
-		}
-	}
-	if (count > 0 && !filter) {
-		out[count - 1].x = g_context->paint_vec.x;
-		out[count - 1].y = g_context->paint_vec.y;
-	}
-	return count;
-}
-
-static bool                      render_path_paint_samples_started = false;
-static render_path_paint_point_t render_path_paint_samples_last;
-static f32                       render_path_paint_samples_carry = 0.0; // Distance since the last stamp
-
-void render_path_paint_samples_reset() {
-	render_path_paint_samples_started        = false;
-	render_path_paint_samples_filter.started = false;
-}
-
-// One capsule per sample, from the previous one
-static void render_path_paint_commands_samples() {
-	render_path_paint_point_t pts[RENDER_PATH_PAINT_POINTS_MAX];
-	i32                       count = render_path_paint_points(pts);
-	if (!render_path_paint_samples_started) {
-		render_path_paint_samples_last    = pts[0];
-		render_path_paint_samples_started = true;
-	}
-	f32 cx = g_context->paint_vec.x;
-	f32 cy = g_context->paint_vec.y;
-	for (i32 i = 0; i < count; ++i) {
-		g_context->last_paint_vec_x = render_path_paint_samples_last.x;
-		g_context->last_paint_vec_y = render_path_paint_samples_last.y;
-		g_context->paint_vec.x      = pts[i].x;
-		g_context->paint_vec.y      = pts[i].y;
-		render_path_paint_point_use(&pts[i]);
-		if (render_path_paint_batched()) {
-			render_path_paint_batch_add();
-		}
-		else {
-			render_path_paint_commands_symmetry();
-			render_path_paint_commands_paint(i == count - 1);
-		}
-		render_path_paint_samples_last = pts[i];
-	}
-	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(true);
-	}
-	render_path_paint_point_clear();
-	g_context->paint_vec.x     = cx;
-	g_context->paint_vec.y     = cy;
-}
-
-// Stamps every spacing along the samples, the pressure interpolated between them
-static void render_path_paint_commands_samples_stamps() {
-	render_path_paint_point_t pts[RENDER_PATH_PAINT_POINTS_MAX];
-	i32                       count    = render_path_paint_points(pts);
-	f32                       cx       = g_context->paint_vec.x;
-	f32                       cy       = g_context->paint_vec.y;
-	f32                       aspect   = base_paint_view_w() / (f32)base_paint_view_h();
-	f32                       diameter = util_layer_brush_screen_radius() * 2.0;
-	f32                       step     = math_max(render_path_paint_spacing() * diameter, 0.0005);
-	i32                       stamps   = 0;
-	i32                       first    = 0;
-
-	if (g_context->brush_dab_x < 0.0 || !render_path_paint_samples_started) { // First stamp of the stroke
-		render_path_paint_point_use(&pts[0]);
-		render_path_paint_stroke_begin(pts[0].x, pts[0].y);
-		render_path_paint_stamp(pts[0].x, pts[0].y, aspect, diameter, count == 1);
-		render_path_paint_samples_last    = pts[0];
-		render_path_paint_samples_carry   = 0.0;
-		render_path_paint_samples_started = true;
-		g_context->brush_dab_x            = pts[0].x;
-		g_context->brush_dab_y            = pts[0].y;
-		first                             = 1;
-	}
-
-	render_path_paint_point_t a = render_path_paint_samples_last;
-	for (i32 i = first; i < count && stamps < 256; ++i) {
-		render_path_paint_point_t b   = pts[i];
-		f32                       dx  = (b.x - a.x) * aspect;
-		f32                       dy  = b.y - a.y;
-		f32                       len = math_sqrt(dx * dx + dy * dy);
-		f32                       next = step * render_path_paint_step_factor;
-		f32                       d    = next - render_path_paint_samples_carry; // Distance along the segment to the next stamp
-		while (d <= len && stamps < 256) {
-			f32                       t  = len > 0.0 ? d / len : 1.0;
-			render_path_paint_point_t at = render_path_paint_point_lerp(&a, &b, t);
-			render_path_paint_point_use(&at);
-			render_path_paint_stamp(at.x, at.y, aspect, diameter, false);
-			stamps++;
-			next = step * render_path_paint_step_factor; // Jittered by the stamp
-			d += next;
-		}
-		render_path_paint_samples_carry = len - (d - next);
-		a                               = b;
-	}
-	render_path_paint_samples_last = a;
-	g_context->brush_dab_x         = a.x;
-	g_context->brush_dab_y         = a.y;
-	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(false);
-	}
-	if (stamps > 0) {
-		render_path_paint_dilate_after_paint();
-	}
-
-	render_path_paint_point_clear();
-	g_context->paint_vec.x       = cx;
-	g_context->paint_vec.y       = cy;
-	g_context->brush_dab_radius  = 1.0;
-	g_context->brush_dab_opacity = 1.0;
-	g_context->brush_dab_angle   = 0.0;
 }
 
 void render_path_paint_draw() {
@@ -2069,12 +1112,9 @@ void render_path_paint_draw() {
 					g_context->merged_object->base->visible = _visible;
 			}
 			else if (render_path_paint_is_rt_bake()) {
-				bool dispatched = false;
-				if (!render_path_raytrace_bake_lightmap_busy()) {
-					dispatched = render_path_raytrace_bake_commands(make_material_parse_paint_material);
-					render_path_paint_dilate(true, false);
-				}
-				// The raytrace setup frame and frames waiting on a lightmap bake trace no rays, keep their sample
+				bool dispatched = render_path_raytrace_bake_commands(make_material_parse_paint_material);
+				render_path_paint_dilate(true, false);
+				// The raytrace setup frame traces no rays, keep its sample
 				if (!dispatched && g_context->pdirty > 0) {
 					g_context->pdirty++;
 				}
@@ -2102,132 +1142,6 @@ void render_path_paint_draw() {
 	if (g_context->paint2d) {
 		render_path_paint_restore_plane_mesh();
 	}
-}
-
-void render_path_paint_set_plane_mesh() {
-	g_context->paint2d_view    = true;
-	render_path_paint_painto   = g_context->paint_object;
-	render_path_paint_visibles = u8_array_create_from_raw((u8[]){}, 0);
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		u8_array_push(render_path_paint_visibles, p->base->visible);
-		p->base->visible = false;
-	}
-	if (g_context->merged_object != NULL) {
-		render_path_paint_merged_object_visible = g_context->merged_object->base->visible;
-		g_context->merged_object->base->visible = false;
-	}
-
-	// Camera looks down at the layer plane, the ortho bounds place the plane where the 2D view shows the texture
-	camera_object_t *cam          = scene_camera;
-	g_context->saved_camera       = cam->base->transform->local;
-	render_path_paint_saved_ortho = cam->data->ortho;
-	// Turned like the 2D view shows the layer, the camera rolls the other way around the plane center
-	transform_set_matrix(cam->base->transform, mat4_translate(mat4_rot_z(ui_view2d_rotation), 0, 0, 1));
-	f32 ratio = config_get_texture_res_y() / (float)config_get_texture_res_x();
-	f32 tx, ty, tw, th;
-	ui_view2d_tex_rect(ratio, &tx, &ty, &tw, &th);
-	f32                 s     = ui_view2d_world_scale();
-	f32                 cx    = tx + tw / 2.0;
-	f32                 cy    = ty + th / 2.0 - ui_view2d_top();
-	static f32_array_t *ortho = NULL;
-	if (ortho == NULL) {
-		ortho = f32_array_create(4);
-	}
-	ortho->buffer[0] = -cx / s;
-	ortho->buffer[1] = (base_w() - cx) / s;
-	ortho->buffer[2] = -(base_h() - cy) / s;
-	ortho->buffer[3] = cy / s;
-	cam->data->ortho = ortho;
-	camera_object_build_proj(cam, -1.0);
-	camera_object_build_mat(cam);
-
-	bool tiled = ui_view2d_tiled_show;
-	if (tiled && scene_get_child(".PlaneTiled") == NULL) {
-		// 3x3 planes
-		i16_array_t *posa = i16_array_create_from_raw(
-		    (i16[]){
-		        32767,  0, -32767, 0, 10922,  0, -10922, 0, 10922,  0, -32767, 0, 10922,  0, -10922, 0, -10922, 0, 10922,  0, -10922, 0, -10922, 0,
-		        -10922, 0, 10922,  0, -32767, 0, 32767,  0, -32767, 0, 10922,  0, 10922,  0, 10922,  0, -10922, 0, 32767,  0, -10922, 0, 10922,  0,
-		        32767,  0, 10922,  0, 10922,  0, 32767,  0, 10922,  0, 10922,  0, -10922, 0, -10922, 0, -32767, 0, 10922,  0, -32767, 0, -10922, 0,
-		        32767,  0, -10922, 0, 10922,  0, 10922,  0, 10922,  0, -10922, 0, -10922, 0, -32767, 0, -32767, 0, -10922, 0, -32767, 0, -32767, 0,
-		        10922,  0, -32767, 0, -10922, 0, -10922, 0, -10922, 0, -32767, 0, 32767,  0, -32767, 0, 32767,  0, -10922, 0, 10922,  0, -10922, 0,
-		        10922,  0, -10922, 0, 10922,  0, 10922,  0, -10922, 0, 10922,  0, -10922, 0, 10922,  0, -10922, 0, 32767,  0, -32767, 0, 32767,  0,
-		        10922,  0, 10922,  0, 10922,  0, 32767,  0, -10922, 0, 32767,  0, 32767,  0, 10922,  0, 32767,  0, 32767,  0, 10922,  0, 32767,  0,
-		        -10922, 0, -10922, 0, -10922, 0, 10922,  0, -32767, 0, 10922,  0, 32767,  0, -10922, 0, 32767,  0, 10922,  0, 10922,  0, 10922,  0,
-		        -10922, 0, -32767, 0, -10922, 0, -10922, 0, -32767, 0, -10922, 0, 10922,  0, -32767, 0, 10922,  0, -10922, 0, -10922, 0, -10922, 0,
-		    },
-		    216);
-		i16_array_t *nora = i16_array_create_from_raw(
-		    (i16[]){
-		        0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767,
-		        0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767,
-		        0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767,
-		        0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767,
-		        0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767, 0, -32767,
-		    },
-		    108);
-		i16_array_t *texa = i16_array_create_from_raw(
-		    (i16[]){
-		        32767, 32767, 0,     0, 0, 32767, 32767, 32767, 0,     0, 0, 32767, 32767, 32767, 0,     0, 0, 32767, 32767, 32767, 0,     0, 0, 32767,
-		        32767, 32767, 0,     0, 0, 32767, 32767, 32767, 0,     0, 0, 32767, 32767, 32767, 0,     0, 0, 32767, 32767, 32767, 0,     0, 0, 32767,
-		        32767, 32767, 0,     0, 0, 32767, 32767, 32767, 32767, 0, 0, 0,     32767, 32767, 32767, 0, 0, 0,     32767, 32767, 32767, 0, 0, 0,
-		        32767, 32767, 32767, 0, 0, 0,     32767, 32767, 32767, 0, 0, 0,     32767, 32767, 32767, 0, 0, 0,     32767, 32767, 32767, 0, 0, 0,
-		        32767, 32767, 32767, 0, 0, 0,     32767, 32767, 32767, 0, 0, 0,
-		    },
-		    108);
-		u32_array_t *inda = u32_array_create_from_raw(
-		    (u32[]){
-		        0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-		        27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
-		    },
-		    54);
-		mesh_data_t *raw =
-		    ALLOC_INIT(mesh_data_t, {.name          = ".PlaneTiled",
-		                             .vertex_arrays = any_array_create_from_raw(
-		                                 (void *[]){
-		                                     ALLOC_INIT(vertex_array_t, {.attrib = "pos", .values = i16_array_create_from_array(posa), .data = "short4norm"}),
-		                                     ALLOC_INIT(vertex_array_t, {.attrib = "nor", .values = i16_array_create_from_array(nora), .data = "short2norm"}),
-		                                     ALLOC_INIT(vertex_array_t, {.attrib = "tex", .values = i16_array_create_from_array(texa), .data = "short2norm"}),
-		                                 },
-		                                 3),
-		                             .index_array = u32_array_create_from_array(inda),
-		                             .scale_pos   = 1.5,
-		                             .scale_tex   = 1.0});
-		mesh_data_t   *md       = mesh_data_create(raw);
-		mesh_object_t *mo       = scene_get_child(".Plane")->ext;
-		shader_data_t *material = mo->material;
-		mesh_object_t *o        = scene_add_mesh_object(md, material, NULL);
-		o->base->name           = ".PlaneTiled";
-	}
-
-	render_path_paint_planeo = scene_get_child(tiled ? ".PlaneTiled" : ".Plane")->ext;
-
-	render_path_paint_planeo->base->visible          = true;
-	g_context->paint_object                          = render_path_paint_planeo;
-	render_path_paint_planeo->base->transform->loc   = (vec4_t){0.0, 0.0, 0.0, 1.0};
-	render_path_paint_planeo->base->transform->rot   = quat_from_euler(-math_pi() / 2.0, 0, 0);
-	render_path_paint_planeo->base->transform->scale = (vec4_t){2.0, 1.0, 2.0 * ratio, 1.0};
-	transform_build_matrix(render_path_paint_planeo->base->transform);
-}
-
-void render_path_paint_restore_plane_mesh() {
-	g_context->paint2d_view                 = false;
-	render_path_paint_planeo->base->visible = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		g_project->_->paint_objects->buffer[i]->base->visible = render_path_paint_visibles->buffer[i];
-	}
-	if (g_context->merged_object != NULL) {
-		g_context->merged_object->base->visible = render_path_paint_merged_object_visible;
-	}
-	g_context->paint_object = render_path_paint_painto;
-	transform_set_matrix(scene_camera->base->transform, g_context->saved_camera);
-	scene_camera->data->ortho = render_path_paint_saved_ortho;
-	camera_object_build_proj(scene_camera, -1.0);
-	camera_object_build_mat(scene_camera);
-	g_context->ddirty = 2;
-
-	render_path_base_draw_gbuffer();
 }
 
 void render_path_paint_bind_layers() {

@@ -206,7 +206,7 @@ static void camera_zoom_action(bool modif_key) {
 		camera_redraws = 2;
 		f32 f          = mouse_wheel_delta * (-0.2) * ((camera_distance() / 4.0));
 		f *= camera_get_zoom_speed();
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 		// Pinch: towards the point between the fingers, it stays in place on the screen
 		if (mouse_down("right")) {
 			vec4_t look = vec4_norm(camera_object_look(camera));
@@ -335,7 +335,7 @@ void camera_set_pivot_center_to_mouse() {
 	camera_object_build_mat(camera);
 }
 
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 // Twist with two fingers or the trackpad rolls the view around the look direction, it levels again near 0
 static void camera_twist() {
 	static f64  twist_time = 0.0;
@@ -377,7 +377,7 @@ void camera_update(void *_) {
 	if (!camera_wrap_mouse() || g_context->camera_controls == CAMERA_CONTROLS_NONE) {
 		return;
 	}
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 	camera_twist();
 #endif
 

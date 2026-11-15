@@ -13,7 +13,6 @@ layout(set = 0, binding = 1) uniform sampler sampler_linear;
 layout(set = 0, binding = 2) uniform texture2D tex;
 layout(set = 0, binding = 3) uniform texture2D lut_tex;
 
-// tex2d histogram;
 
 vec3 tonemap_filmic(vec3 color) {
 	// Based on Filmic Tonemapping Operators http://filmicgames.com/archives/75
@@ -104,7 +103,6 @@ void main() {
 
 	// Auto exposure
 	// const float auto_exposure_strength = 1.0;
-	// float expo = 2.0 - clamp(length(textureLod(sampler2D(histogram, sampler_linear), vec2(0.5, 0.5), 0.0).rgb), 0.0, 1.0);
 	// color.rgb *= pow(expo, auto_exposure_strength * 2.0);
 
 	if (constants.lut_size > 0.0) {

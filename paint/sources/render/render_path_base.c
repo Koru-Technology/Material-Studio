@@ -4,66 +4,29 @@
 f32                      render_path_base_super_sample = 1.0;
 render_target_t_array_t *render_path_base_bloom_mipmaps;
 
+// Creates a render target, w and h 0 for the size of the view times scale
+render_target_t *render_path_add_target(char *name, i32 w, i32 h, char *format, f32 scale) {
+	render_target_t *t = render_target_create();
+	t->name            = name;
+	t->width           = w;
+	t->height          = h;
+	t->format          = format;
+	t->scale           = scale;
+	return render_path_create_render_target(t);
+}
+
 void render_path_base_init() {
 	pipes_init();
 	const_data_create_screen_aligned_data();
 	const_data_create_skydome_data();
 	render_path_base_super_sample = g_config->rp_supersample;
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "main";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "D32";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "gbuffer0";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "gbuffer1";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "gbuffer2";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "buf";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "last";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("main", 0, 0, "D32", render_path_base_get_super_sampling());
+	render_path_add_target("gbuffer0", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("gbuffer1", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("gbuffer2", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("buf", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("last", 0, 0, "RGBA64", render_path_base_get_super_sampling());
 	{
 		render_target_t *t = render_target_create();
 		t->name            = "empty_white";
@@ -133,7 +96,7 @@ f32 render_path_base_get_super_sampling() {
 }
 
 static bool render_path_base_path_trace() {
-	return g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE && g_context->tool != TOOL_TYPE_COLORID && !render_path_raytrace_bake_lightmap_busy();
+	return g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE && g_context->tool != TOOL_TYPE_COLORID;
 }
 
 void render_path_base_begin() {
@@ -227,6 +190,24 @@ void render_path_base_draw_split(void (*draw_commands)(void)) {
 // Anything changing the view sets ddirty, render_path_base_redraw() covers changes that do not.
 static char *render_path_base_presented       = NULL; // Target the last image was presented from
 static i32   render_path_base_presented_count = 0;    // Images presented, a new one changes it
+
+// The image of a render target, empty_black when there is no such target
+gpu_texture_t *render_path_target_image(char *name) {
+	render_target_t *rt = any_map_get(render_path_render_targets, name);
+	if (rt == NULL || rt->_image == NULL) {
+		rt = any_map_get(render_path_render_targets, "empty_black");
+	}
+	return rt->_image;
+}
+
+gpu_texture_t *render_path_empty_black() {
+	return render_path_target_image("empty_black");
+}
+
+gpu_texture_t *render_path_empty_white() {
+	render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
+	return rt != NULL ? rt->_image : render_path_empty_black();
+}
 
 // Last image of the 3D view and a count that changes with every new image, NULL before the first
 gpu_texture_t *render_path_base_presented_image(i32 *count) {
@@ -383,35 +364,9 @@ void render_path_base_draw_bloom(char *source, char *target) {
 #define RENDER_PATH_BASE_SSAO_SCALE 0.5
 
 void render_path_base_init_ssao() {
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "singlea";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
-		render_path_create_render_target(t);
-	}
-
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "singleb";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
-		render_path_create_render_target(t);
-	}
-
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "singlec";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("singlea", 0, 0, "R8", render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE);
+	render_path_add_target("singleb", 0, 0, "R8", render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE);
+	render_path_add_target("singlec", 0, 0, "R8", render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE);
 
 	render_path_load_shader("Scene/ssao_pass/ssao_pass");
 	render_path_load_shader("Scene/ssao_blur_pass/ssao_blur_pass_x");
@@ -420,13 +375,7 @@ void render_path_base_init_ssao() {
 
 // Depth with translucent surfaces included, read by painting - created once translucency gets enabled and kept
 void render_path_base_init_paint_depth() {
-	render_target_t *t = render_target_create();
-	t->name            = "main_paint";
-	t->width           = 0;
-	t->height          = 0;
-	t->format          = "D32";
-	t->scale           = render_path_base_get_super_sampling();
-	render_path_create_render_target(t);
+	render_path_add_target("main_paint", 0, 0, "D32", render_path_base_get_super_sampling());
 }
 
 bool render_path_base_has_paint_depth() {
@@ -505,21 +454,6 @@ void render_path_base_draw_deferred_light() {
 	render_path_draw_skydome("Scene/world_pass/world_pass");
 }
 
-// function render_path_base_draw_histogram() {
-// 	{
-// 		let t: render_target_t = RenderTarget.create();
-// 		t.name = "histogram";
-// 		t.width = 1;
-// 		t.height = 1;
-// 		t.format = "RGBA64";
-// 		render_path_create_render_target(t);
-// 		render_path_load_shader("Scene/histogram_pass/histogram_pass");
-// 	}
-// 	render_path_set_target("histogram");
-// 	render_path_bind_target("last", "tex");
-// 	render_path_draw_shader("Scene/histogram_pass/histogram_pass");
-// }
-
 static gpu_texture_t *render_path_base_taa_history = NULL;
 mat4_t                render_path_base_taa_prev_vp = {0}; // Camera of the frame in the history, without jitter
 
@@ -551,7 +485,7 @@ void render_path_base_draw_taa(char *bufa, char *bufb) {
 	}
 
 	render_path_base_swap_buf(bufa);
-	render_path_base_taa_history = ((render_target_t *)any_map_get(render_path_render_targets, "last"))->_image;
+	render_path_base_taa_history = render_path_target_image("last");
 }
 
 void render_path_base_swap_buf(char *bufa) {
@@ -566,7 +500,7 @@ void render_path_base_swap_buf(char *bufa) {
 }
 
 void render_path_base_make_gbuffer_copy_textures() {
-	gpu_texture_t *g0      = ((render_target_t *)any_map_get(render_path_render_targets, "gbuffer0"))->_image;
+	gpu_texture_t *g0      = render_path_target_image("gbuffer0");
 	char          *names[] = {"gbuffer0_copy", "gbuffer1_copy", "gbuffer2_copy"};
 	for (i32 i = 0; i < 3; ++i) {
 		render_target_t *t = any_map_get(render_path_render_targets, names[i]);
@@ -701,7 +635,7 @@ void render_path_base_draw_gbuffer() {
 	if (is_decal && !hide) {
 		line_draw_color            = 0xff000000;
 		line_draw_strength         = 0.002;
-		string_array_t *additional = any_array_create_from_raw(
+		string_array_t *additional = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "gbuffer1",
 		    },

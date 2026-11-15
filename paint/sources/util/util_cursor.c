@@ -80,7 +80,7 @@ void util_cursor_render(void *_) {
 
 	// The 2D view sees the layer plane, brush radius is in world units as in the 3D view
 	bool in_2d   = context_in_2d_view(VIEW_2D_TYPE_LAYER);
-	f32  scale2d = (900 / (f32)base_paint_view_h()) * g_config->window_scale;
+	f32  scale2d = base_scale2d(base_paint_view_h());
 	f32  world2d = ui_view2d_world_scale();
 
 	// Clone source cursor

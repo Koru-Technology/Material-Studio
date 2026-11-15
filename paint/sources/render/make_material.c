@@ -2,9 +2,7 @@
 #include "../global.h"
 #include <stdatomic.h>
 #include <unistd.h>
-#ifdef __APPLE__
 #include <pthread.h>
-#endif
 
 static shader_context_t *make_material_default_scon = NULL;
 static shader_context_t *make_material_saved_scon   = NULL;
@@ -403,42 +401,34 @@ struct make_material_async {
 	f64               t0;
 };
 
-#ifdef IRON_METAL
 void gpu_shader_precompile(gpu_shader_t *shader); // metal_gpu.m
 
 static void make_material_async_frag_worker(void *param) {
-#ifdef __APPLE__
 	pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
-#endif
 	gpu_shader_precompile(param);
 }
-#endif
 
 static void make_material_async_worker(void *param) {
 	make_material_async_t *a = param;
-#ifdef __APPLE__
 	pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0); // Strokes wait for it
-#endif
 	if (a->glsl != NULL && iron_glsl_translate(a->glsl, &a->vs, &a->fs)) {
 		shader_context_set_sources(a->scon, a->vs, a->fs);
 	}
-#ifdef IRON_METAL
 	// The fragment library (the material, the longer one) on a second thread while this one compiles the vertex library
 	gpu_pipeline_t *pipe = a->scon->_->pipe;
 	iron_thread_t   frag;
 	iron_thread_init(&frag, make_material_async_frag_worker, pipe->fragment_shader);
 	gpu_shader_precompile(pipe->vertex_shader);
 	iron_thread_wait_and_destroy(&frag);
-#endif
 	gpu_pipeline_compile(a->scon->_->pipe); // Empty shaders after a failed translation: no pipeline, as when parsed at once
 	atomic_store(&a->done, true);
 }
 
 // Threads at work, joined at exit: glslang's tables go with the process's static destructors, a translation still
 // running then crashed
-#define MAKE_MATERIAL_THREADS_MAX 64
-static make_material_async_t *make_material_threads[MAKE_MATERIAL_THREADS_MAX];
-static i32                    make_material_nthreads = 0;
+static make_material_async_t **make_material_threads   = NULL;
+static i32                     make_material_nthreads  = 0;
+static i32                     make_material_threads_n = 0; // Capacity
 
 static void make_material_thread_ended(make_material_async_t *a) {
 	for (i32 i = 0; i < make_material_nthreads; ++i) {
@@ -476,9 +466,11 @@ make_material_async_t *make_material_async_start(void) {
 	    a->scon->_->pipe->fragment_shader != NULL) {
 		a->started   = true;
 		a->compiling = true;
-		if (make_material_nthreads < MAKE_MATERIAL_THREADS_MAX) {
-			make_material_threads[make_material_nthreads++] = a;
+		if (make_material_nthreads == make_material_threads_n) { // Every thread is joined at exit, none left out
+			make_material_threads_n = make_material_threads_n == 0 ? 64 : make_material_threads_n * 2;
+			make_material_threads   = realloc(make_material_threads, sizeof(make_material_async_t *) * make_material_threads_n);
 		}
+		make_material_threads[make_material_nthreads++] = a;
 		iron_thread_init(&a->thread, make_material_async_worker, a);
 	}
 	return a;

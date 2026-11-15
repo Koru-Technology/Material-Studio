@@ -1,8 +1,9 @@
 
 #include "../global.h"
 
-bool make_paint_is_raytraced_bake() {
-	return g_context->bake_type == BAKE_TYPE_INIT;
+// The setup draw of a ray traced bake (render_path_raytrace_bake_commands): positions and normals of the mesh in uv space
+static bool make_paint_is_raytrace_bake_setup() {
+	return g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_INIT;
 }
 
 #define MAKE_PAINT_CACHE_SIZE 4
@@ -125,7 +126,7 @@ string_array_t *make_paint_color_attachments() {
 		    4);
 		return res;
 	}
-	if (g_context->tool == TOOL_TYPE_BAKE && make_paint_is_raytraced_bake()) {
+	if (make_paint_is_raytrace_bake_setup()) {
 		string_array_t *res = any_array_create_from_raw(
 		    (void *[]){
 		        "RGBA64",
@@ -265,13 +266,7 @@ node_shader_context_t *make_paint_cache_bake_run(material_t *data, char *format,
 	                                                              .depth_write       = false,
 	                                                              .compare_mode      = "always",
 	                                                              .cull_mode         = "none",
-	                                                              .vertex_elements   = any_array_create_from_raw(
-                                                                  (void *[]){
-                                                                      ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                      ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                      ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                  },
-                                                                  3),
+	                                                              .vertex_elements   = node_shader_mesh_elements(),
 	                                                              .color_attachments = any_array_create_from_raw(
 	                                                                  (void *[]){
 	                                                                      format,
@@ -372,13 +367,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	                                                                 .depth_write     = false,
 	                                                                 .compare_mode    = "always",
 	                                                                 .cull_mode       = "none",
-	                                                                 .vertex_elements = any_array_create_from_raw(
-                                                                (void *[]){
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                },
-                                                                3),
+	                                                                 .vertex_elements = node_shader_mesh_elements(),
 	                                                                 .color_attachments = make_paint_color_attachments()});
 	node_shader_context_t *con_paint = node_shader_context_create(data, props);
 
@@ -428,7 +417,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 
 	node_shader_t *shader = node_shader_context_make_shader(con_paint);
 
-	if (g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_INIT) {
+	if (make_paint_is_raytrace_bake_setup()) {
 		// Init raytraced bake
 		make_bake_position_normal(shader);
 		con_paint->data->shader_from_source = true;
@@ -555,7 +544,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 			node_shader_write_frag(shader, "vec2 g0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
 			node_shader_write_frag(shader, "vec3 wn;");
 			node_shader_write_frag(shader, "wn.z = 1.0 - abs(g0.x) - abs(g0.y);");
-			// node_shader_write_frag(shader, "wn.xy = wn.z >= 0.0 ? g0.xy : octahedron_wrap(g0.xy);");
 			node_shader_write_frag(shader,
 			                       "if (wn.z >= 0.0) { wn.x = g0.x; wn.y = g0.y; } else { vec2 f2 = octahedron_wrap(g0.xy); wn.x = f2.x; wn.y = f2.y; }");
 			node_shader_write_frag(shader, "wn = normalize(wn);");

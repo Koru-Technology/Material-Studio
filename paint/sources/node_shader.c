@@ -185,7 +185,7 @@ void node_shader_rename(buffer_t *out, char *code, char *from, char *to) {
 		}
 		bool word_start = hit == code || !(isalnum((unsigned char)hit[-1]) || hit[-1] == '_' || hit[-1] == '.');
 		bool word_end   = !(isalnum((unsigned char)from[n - 1]) || from[n - 1] == '_') || !(isalnum((unsigned char)hit[n]) || hit[n] == '_');
-		string_buffer_append_n(out, s, hit - s);
+		string_buffer_append_n(out, s, (int)(hit - s));
 		string_buffer_append(out, word_start && word_end ? to : from);
 		s = hit + n;
 	}
@@ -389,6 +389,17 @@ void node_shader_context_free(node_shader_context_t *raw) {
 		free(shader);
 	}
 	free(raw);
+}
+
+// Vertex layout of the meshes: pos, nor, tex
+vertex_element_t_array_t *node_shader_mesh_elements() {
+	return any_array_create_from_raw(
+	    (void *[]){
+	        ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
+	        ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
+	        ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
+	    },
+	    3);
 }
 
 node_shader_context_t *node_shader_context_create(material_t *material, shader_context_t *props) {

@@ -306,21 +306,11 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	render_path_raytrace_override_height = height;
 
 	if (any_map_get(render_path_render_targets, "raytrace_override_mask") == NULL) {
-		render_target_t *t = render_target_create();
-		t->name            = "raytrace_override_mask";
-		t->width           = width;
-		t->height          = height;
-		t->format          = "R16"; // Same format as the paint pass stroke mask
-		render_path_create_render_target(t);
+		render_path_add_target("raytrace_override_mask", width, height, "R16", 1.0); // Same format as the paint pass stroke mask
 	}
 	while (render_path_raytrace_override_allocated < count) {
 		for (char *c = "abc"; *c != '\0'; ++c) {
-			render_target_t *t = render_target_create();
-			t->name            = string_copy(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c));
-			t->width           = width;
-			t->height          = height;
-			t->format          = format;
-			render_path_create_render_target(t);
+			render_path_add_target(string_copy(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c)), width, height, format, 1.0);
 		}
 		render_path_raytrace_override_allocated++;
 	}
@@ -333,7 +323,7 @@ static gpu_texture_t *render_path_raytrace_override_texture(i32 slot, char chann
 }
 
 static void render_path_raytrace_draw_override(i32 slot) {
-	string_array_t *additional = any_array_create_from_raw(
+	string_array_t *additional = any_array_create_from_raw_tmp(
 	    (void *[]){
 	        render_path_raytrace_override_target(slot, 'b'),
 	        render_path_raytrace_override_target(slot, 'c'),
@@ -426,7 +416,7 @@ void render_path_raytrace_commands(bool use_live_layer) {
 			render_path_raytrace_init_shader = true;
 		}
 		char *mode = config_is_raytrace_fast() ? "core" : "full";
-		render_path_raytrace_raytrace_init(string("raytrace_brute_%s%s", mode, render_path_raytrace_ext), true);
+		render_path_raytrace_setup(string("raytrace_brute_%s%s", mode, render_path_raytrace_ext), true);
 		render_path_raytrace_last_envmap = NULL;
 	}
 
@@ -528,7 +518,7 @@ void render_path_raytrace_commands(bool use_live_layer) {
 	g_context->pdirty--;
 }
 
-void render_path_raytrace_raytrace_init(char *shader_name, bool build) {
+void render_path_raytrace_setup(char *shader_name, bool build) {
 	if (render_path_raytrace_init_shader) {
 		render_path_raytrace_init_shader = false;
 		buffer_t *shader                 = data_get_blob(shader_name);

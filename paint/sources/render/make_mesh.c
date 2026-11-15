@@ -191,13 +191,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 	                                                                  .depth_write     = layer_pass == 0 ? true : false,
 	                                                                  .compare_mode    = layer_pass == 0 ? "less" : "equal",
 	                                                                  .cull_mode       = (g_context->cull_backfaces || layer_pass > 0) ? "clockwise" : "none",
-	                                                                  .vertex_elements = any_array_create_from_raw(
-                                                                (void *[]){
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                },
-                                                                3),
+	                                                                  .vertex_elements = node_shader_mesh_elements(),
 	                                                                  .color_attachments = any_array_create_from_raw(
                                                                 (void *[]){
                                                                     "RGBA64",
@@ -590,9 +584,6 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(shader, string_tmp("vec2 texel0 = %s * constants.texpaint_size * 0.01;", tex_coord_layer));
 			node_shader_write_frag(shader, string_tmp("vec2 texel1 = %s * constants.texpaint_size * 0.1;", tex_coord_layer));
 			node_shader_write_frag(shader, string_tmp("vec2 texel2 = %s * constants.texpaint_size;", tex_coord_layer));
-			// node_shader_write_frag(shader, "basecol = basecol * max(float((int(texel0.x) % 2.0) == (int(texel0.y) % 2.0)), 0.9);");
-			// node_shader_write_frag(shader, "basecol = basecol * max(float((int(texel1.x) % 2.0) == (int(texel1.y) % 2.0)), 0.9);");
-			// node_shader_write_frag(shader, "basecol = basecol * max(float((int(texel2.x) % 2.0) == (int(texel2.y) % 2.0)), 0.9);");
 			node_shader_write_frag(shader, "float texel0xmod = mod(float(int(texel0.x)), 2.0);");
 			node_shader_write_frag(shader, "float texel0ymod = mod(float(int(texel0.y)), 2.0);");
 			node_shader_write_frag(shader, "float texel1xmod = mod(float(int(texel1.x)), 2.0);");
@@ -767,7 +758,6 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(shader, "output[1] = vec4(1.0, 0.0, 1.0, 1.0);");
 		}
 		node_shader_write_frag(shader, "n = n / (abs(n.x) + abs(n.y) + abs(n.z));");
-		// node_shader_write_frag(shader, "n.xy = n.z >= 0.0 ? n.xy : octahedron_wrap(n.xy);");
 		node_shader_write_frag(shader, "if (n.z < 0.0) { n.xy = octahedron_wrap(n.xy); }");
 		node_shader_write_frag(shader, "output[0] = vec4(n.xy, roughness, pack_f32_i16(metallic, uint(mod(float(int(matid * 255.0)), 3.0))));");
 	}
