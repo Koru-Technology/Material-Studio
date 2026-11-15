@@ -290,6 +290,20 @@ void draw_end(void) {
 	gpu_end();
 }
 
+draw_saved_t draw_suspend(void) {
+	draw_saved_t saved = {.target = _draw_current, .active = gpu_in_use};
+	if (saved.active) {
+		draw_end();
+	}
+	return saved;
+}
+
+void draw_resume(draw_saved_t saved) {
+	if (saved.active) {
+		draw_begin(saved.target, false, 0);
+	}
+}
+
 void draw_scissor(int x, int y, int width, int height) {
 	draw_flush();
 	gpu_scissor(x, y, width, height);

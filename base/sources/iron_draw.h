@@ -40,6 +40,15 @@ void     draw_line(float x0, float y0, float x1, float y1, float strength);
 void     draw_line_aa(float x0, float y0, float x1, float y1, float strength);
 void     draw_string(const char *text, float x, float y);
 void     draw_end(void);
+
+// Ends the draw in progress (gpu_in_use) and remembers its target, draw_resume begins again on it without clearing
+typedef struct draw_saved {
+	gpu_texture_t *target;
+	bool           active;
+} draw_saved_t;
+draw_saved_t draw_suspend(void);
+void         draw_resume(draw_saved_t saved);
+
 void     draw_scissor(int x, int y, int width, int height);
 void     draw_set_color(uint32_t color);
 uint32_t draw_get_color();
