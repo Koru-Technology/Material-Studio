@@ -78,7 +78,7 @@ void ui_base_init() {
 
 	g_ui = ui_create(ops);
 
-#if !defined(IRON_IOS) && !defined(IRON_ANDROID)
+#if !defined(IRON_IOS)
 	ui_on_tab_drop = ui_dock_on_tab_drop;
 #endif
 	ui_on_tab_dock         = ui_dock_on_tab_dock;

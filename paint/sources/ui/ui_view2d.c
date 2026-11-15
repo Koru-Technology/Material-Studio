@@ -379,7 +379,7 @@ void ui_view2d_update(void *_) {
 			}
 		}
 
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#if defined(IRON_IOS)
 		// Twist with two fingers or the trackpad turns the layer, it snaps upright near 0
 		static f64 twist_time = 0.0;
 		if (mouse_twist_delta != 0.0 && ui_view2d_rotation_allowed()) {

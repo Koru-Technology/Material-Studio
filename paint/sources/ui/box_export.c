@@ -30,7 +30,7 @@ void box_export_tab_export_textures_run(void *_) {
 
 void box_export_tab_export_textures_path_picked(char *path) {
 	g_context->texture_export_path = string_copy(path);
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	console_toast(tr("Exporting textures"));
 #endif
 	sys_notify_on_next_frame(&box_export_tab_export_textures_run, NULL);
@@ -62,7 +62,7 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 			layers_on_resized();
 		}
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 		string_array_t *base_bits_combo = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "8bit",
@@ -172,20 +172,7 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 			else {
 				char *filters             = base_bits != TEXTURE_BITS_BITS8 ? "exr" : g_context->format_type == TEXTURE_LDR_FORMAT_PNG ? "png" : "jpg";
 				_box_export_bake_material = bake_material;
-#ifdef IRON_WASM
-				// Browsers pick a folder only, the textures are prefixed with the project name
-				char *name = ui_files_filename != NULL && !string_equals(ui_files_filename, "") ? ui_files_filename : tr("untitled");
-				if (string_index_of(name, ".") > 0) {
-					name = substring(name, 0, string_last_index_of(name, "."));
-				}
-				ui_files_filename = string_copy(name);
-				char *folder      = iron_folder_dialog(ui_files_filename);
-				if (folder != NULL) {
-					box_export_tab_export_textures_path_picked(folder);
-				}
-#else
 				ui_files_show(filters, true, false, &box_export_tab_export_textures_path_picked);
-#endif
 			}
 		}
 		if (g_ui->is_hovered) {
@@ -409,7 +396,7 @@ void box_export_tab_atlases() {
 }
 
 void box_export_tab_export_mesh_path_picked(char *path) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	char *f = sys_title();
 #else
 	char *f = ui_files_filename;
@@ -417,7 +404,7 @@ void box_export_tab_export_mesh_path_picked(char *path) {
 	if (string_equals(f, "")) {
 		f = string_copy(tr("untitled"));
 	}
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	console_toast(tr("Exporting mesh"));
 #endif
 
@@ -516,7 +503,7 @@ void box_export_show_textures_box() {
 	box_export_tab_presets();
 
 	box_export_tab_atlases();
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	box_export_tab_export_mesh(&box_export_tab);
 #endif
 }

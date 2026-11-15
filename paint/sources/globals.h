@@ -10,9 +10,6 @@ i32   brush_previews_group       = -1; // Group shown in the brush list, its str
 char *manifest_version         = "1.1rc1";
 char *manifest_version_project = "30";
 char *manifest_version_config  = "19";
-char *manifest_url             = "https://armorpaint.org";
-char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
-char *manifest_url_ios         = "https://apps.apple.com/app/armorpaint/id1533967534";
 
 context_t   *g_context;
 project_t   *g_project;
@@ -134,9 +131,7 @@ i32              pipes_offset;
 any_map_t       *import_texture_importers;
 any_map_t       *import_text_importers;
 
-#ifdef IRON_WINDOWS
-char *ui_files_default_path = "C:\\Users";
-#elif defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 char *ui_files_default_path = "/Users";
 #else
 char *ui_files_default_path = "/";
@@ -397,15 +392,7 @@ i32                          neural_node_downloading = 0;
 neural_node_model_t_array_t *neural_node_models      = NULL;
 
 
-#ifdef IRON_DIRECT3D12
-char *render_path_raytrace_ext = ".cso";
-#elif defined(IRON_METAL)
 char *render_path_raytrace_ext = ".metal";
-#elif defined(IRON_WEBGPU)
-char *render_path_raytrace_ext = ".wgsl";
-#else
-char *render_path_raytrace_ext = ".spirv";
-#endif
 
 char *str_hue_sat = "\
 vec3 ms_hsv_to_rgb(vec3 c) { \

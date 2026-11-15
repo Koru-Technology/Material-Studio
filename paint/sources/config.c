@@ -20,19 +20,6 @@ void config_load() {
 	path           = string("%sconfig.json", path);
 	buffer_t *blob = data_get_blob(path);
 
-#ifdef IRON_LINUX
-	if (blob == NULL) { // Detect protected path
-		config_init();
-		config_save();
-		blob = data_get_blob(path);
-		if (blob == NULL) {
-			path_is_protected_linux = true;
-			free(path);
-			config_load();
-			return;
-		}
-	}
-#endif
 
 	if (blob != NULL) {
 		char *config_string = sys_buffer_to_string(blob);
@@ -229,19 +216,13 @@ config_t *config_create_default() {
 	if (sys_display_width() >= 2560 && sys_display_height() >= 1600) {
 		c->window_scale = 2.0;
 	}
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	c->window_scale = 2.0;
 #endif
 #ifdef IRON_MACOS
 	c->window_scale = iron_display_backing_scale();
 #endif
-#ifdef IRON_WASM
-	c->window_scale = sys_display_ppi() / 96.0;
-	if (c->window_scale < 1.0) {
-		c->window_scale = 1.0;
-	}
-#endif
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	if (sys_display_ppi() > 330) {
 		c->window_scale = 2.5;
 	}
@@ -260,21 +241,15 @@ config_t *config_create_default() {
 	c->texture_filter   = true;
 	c->rp_ssao          = 1.0;
 	c->rp_supersample   = 1.0;
-#ifdef IRON_ANDROID
-	if (sys_display_width() >= 3200 && sys_display_height() >= 2136) {
-		c->window_scale   = 2.5;
-		c->rp_supersample = 0.5;
-	}
-#endif
 	c->recent_projects = any_array_create_from_raw((void *[]){}, 0);
 	c->bookmarks       = any_array_create_from_raw((void *[]){}, 0);
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	c->keymap = "touch.json";
 #else
 	c->keymap = "default.json";
 #endif
 	c->theme  = "default.json";
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	c->undo_steps = 4;
 #else
 	c->undo_steps = 6;
@@ -282,7 +257,7 @@ config_t *config_create_default() {
 	c->pressure_radius      = true;
 	c->pressure_sensitivity = 1.0;
 	c->camera_fov           = 0.69;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	c->camera_zoom_speed     = 0.5;
 	c->camera_pan_speed      = 0.5;
 	c->camera_rotation_speed = 0.5;
@@ -297,7 +272,7 @@ config_t *config_create_default() {
 	c->camera_pivot       = CAMERA_PIVOT_CENTER;
 	c->camera_controls    = CAMERA_CONTROLS_ORBIT;
 	c->layer_res          = TEXTURE_RES_RES2048;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	c->touch_ui      = true;
 	c->header_pinned = false;
 	c->splash_screen = true;
@@ -310,7 +285,7 @@ config_t *config_create_default() {
 	c->pressure_hardness = false;
 	c->pressure_angle    = false;
 	c->pressure_opacity  = false;
-#if defined(IRON_ANDROID) || defined(IRON_IOS) || defined(IRON_MACOS)
+#if defined(IRON_IOS) || defined(IRON_MACOS)
 	c->material_live = false;
 #else
 	c->material_live = true;
@@ -320,7 +295,7 @@ config_t *config_create_default() {
 	c->brush_alpha_discard = 0.1;
 	c->brush_live          = false;
 	c->show_asset_names    = false;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	c->material_params = false;
 	c->brush_params    = false;
 #else
@@ -336,7 +311,7 @@ config_t *config_create_default() {
 	c->view2d_grid_cell = 64;
 	c->view2d_grid_snap = false;
 	c->pixel_snap       = false;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	c->large_asset_previews = false;
 	c->tooltips             = false;
 #else
@@ -365,7 +340,7 @@ config_t *config_create_default() {
 	c->pencil_double_tap = PENCIL_ACTION_SYSTEM;
 	c->pencil_squeeze = PENCIL_ACTION_SYSTEM;
 	c->quick_menu_slots = config_default_quick_menu_slots();
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#if defined(IRON_IOS)
 	c->undo_memory_mb = 256;
 #else
 	c->undo_memory_mb = 1024;
@@ -384,7 +359,7 @@ void config_init() {
 	ui_touch_control = g_config->touch_ui;
 	ui_tooltips      = g_config->tooltips;
 	ui_touch_speed   = 1.0;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	if (sys_display_ppi() > 400) {
 		ui_touch_speed = 0.5;
 	}

@@ -98,20 +98,13 @@ char *script_save_path() {
 }
 
 char *project_filepath_get() {
-#ifdef IRON_WINDOWS
-	return string_replace_all(g_project->_->filepath, "\\", "/");
-#else
 	return g_project->_->filepath;
-#endif
 }
 char *project_basepath_get() {
 	char *path = project_filepath_get();
 	return substring(path, 0, string_last_index_of(path, "/"));
 }
 void project_filepath_set(char *s) {
-#ifdef IRON_WINDOWS
-	s = string_replace_all(s, "/", "\\");
-#endif
 	g_project->_->filepath = string_copy(s);
 }
 camera_object_t *script_get_camera() {
@@ -124,16 +117,10 @@ config_t *script_get_config() {
 	return g_config;
 }
 platform_t script_get_platform() {
-#if defined(IRON_WINDOWS)
-	return PLATFORM_WINDOWS;
-#elif defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 	return PLATFORM_MACOS;
 #elif defined(IRON_IOS)
 	return PLATFORM_IOS;
-#elif defined(IRON_ANDROID)
-	return PLATFORM_ANDROID;
-#elif defined(IRON_WASM)
-	return PLATFORM_WASM;
 #else
 	return PLATFORM_LINUX;
 #endif
@@ -1850,7 +1837,7 @@ void script_mouse_press(i32 x, i32 y, i32 button) {
 void script_mouse_move(i32 x, i32 y) {
 	iron_internal_mouse_trigger_move(x, y);
 	ui_mouse_move(g_ui, x, y, 0, 0);
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#if defined(IRON_IOS)
 	ui_touch_move(g_ui, 0, x, y); // The ui takes moves from touches there
 #endif
 }

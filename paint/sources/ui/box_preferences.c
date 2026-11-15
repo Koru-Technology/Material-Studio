@@ -688,15 +688,6 @@ void box_preferences_pen_tab() {
 	if (g_ui->is_hovered) {
 		ui_tooltip(tr("Auto: fingers paint until the pencil is used, then they only move the view"));
 	}
-	f32_array_t *row = f32_array_create_from_raw_tmp(
-	    (f32[]){
-	        1 / 4.0,
-	    },
-	    1);
-	ui_row(row);
-	if (ui_icon_button(tr("Help"), ICON_LINK, UI_ALIGN_CENTER)) {
-		iron_load_url("https://armorpaint.org/manual#pen");
-	}
 }
 
 void box_preferences_lut_picked(char *path) {
@@ -1112,7 +1103,7 @@ void box_preferences_show_box() {
 		box_preferences_keymap_tab();
 	}
 #endif
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 	if (ui_tab(&box_preferences_tab, tr("Neural"), true, -1, false)) {
 		box_preferences_neural_tab();
 	}

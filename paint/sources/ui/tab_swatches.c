@@ -174,7 +174,7 @@ void tab_swatches_draw_menu() {
 		any_array_push(g_project->swatches, g_context->swatch);
 		history_duplicate_swatch();
 	}
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 	else if (ui_menu_button(tr("Copy Hex Code"), "", ICON_HASH)) {
 		i32 color = g_context->swatch->base;
 		color     = color_set_ab(color, g_context->swatch->opacity * 255);

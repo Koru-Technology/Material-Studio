@@ -27,11 +27,7 @@ void ui_files_release_keys() {
 
 void ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files_done)(char *)) {
 	if (is_save) {
-#ifdef IRON_WASM
-		char *default_path = ui_files_filename != NULL ? ui_files_filename : ""; // Suggested file name
-#else
 		char *default_path = "";
-#endif
 		ui_files_path = string_copy(iron_save_dialog(filters, default_path));
 		if (ui_files_path != NULL) {
 			char *sep2 = string("%s%s", PATH_SEP, PATH_SEP);

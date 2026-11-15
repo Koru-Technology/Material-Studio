@@ -346,7 +346,7 @@ void ui_dock_reset() {
 	i32 status_h  = math_floor(ui_statusbar_default_h * scale);
 	// Views take the space next to the sidebar and the toolbar
 	i32 views_w = iron_window_width() - sidebar_w - math_floor(ui_toolbar_default_w * scale);
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#if defined(IRON_IOS)
 	i32 nodes_w = math_floor(views_w * 0.473);
 #else
 	i32 nodes_w = math_floor(views_w * 0.515); // Align with ui header controls

@@ -377,7 +377,7 @@ void _kickstart() {
 	    },
 	    1);
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 	nodes_material_categories = any_array_create_from_raw(
 	    (void *[]){
 	        _tr("Input"),
@@ -402,7 +402,7 @@ void _kickstart() {
 	    6);
 #endif
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	ui_sidebar_default_w = ui_sidebar_default_w_mini;
 #else
 	ui_sidebar_default_w = ui_sidebar_default_w_full;
