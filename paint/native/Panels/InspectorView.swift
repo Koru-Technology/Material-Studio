@@ -35,21 +35,8 @@ struct InspectorView: View {
 				slider("Hardness", value: store.brushHardness, range: 0...1) { app_set_brush_hardness($0) }
 			}
 			if let layer = LayersStore.shared.selectedLayer {
-				Section("Layer") {
-					LabeledContent("Name", value: layer.name)
-					Slider(value: Binding(get: { Double(layer.opacity) }, set: { v in
-						store.perform { _ = app_layer_set_opacity(layer.id, Float(v)) }
-					}), in: 0...1) {
-						Text("Opacity")
-					} onEditingChanged: { editing in
-						if editing {
-							app_layer_opacity_begin(layer.id)
-						}
-						else {
-							app_edit_end()
-						}
-					}
-				}
+				// Layer, fill, height blend and channels sections (LayersDetail.swift)
+				LayerDetailSections(layerID: layer.id)
 			}
 		}
 		.formStyle(.grouped)
