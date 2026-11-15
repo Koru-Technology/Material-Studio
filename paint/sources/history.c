@@ -193,8 +193,6 @@ static void history_swap_merge(history_step_t *step, bool undo) {
 
 	if (step->action == HISTORY_ACTION_DELETE_LAYER) {
 		tab_layers_remap_all_layer_pointers(pointers);
-		for (i32 i = 0; i < saved->length; ++i) {
-		}
 	}
 
 	i32 top = step->merge_start + saved->length - 1;
@@ -348,28 +346,6 @@ void history_swap_layer_props(history_step_t *step) {
 	}
 }
 
-void history_new_brush_slot(history_step_t *step) {
-	slot_brush_t *b = slot_brush_create(NULL);
-	array_insert(g_project->_->brushes, step->brush, b);
-	b->canvas = step->canvas;
-	context_set_brush(b);
-	ui_nodes_canvas_changed();
-	ui_nodes_hwnd->redraws = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	util_render_make_brush_preview();
-}
-
-void history_delete_brush_slot(history_step_t *step) {
-	step->canvas = g_project->_->brushes->buffer[step->brush]->canvas;
-	if (g_project->_->brushes->length > 1) {
-		context_select_brush(step->brush == g_project->_->brushes->length - 1 ? step->brush - 1 : step->brush + 1);
-	}
-	array_splice(g_project->_->brushes, step->brush, 1);
-	ui_nodes_canvas_changed();
-	ui_nodes_hwnd->redraws = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-}
-
 void history_new_swatch_slot(history_step_t *step) {
 	array_insert(g_project->swatches, step->swatch, step->swatch_color);
 	g_context->swatch = step->swatch_color;
@@ -457,9 +433,6 @@ static bool history_step_valid(history_step_t *step, bool undo) {
 	switch (step->action) {
 	case HISTORY_ACTION_EDIT_NODES:
 	case HISTORY_ACTION_DELETE_NODE_GROUP:
-	case HISTORY_ACTION_NEW_BRUSH:
-	case HISTORY_ACTION_DELETE_BRUSH:
-	case HISTORY_ACTION_DUPLICATE_BRUSH:
 	case HISTORY_ACTION_NEW_SWATCH:
 	case HISTORY_ACTION_DELETE_SWATCH:
 	case HISTORY_ACTION_DUPLICATE_SWATCH:
@@ -612,15 +585,6 @@ void history_undo() {
 		else if (step->action == HISTORY_ACTION_INVERT_MASK) {
 			sys_notify_on_next_frame(&history_undo_invert_mask, step);
 		}
-		else if (step->action == HISTORY_ACTION_APPLY_FILTER) {
-			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
-			slot_layer_t *lay = history_undo_slot(history_undo_i);
-			context_set_layer(g_project->_->layers->buffer[step->layer]);
-			slot_layer_swap(g_context->layer, lay);
-			layers_new_mask(false, g_context->layer, -1);
-			slot_layer_swap(g_context->layer, lay);
-			g_context->layer_preview_dirty = true;
-		}
 		else if (step->action == HISTORY_ACTION_TO_FILL_LAYER || step->action == HISTORY_ACTION_TO_FILL_MASK) {
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_to_paint_layer(g_context->layer);
@@ -656,12 +620,6 @@ void history_undo() {
 		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
-		}
-		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
-			history_delete_brush_slot(step);
-		}
-		else if (step->action == HISTORY_ACTION_DELETE_BRUSH) {
-			history_new_brush_slot(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_SWATCH || step->action == HISTORY_ACTION_DUPLICATE_SWATCH) {
 			history_delete_swatch_slot(step);
@@ -766,7 +724,6 @@ void history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask) {
 	if (is_mask) {
 		render_path_set_target(string_tmp("texpaint_undo%s", to_id_s), NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
 		render_path_bind_target(string("texpaint%s", from_id_s), "tex");
-		// render_path_draw_shader("Scene/copy_pass/copyR8_pass");
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
 	}
 	else {
@@ -921,15 +878,6 @@ void history_redo() {
 		else if (step->action == HISTORY_ACTION_INVERT_MASK) {
 			sys_notify_on_next_frame(&history_redo_invert_mask, step);
 		}
-		else if (step->action == HISTORY_ACTION_APPLY_FILTER) {
-			slot_layer_t *lay = history_undo_slot(history_undo_i);
-			context_set_layer(g_project->_->layers->buffer[step->layer]);
-			slot_layer_swap(g_context->layer, lay);
-			layers_new_mask(false, lay, -1);
-			slot_layer_swap(g_context->layer, lay);
-			g_context->layer_preview_dirty = true;
-			history_undo_i                 = (history_undo_i + 1) % g_config->undo_steps;
-		}
 		else if (step->action == HISTORY_ACTION_TO_FILL_LAYER || step->action == HISTORY_ACTION_TO_FILL_MASK) {
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
@@ -964,12 +912,6 @@ void history_redo() {
 		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
-		}
-		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
-			history_new_brush_slot(step);
-		}
-		else if (step->action == HISTORY_ACTION_DELETE_BRUSH) {
-			history_delete_brush_slot(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_SWATCH || step->action == HISTORY_ACTION_DUPLICATE_SWATCH) {
 			history_new_swatch_slot(step);
@@ -1373,24 +1315,6 @@ void history_layer_fill_material(slot_layer_t *l) {
 void history_layer_uv_type() {
 	history_step_t *step = history_push(HISTORY_ACTION_LAYER_UV_TYPE);
 	step->layer_uv_type  = g_context->layer->uv_type;
-}
-
-void history_new_brush() {
-	history_step_t *step = history_push(HISTORY_ACTION_NEW_BRUSH);
-	step->canvas_type    = CANVAS_TYPE_BRUSH;
-	step->canvas         = util_clone_canvas(g_context->brush->canvas);
-}
-
-void history_delete_brush() {
-	history_step_t *step = history_push(HISTORY_ACTION_DELETE_BRUSH);
-	step->canvas_type    = CANVAS_TYPE_BRUSH;
-	step->canvas         = util_clone_canvas(g_context->brush->canvas);
-}
-
-void history_duplicate_brush() {
-	history_step_t *step = history_push(HISTORY_ACTION_DUPLICATE_BRUSH);
-	step->canvas_type    = CANVAS_TYPE_BRUSH;
-	step->canvas         = util_clone_canvas(g_context->brush->canvas);
 }
 
 void history_new_swatch() {
