@@ -610,15 +610,6 @@ mat4_t mat4_compose(vec4_t loc, quat_t rot, vec4_t scl) {
 	return m;
 }
 
-mat4_t mat4_tween(mat4_t a, mat4_t b, float t) {
-	mat4_decomposed_t *da  = mat4_decompose(a);
-	mat4_decomposed_t *db  = mat4_decompose(b);
-	vec4_t             loc = {da->loc.x + t * (db->loc.x - da->loc.x), da->loc.y + t * (db->loc.y - da->loc.y), da->loc.z + t * (db->loc.z - da->loc.z), 1.0f};
-	vec4_t             scl = {da->scl.x + t * (db->scl.x - da->scl.x), da->scl.y + t * (db->scl.y - da->scl.y), da->scl.z + t * (db->scl.z - da->scl.z), 1.0f};
-	quat_t             rot = quat_slerp(da->rot, db->rot, t);
-	return mat4_compose(loc, rot, scl);
-}
-
 mat4_decomposed_t *mat4_decompose(mat4_t m) {
 	vec4_t loc;
 	quat_t rot;

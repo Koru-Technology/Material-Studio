@@ -240,13 +240,6 @@ i32_array_t *imap_keys(any_imap_t *m) {
 	return m->keys;
 }
 
-i32_imap_t *i32_imap_create() {
-	i32_imap_t *r = calloc(1, sizeof(i32_imap_t));
-	r->keys       = calloc(1, sizeof(i32_array_t));
-	r->values     = calloc(1, sizeof(i32_array_t));
-	return r;
-}
-
 any_imap_t *any_imap_create() {
 	any_imap_t *r = calloc(1, sizeof(any_imap_t));
 	r->keys       = calloc(1, sizeof(i32_array_t));

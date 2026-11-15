@@ -169,10 +169,6 @@ void iron_set_open_file_callback(void (*callback)(char *)) {
 	open_file_pending_count = 0;
 }
 
-bool iron_has_pending_open_file(void) {
-	return open_file_pending_count > 0;
-}
-
 void iron_internal_open_file_callback(char *path) {
 	if (open_file_callback != NULL) {
 		open_file_callback(path);
@@ -252,47 +248,6 @@ void iron_start(void) {
 #endif
 	iron_internal_shutdown();
 #endif
-}
-
-static uint8_t *current_file      = NULL;
-static size_t   current_file_size = 0;
-
-bool iron_save_file_loaded(void) {
-	return true;
-}
-
-uint8_t *iron_get_save_file(void) {
-	return current_file;
-}
-
-size_t iron_get_save_file_size(void) {
-	return current_file_size;
-}
-
-void iron_load_save_file(const char *filename) {
-	free(current_file);
-	current_file      = NULL;
-	current_file_size = 0;
-
-	iron_file_reader_t reader;
-	if (iron_file_reader_open(&reader, filename, IRON_FILE_TYPE_SAVE)) {
-		current_file_size = iron_file_reader_size(&reader);
-		current_file      = (uint8_t *)malloc(current_file_size);
-		iron_file_reader_read(&reader, current_file, current_file_size);
-		iron_file_reader_close(&reader);
-	}
-}
-
-void iron_save_save_file(const char *filename, uint8_t *data, size_t size) {
-	iron_file_writer_t writer;
-	if (iron_file_writer_open(&writer, filename)) {
-		iron_file_writer_write(&writer, data, (int)size);
-		iron_file_writer_close(&writer);
-	}
-}
-
-bool iron_save_is_saving(void) {
-	return false;
 }
 
 #ifdef IRON_IOS
@@ -398,17 +353,6 @@ void iron_internal_mouse_trigger_scroll(float delta) {
 	}
 }
 
-void iron_internal_mouse_window_activated() {
-	if (iron_mouse_is_locked()) {
-		iron_mouse_hide();
-	}
-}
-void iron_internal_mouse_window_deactivated() {
-	if (iron_mouse_is_locked()) {
-		iron_mouse_show();
-	}
-}
-
 static bool moved    = false;
 static bool locked   = false;
 static int  preLockX = 0;
@@ -487,10 +431,6 @@ static void (*pen_press_callback)(int /*x*/, int /*y*/, float /*pressure*/)   = 
 static void (*pen_move_callback)(int /*x*/, int /*y*/, float /*pressure*/)    = NULL;
 static void (*pen_release_callback)(int /*x*/, int /*y*/, float /*pressure*/) = NULL;
 
-static void (*eraser_press_callback)(int /*x*/, int /*y*/, float /*pressure*/)   = NULL;
-static void (*eraser_move_callback)(int /*x*/, int /*y*/, float /*pressure*/)    = NULL;
-static void (*eraser_release_callback)(int /*x*/, int /*y*/, float /*pressure*/) = NULL;
-
 void iron_pen_set_press_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
 	pen_press_callback = value;
 }
@@ -501,18 +441,6 @@ void iron_pen_set_move_callback(void (*value)(int /*x*/, int /*y*/, float /*pres
 
 void iron_pen_set_release_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
 	pen_release_callback = value;
-}
-
-void iron_eraser_set_press_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
-	eraser_press_callback = value;
-}
-
-void iron_eraser_set_move_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
-	eraser_move_callback = value;
-}
-
-void iron_eraser_set_release_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
-	eraser_release_callback = value;
 }
 
 void iron_internal_pen_trigger_press(int x, int y, float pressure) {
@@ -578,24 +506,6 @@ void iron_haptic_tick(float x, float y) {}
 void iron_internal_pen_trigger_release(int x, int y, float pressure) {
 	if (pen_release_callback != NULL) {
 		pen_release_callback(x, y, pressure);
-	}
-}
-
-void iron_internal_eraser_trigger_press(int x, int y, float pressure) {
-	if (eraser_press_callback != NULL) {
-		eraser_press_callback(x, y, pressure);
-	}
-}
-
-void iron_internal_eraser_trigger_move(int x, int y, float pressure) {
-	if (eraser_move_callback != NULL) {
-		eraser_move_callback(x, y, pressure);
-	}
-}
-
-void iron_internal_eraser_trigger_release(int x, int y, float pressure) {
-	if (eraser_release_callback != NULL) {
-		eraser_release_callback(x, y, pressure);
 	}
 }
 

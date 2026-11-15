@@ -490,15 +490,6 @@ void json_escape_to(buffer_t *sb, char *s) {
 	string_buffer_append(sb, chunk);
 }
 
-char *json_escape(char *s) {
-	buffer_t sb;
-	string_buffer_init(&sb);
-	json_escape_to(&sb, s);
-	char *r = string_copy(string_buffer_get(&sb));
-	string_buffer_free(&sb);
-	return r;
-}
-
 static void enc_escaped(char *s) {
 	json_escape_to(&encoded, s);
 }

@@ -299,7 +299,6 @@ int ui_color_wheel(uint32_t *value, ui_color_state_t *state, bool alpha, float w
 	current->_y = _y;
 	current->_w = _w;
 
-	ui_theme_t    *theme   = current->ops->theme;
 	uint32_t       col     = ui_color(round(state->val * 255.0f), round(state->val * 255.0f), round(state->val * 255.0f), 255);
 	gpu_texture_t *wheel   = ui_color_wheel_get_texture();
 	float          wheel_h = wheel->height * (w / wheel->width);
@@ -526,15 +525,6 @@ static void ui_text_area_select_word(ui_t *current) {
 	current->highlight_anchor = start;
 	current->cursor_x         = end;
 	current->cursor_sticky_x  = end;
-}
-
-void ui_text_area_clear_selection() {
-	text_area_selection_start = -1;
-}
-
-// Line where the multi-line selection started, -1 when there is none
-int ui_text_area_selection_line() {
-	return text_area_selection_start;
 }
 
 static void handle_line_select(ui_t *current, int *line_index) {

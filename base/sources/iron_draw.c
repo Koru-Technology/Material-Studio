@@ -295,11 +295,6 @@ void draw_scissor(int x, int y, int width, int height) {
 	gpu_scissor(x, y, width, height);
 }
 
-void draw_viewport(int x, int y, int width, int height) {
-	draw_flush();
-	gpu_viewport(x, y, width, height);
-}
-
 void draw_scaled_sub_image(gpu_texture_t *img, float sx, float sy, float sw, float sh, float dx, float dy, float dw, float dh) {
 	gpu_pipeline_t *pipe = draw_custom_pipeline != NULL                                                ? draw_custom_pipeline
 	                       : (_draw_current != NULL && _draw_current->format == GPU_TEXTURE_FORMAT_R8) ? &image_r8_pipeline
@@ -739,12 +734,6 @@ bool draw_font_load(draw_font_t *font, int size) {
 	gpu_texture_init_from_bytes(img->tex, pixels, width, height, GPU_TEXTURE_FORMAT_R8, false);
 	free(pixels);
 	return true;
-}
-
-gpu_texture_t *draw_font_get_texture(draw_font_t *font, int size) {
-	draw_font_load(font, size);
-	draw_font_image_t *img = draw_font_get_image_internal(font, size);
-	return img->tex;
 }
 
 int draw_font_get_char_index_internal(int char_code) {

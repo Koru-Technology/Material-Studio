@@ -22,54 +22,6 @@ gpu_shader_t   *gpu_create_shader_from_source(char *source, int source_size, gpu
 void            gpu_delete_shader(gpu_shader_t *shader);
 gpu_pipeline_t *gpu_create_pipeline();
 
-#define SHADER_COMPILE_MAX_THREADS 16
-
-typedef struct {
-	shader_context_t **items;
-	int                count;
-	int                next;
-	iron_mutex_t       mutex;
-} shader_compile_jobs_t;
-
-static void shader_compile_worker(void *param) {
-	shader_compile_jobs_t *p = param;
-	while (true) {
-		iron_mutex_lock(&p->mutex);
-		int i = p->next++;
-		iron_mutex_unlock(&p->mutex);
-		if (i >= p->count) {
-			return;
-		}
-		gpu_pipeline_compile(p->items[i]->_->pipe);
-	}
-}
-
-static void shader_compile_parallel(shader_context_t **items, int count) {
-	if (count <= 0) {
-		return;
-	}
-	int threads = iron_hardware_threads();
-	if (threads > count) {
-		threads = count;
-	}
-	if (threads > SHADER_COMPILE_MAX_THREADS) {
-		threads = SHADER_COMPILE_MAX_THREADS;
-	}
-
-	shader_compile_jobs_t p = {.items = items, .count = count};
-	iron_mutex_init(&p.mutex);
-	iron_thread_t workers[SHADER_COMPILE_MAX_THREADS];
-	for (int i = 1; i < threads; ++i) {
-		iron_thread_init(&workers[i], shader_compile_worker, &p);
-	}
-	shader_compile_worker(&p);
-	for (int i = 1; i < threads; ++i) {
-		iron_thread_wait_and_destroy(&workers[i]);
-	}
-	iron_mutex_destroy(&p.mutex);
-}
-
-
 static void shader_context_bind_constants(shader_context_t *raw);
 
 static bool               shader_batch_active   = false;
@@ -115,18 +67,6 @@ void shader_context_set_sources(shader_context_t *raw, char *vs, char *fs) {
 	}
 	pipe->vertex_shader   = gpu_create_shader_from_source(vs, 0, GPU_SHADER_TYPE_VERTEX);
 	pipe->fragment_shader = gpu_create_shader_from_source(fs, 0, GPU_SHADER_TYPE_FRAGMENT);
-}
-
-void shader_compile_batch_end(void) {
-	if (!shader_batch_active) {
-		return;
-	}
-	shader_batch_active = false;
-	shader_compile_parallel(shader_batch_items, shader_batch_count);
-	for (int i = 0; i < shader_batch_count; ++i) {
-		shader_context_bind_constants(shader_batch_items[i]);
-	}
-	shader_batch_count = 0;
 }
 
 void gpu_delete_pipeline(gpu_pipeline_t *pipeline);

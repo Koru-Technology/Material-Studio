@@ -122,40 +122,8 @@ size_t iron_file_reader_size(iron_file_reader_t *reader) {
 	return reader->size;
 }
 
-float iron_read_f32le(uint8_t *data) {
-	return *(float *)data;
-}
-
-uint64_t iron_read_u64le(uint8_t *data) {
-	return *(uint64_t *)data;
-}
-
-int64_t iron_read_s64le(uint8_t *data) {
-	return *(int64_t *)data;
-}
-
-uint32_t iron_read_u32le(uint8_t *data) {
-	return *(uint32_t *)data;
-}
-
 int32_t iron_read_s32le(uint8_t *data) {
 	return *(int32_t *)data;
-}
-
-uint16_t iron_read_u16le(uint8_t *data) {
-	return *(uint16_t *)data;
-}
-
-int16_t iron_read_s16le(uint8_t *data) {
-	return *(int16_t *)data;
-}
-
-uint8_t iron_read_u8(uint8_t *data) {
-	return *data;
-}
-
-int8_t iron_read_s8(uint8_t *data) {
-	return *(int8_t *)data;
 }
 
 bool iron_file_writer_open(iron_file_writer_t *writer, const char *filepath) {

@@ -723,16 +723,6 @@ void ui_row7() {
 	ui_row(_ui_row7);
 }
 
-void ui_indent() {
-	current->_x += UI_TAB_W();
-	current->_w -= UI_TAB_W();
-}
-
-void ui_unindent() {
-	current->_x -= UI_TAB_W();
-	current->_w += UI_TAB_W();
-}
-
 void ui_end_element_of_size(float element_size) {
 	if (current->current_window == NULL || current->current_window->layout == UI_LAYOUT_VERTICAL) {
 		if (current->current_ratio == -1 || (current->ratios != NULL && current->current_ratio == current->ratios->length - 1)) { // New line

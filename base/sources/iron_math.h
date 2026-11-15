@@ -146,7 +146,6 @@ mat4_t             mat4_persp(float fov_y, float aspect, float zn, float zf);
 mat4_t             mat4_ortho(float left, float right, float bottom, float top, float znear, float zfar);
 mat4_t             mat4_rot_z(float alpha);
 mat4_t             mat4_compose(vec4_t loc, quat_t rot, vec4_t scl);
-mat4_t             mat4_tween(mat4_t a, mat4_t b, float t);
 mat4_decomposed_t *mat4_decompose(mat4_t m);
 mat4_t             mat4_set_loc(mat4_t m, vec4_t v);
 mat4_t             mat4_from_quat(quat_t q);

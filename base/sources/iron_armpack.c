@@ -981,10 +981,6 @@ char *armpack_decode_to_json(buffer_t *b) {
 	return armpack_to_json(b, false);
 }
 
-char *armpack_decode_to_json_omit_large_arrays(buffer_t *b) {
-	return armpack_to_json(b, true);
-}
-
 float armpack_map_get_f32(any_map_t *map, char *key) {
 	ptr_storage_t ps;
 	ps.p = any_map_get(map, key);

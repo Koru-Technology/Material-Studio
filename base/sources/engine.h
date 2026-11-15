@@ -413,7 +413,6 @@ i32                  shader_context_type_size(char *t);
 i32                  shader_context_type_pad(i32 offset, i32 size);
 void                 shader_context_finish_compile(shader_context_t *raw);
 void                 shader_compile_batch_begin(void);
-void                 shader_compile_batch_end(void);
 shader_context_t   **shader_compile_batch_take(int *count);
 void                 shader_context_bind(shader_context_t *raw);
 void                 shader_context_set_sources(shader_context_t *raw, char *vs, char *fs);

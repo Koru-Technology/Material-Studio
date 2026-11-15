@@ -41,7 +41,6 @@ void     draw_line_aa(float x0, float y0, float x1, float y1, float strength);
 void     draw_string(const char *text, float x, float y);
 void     draw_end(void);
 void     draw_scissor(int x, int y, int width, int height);
-void     draw_viewport(int x, int y, int width, int height);
 void     draw_set_color(uint32_t color);
 uint32_t draw_get_color();
 void     draw_set_pipeline(gpu_pipeline_t *pipeline);

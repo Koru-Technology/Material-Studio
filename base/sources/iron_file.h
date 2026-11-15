@@ -29,15 +29,7 @@ size_t   iron_file_reader_read(iron_file_reader_t *reader, void *data, size_t si
 size_t   iron_file_reader_size(iron_file_reader_t *reader);
 size_t   iron_file_reader_pos(iron_file_reader_t *reader);
 bool     iron_file_reader_seek(iron_file_reader_t *reader, size_t pos);
-float    iron_read_f32le(uint8_t *data);
-uint64_t iron_read_u64le(uint8_t *data);
-int64_t  iron_read_s64le(uint8_t *data);
-uint32_t iron_read_u32le(uint8_t *data);
 int32_t  iron_read_s32le(uint8_t *data);
-uint16_t iron_read_u16le(uint8_t *data);
-int16_t  iron_read_s16le(uint8_t *data);
-uint8_t  iron_read_u8(uint8_t *data);
-int8_t   iron_read_s8(uint8_t *data);
 
 void  iron_internal_set_files_location(char *dir);
 char *iron_internal_files_location(void);

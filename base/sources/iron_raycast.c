@@ -79,13 +79,6 @@ transform_t *raycast_closest_box_intersect(any_array_t *transforms, f32 input_x,
 	return closest;
 }
 
-vec4_t raycast_plane_intersect(vec4_t normal, vec4_t a, f32 input_x, f32 input_y, camera_object_t *camera) {
-	ray_t  *ray   = raycast_get_ray(input_x, input_y, camera);
-	plane_t plane = plane_create();
-	plane_set(&plane, normal, a);
-	return ray_intersect_plane(ray, &plane);
-}
-
 ray_t *ray_create(vec4_t origin, vec4_t dir) {
 	ray_t *raw  = calloc(1, sizeof(ray_t));
 	raw->origin = origin;
@@ -108,22 +101,6 @@ f32 ray_dist_to_point(ray_t *raw, vec4_t point) {
 
 bool ray_intersects_sphere(ray_t *raw, vec4_t sphere_center, f32 sphere_radius) {
 	return ray_dist_to_point(raw, sphere_center) <= sphere_radius;
-}
-
-bool ray_intersects_plane(ray_t *raw, plane_t *plane) {
-	// Check if the ray lies on the plane first
-	f32 dist_to_point = plane_dist_to_point(plane, raw->origin);
-	if (dist_to_point == 0) {
-		return true;
-	}
-
-	f32 denominator = vec4_dot(plane->normal, raw->dir);
-	if (denominator * dist_to_point < 0) {
-		return true;
-	}
-
-	// Ray origin is behind the plane (and is pointing behind it)
-	return false;
 }
 
 f32 ray_dist_to_plane(ray_t *raw, plane_t *plane) {

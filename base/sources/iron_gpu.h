@@ -174,16 +174,11 @@ extern uint32_t gpu_debug_draw_calls_frame;
 void gpu_resize(int width, int height);
 void gpu_resize_internal(int width, int height);
 void gpu_set_int(int location, int value);
-void gpu_set_int2(int location, int value1, int value2);
-void gpu_set_int3(int location, int value1, int value2, int value3);
-void gpu_set_int4(int location, int value1, int value2, int value3, int value4);
-void gpu_set_ints(int location, int *values, int count);
 void gpu_set_float(int location, float value);
 void gpu_set_float2(int location, float value1, float value2);
 void gpu_set_float3(int location, float value1, float value2, float value3);
 void gpu_set_float4(int location, float value1, float value2, float value3, float value4);
 void gpu_set_floats(int location, f32_array_t *values);
-void gpu_set_bool(int location, bool value);
 void gpu_set_mat3(int location, mat3_t value);
 void gpu_set_mat4(int location, mat4_t value);
 

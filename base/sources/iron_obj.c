@@ -722,17 +722,3 @@ raw_mesh_t *obj_parse(buffer_t *file_bytes, char split_code, uint64_t start_pos,
 	return part;
 }
 
-void obj_destroy(raw_mesh_t *part) {
-	// if (part->udims != NULL) {
-	// 	for (int i = 0; i < part->udims_u * part->udims_v; ++i) {
-	// 		free(part->udims[i]);
-	// 	}
-	// 	free(part->udims);
-	// }
-
-	free(part->posa);
-	free(part->nora);
-	free(part->texa);
-	free(part->inda);
-	free(part);
-}

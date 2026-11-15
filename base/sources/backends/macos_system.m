@@ -722,23 +722,6 @@ static void create_window(iron_window_options_t *options) {
 	}
 }
 
-void iron_window_change_window_mode(iron_window_mode_t mode) {
-	switch (mode) {
-	case IRON_WINDOW_MODE_WINDOW:
-		if (windows[0].fullscreen) {
-			[window toggleFullScreen:nil];
-			windows[0].fullscreen = false;
-		}
-		break;
-	case IRON_WINDOW_MODE_FULLSCREEN:
-		if (!windows[0].fullscreen) {
-			[window toggleFullScreen:nil];
-			windows[0].fullscreen = true;
-		}
-		break;
-	}
-}
-
 void iron_window_set_close_callback(bool (*callback)(void *), void *data) {
 	windows[0].close_callback      = callback;
 	windows[0].close_callback_data = data;

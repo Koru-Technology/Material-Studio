@@ -10,7 +10,6 @@
 extern bool _input_occupied;
 extern bool _input_registered;
 
-void input_reset(void);
 void input_end_frame(void);
 void input_on_foreground(void);
 void input_register(void);
@@ -110,8 +109,6 @@ bool pen_released(char *button);
 void pen_down_listener(i32 x, i32 y, f32 pressure);
 void pen_up_listener(i32 x, i32 y, f32 pressure);
 void pen_move_listener(i32 x, i32 y, f32 pressure);
-f32  pen_view_x(void);
-f32  pen_view_y(void);
 
 // Keyboard
 

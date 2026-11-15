@@ -76,12 +76,6 @@ bool            keyboard_repeat_key    = false;
 f64             keyboard_repeat_time   = 0.0;
 
 
-void input_reset(void) {
-	mouse_reset();
-	pen_reset();
-	keyboard_reset();
-}
-
 void input_end_frame(void) {
 	mouse_end_frame();
 	pen_end_frame();
@@ -681,14 +675,6 @@ void pen_move_listener(i32 x, i32 y, f32 pressure) {
 	pen_moved      = true;
 	pen_pressure   = pressure;
 	pen_connected  = true;
-}
-
-f32 pen_view_x(void) {
-	return pen_x - (f32)sys_x();
-}
-
-f32 pen_view_y(void) {
-	return pen_y - (f32)sys_y();
 }
 
 // Keyboard

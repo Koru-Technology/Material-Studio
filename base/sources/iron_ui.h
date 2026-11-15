@@ -443,8 +443,6 @@ int   ui_slider_int(int *value, char *text, float from, float to, bool filled, b
 int   ui_inline_radio(int *value, string_array_t *texts, int align);
 int   ui_color_wheel(uint32_t *value, ui_color_state_t *state, bool alpha, float w, float h, bool color_preview, void (*picker)(void *), void *data);
 char *ui_text_area(char **value, int *line_index, int align, bool editable, char *label, bool word_wrap);
-void  ui_text_area_clear_selection();
-int   ui_text_area_selection_line();
 void  ui_begin_menu();
 void  ui_end_menu();
 bool  ui_menubar_button(char *text);
@@ -609,7 +607,6 @@ extern void (*ui_nodes_on_node_changed)(ui_node_t *);
 extern bool ui_nodes_grid_snap;
 
 void     ui_node_canvas_encode(ui_node_canvas_t *canvas);
-uint32_t ui_node_canvas_encoded_size(ui_node_canvas_t *canvas);
 char    *ui_node_canvas_to_json(ui_node_canvas_t *canvas);
 
 float UI_NODE_X(ui_node_t *node);

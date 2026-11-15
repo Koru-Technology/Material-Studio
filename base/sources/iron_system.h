@@ -136,7 +136,6 @@ void        iron_internal_resign_active_callback(void);
 void        iron_internal_drop_files_callback(char *);
 void        iron_internal_open_file_callback(char *);
 void        iron_set_open_file_callback(void (*callback)(char *));
-bool        iron_has_pending_open_file(void);
 void        iron_internal_cut_callback(void);
 void        iron_internal_copy_callback(void);
 void        iron_internal_paste_callback(char *);
@@ -318,14 +317,9 @@ void        iron_internal_mouse_trigger_twist(float radians); // Two finger or t
 void        iron_set_pointer_hidden_callback(bool (*callback)(float x, float y));
 bool        iron_internal_pointer_hidden(float x, float y); // The app draws its own cursor there
 void        iron_internal_mouse_trigger_movement(int movement_x, int movement_y);
-void        iron_internal_mouse_window_activated();
-void        iron_internal_mouse_window_deactivated();
 void        iron_pen_set_press_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
 void        iron_pen_set_move_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
 void        iron_pen_set_release_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
-void        iron_eraser_set_press_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
-void        iron_eraser_set_move_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
-void        iron_eraser_set_release_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/));
 void        iron_internal_pen_trigger_move(int x, int y, float pressure);
 void        iron_internal_pen_trigger_sample(float x, float y, float pressure, float altitude, float azimuth, float roll, double time);
 void        iron_internal_pen_trigger_press(int x, int y, float pressure);
@@ -353,9 +347,6 @@ void iron_set_pencil_gesture_callback(void (*callback)(int gesture, float x, flo
 void iron_internal_pencil_gesture_callback(int gesture, float x, float y);
 int  iron_pencil_preferred_action(int gesture);
 void iron_haptic_tick(float x, float y); // A light tick under the pencil, where supported
-void        iron_internal_eraser_trigger_move(int x, int y, float pressure);
-void        iron_internal_eraser_trigger_press(int x, int y, float pressure);
-void        iron_internal_eraser_trigger_release(int x, int y, float pressure);
 void        iron_surface_set_touch_start_callback(void (*value)(int /*index*/, int /*x*/, int /*y*/));
 void        iron_surface_set_move_callback(void (*value)(int /*index*/, int /*x*/, int /*y*/));
 void        iron_surface_set_touch_end_callback(void (*value)(int /*index*/, int /*x*/, int /*y*/));

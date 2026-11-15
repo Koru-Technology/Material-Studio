@@ -200,34 +200,6 @@ void gpu_set_int(int location, int value) {
 	ints[0]   = value;
 }
 
-void gpu_set_int2(int location, int value1, int value2) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value1;
-	ints[1]   = value2;
-}
-
-void gpu_set_int3(int location, int value1, int value2, int value3) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value1;
-	ints[1]   = value2;
-	ints[2]   = value3;
-}
-
-void gpu_set_int4(int location, int value1, int value2, int value3, int value4) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value1;
-	ints[1]   = value2;
-	ints[2]   = value3;
-	ints[3]   = value4;
-}
-
-void gpu_set_ints(int location, int *values, int count) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	for (int i = 0; i < count; ++i) {
-		ints[i] = values[i];
-	}
-}
-
 void gpu_set_float(int location, float value) {
 	float *floats = (float *)(&constant_buffer.data[location]);
 	floats[0]     = value;
@@ -259,11 +231,6 @@ void gpu_set_floats(int location, f32_array_t *values) {
 	for (int i = 0; i < values->length; ++i) {
 		floats[i] = values->buffer[i];
 	}
-}
-
-void gpu_set_bool(int location, bool value) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value ? 1 : 0;
 }
 
 void gpu_set_mat3(int location, mat3_t value) {

@@ -700,145 +700,6 @@ static int terrain_sample(float x, float y, float *out_height, vec4_t *out_norma
 	return 1;
 }
 
-static int ray_clip_slab(float origin, float dir, float lo, float hi, float *t0, float *t1) {
-	if (fabsf(dir) < 1e-6f) {
-		return origin >= lo && origin <= hi;
-	}
-
-	float ta = (lo - origin) / dir;
-	float tb = (hi - origin) / dir;
-	if (ta > tb) {
-		float tmp = ta;
-		ta        = tb;
-		tb        = tmp;
-	}
-	if (ta > *t0) {
-		*t0 = ta;
-	}
-	if (tb < *t1) {
-		*t1 = tb;
-	}
-	return *t0 <= *t1;
-}
-
-// Nearest static box
-int physics_box_raycast(vec4_t origin, vec4_t dir, float max_dist, vec4_t *hit) {
-	float len = vec4_len(dir);
-	if (len == 0.0f) {
-		return 0;
-	}
-	vec4_t d    = vec4_mult(dir, 1.0f / len);
-	float  best = max_dist;
-	int    got  = 0;
-	for (int i = 0; i < box_count; i++) {
-		box_t *b = &boxes[i];
-		if (!b->active || b->mass > 0.0f) {
-			continue;
-		}
-		quat_t inv = quat_conj(b->rotation);
-		vec4_t o   = vec4_apply_quat(vec4_sub(origin, b->position), inv);
-		vec4_t ld  = vec4_apply_quat(d, inv);
-		float  t0  = 0.0f;
-		float  t1  = best;
-		if (!ray_clip_slab(o.x, ld.x, -b->half.x, b->half.x, &t0, &t1) || !ray_clip_slab(o.y, ld.y, -b->half.y, b->half.y, &t0, &t1) ||
-		    !ray_clip_slab(o.z, ld.z, -b->half.z, b->half.z, &t0, &t1)) {
-			continue;
-		}
-		if (t0 <= 0.0f) {
-			continue;
-		}
-		if (t0 < best) {
-			best = t0;
-			got  = 1;
-		}
-	}
-	if (got) {
-		*hit = vec4_add(origin, vec4_mult(d, best));
-	}
-	return got;
-}
-
-int physics_terrain_raycast(vec4_t origin, vec4_t dir, vec4_t *hit) {
-	if (!terrain.active) {
-		return 0;
-	}
-
-	float len = vec4_len(dir);
-	if (len == 0.0f) {
-		return 0;
-	}
-	vec4_t d = vec4_mult(dir, 1.0f / len);
-
-	const float pad = 0.001f;
-	float       t0  = 0.0f;
-	float       t1  = FLT_MAX;
-	if (!ray_clip_slab(origin.x, d.x, terrain.min.x - pad, terrain.min.x + terrain.size_x + pad, &t0, &t1) ||
-	    !ray_clip_slab(origin.y, d.y, terrain.min.y - pad, terrain.min.y + terrain.size_y + pad, &t0, &t1) ||
-	    !ray_clip_slab(origin.z, d.z, terrain.min.z + terrain.min_h - pad, terrain.min.z + terrain.max_h + pad, &t0, &t1)) {
-		return 0;
-	}
-	if (t1 < 0.0f) {
-		return 0;
-	}
-	if (t0 < 0.0f) {
-		t0 = 0.0f;
-	}
-
-	float cell_x = terrain.size_x / (terrain.res_x - 1);
-	float cell_y = terrain.size_y / (terrain.res_y - 1);
-	float step   = cell_x < cell_y ? cell_x : cell_y;
-	if (step <= 0.0f) {
-		return 0;
-	}
-
-	float  ground = 0.0f;
-	vec4_t normal;
-	float  above       = t0;
-	int    above_valid = 0;
-
-	for (float t = t0;; t += step) {
-		if (t > t1) {
-			t = t1;
-		}
-
-		vec4_t p = vec4_add(origin, vec4_mult(d, t));
-		if (terrain_sample(p.x, p.y, &ground, &normal)) {
-			if (p.z <= ground) {
-				if (above_valid) {
-					float lo = above;
-					float hi = t;
-					for (int i = 0; i < 24; ++i) {
-						float  mid = (lo + hi) * 0.5f;
-						vec4_t q   = vec4_add(origin, vec4_mult(d, mid));
-						if (terrain_sample(q.x, q.y, &ground, &normal) && q.z <= ground) {
-							hi = mid;
-						}
-						else {
-							lo = mid;
-						}
-					}
-					p = vec4_add(origin, vec4_mult(d, hi));
-					if (!terrain_sample(p.x, p.y, &ground, &normal)) {
-						return 0;
-					}
-				}
-				*hit = (vec4_t){p.x, p.y, ground, 1.0f};
-				return 1;
-			}
-			above       = t;
-			above_valid = 1;
-		}
-		else {
-			above_valid = 0;
-		}
-
-		if (t >= t1) {
-			break;
-		}
-	}
-	return 0;
-}
-
 static inline float depth_along_normal(float drop, vec4_t normal) {
 	return drop * normal.z;
 }
@@ -1605,38 +1466,6 @@ physics_body_t *physics_body_create(object_t *obj, physics_shape_t shape, float 
 	return body;
 }
 
-void physics_body_set_mass(physics_body_t *body, float mass) {
-	body_ref_t ref = body_ref(body->_body);
-	body->mass     = mass;
-	*ref.mass      = mass;
-	if (body_is_box(body->_body)) {
-		box_t *b       = &boxes[body_slot(body->_body)];
-		b->inv_inertia = box_inv_inertia(b->half, mass);
-		if (mass == 0.0f) {
-			b->angular = (vec4_t){0.0f, 0.0f, 0.0f};
-		}
-	}
-	if (mass == 0.0f) {
-		*ref.velocity = (vec4_t){0.0f, 0.0f, 0.0f};
-	}
-	body_wake(body->_body);
-}
-
-void physics_body_set_dim(physics_body_t *body, float dimx, float dimy, float dimz) {
-	body->dimx = dimx;
-	body->dimy = dimy;
-	body->dimz = dimz;
-	if (body_is_box(body->_body)) {
-		box_t *b       = &boxes[body_slot(body->_body)];
-		b->half        = (vec4_t){dimx / 2.0f, dimy / 2.0f, dimz / 2.0f};
-		b->inv_inertia = box_inv_inertia(b->half, b->mass);
-	}
-	else if (body_is_sphere(body->_body)) {
-		spheres[body_slot(body->_body)].radius = dimx / 2.0f;
-	}
-	body_wake(body->_body);
-}
-
 void physics_body_apply_impulse(void *body, vec4_t impulse) {
 	vec4_t *vel = body_ref(body).velocity;
 	vel->x += impulse.x;
@@ -1658,21 +1487,6 @@ void physics_body_get_rot(void *body, quat_t *rot) {
 	}
 }
 
-void physics_body_get_velocity(void *body, vec4_t *vel) {
-	vec4_t *v = body_ref(body).velocity;
-	vel->x    = v->x;
-	vel->y    = v->y;
-	vel->z    = v->z;
-}
-
-void physics_body_set_velocity(void *body, float x, float y, float z) {
-	vec4_t *vel = body_ref(body).velocity;
-	vel->x      = x;
-	vel->y      = y;
-	vel->z      = z;
-	body_wake(body);
-}
-
 void physics_body_sync_transform(physics_body_t *body) {
 	transform_t *transform = body->obj->transform;
 	vec4_t       off       = vec4_apply_quat(body->offset, transform->rot);
@@ -1683,16 +1497,6 @@ void physics_body_sync_transform(physics_body_t *body) {
 	if (body_is_box(body->_body)) {
 		boxes[body_slot(body->_body)].rotation = transform->rot;
 	}
-	body_wake(body->_body);
-}
-
-void physics_body_set_rotation(physics_body_t *body, quat_t rot) {
-	if (!body_is_box(body->_body)) {
-		return;
-	}
-	box_t *b    = &boxes[body_slot(body->_body)];
-	b->rotation = rot;
-	b->angular  = (vec4_t){0.0f, 0.0f, 0.0f};
 	body_wake(body->_body);
 }
 
