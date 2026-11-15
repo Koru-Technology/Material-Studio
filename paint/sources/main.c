@@ -75,7 +75,6 @@
 #include "nodes_material/material_mix_node.c"
 #include "nodes_material/mapping_node.c"
 #include "nodes_material/material_node.c"
-#include "nodes_material/material_output_node.c"
 #include "nodes_material/math2_node.c"
 #include "nodes_material/mm_nodes.c"
 #include "nodes_material/mm_import.c"

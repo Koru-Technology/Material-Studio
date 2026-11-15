@@ -1149,7 +1149,7 @@ void ui_nodes_draw_menubar() {
 			if (string_equals(name, "")) {
 				name = ui_nodes_canvas_name_prev;
 			}
-			name    = ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? slot_material_unique_name(c, name) : slot_brush_unique_name(c, name);
+			name    = slot_material_unique_name(c, name);
 			c->name = string_copy(name);
 		}
 	}
@@ -1566,7 +1566,7 @@ void ui_nodes_update(void *_) {
 		node_list_t_array_t   *list              = ui_nodes_get_node_list();
 		ui_node_t_array_t     *category          = list->buffer[ui_nodes_menu_category];
 		char                  *cat_name          = ui_nodes_get_categories()->buffer[ui_nodes_menu_category];
-		bool                   is_group_category = ui_nodes_canvas_type != CANVAS_TYPE_BRUSH && string_equals(cat_name, "Group");
+		bool                   is_group_category = string_equals(cat_name, "Group");
 		i32                    root_count        = 0;
 		ui_nodes_menu_entry_t *root              = ui_nodes_menu_entries(category, cat_name, "", &root_count);
 		node_group_t_array_t  *groups            = ui_nodes_groups();
@@ -1675,8 +1675,7 @@ void ui_nodes_render_popup() {
 void ui_nodes_accept_asset_drop(i32 index) {
 	ui_nodes_push_undo(NULL);
 	node_group_t *g = ui_nodes_group_stack->length > 0 ? ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1] : NULL;
-	ui_node_t    *n = ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? nodes_material_create_node("TEX_IMAGE", g)
-	                                                                 : nodes_brush_create_node("TEX_IMAGE");
+	ui_node_t    *n = nodes_material_create_node("TEX_IMAGE", g);
 	n->buttons->buffer[0]->default_value->buffer[0] = index;
 	ui_nodes_get_nodes()->nodes_selected_id         = i32_array_create_from_raw(
         (i32[]){
