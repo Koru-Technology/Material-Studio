@@ -29,15 +29,24 @@ struct MacRootView: View {
 	@State private var inspectorShown = true
 
 	var body: some View {
+		// The panels call the engine: they show once it started, as the iPad controls
 		NavigationSplitView {
-			LayersView()
-				.navigationSplitViewColumnWidth(min: 200, ideal: 260)
+			Group {
+				if AppStore.shared.ready {
+					LayersView()
+				}
+			}
+			.navigationSplitViewColumnWidth(min: 200, ideal: 260)
 		} detail: {
 			EngineCanvas()
 				.ignoresSafeArea()
 				.inspector(isPresented: $inspectorShown) {
-					InspectorView()
-						.inspectorColumnWidth(min: 240, ideal: 280)
+					Group {
+						if AppStore.shared.ready {
+							InspectorView()
+						}
+					}
+					.inspectorColumnWidth(min: 240, ideal: 280)
 				}
 				.toolbar {
 					ToolbarItem(placement: .primaryAction) {

@@ -3,10 +3,6 @@
 
 #include "app_api_brushes.h"
 
-static bool app_brushes_ready(void) {
-	return app_engine_ready && g_context != NULL;
-}
-
 static uint32_t app_hash_f32(uint32_t h, float v) {
 	uint32_t u;
 	memcpy(&u, &v, sizeof(u));
@@ -94,7 +90,7 @@ static uint32_t app_color_signature(void) {
 
 void app_brushes_get_state(app_brushes_state_t *out) {
 	*out = (app_brushes_state_t){0};
-	if (!app_brushes_ready()) {
+	if (!app_ready()) {
 		return;
 	}
 	out->library_signature  = app_brushes_library_signature();
@@ -106,11 +102,11 @@ void app_brushes_get_state(app_brushes_state_t *out) {
 // Groups
 
 int32_t app_brush_group_count(void) {
-	return app_brushes_ready() ? brush_group_count() : 0;
+	return app_ready() ? brush_group_count() : 0;
 }
 
 bool app_brush_group_info(int32_t index, app_brush_group_info_t *out) {
-	brush_group_t *g = app_brushes_ready() ? brush_group_at(index) : NULL;
+	brush_group_t *g = app_ready() ? brush_group_at(index) : NULL;
 	if (g == NULL) {
 		return false;
 	}
@@ -122,7 +118,7 @@ bool app_brush_group_info(int32_t index, app_brush_group_info_t *out) {
 }
 
 int32_t app_brush_group_add(const char *name) {
-	if (!app_brushes_ready() || name == NULL || name[0] == '\0') {
+	if (!app_ready() || name == NULL || name[0] == '\0') {
 		return -1;
 	}
 	i32            n = brush_group_count();
@@ -131,7 +127,7 @@ int32_t app_brush_group_add(const char *name) {
 }
 
 bool app_brush_group_rename(int32_t id, const char *name) {
-	brush_group_t *g = app_brushes_ready() ? app_user_group(id) : NULL;
+	brush_group_t *g = app_ready() ? app_user_group(id) : NULL;
 	if (g == NULL || name == NULL || name[0] == '\0') {
 		return false;
 	}
@@ -141,7 +137,7 @@ bool app_brush_group_rename(int32_t id, const char *name) {
 }
 
 bool app_brush_group_delete(int32_t id) {
-	brush_group_t *g = app_brushes_ready() ? app_user_group(id) : NULL;
+	brush_group_t *g = app_ready() ? app_user_group(id) : NULL;
 	if (g == NULL) {
 		return false;
 	}
@@ -154,11 +150,11 @@ bool app_brush_group_delete(int32_t id) {
 // Brushes
 
 int32_t app_brush_count(void) {
-	return app_brushes_ready() ? brush_library_count() : 0;
+	return app_ready() ? brush_library_count() : 0;
 }
 
 bool app_brush_info(int32_t index, app_brush_info_t *out) {
-	brush_def_t *d = app_brushes_ready() ? brush_library_at(index) : NULL;
+	brush_def_t *d = app_ready() ? brush_library_at(index) : NULL;
 	if (d == NULL) {
 		return false;
 	}
@@ -178,7 +174,7 @@ int32_t app_brush_id_at(int32_t index) {
 }
 
 bool app_brush_use(int32_t id) {
-	brush_def_t *d = app_brushes_ready() ? brush_library_find(id) : NULL;
+	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
 	if (d == NULL) {
 		return false;
 	}
@@ -188,7 +184,7 @@ bool app_brush_use(int32_t id) {
 }
 
 int32_t app_brush_duplicate(int32_t id) {
-	brush_def_t *d = app_brushes_ready() ? brush_library_find(id) : NULL;
+	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
 	if (d == NULL) {
 		return -1;
 	}
@@ -205,7 +201,7 @@ int32_t app_brush_duplicate(int32_t id) {
 }
 
 bool app_brush_delete(int32_t id) {
-	brush_def_t *d = app_brushes_ready() ? app_user_brush(id) : NULL;
+	brush_def_t *d = app_ready() ? app_user_brush(id) : NULL;
 	if (d == NULL) {
 		return false;
 	}
@@ -216,8 +212,8 @@ bool app_brush_delete(int32_t id) {
 }
 
 bool app_brush_move(int32_t id, int32_t group_id) {
-	brush_def_t   *d = app_brushes_ready() ? app_user_brush(id) : NULL;
-	brush_group_t *g = app_brushes_ready() ? app_user_group(group_id) : NULL;
+	brush_def_t   *d = app_ready() ? app_user_brush(id) : NULL;
+	brush_group_t *g = app_ready() ? app_user_group(group_id) : NULL;
 	if (d == NULL || g == NULL || d->group == g->id) {
 		return false;
 	}
@@ -228,7 +224,7 @@ bool app_brush_move(int32_t id, int32_t group_id) {
 }
 
 bool app_brush_rename(int32_t id, const char *name) {
-	brush_def_t *d = app_brushes_ready() ? app_user_brush(id) : NULL;
+	brush_def_t *d = app_ready() ? app_user_brush(id) : NULL;
 	if (d == NULL || name == NULL || name[0] == '\0') {
 		return false;
 	}
@@ -239,7 +235,7 @@ bool app_brush_rename(int32_t id, const char *name) {
 }
 
 void app_brush_new(int32_t group_id) {
-	if (!app_brushes_ready() || ui_brush_creator_shown()) {
+	if (!app_ready() || ui_brush_creator_shown()) {
 		return;
 	}
 	ui_brush_creator_new(group_id);
@@ -247,7 +243,7 @@ void app_brush_new(int32_t group_id) {
 }
 
 bool app_brush_edit(int32_t id) {
-	brush_def_t *d = app_brushes_ready() ? app_user_brush(id) : NULL;
+	brush_def_t *d = app_ready() ? app_user_brush(id) : NULL;
 	if (d == NULL || ui_brush_creator_shown()) {
 		return false;
 	}
@@ -257,7 +253,7 @@ bool app_brush_edit(int32_t id) {
 }
 
 bool app_brush_creator_shown(void) {
-	return app_brushes_ready() && ui_brush_creator_shown();
+	return app_ready() && ui_brush_creator_shown();
 }
 
 int32_t app_brush_recent(int32_t index) {
@@ -269,22 +265,22 @@ int32_t app_brush_recent(int32_t index) {
 }
 
 int32_t app_brush_group_of(int32_t id) {
-	brush_def_t *d = app_brushes_ready() ? brush_library_find(id) : NULL;
+	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
 	return d != NULL ? d->group : -1;
 }
 
 const char *app_brush_name(int32_t id) {
-	brush_def_t *d = app_brushes_ready() ? brush_library_find(id) : NULL;
+	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
 	return d != NULL ? brush_library_name(d) : "";
 }
 
 const char *app_brush_group_name(int32_t id) {
-	brush_group_t *g = app_brushes_ready() ? brush_group_find(id) : NULL;
+	brush_group_t *g = app_ready() ? brush_group_find(id) : NULL;
 	return g != NULL ? brush_group_name(g) : "";
 }
 
 bool app_brush_group_builtin(int32_t id) {
-	brush_group_t *g = app_brushes_ready() ? brush_group_find(id) : NULL;
+	brush_group_t *g = app_ready() ? brush_group_find(id) : NULL;
 	return g != NULL && g->builtin;
 }
 
@@ -296,7 +292,7 @@ void app_brush_previews_request(int32_t group_id) {
 }
 
 int32_t app_brush_preview(int32_t id, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
-	brush_def_t *d = app_brushes_ready() ? brush_library_find(id) : NULL;
+	brush_def_t *d = app_ready() ? brush_library_find(id) : NULL;
 	if (d == NULL || d->image_row == NULL || d->row_state != BRUSH_PREVIEW_READY) {
 		return 0;
 	}
@@ -364,7 +360,7 @@ static f32 *app_color_field(swatch_color_t *s, int32_t which) {
 
 bool app_color_get(app_color_t *out) {
 	*out = (app_color_t){0};
-	if (!app_brushes_ready() || g_context->picked_color == NULL) {
+	if (!app_ready() || g_context->picked_color == NULL) {
 		return false;
 	}
 	app_color_fill(g_context->picked_color, out);
@@ -377,7 +373,7 @@ uint32_t app_color_base(void) {
 }
 
 float app_color_value(int32_t which) {
-	if (!app_brushes_ready() || g_context->picked_color == NULL) {
+	if (!app_ready() || g_context->picked_color == NULL) {
 		return 0.0f;
 	}
 	f32 *v = app_color_field(g_context->picked_color, which);
@@ -391,7 +387,7 @@ static void app_color_changed(void) {
 }
 
 void app_color_set_base(uint32_t rgb) {
-	if (!app_brushes_ready() || g_context->picked_color == NULL) {
+	if (!app_ready() || g_context->picked_color == NULL) {
 		return;
 	}
 	g_context->picked_color->base = (i32)(0xff000000u | (rgb & 0x00ffffffu));
@@ -399,7 +395,7 @@ void app_color_set_base(uint32_t rgb) {
 }
 
 void app_color_set_value(int32_t which, float value) {
-	if (!app_brushes_ready() || g_context->picked_color == NULL) {
+	if (!app_ready() || g_context->picked_color == NULL) {
 		return;
 	}
 	f32 *v = app_color_field(g_context->picked_color, which);
@@ -411,7 +407,7 @@ void app_color_set_value(int32_t which, float value) {
 }
 
 bool app_color_can_apply(void) {
-	if (!app_brushes_ready() || g_context->material == NULL || g_context->material->canvas == NULL) {
+	if (!app_ready() || g_context->material == NULL || g_context->material->canvas == NULL) {
 		return false;
 	}
 	ui_node_canvas_t *canvas = g_context->material->canvas;
@@ -430,7 +426,7 @@ static void app_color_apply_on_next_frame(void *_) {
 }
 
 void app_color_apply(void) {
-	if (!app_brushes_ready() || app_color_apply_pending) {
+	if (!app_ready() || app_color_apply_pending) {
 		return;
 	}
 	app_color_apply_pending = true;
@@ -447,7 +443,7 @@ static void app_color_new_material_on_next_frame(void *_) {
 }
 
 void app_color_new_material(void) {
-	if (!app_brushes_ready() || app_color_new_material_pending) {
+	if (!app_ready() || app_color_new_material_pending) {
 		return;
 	}
 	app_color_new_material_pending = true;
@@ -458,14 +454,14 @@ void app_color_new_material(void) {
 // Swatches
 
 static swatch_color_t *app_swatch_at(int32_t index) {
-	if (!app_brushes_ready() || g_project == NULL || g_project->swatches == NULL || index < 0 || index >= g_project->swatches->length) {
+	if (!app_ready() || g_project == NULL || g_project->swatches == NULL || index < 0 || index >= g_project->swatches->length) {
 		return NULL;
 	}
 	return g_project->swatches->buffer[index];
 }
 
 int32_t app_swatch_count(void) {
-	return app_brushes_ready() && g_project != NULL && g_project->swatches != NULL ? g_project->swatches->length : 0;
+	return app_ready() && g_project != NULL && g_project->swatches != NULL ? g_project->swatches->length : 0;
 }
 
 bool app_swatch_info(int32_t index, app_color_t *out) {
@@ -504,7 +500,7 @@ bool app_swatch_pick(int32_t index) {
 
 // As Add Swatch of the color picker tool's header
 int32_t app_swatch_add(void) {
-	if (!app_brushes_ready() || g_project == NULL || g_project->swatches == NULL || g_context->picked_color == NULL) {
+	if (!app_ready() || g_project == NULL || g_project->swatches == NULL || g_context->picked_color == NULL) {
 		return -1;
 	}
 	swatch_color_t *s = project_clone_swatch(g_context->picked_color);

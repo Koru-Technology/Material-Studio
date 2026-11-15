@@ -34,7 +34,7 @@ static uint32_t app_mat_hash_floats(uint32_t h, f32_array_t *a) {
 }
 
 static bool app_mat_project_ready(void) {
-	return g_project != NULL && g_project->_ != NULL && g_project->_->materials != NULL && g_context != NULL;
+	return app_ready() && g_project->_->materials != NULL;
 }
 
 static slot_material_t *app_mat_by_id(int32_t id) {
@@ -327,7 +327,7 @@ static slot_layer_t *app_smart_target(void) {
 void app_materials_get_state(app_materials_state_t *out) {
 	*out             = (app_materials_state_t){0};
 	out->selected_id = -1;
-	if (!app_engine_ready || !app_mat_project_ready()) {
+	if (!app_mat_project_ready()) {
 		return;
 	}
 	app_mat_track_update();
@@ -382,7 +382,7 @@ bool app_material_select(int32_t id) {
 }
 
 int32_t app_material_new(void) {
-	slot_material_t *m = script_material_create(NULL);
+	slot_material_t *m = app_mat_project_ready() ? script_material_create(NULL) : NULL;
 	return m != NULL ? m->id : -1;
 }
 
@@ -621,7 +621,7 @@ static void app_lib_ensure(void) {
 }
 
 uint32_t app_library_signature(void) {
-	if (!app_engine_ready || !app_mat_project_ready()) {
+	if (!app_mat_project_ready()) {
 		return 0;
 	}
 	app_lib_sig = app_lib_compute_signature();
@@ -878,7 +878,7 @@ int32_t app_library_find(const char *name) {
 
 uint32_t app_smart_signature(void) {
 	uint32_t h = 2166136261u;
-	if (!app_engine_ready || !app_mat_project_ready()) {
+	if (!app_mat_project_ready()) {
 		return h;
 	}
 	i32 n = smart_materials_count();
@@ -891,7 +891,7 @@ uint32_t app_smart_signature(void) {
 }
 
 int32_t app_smart_count(void) {
-	return app_engine_ready ? smart_materials_count() : 0;
+	return app_ready() ? smart_materials_count() : 0;
 }
 
 bool app_smart_info(int32_t index, app_smart_info_t *out) {
@@ -949,7 +949,7 @@ bool app_smart_delete(int32_t index) {
 }
 
 const char *app_smart_default_name(void) {
-	slot_layer_t *l = app_engine_ready && app_mat_project_ready() ? app_smart_target() : NULL;
+	slot_layer_t *l = app_mat_project_ready() ? app_smart_target() : NULL;
 	if (l == NULL) {
 		return "";
 	}

@@ -128,7 +128,7 @@ static uint32_t app_hash_f(uint32_t h, float v) {
 
 uint32_t app_layers_props_signature(void) {
 	uint32_t h = 2166136261u;
-	if (!app_engine_ready || g_project == NULL || g_project->_ == NULL) {
+	if (!app_ready()) {
 		return h;
 	}
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
@@ -231,7 +231,7 @@ bool app_layer_set_name(int32_t id, const char *name) {
 // New layers
 
 bool app_layer_can_new(int32_t kind) {
-	if (!app_engine_ready || g_context == NULL || g_context->layer == NULL) {
+	if (!app_ready() || g_context->layer == NULL) {
 		return false;
 	}
 	switch (kind) {
@@ -617,7 +617,7 @@ bool app_layer_set_uv_type(int32_t id, int32_t uv_type) {
 }
 
 int32_t app_layer_material_count(void) {
-	return g_project != NULL && g_project->_ != NULL ? g_project->_->materials->length : 0;
+	return app_ready() ? g_project->_->materials->length : 0;
 }
 
 const char *app_layer_material_name(int32_t index) {

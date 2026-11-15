@@ -14,6 +14,11 @@ void app_set_ready(void) {
 	app_engine_ready = true;
 }
 
+// The engine started and has a project. Every call needs it: the native UI can call before the first frame.
+static bool app_ready(void) {
+	return app_engine_ready && g_context != NULL && g_project != NULL && g_project->_ != NULL;
+}
+
 static uint32_t app_hash(uint32_t h, uint32_t v) {
 	return (h ^ v) * 16777619u; // FNV-1a step
 }
@@ -26,7 +31,7 @@ static uint32_t app_hash_str(uint32_t h, const char *s) {
 }
 
 static slot_layer_t *app_layer_by_id(int32_t id) {
-	if (g_project == NULL || g_project->_ == NULL) {
+	if (!app_ready()) {
 		return NULL;
 	}
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
@@ -58,7 +63,7 @@ static uint32_t app_layers_signature(void) {
 
 void app_get_state(app_state_t *out) {
 	*out = (app_state_t){0};
-	if (!app_engine_ready || g_context == NULL) {
+	if (!app_ready()) {
 		return;
 	}
 	out->ready             = true;
@@ -113,7 +118,7 @@ void app_set_native_chrome(bool on) {
 // Tool and brush
 
 void app_set_tool(int32_t tool) {
-	if (tool < 0 || tool > TOOL_TYPE_INPAINT || tool == g_context->tool) {
+	if (!app_ready() || tool < 0 || tool > TOOL_TYPE_INPAINT || tool == g_context->tool) {
 		return;
 	}
 	context_select_tool(tool);
@@ -126,27 +131,42 @@ static void app_brush_changed(void) {
 }
 
 void app_set_brush_radius(float value) {
+	if (!app_ready()) {
+		return;
+	}
 	g_context->brush_radius = math_max(0.01, math_min(2.0, value));
 	app_brush_changed();
 }
 
 void app_set_brush_opacity(float value) {
+	if (!app_ready()) {
+		return;
+	}
 	g_context->brush_opacity = math_max(0.0, math_min(1.0, value));
 	app_brush_changed();
 }
 
 void app_set_brush_hardness(float value) {
+	if (!app_ready()) {
+		return;
+	}
 	g_context->brush_hardness = math_max(0.0, math_min(1.0, value));
 	app_brush_changed();
 }
 
 void app_set_brush_angle(float degrees) {
+	if (!app_ready()) {
+		return;
+	}
 	g_context->brush_angle = math_max(0.0, math_min(360.0, degrees));
 	make_material_parse_paint_material(true);
 	app_brush_changed();
 }
 
 void app_set_symmetry(bool x, bool y, bool z) {
+	if (!app_ready()) {
+		return;
+	}
 	g_context->sym_x = x;
 	g_context->sym_y = y;
 	g_context->sym_z = z;
@@ -156,12 +176,15 @@ void app_set_symmetry(bool x, bool y, bool z) {
 // Views and camera
 
 void app_cycle_view_mode(void) {
+	if (!app_ready()) {
+		return;
+	}
 	ui_base_cycle_view_mode();
 	iron_delay_idle_sleep();
 }
 
 void app_set_viewport_mode(int32_t mode) {
-	if (mode < VIEWPORT_MODE_LIT || mode > VIEWPORT_MODE_PATH_TRACE) {
+	if (!app_ready() || mode < VIEWPORT_MODE_LIT || mode > VIEWPORT_MODE_PATH_TRACE) {
 		return;
 	}
 	context_set_viewport_mode(mode);
@@ -169,18 +192,24 @@ void app_set_viewport_mode(int32_t mode) {
 }
 
 void app_view_face(int32_t face) {
+	if (!app_ready()) {
+		return;
+	}
 	ui_view_cube_set_view(face); // ui_panels.c
 	iron_delay_idle_sleep();
 }
 
 void app_view_orbit(float x, float y) {
+	if (!app_ready()) {
+		return;
+	}
 	viewport_orbit(x, y);
 	iron_delay_idle_sleep();
 }
 
 // As the old Camera menu's FoV slider: a perspective camera moves along its view to keep the pivot's framing
 void app_set_camera_fov(float fov) {
-	if (scene_camera == NULL) {
+	if (!app_ready() || scene_camera == NULL) {
 		return;
 	}
 	fov         = math_max(0.3, math_min(1.4, fov));
@@ -201,17 +230,20 @@ void app_set_camera_fov(float fov) {
 }
 
 void app_set_camera_pivot(int32_t pivot) {
+	if (!app_ready()) {
+		return;
+	}
 	g_context->camera_pivot = pivot == 1 ? 1 : 0;
 }
 
 void app_set_camera_controls(int32_t controls) {
-	if (controls >= CAMERA_CONTROLS_ORBIT && controls <= CAMERA_CONTROLS_FLY) {
+	if (app_ready() && controls >= CAMERA_CONTROLS_ORBIT && controls <= CAMERA_CONTROLS_FLY) {
 		g_context->camera_controls = controls;
 	}
 }
 
 void app_set_camera_type(int32_t type) {
-	if (type != CAMERA_TYPE_PERSPECTIVE && type != CAMERA_TYPE_ORTHOGRAPHIC) {
+	if (!app_ready() || (type != CAMERA_TYPE_PERSPECTIVE && type != CAMERA_TYPE_ORTHOGRAPHIC)) {
 		return;
 	}
 	g_context->camera_type = type;
@@ -225,6 +257,9 @@ static void app_capture_screenshot(void *_) {
 }
 
 void app_command(int32_t command) {
+	if (!app_ready()) {
+		return;
+	}
 	switch (command) {
 	case APP_COMMAND_NEW_PROJECT:
 		project_new_box();
@@ -317,7 +352,7 @@ void app_command(int32_t command) {
 // History
 
 const char *app_undo_name(void) {
-	if (history_undos <= 0) {
+	if (!app_ready() || history_undos <= 0) {
 		return "";
 	}
 	history_step_t *step = history_steps->buffer[history_steps->length - 1 - history_redos];
@@ -325,11 +360,17 @@ const char *app_undo_name(void) {
 }
 
 void app_undo(void) {
+	if (!app_ready()) {
+		return;
+	}
 	history_undo();
 	iron_delay_idle_sleep();
 }
 
 void app_redo(void) {
+	if (!app_ready()) {
+		return;
+	}
 	history_redo();
 	iron_delay_idle_sleep();
 }
@@ -337,7 +378,7 @@ void app_redo(void) {
 // Layers
 
 int32_t app_layer_count(void) {
-	return script_layer_count();
+	return app_ready() ? script_layer_count() : 0;
 }
 
 static i32 app_layer_depth(slot_layer_t *l) {
@@ -349,7 +390,7 @@ static i32 app_layer_depth(slot_layer_t *l) {
 }
 
 bool app_layer_info(int32_t index, app_layer_info_t *out) {
-	i32 n = script_layer_count();
+	i32 n = app_layer_count();
 	if (index < 0 || index >= n) {
 		return false;
 	}
@@ -408,7 +449,7 @@ bool app_layer_rename(int32_t id, const char *name) {
 }
 
 bool app_layer_add(void) {
-	return script_layer_new() != NULL;
+	return app_ready() && script_layer_new() != NULL;
 }
 
 bool app_layer_can_delete(int32_t id) {
