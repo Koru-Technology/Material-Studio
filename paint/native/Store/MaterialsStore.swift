@@ -70,11 +70,9 @@ final class MaterialsStore: ChangeOnly {
 	private(set) var materials: [MaterialRow]    = []
 	private(set) var smartCanSave                = false
 	private(set) var canApplyToFill              = false
-	private(set) var studioOpen                  = false
 
 	// Library
 	private(set) var libraryStatus               = ""
-	private(set) var libraryHasFolder            = true
 	private(set) var library: [LibraryRow]       = []
 	private(set) var librarySections: [LibrarySection] = []
 	private(set) var libraryFilterOptions: [[LibraryFilterOption]] = [] // All, then one group per style
@@ -140,7 +138,6 @@ final class MaterialsStore: ChangeOnly {
 		update(\.selectedID, s.selected_id)
 		update(\.smartCanSave, s.smart_can_save)
 		update(\.canApplyToFill, s.can_apply_to_fill)
-		update(\.studioOpen, s.studio_open)
 		if s.materials_signature != materialsSignature || s.previews_version != previewsVersion {
 			materialsSignature = s.materials_signature
 			previewsVersion    = s.previews_version
@@ -196,7 +193,6 @@ final class MaterialsStore: ChangeOnly {
 	private func refreshLibrary() {
 		let sig = app_library_signature()
 		update(\.libraryStatus, String(cString: app_library_status()))
-		update(\.libraryHasFolder, app_library_has_folder())
 		if sig != librarySignature {
 			librarySignature = sig
 			readLibrary()

@@ -8,10 +8,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-static inline int app_api_version(void) {
-	return 1;
-}
-
 // Everything the native UI shows that changes often, read once per frame.
 // The *_signature / *_version fields change whenever the matching list has to be read again.
 typedef struct {
@@ -31,7 +27,6 @@ typedef struct {
 	bool     sym_x;
 	bool     sym_y;
 	bool     sym_z;
-	bool     project_modified;
 	float    camera_rot[4]; // Quaternion x, y, z, w: the view cube turns with it
 	bool     engine_modal;  // An engine drawn dialog, menu or full screen editor is up: the native controls step aside
 	float    camera_fov;      // 0.3 to 1.4
@@ -161,7 +156,6 @@ int32_t app_layer_count(void);
 bool    app_layer_info(int32_t index, app_layer_info_t *out);
 bool    app_layer_select(int32_t id);
 bool    app_layer_set_visible(int32_t id, bool visible);
-bool    app_layer_rename(int32_t id, const char *name);
 bool    app_layer_add(void);   // A paint layer above the selected one
 bool    app_layer_delete(int32_t id);
 bool    app_layer_can_delete(int32_t id);

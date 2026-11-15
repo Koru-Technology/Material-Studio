@@ -17,7 +17,6 @@ typedef struct {
 	uint32_t previews_version;    // A material preview was redrawn: re-read those whose preview_version changed
 	bool     smart_can_save;      // The selected layer is a fill layer or a group, or the mask of a fill layer
 	bool     can_apply_to_fill;   // The selected layer is a fill layer (or its mask): Apply to Fill Layer
-	bool     studio_open;         // The Material Studio is shown
 } app_materials_state_t;
 
 void app_materials_get_state(app_materials_state_t *out);
@@ -38,7 +37,6 @@ bool    app_material_info(int32_t index, app_material_info_t *out);
 int32_t app_material_id_at(int32_t index);
 bool    app_material_select(int32_t id);
 int32_t app_material_new(void);        // A node material, selected. Returns its id, -1 when none
-void    app_material_new_studio(void); // A Material Studio material, opened in the studio on the next frame
 int32_t app_material_duplicate(int32_t id); // Returns the copy's id, selected
 bool    app_material_can_delete(int32_t id); // Not the project's last material
 bool    app_material_delete(int32_t id);
@@ -85,12 +83,9 @@ int32_t     app_library_count(void);
 bool        app_library_item(int32_t index, app_library_item_t *out);
 bool        app_library_matches(int32_t index, const char *search); // Name, tags, author, style; any case
 int32_t     app_library_group_count(void);                          // Types of the current view, for the type menu
-const char *app_library_group_name(int32_t group);
 bool        app_library_use(int32_t index); // Adds it to the project, selected
 bool        app_library_delete(int32_t index); // Saved materials only
 const char *app_library_status(void);          // Importing progress or folder state; "" for none
-bool        app_library_has_folder(void);      // The local library has a materials folder
-void        app_library_pick_folder(void);
 
 // Its icon, requested when it is not loaded yet: 0 until it is (ask again on a later frame), -1 when it has none
 int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h);

@@ -101,7 +101,6 @@ void app_get_state(app_state_t *out) {
 	out->sym_x             = g_context->sym_x;
 	out->sym_y             = g_context->sym_y;
 	out->sym_z             = g_context->sym_z;
-	out->project_modified  = project_modified;
 	out->engine_modal      = ui_box_show || ui_menu_show || ui_brush_creator_shown() || material_studio_show || ui_id_mask_active;
 	if (scene_camera != NULL) {
 		out->camera_fov = scene_camera->data->fov;
@@ -585,15 +584,6 @@ bool app_layer_set_visible(int32_t id, bool visible) {
 	}
 	tab_layers_layer_toggle_visible(l);
 	iron_delay_idle_sleep();
-	return true;
-}
-
-bool app_layer_rename(int32_t id, const char *name) {
-	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || name == NULL || name[0] == '\0') {
-		return false;
-	}
-	script_layer_set_name(l, string_copy((char *)name));
 	return true;
 }
 

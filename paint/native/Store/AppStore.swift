@@ -20,7 +20,6 @@ final class AppStore: ChangeOnly {
 	private(set) var viewportMode: Int32 = 0
 	private(set) var brushAngle          = Float(0)
 	private(set) var symmetry            = [false, false, false]
-	private(set) var projectModified     = false
 	private(set) var engineModal         = false
 	private(set) var cameraFov           = Float(0.8)
 	private(set) var cameraPivot: Int32    = 0
@@ -47,7 +46,6 @@ final class AppStore: ChangeOnly {
 		update(\.viewportMode, s.viewport_mode)
 		update(\.brushAngle, s.brush_angle)
 		update(\.symmetry, [s.sym_x, s.sym_y, s.sym_z])
-		update(\.projectModified, s.project_modified)
 		update(\.engineModal, s.engine_modal)
 		update(\.cameraFov, s.camera_fov)
 		update(\.cameraPivot, s.camera_pivot)

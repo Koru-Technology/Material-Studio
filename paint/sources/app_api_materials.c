@@ -230,7 +230,6 @@ void app_materials_get_state(app_materials_state_t *out) {
 	out->previews_version    = app_mat_previews;
 	out->smart_can_save      = app_smart_target() != NULL;
 	out->can_apply_to_fill   = tab_layers_fill_target(g_context->layer) != NULL;
-	out->studio_open         = material_studio_show;
 }
 
 int32_t app_material_count(void) {
@@ -277,14 +276,6 @@ bool app_material_select(int32_t id) {
 int32_t app_material_new(void) {
 	slot_material_t *m = app_mat_project_ready() ? script_material_create(NULL) : NULL;
 	return m != NULL ? m->id : -1;
-}
-
-static void app_material_new_studio_next(void *_) {
-	material_studio_new();
-}
-
-void app_material_new_studio(void) {
-	sys_notify_on_next_frame(&app_material_new_studio_next, NULL);
 }
 
 int32_t app_material_duplicate(int32_t id) {
@@ -646,13 +637,6 @@ int32_t app_library_group_count(void) {
 	return app_lib_mm_sections();
 }
 
-const char *app_library_group_name(int32_t group) {
-	if (group < 0 || group >= app_library_group_count()) {
-		return "";
-	}
-	return app_str(mm_library_section_name(group));
-}
-
 static void app_lib_use_saved_next(void *data) {
 	char *name = data;
 	for (i32 i = 0; i < saved_materials_count(); ++i) {
@@ -711,14 +695,6 @@ const char *app_library_status(void) {
 		return "";
 	}
 	return app_str(library_status());
-}
-
-bool app_library_has_folder(void) {
-	return library_has_folder();
-}
-
-void app_library_pick_folder(void) {
-	library_pick_folder();
 }
 
 int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
