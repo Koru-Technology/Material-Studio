@@ -133,6 +133,9 @@ void gpu_render_target_init2(gpu_texture_t *target, uint32_t width, uint32_t hei
 			wait_for_frames();
 			gpu_cleanup();
 			target->impl._tex = (__bridge_retained void *)[device newTextureWithDescriptor:descriptor];
+			if (target->impl._tex == nil) {
+				iron_log("Could not create a %ux%u render target", width, height);
+			}
 		}
 	}
 }
@@ -1033,14 +1036,19 @@ void gpu_texture_init_from_bytes(gpu_texture_t *texture, void *data, uint32_t wi
 	id<MTLDevice>  device = get_metal_device();
 	id<MTLTexture> tex    = [device newTextureWithDescriptor:descriptor];
 	if (tex == nil) {
+		// Free the textures waiting for destruction and retry once, a size the gpu can not create stays nil
 		wait_for_frames();
 		gpu_cleanup();
+		tex = [device newTextureWithDescriptor:descriptor];
+	}
+	if (tex == nil) {
+		iron_log("Could not create a %ux%u texture", width, height);
+		texture->impl._tex = NULL;
 #ifdef WITH_BC7
 		if (data != original_data) {
 			free(data);
 		}
 #endif
-		gpu_texture_init_from_bytes(texture, original_data, width, height, format, compress);
 		return;
 	}
 	texture->impl._tex = (__bridge_retained void *)tex;
@@ -1089,6 +1097,9 @@ void gpu_vertex_buffer_init(gpu_buffer_t *buffer, uint32_t count, gpu_vertex_str
 		wait_for_frames();
 		gpu_cleanup();
 		buf = [device newBufferWithLength:gpu_buffer_alloc_size(count, buffer->stride) options:options];
+		if (buf == nil) {
+			iron_log("Could not create a vertex buffer of %u vertices", count);
+		}
 	}
 	buffer->impl.metal_buffer = (__bridge_retained void *)buf;
 }
