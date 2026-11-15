@@ -398,15 +398,6 @@ static uint8_t *mm_bridge_read(const char *path, size_t *size) {
 	return d;
 }
 
-// Replaces the registration's placeholder code generation of every Material Maker node type
 void mm_bridge_init(void) {
 	mm_buffers_init(); // The image node's file reader, the text node's font
-	string_array_t *keys = map_keys(parser_material_node_outputs);
-	for (i32 i = 0; i < keys->length; ++i) {
-		if (starts_with(keys->buffer[i], "MM_")) {
-			any_map_set(parser_material_node_outputs, keys->buffer[i], mm_bridge_output);
-		}
-	}
-	array_free(keys);
-	free(keys);
 }

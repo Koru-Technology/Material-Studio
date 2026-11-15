@@ -89,8 +89,8 @@ void nodes_material_init() {
 
 	nodes_material_mm = any_array_create_from_raw((void *[]){}, 0);
 	mm_nodes_init();
-	mm_bridge_init(); // Their code in material shaders
-	mm_material_init(); // MM Material nodes, their own code (after mm_bridge_init, which takes every other MM_ type)
+	mm_bridge_init();
+	mm_material_init(); // MM Material nodes, their own code
 
 	nodes_material_group = any_array_create_from_raw((void *[]){}, 0);
 	group_node_init();

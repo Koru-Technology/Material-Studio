@@ -2280,28 +2280,6 @@ void mm_node_set_data_json(ui_node_t *node, char *json, ui_node_canvas_t *canvas
 	mm_arena_release(mk);
 }
 
-// Codegen
-
-// TODO(mm_ codegen): Material Maker shader code for these nodes comes from the mm_ generator (mm_gen.c port, inputs
-// evaluated at other uvs). Until then every output is its socket's default value, in the socket's GLSL type
-// (parser_material_socket_glsl_type).
-static char *mm_nodes_codegen_stub(ui_node_t *node, ui_node_socket_t *socket) {
-	f32_array_t *d = socket->default_value;
-	char        *t = parser_material_socket_glsl_type(socket->type);
-	i32          n = string_equals(t, "vec4") ? 4 : string_equals(t, "vec3") ? 3 : string_equals(t, "vec2") ? 2 : 1;
-	if (d == NULL || d->length == 0) {
-		return parser_material_socket_zero(socket->type);
-	}
-	char        *c[4];
-	for (i32 i = 0; i < 4; ++i) {
-		c[i] = f32_to_string_with_zeros(d != NULL && i < (i32)d->length ? d->buffer[i] : (i == 3 ? 1.0 : 0.0));
-	}
-	return n == 4   ? string_tmp("vec4(%s, %s, %s, %s)", c[0], c[1], c[2], c[3])
-	       : n == 3 ? string_tmp("vec3(%s, %s, %s)", c[0], c[1], c[2])
-	       : n == 2 ? string_tmp("vec2(%s, %s)", c[0], c[1])
-	                : c[0];
-}
-
 // Custom buttons
 
 // Label of the parameter whose button it is
@@ -2639,7 +2617,7 @@ static void mm_nodes_register(mm_json_t *entry, char *type, char *mm_type, const
 		ui_nodes_set_menu_path(type, string_tmp("Material Maker/%s", path));
 		mm_nodes_visible++;
 	}
-	any_map_set(parser_material_node_outputs, type, mm_nodes_codegen_stub);
+	any_map_set(parser_material_node_outputs, type, mm_bridge_output); // Their code in material shaders (mm_bridge.c)
 }
 
 void mm_nodes_init() {
