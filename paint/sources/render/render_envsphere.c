@@ -127,7 +127,7 @@ void render_envsphere() {
 	}
 
 	camera_object_t *cam   = scene_camera;
-	f32              ratio = sys_w() / (float)sys_h();
+	f32              ratio = base_window_aspect();
 	mat4_t           _P    = cam->p;
 	cam->p                 = mat4_ortho(-8 * ratio, 8 * ratio, -8, 8, -2, 2);
 

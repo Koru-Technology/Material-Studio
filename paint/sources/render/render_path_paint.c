@@ -1236,7 +1236,7 @@ void render_path_paint_commands_cursor() {
 	}
 
 	if (context_is_decal()) {
-		f32            scale2d = (900 / (f32)base_h()) * g_config->window_scale;
+		f32            scale2d = base_scale2d(base_h());
 		f32            radius  = brush_nodes_radius * g_context->brush_radius / 15.0 * scale2d * 2.0;
 		f32            cmx     = decal_mask ? g_context->decal_x : mx;
 		f32            cmy     = decal_mask ? 1.0f - g_context->decal_y : my;
@@ -1710,7 +1710,7 @@ void render_path_paint_commands_stamps() {
 	}
 	f32 cx       = g_context->paint_vec.x;
 	f32 cy       = g_context->paint_vec.y;
-	f32 aspect   = base_paint_view_w() / (f32)base_paint_view_h();
+	f32 aspect   = base_paint_view_aspect();
 	f32 diameter = util_layer_brush_screen_radius() * 2.0;
 	f32 step     = math_max(render_path_paint_spacing() * diameter, 0.0005);
 	i32 stamps   = 0;
@@ -1926,7 +1926,7 @@ static void render_path_paint_commands_samples_stamps() {
 	i32                       count    = render_path_paint_points(pts);
 	f32                       cx       = g_context->paint_vec.x;
 	f32                       cy       = g_context->paint_vec.y;
-	f32                       aspect   = base_paint_view_w() / (f32)base_paint_view_h();
+	f32                       aspect   = base_paint_view_aspect();
 	f32                       diameter = util_layer_brush_screen_radius() * 2.0;
 	f32                       step     = math_max(render_path_paint_spacing() * diameter, 0.0005);
 	i32                       stamps   = 0;

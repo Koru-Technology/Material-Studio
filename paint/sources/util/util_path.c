@@ -117,7 +117,7 @@ f32 util_layer_brush_screen_radius() {
 	if (!project_to_screen(c_w, &cx, &cy) || !project_to_screen(e_w, &ex, &ey)) {
 		return r_world;
 	}
-	f32 aspect = sys_w() / (f32)sys_h();
+	f32 aspect = base_window_aspect();
 	f32 dx     = (ex - cx) * aspect;
 	f32 dy     = ey - cy;
 	return sqrtf(dx * dx + dy * dy);
@@ -134,7 +134,7 @@ static void path_push_camera(f32_array_t *ar) {
 	f32_array_push(ar, rot.y);
 	f32_array_push(ar, rot.z);
 	f32_array_push(ar, rot.w);
-	f32_array_push(ar, sys_w() / (f32)sys_h());
+	f32_array_push(ar, base_window_aspect());
 }
 
 // Camera last applied by path_set_camera during the current repaint
@@ -521,7 +521,7 @@ static void path_paint_text(slot_layer_t *l) {
 		}
 
 		f32 total   = slen->buffer[num_samples - 1];
-		f32 aspect  = sys_w() / (f32)sys_h();
+		f32 aspect  = base_window_aspect();
 		i32 cur_cam = -1;
 		i32 byte_i  = 0;
 		for (i32 i = 0; i < n; i++) {
@@ -908,7 +908,7 @@ static void path_point_move(slot_layer_t *l, i32 idx, f32 new_x, f32 new_y) {
 			points_camera->buffer[idx * 9 + 5] = rot.y;
 			points_camera->buffer[idx * 9 + 6] = rot.z;
 			points_camera->buffer[idx * 9 + 7] = rot.w;
-			points_camera->buffer[idx * 9 + 8] = sys_w() / (f32)sys_h();
+			points_camera->buffer[idx * 9 + 8] = base_window_aspect();
 		}
 	}
 }

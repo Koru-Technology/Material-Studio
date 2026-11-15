@@ -32,7 +32,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		if (!decal) {
 			val *= util_brush_dynamic(g_context->brush_pressure_size, g_context->brush_tilt_size, true);
 		}
-		f32 scale2d = (900 / (float)base_h()) * g_config->window_scale;
+		f32 scale2d = base_scale2d(base_h());
 		if (!decal) {
 			val *= 2;
 		}
@@ -320,7 +320,7 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 	else if (string_equals(link, "_decal_mask")) {
 		bool decal_mask = context_is_decal_mask_paint_pass();
 		f32  val        = (g_context->brush_radius * g_context->brush_nodes_radius) / 15.0;
-		f32  scale2d    = (900 / (float)base_h()) * g_config->window_scale;
+		f32  scale2d    = base_scale2d(base_h());
 		val *= scale2d * 2.0;
 		vec4_t v = (vec4_t){g_context->decal_x, g_context->decal_y, decal_mask ? 1 : 0, val};
 		return v;

@@ -702,7 +702,7 @@ void util_render_make_brush_preview() {
 	util_brush_sample_roll     = 0.0;
 
 	// Spaced dabs are left in sphere mode, sampled finely as a slow pen would be
-	f32 aspect  = sys_w() / (f32)sys_h();
+	f32 aspect  = base_window_aspect();
 	i32 samples = 128;
 	if (sphere_mode) {
 		f32 len = 0.7 * aspect;

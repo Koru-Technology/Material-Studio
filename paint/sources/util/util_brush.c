@@ -221,7 +221,7 @@ static void util_brush_update_motion() {
 		g_context->brush_speed = 0.0f;
 		return;
 	}
-	f32 aspect = base_paint_view_w() / (f32)base_paint_view_h();
+	f32 aspect = base_paint_view_aspect();
 	f32 dx     = (x - util_brush_last_x) * aspect;
 	f32 dy     = y - util_brush_last_y;
 	f32 d      = sqrtf(dx * dx + dy * dy);
