@@ -458,10 +458,6 @@ void base_update(void *_) {
 	base_handle_drop_paths();
 	base_handle_open_paths();
 
-
-
-
-
 	if (base_workspace_pending) {
 		base_apply_workspace();
 	}
@@ -473,8 +469,6 @@ void base_update(void *_) {
 
 	bool in_3d               = mouse_view_x() >= 0 && mouse_view_x() <= sys_w() && mouse_view_y() >= 0 && mouse_view_y() <= sys_h();
 	iron_mouse_trackpad_drag = base_ui_enabled && (in_3d || context_in_2d_view(ui_view2d_type) || context_in_nodes());
-
-
 
 	if (g_context->frame == 2) {
 		util_render_make_material_preview();
@@ -938,15 +932,6 @@ any_array_t *base_combo_enum_textures(char *node_type) {
 i32 base_get_asset_index_by_file(char *file) {
 	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
 		if (string_equals(g_project->_->assets->buffer[i]->file, file)) {
-			return i;
-		}
-	}
-	return 0;
-}
-
-i32 base_get_asset_index(char *file_name) {
-	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
-		if (string_equals(g_project->_->assets->buffer[i]->name, file_name)) {
 			return i;
 		}
 	}

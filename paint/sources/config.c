@@ -779,11 +779,6 @@ i32 config_texture_res_size(i32 pos) {
 	return pos == TEXTURE_RES_RES2048 ? 2048 : pos == TEXTURE_RES_RES4096 ? 4096 : pos == TEXTURE_RES_RES8192 ? 8192 : pos == TEXTURE_RES_RES16384 ? 16384 : 0;
 }
 
-i32 config_get_layer_res() {
-	i32 res = g_config->layer_res;
-	return config_texture_res_size(res);
-}
-
 void config_set_texture_res(i32 pos) {
 	if (pos != TEXTURE_RES_CUSTOM) {
 		f32 res    = (f32)config_texture_res_size(pos);

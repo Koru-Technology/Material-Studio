@@ -136,11 +136,6 @@ void ui_base_update_next_frame(void *_) {
 	export_texture_run(g_context->texture_export_path, false);
 }
 
-void ui_base_update_ui_on_next_frame(void *_) {
-	layers_update_fill_layer(true);
-	make_material_parse_paint_material(false);
-}
-
 // Nothing docked is visible
 static void ui_base_draw_empty() {
 	draw_begin(NULL, true, g_theme->SEPARATOR_COL);
@@ -327,7 +322,6 @@ static void ui_base_show_nodes(canvas_type_t type) {
 void ui_base_show_material_nodes() {
 	ui_base_show_nodes(CANVAS_TYPE_MATERIAL);
 }
-
 
 void ui_base_show_2d_view(view_2d_type_t type) {
 	// Clear input state as ui receives input events even when not drawn
