@@ -27,64 +27,86 @@ static uint32_t io_gltf_read_index(cgltf_primitive *prim, cgltf_size i) {
 	return prim->indices != NULL ? (uint32_t)cgltf_accessor_read_index(prim->indices, i) : (uint32_t)i;
 }
 
+static cgltf_accessor *io_gltf_attribute(cgltf_primitive *prim, cgltf_attribute_type type) {
+	for (cgltf_size i = 0; i < prim->attributes_count; ++i) {
+		cgltf_attribute *a = &prim->attributes[i];
+		if (a->type == type && a->index == 0 && a->data != NULL) {
+			return a->data;
+		}
+	}
+	return NULL;
+}
+
+// Primitives drawn as triangles, with positions
+static bool io_gltf_takes_primitive(cgltf_primitive *prim) {
+	return prim->type == cgltf_primitive_type_triangles && io_gltf_attribute(prim, cgltf_attribute_type_position) != NULL;
+}
+
+// All triangle primitives of mesh become one mesh: their vertices follow each other, their indices are offset to them.
+// Normals are kept when every primitive has them, else computed. Uvs (the first set) are zero where a primitive has none.
 void io_gltf_parse_mesh(raw_mesh_t *raw, cgltf_mesh *mesh, float *to_world, float *scale) {
-	cgltf_primitive *prim        = NULL;
-	uint32_t        *inda        = NULL;
-	cgltf_size       index_total = 0;
-
-	for (int i = 0; i < mesh->primitives_count; ++i) {
-		// TODO: handle all primitives
-		prim        = &mesh->primitives[i];
-		index_total = io_gltf_index_count(prim);
-		inda        = malloc(sizeof(uint32_t) * index_total);
-		for (cgltf_size i = 0; i < index_total; ++i) {
-			inda[i] = io_gltf_read_index(prim, i);
+	cgltf_size vertex_total = 0;
+	cgltf_size index_total  = 0;
+	bool       all_normals  = true;
+	bool       any_uvs      = false;
+	for (cgltf_size p = 0; p < mesh->primitives_count; ++p) {
+		cgltf_primitive *prim = &mesh->primitives[p];
+		if (!io_gltf_takes_primitive(prim)) {
+			continue;
 		}
+		cgltf_accessor *pos = io_gltf_attribute(prim, cgltf_attribute_type_position);
+		cgltf_accessor *nor = io_gltf_attribute(prim, cgltf_attribute_type_normal);
+		vertex_total += pos->count;
+		index_total += io_gltf_index_count(prim) / 3 * 3;
+		all_normals = all_normals && nor != NULL && nor->count == pos->count;
+		any_uvs     = any_uvs || io_gltf_attribute(prim, cgltf_attribute_type_texcoord) != NULL;
 	}
-
-	if (inda == NULL) {
+	if (vertex_total == 0 || index_total == 0 || vertex_total > INT32_MAX / 4 || index_total > INT32_MAX) {
 		return;
 	}
 
-	int    index_count  = (int)index_total;
-	int    vertex_count = -1;
-	float *posa32       = NULL;
-	float *nora32       = NULL;
-	float *texa32       = NULL;
+	int       vertex_count = (int)vertex_total;
+	int       index_count  = (int)index_total;
+	uint32_t *inda         = malloc(sizeof(uint32_t) * index_total);
+	float    *posa32       = malloc(sizeof(float) * vertex_total * 3);
+	float    *nora32       = all_normals ? malloc(sizeof(float) * vertex_total * 3) : NULL;
+	float    *texa32       = any_uvs ? calloc(vertex_total * 2, sizeof(float)) : NULL;
 
-	for (int i = 0; i < prim->attributes_count; ++i) {
-		cgltf_attribute *attrib = &prim->attributes[i];
-
-		if (attrib->type == cgltf_attribute_type_position) {
-			vertex_count = attrib->data->count;
-			posa32       = malloc(sizeof(float) * attrib->data->count * 3);
-			for (cgltf_size i = 0; i < attrib->data->count; ++i) {
-				cgltf_accessor_read_float(attrib->data, i, posa32 + i * 3, 3);
+	cgltf_size voff = 0;
+	cgltf_size ioff = 0;
+	for (cgltf_size p = 0; p < mesh->primitives_count; ++p) {
+		cgltf_primitive *prim = &mesh->primitives[p];
+		if (!io_gltf_takes_primitive(prim)) {
+			continue;
+		}
+		cgltf_accessor *pos    = io_gltf_attribute(prim, cgltf_attribute_type_position);
+		cgltf_accessor *nor    = io_gltf_attribute(prim, cgltf_attribute_type_normal);
+		cgltf_accessor *tex    = io_gltf_attribute(prim, cgltf_attribute_type_texcoord);
+		cgltf_size      vcount = pos->count;
+		for (cgltf_size i = 0; i < vcount; ++i) {
+			cgltf_accessor_read_float(pos, i, posa32 + (voff + i) * 3, 3);
+		}
+		if (nora32 != NULL) {
+			for (cgltf_size i = 0; i < vcount; ++i) {
+				cgltf_accessor_read_float(nor, i, nora32 + (voff + i) * 3, 3);
 			}
 		}
-		else if (attrib->type == cgltf_attribute_type_normal) {
-			nora32 = malloc(sizeof(float) * attrib->data->count * 3);
-			for (cgltf_size i = 0; i < attrib->data->count; ++i) {
-				cgltf_accessor_read_float(attrib->data, i, nora32 + i * 3, 3);
+		if (texa32 != NULL && tex != NULL) {
+			for (cgltf_size i = 0; i < vcount && i < tex->count; ++i) {
+				cgltf_accessor_read_float(tex, i, texa32 + (voff + i) * 2, 2);
 			}
 		}
-		else if (attrib->type == cgltf_attribute_type_texcoord) {
-			texa32 = malloc(sizeof(float) * attrib->data->count * 2);
-			for (cgltf_size i = 0; i < attrib->data->count; ++i) {
-				cgltf_accessor_read_float(attrib->data, i, texa32 + i * 2, 2);
-			}
+		cgltf_size icount = io_gltf_index_count(prim) / 3 * 3;
+		for (cgltf_size i = 0; i < icount; ++i) {
+			uint32_t index   = io_gltf_read_index(prim, i);
+			inda[ioff + i] = (uint32_t)voff + (index < vcount ? index : 0); // Out of range: a degenerate triangle
 		}
-	}
-
-	if (vertex_count == -1) {
-		return;
+		voff += vcount;
+		ioff += icount;
 	}
 
 	float *m = to_world;
 	for (int i = 0; i < vertex_count; ++i) {
-		// float x           = posa32[i * 3 + 0];
-		// float y           = posa32[i * 3 + 1];
-		// float z           = posa32[i * 3 + 2];
 		float x           = posa32[i * 3 + 0];
 		float y           = -posa32[i * 3 + 2];
 		float z           = posa32[i * 3 + 1];
@@ -95,9 +117,6 @@ void io_gltf_parse_mesh(raw_mesh_t *raw, cgltf_mesh *mesh, float *to_world, floa
 
 	if (nora32 != NULL) {
 		for (int i = 0; i < vertex_count; ++i) {
-			// float x   = nora32[i * 3 + 0] / scale[0];
-			// float y   = nora32[i * 3 + 1] / scale[1];
-			// float z   = nora32[i * 3 + 2] / scale[2];
 			float x   = nora32[i * 3 + 0] / scale[0];
 			float y   = -nora32[i * 3 + 2] / scale[2];
 			float z   = nora32[i * 3 + 1] / scale[1];
@@ -226,16 +245,33 @@ void io_gltf_parse_mesh(raw_mesh_t *raw, cgltf_mesh *mesh, float *to_world, floa
 
 	raw->scale_pos = scale_pos;
 	raw->scale_tex = 1.0;
+
+	free(posa32);
+	free(nora32);
+	free(texa32);
 }
 
 void *io_gltf_parse(char *buf, size_t size, const char *path) {
 	cgltf_options options = {0};
 	cgltf_data   *data    = NULL;
 	cgltf_result  result  = cgltf_parse(&options, buf, size, &data);
+	if (result == cgltf_result_success) {
+		result = cgltf_load_buffers(&options, data, path);
+	}
+	if (result == cgltf_result_success) {
+		result = cgltf_validate(data); // Accessors and indices in range of their buffers
+	}
 	if (result != cgltf_result_success) {
+		if (data != NULL) {
+			cgltf_free(data);
+		}
+		current_node = 0;
+		scale_pos    = 1.0;
 		return NULL;
 	}
-	cgltf_load_buffers(&options, data, path);
+	if (current_node == 0) { // A new file
+		scale_pos = 1.0;
+	}
 
 	raw_mesh_t *raw = (raw_mesh_t *)calloc(sizeof(raw_mesh_t), 1);
 
