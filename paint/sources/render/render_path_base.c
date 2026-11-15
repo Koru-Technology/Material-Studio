@@ -701,7 +701,7 @@ void render_path_base_draw_gbuffer() {
 	if (is_decal && !hide) {
 		line_draw_color            = 0xff000000;
 		line_draw_strength         = 0.002;
-		string_array_t *additional = any_array_create_from_raw(
+		string_array_t *additional = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "gbuffer1",
 		    },

@@ -755,7 +755,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 	else if (g_context->tool == TOOL_TYPE_PICKER) {
 		if (g_context->pick_pos_nor_tex) {
 			if (g_context->paint2d) {
-				string_array_t *additional = any_array_create_from_raw(
+				string_array_t *additional = any_array_create_from_raw_tmp(
 				    (void *[]){
 				        "gbuffer1",
 				        "gbuffer2",
@@ -764,7 +764,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				render_path_set_target("gbuffer0", additional, "main", GPU_CLEAR_NONE, 0, 0.0);
 				render_path_base_draw_meshes(render_path_base_mesh_scon(0), true);
 			}
-			string_array_t *additional = any_array_create_from_raw(
+			string_array_t *additional = any_array_create_from_raw_tmp(
 			    (void *[]){
 			        "texpaint_posnortex_picker1",
 			    },
@@ -792,7 +792,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			tid          = g_context->layer->id;
 			bool is_mask = slot_layer_is_mask(g_context->layer);
 			if (is_mask) {
-				string_array_t *additional = any_array_create_from_raw(
+				string_array_t *additional = any_array_create_from_raw_tmp(
 				    (void *[]){
 				        "texpaint_uv_picker",
 				    },
@@ -803,7 +803,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				render_path_paint_draw_fullscreen_triangle();
 			}
 			else {
-				string_array_t *additional = any_array_create_from_raw(
+				string_array_t *additional = any_array_create_from_raw_tmp(
 				    (void *[]){
 				        "texpaint_nor_picker",
 				        "texpaint_pack_picker",
@@ -1064,7 +1064,7 @@ void render_path_paint_commands_live_brush() {
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
 	}
 	else {
-		string_array_t *additional = any_array_create_from_raw(
+		string_array_t *additional = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "texpaint_nor_live",
 		        "texpaint_pack_live",

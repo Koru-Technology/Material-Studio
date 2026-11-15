@@ -333,7 +333,7 @@ static gpu_texture_t *render_path_raytrace_override_texture(i32 slot, char chann
 }
 
 static void render_path_raytrace_draw_override(i32 slot) {
-	string_array_t *additional = any_array_create_from_raw(
+	string_array_t *additional = any_array_create_from_raw_tmp(
 	    (void *[]){
 	        render_path_raytrace_override_target(slot, 'b'),
 	        render_path_raytrace_override_target(slot, 'c'),

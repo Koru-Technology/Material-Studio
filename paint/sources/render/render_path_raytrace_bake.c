@@ -69,7 +69,7 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 		parse_paint_material(false);
 		render_path_set_target("baketex0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		// Pixels with alpha of 0.0 are skipped during raytracing
-		string_array_t *additional = any_array_create_from_raw(
+		string_array_t *additional = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "baketex1",
 		    },
@@ -121,7 +121,7 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 			g_context->layer->texpaint = _texpaint;
 		}
 		else {
-			render_target_t *texpaint_undo = any_map_get(render_path_render_targets, string("texpaint_undo%d", history_undo_i));
+			render_target_t *texpaint_undo = any_map_get(render_path_render_targets, string_tmp("texpaint_undo%d", history_undo_i));
 			if (texpaint_undo == NULL) {
 				texpaint_undo = any_map_get(render_path_render_targets, "empty_black");
 			}
@@ -153,7 +153,7 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 		_gpu_raytrace_dispatch_rays(framebuffer->_image, f32a);
 
 		i32   id          = g_context->layer->id;
-		char *texpaint_id = string("texpaint%d", id);
+		char *texpaint_id = string_tmp("texpaint%d", id);
 		render_path_set_target(texpaint_id, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		render_path_bind_target("baketex2", "tex");
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
