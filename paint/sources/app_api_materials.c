@@ -537,11 +537,11 @@ static app_lib_ref_t *app_lib_ref(int32_t index) {
 	// The sources keep their items while the signature stays, a stale index is not found (nor another item taken for it)
 	switch (r->source) {
 	case APP_LIBRARY_SAVED:
-		return r->index < saved_materials_count() && string_equals(saved_materials_name(r->index), r->ident) ? r : NULL;
+		return r->index >= 0 && r->index < saved_materials_count() && string_equals(saved_materials_name(r->index), r->ident) ? r : NULL;
 	case APP_LIBRARY_FOLDER:
-		return r->index < library_entry_count() && string_equals(library_entry_rel(library_entry_get(r->index)), r->ident) ? r : NULL;
+		return r->index >= 0 && r->index < library_entry_count() && string_equals(library_entry_rel(library_entry_get(r->index)), r->ident) ? r : NULL;
 	default:
-		return r->index < mm_library_count() ? r : NULL;
+		return r->index >= 0 && r->index < mm_library_count() ? r : NULL;
 	}
 }
 

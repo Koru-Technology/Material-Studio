@@ -172,10 +172,10 @@ static char *app_blending_names[] = {
     "Soft Light", "Linear Light", "Difference", "Subtract", "Divide", "Hue", "Saturation", "Color", "Value",
 };
 
-_Static_assert(APP_ARRAY_LENGTH(app_blending_names) == BLEND_TYPE_VALUE + 1, "a name per blend_type_t");
+_Static_assert(ARRAY_LENGTH(app_blending_names) == BLEND_TYPE_VALUE + 1, "a name per blend_type_t");
 
 int32_t app_layer_blending_count(void) {
-	return APP_ARRAY_LENGTH(app_blending_names);
+	return (int32_t)ARRAY_LENGTH(app_blending_names);
 }
 
 const char *app_layer_blending_name(int32_t blending) {
@@ -874,7 +874,7 @@ bool app_mask_effect_param(int32_t type, int32_t p, app_mask_param_t *out) {
 }
 
 static char *app_mask_blending_names[] = {"Normal", "Multiply", "Add", "Subtract", "Max", "Min", "Overlay"};
-_Static_assert(APP_ARRAY_LENGTH(app_mask_blending_names) == MASK_BLEND_COUNT, "a name per mask blending");
+_Static_assert(ARRAY_LENGTH(app_mask_blending_names) == MASK_BLEND_COUNT, "a name per mask blending");
 
 int32_t app_mask_blending_count(void) {
 	return MASK_BLEND_COUNT;

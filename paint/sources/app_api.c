@@ -12,7 +12,9 @@ _Static_assert(APP_SAME(APP_VIEWPORT_LIT, VIEWPORT_MODE_LIT) && APP_SAME(APP_VIE
                    APP_SAME(APP_VIEWPORT_MASK, VIEWPORT_MODE_MASK) && APP_SAME(APP_VIEWPORT_PATH_TRACE + 1, VIEWPORT_MODE_PLUGIN),
                "app_api.h mirrors viewport_mode_t");
 
-#define APP_ARRAY_LENGTH(a) ((i32)(sizeof(a) / sizeof((a)[0])))
+#ifndef ARRAY_LENGTH // Engine-wide once base has it
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
+#endif
 
 static bool     app_engine_ready     = false;
 static uint32_t app_previews_counter = 0;
@@ -234,7 +236,7 @@ static int32_t app_read_rgba8(gpu_texture_t *t, int32_t max_size, bool premultip
 		}
 	}
 	gpu_release_texture_pixels(t);
-	if (bgra) {
+	if (bgra) { // Its own step: gpu_get_texture_pixels_rgba8 replaces it once base has it
 		for (i32 p = 0; p < bytes; p += 4) {
 			uint8_t c  = out[p];
 			out[p]     = out[p + 2];
