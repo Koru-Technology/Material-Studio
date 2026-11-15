@@ -443,7 +443,7 @@ char *shader_data_ext() {
 
 shader_data_t *shader_data_parse(char *file, char *name) {
 	scene_t       *format = data_get_scene_raw(file);
-	shader_data_t *raw    = shader_data_get_raw_by_name(format->shader_datas, name);
+	shader_data_t *raw    = shader_data_get_raw_by_name((shader_data_t_array_t *)format->shader_datas, name);
 	if (raw == NULL) {
 		iron_log("Shader data '%s' not found!", name);
 		return NULL;
@@ -774,7 +774,7 @@ mesh_data_t *mesh_data_create(mesh_data_t *raw) {
 	if (raw->scale_tex == 0.0) {
 		raw->scale_tex = 1.0;
 	}
-	raw->_->structure = mesh_data_get_vertex_struct(raw->vertex_arrays);
+	raw->_->structure = mesh_data_get_vertex_struct((any_array_t *)raw->vertex_arrays);
 	mesh_data_build(raw);
 	return raw;
 }
@@ -851,7 +851,7 @@ void mesh_data_build(mesh_data_t *raw) {
 	vertex_array_t *positions = mesh_data_get_vertex_array(raw, "pos");
 	i32             size      = mesh_data_get_vertex_size(positions->data);
 	raw->_->vertex_buffer     = gpu_create_vertex_buffer(positions->values->length / size, &raw->_->structure);
-	mesh_data_build_vertices(raw->_->vertex_buffer, raw->vertex_arrays);
+	mesh_data_build_vertices(raw->_->vertex_buffer, (any_array_t *)raw->vertex_arrays);
 	raw->_->index_buffer = gpu_create_index_buffer(raw->index_array->length);
 	mesh_data_build_indices(raw->_->index_buffer, raw->index_array);
 }
@@ -1010,9 +1010,9 @@ camera_object_t *camera_object_create(camera_data_t *data) {
 	raw->v  = mat4_identity();
 	raw->vp = mat4_identity();
 
-	raw->frustum_planes = any_array_create(0);
+	raw->frustum_planes = (frustum_plane_array_t *)any_array_create(0);
 	for (i32 i = 0; i < 6; ++i) {
-		any_array_push(raw->frustum_planes, frustum_plane_create());
+		any_array_push((any_array_t *)raw->frustum_planes, frustum_plane_create());
 	}
 
 	any_array_push(scene_cameras, raw);

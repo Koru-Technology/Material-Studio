@@ -559,12 +559,12 @@ i32 iron_sys_command(char *cmd) {
 
 string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool open_multiple) {
 	nfdpathset_t out_paths;
-	nfdchar_t   *out_path;
-	nfdresult_t  result = open_multiple ? NFD_OpenDialogMultiple(filter_list, default_path, &out_paths) : NFD_OpenDialog(filter_list, default_path, &out_path);
+	nfdchar_t   *out_path = NULL;
+	nfdresult_t  result   = open_multiple ? NFD_OpenDialogMultiple(filter_list, default_path, &out_paths) : NFD_OpenDialog(filter_list, default_path, &out_path);
 
 	if (result == NFD_OKAY) {
 		int             path_count = open_multiple ? (int)NFD_PathSet_GetCount(&out_paths) : 1;
-		string_array_t *result     = any_array_create(path_count);
+		string_array_t *result     = (string_array_t *)any_array_create(path_count);
 
 		if (open_multiple) {
 			for (int i = 0; i < path_count; ++i) {

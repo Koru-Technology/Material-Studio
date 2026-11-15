@@ -50,7 +50,6 @@ static NSMutableDictionary *download_progress  = nil; // dst_path -> @[written, 
 }
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-	NSURLSessionDownloadTask *downloadTask = (NSURLSessionDownloadTask *)task;
 	NSValue                  *cbVal        = objc_getAssociatedObject(task, @"callback");
 	NSValue                  *dataVal      = objc_getAssociatedObject(task, @"callbackdata");
 	NSString                 *dstPath      = objc_getAssociatedObject(task, @"dst_path");

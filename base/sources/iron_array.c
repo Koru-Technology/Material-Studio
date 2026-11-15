@@ -251,7 +251,7 @@ void array_remove(any_array_t *ar, void *e) {
 void string_array_remove(string_array_t *ar, char *e) {
 	int32_t i = string_array_index_of(ar, e);
 	if (i > -1) {
-		array_splice(ar, i, 1);
+		array_splice((any_array_t *)ar, i, 1);
 	}
 }
 
@@ -411,7 +411,7 @@ f32_array_t *f32_array_create(uint32_t length) {
 
 f32_array_t *f32_array_create_from_buffer(buffer_t *b) {
 	f32_array_t *a = calloc(1, sizeof(f32_array_t));
-	a->buffer      = b->buffer;
+	a->buffer      = (float *)b->buffer;
 	a->length      = b->length / 4;
 	a->capacity    = b->length / 4;
 	return a;

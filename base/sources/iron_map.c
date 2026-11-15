@@ -70,8 +70,8 @@ static void resize(any_map_t *m, int elem_size) {
 			buf[j]     = any_map_get(m, k);
 		}
 		else {
-			int32_t *buf = tmp->values->buffer;
-			buf[j]       = i32_map_get(m, k);
+			int32_t *buf = (int32_t *)tmp->values->buffer;
+			buf[j]       = i32_map_get((i32_map_t *)m, k);
 		}
 	}
 
@@ -88,15 +88,15 @@ static void resize(any_map_t *m, int elem_size) {
 }
 
 void i32_map_set(i32_map_t *m, char *k, int v) {
-	resize(m, 4);
-	size_t i             = index_set(m, k);
+	resize((any_map_t *)m, 4);
+	size_t i             = index_set((any_map_t *)m, k);
 	m->keys->buffer[i]   = k;
 	m->values->buffer[i] = v;
 }
 
 void f32_map_set(f32_map_t *m, char *k, float v) {
-	resize(m, 4);
-	size_t i             = index_set(m, k);
+	resize((any_map_t *)m, 4);
+	size_t i             = index_set((any_map_t *)m, k);
 	m->keys->buffer[i]   = k;
 	m->values->buffer[i] = v;
 }
@@ -157,7 +157,7 @@ any_array_t *map_keys(any_map_t *m) {
 			string_array_push(keys, m->keys->buffer[i]);
 		}
 	}
-	return keys;
+	return (any_array_t *)keys;
 }
 
 // Stored keys and values are not owned by the map

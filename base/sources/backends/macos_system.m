@@ -167,23 +167,23 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 		capslock = false;
 	}
 
-	if (([theEvent modifierFlags] & NSShiftKeyMask) && !trackpad_hide_shift) {
+	if (([theEvent modifierFlags] & NSEventModifierFlagShift) && !trackpad_hide_shift) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_SHIFT);
 		shift = true;
 	}
-	if ([theEvent modifierFlags] & NSControlKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagControl) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_CONTROL);
 		ctrl = true;
 	}
-	if ([theEvent modifierFlags] & NSAlternateKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagOption) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_ALT);
 		alt = true;
 	}
-	if ([theEvent modifierFlags] & NSCommandKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagCommand) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_META);
 		cmd = true;
 	}
-	if ([theEvent modifierFlags] & NSAlphaShiftKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagCapsLock) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_CAPS_LOCK);
 		capslock = true;
 	}
@@ -209,7 +209,7 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 	if (ch == 27)
 		return;
 
-	if ([theEvent modifierFlags] & NSCommandKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagCommand) {
 		NSString *base = [theEvent charactersIgnoringModifiers];
 		unichar   bc   = [base length] ? [base characterAtIndex:0] : ch;
 		if (bc == 'x') {
@@ -220,7 +220,7 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 		}
 		if (bc == 'v') {
 			NSPasteboard *board = [NSPasteboard generalPasteboard];
-			NSString     *data  = [board stringForType:NSStringPboardType];
+			NSString     *data  = [board stringForType:NSPasteboardTypeString];
 			const char   *text  = data != nil ? [data UTF8String] : NULL;
 			if (text != NULL) {
 				iron_internal_paste_callback((char *)text);
@@ -261,7 +261,7 @@ static int get_mouse_y(NSEvent *event) {
 }
 
 - (void)mouseDown:(NSEvent *)theEvent {
-	if ([theEvent modifierFlags] & NSControlKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagControl) {
 		controlkey_mouse_button = true;
 		iron_internal_mouse_trigger_press(1, get_mouse_x(theEvent), get_mouse_y(theEvent));
 	}
@@ -270,7 +270,7 @@ static int get_mouse_y(NSEvent *event) {
 		iron_internal_mouse_trigger_press(0, get_mouse_x(theEvent), get_mouse_y(theEvent));
 	}
 
-	if ([theEvent subtype] == NSTabletPointEventSubtype) {
+	if ([theEvent subtype] == NSEventSubtypeTabletPoint) {
 		iron_internal_pen_trigger_press(get_mouse_x(theEvent), get_mouse_y(theEvent), theEvent.pressure);
 	}
 }
@@ -284,7 +284,7 @@ static int get_mouse_y(NSEvent *event) {
 	}
 	controlkey_mouse_button = false;
 
-	if ([theEvent subtype] == NSTabletPointEventSubtype) {
+	if ([theEvent subtype] == NSEventSubtypeTabletPoint) {
 		iron_internal_pen_trigger_release(get_mouse_x(theEvent), get_mouse_y(theEvent), theEvent.pressure);
 	}
 }
@@ -296,7 +296,7 @@ static int get_mouse_y(NSEvent *event) {
 - (void)mouseDragged:(NSEvent *)theEvent {
 	iron_internal_mouse_trigger_move(get_mouse_x(theEvent), get_mouse_y(theEvent));
 
-	if ([theEvent subtype] == NSTabletPointEventSubtype) {
+	if ([theEvent subtype] == NSEventSubtypeTabletPoint) {
 		iron_internal_pen_trigger_move(get_mouse_x(theEvent), get_mouse_y(theEvent), theEvent.pressure);
 	}
 }
@@ -414,8 +414,7 @@ static void trackpad_release(void) {
 	if ([[pboard types] containsObject:NSURLPboardType]) {
 		NSArray *urls = [pboard readObjectsForClasses:@[ [NSURL class] ] options:nil];
 		for (NSURL *fileURL in urls) {
-			const char *filePath = [fileURL.path cStringUsingEncoding:NSUTF8StringEncoding];
-			iron_internal_drop_files_callback(filePath);
+			iron_internal_drop_files_callback((char *)[fileURL.path UTF8String]);
 		}
 	}
 	return YES;
@@ -507,7 +506,7 @@ static void trackpad_release(void) {
 void iron_copy_to_clipboard(const char *text) {
 	NSPasteboard *board = [NSPasteboard generalPasteboard];
 	[board clearContents];
-	[board setString:[NSString stringWithUTF8String:text] forType:NSStringPboardType];
+	[board setString:[NSString stringWithUTF8String:text] forType:NSPasteboardTypeString];
 }
 
 int iron_count_displays(void) {
@@ -661,9 +660,9 @@ bool iron_internal_handle_messages(void) {
 		trackpad_release();
 	}
 	return true;
-#endif
+#else
 	NSEvent *event;
-	while ((event = [myapp nextEventMatchingMask:NSAnyEventMask untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode
+	while ((event = [myapp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode
 	                                     dequeue:YES]) != nil) { // distantPast: non-blocking
 		// Key up is not delivered to the view while cmd is held, keys would stay down
 		if ([event type] == NSEventTypeKeyUp && ([event modifierFlags] & NSEventModifierFlagCommand)) {
@@ -684,8 +683,10 @@ bool iron_internal_handle_messages(void) {
 		[NSThread sleepForTimeInterval:1.0 / 60];
 	}
 	return true;
+#endif
 }
 
+#ifndef IRON_EXTERNAL_LOOP // The native app makes the window and the menu
 static void create_window(iron_window_options_t *options) {
 	int width     = options->width / [[NSScreen mainScreen] backingScaleFactor];
 	int height    = options->height / [[NSScreen mainScreen] backingScaleFactor];
@@ -721,12 +722,14 @@ static void create_window(iron_window_options_t *options) {
 		windows[0].fullscreen = true;
 	}
 }
+#endif
 
 void iron_window_set_close_callback(bool (*callback)(void *), void *data) {
 	windows[0].close_callback      = callback;
 	windows[0].close_callback_data = data;
 }
 
+#ifndef IRON_EXTERNAL_LOOP
 static void add_menubar(void) {
 	NSString *appName = [[NSProcessInfo processInfo] processName];
 
@@ -742,6 +745,7 @@ static void add_menubar(void) {
 	[menubar addItem:appMenuItem];
 	[NSApp setMainMenu:menubar];
 }
+#endif
 
 #ifdef IRON_EXTERNAL_LOOP
 void *iron_apple_engine_view(void) {
@@ -820,12 +824,11 @@ void iron_init(iron_window_options_t *win) {
 	adopt_host_window();
 	engine_started = true;
 	gpu_init(win->depth_bits, true);
-	return;
-#endif
+#else
 	@autoreleasepool {
 		myapp = [IronApplication sharedApplication];
 		[myapp finishLaunching];
-		[[NSRunningApplication currentApplication] activateWithOptions:(NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps)];
+		[[NSRunningApplication currentApplication] activateWithOptions:NSApplicationActivateAllWindows];
 		NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
 		add_menubar();
 
@@ -833,6 +836,7 @@ void iron_init(iron_window_options_t *win) {
 
 	create_window(win);
 	gpu_init(win->depth_bits, true);
+#endif
 }
 
 // The engine view's size in pixels (the view fills the window, unless a native app lays it out)

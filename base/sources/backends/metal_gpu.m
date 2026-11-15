@@ -718,12 +718,7 @@ static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 		math_env      = m != NULL ? 1 : 0;
 		if (m != NULL) {
 			math_opts = [MTLCompileOptions new];
-			if (@available(macOS 15.0, iOS 18.0, *)) {
-				math_opts.mathMode = strcmp(m, "fast") == 0 ? MTLMathModeFast : strcmp(m, "relaxed") == 0 ? MTLMathModeRelaxed : MTLMathModeSafe;
-			}
-			else {
-				math_opts.fastMathEnabled = strcmp(m, "safe") != 0;
-			}
+			math_opts.mathMode = strcmp(m, "fast") == 0 ? MTLMathModeFast : strcmp(m, "relaxed") == 0 ? MTLMathModeRelaxed : MTLMathModeSafe;
 		}
 	}
 	dispatch_data_t precompiled = math_env ? nil : metal_msl_pack_find(shader->impl.source, shader->impl.length);
@@ -1144,7 +1139,7 @@ void gpu_index_buffer_unlock(gpu_buffer_t *buffer) {
 void gpu_constant_buffer_init(gpu_buffer_t *buffer, uint32_t size) {
 	buffer->count             = size;
 	buffer->data              = NULL;
-	buffer->impl.metal_buffer = (__bridge_retained void *)[get_metal_device() newBufferWithLength:size options:MTLResourceOptionCPUCacheModeDefault];
+	buffer->impl.metal_buffer = (__bridge_retained void *)[get_metal_device() newBufferWithLength:size options:MTLResourceCPUCacheModeDefaultCache];
 }
 
 void gpu_constant_buffer_lock(gpu_buffer_t *buffer, uint32_t start, uint32_t count) {

@@ -1068,13 +1068,18 @@ physics_pair_t *physics_world_get_contact(void *body) {
 	return &null_pair;
 }
 
+// Called every frame: one array reused, valid until the next call
 physics_pair_t_array_t *physics_get_contact_pairs(physics_body_t *body) {
-	physics_pair_t_array_t *result = any_array_create_from_raw((void *[]){}, 0);
-	physics_pair_t         *p      = physics_world_get_contact(body->_body);
+	static any_array_t *result = NULL;
+	if (result == NULL) {
+		result = any_array_create(0);
+	}
+	result->length    = 0;
+	physics_pair_t *p = physics_world_get_contact(body->_body);
 	if (p->pos_a_x != 0 || p->pos_a_y != 0 || p->pos_a_z != 0) {
 		any_array_push(result, p);
 	}
-	return result;
+	return (physics_pair_t_array_t *)result;
 }
 
 static inline vec4_t mesh_vertex(i16_array_t *pa, uint32_t index, float scale) {

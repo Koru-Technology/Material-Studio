@@ -1,6 +1,7 @@
 #include "iron_string.h"
 
 #include <ctype.h>
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -102,20 +103,17 @@ char *i32_to_string_hex(int32_t i) {
 	return r;
 }
 
-#define PERCENT_LD "%ld"
-#define PERCENT_LU "%lu"
-
 char *i64_to_string(int64_t i) {
-	int   l = snprintf(NULL, 0, PERCENT_LD, i);
+	int   l = snprintf(NULL, 0, "%" PRId64, i);
 	char *r = string_tmp_alloc(l + 1);
-	sprintf(r, PERCENT_LD, i);
+	sprintf(r, "%" PRId64, i);
 	return r;
 }
 
 char *u64_to_string(uint64_t i) {
-	int   l = snprintf(NULL, 0, PERCENT_LU, i);
+	int   l = snprintf(NULL, 0, "%" PRIu64, i);
 	char *r = string_tmp_alloc(l + 1);
-	sprintf(r, PERCENT_LU, i);
+	sprintf(r, "%" PRIu64, i);
 	return r;
 }
 
