@@ -6,13 +6,7 @@ node_shader_context_t *make_depth_run(material_t *data) {
 	                                                                 .depth_write     = true,
 	                                                                 .compare_mode    = "less",
 	                                                                 .cull_mode       = g_context->cull_backfaces ? "clockwise" : "none",
-	                                                                 .vertex_elements = any_array_create_from_raw(
-                                                                (void *[]){
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                },
-                                                                3),
+	                                                                 .vertex_elements = node_shader_mesh_elements(),
 	                                                                 .color_attachments = any_array_create_from_raw(
                                                                 (void *[]){
                                                                     "RGBA64",

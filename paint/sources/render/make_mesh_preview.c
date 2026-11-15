@@ -7,13 +7,7 @@ node_shader_context_t *make_mesh_preview_run(material_t *data, bool viewport) {
 	                                                             .depth_write     = true,
 	                                                             .compare_mode    = "less",
 	                                                             .cull_mode       = "clockwise",
-	                                                             .vertex_elements = any_array_create_from_raw(
-                                                                (void *[]){
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                },
-                                                                3),
+	                                                             .vertex_elements = node_shader_mesh_elements(),
 	                                                             .color_attachments = any_array_create_from_raw(
                                                                 (void *[]){
                                                                     "RGBA64",

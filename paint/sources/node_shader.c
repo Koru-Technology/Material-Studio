@@ -391,6 +391,17 @@ void node_shader_context_free(node_shader_context_t *raw) {
 	free(raw);
 }
 
+// Vertex layout of the meshes: pos, nor, tex
+vertex_element_t_array_t *node_shader_mesh_elements() {
+	return any_array_create_from_raw(
+	    (void *[]){
+	        ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
+	        ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
+	        ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
+	    },
+	    3);
+}
+
 node_shader_context_t *node_shader_context_create(material_t *material, shader_context_t *props) {
 	node_shader_context_t *raw = ALLOC_INIT(node_shader_context_t, {0});
 	raw->material              = material;

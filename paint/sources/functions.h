@@ -110,6 +110,7 @@ scene_t               *startup_get_scene(void);
 buffer_t              *util_encode_scene(scene_t *raw);
 buffer_t              *util_encode_project(project_t *raw);
 bool                   keymap_shortcut(char *s, shortcut_type_t type);
+mesh_object_t         *render_sphere_object(char *name, char *basecol, f32 roughness, f32 metallic);
 void                   render_envsphere();
 void                   render_grid();
 void                   render_path_draw_overlays(char *target);
@@ -438,6 +439,7 @@ void                   node_shader_write_attrib_frag(node_shader_t *raw, char *s
 char                  *node_shader_get(node_shader_t *raw);
 void                   node_shader_rename(buffer_t *out, char *code, char *from, char *to);
 char                  *node_shader_engine_type(char *t);
+vertex_element_t_array_t *node_shader_mesh_elements();
 node_shader_context_t *node_shader_context_create(material_t *material, shader_context_t *props);
 void                   node_shader_context_free(node_shader_context_t *raw);
 void                   node_shader_context_add_elem(node_shader_context_t *raw, char *name, char *data_type);

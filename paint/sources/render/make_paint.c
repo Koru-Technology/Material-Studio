@@ -265,13 +265,7 @@ node_shader_context_t *make_paint_cache_bake_run(material_t *data, char *format,
 	                                                              .depth_write       = false,
 	                                                              .compare_mode      = "always",
 	                                                              .cull_mode         = "none",
-	                                                              .vertex_elements   = any_array_create_from_raw(
-                                                                  (void *[]){
-                                                                      ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                      ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                      ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                  },
-                                                                  3),
+	                                                              .vertex_elements   = node_shader_mesh_elements(),
 	                                                              .color_attachments = any_array_create_from_raw(
 	                                                                  (void *[]){
 	                                                                      format,
@@ -372,13 +366,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	                                                                 .depth_write     = false,
 	                                                                 .compare_mode    = "always",
 	                                                                 .cull_mode       = "none",
-	                                                                 .vertex_elements = any_array_create_from_raw(
-                                                                (void *[]){
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                    ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                },
-                                                                3),
+	                                                                 .vertex_elements = node_shader_mesh_elements(),
 	                                                                 .color_attachments = make_paint_color_attachments()});
 	node_shader_context_t *con_paint = node_shader_context_create(data, props);
 

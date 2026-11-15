@@ -9,20 +9,14 @@ extern char *str_env_brdf_approx;
 static mesh_object_t *render_envsphere_metallic = NULL;
 static mesh_object_t *render_envsphere_diffuse  = NULL;
 
-static node_shader_context_t *make_envsphere_shader(char *name, f32 roughness, f32 metallic) {
+static node_shader_context_t *make_envsphere_shader(char *name, char *basecol, f32 roughness, f32 metallic) {
 	material_t            *mat   = ALLOC_INIT(material_t, {.name = name, .canvas = NULL});
 	shader_context_t      *props = ALLOC_INIT(shader_context_t, {
 	                                                                .name            = "overlay",
 	                                                                .depth_write     = false,
 	                                                                .compare_mode    = "always",
 	                                                                .cull_mode       = "clockwise",
-	                                                                .vertex_elements = any_array_create_from_raw(
-                                                                   (void *[]){
-                                                                       ALLOC_INIT(vertex_element_t, {.name = "pos", .data = "short4norm"}),
-                                                                       ALLOC_INIT(vertex_element_t, {.name = "nor", .data = "short2norm"}),
-                                                                       ALLOC_INIT(vertex_element_t, {.name = "tex", .data = "short2norm"}),
-                                                                   },
-                                                                   3),
+	                                                                .vertex_elements = node_shader_mesh_elements(),
 	                                                                .color_attachments = any_array_create_from_raw((void *[]){"RGBA64"}, 1),
 	                                                                .depth_attachment  = "NONE",
                                                            });
@@ -58,7 +52,7 @@ static node_shader_context_t *make_envsphere_shader(char *name, f32 roughness, f
 	node_shader_add_function(shader, str_envmap_sample);
 	node_shader_add_function(shader, str_env_brdf_approx);
 
-	node_shader_write_frag(shader, "vec3 basecol = vec3(0.8, 0.8, 0.8);");
+	node_shader_write_frag(shader, string_tmp("vec3 basecol = %s;", basecol));
 	node_shader_write_frag(shader, string_tmp("float roughness = %s;", f32_to_string_with_zeros(roughness)));
 	node_shader_write_frag(shader, string_tmp("float metallic = %s;", f32_to_string_with_zeros(metallic)));
 
@@ -95,10 +89,11 @@ static node_shader_context_t *make_envsphere_shader(char *name, f32 roughness, f
 	return con;
 }
 
-static mesh_object_t *create_envsphere_object(char *name, f32 roughness, f32 metallic) {
+// A hidden sphere of one color, drawn on its own over the scene (envmap spheres, path points)
+mesh_object_t *render_sphere_object(char *name, char *basecol, f32 roughness, f32 metallic) {
 	mesh_data_t *md = ((mesh_object_t *)scene_get_child(".Sphere")->ext)->data;
 
-	node_shader_context_t *con = make_envsphere_shader(name, roughness, metallic);
+	node_shader_context_t *con = make_envsphere_shader(name, basecol, roughness, metallic);
 	shader_context_load(con->data);
 
 	shader_data_t *mat = ALLOC_INIT(shader_data_t, {
@@ -114,8 +109,8 @@ static mesh_object_t *create_envsphere_object(char *name, f32 roughness, f32 met
 }
 
 static void render_envsphere_init() {
-	render_envsphere_metallic = create_envsphere_object("render_envsphere_metallic", 0.0, 1.0);
-	render_envsphere_diffuse  = create_envsphere_object("render_envsphere_diffuse", 0.9, 0.0);
+	render_envsphere_metallic = render_sphere_object("render_envsphere_metallic", "vec3(0.8, 0.8, 0.8)", 0.0, 1.0);
+	render_envsphere_diffuse  = render_sphere_object("render_envsphere_diffuse", "vec3(0.8, 0.8, 0.8)", 0.9, 0.0);
 }
 
 void render_envsphere() {
