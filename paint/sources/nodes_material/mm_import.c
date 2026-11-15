@@ -392,15 +392,6 @@ static mm_json_t *mm_import_defaults(mm_json_t *n) {
 	return d;
 }
 
-static ui_node_t *mm_import_output_node(ui_node_canvas_t *c) {
-	for (i32 i = 0; i < c->nodes->length; ++i) {
-		if (string_equals(c->nodes->buffer[i]->type, "OUTPUT_MATERIAL_PBR")) {
-			return c->nodes->buffer[i];
-		}
-	}
-	return NULL;
-}
-
 // Index of a material input of the imported material node: its input names (its .mmg, or its own shader model) to ours
 static i32 mm_import_material_port(mm_json_t *n, i32 port, bool unlit) {
 	mm_json_t *sm     = mm_json_get(n, "shader_model");
@@ -495,7 +486,7 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 		return false;
 	}
 	ui_node_canvas_t *canvas = target->canvas;
-	ui_node_t        *output = mm_import_output_node(canvas);
+	ui_node_t        *output = util_nodes_find_type(canvas, "OUTPUT_MATERIAL_PBR");
 	canvas->nodes->length    = 0; // Only the output node stays
 	canvas->links->length    = 0;
 	if (output != NULL) {

@@ -35,15 +35,6 @@ static void studio_tag(ui_node_t *n, i32 role, i32 layer) {
 	n->flags = (n->flags & ~STUDIO_FLAG_MASK) | (role << STUDIO_FLAG_SHIFT) | (layer << (STUDIO_FLAG_SHIFT + 4));
 }
 
-static ui_node_t *studio_find_output(ui_node_canvas_t *c) {
-	for (i32 i = 0; i < c->nodes->length; ++i) {
-		if (string_equals(c->nodes->buffer[i]->type, "OUTPUT_MATERIAL_PBR")) {
-			return c->nodes->buffer[i];
-		}
-	}
-	return NULL;
-}
-
 // The studio nodes of the canvas, true when it is a studio material: an output and layers from 0 up, each with its ramp,
 // roughness, height and mix nodes
 // The node is of the type the studio makes for the role (flags carry the role, a file or an edit can pair it with another node)
@@ -72,7 +63,7 @@ bool studio_graph_read(ui_node_canvas_t *c, studio_graph_t *g) {
 	if (c == NULL) {
 		return false;
 	}
-	g->output = studio_find_output(c);
+	g->output = util_nodes_find_type(c, "OUTPUT_MATERIAL_PBR");
 	for (i32 i = 0; i < c->nodes->length; ++i) {
 		ui_node_t *n    = c->nodes->buffer[i];
 		i32        role = studio_role(n);
@@ -106,34 +97,9 @@ bool studio_graph_is(ui_node_canvas_t *c) {
 
 static ui_node_canvas_t *sg_c = NULL;
 
-static void sg_unlink(ui_node_t *to, i32 in) {
-	for (i32 i = sg_c->links->length - 1; i >= 0; --i) {
-		ui_node_link_t *l = sg_c->links->buffer[i];
-		if (l->to_id == to->id && l->to_socket == in) {
-			array_splice(sg_c->links, i, 1);
-		}
-	}
-}
-
 static void sg_link(ui_node_t *from, i32 out, ui_node_t *to, i32 in) {
-	sg_unlink(to, in);
+	util_nodes_unlink_input(sg_c, to, in);
 	any_array_push(sg_c->links, project_create_node_link(sg_c->links, from->id, out, to->id, in));
-}
-
-static void sg_delete(ui_node_t *n) {
-	if (n == NULL) {
-		return;
-	}
-	for (i32 i = sg_c->links->length - 1; i >= 0; --i) {
-		ui_node_link_t *l = sg_c->links->buffer[i];
-		if (l->from_id == n->id || l->to_id == n->id) {
-			array_splice(sg_c->links, i, 1);
-		}
-	}
-	i32 i = array_index_of(sg_c->nodes, n);
-	if (i >= 0) {
-		array_splice(sg_c->nodes, i, 1);
-	}
 }
 
 #define STUDIO_LAYER_H 1400 // Rows of nodes a layer takes in the node editor, a material mix is tall
@@ -205,12 +171,12 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 		sg_link(pat, 0, n[STUDIO_ROLE_ALPHA], 0);
 	}
 	else {
-		sg_unlink(n[STUDIO_ROLE_RAMP], 0);
-		sg_unlink(n[STUDIO_ROLE_ROUGH], 0);
-		sg_unlink(n[STUDIO_ROLE_HEIGHT], 0);
-		sg_unlink(n[STUDIO_ROLE_METAL], 0);
-		sg_unlink(n[STUDIO_ROLE_OCC], 0);
-		sg_unlink(n[STUDIO_ROLE_ALPHA], 0);
+		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_RAMP], 0);
+		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_ROUGH], 0);
+		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_HEIGHT], 0);
+		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_METAL], 0);
+		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_OCC], 0);
+		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_ALPHA], 0);
 	}
 	sg_link(n[STUDIO_ROLE_RAMP], 0, mix, MIX_IN_B + 0);
 	sg_link(n[STUDIO_ROLE_ROUGH], 0, mix, MIX_IN_B + 1);
@@ -219,7 +185,7 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 	sg_link(n[STUDIO_ROLE_OCC], 0, mix, MIX_IN_B + 4);
 	sg_link(n[STUDIO_ROLE_ALPHA], 0, mix, MIX_IN_B + 7);
 	if (mask == NULL || k == 0) {
-		sg_unlink(mix, MIX_IN_MASK);
+		util_nodes_unlink_input(sg_c, mix, MIX_IN_MASK);
 		return;
 	}
 	sg_link(mask, 0, mix, MIX_IN_MASK);
@@ -228,7 +194,7 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 			sg_link(pat, 0, mask, 0);
 		}
 		else {
-			sg_unlink(mask, 0);
+			util_nodes_unlink_input(sg_c, mask, 0);
 		}
 	}
 	else if (string_equals(mask->type, "CURVATURE_MASK")) { // Dirt also settles in the recesses of the base pattern
@@ -237,7 +203,7 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 			sg_link(base, 0, mask, 4);
 		}
 		else {
-			sg_unlink(mask, 4);
+			util_nodes_unlink_input(sg_c, mask, 4);
 		}
 	}
 }
@@ -252,7 +218,7 @@ static void sg_wire(studio_graph_t *g) {
 				sg_link(g->layers[k - 1].n[STUDIO_ROLE_MIX], ch, mix, MIX_IN_A + ch);
 			}
 			else {
-				sg_unlink(mix, MIX_IN_A + ch);
+				util_nodes_unlink_input(sg_c, mix, MIX_IN_A + ch);
 			}
 		}
 	}
@@ -367,8 +333,8 @@ void studio_graph_set_pattern(ui_node_canvas_t *c, i32 k, char *type) {
 	ui_node_t **n   = g.layers[k].n;
 	ui_node_t  *old = n[STUDIO_ROLE_PATTERN];
 	if (type == NULL) {
-		sg_delete(old);
-		sg_delete(n[STUDIO_ROLE_CELLVAR]);
+		util_nodes_remove_node(sg_c, old);
+		util_nodes_remove_node(sg_c, n[STUDIO_ROLE_CELLVAR]);
 		n[STUDIO_ROLE_PATTERN] = n[STUDIO_ROLE_CELLVAR] = NULL;
 		sg_in(n[STUDIO_ROLE_RAMP], 0)[0]   = 1.0;
 		sg_in(n[STUDIO_ROLE_ROUGH], 0)[0]  = 1.0;
@@ -378,7 +344,7 @@ void studio_graph_set_pattern(ui_node_canvas_t *c, i32 k, char *type) {
 		sg_in(n[STUDIO_ROLE_ALPHA], 0)[0]  = 1.0;
 		ui_node_t *mask = n[STUDIO_ROLE_MASK];
 		if (mask != NULL && string_equals(mask->type, "HEIGHT_MASK")) { // A pattern mask needs the pattern
-			sg_delete(mask);
+			util_nodes_remove_node(sg_c, mask);
 		}
 	}
 	else if (old == NULL || !string_equals(old->type, type)) {
@@ -401,7 +367,7 @@ void studio_graph_set_pattern(ui_node_canvas_t *c, i32 k, char *type) {
 					l->to_id = pat->id;
 				}
 			}
-			sg_delete(old);
+			util_nodes_remove_node(sg_c, old);
 		}
 		if (n[STUDIO_ROLE_CELLVAR] == NULL) {
 			studio_mix_rgb(&g, k);
@@ -421,7 +387,7 @@ void studio_graph_set_mask(ui_node_canvas_t *c, i32 k, i32 mask) {
 	f32        amount = old != NULL ? studio_graph_get(c, k, STUDIO_VALUE_MASK_AMOUNT) : 0.5;
 	f32        soft   = old != NULL ? studio_graph_get(c, k, STUDIO_VALUE_MASK_SOFT) : 0.35;
 	f32        brk    = old != NULL ? studio_graph_get(c, k, STUDIO_VALUE_MASK_BREAKUP) : 0.5;
-	sg_delete(old);
+	util_nodes_remove_node(sg_c, old);
 	g.layers[k].n[STUDIO_ROLE_MASK] = NULL;
 	if (mask == STUDIO_MASK_PATTERN && g.layers[k].n[STUDIO_ROLE_PATTERN] == NULL) {
 		mask = STUDIO_MASK_FULL;
@@ -483,7 +449,7 @@ void studio_graph_remove_layer(ui_node_canvas_t *c, i32 k) {
 		return;
 	}
 	for (i32 r = 1; r < STUDIO_ROLE_COUNT; ++r) {
-		sg_delete(g.layers[k].n[r]);
+		util_nodes_remove_node(sg_c, g.layers[k].n[r]);
 	}
 	for (i32 j = k + 1; j < g.count; ++j) {
 		for (i32 r = 1; r < STUDIO_ROLE_COUNT; ++r) {

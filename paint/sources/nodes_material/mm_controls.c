@@ -32,17 +32,6 @@ static void mm_controls_link(ui_node_canvas_t *canvas, ui_node_t *from, i32 out,
 	any_array_push(canvas->links, project_create_node_link(canvas->links, from->id, out, to->id, in));
 }
 
-static void mm_controls_remove(ui_node_canvas_t *canvas, ui_node_t *node) {
-	for (i32 i = 0; i < canvas->links->length; ++i) {
-		ui_node_link_t *l = canvas->links->buffer[i];
-		if (l->from_id == node->id || l->to_id == node->id) {
-			array_remove(canvas->links, l);
-			i--;
-		}
-	}
-	array_remove(canvas->nodes, node);
-}
-
 static i32 mm_controls_kind(char *type, char *unit, f32 step) {
 	if (string_equals(type, "toggle")) {
 		return 2;
@@ -221,7 +210,7 @@ static bool mm_controls_add(ui_node_canvas_t *canvas, mm_json_t *c, i32 order, f
 		variable_set(v, &d, 1, 0);
 	}
 	if (linked == 0) {
-		mm_controls_remove(canvas, v);
+		util_nodes_remove_node(canvas, v);
 		return false;
 	}
 	f32 bottom = *y + (kind == 5 ? 330 : 240);
