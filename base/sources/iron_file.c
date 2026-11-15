@@ -438,52 +438,40 @@ void iron_file_save_bytes(char *path, buffer_t *bytes, u64 length) {
 
 typedef struct _callback_data {
 	int32_t size;
-	char    url[512];
+	char   *url;
 	void (*func)(char *, buffer_t *);
 } _callback_data_t;
 
-void _https_callback(int status, const char *body, void *callback_data) {
+static void _https_callback(int status, const char *body, size_t length, void *callback_data) {
 	_callback_data_t *cbd    = (_callback_data_t *)callback_data;
 	buffer_t         *buffer = NULL;
 	if (body != NULL && status < 400) {
-		buffer         = malloc(sizeof(buffer_t));
-		buffer->length = cbd->size > 0 ? cbd->size : strlen(body);
-		buffer->buffer = malloc(buffer->length);
-		memcpy(buffer->buffer, body, buffer->length);
+		if (cbd->size > 0 && (size_t)cbd->size < length) {
+			length = cbd->size;
+		}
+		buffer           = malloc(sizeof(buffer_t));
+		buffer->length   = (u32)length;
+		buffer->capacity = (u32)length;
+		buffer->buffer   = malloc(length > 0 ? length : 1);
+		memcpy(buffer->buffer, body, length);
 	}
 	cbd->func(cbd->url, buffer);
+	free(cbd->url);
 	free(cbd);
 }
 
 void iron_file_download(char *url, void (*callback)(char *, buffer_t *), i32 size, char *dst_path) {
 	_callback_data_t *cbd = malloc(sizeof(_callback_data_t));
 	cbd->size             = size;
-	strcpy(cbd->url, url);
-	cbd->func = callback;
+	cbd->url              = strdup(url);
+	cbd->func             = callback;
 
-	char url_base[512];
-	char url_path[512];
-	int  i = 0;
-	for (; i < strlen(url) - 8; ++i) {
-		if (url[i + 8] == '/') {
-			break;
-		}
-		url_base[i] = url[i + 8]; // Strip https://
-	}
-	url_base[i] = 0;
-	int j       = 0;
-	if (strlen(url_base) < strlen(url) - 8) {
-		++i; // Skip /
-	}
-	for (; j < strlen(url) - 8 - i; ++j) {
-		if (url[i + 8 + j] == 0) {
-			break;
-		}
-		url_path[j] = url[i + 8 + j];
-	}
-	url_path[j] = 0;
-
-	iron_net_request(url_base, url_path, NULL, 443, IRON_HTTPS_GET, NULL, &_https_callback, cbd, dst_path);
+	// https://host/path -> host, path
+	char *host = strncmp(url, "https://", 8) == 0 ? url + 8 : url;
+	char *path = strchr(host, '/');
+	char *base = path != NULL ? strndup(host, path - host) : strdup(host);
+	iron_net_request(base, path != NULL ? path + 1 : "", NULL, 443, IRON_HTTPS_GET, NULL, &_https_callback, cbd, dst_path);
+	free(base);
 }
 
 char     *sys_buffer_to_string(buffer_t *b);
