@@ -35,7 +35,7 @@ static NSMutableDictionary *download_progress  = nil; // dst_path -> @[written, 
 		if (error != nil) {
 			NSLog(@"Download could not be moved to %@: %@", dstPath, error.localizedDescription);
 		}
-		// todo
+		// Downloaded tools must be executable
 		if ([dstPath hasSuffix:@"iris"] || [dstPath hasSuffix:@"llama_metal"]) {
 			NSDictionary *attrs      = @{NSFilePosixPermissions : @0755};
 			NSError      *chmodError = nil;

@@ -6,7 +6,7 @@ Contains a general-purpose 3D engine.
 
 #### `/sources`
 
-A collection of C source files for the complete 3D engine, hardware abstraction, OS and graphics api specifics (`/backends`) and some helper libraries (`/libs`). Only a minimal single file / header libraries are used.
+A collection of C source files for the complete 3D engine, hardware abstraction, the macOS / iOS and Metal specifics (`/backends`) and some helper libraries (`/libs`). Only a minimal single file / header libraries are used.
 
 #### `/tests`
 
@@ -14,13 +14,13 @@ Small stand-alone projects for testing.
 
 #### `/tools`
 
-- `/amake`: armorpain build tool
-- `/bin`: amake binary for each supported platform
-- `/tcc`: actually a C compiler
+- `/amake`: the build tool
+- `/bin`: prebuilt amake for macOS
+- `/iris`: sources of the neural tool used by the neural nodes
 
 #### `/project.c`
 
-This file adds C source files, include directories, libraries and defines to the project, depending on the selected platform, graphics api and build flags.
+This file adds C source files, include directories, libraries and defines to the project, depending on the selected platform (macOS or iOS) and build flags.
 
 ## `/paint`
 

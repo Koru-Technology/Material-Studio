@@ -69,7 +69,7 @@ typedef struct object_desc {
 	f32_array_t           *dimensions;
 	bool                   visible;
 	bool                   spawn; // Auto add object when creating scene
-	void                  *anim;  // TODO: deprecated
+	void                  *anim;  // Unused, kept for the layout of decoded files
 	char                  *material_ref;
 	object_desc_t_array_t *children;
 } object_desc_t;
@@ -159,7 +159,7 @@ typedef struct scene {
 	any_array_t *mesh_datas;   // mesh_data_t[]
 	any_array_t *camera_datas; // camera_data_t[]
 	char        *camera_ref;
-	any_array_t *material_datas; // TODO: deprecated
+	any_array_t *material_datas; // Unused, kept for the layout of decoded files
 	any_array_t *shader_datas;   // shader_data_t[]
 	any_array_t *world_datas;    // world_data_t[]
 	char        *world_ref;
