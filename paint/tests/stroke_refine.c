@@ -216,7 +216,9 @@ void next() {
 		}
 	}
 	else if (phase == 21) {
-		if (picked()) {
+		// Its paint shader compiled too (a thread, up to ~600 ms with Metal's cache cold): a stroke shorter than that would be
+		// held back whole (material_pick.c covers that), the buffers are far from full still
+		if (picked() && make_material_paint_stat(0) == 0) {
 			printf("[refine] compiled %.2f s after the pick, the live stroke starts", sys_time() - t_pick);
 			t_stroke = sys_time();
 			script_mouse_press(cx - 150, cy, 0);
@@ -248,10 +250,11 @@ void next() {
 		if (frame == 20) {
 			script_mouse_release(cx - 150 + frame * 15, cy, 0);
 		}
-		if (frame > 20 && sys_time() - t_stroke > 4.0) { // Its first sharpening included (~2 s on the iPad)
+		// Until its first sharpening (3-5 s on the iPad: its tiny buffers, then the material rendered in bands over frames)
+		if (frame > 20 && (stroke_refine_stat(2) > sharpened0 || sys_time() - t_stroke > 8.0)) {
 			check(records == 1, "the live stroke before full buffers keeps a record");
-			check(stroke_refine_stat(2) > sharpened0, string("the live stroke sharpened (%d times) in its first seconds", stroke_refine_stat(2) - sharpened0));
-			check(max_frame < 0.35, string("no frame of the live stroke and of the 4 s after it takes 350 ms (at most %.0f ms)", max_frame * 1000.0));
+			check(stroke_refine_stat(2) > sharpened0, string("the live stroke sharpened within 8 s (%d times, %.1f s)", stroke_refine_stat(2) - sharpened0, sys_time() - t_stroke));
+			check(max_frame < 0.35, string("no frame of the live stroke and until its first sharpening takes 350 ms (at most %.0f ms)", max_frame * 1000.0));
 			script_layer_new(); // The scripted strokes on a layer of their own, the buffers rendered again from nothing
 			mm_buffers_clear();
 			phase = 0;

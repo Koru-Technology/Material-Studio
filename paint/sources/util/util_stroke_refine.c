@@ -1,6 +1,7 @@
 
 #include "../global.h"
 #include <iron_profile.h>
+#include <stdatomic.h>
 
 // Strokes painted before a material's Material Maker buffers are full sharpen in place as better tiers land (tiny, low,
 // full, see mm_buffers.c). A stroke never has to be replayed: after any dab of a mix stroke, every texel of the layer is
@@ -85,6 +86,21 @@ static bool stroke_refine_shader_ready(stroke_refine_shader_t *sh) {
 #define STROKE_REFINE_FAILED  -1
 #define STROKE_REFINE_PENDING 0 // Its shader compiles: again next frame
 #define STROKE_REFINE_DONE    1
+#define STROKE_REFINE_BANDING 2 // A band of the material rendered, more to come next frame
+
+// The material renders into the scratch layer in bands of rows, one a frame (a heavy material takes 800 ms of GPU for a
+// whole 2048 layer on the iPad), sized from the GPU time of the previous band. One record or fill layer has the scratch
+// layer at a time. Another tier landing meanwhile, the rows left render with it: the whole counts as the tier it
+// started with, the next sharpening brings the rows before up.
+#define STROKE_REFINE_BAND_MS 20.0
+
+static void      *stroke_refine_band_owner = NULL; // The record or fill layer whose bands are in the scratch layer
+static i32        stroke_refine_band_tier  = -1; // The tier of the first band: the tier composited
+static i32        stroke_refine_band_row   = 0;  // Next band's first row
+static i32        stroke_refine_band_rows  = 16; // Next band's rows
+static i32        stroke_refine_band_timed = 0;  // Rows of the band whose GPU time comes
+static f32        stroke_refine_band_peak  = 0;  // Most GPU ms a row took, this material
+static atomic_int stroke_refine_band_us    = -1;
 
 static stroke_refine_t     *stroke_refine_recs[STROKE_REFINE_MAX];
 static i32                  stroke_refine_count       = 0;
@@ -343,6 +359,7 @@ static void stroke_refine_free(stroke_refine_t *r) {
 }
 
 static void stroke_refine_scratch_free(void) {
+	stroke_refine_band_owner = NULL;
 	if (stroke_refine_scratch != NULL) {
 		slot_layer_unload(stroke_refine_scratch);
 		stroke_refine_scratch = NULL;
@@ -354,12 +371,15 @@ static void stroke_refine_end(i32 i, bool full) {
 	if (!full) {
 		stroke_refine_stats[6]++;
 	}
+	if (stroke_refine_band_owner == stroke_refine_recs[i]) {
+		stroke_refine_band_owner = NULL;
+	}
 	stroke_refine_free(stroke_refine_recs[i]);
 	for (i32 j = i; j < stroke_refine_count - 1; ++j) {
 		stroke_refine_recs[j] = stroke_refine_recs[j + 1];
 	}
 	stroke_refine_count--;
-	if (stroke_refine_count == 0) {
+	if (stroke_refine_count == 0 && stroke_refine_nfills == 0) {
 		stroke_refine_scratch_free();
 	}
 }
@@ -611,12 +631,57 @@ static slot_layer_t *stroke_refine_scratch_layer(i32 w, i32 h, i32 format) {
 	return s;
 }
 
-// The material painted whole into the scratch layer at the tier there is, through the fill path: the base color, normal
-// and pack the strokes blended in. Pending while its shader compiles, failed when the material changed since (other
-// buffers).
-static i32 stroke_refine_render_material(stroke_refine_t *r, slot_layer_t *s) {
-	if (r->shader != NULL && !stroke_refine_shader_ready(r->shader)) {
-		return make_material_async_started(r->shader) ? STROKE_REFINE_PENDING : STROKE_REFINE_FAILED;
+// What the material renders with into the scratch layer: a record's, or a fill layer's own settings
+typedef struct {
+	void             *owner; // The record, or the fill layer
+	slot_material_t  *material;
+	f32               scale;
+	f32               angle;
+	uv_type_t         uv_type;
+	i32               uv_map;
+	i32               object_mask;
+	u64              *keys; // The buffers its shader must sample (NULL: not checked)
+	i32               nkeys;
+	make_material_async_t **shader;
+} stroke_refine_render_t;
+
+static void stroke_refine_band_done(void *data, double gpu_ms) {
+	atomic_store(&stroke_refine_band_us, gpu_ms < 0.0 ? 0 : (i32)(gpu_ms * 1000.0));
+}
+
+// The GPU time of the last band sizes the next one: STROKE_REFINE_BAND_MS, rows cost unevenly (the densest seen so far
+// counts), at most twice as many rows as the last
+static void stroke_refine_band_poll(void) {
+	i32 us = atomic_exchange(&stroke_refine_band_us, -1);
+	if (us < 0 || stroke_refine_band_timed <= 0) {
+		return;
+	}
+	f32 ms      = us / 1000.0f;
+	f32 per_row = ms / stroke_refine_band_timed;
+	if (per_row > stroke_refine_band_peak) {
+		stroke_refine_band_peak = per_row;
+	}
+	f32 est                 = per_row > stroke_refine_band_peak * 0.75f ? per_row : stroke_refine_band_peak * 0.75f;
+	i32 rows                = est > 0.0f ? (i32)(STROKE_REFINE_BAND_MS / est) : stroke_refine_band_timed * 2;
+	rows                    = rows > stroke_refine_band_timed * 2 ? stroke_refine_band_timed * 2 : rows;
+	stroke_refine_band_rows = rows < 8 ? 8 : rows;
+	if (stroke_refine_timing()) {
+		iron_log("[refine] band of %d rows: gpu %.2f ms", stroke_refine_band_timed, ms);
+	}
+	stroke_refine_band_timed = 0;
+}
+
+// The material painted into the scratch layer at the tier there is, through the fill path: the base color, normal and
+// pack the strokes blended in, or a fill layer's texels. A band of rows a frame (BANDING until the last), pending while
+// its shader compiles or another record or fill layer has the scratch layer, failed when the material changed since
+// (other buffers).
+static i32 stroke_refine_render_material(stroke_refine_render_t *m, i32 tier, slot_layer_t *s) {
+	make_material_async_t **shader = m->shader;
+	if (*shader != NULL && !stroke_refine_shader_ready(*shader)) {
+		return make_material_async_started(*shader) ? STROKE_REFINE_PENDING : STROKE_REFINE_FAILED;
+	}
+	if (stroke_refine_band_owner != NULL && stroke_refine_band_owner != m->owner) {
+		return STROKE_REFINE_PENDING; // Its turn comes when the other's bands are done
 	}
 	slot_layer_t    *_layer       = g_context->layer;
 	slot_material_t *_material    = g_context->material;
@@ -629,15 +694,15 @@ static i32 stroke_refine_render_material(stroke_refine_t *r, slot_layer_t *s) {
 	gpu_texture_t   *_stencil     = g_context->brush_stencil_image;
 	blend_type_t     _blending    = g_context->brush_blending;
 
-	s->fill_material = r->material;
-	s->scale         = r->scale;
-	s->angle         = r->angle;
-	s->uv_type       = UV_TYPE_UVMAP;
-	s->uv_map        = r->layer->uv_map;
-	s->object_mask   = 0;
+	s->fill_material = m->material;
+	s->scale         = m->scale;
+	s->angle         = m->angle;
+	s->uv_type       = m->uv_type;
+	s->uv_map        = m->uv_map;
+	s->object_mask   = m->object_mask;
 
 	g_context->layer                = s;
-	g_context->material             = r->material;
+	g_context->material             = m->material;
 	g_context->tool                 = TOOL_TYPE_FILL;
 	g_context->fill_type            = FILL_TYPE_OBJECT;
 	g_context->brush_nodes_scale    = 1.0;
@@ -649,30 +714,69 @@ static i32 stroke_refine_render_material(stroke_refine_t *r, slot_layer_t *s) {
 
 	double t0     = iron_time();
 	i32    result = STROKE_REFINE_PENDING;
-	if (r->shader == NULL) { // Parsed once a record
-		r->shader = stroke_refine_shader_start();
-		u64 keys[STROKE_REFINE_KEYS];
-		i32 nkeys = mm_buffers_paint_keys(make_material_async_scon(r->shader), keys, STROKE_REFINE_KEYS);
-		if (!make_material_async_started(r->shader) || !stroke_refine_keys_equal(keys, nkeys, r->keys, r->nkeys)) {
+	if (*shader == NULL) { // Parsed once a record or fill layer
+		*shader = stroke_refine_shader_start();
+		if (!make_material_async_started(*shader)) {
 			result = STROKE_REFINE_FAILED;
 		}
+		else if (m->keys != NULL) {
+			u64 keys[STROKE_REFINE_KEYS];
+			i32 nkeys = mm_buffers_paint_keys(make_material_async_scon(*shader), keys, STROKE_REFINE_KEYS);
+			if (!stroke_refine_keys_equal(keys, nkeys, m->keys, m->nkeys)) {
+				result = STROKE_REFINE_FAILED;
+			}
+		}
 	}
-	double t1 = iron_time();
-	if (result != STROKE_REFINE_FAILED && stroke_refine_shader_ready(r->shader)) {
-		result                   = STROKE_REFINE_DONE;
+	double t1   = iron_time();
+	i32    rows = 0;
+	i32    h    = (i32)s->texpaint->height;
+	if (result != STROKE_REFINE_FAILED && stroke_refine_shader_ready(*shader)) {
+		if (stroke_refine_band_owner != m->owner) { // From the first row
+			stroke_refine_band_owner = m->owner;
+			stroke_refine_band_tier  = tier;
+			stroke_refine_band_row   = 0;
+			stroke_refine_band_peak  = 0.0f;
+		}
+		stroke_refine_band_poll();
+		i32 row = stroke_refine_band_row;
+		rows    = stroke_refine_band_rows;
+		rows    = row + rows > h ? h - row : rows;
+
 		shader_context_t *brush  = make_material_paint_scon;
-		make_material_paint_scon = make_material_async_scon(r->shader);
+		make_material_paint_scon = make_material_async_scon(*shader);
 		render_path_set_target("texpaint_blend0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0); // The fill reads it as its coverage so far
 		render_path_end();
-		slot_layer_clear(s, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+		if (row == 0) {
+			slot_layer_clear(s, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+		}
+		if (_render_path_current_image != NULL) {
+			render_path_end();
+		}
+		gpu_commit(NULL, NULL); // The work so far apart: the band's GPU time is its own
 		g_context->pdirty = 1;
+		render_path_paint_set_band(row, (i32)s->texpaint->width, rows);
 		render_path_paint_commands_paint(false);
+		render_path_paint_set_band(0, 0, 0);
 		g_context->brush_blend_dirty = true;
 		render_path_paint_clear_blend();
 		make_material_paint_scon = brush;
+		if (_render_path_current_image != NULL) {
+			render_path_end();
+		}
+		stroke_refine_band_timed = rows;
+		atomic_store(&stroke_refine_band_us, -1);
+		gpu_commit(stroke_refine_band_done, NULL);
+		stroke_refine_band_row = row + rows;
+		if (stroke_refine_band_row >= h) {
+			result                   = STROKE_REFINE_DONE;
+			stroke_refine_band_owner = NULL;
+		}
+		else {
+			result = STROKE_REFINE_BANDING;
+		}
 	}
 	if (stroke_refine_timing() && (t1 - t0 > 0.001 || result == STROKE_REFINE_DONE)) {
-		iron_log("[refine] material parsed in %.1f ms, painted in %.1f ms", (t1 - t0) * 1000.0, (iron_time() - t1) * 1000.0);
+		iron_log("[refine] material parsed in %.1f ms, its last band (%d rows) painted in %.1f ms", (t1 - t0) * 1000.0, rows, (iron_time() - t1) * 1000.0);
 	}
 
 	g_context->layer                = _layer;
@@ -723,6 +827,9 @@ static void stroke_refine_history(stroke_refine_t *r) {
 // not be (the record ends)
 static i32 stroke_refine_sharpen(stroke_refine_t *r, i32 tier) {
 	double t0 = iron_time();
+	if (stroke_refine_band_owner != NULL && stroke_refine_band_owner != r) {
+		return STROKE_REFINE_PENDING; // Another one's bands are in the scratch layer
+	}
 	slot_layer_t *s = stroke_refine_scratch_layer(r->w, r->h, r->format);
 	if (s == NULL) {
 		return STROKE_REFINE_FAILED;
@@ -734,8 +841,9 @@ static i32 stroke_refine_sharpen(stroke_refine_t *r, i32 tier) {
 	if (in_use) {
 		draw_end();
 	}
-	i32  result = stroke_refine_render_material(r, s);
-	bool ok     = result == STROKE_REFINE_DONE;
+	stroke_refine_render_t m = {r, r->material, r->scale, r->angle, UV_TYPE_UVMAP, r->layer->uv_map, 0, r->keys, r->nkeys, &r->shader};
+	i32                    result = stroke_refine_render_material(&m, tier, s);
+	bool                   ok     = result == STROKE_REFINE_DONE;
 	if (ok) {
 		stroke_refine_history(r);
 		slot_layer_t  *l          = r->layer;
@@ -758,7 +866,7 @@ static i32 stroke_refine_sharpen(stroke_refine_t *r, i32 tier) {
 		g_context->layers_preview_dirty = true;
 		g_context->ddirty               = 2;
 		g_context->rtdirty              = 1;
-		r->tier                         = tier;
+		r->tier                         = stroke_refine_band_tier < tier ? stroke_refine_band_tier : tier; // Its first band's
 		stroke_refine_stats[2]++;
 	}
 	if (in_use) {
@@ -770,9 +878,13 @@ static i32 stroke_refine_sharpen(stroke_refine_t *r, i32 tier) {
 	if (result == STROKE_REFINE_DONE) {
 		stroke_refine_stats[5] = (i32)(ms * 1000.0);
 	}
-	if (stroke_refine_timing() && (result != STROKE_REFINE_PENDING || ms > 1.0)) {
+	if (stroke_refine_timing() && (result == STROKE_REFINE_DONE || result == STROKE_REFINE_FAILED || ms > 2.0)) {
 		iron_log("[refine] %s %s tier %d: %.1f ms", r->layer->name,
-		         result == STROKE_REFINE_DONE ? "sharpened to" : result == STROKE_REFINE_PENDING ? "waits for its shader to sharpen to" : "can not sharpen to", tier, ms);
+		         result == STROKE_REFINE_DONE      ? "sharpened to"
+		         : result == STROKE_REFINE_BANDING ? "renders a band to sharpen to"
+		         : result == STROKE_REFINE_PENDING ? "waits for its shader to sharpen to"
+		                                           : "can not sharpen to",
+		         tier, ms);
 	}
 	return result;
 }
@@ -780,60 +892,49 @@ static i32 stroke_refine_sharpen(stroke_refine_t *r, i32 tier) {
 // Fill layers
 
 static void stroke_refine_fill_remove(i32 i) {
+	if (stroke_refine_band_owner == stroke_refine_fills[i].layer) { // A fill layer's bands go by its layer
+		stroke_refine_band_owner = NULL;
+	}
 	stroke_refine_shader_free(stroke_refine_fills[i].shader);
 	stroke_refine_fills[i] = stroke_refine_fills[--stroke_refine_nfills];
+	if (stroke_refine_count == 0 && stroke_refine_nfills == 0) {
+		stroke_refine_scratch_free();
+	}
 }
 
-// The fill layer painted again with its material at the tier there is, as layers_update_fill_layer paints it; its shader
-// is parsed once, compiled on a thread (pending meanwhile), its buffer links resolve to the better textures
-static i32 stroke_refine_fill_paint(stroke_refine_fill_t *f) {
+// The fill layer painted again with its material at the tier there is, as layers_update_fill_layer paints it: rendered
+// into the scratch layer in bands (its own scale, angle, uv mapping and object mask), copied into the fill layer with
+// the last one. Its shader is parsed once, compiled on a thread (pending meanwhile), its buffer links resolve to the
+// better textures.
+static i32 stroke_refine_fill_paint(stroke_refine_fill_t *f, i32 tier) {
+	slot_layer_t *l = f->layer;
+	if (stroke_refine_band_owner != NULL && stroke_refine_band_owner != l) {
+		return STROKE_REFINE_PENDING; // Another one's bands are in the scratch layer
+	}
 	if (f->shader != NULL && !stroke_refine_shader_ready(f->shader)) {
 		return make_material_async_started(f->shader) ? STROKE_REFINE_PENDING : STROKE_REFINE_FAILED;
 	}
-	i32              result     = STROKE_REFINE_PENDING;
-	slot_layer_t    *l          = f->layer;
-	gpu_texture_t   *current    = _draw_current;
-	bool             in_use     = gpu_in_use;
-	slot_layer_t    *_layer     = g_context->layer;
-	slot_material_t *_material  = g_context->material;
-	tool_type_t      _tool      = g_context->tool;
-	i32              _fill_type = g_context->fill_type;
-	i32              _pdirty    = g_context->pdirty;
+	slot_layer_t *s = stroke_refine_scratch_layer(l->texpaint->width, l->texpaint->height, l->texpaint->format);
+	if (s == NULL) {
+		return STROKE_REFINE_FAILED;
+	}
+	gpu_texture_t *current = _draw_current;
+	bool           in_use  = gpu_in_use;
 	if (in_use) {
 		draw_end();
 	}
-	g_context->layer     = l;
-	g_context->material  = f->material;
-	g_context->tool      = TOOL_TYPE_FILL;
-	g_context->fill_type = FILL_TYPE_OBJECT;
-	layers_set_object_mask();
-	if (f->shader == NULL) {
-		f->shader = stroke_refine_shader_start();
-		if (!make_material_async_started(f->shader)) {
-			result = STROKE_REFINE_FAILED;
-		}
-	}
-	if (result != STROKE_REFINE_FAILED && stroke_refine_shader_ready(f->shader)) {
-		result                   = STROKE_REFINE_DONE;
-		shader_context_t *brush  = make_material_paint_scon;
-		make_material_paint_scon = make_material_async_scon(f->shader);
-		render_path_set_target("texpaint_blend0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
-		render_path_end();
-		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-		g_context->pdirty = 1;
-		render_path_paint_commands_paint(false);
-		render_path_paint_dilate(true, true);
-		g_context->brush_blend_dirty = true;
-		render_path_paint_clear_blend();
-		make_material_paint_scon = brush;
-	}
-	g_context->layer     = _layer;
-	g_context->material  = _material;
-	g_context->tool      = _tool;
-	g_context->fill_type = _fill_type;
-	g_context->pdirty    = _pdirty;
-	layers_set_object_mask();
+	stroke_refine_render_t m = {l, f->material, l->scale, l->angle, l->uv_type, l->uv_map, l->object_mask, NULL, 0, &f->shader};
+	i32                    result = stroke_refine_render_material(&m, tier, s);
 	if (result == STROKE_REFINE_DONE) {
+		gpu_texture_t *dst[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
+		gpu_texture_t *src[3] = {s->texpaint, s->texpaint_nor, s->texpaint_pack};
+		stroke_refine_gpu_begin();
+		result = stroke_refine_copy(dst, src) ? STROKE_REFINE_DONE : STROKE_REFINE_FAILED;
+		stroke_refine_gpu_end();
+		slot_layer_t *_layer = g_context->layer;
+		g_context->layer     = l;
+		render_path_paint_dilate(true, true);
+		g_context->layer = _layer;
 		if (l == g_context->layer) {
 			g_context->layer_preview_dirty = true;
 		}
@@ -926,8 +1027,12 @@ static void stroke_refine_on_update(void *_) {
 		if (tier > f->tier) {
 			double t0 = iron_time();
 			iron_profile_mark("refine fill start");
-			i32 result = stroke_refine_fill_paint(f);
+			i32 result = stroke_refine_fill_paint(f, tier);
 			iron_profile_mark("refine fill end");
+			if (result == STROKE_REFINE_BANDING) {
+				stroke_refine_landed = -1; // The next band next frame
+				return;                    // One a frame
+			}
 			if (result == STROKE_REFINE_PENDING) {
 				again = true;
 				continue;
@@ -936,12 +1041,12 @@ static void stroke_refine_on_update(void *_) {
 				stroke_refine_fill_remove(i--);
 				continue;
 			}
-			f->tier = tier;
+			f->tier = stroke_refine_band_tier < tier ? stroke_refine_band_tier : tier; // Its first band's
 			stroke_refine_stats[3]++;
 			if (stroke_refine_timing()) {
 				iron_log("[refine] fill layer %s painted again at tier %d: %.1f ms", f->layer->name, tier, (iron_time() - t0) * 1000.0);
 			}
-			if (tier >= MM_BUFFERS_FULL) {
+			if (f->tier >= MM_BUFFERS_FULL) {
 				stroke_refine_fill_remove(i);
 			}
 			return; // One a frame
@@ -963,6 +1068,10 @@ static void stroke_refine_on_update(void *_) {
 			continue;
 		}
 		i32 result = stroke_refine_sharpen(r, tier);
+		if (result == STROKE_REFINE_BANDING) {
+			stroke_refine_landed = -1; // The next band next frame
+			return;                    // One a frame
+		}
 		if (result == STROKE_REFINE_PENDING) {
 			again = true;
 			continue;
@@ -971,7 +1080,7 @@ static void stroke_refine_on_update(void *_) {
 			stroke_refine_end(i, false);
 			return;
 		}
-		if (tier >= MM_BUFFERS_FULL) {
+		if (r->tier >= MM_BUFFERS_FULL) {
 			stroke_refine_end(i, true);
 		}
 		return; // One a frame

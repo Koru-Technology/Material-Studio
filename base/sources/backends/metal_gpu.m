@@ -706,7 +706,24 @@ static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 	double   t0    = metal_now_ms();
 	// Compiled offline (metal_msl_pack.h): loads without compiling. A source the pack does not have, or a library that
 	// does not load on this device, compiles.
-	dispatch_data_t precompiled = metal_msl_pack_find(shader->impl.source, shader->impl.length);
+	// Env IRON_METAL_MATH=fast|relaxed|safe: every source compiles with that math mode, the pack is not used (comparisons:
+	// Material Maker's noises are sensitive to it)
+	static MTLCompileOptions *math_opts = nil;
+	static int                math_env  = -1;
+	if (math_env < 0) {
+		const char *m = getenv("IRON_METAL_MATH");
+		math_env      = m != NULL ? 1 : 0;
+		if (m != NULL) {
+			math_opts = [MTLCompileOptions new];
+			if (@available(macOS 15.0, iOS 18.0, *)) {
+				math_opts.mathMode = strcmp(m, "fast") == 0 ? MTLMathModeFast : strcmp(m, "relaxed") == 0 ? MTLMathModeRelaxed : MTLMathModeSafe;
+			}
+			else {
+				math_opts.fastMathEnabled = strcmp(m, "safe") != 0;
+			}
+		}
+	}
+	dispatch_data_t precompiled = math_env ? nil : metal_msl_pack_find(shader->impl.source, shader->impl.length);
 	if (precompiled != nil) {
 		library = [get_metal_device() newLibraryWithData:precompiled error:&error];
 	}
@@ -720,7 +737,7 @@ static id<MTLLibrary> metal_library(gpu_shader_t *shader) {
 			cold = getenv("IRON_METAL_COLD") != NULL;
 		}
 		NSString *compiled = cold ? [source stringByAppendingFormat:@"\n// %d %f\n", getpid(), metal_now_ms()] : source;
-		library            = [get_metal_device() newLibraryWithSource:compiled options:nil error:&error];
+		library            = [get_metal_device() newLibraryWithSource:compiled options:math_opts error:&error];
 	}
 	if (metal_timing()) { // Hits and misses so far: how much of what is compiled the pack has
 		fprintf(stderr, "[shader] metal library: %d chars, %.1f ms, %s (precompiled: %d hits, %d misses, %u blocks read)\n", (int)shader->impl.length,

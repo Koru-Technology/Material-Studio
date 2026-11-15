@@ -37,7 +37,7 @@ void next() {
 	}
 	int n = mm_library_count();
 	if (step == 0) {
-		check(n >= 980, string("the library lists %d materials", n));
+		check(n >= 900, string("the library lists %d materials", n)); // 988 less the 88 too heavy for the iPad (overrides.json)
 		int sections_ok = 1;
 		int per[12];
 		for (int s = 0; s < 12; ++s) {

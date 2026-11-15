@@ -152,6 +152,8 @@ typedef struct mm_buffers_recipe {
 	gpu_texture_t            *job_cur;   // A loop pass: its texture of the last iteration
 	f32                       cost;      // Measured GPU ms per Mpx drawn, 0 unknown
 	f32                       cost_src;  // An iterate buffer's loop source draws', 0 unknown
+	i32                       cost_at;     // The size cost was measured at
+	i32                       cost_src_at; // The size cost_src was measured at
 	bool                      failed;
 	i32                       used;        // Generation the texture was last rendered, found or bound
 	i32                       recipe_used; // Generation the recipe was last needed
@@ -290,6 +292,14 @@ static i32 mm_buffers_project_res(void) {
 }
 
 static bool mm_buffers_float32(void) {
+	static int force = -2; // Env MM_FLOAT32=0/1 overrides (comparisons)
+	if (force == -2) {
+		char *e = getenv("MM_FLOAT32");
+		force   = e == NULL ? -1 : e[0] == '1' ? 1 : 0;
+	}
+	if (force >= 0) {
+		return force == 1;
+	}
 #ifdef IRON_METAL
 	return gpu_float32_filtering_supported();
 #else
@@ -1301,16 +1311,27 @@ static gpu_texture_t *mm_buffers_cpu_texture(mm_buffers_recipe_t *r) {
 // GPU cost: ms per Mpx drawn, measured per unit (mm_buffers_learn), the average for units not measured yet
 static double mm_buffers_cost_default = 25.0; // Material Maker passes measured 10 to 40 on the iPad, more for some
 
-static void mm_buffers_commit(u64 key, double px, bool src);
+static void mm_buffers_commit(u64 key, double px, bool src, i32 size);
 
-static double mm_buffers_cost(mm_buffers_recipe_t *u) {
-	return u->cost > 0 ? u->cost : mm_buffers_cost_default;
+// A cost measured at a smaller size, drawn larger: as the square of the sizes, until a draw at that size measures it.
+// Kernels in texels grow with the size (blurs, a 2D one as its square): measured at 128 and 512, a pass's 2048 draw cost
+// 40 times its estimate on the iPad (425 ms of GPU in one frame). Its first band is small, its time corrects the rest.
+static double mm_buffers_cost_scaled(double cost, i32 at, i32 size) {
+	if (at > 0 && size > at) {
+		double k = (double)size / at;
+		cost *= k * k;
+	}
+	return cost;
+}
+
+static double mm_buffers_cost_at(mm_buffers_recipe_t *u, i32 size) {
+	return u->cost > 0 ? mm_buffers_cost_scaled(u->cost, u->cost_at, size) : mm_buffers_cost_default;
 }
 
 // An iterate buffer's loop source draws (its iterations) cost their own: its first draw is often far cheaper, one cost
 // for both made the steps underestimate the iterations (hundreds of ms of GPU in one frame on the iPad)
-static double mm_buffers_cost_src(mm_buffers_recipe_t *u) {
-	return u->cost_src > 0 ? u->cost_src : mm_buffers_cost(u);
+static double mm_buffers_cost_src_at(mm_buffers_recipe_t *u, i32 size) {
+	return u->cost_src > 0 ? mm_buffers_cost_scaled(u->cost_src, u->cost_src_at, size) : mm_buffers_cost_at(u, size);
 }
 
 static void mm_buffers_job_cancel(mm_buffers_recipe_t *u) {
@@ -1388,7 +1409,7 @@ static bool mm_buffers_job_run(mm_buffers_recipe_t *u, double budget_ms, double 
 			}
 		}
 		i32    rows = size - u->job_band;
-		double cost = src ? mm_buffers_cost_src(u) : mm_buffers_cost(r);
+		double cost = src ? mm_buffers_cost_src_at(u, size) : mm_buffers_cost_at(r, size);
 		if (budget_ms > 0) {
 			double row_ms = cost * size / 1e6;
 			double fit    = (budget_ms - *spent_ms) / row_ms;
@@ -1423,7 +1444,7 @@ static bool mm_buffers_job_run(mm_buffers_recipe_t *u, double budget_ms, double 
 			mm_buffers_aborted = iron_time() > mm_buffers_deadline;
 		}
 		if (budget_ms > 0 && (double)size * rows >= 0.05e6) { // A step: each draw in a command buffer of its own, timed, to
-			mm_buffers_commit(r->key, (double)size * rows, src); // learn its cost (small ones go with the next)
+			mm_buffers_commit(r->key, (double)size * rows, src, size); // learn its cost (small ones go with the next)
 		}
 		u->job_band += rows;
 		if (u->job_band < size) {
@@ -1745,6 +1766,7 @@ typedef struct {
 	double     px;
 	double     ms;
 	bool       src; // An iterate buffer's loop source draw (its cost_src)
+	i32        size;
 } mm_buffers_slot_t;
 
 static mm_buffers_slot_t mm_buffers_slots[MM_BUFFERS_SLOTS];
@@ -1756,14 +1778,15 @@ static void mm_buffers_measured(void *data, double ms) {
 }
 
 // Submits the draws recorded so far, timed for the unit when key is not 0
-static void mm_buffers_commit(u64 key, double px, bool src) {
+static void mm_buffers_commit(u64 key, double px, bool src, i32 size) {
 #ifdef IRON_METAL
 	for (i32 i = 0; key != 0 && px > 0 && i < MM_BUFFERS_SLOTS; ++i) {
 		mm_buffers_slot_t *s = &mm_buffers_slots[i];
 		if (atomic_load(&s->state) == 0) {
 			s->key = key;
 			s->px  = px;
-			s->src = src;
+			s->src  = src;
+			s->size = size;
 			atomic_store(&s->state, 1);
 			gpu_commit(mm_buffers_measured, s);
 			return;
@@ -1783,14 +1806,16 @@ static void mm_buffers_learn(void) {
 		if (s->ms > 50.0 && mm_buffers_timing()) { // A step's draw that took far more than its share of a frame
 			mm_buffers_recipe_t *r = mm_buffers_find(s->key);
 			iron_log("[buffers] a step's draw of %s%s took %.1f ms of GPU for %.2f Mpx (%.1f ms/Mpx known before)", r != NULL && r->name != NULL ? r->name : "?",
-			         s->src ? " (iteration)" : "", s->ms, s->px / 1e6, r != NULL ? (s->src ? mm_buffers_cost_src(r) : mm_buffers_cost(r)) : -1.0);
+			         s->src ? " (iteration)" : "", s->ms, s->px / 1e6, r != NULL ? (s->src ? mm_buffers_cost_src_at(r, s->size) : mm_buffers_cost_at(r, s->size)) : -1.0);
 		}
 		if (s->ms > 0 && s->px >= 0.05e6) { // Small draws measure their overhead more than their pixels
 			double               c = s->ms / (s->px / 1e6);
 			mm_buffers_recipe_t *r = mm_buffers_find(s->key);
-			f32                 *k = r == NULL ? NULL : s->src ? &r->cost_src : &r->cost;
-			if (k != NULL) {
-				*k = *k > 0 ? (f32)(0.5 * *k + 0.5 * c) : (f32)c;
+			f32                 *k  = r == NULL ? NULL : s->src ? &r->cost_src : &r->cost;
+			i32                 *at = r == NULL ? NULL : s->src ? &r->cost_src_at : &r->cost_at;
+			if (k != NULL) { // Averaged with what was measured at the same size, replaced by another size's
+				*k  = *k > 0 && *at == s->size ? (f32)(0.5 * *k + 0.5 * c) : (f32)c;
+				*at = s->size;
 			}
 			mm_buffers_cost_default = 0.8 * mm_buffers_cost_default + 0.2 * c;
 		}
@@ -1868,7 +1893,7 @@ static void mm_buffers_step(void *_) {
 		}
 		if (!began) {
 			mm_buffers_gpu_begin();
-			mm_buffers_commit(0, 0, false); // The frame's work so far, apart from the timed draws
+			mm_buffers_commit(0, 0, false, 0); // The frame's work so far, apart from the timed draws
 			mm_buffers_stepping = true;
 			began               = true;
 		}
@@ -1929,7 +1954,7 @@ static double mm_buffers_tiny_estimate(mm_buffers_recipe_t **rs, i32 count, i32 
 		i32                  draws = r->in_loop ? (o != NULL ? o->iterations : 1) : r->iterate ? 1 + r->iterations : 1;
 		i32                  size  = mm_buffers_full_size(r);
 		size                       = size > s ? s : size;
-		ms += draws * (mm_buffers_cost(r) * (double)size * size / 1e6 + MM_BUFFERS_DRAW_MS);
+		ms += draws * (mm_buffers_cost_at(r, size) * (double)size * size / 1e6 + MM_BUFFERS_DRAW_MS);
 	}
 	return ms;
 }
@@ -2390,7 +2415,7 @@ void mm_buffers_clear(void) {
 // 0: passes rendered by the last render, 1: found in the cache, 2: failed shaders, 3: draws, 4: cached textures,
 // 5: cached pipelines, 6: cached texture memory in KB, 7: the texture budget in KB, 8: textures rendered again on
 // demand (since start), 9: recipes, 10: recipe memory in KB, 11: queued passes, 12: 1 in the synchronous mode
-// (MM_BUFFERS_SYNC)
+// (MM_BUFFERS_SYNC), 13: 1 when 32-bit float buffers stay 32-bit (filterable)
 i32 mm_buffers_stat(i32 what) {
 	if (what >= 0 && what < 4) {
 		return mm_buffers_stats[what];
@@ -2412,6 +2437,9 @@ i32 mm_buffers_stat(i32 what) {
 	}
 	if (what == 12) {
 		return mm_buffers_sync() ? 1 : 0;
+	}
+	if (what == 13) {
+		return mm_buffers_float32() ? 1 : 0;
 	}
 	i64 textures = 0, bytes = 0, recipes = 0;
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
@@ -2545,6 +2573,28 @@ static mm_pack_t *mm_buffers_library(void) {
 
 // Returns a summary, "error: ..." on failure. size: log2 of the maps' resolution, 0 for the material's own. other: the
 // last render's maps and links stay (a render that evicts them).
+// A texture read back (any format) and written as an 8-bit PNG, values clamped to 0..1
+static void mm_buffers_dump_png(gpu_texture_t *t, bool greyscale, char *path) {
+	float    *v = mm_buffers_read(t, greyscale);
+	i32       n = t->width * t->height;
+	buffer_t *b = buffer_create(n * 4);
+	for (i32 i = 0; i < n * 4; ++i) {
+		float f      = v[i];
+		f            = f != f ? 0.0f : f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
+		b->buffer[i] = (uint8_t)(f * 255.0f + 0.5f);
+	}
+#ifdef IRON_BGRA
+	for (i32 i = 0; i < n; ++i) {
+		uint8_t c            = b->buffer[i * 4];
+		b->buffer[i * 4]     = b->buffer[i * 4 + 2];
+		b->buffer[i * 4 + 2] = c;
+	}
+#endif
+	iron_write_png(path, b, t->width, t->height, 0);
+	iron_delete_blob(b);
+	free(v);
+}
+
 static char *mm_buffers_test_run(char *path_or_id, i32 size, bool other) {
 	mm_nodes_init();
 	mm_buffers_init();
@@ -2624,6 +2674,9 @@ static char *mm_buffers_test_run(char *path_or_id, i32 size, bool other) {
 			mm_pass_t *p = &plan->passes[i];
 			iron_log("mm_buffers pass %d %s: size %d%s%s%s%s loop_of %d textures %d", i, p->name, p->size, p->greyscale ? " grey" : "", p->f32 ? " f32" : "",
 			         p->iterate ? " iterate" : "", p->texture_gen != NULL ? " cpu" : "", p->loop_of, p->textures);
+			if (getenv("MM_BUFFERS_DUMP") != NULL && tex[i] != NULL) { // Each pass's texture as a PNG in the save path
+				mm_buffers_dump_png(tex[i], p->greyscale, string_tmp("%s/mm_pass_%02d.png", script_save_path(), i));
+			}
 		}
 	}
 	mm_buffers_require(need);

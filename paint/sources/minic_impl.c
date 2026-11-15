@@ -940,6 +940,7 @@ typedef struct script_brush_state {
 	f32              strength;
 	f32              mask_value;
 	bool             live; // Live brush preview (a config setting)
+	i32              finger_paint; // Config setting, scripts' touches are fingers
 	brush_settings_t s;
 	gpu_texture_t   *tip_image;
 } script_brush_state_t;
@@ -957,7 +958,8 @@ void script_brush_take(void) {
 	s->strength             = g_context->brush_strength;
 	s->mask_value           = g_context->mask_value;
 	s->live                 = g_config->brush_live;
-	s->tip_image           = brush_library_tip_image_get();
+	s->finger_paint         = g_config->finger_paint;
+	s->tip_image          = brush_library_tip_image_get();
 	brush_library_capture_settings(&s->s);
 }
 
@@ -970,6 +972,7 @@ static void script_brush_apply(script_brush_state_t *s) {
 	g_context->brush_strength = s->strength;
 	g_context->mask_value     = s->mask_value;
 	g_config->brush_live      = s->live;
+	g_config->finger_paint    = s->finger_paint;
 	brush_library_apply_settings(&s->s, s->tip_image);
 }
 
@@ -1006,6 +1009,7 @@ void script_brush_defaults(void) {
 	g_context->brush_blending = BLEND_TYPE_MIX;
 	g_context->brush_opacity  = 1.0;
 	g_context->mask_value     = 1.0;
+	g_config->finger_paint    = 1; // Scripted touches paint, whatever the user set
 	brush_library_apply_settings(&s, NULL);
 	brush_output_node_parse_inputs();
 	make_material_parse_paint_material(true);

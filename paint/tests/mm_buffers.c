@@ -5,6 +5,10 @@
 // 1/255): an iterate buffer of 1000 iterations with buffers inside its loop (846, a Turing pattern), buffers and normal
 // maps and a text node (2, 3, 88, 113). Rendered passes resolve through their texture links, unchanged passes come
 // from the cache, unused ones stay while the cache fits its budget and the least recently used are evicted past it.
+// The checker's renders are the Mac's: texels match them within 3/255 there. Other GPUs (the iPad's M1) evaluate the sin
+// based hashes of Material Maker's noises a little differently, fast math (the safe math mode matches less): noises and
+// random placements shift, and the texels are only logged. Every platform checks the maps' means and deviations over
+// a grid against the checker's.
 
 int fails  = 0;
 int checks = 0;
@@ -35,6 +39,90 @@ int byte_of(float v) {
 		return 255;
 	}
 	return (int)(v * 255.0 + 0.5);
+}
+
+// The checker's maps (512) over a 32x32 grid (8 + 16 i): id, map, mean r g b a, standard deviation r g b a (0-255)
+int stat_count = 30;
+
+void compare_stats(int id) {
+	int t[300] = {
+	846, 0, 97, 97, 97, 255, 117, 117, 117, 0,
+	846, 1, 255, 255, 0, 255, 0, 0, 0, 0,
+	846, 2, 0, 0, 0, 255, 0, 0, 0, 0,
+	846, 3, 128, 128, 128, 255, 0, 0, 0, 0,
+	846, 4, 255, 255, 255, 255, 0, 0, 0, 0,
+	846, 5, 0, 0, 0, 255, 0, 0, 0, 0,
+	2, 0, 254, 177, 36, 255, 1, 73, 88, 0,
+	2, 1, 62, 160, 0, 255, 43, 73, 0, 0,
+	2, 2, 0, 0, 0, 255, 0, 0, 0, 0,
+	2, 3, 131, 120, 220, 255, 57, 59, 31, 0,
+	2, 4, 23, 23, 23, 255, 18, 18, 18, 0,
+	2, 5, 0, 0, 0, 255, 0, 0, 0, 0,
+	3, 0, 158, 68, 63, 255, 120, 79, 50, 0,
+	3, 1, 123, 82, 39, 255, 59, 86, 45, 0,
+	3, 2, 0, 0, 0, 255, 0, 0, 0, 0,
+	3, 3, 126, 129, 102, 255, 34, 34, 119, 0,
+	3, 4, 138, 138, 138, 255, 112, 112, 112, 0,
+	3, 5, 0, 0, 0, 255, 0, 0, 0, 0,
+	88, 0, 22, 8, 1, 133, 26, 10, 2, 127,
+	88, 1, 221, 110, 0, 255, 52, 119, 0, 0,
+	88, 2, 0, 0, 0, 255, 0, 0, 0, 0,
+	88, 3, 127, 138, 117, 255, 57, 33, 127, 0,
+	88, 4, 31, 31, 31, 255, 66, 66, 66, 0,
+	88, 5, 0, 0, 0, 255, 0, 0, 0, 0,
+	113, 0, 125, 115, 78, 255, 37, 27, 19, 0,
+	113, 1, 224, 80, 255, 255, 45, 35, 0, 0,
+	113, 2, 0, 0, 0, 255, 0, 0, 0, 0,
+	113, 3, 129, 128, 245, 255, 31, 31, 22, 0,
+	113, 4, 66, 66, 66, 255, 36, 36, 36, 0,
+	113, 5, 0, 0, 0, 255, 0, 0, 0, 0,
+	};
+	int   worst_mean = 0;
+	int   worst_dev  = 0;
+	int   n          = 0;
+	float sum[4];
+	float sq[4];
+	for (int i = 0; i < stat_count; ++i) {
+		int k = i * 10;
+		if (t[k] != id) {
+			continue;
+		}
+		int map = t[k + 1];
+		n       = n + 1;
+		if (mm_buffers_test_map_size(map) != 512) {
+			worst_mean = 255;
+			continue;
+		}
+		for (int c = 0; c < 4; ++c) {
+			sum[c] = 0.0;
+			sq[c]  = 0.0;
+		}
+		for (int gy = 0; gy < 32; ++gy) {
+			for (int gx = 0; gx < 32; ++gx) {
+				for (int c = 0; c < 4; ++c) {
+					float v = byte_of(mm_buffers_test_texel(map, 8 + 16 * gx, 8 + 16 * gy, c));
+					sum[c]  = sum[c] + v;
+					sq[c]   = sq[c] + v * v;
+				}
+			}
+		}
+		for (int c = 0; c < 4; ++c) {
+			float mean = sum[c] / 1024.0;
+			float var  = sq[c] / 1024.0 - mean * mean;
+			float dev  = var > 0.0 ? sqrt(var) : 0.0;
+			int   dm   = (int)(mean - t[k + 2 + c] + 0.5);
+			int   dd   = (int)(dev - t[k + 6 + c] + 0.5);
+			dm         = dm < 0 ? -dm : dm;
+			dd         = dd < 0 ? -dd : dd;
+			if (dm > worst_mean || dd > worst_dev) {
+				printf("[mm_buffers] %d map %d channel %d: mean %.1f (checker %d), deviation %.1f (checker %d)", id, map, c, mean, t[k + 2 + c], dev, t[k + 6 + c]);
+			}
+			worst_mean = dm > worst_mean ? dm : worst_mean;
+			worst_dev  = dd > worst_dev ? dd : worst_dev;
+		}
+	}
+	check(n > 0 && worst_mean <= 8 && worst_dev <= 10,
+	      string("%d matches the checker's maps on average (means within 8/255: %d, deviations within 10/255: %d)", id, worst_mean, worst_dev));
 }
 
 int compare_texels(int id) {
@@ -219,7 +307,13 @@ int compare_texels(int id) {
 			bad = bad + 1;
 		}
 	}
-	check(n > 0 && bad == 0, string("%d matches the checker (%d of %d texels within 3/255)", id, n - bad, n));
+	if (script_get_platform() == 2) { // macOS, the checker's GPU
+		check(n > 0 && bad == 0, string("%d matches the checker (%d of %d texels within 3/255)", id, n - bad, n));
+	}
+	else {
+		check(n > 0, string("%d has the checker's maps (%d of %d texels within 3/255, not checked on this GPU)", id, n - bad, n));
+	}
+	compare_stats(id);
 	return bad;
 }
 
@@ -315,5 +409,6 @@ void next() {
 void main() {
 	script_brush_defaults();
 	script_project_new();
+	printf("[mm_buffers] 32-bit float buffers: %s", mm_buffers_stat(13) == 1 ? "yes" : "no, 16-bit unless read with texelFetch (32-bit float filtering unsupported)");
 	script_notify_on_next_frame(next);
 }

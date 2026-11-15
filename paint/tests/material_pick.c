@@ -169,7 +169,7 @@ void next() {
 		}
 	}
 	else if (phase == 1) { // The metric tells the magenta material apart
-		if (frame == 4 && ready()) {
+		if (frame >= 4 && ready()) {
 			snap_base();
 			stroke();
 			measure();
@@ -223,11 +223,16 @@ void next() {
 			                           longest[3] * 1000.0));
 			script_material_set(m_magenta);
 		}
-		if (frame == 4 && ready()) {
+		if (frame >= 4 && ready()) {
 			magenta_base();
 			pick_index(others[0]);
 			phase = 31;
 			frame = 0;
+		}
+		else if (frame > 300) {
+			check(false, "the magenta material is ready again");
+			finish();
+			return;
 		}
 	}
 	else if (phase == 31) {
@@ -254,11 +259,16 @@ void next() {
 		if (frame == 1) {
 			script_material_set(m_magenta);
 		}
-		if (frame == 4 && ready()) {
+		if (frame >= 4 && ready()) {
 			magenta_base();
 			pick_index(others[1]);
 			phase = 41;
 			frame = 0;
+		}
+		else if (frame > 300) {
+			check(false, "the magenta material is ready again");
+			finish();
+			return;
 		}
 	}
 	else if (phase == 41) {
@@ -300,12 +310,17 @@ void next() {
 		if (frame == 1) {
 			script_material_set(m_magenta);
 		}
-		if (frame == 4 && ready()) {
+		if (frame >= 4 && ready()) {
 			magenta_base();
 			pick_index(others[2]);
 			t_parse = 0.0;
 			phase   = 51;
 			frame   = 0;
+		}
+		else if (frame > 300) {
+			check(false, "the magenta material is ready again");
+			finish();
+			return;
 		}
 	}
 	else if (phase == 51) {

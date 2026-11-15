@@ -166,6 +166,7 @@ void                   material_cache_set_enabled(i32 on);
 void                   material_cache_test_budget(i32 mb);
 void                   material_cache_test_min_ms(f32 ms);
 void                   render_path_paint_set_stamp_seed(i32 seed);
+void                   render_path_paint_set_band(i32 y, i32 w, i32 h);
 void                   history_tiles_swap(history_step_t *step, slot_layer_t *l);
 void                   history_tiles_release(history_step_t *step);
 void                   history_tiles_reset();

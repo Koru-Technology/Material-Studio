@@ -141,9 +141,27 @@ void render_path_paint_init() {
 // (and fill layers) as better tiers land. Bakes take full ones. The live brush preview takes what is there.
 static bool render_path_paint_live_brush = false;
 
+// A band of rows the paint draw is scissored to (h 0: none): a heavy material rendered whole into a layer (sharpening,
+// util_stroke_refine.c) spreads over frames
+static i32 render_path_paint_band_y = 0;
+static i32 render_path_paint_band_w = 0;
+static i32 render_path_paint_band_h = 0;
+
+void render_path_paint_set_band(i32 y, i32 w, i32 h) {
+	render_path_paint_band_y = y;
+	render_path_paint_band_w = w;
+	render_path_paint_band_h = h;
+}
+
 static void render_path_paint_draw_material(mesh_object_t *o) {
 	i32 need = mm_buffers_require(render_path_paint_live_brush ? 0 : g_context->tool == TOOL_TYPE_BAKE ? MM_BUFFERS_FULL : MM_BUFFERS_TINY);
+	if (render_path_paint_band_h > 0) {
+		gpu_scissor(0, render_path_paint_band_y, render_path_paint_band_w, render_path_paint_band_h);
+	}
 	mesh_object_draw(o, make_material_paint_scon, _render_path_bind_params);
+	if (render_path_paint_band_h > 0) {
+		gpu_disable_scissor();
+	}
 	mm_buffers_require(need);
 }
 
@@ -554,7 +572,7 @@ void render_path_paint_commands_paint(bool dilation) {
 	if (render_path_paint_timing < 0) {
 		render_path_paint_timing = getenv("IRON_PAINT_TIMING") != NULL ? 1 : 0;
 	}
-	if (!render_path_paint_timing) {
+	if (!render_path_paint_timing || render_path_paint_band_h > 0) { // A band: its caller times it
 		render_path_paint_commands_paint_internal(dilation);
 		render_path_paint_batch_ready = false;
 		return;
