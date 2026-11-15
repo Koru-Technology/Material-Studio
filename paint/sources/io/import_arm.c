@@ -772,6 +772,70 @@ void import_arm_run_swatches_from_project(project_t *project, char *path, bool r
 	data_delete_blob(path);
 }
 
+// Counts and indices of a project file are checked before anything reads them: missing lists become empty, indices out
+// of range point nowhere (-1). False when the file can not be a project (no layer or no mesh).
+static bool import_arm_validate(project_t *p, bool as_mesh) {
+	if (p->assets == NULL) {
+		p->assets = string_array_create(0);
+	}
+	if (p->mesh_datas == NULL || p->mesh_datas->length == 0) {
+		return false;
+	}
+	if (as_mesh) {
+		return true;
+	}
+	if (p->layer_datas == NULL || p->layer_datas->length == 0) {
+		return false;
+	}
+	layer_data_t *l0 = p->layer_datas->buffer[0];
+	if (l0->res < 1 || l0->res > 16384 || (l0->bpp != 8 && l0->bpp != 16 && l0->bpp != 32)) {
+		return false;
+	}
+	if (p->mesh_transforms == NULL || p->mesh_transforms->length < p->mesh_datas->length) {
+		return false;
+	}
+	for (i32 i = 0; i < p->mesh_datas->length; ++i) {
+		f32_array_t *t = p->mesh_transforms->buffer[i];
+		if (t == NULL || t->length < 16) {
+			return false;
+		}
+	}
+	if (p->material_nodes == NULL) {
+		p->material_nodes = any_array_create_from_raw((void *[]){}, 0);
+	}
+	if (p->material_datas == NULL || p->material_datas->length < p->material_nodes->length) {
+		return false;
+	}
+	if (p->brush_nodes == NULL) {
+		p->brush_nodes = any_array_create_from_raw((void *[]){}, 0);
+	}
+	if (p->camera_origin == NULL || p->camera_origin->length < 3 || (p->camera_world != NULL && p->camera_world->length < 16)) {
+		p->camera_world = NULL; // The default camera
+	}
+	i32 layers    = p->layer_datas->length;
+	i32 materials = p->material_nodes->length;
+	for (i32 i = 0; i < layers; ++i) {
+		layer_data_t *ld = p->layer_datas->buffer[i];
+		if (ld->parent <= i || ld->parent >= layers) { // A parent sits above its masks and children
+			ld->parent = -1;
+		}
+		if (ld->fill_material >= materials) {
+			ld->fill_material = -1;
+		}
+		if (ld->path_material >= materials) {
+			ld->path_material = -1;
+		}
+	}
+	if (p->mesh_parents != NULL) {
+		for (i32 i = 0; i < p->mesh_parents->length; ++i) {
+			if (p->mesh_parents->buffer[i] >= p->mesh_datas->length || p->mesh_parents->buffer[i] == i) {
+				p->mesh_parents->buffer[i] = -1;
+			}
+		}
+	}
+	return true;
+}
+
 void import_arm_run_project(char *path) {
 	iron_profile_mark("project load start");
 	ui_header_draw_progress(0.0);
@@ -812,6 +876,11 @@ void import_arm_run_project(char *path) {
 		else if (project->swatches != NULL) {
 			import_arm_run_swatches_from_project(project, path, false);
 		}
+		return;
+	}
+
+	if (!import_arm_validate(project, import_as_mesh)) {
+		console_error(string("Could not open file %s.", path));
 		return;
 	}
 
@@ -1265,7 +1334,10 @@ void import_arm_run_project(char *path) {
 }
 
 void import_arm_run_material(char *path) {
-	buffer_t  *b = data_get_blob(path);
+	buffer_t *b = data_get_blob(path);
+	if (b == NULL) {
+		return;
+	}
 	project_t *project;
 	if (import_arm_is_old(b)) {
 		project = import_arm_from_old(b);
@@ -1274,7 +1346,7 @@ void import_arm_run_material(char *path) {
 		project = armpack_decode(b);
 	}
 
-	if (project->version == NULL) {
+	if (project == NULL || project->version == NULL) {
 		data_delete_blob(path);
 		return;
 	}
@@ -1282,9 +1354,12 @@ void import_arm_run_material(char *path) {
 }
 
 void import_arm_run_brush(char *path) {
-	buffer_t  *b       = data_get_blob(path);
+	buffer_t *b = data_get_blob(path);
+	if (b == NULL) {
+		return;
+	}
 	project_t *project = armpack_decode(b);
-	if (project->version == NULL) {
+	if (project == NULL || project->version == NULL) {
 		data_delete_blob(path);
 		return;
 	}
@@ -1330,9 +1405,12 @@ void import_arm_run_brush_from_project(project_t *project, char *path) {
 }
 
 void import_arm_run_swatches(char *path, bool replace_existing) {
-	buffer_t  *b       = data_get_blob(path);
+	buffer_t *b = data_get_blob(path);
+	if (b == NULL) {
+		return;
+	}
 	project_t *project = armpack_decode(b);
-	if (project->version == NULL) {
+	if (project == NULL || project->version == NULL) {
 		data_delete_blob(path);
 		return;
 	}
@@ -1340,6 +1418,6 @@ void import_arm_run_swatches(char *path, bool replace_existing) {
 }
 
 bool import_arm_has_version(buffer_t *b) {
-	bool has_version = b->buffer[10] == 118; // 'v';
+	bool has_version = b != NULL && b->length > 10 && b->buffer[10] == 118; // 'v';
 	return has_version;
 }
