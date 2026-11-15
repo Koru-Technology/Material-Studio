@@ -116,6 +116,136 @@ void app_get_state(app_state_t *out) {
 	}
 }
 
+// Thumbnails, read back from the GPU
+
+
+static float app_half(uint16_t h) {
+	uint32_t sign = (h >> 15) & 1;
+	int32_t  exp  = (h >> 10) & 0x1f;
+	uint32_t mant = h & 0x3ff;
+	float    v;
+	if (exp == 0) {
+		v = mant / 1024.0f / 16384.0f; // Subnormal
+	}
+	else if (exp == 31) {
+		v = mant == 0 ? 65504.0f : 0.0f;
+	}
+	else {
+		v = (1.0f + mant / 1024.0f) * ldexpf(1.0f, exp - 15);
+	}
+	return sign ? -v : v;
+}
+
+static float app_clamp01(float v) {
+	return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
+}
+
+// RGBA of texel i as 0..1, straight alpha
+static void app_texel(gpu_texture_t *t, uint8_t *px, i32 i, float *c) {
+	switch (t->format) {
+	case GPU_TEXTURE_FORMAT_RGBA64: { // Reads back in RGBA order
+		uint16_t *s = (uint16_t *)px + i * 4;
+		for (i32 k = 0; k < 4; ++k) {
+			c[k] = app_clamp01(app_half(s[k]));
+		}
+		break;
+	}
+	case GPU_TEXTURE_FORMAT_RGBA128: {
+		float *s = (float *)px + i * 4;
+		for (i32 k = 0; k < 4; ++k) {
+			c[k] = app_clamp01(s[k]);
+		}
+		break;
+	}
+	case GPU_TEXTURE_FORMAT_R8:
+		c[0] = c[1] = c[2] = px[i] / 255.0f;
+		c[3]               = 1.0f;
+		break;
+	default: // RGBA32 textures made from pixels (icons) and BC7 ones (decompressed) read back in RGBA order
+		for (i32 k = 0; k < 4; ++k) {
+			c[k] = px[i * 4 + k] / 255.0f;
+		}
+		break;
+	}
+}
+
+// Pixels of t as RGBA8 rows top to bottom, box filtered down by an integer factor to max_size or less (0: full size).
+// premultiply: alpha multiplied in, so the transparent background does not darken the edges; straight alpha otherwise.
+// render_target: an RGBA32 render target, those read back as BGRA on IRON_BGRA. With out NULL: the byte count needed,
+// nothing read back. Returns the byte count written, 0 when none.
+static int32_t app_read_rgba8(gpu_texture_t *t, int32_t max_size, bool premultiply, bool render_target, uint8_t *out, int32_t capacity,
+                              int32_t *w, int32_t *h) {
+	if (t == NULL || t->width <= 0 || t->height <= 0 || t->format == GPU_TEXTURE_FORMAT_D32 || t->format == GPU_TEXTURE_FORMAT_R16 ||
+	    t->format == GPU_TEXTURE_FORMAT_R32) {
+		return 0;
+	}
+	i32 f = 1;
+	if (max_size > 0) {
+		i32 big = t->width > t->height ? t->width : t->height;
+		f       = (big + max_size - 1) / max_size;
+	}
+	i32 ow    = t->width / f;
+	i32 oh    = t->height / f;
+	i32 bytes = ow * oh * 4;
+	if (ow <= 0 || oh <= 0) {
+		return 0;
+	}
+	if (out == NULL) {
+		return bytes; // Known from the size, nothing read back
+	}
+	if (capacity < bytes) {
+		return 0;
+	}
+	buffer_t *pixels = script_get_texture_pixels(t);
+	i32       need   = t->width * t->height * (t->format == GPU_TEXTURE_FORMAT_R8 ? 1 : t->format == GPU_TEXTURE_FORMAT_RGBA64 ? 8 : t->format == GPU_TEXTURE_FORMAT_RGBA128 ? 16 : 4);
+	if (pixels == NULL || pixels->buffer == NULL || pixels->length < need) {
+		gpu_release_texture_pixels(t);
+		return 0;
+	}
+#ifdef IRON_BGRA
+	bool bgra = render_target && t->format == GPU_TEXTURE_FORMAT_RGBA32;
+#else
+	bool bgra = false;
+#endif
+	if (f == 1 && !premultiply && t->format == GPU_TEXTURE_FORMAT_RGBA32) { // As it is
+		memcpy(out, pixels->buffer, bytes);
+	}
+	else {
+		float n = (float)(f * f);
+		for (i32 y = 0; y < oh; ++y) {
+			for (i32 x = 0; x < ow; ++x) {
+				float s[4] = {0, 0, 0, 0}; // Sums, premultiplied or not
+				for (i32 j = 0; j < f; ++j) {
+					for (i32 i = 0; i < f; ++i) {
+						float c[4];
+						app_texel(t, pixels->buffer, (y * f + j) * t->width + x * f + i, c);
+						float a = premultiply ? c[3] : 1.0f;
+						s[0] += c[0] * a;
+						s[1] += c[1] * a;
+						s[2] += c[2] * a;
+						s[3] += c[3];
+					}
+				}
+				uint8_t *o = &out[(y * ow + x) * 4];
+				for (i32 k = 0; k < 4; ++k) {
+					o[k] = (uint8_t)(app_clamp01(s[k] / n) * 255.0f + 0.5f);
+				}
+			}
+		}
+	}
+	gpu_release_texture_pixels(t);
+	if (bgra) {
+		for (i32 p = 0; p < bytes; p += 4) {
+			uint8_t c  = out[p];
+			out[p]     = out[p + 2];
+			out[p + 2] = c;
+		}
+	}
+	*w = ow;
+	*h = oh;
+	return bytes;
+}
+
 bool app_native_chrome     = false;
 i32  app_overlay_top_inset = 0;
 
@@ -551,30 +681,5 @@ bool app_layer_set_opacity(int32_t id, float value) {
 
 int32_t app_layer_thumbnail(int32_t id, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || l->texpaint_preview == NULL) {
-		return 0;
-	}
-	gpu_texture_t *t      = l->texpaint_preview;
-	buffer_t      *pixels = script_get_texture_pixels(t);
-	if (pixels == NULL) {
-		return 0;
-	}
-	i32 bytes = t->width * t->height * 4;
-	bool complete = pixels->length >= bytes;
-	if (out == NULL || bytes > capacity || !complete) {
-		gpu_release_texture_pixels(t); // Frees pixels
-		return out == NULL && complete ? bytes : 0;
-	}
-	memcpy(out, pixels->buffer, bytes);
-	gpu_release_texture_pixels(t);
-#ifdef IRON_BGRA
-	for (i32 p = 0; p < bytes; p += 4) { // The preview is a render target, those read back as BGRA
-		uint8_t c  = out[p];
-		out[p]     = out[p + 2];
-		out[p + 2] = c;
-	}
-#endif
-	*w = t->width;
-	*h = t->height;
-	return bytes;
+	return l != NULL ? app_read_rgba8(l->texpaint_preview, 0, false, true, out, capacity, w, h) : 0;
 }

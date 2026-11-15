@@ -296,33 +296,7 @@ int32_t app_brush_preview(int32_t id, uint8_t *out, int32_t capacity, int32_t *w
 	if (d == NULL || d->image_row == NULL || d->row_state != BRUSH_PREVIEW_READY) {
 		return 0;
 	}
-	gpu_texture_t *t     = d->image_row;
-	i32            bytes = t->width * t->height * 4;
-	if (out == NULL) {
-		return bytes;
-	}
-	if (bytes > capacity) {
-		return 0;
-	}
-	buffer_t *pixels = script_get_texture_pixels(t);
-	if (pixels == NULL || pixels->buffer == NULL || pixels->length < bytes) {
-		gpu_release_texture_pixels(t);
-		return 0;
-	}
-	memcpy(out, pixels->buffer, bytes);
-	gpu_release_texture_pixels(t);
-#ifdef IRON_BGRA
-	if (d->row_rt) { // Render targets read back as BGRA, the strokes read from disk are RGBA textures
-		for (i32 p = 0; p < bytes; p += 4) {
-			uint8_t c  = out[p];
-			out[p]     = out[p + 2];
-			out[p + 2] = c;
-		}
-	}
-#endif
-	*w = t->width;
-	*h = t->height;
-	return bytes;
+	return app_read_rgba8(d->image_row, 0, false, d->row_rt, out, capacity, w, h); // Strokes read from disk are RGBA textures
 }
 
 int32_t app_brush_preview_size(int32_t id) {
