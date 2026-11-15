@@ -214,7 +214,7 @@ const char *iron_application_name(void) {
 }
 
 void iron_set_app_name(const char *name) {
-	strcpy(application_name, name);
+	snprintf(application_name, sizeof(application_name), "%s", name);
 }
 
 void iron_stop(void) {
@@ -728,13 +728,13 @@ string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool ope
 	return NULL;
 }
 
-static char iron_save_dialog_path[512];
+static char iron_save_dialog_path[1024];
 
 char *iron_save_dialog(char *filter_list, char *default_path) {
 	nfdchar_t  *out_path = NULL;
 	nfdresult_t result   = NFD_SaveDialog(filter_list, default_path, &out_path);
 	if (result == NFD_OKAY) {
-		strcpy(iron_save_dialog_path, out_path);
+		snprintf(iron_save_dialog_path, sizeof(iron_save_dialog_path), "%s", out_path);
 		free(out_path);
 		return iron_save_dialog_path;
 	}
@@ -847,43 +847,14 @@ void sys_start(iron_window_options_t *ops) {
 	char *dp  = data_path();
 	char *ext = sys_shader_ext();
 
-	char path_image_vert[512];
-	char path_image_frag[512];
-	char path_rect_vert[512];
-	char path_rect_frag[512];
-	char path_tris_vert[512];
-	char path_tris_frag[512];
-	char path_text_vert[512];
-	char path_text_frag[512];
-
-	strcpy(path_image_vert, dp);
-	strcat(path_image_vert, "draw_image.vert");
-	strcat(path_image_vert, ext);
-	strcpy(path_image_frag, dp);
-	strcat(path_image_frag, "draw_image.frag");
-	strcat(path_image_frag, ext);
-	strcpy(path_rect_vert, dp);
-	strcat(path_rect_vert, "draw_rect.vert");
-	strcat(path_rect_vert, ext);
-	strcpy(path_rect_frag, dp);
-	strcat(path_rect_frag, "draw_rect.frag");
-	strcat(path_rect_frag, ext);
-	strcpy(path_tris_vert, dp);
-	strcat(path_tris_vert, "draw_tris.vert");
-	strcat(path_tris_vert, ext);
-	strcpy(path_tris_frag, dp);
-	strcat(path_tris_frag, "draw_tris.frag");
-	strcat(path_tris_frag, ext);
-	strcpy(path_text_vert, dp);
-	strcat(path_text_vert, "draw_text.vert");
-	strcat(path_text_vert, ext);
-	strcpy(path_text_frag, dp);
-	strcat(path_text_frag, "draw_text.frag");
-	strcat(path_text_frag, ext);
-
-	buffer_t *draw_blobs[8] = {iron_load_blob(path_image_vert), iron_load_blob(path_image_frag), iron_load_blob(path_rect_vert),
-	                           iron_load_blob(path_rect_frag),  iron_load_blob(path_tris_vert),  iron_load_blob(path_tris_frag),
-	                           iron_load_blob(path_text_vert),  iron_load_blob(path_text_frag)};
+	char     *draw_shaders[8] = {"draw_image.vert", "draw_image.frag", "draw_rect.vert", "draw_rect.frag",
+	                              "draw_tris.vert",  "draw_tris.frag",  "draw_text.vert", "draw_text.frag"};
+	buffer_t *draw_blobs[8];
+	for (int i = 0; i < 8; ++i) {
+		char path[512];
+		snprintf(path, sizeof(path), "%s%s%s", dp, draw_shaders[i], ext);
+		draw_blobs[i] = iron_load_blob(path);
+	}
 	draw_init(draw_blobs[0], draw_blobs[1], draw_blobs[2], draw_blobs[3], draw_blobs[4], draw_blobs[5], draw_blobs[6], draw_blobs[7]);
 	for (int i = 0; i < 8; ++i) {
 		iron_delete_blob(draw_blobs[i]);
@@ -1048,7 +1019,7 @@ char *sys_title(void) {
 
 void sys_title_set(char *value) {
 	iron_window_set_title(value);
-	strcpy(_sys_window_title, value);
+	snprintf(_sys_window_title, sizeof(_sys_window_title), "%s", value);
 }
 
 i32 sys_display_primary_id(void) {
@@ -1086,9 +1057,7 @@ gpu_shader_t *sys_get_shader(char *name) {
 		char  path[512];
 		char *dp  = data_path();
 		char *ext = sys_shader_ext();
-		strcpy(path, dp);
-		strcat(path, name);
-		strcat(path, ext);
+		snprintf(path, sizeof(path), "%s%s%s", dp, name, ext);
 		gpu_shader_type_t shader_type = ends_with(name, ".frag") ? GPU_SHADER_TYPE_FRAGMENT : GPU_SHADER_TYPE_VERTEX;
 		buffer_t         *blob        = iron_load_blob(path);
 		shader                        = gpu_create_shader(blob, (i32)shader_type);

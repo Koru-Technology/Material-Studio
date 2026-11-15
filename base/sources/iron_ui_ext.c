@@ -678,7 +678,7 @@ void ui_text_area_word_wrap(char *lines, char **value, int *line_index, bool sel
 	ui_append_capped(new_lines, line, UI_TEXT_MAX);
 	if (selected) {
 		(*value) = string_copy(ui_extract_line(new_lines, (*line_index)));
-		strcpy(current->text_selected, (*value));
+		snprintf(current->text_selected, sizeof(current->text_selected), "%s", (*value));
 	}
 	strcpy(lines, new_lines);
 }
@@ -944,7 +944,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 		text_area_selection_start                     = -1;
 		ui_text_to_paste[0]                           = '\0';
 		ui_is_paste                                   = false;
-		strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+		snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 		(*value) = string_copy(current->text_selected);
 	}
 
@@ -1001,7 +1001,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			(*line_index)     = sel_top_line;
 			current->cursor_x = current->highlight_anchor = sel_top_col;
 			text_area_selection_start                     = -1;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 		}
 		if (editable && ui_is_paste) {
@@ -1018,7 +1018,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			text_area_selection_start                     = -1;
 			ui_text_to_paste[0]                           = '\0';
 			ui_is_paste                                   = false;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 		}
 	}
@@ -1057,7 +1057,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->cursor_x         = 0;
 			current->highlight_anchor = 0;
 			current->cursor_sticky_x  = 0;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 			scroll_align(current, line_index);
 		}
@@ -1068,7 +1068,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->cursor_x         = prev_len;
 			current->highlight_anchor = prev_len;
 			current->cursor_sticky_x  = prev_len;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 			scroll_align(current, line_index);
 		}
@@ -1096,7 +1096,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->highlight_anchor     = 0;
 			current->cursor_x             = last_len;
 			current->cursor_sticky_x      = current->cursor_x;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 			scroll_align(current, line_index);
 		}
@@ -1148,7 +1148,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->highlight_anchor = current->cursor_x;
 			current->cursor_sticky_x  = current->cursor_x;
 		}
-		strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+		snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 	}
 
 	line_theme->ELEMENT_H        = _ELEMENT_H;

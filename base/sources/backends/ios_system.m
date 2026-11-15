@@ -193,9 +193,7 @@ void iron_init(iron_window_options_t *win) {
 const char *iron_system_id(void) {
 	const char *name     = [[[UIDevice currentDevice] name] UTF8String];
 	const char *vendorId = [[[[UIDevice currentDevice] identifierForVendor] UUIDString] UTF8String];
-	strcpy(sysid, name);
-	strcat(sysid, "-");
-	strcat(sysid, vendorId);
+	snprintf(sysid, sizeof(sysid), "%s-%s", name != NULL ? name : "", vendorId != NULL ? vendorId : "");
 	return sysid;
 }
 
@@ -271,7 +269,7 @@ void iron_window_hide() {}
 void iron_window_create(iron_window_options_t *win) {}
 
 void iron_window_set_title(const char *title) {
-	strcpy(ios_title, title);
+	snprintf(ios_title, sizeof(ios_title), "%s", title);
 }
 
 void iron_window_set_resize_callback(void (*callback)(int x, int y, void *data), void *data) {

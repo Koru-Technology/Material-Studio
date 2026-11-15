@@ -496,7 +496,11 @@ ui_text_extract_t ui_extract_coloring(char *text, ui_coloring_t *col) {
 	bool coloring     = false;
 	int  start_from   = 0;
 	int  start_length = 0;
-	for (int i = 0; i < strlen(text); ++i) {
+	int text_length = (int)strlen(text);
+	if (text_length > (int)sizeof(res.colored) - 1) {
+		text_length = (int)sizeof(res.colored) - 1;
+	}
+	for (int i = 0; i < text_length; ++i) {
 		bool skip_first = false;
 		// Check if upcoming text should be colored
 		int length = ui_check_start(i, text, col->start->buffer, col->start->length);
@@ -602,7 +606,7 @@ void ui_draw_string(char *text, float x_offset, float y_offset, int align, bool 
 	}
 	else {
 		// Monospace fonts only for now
-		strcpy(temp, text);
+		snprintf(temp, sizeof(temp), "%s", text);
 		for (int i = 0; i < current->text_coloring->colorings->length; ++i) {
 			ui_coloring_t    *coloring = current->text_coloring->colorings->buffer[i];
 			ui_text_extract_t result   = ui_extract_coloring(temp, coloring);
@@ -610,7 +614,7 @@ void ui_draw_string(char *text, float x_offset, float y_offset, int align, bool 
 				draw_set_color(coloring->color);
 				draw_string(result.colored, current->_x + x_offset, current->_y + current->font_offset_y + y_offset);
 			}
-			strcpy(temp, result.uncolored);
+			snprintf(temp, sizeof(temp), "%s", result.uncolored);
 		}
 		if (ui_text_coloring_draw != NULL) {
 			ui_text_coloring_draw(text, temp, current->_x + x_offset, current->_y + current->font_offset_y + y_offset);
@@ -882,12 +886,14 @@ char *ui_extract_line(char *str, int line) {
 	return ui_extract_line_off(str, line, &off);
 }
 
-char *ui_lower_case(char *dest, char *src) {
-	int len = strlen(src);
-	assert(len < 1024);
-	for (int i = 0; i < len; ++i) {
+// Lower case copy of src into dest[UI_LOWER_CASE_MAX], cut to fit
+#define UI_LOWER_CASE_MAX 512
+static char *ui_lower_case(char *dest, char *src) {
+	int i = 0;
+	for (; src[i] != '\0' && i < UI_LOWER_CASE_MAX - 1; ++i) {
 		dest[i] = tolower(src[i]);
 	}
+	dest[i] = '\0';
 	return dest;
 }
 
@@ -1031,8 +1037,8 @@ void ui_draw_combo() {
 		if ((arrow_up || wheel_up) && current->combo_to_submit > 0) {
 			int step = 1;
 			if (current->combo_search_bar && strlen(current->text_selected) > 0) {
-				char search[512];
-				char str[512];
+				char search[UI_LOWER_CASE_MAX];
+				char str[UI_LOWER_CASE_MAX];
 				ui_lower_case(search, current->text_selected);
 				while (true) {
 					ui_lower_case(str, current->combo_selected_texts->buffer[current->combo_to_submit - step]);
@@ -1055,8 +1061,8 @@ void ui_draw_combo() {
 		else if ((arrow_down || wheel_down) && current->combo_to_submit < current->combo_selected_texts->length - 1) {
 			int step = 1;
 			if (current->combo_search_bar && strlen(current->text_selected) > 0) {
-				char search[512];
-				char str[512];
+				char search[UI_LOWER_CASE_MAX];
+				char str[UI_LOWER_CASE_MAX];
 				ui_lower_case(search, current->text_selected);
 				while (true) {
 					ui_lower_case(str, current->combo_selected_texts->buffer[current->combo_to_submit + step]);
@@ -1090,7 +1096,7 @@ void ui_draw_combo() {
 	theme->SHADOWS         = false;
 	float unroll_right     = current->_x + current->combo_selected_w * 2.0 < iron_window_width() - current->window_border_right ? 1 : -1;
 	bool  reset_position   = false;
-	char  search[512];
+	char  search[UI_LOWER_CASE_MAX];
 	search[0] = '\0';
 	if (current->combo_search_bar) {
 		if (unroll_up) {
@@ -1101,8 +1107,7 @@ void ui_draw_combo() {
 			current->combo_first  = true;
 		}
 		ui_fill(0, 0, current->_w / UI_SCALE(), UI_ELEMENT_H() / UI_SCALE(), theme->SEPARATOR_COL);
-		strcpy(search, ui_text_input(&current->combo_search, "", UI_ALIGN_LEFT, true, true));
-		ui_lower_case(search, search);
+		ui_lower_case(search, ui_text_input(&current->combo_search, "", UI_ALIGN_LEFT, true, true));
 		if (current->is_released) {
 			current->combo_first = true; // Keep combo open
 		}
@@ -1116,7 +1121,7 @@ void ui_draw_combo() {
 
 	current->combo_selected_texts_filtered = 0;
 	for (int i = 0; i < current->combo_selected_texts->length; ++i) {
-		char str[512];
+		char str[UI_LOWER_CASE_MAX];
 		ui_lower_case(str, current->combo_selected_texts->buffer[i]);
 		if (strlen(search) > 0 && strstr(str, search) == NULL) {
 			continue; // Don't show items that don't fit the current search pattern
@@ -1520,7 +1525,7 @@ static void ui_update_text_edit(int align, bool editable) {
 			ui_deselect_text(current);
 		}
 		else if (current->key_code == KEY_CODE_ESCAPE) { // Cancel
-			strcpy(current->text_selected, current->text_original);
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", current->text_original);
 			ui_deselect_text(current);
 		}
 		else if (current->key_code == KEY_CODE_TAB && current->tab_switch_enabled && !current->is_ctrl_down) { // Next field
@@ -1640,12 +1645,12 @@ static void ui_update_text_edit(int align, bool editable) {
 	current->cursor_screen_x = cursor_x;
 	current->cursor_screen_y = current->_y;
 
-	strcpy(current->text_selected, text);
+	snprintf(current->text_selected, sizeof(current->text_selected), "%s", text);
 }
 
 void ui_set_hovered_tab_name(char *name) {
 	if (ui_input_in_rect(current->_window_x, current->_window_y, current->_window_w, current->_window_h)) {
-		strcpy(current->hovered_tab_name, name);
+		snprintf(current->hovered_tab_name, sizeof(current->hovered_tab_name), "%s", name);
 		current->hovered_tab_x = current->_window_x;
 		current->hovered_tab_y = current->_window_y;
 		current->hovered_tab_w = current->_window_w;
@@ -2356,7 +2361,7 @@ bool ui_tab(int *value, char *text, bool vertical, uint32_t color, bool align_ri
 		}
 	}
 	assert(current->tab_count < 16);
-	strcpy(current->tab_names[current->tab_count], text);
+	snprintf(current->tab_names[current->tab_count], sizeof(current->tab_names[current->tab_count]), "%s", text);
 	current->tab_colors[current->tab_count]  = color;
 	current->tab_enabled[current->tab_count] = current->enabled;
 	current->tab_count++;
