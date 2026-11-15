@@ -8,6 +8,15 @@ static buffer_t *export_arm_encode_layer_texture(gpu_texture_t *t) {
 	return b;
 }
 
+// A material preview (RGBA64) compressed, in RGBA order
+static buffer_t *export_arm_encode_icon(gpu_texture_t *t) {
+#ifdef IRON_BGRA
+	return lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(t)));
+#else
+	return lz4_encode(gpu_get_texture_pixels(t));
+#endif
+}
+
 static mesh_data_t *export_arm_named_mesh_data(mesh_object_t *p) {
 	// Mesh data shared by linked duplicates is named after the object holding it
 	if (string_equals(p->data->name, p->base->name)) {
@@ -336,11 +345,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
 		buffer_t        *icon;
 		if (m->preview_ready && m->image != NULL) {
-#ifdef IRON_BGRA
-			icon = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
-#else
-			icon = lz4_encode(gpu_get_texture_pixels(m->image));
-#endif
+			icon = export_arm_encode_icon(m->image);
 			gpu_release_texture_pixels(m->image);
 		}
 		else {
@@ -509,11 +514,7 @@ void export_arm_run_material(char *path) {
 		packed_assets = export_arm_get_packed_assets(path, texture_files);
 	}
 
-#ifdef IRON_BGRA
-	buffer_t *buf = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
-#else
-	buffer_t *buf = lz4_encode(gpu_get_texture_pixels(m->image));
-#endif
+	buffer_t *buf = export_arm_encode_icon(m->image);
 	buffer_t_array_t *micons = any_array_create_from_raw(
 	    (void *[]){
 	        buf,
@@ -582,11 +583,7 @@ buffer_t *export_arm_encode_library_material(slot_material_t *m) {
 		any_array_push(texture_files, string_copy(a->name)); // File name with extension
 	}
 
-#ifdef IRON_BGRA
-	buffer_t *icon = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
-#else
-	buffer_t *icon = lz4_encode(gpu_get_texture_pixels(m->image));
-#endif
+	buffer_t *icon = export_arm_encode_icon(m->image);
 	material_data2_t_array_t *mdata2 = any_array_create_from_raw((void *[]){}, 0);
 	material_data2_t         *md2    = ALLOC_INIT(material_data2_t, {
 	                                                                    .paint_base   = m->paint_base,

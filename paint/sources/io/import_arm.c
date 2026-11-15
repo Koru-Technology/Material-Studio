@@ -443,6 +443,13 @@ static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 res, i32 byte
 	return texture;
 }
 
+// dst of a loaded layer becomes its saved texture
+static void import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 res, i32 bytes_per_texel, i32 format, bool *has_alpha) {
+	gpu_texture_t *t = import_arm_texture_from_lz4(b, res, bytes_per_texel, format, has_alpha);
+	util_copy_texture(dst, t, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
+	gpu_delete_texture(t);
+}
+
 // Files of the materials being imported: same-named textures of other folders are skipped
 static string_array_t *import_arm_material_files = NULL;
 
@@ -607,6 +614,36 @@ static i32 import_arm_decode_images(import_arm_image_t *images, i32 start, i32 c
 	return end;
 }
 
+// Texture file of a material or brush file, relative to its folder (base) or packed into it: imported, pink when missing.
+// Its absolute path.
+static char *import_arm_load_asset(project_t *project, char *file, char *base) {
+	file      = string_copy(string_replace_all(file, "\\", "/"));
+	char *abs = import_arm_abs(file, base);
+	if (project->packed_assets != NULL) {
+		abs = string_copy(path_normalize(abs));
+		import_arm_unpack_asset(project, abs, file, true);
+	}
+	if (any_map_get(data_cached_textures, abs) == NULL && !iron_file_exists(abs)) {
+		import_arm_make_pink(abs);
+	}
+	import_texture_run(abs, true);
+	return abs;
+}
+
+// Channels and texture scale and rotation saved with material m
+static void import_arm_material_data(slot_material_t *m, material_data2_t *md) {
+	m->paint_base   = md->paint_base;
+	m->paint_opac   = md->paint_opac;
+	m->paint_occ    = md->paint_occ;
+	m->paint_rough  = md->paint_rough;
+	m->paint_met    = md->paint_met;
+	m->paint_nor    = md->paint_nor;
+	m->paint_height = md->paint_height;
+	m->paint_emis   = md->paint_emis;
+	m->paint_subs   = md->paint_subs;
+	m->uv_angle     = md->uv_angle;
+}
+
 static void import_arm_import_materials(project_t *project, char *path, i32_array_t *selected, bool delete_blob) {
 	if (project->material_nodes == NULL || project->material_nodes->length == 0) {
 		if (delete_blob) {
@@ -619,19 +656,7 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 	import_arm_material_files = any_array_create_from_raw((void *[]){}, 0);
 	if (project->assets != NULL) {
 		for (i32 i = 0; i < project->assets->length; ++i) {
-			char *file = project->assets->buffer[i];
-			file = string_copy(string_replace_all(file, "\\", "/"));
-			// Convert image path from relative to absolute
-			char *abs = import_arm_abs(file, base);
-			if (project->packed_assets != NULL) {
-				abs = string_copy(path_normalize(abs));
-				import_arm_unpack_asset(project, abs, file, true);
-			}
-			if (any_map_get(data_cached_textures, abs) == NULL && !iron_file_exists(abs)) {
-				import_arm_make_pink(abs);
-			}
-			import_texture_run(abs, true);
-			any_array_push(import_arm_material_files, abs);
+			any_array_push(import_arm_material_files, import_arm_load_asset(project, project->assets->buffer[i], base));
 		}
 	}
 
@@ -648,18 +673,9 @@ static void import_arm_import_materials(project_t *project, char *path, i32_arra
 		g_context->material = slot_material_create(m0, c);
 		if (project->material_datas != NULL && i < project->material_datas->length) {
 			// Channels and texture scale and rotation travel with the material file
-			material_data2_t *md              = project->material_datas->buffer[i];
-			g_context->material->paint_base   = md->paint_base;
-			g_context->material->paint_opac   = md->paint_opac;
-			g_context->material->paint_occ    = md->paint_occ;
-			g_context->material->paint_rough  = md->paint_rough;
-			g_context->material->paint_met    = md->paint_met;
-			g_context->material->paint_nor    = md->paint_nor;
-			g_context->material->paint_height = md->paint_height;
-			g_context->material->paint_emis   = md->paint_emis;
-			g_context->material->paint_subs   = md->paint_subs;
-			g_context->material->uv_scale     = md->uv_scale > 0.0 ? md->uv_scale : 1.0;
-			g_context->material->uv_angle     = md->uv_angle;
+			material_data2_t *md = project->material_datas->buffer[i];
+			import_arm_material_data(g_context->material, md);
+			g_context->material->uv_scale = md->uv_scale > 0.0 ? md->uv_scale : 1.0;
 		}
 		any_array_push(g_project->_->materials, g_context->material);
 		any_array_push(imported, g_context->material);
@@ -1060,27 +1076,14 @@ void import_arm_run_project(char *path) {
 		}
 		any_array_push(g_project->_->layers, l);
 		if (!is_group) {
-			gpu_texture_t *_texpaint      = NULL;
-			gpu_texture_t *_texpaint_nor  = NULL;
-			gpu_texture_t *_texpaint_pack = NULL;
-
-			if (is_mask) {
-				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
-				util_copy_texture(l->texpaint, _texpaint, g_project->is_bgra ? pipes_copy_bgra : pipes_copy); // Full bits for undo support, R8 is used
+			if (is_mask) { // Full bits for undo support, R8 is used
+				import_arm_layer_texture(l->texpaint, ld->texpaint, ld->res, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
 			}
 			else { // Layer
-				// TODO: create render target from bytes
 				// See-through meshes when the bottom layer is not fully opaque
-				_texpaint = import_arm_texture_from_lz4(ld->texpaint, ld->res, 4 * bytes_per_pixel, format,
-				                                        i == 0 ? &g_project->_->translucency : NULL);
-				util_copy_texture(l->texpaint, _texpaint, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
-
-				_texpaint_nor = import_arm_texture_from_lz4(ld->texpaint_nor, ld->res, 4 * bytes_per_pixel, format, NULL);
-				util_copy_texture(l->texpaint_nor, _texpaint_nor, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
-
-				_texpaint_pack = import_arm_texture_from_lz4(ld->texpaint_pack, ld->res, 4 * bytes_per_pixel, format, NULL);
-				util_copy_texture(l->texpaint_pack, _texpaint_pack, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
-
+				import_arm_layer_texture(l->texpaint, ld->texpaint, ld->res, 4 * bytes_per_pixel, format, i == 0 ? &g_project->_->translucency : NULL);
+				import_arm_layer_texture(l->texpaint_nor, ld->texpaint_nor, ld->res, 4 * bytes_per_pixel, format, NULL);
+				import_arm_layer_texture(l->texpaint_pack, ld->texpaint_pack, ld->res, 4 * bytes_per_pixel, format, NULL);
 			}
 
 			l->scale   = ld->uv_scale;
@@ -1129,13 +1132,6 @@ void import_arm_run_project(char *path) {
 			l->path_curved        = ld->path_curved;
 			l->path_text          = ld->path_text;
 
-			gpu_delete_texture(_texpaint);
-			if (_texpaint_nor != NULL) {
-				gpu_delete_texture(_texpaint_nor);
-			}
-			if (_texpaint_pack != NULL) {
-				gpu_delete_texture(_texpaint_pack);
-			}
 			import_arm_free_deleted(); // Upload textures of one layer at a time
 		}
 	}
@@ -1168,18 +1164,9 @@ void import_arm_run_project(char *path) {
 		import_arm_init_nodes(n->nodes);
 		g_context->material = slot_material_create(m0, n);
 
-		material_data2_t *md              = g_project->material_datas->buffer[i];
-		g_context->material->paint_base   = md->paint_base;
-		g_context->material->paint_opac   = md->paint_opac;
-		g_context->material->paint_occ    = md->paint_occ;
-		g_context->material->paint_rough  = md->paint_rough;
-		g_context->material->paint_met    = md->paint_met;
-		g_context->material->paint_nor    = md->paint_nor;
-		g_context->material->paint_height = md->paint_height;
-		g_context->material->paint_emis   = md->paint_emis;
-		g_context->material->paint_subs   = md->paint_subs;
-		g_context->material->uv_scale     = md->uv_scale;
-		g_context->material->uv_angle     = md->uv_angle;
+		material_data2_t *md = g_project->material_datas->buffer[i];
+		import_arm_material_data(g_context->material, md);
+		g_context->material->uv_scale = md->uv_scale;
 
 		any_array_push(g_project->_->materials, g_context->material);
 	}
@@ -1302,19 +1289,8 @@ void import_arm_run_brush(char *path) {
 
 void import_arm_run_brush_from_project(project_t *project, char *path) {
 	char *base = path_base_dir(path);
-	for (i32 i = 0; i < project->assets->length; ++i) {
-		char *file = project->assets->buffer[i];
-		file = string_copy(string_replace_all(file, "\\", "/"));
-		// Convert image path from relative to absolute
-		char *abs = import_arm_abs(file, base);
-		if (project->packed_assets != NULL) {
-			abs = string_copy(path_normalize(abs));
-			import_arm_unpack_asset(project, abs, file, true);
-		}
-		if (any_map_get(data_cached_textures, abs) == NULL && !iron_file_exists(abs)) {
-			import_arm_make_pink(abs);
-		}
-		import_texture_run(abs, true);
+	for (i32 i = 0; project->assets != NULL && i < project->assets->length; ++i) {
+		import_arm_load_asset(project, project->assets->buffer[i], base);
 	}
 
 	slot_brush_t_array_t *imported = any_array_create_from_raw((void *[]){}, 0);
