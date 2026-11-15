@@ -318,7 +318,6 @@ typedef struct config {
 	bool                 wrap_mouse;
 	bool                 show_asset_names;
 	bool                 material_params;
-	bool                 brush_params;
 	bool                 touch_ui;
 	bool                 splash_screen;
 	bool                 header_pinned;   // Tool properties in the header, floating toolbar otherwise
@@ -328,14 +327,10 @@ typedef struct config {
 	i32                  viewport_mode;
 	i32                  pathtrace_mode;
 	i32                  pathtrace_frames;
-	bool                 pressure_radius; // Pen pressure controls
 	f32                  pressure_sensitivity;
 	i32                  layer_res;
 	bool                 brush_live;
 	bool                 node_previews;
-	bool                 pressure_hardness;
-	bool                 pressure_angle;
-	bool                 pressure_opacity;
 	bool                 material_live;
 	bool                 brush_depth_reject;
 	bool                 brush_angle_reject;

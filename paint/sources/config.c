@@ -95,7 +95,6 @@ static char *config_to_json(config_t *c) {
 	json_encode_bool("wrap_mouse", c->wrap_mouse);
 	json_encode_bool("show_asset_names", c->show_asset_names);
 	json_encode_bool("material_params", c->material_params);
-	json_encode_bool("brush_params", c->brush_params);
 	json_encode_bool("touch_ui", c->touch_ui);
 	json_encode_bool("splash_screen", c->splash_screen);
 	json_encode_bool("header_pinned", c->header_pinned);
@@ -110,14 +109,10 @@ static char *config_to_json(config_t *c) {
 	json_encode_i32("viewport_mode", c->viewport_mode);
 	json_encode_i32("pathtrace_mode", c->pathtrace_mode);
 	json_encode_i32("pathtrace_frames", c->pathtrace_frames);
-	json_encode_bool("pressure_radius", c->pressure_radius);
 	json_encode_f32("pressure_sensitivity", c->pressure_sensitivity);
 	json_encode_i32("layer_res", c->layer_res);
 	json_encode_bool("brush_live", c->brush_live);
 	json_encode_bool("node_previews", c->node_previews);
-	json_encode_bool("pressure_hardness", c->pressure_hardness);
-	json_encode_bool("pressure_angle", c->pressure_angle);
-	json_encode_bool("pressure_opacity", c->pressure_opacity);
 	json_encode_bool("material_live", c->material_live);
 	json_encode_bool("brush_depth_reject", c->brush_depth_reject);
 	json_encode_bool("brush_angle_reject", c->brush_angle_reject);
@@ -254,7 +249,6 @@ config_t *config_create_default() {
 #else
 	c->undo_steps = 6;
 #endif
-	c->pressure_radius      = true;
 	c->pressure_sensitivity = 1.0;
 	c->camera_fov           = 0.69;
 #if defined(IRON_IOS)
@@ -282,9 +276,6 @@ config_t *config_create_default() {
 	c->splash_screen = false;
 #endif
 	c->node_previews     = false;
-	c->pressure_hardness = false;
-	c->pressure_angle    = false;
-	c->pressure_opacity  = false;
 #if defined(IRON_IOS) || defined(IRON_MACOS)
 	c->material_live = false;
 #else
@@ -297,10 +288,8 @@ config_t *config_create_default() {
 	c->show_asset_names    = false;
 #if defined(IRON_IOS)
 	c->material_params = false;
-	c->brush_params    = false;
 #else
 	c->material_params = true;
-	c->brush_params    = true;
 #endif
 	c->dilate_radius    = 2;
 	c->blender          = "";
@@ -408,7 +397,6 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->wrap_mouse            = armpack_map_get_i32(old, "wrap_mouse") > 0;
 	c->show_asset_names      = armpack_map_get_i32(old, "show_asset_names") > 0;
 	c->material_params       = armpack_map_get_i32(old, "material_params") > 0;
-	c->brush_params          = armpack_map_get_i32(old, "brush_params") > 0;
 	c->touch_ui              = armpack_map_get_i32(old, "touch_ui") > 0;
 	c->splash_screen         = armpack_map_get_i32(old, "splash_screen") > 0;
 	c->header_pinned         = armpack_map_get_i32(old, "header_pinned") > 0;
@@ -418,14 +406,10 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	c->viewport_mode         = armpack_map_get_i32(old, "viewport_mode");
 	c->pathtrace_mode        = armpack_map_get_i32(old, "pathtrace_mode");
 	c->pathtrace_frames      = armpack_map_get_i32(old, "pathtrace_frames");
-	c->pressure_radius       = armpack_map_get_i32(old, "pressure_radius") > 0;
 	c->pressure_sensitivity  = armpack_map_get_f32(old, "pressure_sensitivity");
 	c->layer_res             = armpack_map_get_i32(old, "layer_res");
 	c->brush_live            = armpack_map_get_i32(old, "brush_live") > 0;
 	c->node_previews         = armpack_map_get_i32(old, "node_previews") > 0;
-	c->pressure_hardness     = armpack_map_get_i32(old, "pressure_hardness") > 0;
-	c->pressure_angle        = armpack_map_get_i32(old, "pressure_angle") > 0;
-	c->pressure_opacity      = armpack_map_get_i32(old, "pressure_opacity") > 0;
 	c->material_live         = armpack_map_get_i32(old, "material_live") > 0;
 	c->brush_depth_reject    = armpack_map_get_i32(old, "brush_depth_reject") > 0;
 	c->brush_angle_reject    = armpack_map_get_i32(old, "brush_angle_reject") > 0;
@@ -584,7 +568,6 @@ config_t *config_from_version_2(any_map_t *old) {
 config_t *config_from_version_1(any_map_t *old) {
 	config_t *def = config_create_default();
 	armpack_map_set_i32(old, "material_params", def->material_params);
-	armpack_map_set_i32(old, "brush_params", def->brush_params);
 	armpack_map_set_i32(old, "header_pinned", def->header_pinned);
 	armpack_map_set_i32(old, "pixel_snap", def->pixel_snap);
 	any_map_set(old, "layout_tabs", def->layout_tabs);
