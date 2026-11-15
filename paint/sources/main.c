@@ -240,6 +240,8 @@
 #include "console.c"
 #include "context.c"
 #include "history.c"
+#include "history_layers.c"
+#include "history_steps.c"
 #include "keymap.c"
 #include "logic_node.c"
 #include "minic_impl.c"
