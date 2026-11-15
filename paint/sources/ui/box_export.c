@@ -253,12 +253,8 @@ void box_export_tab_presets_import(char *path) {
 	}
 }
 
-void box_export_new_preset(char *name) {
-	if (!ends_with(name, ".json")) {
-		name = string("%s.json", name);
-	}
-	char *path = string("%s%sexport_presets%s%s", path_data(), PATH_SEP, PATH_SEP, name);
-	iron_file_save_bytes(path, sys_string_to_buffer(box_export_preset_template), 0);
+char *box_export_new_preset(char *name) {
+	return ui_files_save_preset("export_presets", name, box_export_preset_template);
 }
 
 void box_export_tab_presets_new_box() {
@@ -267,10 +263,13 @@ void box_export_tab_presets_new_box() {
 		ui_row2();
 		char *preset_name = ui_text_input(&box_export_new_preset_name, tr("Name"), UI_ALIGN_LEFT, true, false);
 		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-			box_export_new_preset(preset_name);
+			char *file = box_export_new_preset(preset_name);
+			if (file == NULL) {
+				return;
+			}
 			box_export_fetch_presets();
 			box_export_preset       = NULL;
-			box_export_preset_index = string_array_index_of(box_export_files, preset_name);
+			box_export_preset_index = string_array_index_of(box_export_files, substring(file, 0, string_length(file) - 5)); // Without .json
 			ui_box_hide();
 			box_export_tab = 1; // Presets
 			box_export_show_textures();

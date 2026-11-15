@@ -64,6 +64,29 @@ void ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files
 	ui_files_release_keys();
 }
 
+// Saves a preset (theme, keymap, export preset) typed in by name into data/<folder>, the file name it got, NULL for an
+// empty name. Path separators in the name become '_', so the file stays in the folder.
+char *ui_files_save_preset(char *folder, char *name, char *json) {
+	char *file = string_copy(name);
+	for (char *c = file; *c != '\0'; ++c) {
+		if (*c == '/' || *c == '\\' || *c == ':') {
+			*c = '_';
+		}
+	}
+	while (file[0] == '.') {
+		file++; // No hidden files, no ".."
+	}
+	if (file[0] == '\0') {
+		return NULL;
+	}
+	if (!ends_with(file, ".json")) {
+		file = string("%s.json", file);
+	}
+	char *path = string("%s%s%s%s%s", path_data(), PATH_SEP, folder, PATH_SEP, file);
+	iron_file_save_bytes(path, sys_string_to_buffer(json), 0);
+	return file;
+}
+
 static void ui_files_clear_icon_map(void) {
 	if (ui_files_icon_map == NULL) {
 		return;

@@ -241,6 +241,7 @@ void                   import_text_run(char *path);
 void                   import_lut_run(const char *path);
 void                   import_lut_free();
 void                   ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files_done)(char *));
+char                  *ui_files_save_preset(char *folder, char *name, char *json);
 char                  *ui_files_file_browser(char **path, bool drag_files, char *search, bool refresh, void (*context_menu)(char *));
 void                   ui_files_go_up(char **path);
 void                   ui_files_navigate(i32 dx, i32 dy);
