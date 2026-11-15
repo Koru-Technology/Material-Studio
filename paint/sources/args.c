@@ -134,6 +134,62 @@ void args_run_script(void *_) {
 	}
 }
 
+// Sets the export up from the arguments, false when they are not valid
+static bool args_export_textures_prepare() {
+	if (!path_is_folder(args_export_textures_path)) {
+		iron_log(tr("Invalid export directory"));
+		return false;
+	}
+
+	if (string_equals(args_export_textures_type, "png")) {
+		base_bits              = TEXTURE_BITS_BITS8;
+		g_context->format_type = TEXTURE_LDR_FORMAT_PNG;
+	}
+	else if (string_equals(args_export_textures_type, "jpg")) {
+		base_bits              = TEXTURE_BITS_BITS8;
+		g_context->format_type = TEXTURE_LDR_FORMAT_JPG;
+	}
+	else if (string_equals(args_export_textures_type, "exr16")) {
+		base_bits = TEXTURE_BITS_BITS16;
+	}
+	else if (string_equals(args_export_textures_type, "exr32")) {
+		base_bits = TEXTURE_BITS_BITS32;
+	}
+	else {
+		iron_log(tr("Invalid texture type"));
+		return false;
+	}
+
+	g_context->layers_export = EXPORT_MODE_VISIBLE;
+
+	// The preset named in the arguments, the first one when there is none of that name
+	box_export_files = file_read_directory(string("%s%sexport_presets", path_data(), PATH_SEP));
+	if (box_export_files == NULL || box_export_files->length == 0) {
+		iron_log(tr("No export presets"));
+		return false;
+	}
+	for (i32 i = 0; i < box_export_files->length; ++i) {
+		char *s                     = box_export_files->buffer[i];
+		box_export_files->buffer[i] = substring(s, 0, string_length(s) - 5); // Strip .json
+	}
+	char *preset = box_export_files->buffer[0];
+	for (i32 i = 0; i < box_export_files->length; ++i) {
+		if (string_equals(box_export_files->buffer[i], args_export_textures_preset)) {
+			preset = box_export_files->buffer[i];
+		}
+	}
+
+	char     *file = string("export_presets/%s.json", preset);
+	buffer_t *blob = data_get_blob(file);
+	if (blob == NULL) {
+		iron_log(tr("Invalid export preset"));
+		return false;
+	}
+	box_export_preset = json_parse(sys_buffer_to_string(blob));
+	data_delete_blob(file);
+	return box_export_preset != NULL;
+}
+
 void args_run_on_next_frame(void *_) {
 	if (!string_equals(g_project->_->filepath, "")) {
 		import_arm_run_project(g_project->_->filepath);
@@ -149,62 +205,22 @@ void args_run_on_next_frame(void *_) {
 	}
 
 	if (args_export_textures) {
-		if (!path_is_folder(args_export_textures_path)) {
-			iron_log(tr("Invalid export directory"));
+		args_export_textures = args_export_textures_prepare();
+		if (args_export_textures) {
+			sys_notify_on_next_frame(&args_run_export_queue, NULL);
 		}
-
-		if (string_equals(args_export_textures_type, "png")) {
-			base_bits              = TEXTURE_BITS_BITS8;
-			g_context->format_type = TEXTURE_LDR_FORMAT_PNG;
-		}
-		else if (string_equals(args_export_textures_type, "jpg")) {
-			base_bits              = TEXTURE_BITS_BITS8;
-			g_context->format_type = TEXTURE_LDR_FORMAT_JPG;
-		}
-		else if (string_equals(args_export_textures_type, "exr16")) {
-			base_bits = TEXTURE_BITS_BITS16;
-		}
-		else if (string_equals(args_export_textures_type, "exr32")) {
-			base_bits = TEXTURE_BITS_BITS32;
-		}
-		else {
-			iron_log(tr("Invalid texture type"));
-		}
-
-		g_context->layers_export = EXPORT_MODE_VISIBLE;
-
-		// Get export preset and apply the correct one from args
-		box_export_files = file_read_directory(string("%s%sexport_presets", path_data(), PATH_SEP));
-		for (i32 i = 0; i < box_export_files->length; ++i) {
-			char *s                     = box_export_files->buffer[i];
-			box_export_files->buffer[i] = substring(s, 0, string_length(s) - 5); // Strip .json
-		}
-
-		char *file = string("export_presets/%s.json", box_export_files->buffer[0]);
-		for (i32 i = 0; i < box_export_files->length; ++i) {
-			char *f = box_export_files->buffer[i];
-			if (string_equals(f, args_export_textures_preset)) {
-				file = string("export_presets/%s.json", box_export_files->buffer[array_index_of(box_export_files, f)]);
-			}
-		}
-
-		buffer_t *blob    = data_get_blob(file);
-		box_export_preset = json_parse(sys_buffer_to_string(blob));
-		data_delete_blob(file);
-
-		// Export queue
-		sys_notify_on_next_frame(&args_run_export_queue, NULL);
 	}
 	else if (args_export_mesh) {
 		if (!path_is_folder(args_export_mesh_path)) {
 			iron_log(tr("Invalid export directory"));
 		}
-
-		char *f = ui_files_filename;
-		if (string_equals(f, "")) {
-			f = string_copy(tr("untitled"));
+		else {
+			char *f = ui_files_filename;
+			if (string_equals(f, "")) {
+				f = string_copy(tr("untitled"));
+			}
+			export_mesh_run(string("%s%s%s", args_export_mesh_path, PATH_SEP, f), NULL);
 		}
-		export_mesh_run(string("%s%s%s", args_export_mesh_path, PATH_SEP, f), NULL);
 	}
 	else if (args_export_material) {
 		g_context->write_icon_on_export = true;
