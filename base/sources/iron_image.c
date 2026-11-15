@@ -1,5 +1,6 @@
 
 #include "iron_image.h"
+#include "iron_system.h"
 
 #ifdef WITH_IMAGE_WRITE
 
@@ -18,7 +19,7 @@ void _write_image(char *path, buffer_t *bytes, i32 w, i32 h, i32 format, int ima
 	if (format == 0) { // RGBA
 		comp = 4;
 #ifdef IRON_BGRA
-		pixels = (unsigned char *)malloc(w * h * comp);
+		pixels = (unsigned char *)malloc((size_t)w * h * comp);
 		for (int i = 0; i < w * h; ++i) {
 			pixels[i * 4]     = rgba[i * 4 + 2];
 			pixels[i * 4 + 1] = rgba[i * 4 + 1];
@@ -35,7 +36,7 @@ void _write_image(char *path, buffer_t *bytes, i32 w, i32 h, i32 format, int ima
 	}
 	else if (format == 2) { // RGB1
 		comp   = 3;
-		pixels = (unsigned char *)malloc(w * h * comp);
+		pixels = (unsigned char *)malloc((size_t)w * h * comp);
 		for (int i = 0; i < w * h; ++i) {
 #ifdef IRON_BGRA
 			pixels[i * 3]     = rgba[i * 4 + 2];
@@ -50,7 +51,7 @@ void _write_image(char *path, buffer_t *bytes, i32 w, i32 h, i32 format, int ima
 	}
 	else if (format > 2) { // RRR1, GGG1, BBB1, AAA1
 		comp    = 1;
-		pixels  = (unsigned char *)malloc(w * h * comp);
+		pixels  = (unsigned char *)malloc((size_t)w * h * comp);
 		int off = format - 3;
 #ifdef IRON_BGRA
 		off = off == 0 ? 2 : off == 2 ? 0 : off; // Alpha stays in place
@@ -60,6 +61,10 @@ void _write_image(char *path, buffer_t *bytes, i32 w, i32 h, i32 format, int ima
 		}
 	}
 
+	if (pixels == NULL) {
+		iron_log("Could not write %s, out of memory", path);
+		return;
+	}
 	image_format == 0 ? stbi_write_jpg(path, w, h, comp, pixels, quality) : stbi_write_png(path, w, h, comp, pixels, w * comp);
 
 	if (pixels != rgba) {
@@ -76,11 +81,20 @@ void iron_write_png(char *path, buffer_t *bytes, i32 w, i32 h, i32 format) {
 	_write_image(path, bytes, w, h, format, 1, 100);
 }
 
-unsigned char *_encode_data;
-int            _encode_size;
-void           _encode_image_func(void *context, void *data, int size) {
-    memcpy(_encode_data + _encode_size, data, size);
-    _encode_size += size;
+static unsigned char *_encode_data;
+static size_t         _encode_size;
+static size_t         _encode_capacity;
+
+// Grows the output: an encoded png of noisy pixels is larger than the raw pixels
+static void _encode_image_func(void *context, void *data, int size) {
+	if (_encode_size + size > _encode_capacity) {
+		while (_encode_size + size > _encode_capacity) {
+			_encode_capacity *= 2;
+		}
+		_encode_data = realloc(_encode_data, _encode_capacity);
+	}
+	memcpy(_encode_data + _encode_size, data, size);
+	_encode_size += size;
 }
 
 buffer_t *_encode_image(buffer_t *bytes, i32 w, i32 h, i32 format, i32 quality) {
@@ -92,13 +106,15 @@ buffer_t *_encode_image(buffer_t *bytes, i32 w, i32 h, i32 format, i32 quality) 
 		pixels[i * 4 + 2] = c;
 	}
 #endif
-	_encode_data = (unsigned char *)malloc(w * h * 4);
-	_encode_size = 0;
+	_encode_capacity = (size_t)w * h * 4 + 1024;
+	_encode_data     = (unsigned char *)malloc(_encode_capacity);
+	_encode_size     = 0;
 	format == 0 ? stbi_write_jpg_to_func(&_encode_image_func, NULL, w, h, 4, bytes->buffer, quality)
 	            : stbi_write_png_to_func(&_encode_image_func, NULL, w, h, 4, bytes->buffer, w * 4);
 	buffer_t *buffer = malloc(sizeof(buffer_t));
 	buffer->buffer   = _encode_data;
-	buffer->length   = _encode_size;
+	buffer->length   = (u32)_encode_size;
+	buffer->capacity = (u32)_encode_size;
 	return buffer;
 }
 
