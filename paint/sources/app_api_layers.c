@@ -122,12 +122,8 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	return true;
 }
 
-static uint32_t app_hash_f(uint32_t h, float v) {
-	return app_hash(h, (uint32_t)(int32_t)(v * 10000.0f));
-}
-
 uint32_t app_layers_props_signature(void) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	if (!app_ready()) {
 		return h;
 	}
@@ -143,14 +139,14 @@ uint32_t app_layers_props_signature(void) {
 		h               = app_hash(h, l->path_text);
 		h               = app_hash(h, app_layer_channels(l));
 		h               = app_hash(h, l->height_blend | (l->height_blend_below << 1));
-		h               = app_hash_f(h, l->scale);
-		h               = app_hash_f(h, l->angle);
-		h               = app_hash_f(h, l->height_blend_reach);
-		h               = app_hash_f(h, l->height_blend_influence);
-		h               = app_hash_f(h, l->height_blend_sharpness);
-		h               = app_hash_f(h, l->height_blend_offset);
+		h               = app_hash_fq(h, l->scale);
+		h               = app_hash_fq(h, l->angle);
+		h               = app_hash_fq(h, l->height_blend_reach);
+		h               = app_hash_fq(h, l->height_blend_influence);
+		h               = app_hash_fq(h, l->height_blend_sharpness);
+		h               = app_hash_fq(h, l->height_blend_offset);
 		for (i32 j = 0; slot_layer_is_mask(l) && l->mask_effects != NULL && j < l->mask_effects->length; ++j) {
-			h = app_hash_f(h, l->mask_effects->buffer[j]);
+			h = app_hash_fq(h, l->mask_effects->buffer[j]);
 		}
 		h = app_hash(h, l->mask_effects != NULL ? l->mask_effects->length : 0);
 	}

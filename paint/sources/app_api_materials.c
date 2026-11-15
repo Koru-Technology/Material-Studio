@@ -1,34 +1,16 @@
-// app_api_materials.h, #included by main.c after app_api.c (it reuses the script_* helpers of minic_impl.c)
+// app_api_materials.h, #included by main.c after app_api.c (it reuses its helpers and the script_* helpers of minic_impl.c)
 
 #include "app_api_materials.h"
 
 extern i32 _tab_materials_draw_slots; // ui/tab_materials.c
 void       tab_materials_draw_slots_duplicate(void *_);
 
-static uint32_t app_mat_hash(uint32_t h, uint32_t v) {
-	return (h ^ v) * 16777619u; // FNV-1a step
-}
-
-static uint32_t app_mat_hash_str(uint32_t h, const char *s) {
-	for (; s != NULL && *s != '\0'; ++s) {
-		h = app_mat_hash(h, (uint8_t)*s);
-	}
-	return h;
-}
-
-static uint32_t app_mat_hash_ptr(uint32_t h, const void *p) {
-	uint64_t v = (uint64_t)(uintptr_t)p;
-	return app_mat_hash(app_mat_hash(h, (uint32_t)v), (uint32_t)(v >> 32));
-}
-
-static uint32_t app_mat_hash_floats(uint32_t h, f32_array_t *a) {
+static uint32_t app_hash_floats(uint32_t h, f32_array_t *a) {
 	if (a == NULL) {
-		return app_mat_hash(h, 0xfffffffu);
+		return app_hash(h, 0xfffffffu);
 	}
 	for (i32 i = 0; i < a->length; ++i) {
-		uint32_t bits;
-		memcpy(&bits, &a->buffer[i], 4);
-		h = app_mat_hash(h, bits);
+		h = app_hash_f32(h, a->buffer[i]);
 	}
 	return h;
 }
@@ -75,44 +57,44 @@ static int32_t          app_mat_frame     = 0;
 static i32              app_mat_deep_next = 0; // Round robin of the deep hash of the other materials
 
 static uint32_t app_mat_shallow_hash(slot_material_t *m) {
-	uint32_t h = 2166136261u;
-	h          = app_mat_hash_ptr(h, m->canvas);
-	h          = app_mat_hash_ptr(h, m->image);
-	h          = app_mat_hash(h, m->preview_ready);
+	uint32_t h = APP_HASH_SEED;
+	h          = app_hash_ptr(h, m->canvas);
+	h          = app_hash_ptr(h, m->image);
+	h          = app_hash(h, m->preview_ready);
 	if (m->canvas != NULL) {
-		h = app_mat_hash(h, m->canvas->nodes != NULL ? m->canvas->nodes->length : 0);
-		h = app_mat_hash(h, m->canvas->links != NULL ? m->canvas->links->length : 0);
+		h = app_hash(h, m->canvas->nodes != NULL ? m->canvas->nodes->length : 0);
+		h = app_hash(h, m->canvas->links != NULL ? m->canvas->links->length : 0);
 	}
 	return h;
 }
 
 static uint32_t app_mat_deep_hash(slot_material_t *m) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	if (m->canvas == NULL) {
 		return h;
 	}
 	ui_node_array_t *nodes = m->canvas->nodes;
 	for (i32 i = 0; nodes != NULL && i < nodes->length; ++i) {
 		ui_node_t *n = nodes->buffer[i];
-		h            = app_mat_hash(h, n->id);
-		h            = app_mat_hash_ptr(h, n->type);
+		h            = app_hash(h, n->id);
+		h            = app_hash_ptr(h, n->type);
 		for (i32 k = 0; n->inputs != NULL && k < n->inputs->length; ++k) {
-			h = app_mat_hash_floats(h, n->inputs->buffer[k]->default_value);
+			h = app_hash_floats(h, n->inputs->buffer[k]->default_value);
 		}
 		for (i32 k = 0; n->buttons != NULL && k < n->buttons->length; ++k) {
 			ui_node_button_t *b = n->buttons->buffer[k];
-			h                   = app_mat_hash_floats(h, b->default_value);
-			h                   = app_mat_hash_ptr(h, b->data);
-			h                   = app_mat_hash(h, b->data != NULL ? b->data->length : 0);
+			h                   = app_hash_floats(h, b->default_value);
+			h                   = app_hash_ptr(h, b->data);
+			h                   = app_hash(h, b->data != NULL ? b->data->length : 0);
 		}
 	}
 	ui_node_link_array_t *links = m->canvas->links;
 	for (i32 i = 0; links != NULL && i < links->length; ++i) {
 		ui_node_link_t *l = links->buffer[i];
-		h                 = app_mat_hash(h, l->from_id);
-		h                 = app_mat_hash(h, l->from_socket);
-		h                 = app_mat_hash(h, l->to_id);
-		h                 = app_mat_hash(h, l->to_socket);
+		h                 = app_hash(h, l->from_id);
+		h                 = app_hash(h, l->from_socket);
+		h                 = app_hash(h, l->to_id);
+		h                 = app_hash(h, l->to_socket);
 	}
 	return h;
 }
@@ -190,15 +172,15 @@ static void app_mat_track_update(void) {
 }
 
 static uint32_t app_mat_signature(void) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
-		h                  = app_mat_hash(h, (uint32_t)m->id);
-		h                  = app_mat_hash_ptr(h, m);
-		h                  = app_mat_hash(h, m->preview_ready);
-		h                  = app_mat_hash_str(h, m->canvas != NULL ? m->canvas->name : "");
+		h                  = app_hash(h, (uint32_t)m->id);
+		h                  = app_hash_ptr(h, m);
+		h                  = app_hash(h, m->preview_ready);
+		h                  = app_hash_str(h, m->canvas != NULL ? m->canvas->name : "");
 	}
-	h = app_mat_hash(h, g_context->material != NULL ? (uint32_t)g_context->material->id : 0xffffffffu);
+	h = app_hash(h, g_context->material != NULL ? (uint32_t)g_context->material->id : 0xffffffffu);
 	return h;
 }
 
@@ -434,21 +416,21 @@ static i32 app_lib_mm_sections(void) {
 }
 
 static uint32_t app_lib_compute_signature(void) {
-	uint32_t h     = 2166136261u;
+	uint32_t h     = APP_HASH_SEED;
 	i32      saved = saved_materials_count();
-	h         = app_mat_hash(h, saved);
+	h         = app_hash(h, saved);
 	for (i32 i = 0; i < saved; ++i) {
-		h = app_mat_hash_str(h, saved_materials_name(i));
-		h = app_mat_hash_ptr(h, saved_materials_icon(i)); // A material saved again under its name gets a new icon
+		h = app_hash_str(h, saved_materials_name(i));
+		h = app_hash_ptr(h, saved_materials_icon(i)); // A material saved again under its name gets a new icon
 	}
 	i32 folder = library_entry_count();
-	h          = app_mat_hash(h, folder);
+	h          = app_hash(h, folder);
 	for (i32 i = 0; i < folder; ++i) {
 		library_entry_t *e = library_entry_get(i);
-		h                  = app_mat_hash_ptr(h, e);
-		h                  = app_mat_hash(h, (library_entry_ready(e) ? 1 : 0) | (library_entry_broken(e) ? 2 : 0));
+		h                  = app_hash_ptr(h, e);
+		h                  = app_hash(h, (library_entry_ready(e) ? 1 : 0) | (library_entry_broken(e) ? 2 : 0));
 	}
-	h = app_mat_hash(h, mm_library_count());
+	h = app_hash(h, mm_library_count());
 	return h;
 }
 
@@ -536,7 +518,7 @@ bool app_library_item(int32_t index, app_library_item_t *out) {
 	out->section  = r->section;
 	out->group    = r->group;
 	out->stylized = r->stylized;
-	uint32_t key  = app_mat_hash(2166136261u, (uint32_t)r->source);
+	uint32_t key  = app_hash(APP_HASH_SEED, (uint32_t)r->source);
 	switch (r->source) {
 	case APP_LIBRARY_SAVED: {
 		char *name      = saved_materials_name(r->index);
@@ -545,7 +527,7 @@ bool app_library_item(int32_t index, app_library_item_t *out) {
 		out->detail     = tr("Saved");
 		out->can_delete = true;
 		snprintf(section, sizeof(section), "%s", tr("Saved"));
-		key = app_mat_hash_ptr(app_mat_hash_str(key, name), saved_materials_icon(r->index));
+		key = app_hash_ptr(app_hash_str(key, name), saved_materials_icon(r->index));
 		break;
 	}
 	case APP_LIBRARY_FOLDER: {
@@ -554,7 +536,7 @@ bool app_library_item(int32_t index, app_library_item_t *out) {
 		out->group_name    = "";
 		out->detail        = library_entry_rel(e);
 		snprintf(section, sizeof(section), "%s", tr("My Materials"));
-		key = app_mat_hash_str(key, library_entry_rel(e));
+		key = app_hash_str(key, library_entry_rel(e));
 		break;
 	}
 	case APP_LIBRARY_MM: {
@@ -563,7 +545,7 @@ bool app_library_item(int32_t index, app_library_item_t *out) {
 		snprintf(detail, sizeof(detail), "%s", mm_library_credit(r->index));
 		out->detail = detail;
 		snprintf(section, sizeof(section), "%s %s", app_lib_style_name(r->stylized), out->group_name);
-		key = app_mat_hash(key, (uint32_t)mm_library_id(r->index));
+		key = app_hash(key, (uint32_t)mm_library_id(r->index));
 		break;
 	}
 	}
@@ -715,15 +697,15 @@ int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t 
 // ███████╗███╗   ███╗ █████╗ ██████╗ ████████╗
 
 uint32_t app_smart_signature(void) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	if (!app_mat_project_ready()) {
 		return h;
 	}
 	i32 n = smart_materials_count();
-	h     = app_mat_hash(h, n);
+	h     = app_hash(h, n);
 	for (i32 i = 0; i < n; ++i) {
-		h = app_mat_hash_str(h, smart_materials_name(i));
-		h = app_mat_hash_ptr(h, smart_materials_icon(i)); // Saved again under its name: a new icon
+		h = app_hash_str(h, smart_materials_name(i));
+		h = app_hash_ptr(h, smart_materials_icon(i)); // Saved again under its name: a new icon
 	}
 	return h;
 }
@@ -737,7 +719,7 @@ bool app_smart_info(int32_t index, app_smart_info_t *out) {
 		return false;
 	}
 	out->name = app_str(smart_materials_name(index));
-	out->key  = app_mat_hash_ptr(app_mat_hash_str(2166136261u, out->name), smart_materials_icon(index));
+	out->key  = app_hash_ptr(app_hash_str(APP_HASH_SEED, out->name), smart_materials_icon(index));
 	return true;
 }
 

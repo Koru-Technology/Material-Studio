@@ -38,6 +38,10 @@ static const char *app_str(const char *s) {
 	return s != NULL ? s : "";
 }
 
+// Signatures and keys: FNV-1a over the values a list or an item shows
+
+#define APP_HASH_SEED 2166136261u
+
 static uint32_t app_hash(uint32_t h, uint32_t v) {
 	return (h ^ v) * 16777619u; // FNV-1a step
 }
@@ -47,6 +51,23 @@ static uint32_t app_hash_str(uint32_t h, const char *s) {
 		h = app_hash(h, (uint8_t)*s);
 	}
 	return h;
+}
+
+static uint32_t app_hash_ptr(uint32_t h, const void *p) {
+	uint64_t v = (uint64_t)(uintptr_t)p;
+	return app_hash(app_hash(h, (uint32_t)v), (uint32_t)(v >> 32));
+}
+
+// Bit for bit
+static uint32_t app_hash_f32(uint32_t h, float v) {
+	uint32_t u;
+	memcpy(&u, &v, sizeof(u));
+	return app_hash(h, u);
+}
+
+// To 1 / 10000: slider values that only drift below what shows do not change it
+static uint32_t app_hash_fq(uint32_t h, float v) {
+	return app_hash(h, (uint32_t)(int32_t)(v * 10000.0f));
 }
 
 static slot_layer_t *app_layer_by_id(int32_t id) {
@@ -63,7 +84,7 @@ static slot_layer_t *app_layer_by_id(int32_t id) {
 }
 
 static uint32_t app_layers_signature(void) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	if (g_project == NULL || g_project->_ == NULL) {
 		return h;
 	}

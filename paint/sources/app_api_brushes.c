@@ -3,12 +3,6 @@
 
 #include "app_api_brushes.h"
 
-static uint32_t app_hash_f32(uint32_t h, float v) {
-	uint32_t u;
-	memcpy(&u, &v, sizeof(u));
-	return app_hash(h, u);
-}
-
 static bool app_brush_group_hidden(brush_group_t *g) {
 	return g->builtin && g_config->hide_builtin_brushes;
 }
@@ -25,7 +19,7 @@ static brush_def_t *app_user_brush(int32_t id) {
 }
 
 static uint32_t app_brush_preview_key(brush_def_t *d) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	h          = app_hash(h, (uint32_t)d->row_key);
 	h          = app_hash(h, (uint32_t)(d->row_key >> 32));
 	h          = app_hash(h, d->row_state == BRUSH_PREVIEW_READY);
@@ -35,7 +29,7 @@ static uint32_t app_brush_preview_key(brush_def_t *d) {
 }
 
 static uint32_t app_brushes_library_signature(void) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	for (i32 i = 0; i < brush_group_count(); ++i) {
 		brush_group_t *g = brush_group_at(i);
 		h                = app_hash(h, (uint32_t)g->id);
@@ -56,7 +50,7 @@ static uint32_t app_brushes_library_signature(void) {
 }
 
 static uint32_t app_brushes_previews_signature(void) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	for (i32 i = 0; i < brush_library_count(); ++i) {
 		h = app_hash(h, app_brush_preview_key(brush_library_at(i)));
 	}
@@ -74,7 +68,7 @@ static uint32_t app_hash_swatch(uint32_t h, swatch_color_t *s) {
 }
 
 static uint32_t app_color_signature(void) {
-	uint32_t h = 2166136261u;
+	uint32_t h = APP_HASH_SEED;
 	if (g_context->picked_color != NULL) {
 		h = app_hash_swatch(h, g_context->picked_color);
 	}
