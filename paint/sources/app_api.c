@@ -73,6 +73,14 @@ void app_get_state(app_state_t *out) {
 	out->previews_version  = app_previews_counter;
 }
 
+bool app_native_chrome = false;
+
+void app_set_native_chrome(bool on) {
+	app_native_chrome = on;
+	ui_base_show      = !on;
+	base_resize();
+}
+
 // Tool and brush
 
 void app_set_tool(int32_t tool) {

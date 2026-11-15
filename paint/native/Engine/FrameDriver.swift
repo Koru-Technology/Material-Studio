@@ -16,34 +16,78 @@ final class FrameDriver: NSObject {
 	private(set) var isStopped = false
 	private var inTick         = false
 	private var link: CADisplayLink?
+	private var fallback: Timer?
+	private var waitTimer: Timer?
+	private var lastTick: CFTimeInterval = 0
 
 	// Starts the engine once the view is in a window and has a size (SwiftUI adds it after creating it)
 	func start(view: PlatformView) {
-		if isStarted {
+		if isStarted || waitTimer != nil {
 			return
 		}
-		guard view.window != nil, view.bounds.width > 0, view.bounds.height > 0 else {
-			DispatchQueue.main.async { self.start(view: view) }
+		if startIfReady(view) {
 			return
+		}
+		let since = CACurrentMediaTime()
+		var logged = since
+		waitTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+			MainActor.assumeIsolated {
+				guard let self else {
+					return
+				}
+				if self.startIfReady(view) {
+					self.waitTimer?.invalidate()
+					self.waitTimer = nil
+				}
+				else if CACurrentMediaTime() - logged > 5 {
+					logged = CACurrentMediaTime()
+					fputs("[native] waiting \(Int(logged - since)) s for the canvas: window \(view.window != nil), size \(view.bounds.size)\n", stderr)
+				}
+			}
+		}
+	}
+
+	private func startIfReady(_ view: PlatformView) -> Bool {
+		guard view.window != nil, view.bounds.width > 0, view.bounds.height > 0 else {
+			return false
 		}
 		isStarted = true
 		iron_apple_start()
 #if os(macOS)
-		let link = view.displayLink(target: self, selector: #selector(tick))
+		app_set_native_chrome(true) // Sidebar, inspector and menus are native, the engine draws the views only
+		let link = view.displayLink(target: self, selector: #selector(displayTick))
 #else
-		let link                     = CADisplayLink(target: self, selector: #selector(tick))
+		let link                     = CADisplayLink(target: self, selector: #selector(displayTick))
 		link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
 #endif
 		link.add(to: .main, forMode: .common)
 		self.link = link
+		// The display link stops while the window is hidden (minimized, covered, screen locked):
+		// keep frames going at a low rate, scripts and background work still run, as with the engine's own loop
+		let fallback = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+			MainActor.assumeIsolated {
+				guard let self, CACurrentMediaTime() - self.lastTick > 0.1 else {
+					return
+				}
+				self.tick()
+			}
+		}
+		RunLoop.main.add(fallback, forMode: .common)
+		self.fallback = fallback
+		return true
 	}
 
-	@objc private func tick(_ link: CADisplayLink) {
-		// A frame can open a nested modal loop (alerts, file panels) that keeps the display link firing
+	@objc private func displayTick(_ link: CADisplayLink) {
+		tick()
+	}
+
+	private func tick() {
+		// A frame can open a nested modal loop (alerts, file panels) that keeps the timers firing
 		if inTick || isStopped {
 			return
 		}
-		inTick = true
+		lastTick = CACurrentMediaTime()
+		inTick   = true
 		let running = iron_external_tick()
 		inTick = false
 		if !running {
@@ -58,6 +102,8 @@ final class FrameDriver: NSObject {
 		isStopped = true
 		link?.invalidate()
 		link = nil
+		fallback?.invalidate()
+		fallback = nil
 		iron_external_shutdown()
 #if os(macOS)
 		NSApp.terminate(nil)

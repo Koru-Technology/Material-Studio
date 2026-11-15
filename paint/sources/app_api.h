@@ -29,6 +29,9 @@ typedef struct {
 
 void app_get_state(app_state_t *out);
 
+// The native UI draws the panels: the engine draws only its views (3D, 2D, nodes) and its popups
+void app_set_native_chrome(bool on);
+
 // Tool and brush
 void app_set_tool(int32_t tool);
 void app_set_brush_radius(float value);

@@ -153,6 +153,8 @@ static void ui_base_draw_empty() {
 
 static void ui_base_panel_update_grab();
 
+extern bool app_native_chrome; // app_api.c, the native UI owns the panels
+
 void ui_base_update(void *_) {
 
 	if (console_message_timer > 0) {
@@ -207,6 +209,19 @@ void ui_base_update(void *_) {
 			}
 		}
 		ui_end();
+	}
+
+	if (!ui_base_show && app_native_chrome) {
+		// The native UI has the panels; the full screen editors without a native version yet still draw here
+		g_ui->input_enabled = base_ui_enabled && !ui_brush_creator_shown();
+		ui_begin(g_ui);
+		ui_id_mask_render_ui();
+		ui_material_studio_render_ui();
+		ui_brush_creator_render_ui();
+		ui_end();
+		g_ui->input_enabled       = true;
+		ui_base_panel_rects_count = 0;
+		return;
 	}
 
 	if (!ui_base_show) {
@@ -273,7 +288,7 @@ void ui_base_init_tabs() {
 }
 
 void ui_base_toggle_distract_free() {
-	if (base_player_lock) {
+	if (base_player_lock || app_native_chrome) {
 		return;
 	}
 
