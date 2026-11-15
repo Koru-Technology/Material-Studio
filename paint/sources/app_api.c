@@ -484,7 +484,37 @@ bool app_layer_delete(int32_t id) {
 	return true;
 }
 
-static slot_layer_t *app_edit_layer = NULL; // Layer of the slider drag in progress
+// The slider drag in progress, one undo step for the whole gesture: the opacity of a layer, a layer value
+// (app_layer_value_begin) or a mask effect value (app_mask_effect_value_begin). Named by ids, not pointers: a layer
+// deleted during the drag is not taken for a new one at the same address.
+typedef enum {
+	APP_DRAG_NONE,
+	APP_DRAG_OPACITY,
+	APP_DRAG_LAYER_VALUE,
+	APP_DRAG_MASK_VALUE,
+} app_drag_kind_t;
+
+typedef struct {
+	app_drag_kind_t kind;
+	i32             id;
+	i32             index; // The value, or the mask effect (stack index)
+	i32             field; // Mask effects: the opacity (-1) or a param
+} app_drag_t;
+
+static app_drag_t app_drag = {.kind = APP_DRAG_NONE};
+
+static void app_drag_begin(app_drag_kind_t kind, i32 id, i32 index, i32 field) {
+	app_drag = (app_drag_t){.kind = kind, .id = id, .index = index, .field = field};
+}
+
+// A set that is part of the drag in progress, otherwise it is its own undo step
+static bool app_dragging(app_drag_kind_t kind, i32 id, i32 index, i32 field) {
+	return app_drag.kind == kind && app_drag.id == id && app_drag.index == index && app_drag.field == field;
+}
+
+void app_drag_end(void) {
+	app_drag = (app_drag_t){.kind = APP_DRAG_NONE};
+}
 
 void app_layer_opacity_begin(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
@@ -495,7 +525,7 @@ void app_layer_opacity_begin(int32_t id) {
 		context_set_layer(l);
 	}
 	history_layer_opacity();
-	app_edit_layer = l;
+	app_drag_begin(APP_DRAG_OPACITY, id, 0, 0);
 }
 
 bool app_layer_set_opacity(int32_t id, float value) {
@@ -503,7 +533,7 @@ bool app_layer_set_opacity(int32_t id, float value) {
 	if (l == NULL) {
 		return false;
 	}
-	if (l != app_edit_layer) { // A change without a drag: its own undo step
+	if (!app_dragging(APP_DRAG_OPACITY, id, 0, 0)) {
 		app_layer_opacity_begin(id);
 	}
 	l->mask_opacity = math_max(0.0, math_min(1.0, value));
@@ -517,10 +547,6 @@ bool app_layer_set_opacity(int32_t id, float value) {
 	}
 	iron_delay_idle_sleep();
 	return true;
-}
-
-void app_edit_end(void) {
-	app_edit_layer = NULL;
 }
 
 int32_t app_layer_thumbnail(int32_t id, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {

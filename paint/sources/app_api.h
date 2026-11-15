@@ -167,9 +167,10 @@ bool    app_layer_delete(int32_t id);
 bool    app_layer_can_delete(int32_t id);
 
 // A slider drag: one undo step for the whole gesture. Begin, set any number of times, end.
+// A set without a begin is its own undo step. app_drag_end ends any drag (opacity, layer values, mask effect values).
 void app_layer_opacity_begin(int32_t id);
 bool app_layer_set_opacity(int32_t id, float value);
-void app_edit_end(void);
+void app_drag_end(void);
 
 // Thumbnail pixels, RGBA8 rows top to bottom. Returns the byte count written (0: none), sizes in w / h.
 // With out NULL: reads the thumbnail back and returns the byte count it needs.

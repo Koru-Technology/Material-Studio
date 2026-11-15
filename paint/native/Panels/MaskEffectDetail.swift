@@ -324,7 +324,7 @@ private struct MaskEffectSections: View {
 		return LayerSlider(title, value: value, range: range, format: format,
 		                   begin: { app_mask_effect_value_begin(layerID, index, field) },
 		                   set: { _ = app_mask_set_effect_value(layerID, index, field, $0) },
-		                   end: { app_mask_effect_value_end() })
+		                   end: { app_drag_end() })
 	}
 }
 

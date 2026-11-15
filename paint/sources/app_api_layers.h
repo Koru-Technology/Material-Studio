@@ -127,7 +127,7 @@ const char *app_layer_material_name(int32_t index); // Project materials, for th
 bool app_layer_set_height_blend(int32_t id, bool on);
 bool app_layer_set_height_blend_below(int32_t id, bool on);
 
-// Slider drags: one undo step for the whole gesture. Begin, set any number of times, end.
+// Slider drags: one undo step for the whole gesture. Begin, set any number of times, end (app_drag_end).
 // A set without a begin is its own undo step.
 typedef enum {
 	APP_LAYER_VALUE_SCALE                  = 0,
@@ -140,7 +140,6 @@ typedef enum {
 
 void app_layer_value_begin(int32_t id, int32_t value);
 bool app_layer_set_value(int32_t id, int32_t value, float v);
-void app_layer_value_end(void);
 
 // For scripts (tests/app_api_layers.c), Swift reads app_layer_props
 bool    app_layer_expanded(int32_t id);
@@ -236,8 +235,7 @@ const char *app_mask_anchor_layer_name(int32_t id, int32_t i); // Valid until th
 // Slider drags, as app_layer_value_begin: field -1 is the opacity, otherwise a params index. Values are clamped to the
 // setting's range, a layer setting takes -1 or an app_mask_anchor_layer_id. A set without a begin is its own undo step.
 void app_mask_effect_value_begin(int32_t id, int32_t index, int32_t field);
-bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v);
-void app_mask_effect_value_end(void);
+bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v); // app_drag_end ends the drag
 
 // For scripts (tests/app_api_masks.c), Swift reads app_mask_effect
 int32_t  app_mask_effect_type(int32_t id, int32_t index); // -1: none

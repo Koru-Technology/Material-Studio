@@ -125,14 +125,14 @@ void next() {
 		app_layer_value_begin(m, 4);
 		app_layer_set_value(m, 4, 10.0);
 		app_layer_set_value(m, 4, 20.0);
-		app_layer_value_end();
+		app_drag_end();
 		check(mask->height_blend_sharpness > 19.9 && mask->height_blend_sharpness < 20.1, "sharpness set by the drag");
 		app_undo();
 		check(mask->height_blend_sharpness < 19.9, "one undo reverts the drag");
 		check(mask->height_blend, "the height blend step stays");
 		app_layer_value_begin(m, 4);
 		check(app_layer_set_value(m, 4, 99.0) && mask->height_blend_sharpness <= 50.0, "sharpness clamped");
-		app_layer_value_end();
+		app_drag_end();
 		check(!app_layer_set_value(a, 4, 1.0), "layers have no height blend");
 		check(app_layer_invert_mask(m), "mask inverted");
 	}

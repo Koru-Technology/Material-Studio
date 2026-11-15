@@ -217,7 +217,7 @@ void next() {
 		app_mask_effect_value_begin(m, ew, 0);
 		app_mask_set_effect_value(m, ew, 0, 0.2);
 		app_mask_set_effect_value(m, ew, 0, 0.8);
-		app_mask_effect_value_end();
+		app_drag_end();
 		check(near(app_mask_effect_value(m, ew, 0), 0.8), "amount set by the drag");
 		check(sig_changed(), "signature changes with a drag");
 		app_undo();

@@ -51,7 +51,7 @@ struct LayerDetailSections: View {
 			LayerSlider("Opacity", value: layer.opacity, range: 0...1, format: { "\(Int(($0 * 100).rounded()))%" },
 			            begin: { app_layer_opacity_begin(layer.id) },
 			            set: { _ = app_layer_set_opacity(layer.id, $0) },
-			            end: { app_edit_end() })
+			            end: { app_drag_end() })
 			if p.showsBlending {
 				Picker("Blending", selection: Binding(get: { p.blending }, set: { v in
 					store.perform { _ = app_layer_set_blending(layer.id, v) }
@@ -139,7 +139,7 @@ struct LayerDetailSections: View {
 		return LayerSlider(title, value: value, range: range, format: format,
 		                   begin: { app_layer_value_begin(layer.id, k) },
 		                   set: { _ = app_layer_set_value(layer.id, k, $0) },
-		                   end: { app_layer_value_end() })
+		                   end: { app_drag_end() })
 	}
 }
 

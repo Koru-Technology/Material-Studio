@@ -686,9 +686,6 @@ bool app_layer_set_height_blend_below(int32_t id, bool on) {
 
 // Slider drags
 
-static slot_layer_t *app_value_layer = NULL; // Layer and value of the drag in progress
-static i32           app_value_kind  = -1;
-
 static f32 *app_layer_value_field(slot_layer_t *l, i32 value, f32 *min, f32 *max) {
 	bool mask = slot_layer_is_mask(l);
 	switch (value) {
@@ -737,8 +734,7 @@ void app_layer_value_begin(int32_t id, int32_t value) {
 		context_set_layer(l);
 		history_mask_height_blend();
 	}
-	app_value_layer = l;
-	app_value_kind  = value;
+	app_drag_begin(APP_DRAG_LAYER_VALUE, id, value, 0);
 }
 
 bool app_layer_set_value(int32_t id, int32_t value, float v) {
@@ -749,7 +745,7 @@ bool app_layer_set_value(int32_t id, int32_t value, float v) {
 	if (f == NULL) {
 		return false;
 	}
-	if (l != app_value_layer || value != app_value_kind) { // A change without a drag: its own undo step
+	if (!app_dragging(APP_DRAG_LAYER_VALUE, id, value, 0)) { // A change without a drag: its own undo step
 		app_layer_value_begin(id, value);
 	}
 	*f = math_max(min, math_min(max, v));
@@ -761,11 +757,6 @@ bool app_layer_set_value(int32_t id, int32_t value, float v) {
 	}
 	iron_delay_idle_sleep();
 	return true;
-}
-
-void app_layer_value_end(void) {
-	app_value_layer = NULL;
-	app_value_kind  = -1;
 }
 
 bool app_layer_expanded(int32_t id) {
@@ -1042,10 +1033,6 @@ const char *app_mask_anchor_layer_name(int32_t id, int32_t i) {
 
 // Slider drags
 
-static slot_layer_t *app_mask_value_mask  = NULL; // Effect and field of the drag in progress
-static i32           app_mask_value_index = -1;
-static i32           app_mask_value_field = -2;
-
 // Field -1 is the opacity, the others are settings of the effect's type
 static bool app_mask_valid_field(i32 type, i32 field) {
 	return field == -1 || (field >= 0 && field < MASK_EFFECT_PARAMS && mask_effect_param_at(type, field) != NULL);
@@ -1058,9 +1045,7 @@ void app_mask_effect_value_begin(int32_t id, int32_t index, int32_t field) {
 		return;
 	}
 	app_mask_history(m);
-	app_mask_value_mask  = m;
-	app_mask_value_index = i;
-	app_mask_value_field = field;
+	app_drag_begin(APP_DRAG_MASK_VALUE, id, i, field);
 }
 
 bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v) {
@@ -1081,8 +1066,7 @@ bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v
 			return false; // Not a layer it can reference
 		}
 	}
-	bool drag = m == app_mask_value_mask && i == app_mask_value_index && field == app_mask_value_field;
-	if (!drag) { // A change without a drag: its own undo step
+	if (!app_dragging(APP_DRAG_MASK_VALUE, id, i, field)) { // A change without a drag: its own undo step
 		if (*f == c) {
 			return false;
 		}
@@ -1092,12 +1076,6 @@ bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v
 	mask_stack_set(m, i, e);
 	iron_delay_idle_sleep();
 	return true;
-}
-
-void app_mask_effect_value_end(void) {
-	app_mask_value_mask  = NULL;
-	app_mask_value_index = -1;
-	app_mask_value_field = -2;
 }
 
 int32_t app_mask_effect_type(int32_t id, int32_t index) {

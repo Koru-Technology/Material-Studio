@@ -47,7 +47,7 @@ void next() {
 		app_layer_opacity_begin(added);
 		app_layer_set_opacity(added, 0.5);
 		app_layer_set_opacity(added, 0.25);
-		app_edit_end();
+		app_drag_end();
 		check(l->mask_opacity > 0.24 && l->mask_opacity < 0.26, "opacity set by the drag");
 		app_undo();
 		check(l->mask_opacity > 0.99, "one undo reverts the whole drag");
