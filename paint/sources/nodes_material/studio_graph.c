@@ -46,6 +46,27 @@ static ui_node_t *studio_find_output(ui_node_canvas_t *c) {
 
 // The studio nodes of the canvas, true when it is a studio material: an output and layers from 0 up, each with its ramp,
 // roughness, height and mix nodes
+// The node is of the type the studio makes for the role (flags carry the role, a file or an edit can pair it with another node)
+static bool studio_role_type(i32 role, ui_node_t *n) {
+	char *t = n->type;
+	switch (role) {
+	case STUDIO_ROLE_PATTERN:
+		return starts_with(t, "PATTERN_");
+	case STUDIO_ROLE_CELLVAR:
+		return string_equals(t, "MIX_RGB");
+	case STUDIO_ROLE_RAMP:
+		return string_equals(t, "VALTORGB");
+	case STUDIO_ROLE_HEIGHT:
+		return string_equals(t, "MATH");
+	case STUDIO_ROLE_MASK:
+		return string_equals(t, "CURVATURE_MASK") || string_equals(t, "DIRECTION_MASK") || string_equals(t, "HEIGHT_MASK");
+	case STUDIO_ROLE_MIX:
+		return string_equals(t, "MATERIAL_MIX");
+	default: // Rough, metal, occlusion, alpha
+		return string_equals(t, "MAPRANGE");
+	}
+}
+
 bool studio_graph_read(ui_node_canvas_t *c, studio_graph_t *g) {
 	memset(g, 0, sizeof(studio_graph_t));
 	if (c == NULL) {
@@ -56,7 +77,7 @@ bool studio_graph_read(ui_node_canvas_t *c, studio_graph_t *g) {
 		ui_node_t *n    = c->nodes->buffer[i];
 		i32        role = studio_role(n);
 		i32        k    = studio_layer(n);
-		if (role > STUDIO_ROLE_NONE && role < STUDIO_ROLE_COUNT && k < STUDIO_LAYERS && g->layers[k].n[role] == NULL) {
+		if (role > STUDIO_ROLE_NONE && role < STUDIO_ROLE_COUNT && k < STUDIO_LAYERS && g->layers[k].n[role] == NULL && studio_role_type(role, n)) {
 			g->layers[k].n[role] = n;
 		}
 	}
@@ -137,12 +158,20 @@ static ui_node_t *sg_node(studio_graph_t *g, char *type, i32 role, i32 k) {
 	return n;
 }
 
+// Value of input i, a scratch value when the node has no such input (a node from an older version)
 static f32 *sg_in(ui_node_t *n, i32 i) {
+	static f32 none[4];
+	if (i < 0 || i >= n->inputs->length || n->inputs->buffer[i]->default_value == NULL) {
+		none[0] = none[1] = none[2] = none[3] = 0.0;
+		return none;
+	}
 	return n->inputs->buffer[i]->default_value->buffer;
 }
 
 static void sg_button(ui_node_t *n, i32 b, f32 v) {
-	n->buttons->buffer[b]->default_value->buffer[0] = v;
+	if (b >= 0 && b < n->buttons->length && n->buttons->buffer[b]->default_value != NULL) {
+		n->buttons->buffer[b]->default_value->buffer[0] = v;
+	}
 }
 
 static i32 sg_output_input(ui_node_t *out, char *name) {
