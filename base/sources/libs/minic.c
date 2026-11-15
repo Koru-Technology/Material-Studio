@@ -3649,6 +3649,9 @@ static minic_ext_func_t *minic_ext_func_add(const char *name) {
 		memset(ef, 0, sizeof(*ef));
 		strncpy(ef->name, name, MINIC_MAX_NAME - 1);
 	}
+	else if (ef == NULL) { // Scripts calling it would fail to compile without a word
+		fprintf(stderr, "minic: more than %d functions, %s is not registered\n", MINIC_MAX_EXTFUNS, name);
+	}
 	return ef;
 }
 
@@ -3668,7 +3671,7 @@ void minic_register_native(const char *name, minic_native_fn_t fn) {
 	}
 }
 
-#define MINIC_EXT_HASH_SIZE 2048
+#define MINIC_EXT_HASH_SIZE 4096 // Twice MINIC_MAX_EXTFUNS, a power of 2
 
 static int16_t minic_ext_hash[MINIC_EXT_HASH_SIZE];
 static int     minic_ext_hash_count = -1;

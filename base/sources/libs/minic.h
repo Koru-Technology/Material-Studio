@@ -8,7 +8,7 @@
 #define MINIC_MAX_PARAMS        20
 #define MINIC_MAX_ARGS          64  // Call argc, including variadic natives such as sprintf
 #define MINIC_MAX_VARS          256 // locals per scope
-#define MINIC_MAX_EXTFUNS       1024
+#define MINIC_MAX_EXTFUNS       2048
 #define MINIC_MAX_SIG           64
 #define MINIC_MAX_ENUM_CONSTS   512
 #define MINIC_MAX_INT_TYPEDEFS  128
