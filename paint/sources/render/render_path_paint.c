@@ -2107,7 +2107,10 @@ void render_path_paint_draw() {
 void render_path_paint_set_plane_mesh() {
 	g_context->paint2d_view    = true;
 	render_path_paint_painto   = g_context->paint_object;
-	render_path_paint_visibles = u8_array_create_from_raw((u8[]){}, 0);
+	if (render_path_paint_visibles == NULL) { // Set every frame of a 2D view stroke, kept between calls
+		render_path_paint_visibles = u8_array_create(0);
+	}
+	render_path_paint_visibles->length = 0;
 	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
 		u8_array_push(render_path_paint_visibles, p->base->visible);
@@ -2214,7 +2217,7 @@ void render_path_paint_set_plane_mesh() {
 void render_path_paint_restore_plane_mesh() {
 	g_context->paint2d_view                 = false;
 	render_path_paint_planeo->base->visible = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
+	for (i32 i = 0; i < g_project->_->paint_objects->length && i < (i32)render_path_paint_visibles->length; ++i) {
 		g_project->_->paint_objects->buffer[i]->base->visible = render_path_paint_visibles->buffer[i];
 	}
 	if (g_context->merged_object != NULL) {
