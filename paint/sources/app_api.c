@@ -419,12 +419,10 @@ int32_t app_layer_thumbnail(int32_t id, uint8_t *out, int32_t capacity, int32_t 
 		return 0;
 	}
 	i32 bytes = t->width * t->height * 4;
-	if (out == NULL) {
-		gpu_release_texture_pixels(t);
-		return pixels->length >= bytes ? bytes : 0;
-	}
-	if (bytes > capacity || pixels->length < bytes) {
-		return 0;
+	bool complete = pixels->length >= bytes;
+	if (out == NULL || bytes > capacity || !complete) {
+		gpu_release_texture_pixels(t); // Frees pixels
+		return out == NULL && complete ? bytes : 0;
 	}
 	memcpy(out, pixels->buffer, bytes);
 	gpu_release_texture_pixels(t);

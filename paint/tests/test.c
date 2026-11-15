@@ -1412,10 +1412,11 @@ void step_layer_path() {
 	check(l != NULL && l->path_points != NULL && !l->path_curved && l->path_material == mat_blue && layer_names_unique(),
 	      string("path layer %s created", l->name));
 	// Both points on the front face of the cube, a capsule across the edge cuts through the cube and paints only its ends.
-	// The face spans less of a wider view, it starts at 0.44 in the full window 1600 x 1000 view (no engine panels)
-	int   ok   = script_layer_add_path_point(l, 0.45, 0.5);
+	// The face spans less of a wider view: it starts at 0.44 in a 1600 x 1000 window (Mac), well left of 0.42 on a portrait iPad
+	bool  wide = sys_w() > sys_h() * 1.5;
+	int   ok   = script_layer_add_path_point(l, wide ? 0.45 : 0.42, 0.5);
 	float dot  = base_fraction(0x0000ff);
-	ok         = ok && script_layer_add_path_point(l, 0.55, 0.5);
+	ok         = ok && script_layer_add_path_point(l, wide ? 0.55 : 0.57, 0.5);
 	float line = base_fraction(0x0000ff);
 	check(ok && l->path_points->length == 4 && line > 0.001 && line > dot * 2.0, string("path points paint a line (%.4f dot, %.4f line)", dot, line));
 	check(!script_layer_add_path_point(script_layer_at(0), 0.5, 0.5), "no path points on a paint layer");

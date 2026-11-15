@@ -123,7 +123,7 @@ struct PadPopoverBar: View {
 			HStack(spacing: 8) {
 				item("Brushes", "paintbrush.pointed") { BrushesPopover() }
 				item("Materials", "circle.circle") { MaterialsPopover() }
-				item("Layers", "square.3.layers.3d") { NavigationStack { LayersView() } }
+				item("Layers", "square.3.layers.3d") { LayersView() }
 				item("Color", "paintpalette") { ColorPopover() }
 			}
 		}
