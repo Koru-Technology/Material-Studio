@@ -468,7 +468,6 @@ void                   brush_previews_start();
 void                   brush_previews_update();
 i32                    brush_previews_stat(i32 what);
 void                   brush_previews_forget(bool delete_files);
-u64                    brush_previews_hash(u64 h, void *data, i32 size);
 char                  *project_unique_title(char *name);
 void                   project_autosave_update();
 void                   project_autosave_init();

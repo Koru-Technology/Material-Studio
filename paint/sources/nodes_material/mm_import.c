@@ -1,4 +1,5 @@
 #include "../global.h"
+#include "../util/util_hash.h"
 #include "../material_maker/mm_internal.h"
 
 // Material Maker materials: the MM Material node and the .ptex importer.
@@ -784,12 +785,6 @@ void mm_import_compile(slot_material_t *m) {
 }
 
 // Readback of a preview as 8 bit texels in the readback's channel order (RGBA64 material previews converted)
-static float mm_import_half(uint16_t h) {
-	uint32_t s = (h >> 15) & 1, e = (h >> 10) & 31, m = h & 1023;
-	float    v = e == 0 ? m / 1024.0f / 16384.0f : e == 31 ? 65504.0f : (1.0f + m / 1024.0f) * powf(2.0f, (float)e - 15.0f);
-	return s ? -v : v;
-}
-
 static buffer_t *mm_import_texels(gpu_texture_t *t) {
 	buffer_t *b = t != NULL ? script_get_texture_pixels(t) : NULL;
 	if (b == NULL || t->format != GPU_TEXTURE_FORMAT_RGBA64) {
@@ -799,7 +794,8 @@ static buffer_t *mm_import_texels(gpu_texture_t *t) {
 	buffer_t *o = buffer_create(n * 4);
 	for (i32 i = 0; i < n * 4; ++i) {
 		uint16_t h   = b->buffer[i * 2] | (b->buffer[i * 2 + 1] << 8);
-		f32      v   = mm_import_half(h);
+		f32      v   = f16_to_f32(h);
+		v            = v == v ? v : (h & 0x8000) ? -65504.0f : 65504.0f; // NaN reads as the largest half, as it always did
 		o->buffer[i] = (u8)(math_max(0.0, math_min(1.0, v)) * 255.0 + 0.5);
 	}
 #ifdef IRON_BGRA

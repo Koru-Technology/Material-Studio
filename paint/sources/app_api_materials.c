@@ -1,6 +1,7 @@
 // app_api_materials.h, #included by main.c after app_api.c (it reuses the script_* helpers of minic_impl.c)
 
 #include "app_api_materials.h"
+#include "util/util_hash.h"
 
 extern i32 _tab_materials_draw_slots; // ui/tab_materials.c
 void       tab_materials_draw_slots_duplicate(void *_);
@@ -53,23 +54,6 @@ static slot_material_t *app_mat_by_id(int32_t id) {
 // ██████╗ ██╗██╗  ██╗███████╗██╗     ███████╗
 // Texture read back to RGBA8 premultiplied, box filtered down by an integer factor
 
-static float app_mat_half(uint16_t h) {
-	uint32_t sign = (h >> 15) & 1;
-	int32_t  exp  = (h >> 10) & 0x1f;
-	uint32_t mant = h & 0x3ff;
-	float    v;
-	if (exp == 0) {
-		v = mant / 1024.0f / 16384.0f; // Subnormal
-	}
-	else if (exp == 31) {
-		v = mant == 0 ? 65504.0f : 0.0f;
-	}
-	else {
-		v = (1.0f + mant / 1024.0f) * ldexpf(1.0f, exp - 15);
-	}
-	return sign ? -v : v;
-}
-
 static float app_mat_clamp01(float v) {
 	return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
 }
@@ -80,7 +64,8 @@ static void app_mat_texel(gpu_texture_t *t, uint8_t *px, i32 i, float *c) {
 	case GPU_TEXTURE_FORMAT_RGBA64: { // Reads back in RGBA order
 		uint16_t *s = (uint16_t *)px + i * 4;
 		for (i32 k = 0; k < 4; ++k) {
-			c[k] = app_mat_clamp01(app_mat_half(s[k]));
+			f32 v = f16_to_f32(s[k]);
+			c[k]  = app_mat_clamp01(v == v ? v : 0.0f); // NaN reads as 0
 		}
 		break;
 	}

@@ -57,6 +57,7 @@
 
 #include "../global.h"
 #include "../material_maker/mm.h"
+#include "../util/util_hash.h"
 #include <iron_profile.h>
 #include <stdatomic.h>
 #ifdef _WIN32
@@ -213,31 +214,6 @@ static i32             mm_buffers_last_count = 0;
 static u64            *mm_buffers_last_keys  = NULL;
 static gpu_texture_t **mm_buffers_out        = NULL;
 static i32             mm_buffers_stats[4]; // Rendered, found in the cache, failed (shaders), draws
-
-// Hashing (FNV-1a 64)
-
-#define MM_BUFFERS_SEED 0xcbf29ce484222325ULL
-
-static u64 mm_buffers_hash(u64 h, const void *data, size_t n) {
-	const uint8_t *p = data;
-	for (size_t i = 0; i < n; ++i) {
-		h ^= p[i];
-		h *= 0x100000001b3ULL;
-	}
-	return h;
-}
-
-static u64 mm_buffers_hash_i32(u64 h, i32 v) {
-	return mm_buffers_hash(h, &v, sizeof(v));
-}
-
-static u64 mm_buffers_hash_str(u64 h, const char *s) {
-	if (s == NULL) {
-		return mm_buffers_hash_i32(h, -1);
-	}
-	size_t n = strlen(s);
-	return mm_buffers_hash_i32(mm_buffers_hash(h, s, n), (i32)n);
-}
 
 // Pass properties
 
@@ -405,14 +381,14 @@ static void mm_buffers_visit(mm_plan_t *plan, i32 i, i32 *pos, i32 *order, i32 *
 static u64 mm_buffers_key(mm_plan_t *plan, u64 *content, i32 i, i32 *pos, i32 *order) {
 	i32 n = 0;
 	mm_buffers_visit(plan, i, pos, order, &n);
-	u64 h = MM_BUFFERS_SEED;
+	u64 h = HASH_FNV1A_BASIS;
 	for (i32 t = 0; t < n; ++t) {
 		i32  j    = order[t];
 		i32 *deps = malloc(sizeof(i32) * mm_buffers_deps_max(&plan->passes[j], plan->count));
 		i32  nd   = mm_buffers_deps(plan, j, deps);
-		h         = mm_buffers_hash(h, &content[j], sizeof(u64));
+		h         = hash_fnv1a(h, &content[j], sizeof(u64));
 		for (i32 d = 0; d < nd; ++d) {
-			h = mm_buffers_hash_i32(h, deps[d] >= 0 && deps[d] < plan->count ? pos[deps[d]] : -1);
+			h = hash_fnv1a_i32(h, deps[d] >= 0 && deps[d] < plan->count ? pos[deps[d]] : -1);
 		}
 		free(deps);
 	}
@@ -423,10 +399,10 @@ static u64 mm_buffers_key(mm_plan_t *plan, u64 *content, i32 i, i32 *pos, i32 *o
 }
 
 static u64 mm_buffers_content(mm_pass_t *p) {
-	u64 g   = mm_buffers_hash_str(MM_BUFFERS_SEED, p->glsl);
-	u64 l   = mm_buffers_hash_str(MM_BUFFERS_SEED, p->iterate ? p->glsl_loop : NULL);
-	u64 h   = mm_buffers_hash(MM_BUFFERS_SEED, &g, sizeof(u64));
-	h       = mm_buffers_hash(h, &l, sizeof(u64));
+	u64 g   = hash_fnv1a_str(HASH_FNV1A_BASIS, p->glsl);
+	u64 l   = hash_fnv1a_str(HASH_FNV1A_BASIS, p->iterate ? p->glsl_loop : NULL);
+	u64 h   = hash_fnv1a(HASH_FNV1A_BASIS, &g, sizeof(u64));
+	h       = hash_fnv1a(h, &l, sizeof(u64));
 	i32 v[] = {p->texture_gen != NULL ? 0 : mm_buffers_own(p),
 	           p->greyscale,
 	           p->f32,
@@ -438,9 +414,9 @@ static u64 mm_buffers_content(mm_pass_t *p) {
 	           p->loop_of >= 0,
 	           p->texture_gen != NULL,
 	           p->exact};
-	h       = mm_buffers_hash(h, v, sizeof(v));
+	h       = hash_fnv1a(h, v, sizeof(v));
 	if (p->texture_gen != NULL) { // What its pixels depend on: kind, parameters
-		h = mm_buffers_hash_str(h, mm_texture_key(p->texture_gen));
+		h = hash_fnv1a_str(h, mm_texture_key(p->texture_gen));
 	}
 	return h;
 }
@@ -540,8 +516,8 @@ static mm_buffers_recipe_t *mm_buffers_recipe_new(mm_plan_t *plan, i32 i, u64 *k
 	else {
 		r->glsl       = p->glsl != NULL ? string_copy(p->glsl) : NULL;
 		r->glsl_loop  = p->iterate && p->glsl_loop != NULL ? string_copy(p->glsl_loop) : NULL;
-		r->glsl_hash  = mm_buffers_hash_str(MM_BUFFERS_SEED, p->glsl);
-		r->loop_hash  = mm_buffers_hash_str(MM_BUFFERS_SEED, r->glsl_loop);
+		r->glsl_hash  = hash_fnv1a_str(HASH_FNV1A_BASIS, p->glsl);
+		r->loop_hash  = hash_fnv1a_str(HASH_FNV1A_BASIS, r->glsl_loop);
 		r->iterate    = p->iterate;
 		r->iterations = p->iterate ? p->iterations : 0;
 		r->shrink     = p->iterate && p->shrink;
@@ -808,7 +784,7 @@ static void mm_buffers_pipe_shaders(mm_buffers_pipe_t *p, char *vs, char *fs, i3
 
 // The pipeline of a pass: found, or made new, nothing translated or compiled yet (mm_buffers_pipe_make, on any thread)
 static mm_buffers_pipe_t *mm_buffers_pipe_get(char *glsl, u64 glsl_hash, gpu_texture_format_t format) {
-	u64 key = mm_buffers_hash_i32(glsl_hash, (i32)format);
+	u64 key = hash_fnv1a_i32(glsl_hash, (i32)format);
 	for (i32 i = 0; i < mm_buffers_npipes; ++i) {
 		if (mm_buffers_pipes[i]->key == key) {
 			mm_buffers_pipes[i]->used = mm_buffers_gen;
@@ -2487,35 +2463,6 @@ static i32    mm_buffers_test_sizes[MM_MAP_COUNT];
 static char  *mm_buffers_test_links[MM_MAP_COUNT];
 static bool   mm_buffers_test_grey[MM_MAP_COUNT];
 
-static float mm_buffers_half(uint16_t h) {
-	u32 sign = (u32)(h >> 15) << 31;
-	i32 exp  = (h >> 10) & 0x1f;
-	u32 man  = h & 0x3ff;
-	u32 bits;
-	if (exp == 0) {
-		if (man == 0) {
-			bits = sign;
-		}
-		else { // Subnormal
-			exp = 127 - 15 + 1;
-			while ((man & 0x400) == 0) {
-				man <<= 1;
-				exp--;
-			}
-			bits = sign | ((u32)exp << 23) | ((man & 0x3ff) << 13);
-		}
-	}
-	else if (exp == 31) {
-		bits = sign | 0x7f800000 | (man << 13);
-	}
-	else {
-		bits = sign | ((u32)(exp - 15 + 127) << 23) | (man << 13);
-	}
-	float f;
-	memcpy(&f, &bits, 4);
-	return f;
-}
-
 // RGBA floats, greyscale as (r, r, r, 1) as the checker reads maps
 static float *mm_buffers_read(gpu_texture_t *t, bool greyscale) {
 	i32      n     = t->width * t->height;
@@ -2526,14 +2473,14 @@ static float *mm_buffers_read(gpu_texture_t *t, bool greyscale) {
 	for (i32 i = 0; i < n; ++i) {
 		float v[4] = {0, 0, 0, 1};
 		if (t->format == GPU_TEXTURE_FORMAT_R16) {
-			v[0] = mm_buffers_half(((uint16_t *)raw)[i]);
+			v[0] = f16_to_f32(((uint16_t *)raw)[i]);
 		}
 		else if (t->format == GPU_TEXTURE_FORMAT_R32) {
 			v[0] = ((float *)raw)[i];
 		}
 		else if (t->format == GPU_TEXTURE_FORMAT_RGBA64) {
 			for (i32 c = 0; c < 4; ++c) {
-				v[c] = mm_buffers_half(((uint16_t *)raw)[i * 4 + c]);
+				v[c] = f16_to_f32(((uint16_t *)raw)[i * 4 + c]);
 			}
 		}
 		else if (t->format == GPU_TEXTURE_FORMAT_RGBA128) {

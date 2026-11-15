@@ -5,6 +5,7 @@
 // The PNGs are encoded on the main thread, the deflate state is too large for a thread stack.
 
 #include "global.h"
+#include "util/util_hash.h"
 #include <iron_folder.h>
 #include <iron_thread.h>
 
@@ -75,23 +76,14 @@ static brush_previews_pen_t brush_previews_pen_now() {
 	return p;
 }
 
-u64 brush_previews_hash(u64 h, void *data, i32 size) {
-	u8 *b = data;
-	for (i32 i = 0; i < size; ++i) {
-		h ^= b[i];
-		h *= 1099511628211ULL; // FNV-1a
-	}
-	return h;
-}
-
 static void brush_previews_make_base() {
 	brush_previews_pen  = brush_previews_pen_now();
-	u64 base            = 14695981039346656037ULL;
+	u64 base            = HASH_FNV1A_BASIS;
 	i32 version         = BRUSH_PREVIEWS_VERSION;
-	base                = brush_previews_hash(base, &version, sizeof(version));
-	base                = brush_previews_hash(base, &brush_previews_pen, sizeof(brush_previews_pen));
-	base                = brush_previews_hash(base, &util_render_material_preview_size, sizeof(util_render_material_preview_size));
-	base                = brush_previews_hash(base, &util_render_brush_wave_strip, sizeof(util_render_brush_wave_strip));
+	base                = hash_fnv1a(base, &version, sizeof(version));
+	base                = hash_fnv1a(base, &brush_previews_pen, sizeof(brush_previews_pen));
+	base                = hash_fnv1a(base, &util_render_material_preview_size, sizeof(util_render_material_preview_size));
+	base                = hash_fnv1a(base, &util_render_brush_wave_strip, sizeof(util_render_brush_wave_strip));
 	brush_previews_base = base;
 }
 
@@ -99,22 +91,22 @@ static void brush_previews_make_base() {
 static u64 brush_previews_key_of(brush_def_t *d) {
 	brush_settings_t *s = &d->s;
 	u64               h = brush_previews_base;
-#define BRUSH_PREVIEWS_HASH_F32(key) h = brush_previews_hash(h, &s->key, sizeof(f32));
+#define BRUSH_PREVIEWS_HASH_F32(key) h = hash_fnv1a(h, &s->key, sizeof(f32));
 	BRUSH_LIBRARY_SETTINGS(BRUSH_PREVIEWS_HASH_F32)
 #undef BRUSH_PREVIEWS_HASH_F32
 	i32 v[] = {s->tip, s->rotation, s->tilt_shading ? 1 : 0};
-	h       = brush_previews_hash(h, v, sizeof(v));
+	h       = hash_fnv1a(h, v, sizeof(v));
 	if (s->tip == TIP_IMAGE) {
 		if (d->tip_hash == 0) {
 			d->tip_hash   = 1;
 			size_t   size = 0;
 			uint8_t *data = d->tip_file != NULL ? iron_folder_read(d->tip_file, &size) : NULL;
 			if (data != NULL) {
-				d->tip_hash = brush_previews_hash(14695981039346656037ULL, data, (i32)size) | 1;
+				d->tip_hash = hash_fnv1a(HASH_FNV1A_BASIS, data, (i32)size) | 1;
 				free(data);
 			}
 		}
-		h = brush_previews_hash(h, &d->tip_hash, sizeof(d->tip_hash));
+		h = hash_fnv1a(h, &d->tip_hash, sizeof(d->tip_hash));
 	}
 	return h;
 }

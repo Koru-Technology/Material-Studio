@@ -1,6 +1,7 @@
 
 #include "../global.h"
 #include <stdatomic.h>
+#include "util_hash.h"
 
 // Material caches: a material's outputs rendered once into textures of the layers' size and format (base color and
 // opacity, tangent normal and the emission / subsurface flag, occlusion, roughness, metallic and height), so that paint
@@ -120,60 +121,39 @@ static bool material_cache_on(void) {
 
 // Signature
 
-static u64 material_cache_hash(u64 h, const void *data, size_t n) {
-	const u8 *p = data;
-	for (size_t i = 0; i < n; ++i) {
-		h ^= p[i];
-		h *= 1099511628211ull;
-	}
-	return h;
-}
-
-static u64 material_cache_hash_i32(u64 h, i32 v) {
-	return material_cache_hash(h, &v, sizeof(v));
-}
-
-static u64 material_cache_hash_str(u64 h, char *s) {
-	if (s == NULL) {
-		return material_cache_hash_i32(h, -1);
-	}
-	size_t n = strlen(s);
-	return material_cache_hash_i32(material_cache_hash(h, s, n), (i32)n);
-}
-
 static u64 material_cache_hash_f32s(u64 h, f32_array_t *a) {
 	if (a == NULL) {
-		return material_cache_hash_i32(h, -1);
+		return hash_fnv1a_i32(h, -1);
 	}
-	return material_cache_hash_i32(material_cache_hash(h, a->buffer, sizeof(f32) * a->length), a->length);
+	return hash_fnv1a_i32(hash_fnv1a(h, a->buffer, sizeof(f32) * a->length), a->length);
 }
 
 // What a canvas evaluates to: nodes, their values and links, the groups and materials it opens (not where nodes are)
 static u64 material_cache_hash_canvas(u64 h, ui_node_canvas_t *c, i32 depth) {
 	if (c == NULL || depth > 8) {
-		return material_cache_hash_i32(h, -1);
+		return hash_fnv1a_i32(h, -1);
 	}
-	h = material_cache_hash_i32(h, c->nodes->length);
+	h = hash_fnv1a_i32(h, c->nodes->length);
 	for (i32 i = 0; i < c->nodes->length; ++i) {
 		ui_node_t *n = c->nodes->buffer[i];
-		h            = material_cache_hash_i32(h, n->id);
-		h            = material_cache_hash_str(h, n->type);
-		h            = material_cache_hash_str(h, n->name);
-		h            = material_cache_hash_i32(h, n->inputs->length);
+		h            = hash_fnv1a_i32(h, n->id);
+		h            = hash_fnv1a_str(h, n->type);
+		h            = hash_fnv1a_str(h, n->name);
+		h            = hash_fnv1a_i32(h, n->inputs->length);
 		for (i32 j = 0; j < n->inputs->length; ++j) {
 			h = material_cache_hash_f32s(h, n->inputs->buffer[j]->default_value);
 		}
-		h = material_cache_hash_i32(h, n->outputs->length);
+		h = hash_fnv1a_i32(h, n->outputs->length);
 		for (i32 j = 0; j < n->outputs->length; ++j) {
 			h = material_cache_hash_f32s(h, n->outputs->buffer[j]->default_value);
 		}
-		h = material_cache_hash_i32(h, n->buttons->length);
+		h = hash_fnv1a_i32(h, n->buttons->length);
 		for (i32 j = 0; j < n->buttons->length; ++j) {
 			ui_node_button_t *b = n->buttons->buffer[j];
-			h                   = material_cache_hash_str(h, b->name);
+			h                   = hash_fnv1a_str(h, b->name);
 			h                   = material_cache_hash_f32s(h, b->default_value);
 			if (b->data != NULL) {
-				h = material_cache_hash_i32(material_cache_hash(h, b->data->buffer, b->data->length), b->data->length);
+				h = hash_fnv1a_i32(hash_fnv1a(h, b->data->buffer, b->data->length), b->data->length);
 			}
 		}
 		if (string_equals(n->type, "GROUP")) {
@@ -184,11 +164,11 @@ static u64 material_cache_hash_canvas(u64 h, ui_node_canvas_t *c, i32 depth) {
 			h      = material_cache_hash_canvas(h, mi >= 0 && mi < g_project->_->materials->length ? g_project->_->materials->buffer[mi]->canvas : NULL, depth + 1);
 		}
 	}
-	h = material_cache_hash_i32(h, c->links->length);
+	h = hash_fnv1a_i32(h, c->links->length);
 	for (i32 i = 0; i < c->links->length; ++i) {
 		ui_node_link_t *l = c->links->buffer[i];
 		i32             v[4] = {l->from_id, l->from_socket, l->to_id, l->to_socket};
-		h                    = material_cache_hash(h, v, sizeof(v));
+		h                    = hash_fnv1a(h, v, sizeof(v));
 	}
 	return h;
 }
@@ -196,17 +176,17 @@ static u64 material_cache_hash_canvas(u64 h, ui_node_canvas_t *c, i32 depth) {
 static u64 material_cache_signature(slot_material_t *m) {
 	u64 h = material_cache_hash_canvas(1469598103934665603ull, m->canvas, 0);
 	u8  s[3] = {m->paint_emis, m->paint_subs, m->paint_height};
-	h        = material_cache_hash(h, s, sizeof(s));
-	h        = material_cache_hash(h, &m->uv_angle, sizeof(f32));
-	h        = material_cache_hash_i32(h, g_context->layer->uv_map);
+	h        = hash_fnv1a(h, s, sizeof(s));
+	h        = hash_fnv1a(h, &m->uv_angle, sizeof(f32));
+	h        = hash_fnv1a_i32(h, g_context->layer->uv_map);
 	mesh_object_t *o = render_path_paint_target();
 	void          *p[2] = {o, o != NULL ? o->data : NULL};
-	h                   = material_cache_hash(h, p, sizeof(p));
-	h                   = material_cache_hash(h, &material_cache_mesh_gen, sizeof(u64));
+	h                   = hash_fnv1a(h, p, sizeof(p));
+	h                   = hash_fnv1a(h, &material_cache_mesh_gen, sizeof(u64));
 	i32 size[3]         = {config_get_texture_res_x(), config_get_texture_res_y(), (i32)g_context->layer->texpaint->format};
-	h                   = material_cache_hash(h, size, sizeof(size));
+	h                   = hash_fnv1a(h, size, sizeof(size));
 	for (i32 i = 0; i < g_project->_->assets->length; ++i) { // Image nodes pick images by their place in the list
-		h = material_cache_hash_str(h, g_project->_->assets->buffer[i]->file);
+		h = hash_fnv1a_str(h, g_project->_->assets->buffer[i]->file);
 	}
 	return h;
 }
