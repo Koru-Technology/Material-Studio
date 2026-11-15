@@ -428,6 +428,13 @@ int32_t app_layer_thumbnail(int32_t id, uint8_t *out, int32_t capacity, int32_t 
 	}
 	memcpy(out, pixels->buffer, bytes);
 	gpu_release_texture_pixels(t);
+#ifdef IRON_BGRA
+	for (i32 p = 0; p < bytes; p += 4) { // The preview is a render target, those read back as BGRA
+		uint8_t c  = out[p];
+		out[p]     = out[p + 2];
+		out[p + 2] = c;
+	}
+#endif
 	*w = t->width;
 	*h = t->height;
 	return bytes;
