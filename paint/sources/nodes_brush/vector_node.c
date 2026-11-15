@@ -19,9 +19,6 @@ logic_node_value_t *vector_node_get(vector_node_t *self, i32 from) {
 }
 
 gpu_texture_t *vector_node_get_as_image(vector_node_t *self, i32 from) {
-	// let x: f32 = logic_node_input_get(self.base.inputs[0]);
-	// let y: f32 = logic_node_input_get(self.base.inputs[1]);
-	// let z: f32 = logic_node_input_get(self.base.inputs[2]);
 	if (self->image != NULL) {
 		gpu_delete_texture(self->image);
 	}

@@ -511,7 +511,6 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 	r->ptex_nodes        = nodes->count;
 	ui_node_t **made     = calloc(nodes->count + 1, sizeof(ui_node_t *));
 	ui_node_t  *material = NULL;
-	i32         mat_i    = -1;
 	for (i32 i = 0; i < nodes->count; ++i) {
 		mm_json_t  *n    = nodes->items[i];
 		char       *type = mm_import_type(n);
@@ -540,7 +539,6 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 			mm_import_material_params(u, n);
 			if (material == NULL) {
 				material = u;
-				mat_i    = i;
 			}
 		}
 		made[i] = u;
@@ -607,10 +605,7 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 	}
 
 	mm_nodes_sync(canvas); // Remotes find their targets, switches and "any" sockets settle
-	i32 links = 0;
-	for (i32 i = 0; i < canvas->links->length; ++i) {
-		links++;
-	}
+	i32 links = canvas->links->length;
 	if (links < r->links) { // A switch or buffer took some
 		r->lost_links += r->links - links;
 		r->links = links;
@@ -627,7 +622,6 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 		mm_import_note("%s%s", "no material node", "");
 	}
 	free(made);
-	(void)mat_i;
 	return material != NULL;
 }
 

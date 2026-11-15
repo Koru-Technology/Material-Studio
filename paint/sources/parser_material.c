@@ -709,8 +709,6 @@ char *parser_material_store_var_name(ui_node_t *node) {
 
 char *parser_material_vec1(f32 v) {
 	return f32_to_string_with_zeros(v);
-	// return "float(" + v + ")";
-	// return v + "";
 }
 
 // Missing components repeat the first one
@@ -725,7 +723,6 @@ char *parser_material_vec3(f32_array_t *v) {
 }
 
 char *parser_material_to_vec3(char *s) {
-	// return "float3(" + s + ")";
 	return string_tmp("vec3(%s, %s, %s)", s, s, s);
 }
 
