@@ -162,7 +162,8 @@ uint32_t app_layers_props_signature(void) {
 		h = app_hash_str(h, g_project->_->materials->buffer[i]->canvas->name);
 	}
 	h = app_hash(h, (uint32_t)(uintptr_t)g_context->paint_object);
-	h = app_hash(h, g_context->material != NULL);
+	h = app_hash(h, g_context->material != NULL); // app_layer_can_new
+	h = app_hash(h, g_context->swatch != NULL);
 	return h;
 }
 
