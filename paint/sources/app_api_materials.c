@@ -400,7 +400,7 @@ int32_t app_material_duplicate(int32_t id) {
 		return -1;
 	}
 	_tab_materials_draw_slots = array_index_of(g_project->_->materials, m);
-	script_gpu_t gpu = script_gpu_begin();
+	script_gpu_t gpu          = script_gpu_begin();
 	tab_materials_draw_slots_duplicate(NULL);
 	script_gpu_end(gpu);
 	ui_dock_redraw(1);

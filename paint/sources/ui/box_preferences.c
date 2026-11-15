@@ -301,8 +301,8 @@ static char *box_preferences_current_theme_json() {
 }
 
 void box_preferences_theme_tab_new_box() {
-	box_preferences_new_preset_box(&box_preferences_new_theme, "themes", box_preferences_current_theme_json, &g_config->theme,
-	                               PREFERENCES_TAB_THEME, box_preferences_fetch_themes);
+	box_preferences_new_preset_box(&box_preferences_new_theme, "themes", box_preferences_current_theme_json, &g_config->theme, PREFERENCES_TAB_THEME,
+	                               box_preferences_fetch_themes);
 }
 
 void box_preferences_theme_tab() {

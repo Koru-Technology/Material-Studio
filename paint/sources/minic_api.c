@@ -440,16 +440,16 @@ static const char *minic_api_sig_hint(const char *name) {
 	} while (0)
 
 // The argument list of a call, minic_val_t a[] converted by the sig types (minic_api_list.h): MINIC_ARGS<n>(t0, t1, ...)
-#define MINIC_ARGS1(t0)                     MINIC_ARG_##t0(0)
-#define MINIC_ARGS2(t0, t1)                 MINIC_ARGS1(t0), MINIC_ARG_##t1(1)
-#define MINIC_ARGS3(t0, t1, t2)             MINIC_ARGS2(t0, t1), MINIC_ARG_##t2(2)
-#define MINIC_ARGS4(t0, t1, t2, t3)         MINIC_ARGS3(t0, t1, t2), MINIC_ARG_##t3(3)
-#define MINIC_ARGS5(t0, t1, t2, t3, t4)     MINIC_ARGS4(t0, t1, t2, t3), MINIC_ARG_##t4(4)
-#define MINIC_ARGS6(t0, t1, t2, t3, t4, t5) MINIC_ARGS5(t0, t1, t2, t3, t4), MINIC_ARG_##t5(5)
-#define MINIC_ARGS7(t0, t1, t2, t3, t4, t5, t6)                 MINIC_ARGS6(t0, t1, t2, t3, t4, t5), MINIC_ARG_##t6(6)
-#define MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7)             MINIC_ARGS7(t0, t1, t2, t3, t4, t5, t6), MINIC_ARG_##t7(7)
-#define MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8)         MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7), MINIC_ARG_##t8(8)
-#define MINIC_ARGS10(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9)    MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8), MINIC_ARG_##t9(9)
+#define MINIC_ARGS1(t0)                                      MINIC_ARG_##t0(0)
+#define MINIC_ARGS2(t0, t1)                                  MINIC_ARGS1(t0), MINIC_ARG_##t1(1)
+#define MINIC_ARGS3(t0, t1, t2)                              MINIC_ARGS2(t0, t1), MINIC_ARG_##t2(2)
+#define MINIC_ARGS4(t0, t1, t2, t3)                          MINIC_ARGS3(t0, t1, t2), MINIC_ARG_##t3(3)
+#define MINIC_ARGS5(t0, t1, t2, t3, t4)                      MINIC_ARGS4(t0, t1, t2, t3), MINIC_ARG_##t4(4)
+#define MINIC_ARGS6(t0, t1, t2, t3, t4, t5)                  MINIC_ARGS5(t0, t1, t2, t3, t4), MINIC_ARG_##t5(5)
+#define MINIC_ARGS7(t0, t1, t2, t3, t4, t5, t6)              MINIC_ARGS6(t0, t1, t2, t3, t4, t5), MINIC_ARG_##t6(6)
+#define MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7)          MINIC_ARGS7(t0, t1, t2, t3, t4, t5, t6), MINIC_ARG_##t7(7)
+#define MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8)      MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7), MINIC_ARG_##t8(8)
+#define MINIC_ARGS10(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8), MINIC_ARG_##t9(9)
 
 // Pass 1: one thunk per exported function
 #define MINIC_THUNK(name, r, args)                        \
