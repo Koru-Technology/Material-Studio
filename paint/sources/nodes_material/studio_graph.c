@@ -183,16 +183,6 @@ static i32 sg_output_input(ui_node_t *out, char *name) {
 	return -1;
 }
 
-static bool sg_linked(ui_node_t *to, i32 in) {
-	for (i32 i = 0; i < sg_c->links->length; ++i) {
-		ui_node_link_t *l = sg_c->links->buffer[i];
-		if (l->to_id == to->id && l->to_socket == in) {
-			return true;
-		}
-	}
-	return false;
-}
-
 // Links of a layer: pattern to cell variation, ramp, roughness and height, those to the mix, the mask to the mix
 static void sg_wire_layer(studio_graph_t *g, i32 k) {
 	ui_node_t **n    = g->layers[k].n;

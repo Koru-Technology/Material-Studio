@@ -209,7 +209,7 @@ typedef struct {
 } mm_parser_t;
 
 static void json_ws(mm_parser_t *p) {
-	while (p->s < p->end && (isspace((unsigned char)*p->s) || *p->s == ',' && false)) {
+	while (p->s < p->end && isspace((unsigned char)*p->s)) {
 		p->s++;
 	}
 }

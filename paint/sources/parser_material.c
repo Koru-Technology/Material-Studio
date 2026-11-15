@@ -818,7 +818,7 @@ gpu_texture_t *parser_material_live_texture(char *link) {
 }
 
 static char *parser_material_live_ref(i32 node_id, i32 index, i32 kind) {
-	if (parser_material_live_canvas == NULL || !parser_material_is_frag || parser_material_nodes != parser_material_live_canvas->nodes) {
+	if (parser_material_live_canvas == NULL || !parser_material_is_frag || (void *)parser_material_nodes != (void *)parser_material_live_canvas->nodes) {
 		return NULL; // Not the live canvas: inside a group, or the vertex shader
 	}
 	i32                     t       = parser_material_live_table;

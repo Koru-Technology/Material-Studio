@@ -386,18 +386,6 @@ static mm_json_t *mm_nodes_expand(mm_json_t *arr, const char *field, bool indire
 static mm_json_t *mm_nodes_param_defs(mm_json_t *data, mm_json_t *nodes, i32 depth);
 static mm_json_t *mm_nodes_builtin_model(const char *type, mm_json_t *data, mm_json_t *canvas_nodes);
 
-static mm_json_t *mm_nodes_def(const char *name, const char *type, double dflt, double first) {
-	mm_json_t *d = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(d, "name", mm_json_string(name));
-	mm_json_set(d, "type", mm_json_string(type));
-	mm_json_set(d, "default", mm_json_number(dflt));
-	if (first >= 0) {
-		mm_json_set(d, "first", mm_json_number(first));
-		mm_json_set(d, "last", mm_json_number(13));
-	}
-	return d;
-}
-
 static mm_json_t *mm_nodes_child(mm_json_t *nodes, const char *name) {
 	for (i32 i = 0; nodes != NULL && name != NULL && i < nodes->count; ++i) {
 		const char *n = mm_nodes_jstr(nodes->items[i], "name");
@@ -1142,13 +1130,6 @@ static mm_json_t *mm_nodes_state(ui_node_t *node) { // In the arena, NULL for st
 	}
 	u8_array_t *d = node->buttons->buffer[i]->data;
 	return d != NULL && d->length > 0 ? mm_json_parse((char *)d->buffer, strnlen((char *)d->buffer, d->length)) : NULL;
-}
-
-static void mm_nodes_set_state(ui_node_t *node, mm_json_t *state) {
-	i32 i = mm_nodes_button_index(node, "mm_state");
-	if (i >= 0) {
-		node->buttons->buffer[i]->data = mm_nodes_text_data(mm_json_text(state));
-	}
 }
 
 // Where the parameters of the node are: its state's layout for dynamic types, the type's otherwise. In the arena.

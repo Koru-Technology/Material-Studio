@@ -166,13 +166,16 @@ static int utf8_next(const char **s) {
 	const uint8_t *p = (const uint8_t *)*s;
 	int            c = *p++, n = 0;
 	if (c >= 0xF0) {
-		c &= 0x07, n = 3;
+		c &= 0x07;
+		n = 3;
 	}
 	else if (c >= 0xE0) {
-		c &= 0x0F, n = 2;
+		c &= 0x0F;
+		n = 2;
 	}
 	else if (c >= 0xC0) {
-		c &= 0x1F, n = 1;
+		c &= 0x1F;
+		n = 1;
 	}
 	for (; n > 0 && (*p & 0xC0) == 0x80; --n) {
 		c = (c << 6) | (*p++ & 0x3F);
