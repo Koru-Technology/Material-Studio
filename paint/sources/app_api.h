@@ -49,7 +49,19 @@ void app_set_native_chrome(bool on);
 // below them
 void app_set_overlay_top_inset(int32_t pixels);
 
-// Tool and brush
+// Tool and brush. The tools the native UI offers, values of tool_type_t
+typedef enum {
+	APP_TOOL_BRUSH    = 0,
+	APP_TOOL_ERASER   = 1,
+	APP_TOOL_FILL     = 2,
+	APP_TOOL_DECAL    = 3,
+	APP_TOOL_TEXT     = 4,
+	APP_TOOL_CLONE    = 5,
+	APP_TOOL_BLUR     = 6,
+	APP_TOOL_PARTICLE = 7,
+	APP_TOOL_PICKER   = 9,
+} app_tool_t;
+
 void app_set_tool(int32_t tool);
 void app_set_brush_radius(float value);
 void app_set_brush_opacity(float value);
@@ -58,9 +70,29 @@ void app_set_brush_hardness(float value);
 void app_set_brush_angle(float degrees);
 void app_set_symmetry(bool x, bool y, bool z);
 
-// Views and camera
+// Views and camera. Viewport modes, values of viewport_mode_t
+typedef enum {
+	APP_VIEWPORT_LIT           = 0,
+	APP_VIEWPORT_BASE_COLOR    = 1,
+	APP_VIEWPORT_NORMAL_MAP    = 2,
+	APP_VIEWPORT_OCCLUSION     = 3,
+	APP_VIEWPORT_ROUGHNESS     = 4,
+	APP_VIEWPORT_METALLIC      = 5,
+	APP_VIEWPORT_OPACITY       = 6,
+	APP_VIEWPORT_HEIGHT        = 7,
+	APP_VIEWPORT_EMISSION      = 8,
+	APP_VIEWPORT_SUBSURFACE    = 9,
+	APP_VIEWPORT_TEXCOORD      = 10,
+	APP_VIEWPORT_OBJECT_NORMAL = 11,
+	APP_VIEWPORT_WORLD_NORMAL  = 12,
+	APP_VIEWPORT_MATERIAL_ID   = 13,
+	APP_VIEWPORT_OBJECT_ID     = 14,
+	APP_VIEWPORT_MASK          = 15,
+	APP_VIEWPORT_PATH_TRACE    = 16,
+} app_viewport_mode_t;
+
 void app_cycle_view_mode(void);       // 3D, 2D alone, both side by side
-void app_set_viewport_mode(int32_t mode); // viewport_mode_t
+void app_set_viewport_mode(int32_t mode); // app_viewport_mode_t
 void app_view_face(int32_t face);     // 0 right, 1 left, 2 back, 3 front, 4 top, 5 bottom
 void app_view_orbit(float x, float y); // Turns the camera by these angles (radians), the view cube drag
 void app_set_camera_fov(float fov);    // The view keeps its framing: the camera moves to make up for it

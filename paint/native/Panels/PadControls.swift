@@ -36,16 +36,19 @@ struct PadControls: View {
 // MARK: - Menus
 
 let viewportModes: [(Int32, String)] = [
-	(0, "Lit"), (1, "Base Color"), (2, "Normal"), (3, "Occlusion"), (4, "Roughness"), (5, "Metallic"), (6, "Opacity"), (7, "Height"),
-	(8, "Emission"), (9, "Subsurface"), (10, "TexCoord"), (11, "Object Normal"), (12, "World Normal"), (13, "Material ID"),
-	(14, "Object ID"), (15, "Mask"), (16, "Path Traced"),
-]
+	(APP_VIEWPORT_LIT, "Lit"), (APP_VIEWPORT_BASE_COLOR, "Base Color"), (APP_VIEWPORT_NORMAL_MAP, "Normal"),
+	(APP_VIEWPORT_OCCLUSION, "Occlusion"), (APP_VIEWPORT_ROUGHNESS, "Roughness"), (APP_VIEWPORT_METALLIC, "Metallic"),
+	(APP_VIEWPORT_OPACITY, "Opacity"), (APP_VIEWPORT_HEIGHT, "Height"), (APP_VIEWPORT_EMISSION, "Emission"),
+	(APP_VIEWPORT_SUBSURFACE, "Subsurface"), (APP_VIEWPORT_TEXCOORD, "TexCoord"), (APP_VIEWPORT_OBJECT_NORMAL, "Object Normal"),
+	(APP_VIEWPORT_WORLD_NORMAL, "World Normal"), (APP_VIEWPORT_MATERIAL_ID, "Material ID"), (APP_VIEWPORT_OBJECT_ID, "Object ID"),
+	(APP_VIEWPORT_MASK, "Mask"), (APP_VIEWPORT_PATH_TRACE, "Path Traced"),
+].map { (Int32($0.0.rawValue), $0.1) }
 
 // Lit shows the light, path tracing its rays, the channel views a layered square
 func viewportModeSymbol(_ mode: Int32) -> String {
 	switch mode {
-	case 0: "sun.max"
-	case 16: "sparkles"
+	case Int32(APP_VIEWPORT_LIT.rawValue): "sun.max"
+	case Int32(APP_VIEWPORT_PATH_TRACE.rawValue): "sparkles"
 	default: "square.3.layers.3d.top.filled"
 	}
 }
@@ -484,10 +487,10 @@ struct ToolPropertiesView: View {
 			Section(paintTools.first { $0.id == store.tool }?.name ?? "Tool") {
 				slider("Radius", store.brushRadius, 0.01...2, radiusText) { app_set_brush_radius($0) }
 				slider("Opacity", store.brushOpacity, 0...1, percent) { app_set_brush_opacity($0) }
-				if [0, 1, 5, 7].contains(store.tool) { // Brush, eraser, clone, particle
+				if [APP_TOOL_BRUSH, APP_TOOL_ERASER, APP_TOOL_CLONE, APP_TOOL_PARTICLE].map(\.id).contains(store.tool) {
 					slider("Hardness", store.brushHardness, 0...1, percent) { app_set_brush_hardness($0) }
 				}
-				if [1, 5].contains(store.tool) { // Eraser, clone
+				if [APP_TOOL_ERASER, APP_TOOL_CLONE].map(\.id).contains(store.tool) {
 					slider("Angle", store.brushAngle, 0...360, { "\(Int($0.rounded()))°" }) { app_set_brush_angle($0) }
 				}
 			}

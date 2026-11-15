@@ -2,6 +2,18 @@
 
 #include "app_api.h"
 
+#define APP_SAME(a, b) ((i32)(a) == (i32)(b))
+_Static_assert(APP_SAME(APP_TOOL_BRUSH, TOOL_TYPE_BRUSH) && APP_SAME(APP_TOOL_ERASER, TOOL_TYPE_ERASER) && APP_SAME(APP_TOOL_FILL, TOOL_TYPE_FILL) &&
+                   APP_SAME(APP_TOOL_DECAL, TOOL_TYPE_DECAL) && APP_SAME(APP_TOOL_TEXT, TOOL_TYPE_TEXT) && APP_SAME(APP_TOOL_CLONE, TOOL_TYPE_CLONE) &&
+                   APP_SAME(APP_TOOL_BLUR, TOOL_TYPE_BLUR) && APP_SAME(APP_TOOL_PARTICLE, TOOL_TYPE_PARTICLE) && APP_SAME(APP_TOOL_PICKER, TOOL_TYPE_PICKER),
+               "app_api.h mirrors tool_type_t");
+_Static_assert(APP_SAME(APP_VIEWPORT_LIT, VIEWPORT_MODE_LIT) && APP_SAME(APP_VIEWPORT_NORMAL_MAP, VIEWPORT_MODE_NORMAL_MAP) &&
+                   APP_SAME(APP_VIEWPORT_TEXCOORD, VIEWPORT_MODE_TEXCOORD) && APP_SAME(APP_VIEWPORT_MATERIAL_ID, VIEWPORT_MODE_MATERIAL_ID) &&
+                   APP_SAME(APP_VIEWPORT_MASK, VIEWPORT_MODE_MASK) && APP_SAME(APP_VIEWPORT_PATH_TRACE + 1, VIEWPORT_MODE_PLUGIN),
+               "app_api.h mirrors viewport_mode_t");
+
+#define APP_ARRAY_LENGTH(a) ((i32)(sizeof(a) / sizeof((a)[0])))
+
 static bool     app_engine_ready     = false;
 static uint32_t app_previews_counter = 0;
 
@@ -189,7 +201,7 @@ void app_cycle_view_mode(void) {
 }
 
 void app_set_viewport_mode(int32_t mode) {
-	if (!app_ready() || mode < VIEWPORT_MODE_LIT || mode > VIEWPORT_MODE_PATH_TRACE) {
+	if (!app_ready() || mode < APP_VIEWPORT_LIT || mode > APP_VIEWPORT_PATH_TRACE) {
 		return;
 	}
 	context_set_viewport_mode(mode);
