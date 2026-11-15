@@ -1,6 +1,7 @@
 #include "iron_gpu.h"
 #include "iron_math.h"
 #include "iron_system.h"
+#include "iron_thread.h"
 #include <string.h>
 
 static gpu_buffer_t   constant_buffer;
@@ -11,6 +12,7 @@ static gpu_pipeline_t pipelines_to_destroy[128];
 static int            textures_to_destroy_count  = 0;
 static int            buffers_to_destroy_count   = 0;
 static int            pipelines_to_destroy_count = 0;
+static iron_mutex_t   to_destroy_mutex; // Resources can be released from worker threads
 
 extern int      draw_vb_index;
 uint32_t        constant_buffer_index              = 0;
@@ -40,6 +42,7 @@ uint32_t gpu_debug_draw_calls_frame = 0;
 #endif
 
 void gpu_init(int depth_buffer_bits, bool vsync) {
+	iron_mutex_init(&to_destroy_mutex);
 	gpu_init_internal(depth_buffer_bits, vsync);
 	gpu_constant_buffer_init(&constant_buffer, GPU_CONSTANT_BUFFER_SIZE * GPU_CONSTANT_BUFFER_MULTIPLE);
 	gpu_constant_buffer_lock(&constant_buffer, 0, GPU_CONSTANT_BUFFER_SIZE);
@@ -150,6 +153,7 @@ void gpu_end() {
 }
 
 void gpu_cleanup() {
+	iron_mutex_lock(&to_destroy_mutex);
 	while (textures_to_destroy_count > 0) {
 		textures_to_destroy_count--;
 		gpu_texture_destroy_internal(&textures_to_destroy[textures_to_destroy_count]);
@@ -162,6 +166,7 @@ void gpu_cleanup() {
 		pipelines_to_destroy_count--;
 		gpu_pipeline_destroy_internal(&pipelines_to_destroy[pipelines_to_destroy_count]);
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
 bool gpu_cleanup_pending() {
@@ -314,12 +319,14 @@ void gpu_create_framebuffers(int depth_buffer_bits) {
 }
 
 void gpu_texture_destroy(gpu_texture_t *texture) {
+	iron_mutex_lock(&to_destroy_mutex);
 	textures_to_destroy[textures_to_destroy_count] = *texture;
 	textures_to_destroy_count++;
 	if (textures_to_destroy_count >= 128) {
 		gpu_execute_and_wait();
 		gpu_cleanup();
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
 static struct {
@@ -367,21 +374,25 @@ void gpu_set_pipeline(gpu_pipeline_t *pipeline) {
 }
 
 void gpu_pipeline_destroy(gpu_pipeline_t *pipeline) {
+	iron_mutex_lock(&to_destroy_mutex);
 	pipelines_to_destroy[pipelines_to_destroy_count] = *pipeline;
 	pipelines_to_destroy_count++;
 	if (pipelines_to_destroy_count >= 128) {
 		gpu_execute_and_wait();
 		gpu_cleanup();
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
 void gpu_buffer_destroy(gpu_buffer_t *buffer) {
+	iron_mutex_lock(&to_destroy_mutex);
 	buffers_to_destroy[buffers_to_destroy_count] = *buffer;
 	buffers_to_destroy_count++;
 	if (buffers_to_destroy_count >= 128) {
 		gpu_execute_and_wait();
 		gpu_cleanup();
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
 uint32_t gpu_vertex_data_size(gpu_vertex_data_t data) {

@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,25 +12,30 @@ char *string_alloc(int size) {
 	return r;
 }
 
+// Frame temporary memory, reset by string_tmp_reset on the main thread every frame. Taken atomically so that worker
+// threads never get overlapping memory, a request that does not fit is a heap allocation instead.
 #define STRING_TMP_BUFFER_SIZE (4 * 1024 * 1024)
-static char  *string_tmp_buffer = NULL;
-static size_t string_tmp_pos    = 0;
+static _Alignas(16) char string_tmp_buffer[STRING_TMP_BUFFER_SIZE];
+static _Atomic size_t    string_tmp_pos = 0;
 
 char *string_tmp_alloc(int size) {
-	if (string_tmp_buffer == NULL) {
-		string_tmp_buffer = malloc(STRING_TMP_BUFFER_SIZE);
+	if (size < 0) {
+		size = 0;
 	}
-	if (string_tmp_pos + size > STRING_TMP_BUFFER_SIZE) {
-		return string_alloc(size);
-	}
-	char *r = string_tmp_buffer + string_tmp_pos;
-	string_tmp_pos += ((size_t)size + 7) & ~(size_t)7;
+	size_t aligned = ((size_t)size + 7) & ~(size_t)7;
+	size_t pos     = atomic_load(&string_tmp_pos);
+	do {
+		if (pos + aligned > STRING_TMP_BUFFER_SIZE) {
+			return string_alloc(size);
+		}
+	} while (!atomic_compare_exchange_weak(&string_tmp_pos, &pos, pos + aligned));
+	char *r = string_tmp_buffer + pos;
 	memset(r, 0, size);
 	return r;
 }
 
 void string_tmp_reset() {
-	string_tmp_pos = 0;
+	atomic_store(&string_tmp_pos, 0);
 }
 
 char *string_tmp(char *fmt, ...) {
