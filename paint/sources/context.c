@@ -206,7 +206,7 @@ bool context_use_lit() {
 }
 
 void context_select_material(i32 i) {
-	if (g_project->_->materials->length <= i) {
+	if (i < 0 || i >= g_project->_->materials->length) {
 		return;
 	}
 	context_set_material(g_project->_->materials->buffer[i]);
@@ -234,7 +234,7 @@ void context_set_material(slot_material_t *m) {
 }
 
 void context_select_brush(i32 i) {
-	if (g_project->_->brushes->length <= i) {
+	if (i < 0 || i >= g_project->_->brushes->length) {
 		return;
 	}
 	context_set_brush(g_project->_->brushes->buffer[i]);
@@ -264,14 +264,14 @@ void context_set_font(slot_font_t *f) {
 }
 
 void context_select_font(i32 i) {
-	if (g_project->_->fonts->length <= i) {
+	if (i < 0 || i >= g_project->_->fonts->length) {
 		return;
 	}
 	context_set_font(g_project->_->fonts->buffer[i]);
 }
 
 void context_select_layer(i32 i) {
-	if (g_project->_->layers->length <= i) {
+	if (i < 0 || i >= g_project->_->layers->length) {
 		return;
 	}
 	context_set_layer(g_project->_->layers->buffer[i]);
