@@ -496,7 +496,11 @@ ui_text_extract_t ui_extract_coloring(char *text, ui_coloring_t *col) {
 	bool coloring     = false;
 	int  start_from   = 0;
 	int  start_length = 0;
-	for (int i = 0; i < strlen(text); ++i) {
+	int text_length = (int)strlen(text);
+	if (text_length > (int)sizeof(res.colored) - 1) {
+		text_length = (int)sizeof(res.colored) - 1;
+	}
+	for (int i = 0; i < text_length; ++i) {
 		bool skip_first = false;
 		// Check if upcoming text should be colored
 		int length = ui_check_start(i, text, col->start->buffer, col->start->length);
@@ -602,7 +606,7 @@ void ui_draw_string(char *text, float x_offset, float y_offset, int align, bool 
 	}
 	else {
 		// Monospace fonts only for now
-		strcpy(temp, text);
+		snprintf(temp, sizeof(temp), "%s", text);
 		for (int i = 0; i < current->text_coloring->colorings->length; ++i) {
 			ui_coloring_t    *coloring = current->text_coloring->colorings->buffer[i];
 			ui_text_extract_t result   = ui_extract_coloring(temp, coloring);
@@ -610,7 +614,7 @@ void ui_draw_string(char *text, float x_offset, float y_offset, int align, bool 
 				draw_set_color(coloring->color);
 				draw_string(result.colored, current->_x + x_offset, current->_y + current->font_offset_y + y_offset);
 			}
-			strcpy(temp, result.uncolored);
+			snprintf(temp, sizeof(temp), "%s", result.uncolored);
 		}
 		if (ui_text_coloring_draw != NULL) {
 			ui_text_coloring_draw(text, temp, current->_x + x_offset, current->_y + current->font_offset_y + y_offset);
@@ -717,16 +721,6 @@ void ui_row6() {
 
 void ui_row7() {
 	ui_row(_ui_row7);
-}
-
-void ui_indent() {
-	current->_x += UI_TAB_W();
-	current->_w -= UI_TAB_W();
-}
-
-void ui_unindent() {
-	current->_x -= UI_TAB_W();
-	current->_w += UI_TAB_W();
 }
 
 void ui_end_element_of_size(float element_size) {
@@ -882,12 +876,14 @@ char *ui_extract_line(char *str, int line) {
 	return ui_extract_line_off(str, line, &off);
 }
 
-char *ui_lower_case(char *dest, char *src) {
-	int len = strlen(src);
-	assert(len < 1024);
-	for (int i = 0; i < len; ++i) {
+// Lower case copy of src into dest[UI_LOWER_CASE_MAX], cut to fit
+#define UI_LOWER_CASE_MAX 512
+static char *ui_lower_case(char *dest, char *src) {
+	int i = 0;
+	for (; src[i] != '\0' && i < UI_LOWER_CASE_MAX - 1; ++i) {
 		dest[i] = tolower(src[i]);
 	}
+	dest[i] = '\0';
 	return dest;
 }
 
@@ -1031,8 +1027,8 @@ void ui_draw_combo() {
 		if ((arrow_up || wheel_up) && current->combo_to_submit > 0) {
 			int step = 1;
 			if (current->combo_search_bar && strlen(current->text_selected) > 0) {
-				char search[512];
-				char str[512];
+				char search[UI_LOWER_CASE_MAX];
+				char str[UI_LOWER_CASE_MAX];
 				ui_lower_case(search, current->text_selected);
 				while (true) {
 					ui_lower_case(str, current->combo_selected_texts->buffer[current->combo_to_submit - step]);
@@ -1055,8 +1051,8 @@ void ui_draw_combo() {
 		else if ((arrow_down || wheel_down) && current->combo_to_submit < current->combo_selected_texts->length - 1) {
 			int step = 1;
 			if (current->combo_search_bar && strlen(current->text_selected) > 0) {
-				char search[512];
-				char str[512];
+				char search[UI_LOWER_CASE_MAX];
+				char str[UI_LOWER_CASE_MAX];
 				ui_lower_case(search, current->text_selected);
 				while (true) {
 					ui_lower_case(str, current->combo_selected_texts->buffer[current->combo_to_submit + step]);
@@ -1090,7 +1086,7 @@ void ui_draw_combo() {
 	theme->SHADOWS         = false;
 	float unroll_right     = current->_x + current->combo_selected_w * 2.0 < iron_window_width() - current->window_border_right ? 1 : -1;
 	bool  reset_position   = false;
-	char  search[512];
+	char  search[UI_LOWER_CASE_MAX];
 	search[0] = '\0';
 	if (current->combo_search_bar) {
 		if (unroll_up) {
@@ -1101,13 +1097,12 @@ void ui_draw_combo() {
 			current->combo_first  = true;
 		}
 		ui_fill(0, 0, current->_w / UI_SCALE(), UI_ELEMENT_H() / UI_SCALE(), theme->SEPARATOR_COL);
-		strcpy(search, ui_text_input(&current->combo_search, "", UI_ALIGN_LEFT, true, true));
-		ui_lower_case(search, search);
+		ui_lower_case(search, ui_text_input(&current->combo_search, "", UI_ALIGN_LEFT, true, true));
 		if (current->is_released) {
 			current->combo_first = true; // Keep combo open
 		}
 		if (current->combo_first) {
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 			ui_start_edit(ui_widget_id(&current->combo_search, UI_ID_TEXT), current->combo_search, UI_ALIGN_LEFT); // Focus search bar
 #endif
 		}
@@ -1116,7 +1111,7 @@ void ui_draw_combo() {
 
 	current->combo_selected_texts_filtered = 0;
 	for (int i = 0; i < current->combo_selected_texts->length; ++i) {
-		char str[512];
+		char str[UI_LOWER_CASE_MAX];
 		ui_lower_case(str, current->combo_selected_texts->buffer[i]);
 		if (strlen(search) > 0 && strstr(str, search) == NULL) {
 			continue; // Don't show items that don't fit the current search pattern
@@ -1520,7 +1515,7 @@ static void ui_update_text_edit(int align, bool editable) {
 			ui_deselect_text(current);
 		}
 		else if (current->key_code == KEY_CODE_ESCAPE) { // Cancel
-			strcpy(current->text_selected, current->text_original);
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", current->text_original);
 			ui_deselect_text(current);
 		}
 		else if (current->key_code == KEY_CODE_TAB && current->tab_switch_enabled && !current->is_ctrl_down) { // Next field
@@ -1640,12 +1635,12 @@ static void ui_update_text_edit(int align, bool editable) {
 	current->cursor_screen_x = cursor_x;
 	current->cursor_screen_y = current->_y;
 
-	strcpy(current->text_selected, text);
+	snprintf(current->text_selected, sizeof(current->text_selected), "%s", text);
 }
 
 void ui_set_hovered_tab_name(char *name) {
 	if (ui_input_in_rect(current->_window_x, current->_window_y, current->_window_w, current->_window_h)) {
-		strcpy(current->hovered_tab_name, name);
+		snprintf(current->hovered_tab_name, sizeof(current->hovered_tab_name), "%s", name);
 		current->hovered_tab_x = current->_window_x;
 		current->hovered_tab_y = current->_window_y;
 		current->hovered_tab_w = current->_window_w;
@@ -2356,7 +2351,7 @@ bool ui_tab(int *value, char *text, bool vertical, uint32_t color, bool align_ri
 		}
 	}
 	assert(current->tab_count < 16);
-	strcpy(current->tab_names[current->tab_count], text);
+	snprintf(current->tab_names[current->tab_count], sizeof(current->tab_names[current->tab_count]), "%s", text);
 	current->tab_colors[current->tab_count]  = color;
 	current->tab_enabled[current->tab_count] = current->enabled;
 	current->tab_count++;
@@ -2767,7 +2762,7 @@ float ui_slider(float *value, char *text, float from, float to, bool filled, flo
 		current->item_changed = false;
 	}
 
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	if (id == current->slider_id && current->input_dx != 0) { // Scroll
 #else
 	if (id == current->slider_id) { // Scroll
@@ -2889,7 +2884,7 @@ void ui_mouse_down(ui_t *ui, int button, int x, int y) {
 		ui->input_started_r = ui->input_down_r = true;
 	}
 	ui->input_started_time = iron_time();
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	ui_set_input_position(ui, x, y);
 #endif
 	ui->input_started_x = x;
@@ -2897,7 +2892,7 @@ void ui_mouse_down(ui_t *ui, int button, int x, int y) {
 }
 
 void ui_mouse_move(ui_t *ui, int x, int y, int movement_x, int movement_y) {
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	if (iron_mouse_movement_only) {
 		ui->input_dx += movement_x;
 		ui->input_dy += movement_y;
@@ -2946,7 +2941,7 @@ void ui_mouse_up(ui_t *ui, int button, int x, int y) {
 	else {
 		ui->input_down_r = false;
 	}
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	ui_set_input_position(ui, x, y);
 #endif
 	ui_deselect_text(ui);
@@ -2957,18 +2952,13 @@ void ui_mouse_wheel(ui_t *ui, float delta) {
 }
 
 void ui_pen_down(ui_t *ui, int x, int y, float pressure) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
-	return;
-#endif
-
+#ifndef IRON_IOS // The pen comes as touches on ios
 	ui_mouse_down(ui, 0, x, y);
+#endif
 }
 
 void ui_pen_up(ui_t *ui, int x, int y, float pressure) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
-	return;
-#endif
-
+#ifndef IRON_IOS
 	if (ui->input_started) {
 		ui->input_started = false;
 		ui->pen_in_use    = true;
@@ -2976,24 +2966,18 @@ void ui_pen_up(ui_t *ui, int x, int y, float pressure) {
 	}
 	ui_mouse_up(ui, 0, x, y);
 	ui->pen_in_use = true; // On pen release, additional mouse down & up events are fired at once - filter those out
+#endif
 }
 
 void ui_pen_move(ui_t *ui, int x, int y, float pressure) {
-#if defined(IRON_IOS)
+#ifdef IRON_IOS
 	// Listen to pen hover if no other input is active
-	if (pressure == 0.0) {
-		if (!ui->input_down && !ui->input_down_r) {
-			ui_set_input_position(ui, x, y);
-		}
-		return;
+	if (pressure == 0.0 && !ui->input_down && !ui->input_down_r) {
+		ui_set_input_position(ui, x, y);
 	}
-#endif
-
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
-	return;
-#endif
-
+#else
 	ui_mouse_move(ui, x, y, 0, 0);
+#endif
 }
 
 void ui_key_down(ui_t *ui, int key_code) {
@@ -3037,12 +3021,6 @@ void ui_key_down(ui_t *ui, int key_code) {
 	case KEY_CODE_SPACE:
 		ui->key_char = ' ';
 		break;
-#ifdef IRON_ANDROID // Detect right mouse button on Android..
-	case KEY_CODE_BACK:
-		if (!ui->input_down_r)
-			ui_mouse_down(ui, 1, ui->input_x, ui->input_y);
-		break;
-#endif
 	}
 }
 
@@ -3081,11 +3059,6 @@ void ui_key_up(ui_t *ui, int key_code) {
 	case KEY_CODE_A:
 		ui->is_a_down = false;
 		break;
-#ifdef IRON_ANDROID
-	case KEY_CODE_BACK:
-		ui_mouse_down(ui, 1, ui->input_x, ui->input_y);
-		break;
-#endif
 	}
 }
 
@@ -3094,7 +3067,7 @@ void ui_key_press(ui_t *ui, unsigned key_char) {
 	ui->is_key_pressed = true;
 }
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 static float ui_pinch_distance = 0.0;
 static float ui_pinch_total    = 0.0;
 static float ui_pinch_smooth   = 0.0;

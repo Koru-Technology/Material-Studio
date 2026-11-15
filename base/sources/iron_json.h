@@ -6,7 +6,6 @@
 
 void      *json_parse(char *s);
 any_map_t *json_parse_to_map(char *s);
-char      *json_escape(char *s);
 void       json_escape_to(buffer_t *sb, char *s);
 
 void      json_encode_begin();

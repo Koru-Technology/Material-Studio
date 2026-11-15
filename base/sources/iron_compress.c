@@ -27,18 +27,6 @@ buffer_t *iron_inflate(buffer_t *bytes, bool raw) {
 	return output;
 }
 
-buffer_t *iron_deflate(buffer_t *bytes, bool raw) {
-	struct sdefl sdefl;
-	memset(&sdefl, 0, sizeof(sdefl));
-	void     *deflated = malloc(sdefl_bound(bytes->length));
-	int       out_len  = raw ? sdeflate(&sdefl, deflated, bytes->buffer, bytes->length, SDEFL_LVL_MIN)
-	                         : zsdeflate(&sdefl, deflated, bytes->buffer, bytes->length, SDEFL_LVL_MIN);
-	buffer_t *output   = buffer_create(0);
-	output->buffer     = deflated;
-	output->length     = out_len;
-	return output;
-}
-
 unsigned char *iron_deflate_raw(unsigned char *data, int data_len, int *out_len, int quality) {
 	struct sdefl sdefl;
 	memset(&sdefl, 0, sizeof(sdefl));

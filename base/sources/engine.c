@@ -22,59 +22,6 @@ gpu_shader_t   *gpu_create_shader_from_source(char *source, int source_size, gpu
 void            gpu_delete_shader(gpu_shader_t *shader);
 gpu_pipeline_t *gpu_create_pipeline();
 
-#define SHADER_COMPILE_MAX_THREADS 16
-
-typedef struct {
-	shader_context_t **items;
-	int                count;
-	int                next;
-	iron_mutex_t       mutex;
-} shader_compile_jobs_t;
-
-static void shader_compile_worker(void *param) {
-	shader_compile_jobs_t *p = param;
-	while (true) {
-		iron_mutex_lock(&p->mutex);
-		int i = p->next++;
-		iron_mutex_unlock(&p->mutex);
-		if (i >= p->count) {
-			return;
-		}
-		gpu_pipeline_compile(p->items[i]->_->pipe);
-	}
-}
-
-static void shader_compile_parallel(shader_context_t **items, int count) {
-	if (count <= 0) {
-		return;
-	}
-	int threads = iron_hardware_threads();
-	if (threads > count) {
-		threads = count;
-	}
-	if (threads > SHADER_COMPILE_MAX_THREADS) {
-		threads = SHADER_COMPILE_MAX_THREADS;
-	}
-
-	shader_compile_jobs_t p = {.items = items, .count = count};
-	iron_mutex_init(&p.mutex);
-	iron_thread_t workers[SHADER_COMPILE_MAX_THREADS];
-	for (int i = 1; i < threads; ++i) {
-		iron_thread_init(&workers[i], shader_compile_worker, &p);
-	}
-	shader_compile_worker(&p);
-	for (int i = 1; i < threads; ++i) {
-		iron_thread_wait_and_destroy(&workers[i]);
-	}
-	iron_mutex_destroy(&p.mutex);
-}
-
-#ifdef WITH_D3DCOMPILER
-static void shader_compile_vertex_worker(void *shader) {
-	gpu_shader_compile(shader, true);
-}
-#endif
-
 static void shader_context_bind_constants(shader_context_t *raw);
 
 static bool               shader_batch_active   = false;
@@ -120,18 +67,6 @@ void shader_context_set_sources(shader_context_t *raw, char *vs, char *fs) {
 	}
 	pipe->vertex_shader   = gpu_create_shader_from_source(vs, 0, GPU_SHADER_TYPE_VERTEX);
 	pipe->fragment_shader = gpu_create_shader_from_source(fs, 0, GPU_SHADER_TYPE_FRAGMENT);
-}
-
-void shader_compile_batch_end(void) {
-	if (!shader_batch_active) {
-		return;
-	}
-	shader_batch_active = false;
-	shader_compile_parallel(shader_batch_items, shader_batch_count);
-	for (int i = 0; i < shader_batch_count; ++i) {
-		shader_context_bind_constants(shader_batch_items[i]);
-	}
-	shader_batch_count = 0;
 }
 
 void gpu_delete_pipeline(gpu_pipeline_t *pipeline);
@@ -503,20 +438,12 @@ shader_data_t *shader_data_create(shader_data_t *raw) {
 }
 
 char *shader_data_ext() {
-#ifdef IRON_VULKAN
-	return ".spirv";
-#elif defined(IRON_METAL)
 	return ".metal";
-#elif defined(IRON_WASM)
-	return ".wgsl";
-#else
-	return ".d3d11";
-#endif
 }
 
 shader_data_t *shader_data_parse(char *file, char *name) {
 	scene_t       *format = data_get_scene_raw(file);
-	shader_data_t *raw    = shader_data_get_raw_by_name(format->shader_datas, name);
+	shader_data_t *raw    = shader_data_get_raw_by_name((shader_data_t_array_t *)format->shader_datas, name);
 	if (raw == NULL) {
 		iron_log("Shader data '%s' not found!", name);
 		return NULL;
@@ -647,13 +574,6 @@ void shader_context_compile(shader_context_t *raw) {
 		raw->_->pipe->vertex_shader   = gpu_create_shader_from_source(raw->vertex_shader, raw->_->vertex_shader_size, GPU_SHADER_TYPE_VERTEX);
 		raw->_->pipe->fragment_shader = gpu_create_shader_from_source(raw->fragment_shader, raw->_->fragment_shader_size, GPU_SHADER_TYPE_FRAGMENT);
 
-#ifdef IRON_WASM
-		free(raw->vertex_shader);
-		raw->vertex_shader = NULL;
-		free(raw->fragment_shader);
-		raw->fragment_shader = NULL;
-#endif
-
 		if (raw->_->pipe->vertex_shader == NULL || raw->_->pipe->fragment_shader == NULL) {
 			return;
 		}
@@ -675,15 +595,6 @@ void shader_context_compile(shader_context_t *raw) {
 		return;
 	}
 
-#ifdef WITH_D3DCOMPILER
-	// No batch - compile the two stages side by side
-	if (raw->shader_from_source) {
-		iron_thread_t vs_thread;
-		iron_thread_init(&vs_thread, shader_compile_vertex_worker, raw->_->pipe->vertex_shader);
-		gpu_shader_compile(raw->_->pipe->fragment_shader, false);
-		iron_thread_wait_and_destroy(&vs_thread);
-	}
-#endif
 
 	shader_context_finish_compile(raw);
 }
@@ -699,36 +610,18 @@ i32 shader_context_type_size(char *t) {
 		return 16;
 	if (strcmp(t, "float4x4") == 0)
 		return 64;
-#ifdef IRON_DIRECT3D12
-	if (strcmp(t, "float3") == 0)
-		return 12;
-	if (strcmp(t, "float3x3") == 0)
-		return 44; // 16 + 16 + 12
-#else
 	if (strcmp(t, "float3") == 0)
 		return 16;
 	if (strcmp(t, "float3x3") == 0)
 		return 48; // std140 array elements are padded to 16
-#endif
 	return 0;
 }
 
 i32 shader_context_type_pad(i32 offset, i32 size) {
-#ifdef IRON_DIRECT3D12
-	i32 r = offset % 16;
-	if (r == 0) {
-		return 0;
-	}
-	if (size >= 16 || r + size > 16) {
-		return 16 - r;
-	}
-	return 0;
-#else
 	if (size > 16) {
 		size = 16;
 	}
 	return (size - (offset % size)) % size;
-#endif
 }
 
 void shader_context_finish_compile(shader_context_t *raw) {
@@ -881,7 +774,7 @@ mesh_data_t *mesh_data_create(mesh_data_t *raw) {
 	if (raw->scale_tex == 0.0) {
 		raw->scale_tex = 1.0;
 	}
-	raw->_->structure = mesh_data_get_vertex_struct(raw->vertex_arrays);
+	raw->_->structure = mesh_data_get_vertex_struct((any_array_t *)raw->vertex_arrays);
 	mesh_data_build(raw);
 	return raw;
 }
@@ -958,7 +851,7 @@ void mesh_data_build(mesh_data_t *raw) {
 	vertex_array_t *positions = mesh_data_get_vertex_array(raw, "pos");
 	i32             size      = mesh_data_get_vertex_size(positions->data);
 	raw->_->vertex_buffer     = gpu_create_vertex_buffer(positions->values->length / size, &raw->_->structure);
-	mesh_data_build_vertices(raw->_->vertex_buffer, raw->vertex_arrays);
+	mesh_data_build_vertices(raw->_->vertex_buffer, (any_array_t *)raw->vertex_arrays);
 	raw->_->index_buffer = gpu_create_index_buffer(raw->index_array->length);
 	mesh_data_build_indices(raw->_->index_buffer, raw->index_array);
 }
@@ -1117,9 +1010,9 @@ camera_object_t *camera_object_create(camera_data_t *data) {
 	raw->v  = mat4_identity();
 	raw->vp = mat4_identity();
 
-	raw->frustum_planes = any_array_create(0);
+	raw->frustum_planes = (frustum_plane_array_t *)any_array_create(0);
 	for (i32 i = 0; i < 6; ++i) {
-		any_array_push(raw->frustum_planes, frustum_plane_create());
+		any_array_push((any_array_t *)raw->frustum_planes, frustum_plane_create());
 	}
 
 	any_array_push(scene_cameras, raw);
@@ -1857,23 +1750,17 @@ any_map_t *data_cached_blobs      = NULL;
 any_map_t *data_cached_textures   = NULL;
 any_map_t *data_cached_videos     = NULL;
 any_map_t *data_cached_fonts      = NULL;
-any_map_t *data_cached_sounds     = NULL;
 i32        data_assets_loaded     = 0;
 
 buffer_t      *iron_load_blob(char *file);
 gpu_texture_t *iron_load_texture(char *file);
 void           gpu_delete_texture(gpu_texture_t *texture);
-void          *iron_load_sound(char *file);
 #ifdef WITH_EMBED
 bool embed_owns(uint8_t *buffer);
 #endif
 
 char *data_path(void) {
-#ifdef IRON_ANDROID
-	return "data" PATH_SEP;
-#else
 	return "." PATH_SEP "data" PATH_SEP;
-#endif
 }
 
 bool data_is_abs(char *file) {
@@ -1895,13 +1782,14 @@ mesh_data_t *data_get_mesh(char *file, char *name) {
 	if (data_cached_meshes == NULL) {
 		data_cached_meshes = any_map_create();
 	}
-	char        *handle = string("%s%s", file, name);
+	char        *handle = string_tmp("%s%s", file, name); // No allocation on a cache hit
 	mesh_data_t *cached = (mesh_data_t *)any_map_get(data_cached_meshes, handle);
 	if (cached != NULL) {
 		return cached;
 	}
 	mesh_data_t *b = mesh_data_parse(file, name);
-	any_map_set(data_cached_meshes, string_copy(handle), b);
+	handle         = string_copy(handle);
+	any_map_set(data_cached_meshes, handle, b);
 	b->_->handle = handle;
 	return b;
 }
@@ -1910,7 +1798,7 @@ camera_data_t *data_get_camera(char *file, char *name) {
 	if (data_cached_cameras == NULL) {
 		data_cached_cameras = any_map_create();
 	}
-	char          *handle = string("%s%s", file, name);
+	char          *handle = string_tmp("%s%s", file, name);
 	camera_data_t *cached = (camera_data_t *)any_map_get(data_cached_cameras, handle);
 	if (cached != NULL) {
 		return cached;
@@ -1924,7 +1812,7 @@ world_data_t *data_get_world(char *file, char *name) {
 	if (data_cached_worlds == NULL) {
 		data_cached_worlds = any_map_create();
 	}
-	char         *handle = string("%s%s", file, name);
+	char         *handle = string_tmp("%s%s", file, name);
 	world_data_t *cached = (world_data_t *)any_map_get(data_cached_worlds, handle);
 	if (cached != NULL) {
 		return cached;
@@ -2032,34 +1920,6 @@ draw_font_t *data_get_font(char *file) {
 	any_map_set(data_cached_fonts, string_copy(file), b);
 	data_assets_loaded++;
 	return b;
-}
-
-sound_t *data_get_sound(char *file) {
-	if (data_cached_sounds == NULL) {
-		data_cached_sounds = any_map_create();
-	}
-	sound_t *cached = (sound_t *)any_map_get(data_cached_sounds, file);
-	if (cached != NULL) {
-		return cached;
-	}
-	sound_t *b = iron_load_sound(data_resolve_path(file));
-	any_map_set(data_cached_sounds, string_copy(file), b);
-	data_assets_loaded++;
-	return b;
-}
-
-void data_delete_sound(char *handle) {
-	if (data_cached_sounds == NULL) {
-		return;
-	}
-	sound_t *sound = (sound_t *)any_map_get(data_cached_sounds, handle);
-	if (sound == NULL) {
-		return;
-	}
-#ifdef IRON_AUDIO
-	iron_a1_sound_destroy(sound);
-#endif
-	map_delete(data_cached_sounds, handle);
 }
 
 void data_delete_mesh(char *handle) {

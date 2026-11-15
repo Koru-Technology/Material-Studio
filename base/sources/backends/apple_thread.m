@@ -1,10 +1,35 @@
-#include "posix_thread.c"
 #include <Foundation/Foundation.h>
 #include <iron_thread.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
-#include <wchar.h>
+
+void iron_mutex_init(iron_mutex_t *mutex) {
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&mutex->impl.mutex, &attr);
+}
+
+void iron_mutex_destroy(iron_mutex_t *mutex) {
+	pthread_mutex_destroy(&mutex->impl.mutex);
+}
+
+bool iron_mutex_try_to_lock(iron_mutex_t *mutex) {
+	return pthread_mutex_trylock(&mutex->impl.mutex) == 0;
+}
+
+void iron_mutex_lock(iron_mutex_t *mutex) {
+	pthread_mutex_lock(&mutex->impl.mutex);
+}
+
+void iron_mutex_unlock(iron_mutex_t *mutex) {
+	pthread_mutex_unlock(&mutex->impl.mutex);
+}
+
+void iron_thread_set_name(const char *name) {
+	pthread_setname_np(name);
+}
 
 static void *ThreadProc(void *arg) {
 	@autoreleasepool {

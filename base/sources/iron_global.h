@@ -3,24 +3,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#if defined(_WIN32)
-#define IRON_WINDOWS
-#elif defined(__APPLE__)
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #define IRON_IOS
 #else
 #define IRON_MACOS
 #endif
-#define IRON_POSIX
-#elif defined(__linux__)
-#if !defined(IRON_ANDROID)
-#define IRON_LINUX
-#endif
-#define IRON_POSIX
-#endif
 
 int kickstart(int argc, char **argv);
+
+// Element count of a fixed size array (not a pointer)
+#ifndef ARRAY_LENGTH
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
+#endif
 
 typedef float    f32;
 typedef double   f64;

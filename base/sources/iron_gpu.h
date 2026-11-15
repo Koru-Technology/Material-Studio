@@ -7,41 +7,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#if defined(IRON_WINDOWS)
-#include "backends/direct3d12_gpu.h"
-#elif defined(IRON_MACOS) || defined(IRON_IOS)
 #include "backends/metal_gpu.h"
-#elif defined(IRON_WASM)
-#include "backends/webgpu_gpu.h"
-#else
-#include "backends/vulkan_gpu.h"
-#endif
 
 #define GPU_MAX_VERTEX_ELEMENTS      16
-#ifdef IRON_METAL
 #define GPU_MAX_TEXTURES 32 // Argument buffers take many, more layers fit a viewport pass (3 textures a layer)
-#else
-#define GPU_MAX_TEXTURES 16
-#endif
 #define GPU_CONSTANT_BUFFER_SIZE     512
-#ifdef IRON_METAL
 #define GPU_CONSTANT_BUFFER_MULTIPLE 8192 // Draws per two frames before a cpu-gpu wait, 4 MB of constants, painting issues many
-#else
-#define GPU_CONSTANT_BUFFER_MULTIPLE 2048
-#endif
-#ifdef IRON_VULKAN
-#define GPU_FRAMEBUFFER_COUNT 16
-#elif defined(IRON_WASM)
-#define GPU_FRAMEBUFFER_COUNT 1
-#else
 #define GPU_FRAMEBUFFER_COUNT 3
-#endif
 
-#if defined(IRON_VULKAN) || defined(IRON_METAL) || defined(IRON_DIRECT3D12)
 #define GPU_FRAMES_IN_FLIGHT 2
-#else
-#define GPU_FRAMES_IN_FLIGHT 1
-#endif
 
 typedef enum {
 	GPU_CLEAR_NONE             = 0,
@@ -200,16 +174,11 @@ extern uint32_t gpu_debug_draw_calls_frame;
 void gpu_resize(int width, int height);
 void gpu_resize_internal(int width, int height);
 void gpu_set_int(int location, int value);
-void gpu_set_int2(int location, int value1, int value2);
-void gpu_set_int3(int location, int value1, int value2, int value3);
-void gpu_set_int4(int location, int value1, int value2, int value3, int value4);
-void gpu_set_ints(int location, int *values, int count);
 void gpu_set_float(int location, float value);
 void gpu_set_float2(int location, float value1, float value2);
 void gpu_set_float3(int location, float value1, float value2, float value3);
 void gpu_set_float4(int location, float value1, float value2, float value3, float value4);
 void gpu_set_floats(int location, f32_array_t *values);
-void gpu_set_bool(int location, bool value);
 void gpu_set_mat3(int location, mat3_t value);
 void gpu_set_mat4(int location, mat4_t value);
 
@@ -253,7 +222,6 @@ void  gpu_use_linear_sampling(bool b);
 char *gpu_device_name();
 bool  gpu_bc7_supported(int width, int height, gpu_texture_format_t format);
 
-#ifdef IRON_METAL
 // Ends the render pass in progress so that other passes can render (between gpu_begin and gpu_draw: a texture made on
 // demand), gpu_resume continues it: targets kept, pipeline, textures, constants, buffers, viewport and scissor restored
 void gpu_suspend(void);
@@ -261,7 +229,6 @@ void gpu_resume(void);
 void gpu_suspend_internal(void);
 void gpu_resume_internal(void);
 bool gpu_float32_filtering_supported(void); // Linear filtering of R32F / RGBA32F textures (older ios gpus can not)
-#endif
 
 #ifdef WITH_BC7
 void *gpu_bc7_compress(void *data, int width, int height);

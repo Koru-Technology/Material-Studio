@@ -43,10 +43,6 @@ tween_anim_t *tween_timer(f32 delay, void (*done)(void *data), void *data) {
 	return tween_to(a);
 }
 
-void tween_stop(tween_anim_t *anim) {
-	array_remove(_tween_anims, anim);
-}
-
 void tween_reset(void) {
 	_tween_anims = any_array_create(0);
 }

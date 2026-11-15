@@ -8,11 +8,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
 #include <dirent.h>
-#endif
 
 #ifdef WITH_NFD
 #include <nfd.h>
@@ -48,34 +44,6 @@ double iron_folder_mtime(const char *path) {
 
 iron_dir_entry_t *iron_folder_list(const char *path, int *count) {
 	*count = 0;
-#ifdef _WIN32
-	char pattern[MAX_PATH];
-	snprintf(pattern, sizeof(pattern), "%s\\*", path);
-	WIN32_FIND_DATAA fd;
-	HANDLE           h = FindFirstFileA(pattern, &fd);
-	if (h == INVALID_HANDLE_VALUE) {
-		return NULL;
-	}
-	int               cap     = 64;
-	iron_dir_entry_t *entries = malloc(sizeof(iron_dir_entry_t) * cap);
-	do {
-		if (fd.cFileName[0] == '.') {
-			continue;
-		}
-		if (*count == cap) {
-			cap *= 2;
-			entries = realloc(entries, sizeof(iron_dir_entry_t) * cap);
-		}
-		char *full                 = iron_folder_join(path, fd.cFileName);
-		entries[*count].name   = strdup(fd.cFileName);
-		entries[*count].is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-		entries[*count].mtime  = iron_folder_mtime(full);
-		free(full);
-		(*count)++;
-	} while (FindNextFileA(h, &fd));
-	FindClose(h);
-	return entries;
-#else
 	DIR *dir = opendir(path);
 	if (dir == NULL) {
 		return NULL;
@@ -102,7 +70,6 @@ iron_dir_entry_t *iron_folder_list(const char *path, int *count) {
 	}
 	closedir(dir);
 	return entries;
-#endif
 }
 
 uint8_t *iron_folder_read(const char *path, size_t *size) {

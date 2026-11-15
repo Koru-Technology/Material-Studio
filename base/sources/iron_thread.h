@@ -2,15 +2,7 @@
 
 #include "iron_global.h"
 #include <stdbool.h>
-#if defined(IRON_WINDOWS)
-#include "backends/windows_thread.h"
-#elif defined(IRON_MACOS) || defined(IRON_IOS)
 #include "backends/apple_thread.h"
-#elif defined(IRON_WASM)
-#include "backends/wasm_thread.h"
-#else
-#include "backends/posix_thread.h"
-#endif
 
 typedef struct iron_thread {
 	iron_thread_impl_t impl;

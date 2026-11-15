@@ -8,91 +8,36 @@
 #include "iron_string.h"
 #include "iron_system.h"
 #include "iron_dir.h"
-#ifdef IRON_ANDROID
-#include "backends/android_system.h"
-#endif
 #ifdef IRON_IOS
 #include "backends/ios_file_dialog.h"
 #endif
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef IRON_WINDOWS
-#include "backends/windows_mini.h"
-#include <malloc.h>
-#include <memory.h>
-#elif defined(IRON_WASM)
-#else
 #include <sys/stat.h>
+#include <unistd.h>
+#ifdef IRON_MACOS
+#include <copyfile.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #endif
 
-i32         iron_sys_command(char *cmd);
-extern char temp_string[1024 * 128];
-#ifdef IRON_WINDOWS
-extern wchar_t temp_wstring[1024 * 32];
-#endif
 
 static char *fileslocation = NULL;
-#ifdef IRON_WINDOWS
-static wchar_t wfilepath[1001];
-#endif
-#if defined(IRON_MACOS) || defined(IRON_IOS)
-const char *iron_get_resource_path();
-#endif
+const char  *iron_get_resource_path();
 
 void iron_internal_set_files_location(char *dir) {
 	fileslocation = dir;
 }
 
 char *iron_internal_files_location(void) {
-#ifdef IRON_MACOS
-	static char path[1024];
-	strcpy(path, iron_get_resource_path());
-	strcat(path, "/");
-	strcat(path, IRON_OUTDIR);
-	strcat(path, "/");
+	static char path[PATH_MAX];
+	snprintf(path, sizeof(path), "%s/%s/", iron_get_resource_path(), IRON_OUTDIR);
 	return path;
-#elif defined(IRON_IOS)
-	static char path[1024];
-	strcpy(path, iron_get_resource_path());
-	strcat(path, "/");
-	strcat(path, IRON_OUTDIR);
-	strcat(path, "/");
-	return path;
-#elif defined(IRON_WASM)
-	return "";
-#else
-	return fileslocation;
-#endif
 }
 
-#ifdef IRON_WINDOWS
-static size_t iron_libc_file_reader_read(iron_file_reader_t *reader, void *data, size_t size) {
-	DWORD readBytes = 0;
-	if (ReadFile(reader->data, data, (DWORD)size, &readBytes, NULL)) {
-		return (size_t)readBytes;
-	}
-	else {
-		return 0;
-	}
-}
-
-static bool iron_libc_file_reader_seek(iron_file_reader_t *reader, size_t pos) {
-	// TODO: make this 64-bit compliant
-	SetFilePointer(reader->data, (LONG)pos, NULL, FILE_BEGIN);
-	return true;
-}
-
-static bool iron_libc_file_reader_close(iron_file_reader_t *reader) {
-	CloseHandle(reader->data);
-	return true;
-}
-
-static size_t iron_libc_file_reader_pos(iron_file_reader_t *reader) {
-	// TODO: make this 64-bit compliant
-	return (size_t)SetFilePointer(reader->data, 0, NULL, FILE_CURRENT);
-}
-#else
 static size_t iron_libc_file_reader_read(iron_file_reader_t *reader, void *data, size_t size) {
 	return fread(data, 1, size, (FILE *)reader->data);
 }
@@ -113,96 +58,36 @@ static bool iron_libc_file_reader_close(iron_file_reader_t *reader) {
 static size_t iron_libc_file_reader_pos(iron_file_reader_t *reader) {
 	return ftell((FILE *)reader->data);
 }
-#endif
 
 bool iron_internal_file_reader_open(iron_file_reader_t *reader, const char *filename, int type) {
-	char filepath[1001];
-#ifdef IRON_IOS
-	strcpy(filepath, type == IRON_FILE_TYPE_SAVE ? iron_internal_save_path() : iron_get_resource_path());
-	if (type != IRON_FILE_TYPE_SAVE) {
-		strcat(filepath, "/");
-		strcat(filepath, IRON_OUTDIR);
-		strcat(filepath, "/");
-	}
-
-	strcat(filepath, filename);
-#endif
-#ifdef IRON_MACOS
-	strcpy(filepath, type == IRON_FILE_TYPE_SAVE ? iron_internal_save_path() : iron_get_resource_path());
-	if (type != IRON_FILE_TYPE_SAVE) {
-		strcat(filepath, "/");
-		strcat(filepath, IRON_OUTDIR);
-		strcat(filepath, "/");
-	}
-	strcat(filepath, filename);
-#endif
-#ifdef IRON_WINDOWS
-	if (type == IRON_FILE_TYPE_SAVE) {
-		strcpy(filepath, iron_internal_save_path());
-		strcat(filepath, filename);
-	}
-	else {
-		strcpy(filepath, filename);
-	}
-	size_t filepathlength = strlen(filepath);
-	for (size_t i = 0; i < filepathlength; ++i)
-		if (filepath[i] == '/')
-			filepath[i] = '\\';
-#endif
-#if defined(IRON_LINUX) || defined(IRON_ANDROID)
-	if (type == IRON_FILE_TYPE_SAVE) {
-		strcpy(filepath, iron_internal_save_path());
-		strcat(filepath, filename);
-	}
-	else {
-		strcpy(filepath, filename);
-	}
-#endif
-#ifdef IRON_WASM
-	strcpy(filepath, filename);
-#endif
-
-#ifdef IRON_WINDOWS
-	// Drive letter or network
-	bool is_abs = (filename[1] == ':' && filename[2] == '\\') || (filename[0] == '\\' && filename[1] == '\\');
-#else
-	bool is_abs = filename[0] == '/';
-#endif
-
-#ifdef IRON_WASM
-	is_abs = is_abs || (filename[0] == '.' && filename[1] == '/');
-#endif
-
-	if (is_abs) {
-		strcpy(filepath, filename);
+	// Absolute, else relative to the files location, the save folder or the bundled data
+	char filepath[PATH_MAX];
+	int  length;
+	if (filename[0] == '/') {
+		length = snprintf(filepath, sizeof(filepath), "%s", filename);
 	}
 	else if (fileslocation != NULL && type != IRON_FILE_TYPE_SAVE) {
-		strcpy(filepath, fileslocation);
-		strcat(filepath, "/");
-		strcat(filepath, filename);
+		length = snprintf(filepath, sizeof(filepath), "%s/%s", fileslocation, filename);
 	}
-
-#ifdef IRON_WINDOWS
-	MultiByteToWideChar(CP_UTF8, 0, filepath, -1, wfilepath, 1000);
-	reader->data = CreateFileW(wfilepath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (reader->data == INVALID_HANDLE_VALUE) {
+	else if (type == IRON_FILE_TYPE_SAVE) {
+		length = snprintf(filepath, sizeof(filepath), "%s%s", iron_internal_save_path(), filename);
+	}
+	else {
+		length = snprintf(filepath, sizeof(filepath), "%s/%s/%s", iron_get_resource_path(), IRON_OUTDIR, filename);
+	}
+	if (length < 0 || length >= (int)sizeof(filepath)) {
 		return false;
 	}
-#else
+
 	reader->data = fopen(filepath, "rb");
 	if (reader->data == NULL) {
 		return false;
 	}
-#endif
 
-#ifdef IRON_WINDOWS
-	// TODO: make this 64-bit compliant
-	reader->size = (size_t)GetFileSize(reader->data, NULL);
-#else
 	fseek((FILE *)reader->data, 0, SEEK_END);
-	reader->size = ftell((FILE *)reader->data);
+	long size    = ftell((FILE *)reader->data);
+	reader->size = size > 0 ? (size_t)size : 0;
 	fseek((FILE *)reader->data, 0, SEEK_SET);
-#endif
 
 	reader->read  = iron_libc_file_reader_read;
 	reader->seek  = iron_libc_file_reader_seek;
@@ -212,12 +97,10 @@ bool iron_internal_file_reader_open(iron_file_reader_t *reader, const char *file
 	return true;
 }
 
-#if !defined(IRON_ANDROID)
 bool iron_file_reader_open(iron_file_reader_t *reader, const char *filename, int type) {
 	memset(reader, 0, sizeof(*reader));
 	return iron_internal_file_reader_open(reader, filename, type);
 }
-#endif
 
 size_t iron_file_reader_read(iron_file_reader_t *reader, void *data, size_t size) {
 	return reader->read(reader, data, size);
@@ -239,56 +122,18 @@ size_t iron_file_reader_size(iron_file_reader_t *reader) {
 	return reader->size;
 }
 
-float iron_read_f32le(uint8_t *data) {
-	return *(float *)data;
-}
-
-uint64_t iron_read_u64le(uint8_t *data) {
-	return *(uint64_t *)data;
-}
-
-int64_t iron_read_s64le(uint8_t *data) {
-	return *(int64_t *)data;
-}
-
-uint32_t iron_read_u32le(uint8_t *data) {
-	return *(uint32_t *)data;
-}
-
 int32_t iron_read_s32le(uint8_t *data) {
 	return *(int32_t *)data;
-}
-
-uint16_t iron_read_u16le(uint8_t *data) {
-	return *(uint16_t *)data;
-}
-
-int16_t iron_read_s16le(uint8_t *data) {
-	return *(int16_t *)data;
-}
-
-uint8_t iron_read_u8(uint8_t *data) {
-	return *data;
-}
-
-int8_t iron_read_s8(uint8_t *data) {
-	return *(int8_t *)data;
 }
 
 bool iron_file_writer_open(iron_file_writer_t *writer, const char *filepath) {
 	writer->file = NULL;
 
-	char path[1001];
-	strcpy(path, iron_internal_save_path());
-	strcat(path, filepath);
-
-#ifdef IRON_WINDOWS
-	wchar_t wpath[MAX_PATH];
-	MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH);
-	writer->file = CreateFileW(wpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-#else
-	writer->file = fopen(path, "wb");
-#endif
+	char path[PATH_MAX];
+	int  length = snprintf(path, sizeof(path), "%s%s", iron_internal_save_path(), filepath);
+	if (length > 0 && length < (int)sizeof(path)) {
+		writer->file = fopen(path, "wb");
+	}
 	if (writer->file == NULL) {
 		iron_log("Could not open file %s.", filepath);
 		return false;
@@ -298,27 +143,25 @@ bool iron_file_writer_open(iron_file_writer_t *writer, const char *filepath) {
 
 void iron_file_writer_close(iron_file_writer_t *writer) {
 	if (writer->file != NULL) {
-#ifdef IRON_WINDOWS
-		CloseHandle(writer->file);
-#else
 		fclose((FILE *)writer->file);
-#endif
 		writer->file = NULL;
 	}
 }
 
 void iron_file_writer_write(iron_file_writer_t *writer, void *data, int size) {
-#ifdef IRON_WINDOWS
-	DWORD written = 0;
-	WriteFile(writer->file, data, (DWORD)size, &written, NULL);
-#else
 	fwrite(data, 1, size, (FILE *)writer->file);
-#endif
 }
 
+// Names separated by \n, valid until the next call
 char *iron_read_directory(char *path) {
-	char *files = temp_string;
-	files[0]    = 0;
+	static char  *files    = NULL;
+	static size_t capacity = 0;
+	size_t        length   = 0;
+	if (files == NULL) {
+		capacity = 4096;
+		files    = malloc(capacity);
+	}
+	files[0] = '\0';
 
 	directory dir = open_dir(path);
 	if (dir.handle == NULL) {
@@ -330,58 +173,43 @@ char *iron_read_directory(char *path) {
 		if (!f.valid) {
 			break;
 		}
-
-#ifdef IRON_WINDOWS
-		char file_path[512];
-		strcpy(file_path, path);
-		strcat(file_path, "\\");
-		strcat(file_path, f.name);
-		MultiByteToWideChar(CP_UTF8, 0, file_path, -1, temp_wstring, 1024);
-		if (FILE_ATTRIBUTE_HIDDEN & GetFileAttributesW(temp_wstring)) {
-			continue; // Skip hidden files
+		size_t name_length = strlen(f.name);
+		if (length + name_length + 2 > capacity) {
+			while (length + name_length + 2 > capacity) {
+				capacity *= 2;
+			}
+			files = realloc(files, capacity);
 		}
-#endif
-
-		if (files[0] != '\0') {
-			strcat(files, "\n");
+		if (length > 0) {
+			files[length++] = '\n';
 		}
-		strcat(files, f.name);
+		memcpy(files + length, f.name, name_length + 1);
+		length += name_length;
 	}
 	close_dir(&dir);
 	return files;
 }
 
+// With the missing parent folders, as mkdir -p
 void iron_create_directory(char *path) {
-#ifdef IRON_IOS
-	IOSCreateDirectory(path);
-#elif defined(IRON_WINDOWS)
-	char cmd[1024];
-	strcpy(cmd, "mkdir \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
-#elif defined(IRON_WASM)
-	(void)path;
-#else
-	char cmd[1024];
-	strcpy(cmd, "mkdir -p \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
-#endif
+	char dir[PATH_MAX];
+	int  length = snprintf(dir, sizeof(dir), "%s", path);
+	if (length <= 0 || length >= (int)sizeof(dir)) {
+		return;
+	}
+	for (char *p = dir + 1; *p != '\0'; ++p) {
+		if (*p == '/') {
+			*p = '\0';
+			mkdir(dir, 0777);
+			*p = '/';
+		}
+	}
+	mkdir(dir, 0777);
 }
 
 bool iron_is_directory(char *path) {
-#ifdef IRON_WINDOWS
-	MultiByteToWideChar(CP_UTF8, 0, path, -1, temp_wstring, 1024);
-	DWORD attribs = GetFileAttributesW(temp_wstring);
-	return attribs != INVALID_FILE_ATTRIBUTES && (attribs & FILE_ATTRIBUTE_DIRECTORY);
-#elif defined(IRON_WASM)
-	return false;
-#else
 	struct stat st;
 	return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
-#endif
 }
 
 bool iron_file_exists(char *path) {
@@ -393,27 +221,11 @@ bool iron_file_exists(char *path) {
 	return false;
 }
 
-#ifdef IRON_WASM
-__attribute__((import_module("imports"), import_name("js_delete_file"))) void js_delete_file(const char *path);
-#endif
-
 void iron_delete_file(char *path) {
 #ifdef IRON_IOS
 	IOSDeleteFile(path);
-#elif defined(IRON_WASM)
-	js_delete_file(path);
-#elif defined(IRON_WINDOWS)
-	char cmd[1024];
-	strcpy(cmd, "del /f \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
 #else
-	char cmd[1024];
-	strcpy(cmd, "rm \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
+	unlink(path);
 #endif
 }
 
@@ -438,87 +250,48 @@ void iron_file_save_bytes(char *path, buffer_t *bytes, u64 length) {
 
 typedef struct _callback_data {
 	int32_t size;
-	char    url[512];
+	char   *url;
 	void (*func)(char *, buffer_t *);
 } _callback_data_t;
 
-void _https_callback(int status, const char *body, void *callback_data) {
+static void _https_callback(int status, const char *body, size_t length, void *callback_data) {
 	_callback_data_t *cbd    = (_callback_data_t *)callback_data;
 	buffer_t         *buffer = NULL;
 	if (body != NULL && status < 400) {
-		buffer         = malloc(sizeof(buffer_t));
-		buffer->length = cbd->size > 0 ? cbd->size : strlen(body);
-		buffer->buffer = malloc(buffer->length);
-		memcpy(buffer->buffer, body, buffer->length);
+		if (cbd->size > 0 && (size_t)cbd->size < length) {
+			length = cbd->size;
+		}
+		buffer           = malloc(sizeof(buffer_t));
+		buffer->length   = (u32)length;
+		buffer->capacity = (u32)length;
+		buffer->buffer   = malloc(length > 0 ? length : 1);
+		memcpy(buffer->buffer, body, length);
 	}
 	cbd->func(cbd->url, buffer);
+	free(cbd->url);
 	free(cbd);
 }
 
 void iron_file_download(char *url, void (*callback)(char *, buffer_t *), i32 size, char *dst_path) {
 	_callback_data_t *cbd = malloc(sizeof(_callback_data_t));
 	cbd->size             = size;
-	strcpy(cbd->url, url);
-	cbd->func = callback;
+	cbd->url              = strdup(url);
+	cbd->func             = callback;
 
-	char url_base[512];
-	char url_path[512];
-	int  i = 0;
-	for (; i < strlen(url) - 8; ++i) {
-		if (url[i + 8] == '/') {
-			break;
-		}
-		url_base[i] = url[i + 8]; // Strip https://
-	}
-	url_base[i] = 0;
-	int j       = 0;
-	if (strlen(url_base) < strlen(url) - 8) {
-		++i; // Skip /
-	}
-	for (; j < strlen(url) - 8 - i; ++j) {
-		if (url[i + 8 + j] == 0) {
-			break;
-		}
-		url_path[j] = url[i + 8 + j];
-	}
-	url_path[j] = 0;
-
-	iron_net_request(url_base, url_path, NULL, 443, IRON_HTTPS_GET, NULL, &_https_callback, cbd, dst_path);
+	// https://host/path -> host, path
+	char *host = strncmp(url, "https://", 8) == 0 ? url + 8 : url;
+	char *path = strchr(host, '/');
+	char *base = path != NULL ? strndup(host, path - host) : strdup(host);
+	iron_net_request(base, path != NULL ? path + 1 : "", NULL, 443, IRON_HTTPS_GET, NULL, &_https_callback, cbd, dst_path);
+	free(base);
 }
 
 char     *sys_buffer_to_string(buffer_t *b);
 buffer_t *data_get_blob(char *file);
 
-#ifdef IRON_WINDOWS
-static char *file_cmd_copy = "copy";
-#else
-static char *file_cmd_copy = "cp";
-#endif
-
 static any_map_t *_file_download_map = NULL;
 
-#if defined(IRON_ANDROID) || defined(IRON_WASM)
-static any_map_t *file_internal = NULL;
-#endif
-
 any_array_t *file_read_directory(char *path) {
-#ifdef IRON_WASM
-	if (starts_with(path, "/./")) {
-		path = substring(path, 2, string_length(path));
-	}
-#endif
-
-#if defined(IRON_ANDROID) || defined(IRON_WASM)
-	path = string_replace_all(path, "//", "/");
-	if (file_internal == NULL) {
-		buffer_t *blob = data_get_blob("data_list.json");
-		char     *s    = sys_buffer_to_string(blob);
-		file_internal  = json_parse_to_map(s);
-	}
-	if (any_map_get(file_internal, path) != NULL) {
-		return string_split(any_map_get(file_internal, path), ",");
-	}
-#endif
 
 	any_array_t *files = string_split(iron_read_directory(path), "\n");
 	if (files->length == 1 && string_equals(files->buffer[0], "")) {
@@ -551,6 +324,10 @@ void file_copy(char *src_path, char *dst_path) {
 	}
 	size_t size = iron_file_reader_size(&reader);
 	void  *data = malloc(size > 0 ? size : 1);
+	if (data == NULL) {
+		iron_file_reader_close(&reader);
+		return;
+	}
 	size_t read = iron_file_reader_read(&reader, data, size);
 	iron_file_reader_close(&reader);
 	FILE *f = fopen(dst_path, "wb");
@@ -560,36 +337,21 @@ void file_copy(char *src_path, char *dst_path) {
 	}
 	free(data);
 #else
-	char cmd[1024];
-	strcpy(cmd, file_cmd_copy);
-	strcat(cmd, " \"");
-	strcat(cmd, src_path);
-	strcat(cmd, "\" \"");
-	strcat(cmd, dst_path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
+	if (copyfile(src_path, dst_path, NULL, COPYFILE_DATA | COPYFILE_STAT | COPYFILE_XATTR) != 0) {
+		iron_log("Could not copy %s to %s: %s", src_path, dst_path, strerror(errno));
+	}
 #endif
 }
 
+// Opens a file or folder in the default app (Finder for a folder)
 void file_start(char *path) {
-#ifdef IRON_WINDOWS
-	char cmd[1024];
-	strcpy(cmd, "start \"\" \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
-#elif defined(IRON_LINUX)
-	char cmd[1024];
-	strcpy(cmd, "xdg-open \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
-#else
-	char cmd[1024];
-	strcpy(cmd, "open \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
+#ifdef IRON_MACOS
+	extern char **environ;
+	char         *argv[] = {"/usr/bin/open", path, NULL};
+	pid_t         pid;
+	if (posix_spawn(&pid, argv[0], NULL, NULL, argv, environ) == 0) {
+		waitpid(pid, NULL, 0);
+	}
 #endif
 }
 

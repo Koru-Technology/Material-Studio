@@ -13,56 +13,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef IRON_WINDOWS
-#include <backends/windows_mini.h>
-#include <backends/windows_system.h>
-#endif
-#ifdef IRON_ANDROID
-#include <android/log.h>
-#endif
 
 void iron_log_args(iron_log_level_t level, const char *format, va_list args) {
-#ifdef IRON_ANDROID
-	va_list args_android_copy;
-	va_copy(args_android_copy, args);
-	switch (level) {
-	case IRON_LOG_LEVEL_INFO:
-		__android_log_vprint(ANDROID_LOG_INFO, "Iron", format, args_android_copy);
-		break;
-	case IRON_LOG_LEVEL_ERROR:
-		__android_log_vprint(ANDROID_LOG_ERROR, "Iron", format, args_android_copy);
-		break;
-	}
-	va_end(args_android_copy);
-#endif
 
-#ifdef IRON_WINDOWS
-	wchar_t buffer[4096];
-	iron_microsoft_format(format, args, buffer);
-	wcscat(buffer, L"\r\n");
-	OutputDebugStringW(buffer);
-	HANDLE out = GetStdHandle(level == IRON_LOG_LEVEL_INFO ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
-	DWORD  written;
-	if (GetFileType(out) == FILE_TYPE_CHAR) {
-		WriteConsoleW(out, buffer, (DWORD)wcslen(buffer), &written, NULL);
-	}
-	else {
-		char utf8[4096 * 3];
-		int  len = WideCharToMultiByte(CP_UTF8, 0, buffer, (int)wcslen(buffer), utf8, sizeof(utf8), NULL, NULL);
-		if (len > 0) {
-			WriteFile(out, utf8, (DWORD)len, &written, NULL);
-		}
-	}
-#else
 	char buffer[4096];
 	vsnprintf(buffer, 4090, format, args);
 	strcat(buffer, "\n");
-#ifdef IRON_WASM
-	printf("%s", buffer); ////
-#else
 	fprintf(level == IRON_LOG_LEVEL_INFO ? stdout : stderr, "%s", buffer);
-#endif
-#endif
 }
 
 void iron_log(const char *format, ...) {
@@ -80,23 +37,11 @@ void iron_error(const char *format, ...) {
 		va_end(args);
 	}
 
-#ifdef IRON_WINDOWS
-	{
-		va_list args;
-		va_start(args, format);
-		wchar_t buffer[4096];
-		iron_microsoft_format(format, args, buffer);
-		MessageBoxW(NULL, buffer, L"Error", 0);
-		va_end(args);
-	}
-#endif
 }
 
-#if !defined(IRON_WASM) && !defined(IRON_ANDROID) && !defined(IRON_WINDOWS)
 double iron_time(void) {
 	return iron_timestamp() / iron_frequency();
 }
-#endif
 
 static void (*update_callback)(void)               = NULL;
 static void (*foreground_callback)(void *)         = NULL;
@@ -224,10 +169,6 @@ void iron_set_open_file_callback(void (*callback)(char *)) {
 	open_file_pending_count = 0;
 }
 
-bool iron_has_pending_open_file(void) {
-	return open_file_pending_count > 0;
-}
-
 void iron_internal_open_file_callback(char *path) {
 	if (open_file_callback != NULL) {
 		open_file_callback(path);
@@ -269,7 +210,7 @@ const char *iron_application_name(void) {
 }
 
 void iron_set_app_name(const char *name) {
-	strcpy(application_name, name);
+	snprintf(application_name, sizeof(application_name), "%s", name);
 }
 
 void iron_stop(void) {
@@ -296,7 +237,7 @@ void iron_external_shutdown(void) {
 void iron_start(void) {
 	running = true;
 
-#if !defined(IRON_WASM) && !defined(IRON_EXTERNAL_LOOP)
+#ifndef IRON_EXTERNAL_LOOP
 
 #if defined(IRON_IOS) || defined(IRON_MACOS)
 	while (with_autoreleasepool(iron_internal_frame)) {
@@ -309,48 +250,7 @@ void iron_start(void) {
 #endif
 }
 
-static uint8_t *current_file      = NULL;
-static size_t   current_file_size = 0;
-
-bool iron_save_file_loaded(void) {
-	return true;
-}
-
-uint8_t *iron_get_save_file(void) {
-	return current_file;
-}
-
-size_t iron_get_save_file_size(void) {
-	return current_file_size;
-}
-
-void iron_load_save_file(const char *filename) {
-	free(current_file);
-	current_file      = NULL;
-	current_file_size = 0;
-
-	iron_file_reader_t reader;
-	if (iron_file_reader_open(&reader, filename, IRON_FILE_TYPE_SAVE)) {
-		current_file_size = iron_file_reader_size(&reader);
-		current_file      = (uint8_t *)malloc(current_file_size);
-		iron_file_reader_read(&reader, current_file, current_file_size);
-		iron_file_reader_close(&reader);
-	}
-}
-
-void iron_save_save_file(const char *filename, uint8_t *data, size_t size) {
-	iron_file_writer_t writer;
-	if (iron_file_writer_open(&writer, filename)) {
-		iron_file_writer_write(&writer, data, (int)size);
-		iron_file_writer_close(&writer);
-	}
-}
-
-bool iron_save_is_saving(void) {
-	return false;
-}
-
-#if !defined(IRON_WINDOWS) && !defined(IRON_LINUX) && !defined(IRON_MACOS)
+#ifdef IRON_IOS
 void iron_copy_to_clipboard(const char *text) {
 	iron_log("Oh no, iron_copy_to_clipboard is not implemented for this system.");
 }
@@ -453,17 +353,6 @@ void iron_internal_mouse_trigger_scroll(float delta) {
 	}
 }
 
-void iron_internal_mouse_window_activated() {
-	if (iron_mouse_is_locked()) {
-		iron_mouse_hide();
-	}
-}
-void iron_internal_mouse_window_deactivated() {
-	if (iron_mouse_is_locked()) {
-		iron_mouse_show();
-	}
-}
-
 static bool moved    = false;
 static bool locked   = false;
 static int  preLockX = 0;
@@ -542,10 +431,6 @@ static void (*pen_press_callback)(int /*x*/, int /*y*/, float /*pressure*/)   = 
 static void (*pen_move_callback)(int /*x*/, int /*y*/, float /*pressure*/)    = NULL;
 static void (*pen_release_callback)(int /*x*/, int /*y*/, float /*pressure*/) = NULL;
 
-static void (*eraser_press_callback)(int /*x*/, int /*y*/, float /*pressure*/)   = NULL;
-static void (*eraser_move_callback)(int /*x*/, int /*y*/, float /*pressure*/)    = NULL;
-static void (*eraser_release_callback)(int /*x*/, int /*y*/, float /*pressure*/) = NULL;
-
 void iron_pen_set_press_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
 	pen_press_callback = value;
 }
@@ -556,18 +441,6 @@ void iron_pen_set_move_callback(void (*value)(int /*x*/, int /*y*/, float /*pres
 
 void iron_pen_set_release_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
 	pen_release_callback = value;
-}
-
-void iron_eraser_set_press_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
-	eraser_press_callback = value;
-}
-
-void iron_eraser_set_move_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
-	eraser_move_callback = value;
-}
-
-void iron_eraser_set_release_callback(void (*value)(int /*x*/, int /*y*/, float /*pressure*/)) {
-	eraser_release_callback = value;
 }
 
 void iron_internal_pen_trigger_press(int x, int y, float pressure) {
@@ -595,7 +468,7 @@ void iron_internal_pen_trigger_predicted(float x, float y) {
 }
 
 void iron_internal_mouse_trigger_twist(float radians) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_twist_listener(radians);
 #endif
 }
@@ -636,24 +509,6 @@ void iron_internal_pen_trigger_release(int x, int y, float pressure) {
 	}
 }
 
-void iron_internal_eraser_trigger_press(int x, int y, float pressure) {
-	if (eraser_press_callback != NULL) {
-		eraser_press_callback(x, y, pressure);
-	}
-}
-
-void iron_internal_eraser_trigger_move(int x, int y, float pressure) {
-	if (eraser_move_callback != NULL) {
-		eraser_move_callback(x, y, pressure);
-	}
-}
-
-void iron_internal_eraser_trigger_release(int x, int y, float pressure) {
-	if (eraser_release_callback != NULL) {
-		eraser_release_callback(x, y, pressure);
-	}
-}
-
 static void (*surface_touch_start_callback)(int /*index*/, int /*x*/, int /*y*/) = NULL;
 static void (*surface_move_callback)(int /*index*/, int /*x*/, int /*y*/)        = NULL;
 static void (*surface_touch_end_callback)(int /*index*/, int /*x*/, int /*y*/)   = NULL;
@@ -688,90 +543,9 @@ void iron_internal_surface_trigger_touch_end(int index, int x, int y) {
 	}
 }
 
-#ifdef WITH_GAMEPAD
-
-static void (*gamepad_connect_callback)(int /*gamepad*/, void * /*userdata*/)                                 = NULL;
-static void *gamepad_connect_callback_userdata                                                                = NULL;
-static void (*gamepad_disconnect_callback)(int /*gamepad*/, void * /*userdata*/)                              = NULL;
-static void *gamepad_disconnect_callback_userdata                                                             = NULL;
-static void (*gamepad_axis_callback)(int /*gamepad*/, int /*axis*/, float /*value*/, void * /*userdata*/)     = NULL;
-static void *gamepad_axis_callback_userdata                                                                   = NULL;
-static void (*gamepad_button_callback)(int /*gamepad*/, int /*button*/, float /*value*/, void * /*userdata*/) = NULL;
-static void *gamepad_button_callback_userdata                                                                 = NULL;
-
-void iron_gamepad_set_connect_callback(void (*value)(int /*gamepad*/, void * /*userdata*/), void *userdata) {
-	gamepad_connect_callback          = value;
-	gamepad_connect_callback_userdata = userdata;
-}
-
-void iron_gamepad_set_disconnect_callback(void (*value)(int /*gamepad*/, void * /*userdata*/), void *userdata) {
-	gamepad_disconnect_callback          = value;
-	gamepad_disconnect_callback_userdata = userdata;
-}
-
-void iron_gamepad_set_axis_callback(void (*value)(int /*gamepad*/, int /*axis*/, float /*value*/, void * /*userdata*/), void *userdata) {
-	gamepad_axis_callback          = value;
-	gamepad_axis_callback_userdata = userdata;
-}
-
-void iron_gamepad_set_button_callback(void (*value)(int /*gamepad*/, int /*button*/, float /*value*/, void * /*userdata*/), void *userdata) {
-	gamepad_button_callback          = value;
-	gamepad_button_callback_userdata = userdata;
-}
-
-void iron_internal_gamepad_trigger_connect(int gamepad) {
-	if (gamepad_connect_callback != NULL) {
-		gamepad_connect_callback(gamepad, gamepad_connect_callback_userdata);
-	}
-}
-
-void iron_internal_gamepad_trigger_disconnect(int gamepad) {
-	if (gamepad_disconnect_callback != NULL) {
-		gamepad_disconnect_callback(gamepad, gamepad_disconnect_callback_userdata);
-	}
-}
-
-void iron_internal_gamepad_trigger_axis(int gamepad, int axis, float value) {
-	if (gamepad_axis_callback != NULL) {
-		gamepad_axis_callback(gamepad, axis, value, gamepad_axis_callback_userdata);
-	}
-}
-
-void iron_internal_gamepad_trigger_button(int gamepad, int button, float value) {
-	if (gamepad_button_callback != NULL) {
-		gamepad_button_callback(gamepad, button, value, gamepad_button_callback_userdata);
-	}
-}
-
-#endif
 
 i32 iron_sys_command(char *cmd) {
-#ifdef IRON_WINDOWS
-
-	int      wlen = MultiByteToWideChar(CP_UTF8, 0, cmd, -1, NULL, 0);
-	wchar_t *wstr = malloc(sizeof(wchar_t) * wlen);
-	MultiByteToWideChar(CP_UTF8, 0, cmd, -1, wstr, wlen);
-	wchar_t comspec[MAX_PATH];
-	GetEnvironmentVariableW(L"ComSpec", comspec, MAX_PATH);
-	wchar_t cmdline[2048];
-	swprintf(cmdline, 2048, L"\"%s\" /c \"%s\"", comspec, wstr);
-	STARTUPINFO si;
-	memset(&si, 0, sizeof(si));
-	si.cb          = sizeof(si);
-	si.dwFlags     = STARTF_USESHOWWINDOW;
-	si.wShowWindow = SW_HIDE;
-	PROCESS_INFORMATION pi;
-	memset(&pi, 0, sizeof(pi));
-	CreateProcessW(NULL, cmdline, NULL, NULL, false, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-	free(wstr);
-	WaitForSingleObject(pi.hProcess, INFINITE);
-	DWORD exit_code = 0;
-	GetExitCodeProcess(pi.hProcess, &exit_code);
-	CloseHandle(pi.hProcess);
-	CloseHandle(pi.hThread);
-	int result = (int)exit_code;
-
-#elif defined(IRON_IOS)
+#ifdef IRON_IOS
 	int result = 0;
 #else
 	int result = system(cmd);
@@ -785,12 +559,12 @@ i32 iron_sys_command(char *cmd) {
 
 string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool open_multiple) {
 	nfdpathset_t out_paths;
-	nfdchar_t   *out_path;
-	nfdresult_t  result = open_multiple ? NFD_OpenDialogMultiple(filter_list, default_path, &out_paths) : NFD_OpenDialog(filter_list, default_path, &out_path);
+	nfdchar_t   *out_path = NULL;
+	nfdresult_t  result   = open_multiple ? NFD_OpenDialogMultiple(filter_list, default_path, &out_paths) : NFD_OpenDialog(filter_list, default_path, &out_path);
 
 	if (result == NFD_OKAY) {
 		int             path_count = open_multiple ? (int)NFD_PathSet_GetCount(&out_paths) : 1;
-		string_array_t *result     = any_array_create(path_count);
+		string_array_t *result     = (string_array_t *)any_array_create(path_count);
 
 		if (open_multiple) {
 			for (int i = 0; i < path_count; ++i) {
@@ -808,34 +582,17 @@ string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool ope
 	return NULL;
 }
 
-static char iron_save_dialog_path[512];
+static char iron_save_dialog_path[1024];
 
 char *iron_save_dialog(char *filter_list, char *default_path) {
 	nfdchar_t  *out_path = NULL;
 	nfdresult_t result   = NFD_SaveDialog(filter_list, default_path, &out_path);
 	if (result == NFD_OKAY) {
-		strcpy(iron_save_dialog_path, out_path);
+		snprintf(iron_save_dialog_path, sizeof(iron_save_dialog_path), "%s", out_path);
 		free(out_path);
 		return iron_save_dialog_path;
 	}
 	return NULL;
-}
-
-#elif defined(IRON_ANDROID)
-
-#include "backends/android_file_dialog.h"
-
-extern char temp_string[1024 * 128];
-
-string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool open_multiple) {
-	AndroidFileDialogOpen();
-	return NULL;
-}
-
-char *iron_save_dialog(char *filter_list, char *default_path) {
-	wchar_t *out_path = AndroidFileDialogSave();
-	wcstombs(temp_string, out_path, sizeof(temp_string));
-	return temp_string;
 }
 
 #elif defined(IRON_IOS)
@@ -856,31 +613,6 @@ char *iron_save_dialog(char *filter_list, char *default_path) {
 	wchar_t *out_path = IOSFileDialogSave();
 	wcstombs(temp_string, out_path, sizeof(temp_string));
 	return temp_string;
-}
-
-#elif defined(IRON_WASM)
-
-// Picked files are addressed as /files/<id>/<name>
-__attribute__((import_module("imports"), import_name("js_open_dialog"))) char   *js_open_dialog(const char *filter_list, bool open_multiple);
-__attribute__((import_module("imports"), import_name("js_save_dialog"))) char   *js_save_dialog(const char *filter_list, const char *default_path);
-__attribute__((import_module("imports"), import_name("js_folder_dialog"))) char *js_folder_dialog(const char *name);
-
-string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool open_multiple) {
-	char *paths = js_open_dialog(filter_list, open_multiple);
-	if (paths == NULL) {
-		return NULL;
-	}
-	string_array_t *files = string_split(paths, "\n");
-	free(paths);
-	return files;
-}
-
-char *iron_save_dialog(char *filter_list, char *default_path) {
-	return js_save_dialog(filter_list, default_path);
-}
-
-char *iron_folder_dialog(char *name) {
-	return js_folder_dialog(name);
 }
 
 #endif
@@ -911,10 +643,6 @@ gpu_shader_t *gpu_create_shader(buffer_t *data, i32 shader_type);
 void          iron_delete_blob(buffer_t *buffer);
 char         *data_path(void);
 
-#ifdef WITH_GAMEPAD
-void iron_set_gamepad_axis_callback(void (*callback)(int, int, float));
-void iron_set_gamepad_button_callback(void (*callback)(int, int, float));
-#endif
 
 any_map_t   *_sys_shaders    = NULL;
 f64          _sys_start_time = 0.0;
@@ -969,43 +697,14 @@ void sys_start(iron_window_options_t *ops) {
 	char *dp  = data_path();
 	char *ext = sys_shader_ext();
 
-	char path_image_vert[512];
-	char path_image_frag[512];
-	char path_rect_vert[512];
-	char path_rect_frag[512];
-	char path_tris_vert[512];
-	char path_tris_frag[512];
-	char path_text_vert[512];
-	char path_text_frag[512];
-
-	strcpy(path_image_vert, dp);
-	strcat(path_image_vert, "draw_image.vert");
-	strcat(path_image_vert, ext);
-	strcpy(path_image_frag, dp);
-	strcat(path_image_frag, "draw_image.frag");
-	strcat(path_image_frag, ext);
-	strcpy(path_rect_vert, dp);
-	strcat(path_rect_vert, "draw_rect.vert");
-	strcat(path_rect_vert, ext);
-	strcpy(path_rect_frag, dp);
-	strcat(path_rect_frag, "draw_rect.frag");
-	strcat(path_rect_frag, ext);
-	strcpy(path_tris_vert, dp);
-	strcat(path_tris_vert, "draw_tris.vert");
-	strcat(path_tris_vert, ext);
-	strcpy(path_tris_frag, dp);
-	strcat(path_tris_frag, "draw_tris.frag");
-	strcat(path_tris_frag, ext);
-	strcpy(path_text_vert, dp);
-	strcat(path_text_vert, "draw_text.vert");
-	strcat(path_text_vert, ext);
-	strcpy(path_text_frag, dp);
-	strcat(path_text_frag, "draw_text.frag");
-	strcat(path_text_frag, ext);
-
-	buffer_t *draw_blobs[8] = {iron_load_blob(path_image_vert), iron_load_blob(path_image_frag), iron_load_blob(path_rect_vert),
-	                           iron_load_blob(path_rect_frag),  iron_load_blob(path_tris_vert),  iron_load_blob(path_tris_frag),
-	                           iron_load_blob(path_text_vert),  iron_load_blob(path_text_frag)};
+	char     *draw_shaders[8] = {"draw_image.vert", "draw_image.frag", "draw_rect.vert", "draw_rect.frag",
+	                              "draw_tris.vert",  "draw_tris.frag",  "draw_text.vert", "draw_text.frag"};
+	buffer_t *draw_blobs[8];
+	for (int i = 0; i < 8; ++i) {
+		char path[512];
+		snprintf(path, sizeof(path), "%s%s%s", dp, draw_shaders[i], ext);
+		draw_blobs[i] = iron_load_blob(path);
+	}
 	draw_init(draw_blobs[0], draw_blobs[1], draw_blobs[2], draw_blobs[3], draw_blobs[4], draw_blobs[5], draw_blobs[6], draw_blobs[7]);
 	for (int i = 0; i < 8; ++i) {
 		iron_delete_blob(draw_blobs[i]);
@@ -1026,10 +725,6 @@ void sys_start(iron_window_options_t *ops) {
 	iron_set_pen_down_callback(sys_pen_down_callback);
 	iron_set_pen_up_callback(sys_pen_up_callback);
 	iron_set_pen_move_callback(sys_pen_move_callback);
-#ifdef WITH_GAMEPAD
-	iron_set_gamepad_axis_callback(sys_gamepad_axis_callback);
-	iron_set_gamepad_button_callback(sys_gamepad_button_callback);
-#endif
 	input_register();
 }
 
@@ -1125,19 +820,19 @@ void sys_mouse_wheel_callback(f32 delta) {
 }
 
 void sys_touch_down_callback(i32 index, i32 x, i32 y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_on_touch_down(index, x, y);
 #endif
 }
 
 void sys_touch_up_callback(i32 index, i32 x, i32 y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_on_touch_up(index, x, y);
 #endif
 }
 
 void sys_touch_move_callback(i32 index, i32 x, i32 y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_on_touch_move(index, x, y);
 #endif
 }
@@ -1154,15 +849,6 @@ void sys_pen_move_callback(i32 x, i32 y, f32 pressure) {
 	pen_move_listener(x, y, pressure);
 }
 
-#ifdef WITH_GAMEPAD
-void sys_gamepad_axis_callback(i32 gamepad, i32 axis, f32 value) {
-	gamepad_axis_listener(gamepad, axis, value);
-}
-
-void sys_gamepad_button_callback(i32 gamepad, i32 button, f32 value) {
-	gamepad_button_listener(gamepad, button, value);
-}
-#endif
 
 char *sys_title(void) {
 	return _sys_window_title;
@@ -1170,7 +856,7 @@ char *sys_title(void) {
 
 void sys_title_set(char *value) {
 	iron_window_set_title(value);
-	strcpy(_sys_window_title, value);
+	snprintf(_sys_window_title, sizeof(_sys_window_title), "%s", value);
 }
 
 i32 sys_display_primary_id(void) {
@@ -1199,15 +885,7 @@ i32 sys_display_ppi(void) {
 }
 
 char *sys_shader_ext(void) {
-#if defined(IRON_VULKAN)
-	return ".spirv";
-#elif defined(IRON_METAL)
 	return ".metal";
-#elif defined(IRON_WASM)
-	return ".wgsl";
-#else
-	return ".d3d11";
-#endif
 }
 
 gpu_shader_t *sys_get_shader(char *name) {
@@ -1216,9 +894,7 @@ gpu_shader_t *sys_get_shader(char *name) {
 		char  path[512];
 		char *dp  = data_path();
 		char *ext = sys_shader_ext();
-		strcpy(path, dp);
-		strcat(path, name);
-		strcat(path, ext);
+		snprintf(path, sizeof(path), "%s%s%s", dp, name, ext);
 		gpu_shader_type_t shader_type = ends_with(name, ".frag") ? GPU_SHADER_TYPE_FRAGMENT : GPU_SHADER_TYPE_VERTEX;
 		buffer_t         *blob        = iron_load_blob(path);
 		shader                        = gpu_create_shader(blob, (i32)shader_type);

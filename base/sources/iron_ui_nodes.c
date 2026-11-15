@@ -565,8 +565,8 @@ void ui_node_draw_body(ui_node_t *node, ui_node_canvas_t *canvas, float nx, floa
 			current->_w = w;
 			char *text  = val != NULL ? (char *)val : "";
 			ui_nodes_next_id(node, buti * 4);
-			but->default_value->buffer = ui_text_input(&text, ui_tr(but->name), UI_ALIGN_LEFT, true, false);
-			but->default_value->length = strlen(but->default_value->buffer) + 1;
+			but->default_value->buffer = (float *)ui_text_input(&text, ui_tr(but->name), UI_ALIGN_LEFT, true, false);
+			but->default_value->length = strlen((char *)but->default_value->buffer) + 1;
 		}
 		else if (strcmp(but->type, "ENUM") == 0) {
 			ny += lineh;
@@ -685,7 +685,7 @@ void ui_node_draw_body(ui_node_t *node, ui_node_canvas_t *canvas, float nx, floa
 			current->ops->theme->TEXT_OFFSET = 6;
 			char *text                       = (char *)soc->default_value->buffer;
 			ui_nodes_next_id(node, (ui_max_buttons + i) * 4);
-			soc->default_value->buffer       = ui_text_input(&text, ui_tr(inp->name), UI_ALIGN_LEFT, true, false);
+			soc->default_value->buffer       = (float *)ui_text_input(&text, ui_tr(inp->name), UI_ALIGN_LEFT, true, false);
 			current->ops->theme->TEXT_OFFSET = text_off;
 		}
 		else if (!is_linked && strcmp(inp->type, "RGBA") == 0) {
@@ -1083,7 +1083,7 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 						l->from_socket    = j;
 						l->to_id          = -1;
 						l->to_socket      = -1;
-						any_array_push(canvas->links, l);
+						any_array_push((any_array_t *)canvas->links, l);
 						current_nodes->link_drag_id = l->id;
 						current_nodes->is_new_link  = true;
 						break;
@@ -1118,7 +1118,7 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 						l->from_socket    = -1;
 						l->to_id          = node->id;
 						l->to_socket      = j;
-						any_array_push(canvas->links, l);
+						any_array_push((any_array_t *)canvas->links, l);
 						current_nodes->link_drag_id = l->id;
 						current_nodes->is_new_link  = true;
 						break;
@@ -1259,7 +1259,7 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 	if (current_nodes->move_on_top != NULL) {
 		int index = ui_get_node_index(canvas->nodes->buffer, canvas->nodes->length, current_nodes->move_on_top->id);
 		ui_remove_node_at(canvas, index);
-		any_array_push(canvas->nodes, current_nodes->move_on_top);
+		any_array_push((any_array_t *)canvas->nodes, current_nodes->move_on_top);
 		current_nodes->move_on_top = NULL;
 	}
 
@@ -1342,7 +1342,7 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 				ui_node_link_t *l = paste_canvas->links->buffer[i];
 				// Assign unique link id
 				l->id = ui_next_link_id(canvas->links);
-				any_array_push(canvas->links, l);
+				any_array_push((any_array_t *)canvas->links, l);
 			}
 			int offset_x = (int)(((int)(current->input_x / UI_SCALE()) * UI_NODES_SCALE() - wx - UI_NODES_PAN_X()) / UI_NODES_SCALE()) -
 			               paste_canvas->nodes->buffer[paste_canvas->nodes->length - 1]->x;
@@ -1373,7 +1373,7 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 				}
 				n->x += offset_x;
 				n->y += offset_y;
-				any_array_push(canvas->nodes, n);
+				any_array_push((any_array_t *)canvas->nodes, n);
 			}
 			current_nodes->nodes_drag                = true;
 			current_nodes->nodes_selected_id->length = 0;
@@ -1544,131 +1544,6 @@ void ui_node_canvas_encode(ui_node_canvas_t *canvas) {
 	}
 }
 
-uint32_t ui_node_canvas_encoded_size(ui_node_canvas_t *canvas) {
-	uint32_t size = 0;
-	size += armpack_size_map();
-	size += armpack_size_string("name");
-	size += armpack_size_string(canvas->name);
-
-	size += armpack_size_string("nodes");
-	size += armpack_size_array();
-	for (int i = 0; i < canvas->nodes->length; ++i) {
-		size += armpack_size_map();
-		size += armpack_size_string("id");
-		size += armpack_size_i32();
-		size += armpack_size_string("name");
-		size += armpack_size_string(canvas->nodes->buffer[i]->name);
-		size += armpack_size_string("type");
-		size += armpack_size_string(canvas->nodes->buffer[i]->type);
-		size += armpack_size_string("x");
-		size += armpack_size_f32();
-		size += armpack_size_string("y");
-		size += armpack_size_f32();
-		size += armpack_size_string("color");
-		size += armpack_size_i32();
-
-		size += armpack_size_string("inputs");
-		size += armpack_size_array();
-		for (int j = 0; j < canvas->nodes->buffer[i]->inputs->length; ++j) {
-			size += armpack_size_map();
-			size += armpack_size_string("id");
-			size += armpack_size_i32();
-			size += armpack_size_string("node_id");
-			size += armpack_size_i32();
-			size += armpack_size_string("name");
-			size += armpack_size_string(canvas->nodes->buffer[i]->inputs->buffer[j]->name);
-			size += armpack_size_string("type");
-			size += armpack_size_string(canvas->nodes->buffer[i]->inputs->buffer[j]->type);
-			size += armpack_size_string("color");
-			size += armpack_size_i32();
-			size += armpack_size_string("default_value");
-			size += armpack_size_array_f32(canvas->nodes->buffer[i]->inputs->buffer[j]->default_value);
-			size += armpack_size_string("min");
-			size += armpack_size_f32();
-			size += armpack_size_string("max");
-			size += armpack_size_f32();
-			size += armpack_size_string("precision");
-			size += armpack_size_f32();
-			size += armpack_size_string("display");
-			size += armpack_size_i32();
-		}
-
-		size += armpack_size_string("outputs");
-		size += armpack_size_array();
-		for (int j = 0; j < canvas->nodes->buffer[i]->outputs->length; ++j) {
-			size += armpack_size_map();
-			size += armpack_size_string("id");
-			size += armpack_size_i32();
-			size += armpack_size_string("node_id");
-			size += armpack_size_i32();
-			size += armpack_size_string("name");
-			size += armpack_size_string(canvas->nodes->buffer[i]->outputs->buffer[j]->name);
-			size += armpack_size_string("type");
-			size += armpack_size_string(canvas->nodes->buffer[i]->outputs->buffer[j]->type);
-			size += armpack_size_string("color");
-			size += armpack_size_i32();
-			size += armpack_size_string("default_value");
-			size += armpack_size_array_f32(canvas->nodes->buffer[i]->outputs->buffer[j]->default_value);
-			size += armpack_size_string("min");
-			size += armpack_size_f32();
-			size += armpack_size_string("max");
-			size += armpack_size_f32();
-			size += armpack_size_string("precision");
-			size += armpack_size_f32();
-			size += armpack_size_string("display");
-			size += armpack_size_i32();
-		}
-
-		size += armpack_size_string("buttons");
-		size += armpack_size_array();
-		for (int j = 0; j < canvas->nodes->buffer[i]->buttons->length; ++j) {
-			size += armpack_size_map();
-			size += armpack_size_string("name");
-			size += armpack_size_string(canvas->nodes->buffer[i]->buttons->buffer[j]->name);
-			size += armpack_size_string("type");
-			size += armpack_size_string(canvas->nodes->buffer[i]->buttons->buffer[j]->type);
-			size += armpack_size_string("output");
-			size += armpack_size_i32();
-			size += armpack_size_string("default_value");
-			size += armpack_size_array_f32(canvas->nodes->buffer[i]->buttons->buffer[j]->default_value);
-			size += armpack_size_string("data");
-			u8_array_t *u8 = canvas->nodes->buffer[i]->buttons->buffer[j]->data;
-			size += armpack_size_array_u8(u8);
-			size += armpack_size_string("min");
-			size += armpack_size_f32();
-			size += armpack_size_string("max");
-			size += armpack_size_f32();
-			size += armpack_size_string("precision");
-			size += armpack_size_f32();
-			size += armpack_size_string("height");
-			size += armpack_size_f32();
-		}
-
-		size += armpack_size_string("width");
-		size += armpack_size_f32();
-		size += armpack_size_string("flags");
-		size += armpack_size_i32();
-	}
-
-	size += armpack_size_string("links");
-	size += armpack_size_array();
-	for (int i = 0; i < canvas->links->length; ++i) {
-		size += armpack_size_map();
-		size += armpack_size_string("id");
-		size += armpack_size_i32();
-		size += armpack_size_string("from_id");
-		size += armpack_size_i32();
-		size += armpack_size_string("from_socket");
-		size += armpack_size_i32();
-		size += armpack_size_string("to_id");
-		size += armpack_size_i32();
-		size += armpack_size_string("to_socket");
-		size += armpack_size_i32();
-	}
-
-	return size;
-}
-
 char *ui_node_canvas_to_json(ui_node_canvas_t *canvas) {
 	json_encode_begin();
 	json_encode_string("name", canvas->name);
@@ -1781,7 +1656,7 @@ void nodes_on_custom_button(i32 node_id, char *button_name) {
 ui_nodes_t *ui_nodes_create() {
 	ui_nodes_t *raw = ALLOC_INIT(ui_nodes_t, {0});
 	ui_nodes_init(raw);
-	ui_nodes_exclude_remove = any_array_create_from_raw(
+	ui_nodes_exclude_remove = (string_array_t *)any_array_create_from_raw(
 	    (void *[]){
 	        "OUTPUT_MATERIAL_PBR",
 	        "GROUP_OUTPUT",

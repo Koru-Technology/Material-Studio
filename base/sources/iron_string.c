@@ -1,7 +1,9 @@
 #include "iron_string.h"
 
 #include <ctype.h>
+#include <inttypes.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,25 +13,30 @@ char *string_alloc(int size) {
 	return r;
 }
 
+// Frame temporary memory, reset by string_tmp_reset on the main thread every frame. Taken atomically so that worker
+// threads never get overlapping memory, a request that does not fit is a heap allocation instead.
 #define STRING_TMP_BUFFER_SIZE (4 * 1024 * 1024)
-static char  *string_tmp_buffer = NULL;
-static size_t string_tmp_pos    = 0;
+static _Alignas(16) char string_tmp_buffer[STRING_TMP_BUFFER_SIZE];
+static _Atomic size_t    string_tmp_pos = 0;
 
 char *string_tmp_alloc(int size) {
-	if (string_tmp_buffer == NULL) {
-		string_tmp_buffer = malloc(STRING_TMP_BUFFER_SIZE);
+	if (size < 0) {
+		size = 0;
 	}
-	if (string_tmp_pos + size > STRING_TMP_BUFFER_SIZE) {
-		return string_alloc(size);
-	}
-	char *r = string_tmp_buffer + string_tmp_pos;
-	string_tmp_pos += ((size_t)size + 7) & ~(size_t)7;
+	size_t aligned = ((size_t)size + 7) & ~(size_t)7;
+	size_t pos     = atomic_load(&string_tmp_pos);
+	do {
+		if (pos + aligned > STRING_TMP_BUFFER_SIZE) {
+			return string_alloc(size);
+		}
+	} while (!atomic_compare_exchange_weak(&string_tmp_pos, &pos, pos + aligned));
+	char *r = string_tmp_buffer + pos;
 	memset(r, 0, size);
 	return r;
 }
 
 void string_tmp_reset() {
-	string_tmp_pos = 0;
+	atomic_store(&string_tmp_pos, 0);
 }
 
 char *string_tmp(char *fmt, ...) {
@@ -96,25 +103,17 @@ char *i32_to_string_hex(int32_t i) {
 	return r;
 }
 
-#ifdef IRON_WINDOWS
-#define PERCENT_LD "%lld"
-#define PERCENT_LU "%llu"
-#else
-#define PERCENT_LD "%ld"
-#define PERCENT_LU "%lu"
-#endif
-
 char *i64_to_string(int64_t i) {
-	int   l = snprintf(NULL, 0, PERCENT_LD, i);
+	int   l = snprintf(NULL, 0, "%" PRId64, i);
 	char *r = string_tmp_alloc(l + 1);
-	sprintf(r, PERCENT_LD, i);
+	sprintf(r, "%" PRId64, i);
 	return r;
 }
 
 char *u64_to_string(uint64_t i) {
-	int   l = snprintf(NULL, 0, PERCENT_LU, i);
+	int   l = snprintf(NULL, 0, "%" PRIu64, i);
 	char *r = string_tmp_alloc(l + 1);
-	sprintf(r, PERCENT_LU, i);
+	sprintf(r, "%" PRIu64, i);
 	return r;
 }
 
@@ -351,21 +350,12 @@ int string_utf8_decode(const char *str, int *i) {
 	return u;
 }
 
-#ifdef _WIN32
-int32_t parse_int(const char *s) {
-	return _strtoi64(s, NULL, 10);
-}
-int32_t parse_int_hex(const char *s) {
-	return _strtoi64(s, NULL, 16);
-}
-#else
 int32_t parse_int(const char *s) {
 	return strtol(s, NULL, 10);
 }
 int32_t parse_int_hex(const char *s) {
 	return strtol(s, NULL, 16);
 }
-#endif
 
 float parse_float(const char *s) {
 	return strtof(s, NULL);

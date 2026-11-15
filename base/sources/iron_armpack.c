@@ -4,16 +4,13 @@
 #include "iron_alloc.h"
 #include "iron_json.h"
 #include "iron_string.h"
+#include "iron_system.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef IRON_WASM
-#define PTR_SIZE 4
-#else
 #define PTR_SIZE 8
-#endif
 static uint32_t di;     // Decoded index
 static uint32_t ei;     // Encoded index
 static uint32_t bottom; // Decoded bottom
@@ -401,7 +398,94 @@ static void reset() {
 	bottom = 0;
 }
 
+// Checks that every value of data[length] lies inside it before decoding, the decoders read without bounds
+static bool armpack_valid_value(const uint8_t *data, size_t length, size_t *i, int depth) {
+	if (depth > 256 || *i >= length) {
+		return false;
+	}
+	uint8_t flag = data[(*i)++];
+	switch (flag) {
+	case 0xca: // f32
+	case 0xd2: // i32
+		*i += 4;
+		return *i <= length;
+	case 0xdb: { // string
+		if (*i + 4 > length) {
+			return false;
+		}
+		uint32_t len;
+		memcpy(&len, data + *i, 4);
+		*i += 4 + (size_t)len;
+		return *i <= length;
+	}
+	case 0xdf: { // map
+		if (*i + 4 > length) {
+			return false;
+		}
+		int32_t count;
+		memcpy(&count, data + *i, 4);
+		*i += 4;
+		if (count < 0) {
+			return false;
+		}
+		for (int32_t j = 0; j < count; ++j) {
+			// Key: a string flag (not checked by the decoders) and the string
+			if (*i + 5 > length) {
+				return false;
+			}
+			uint32_t key_length;
+			memcpy(&key_length, data + *i + 1, 4);
+			*i += 5 + (size_t)key_length;
+			if (!armpack_valid_value(data, length, i, depth + 1)) { // Value
+				return false;
+			}
+		}
+		return true;
+	}
+	case 0xdd: { // array
+		if (*i + 4 > length) {
+			return false;
+		}
+		uint32_t count;
+		memcpy(&count, data + *i, 4);
+		*i += 4;
+		if (count == 0) {
+			return true;
+		}
+		if (*i >= length) {
+			return false;
+		}
+		uint8_t flag2 = data[*i];
+		size_t  size  = flag2 == 0xca || flag2 == 0xd2 ? 4 : flag2 == 0xd1 ? 2 : flag2 == 0xc4 ? 1 : 0;
+		if (size > 0) { // Typed
+			*i += 1 + size * count;
+			return *i <= length;
+		}
+		for (uint32_t j = 0; j < count; ++j) { // Dynamic
+			if (!armpack_valid_value(data, length, i, depth + 1)) {
+				return false;
+			}
+		}
+		return true;
+	}
+	default: // null, bool, other one byte values
+		return true;
+	}
+}
+
+static bool armpack_valid(buffer_t *b) {
+	size_t i = 0;
+	if (b == NULL || b->buffer == NULL || !armpack_valid_value(b->buffer, b->length, &i, 0)) {
+		iron_log("Invalid armpack data");
+		return false;
+	}
+	return true;
+}
+
 void *armpack_decode(buffer_t *b) {
+	if (!armpack_valid(b)) {
+		return NULL;
+	}
 	reset();
 	encoded  = b->buffer;
 	capacity = traverse(0, true);
@@ -736,6 +820,9 @@ any_map_t *_armpack_decode_to_map() {
 }
 
 any_map_t *armpack_decode_to_map(buffer_t *b) {
+	if (!armpack_valid(b)) {
+		return NULL;
+	}
 	encoded = b->buffer;
 	ei      = 0;
 	read_u8(); // Must be 0xdf for a map
@@ -892,10 +979,6 @@ static char *armpack_to_json(buffer_t *b, bool omit_large_arrays) {
 
 char *armpack_decode_to_json(buffer_t *b) {
 	return armpack_to_json(b, false);
-}
-
-char *armpack_decode_to_json_omit_large_arrays(buffer_t *b) {
-	return armpack_to_json(b, true);
 }
 
 float armpack_map_get_f32(any_map_t *map, char *key) {

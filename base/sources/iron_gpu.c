@@ -1,6 +1,7 @@
 #include "iron_gpu.h"
 #include "iron_math.h"
 #include "iron_system.h"
+#include "iron_thread.h"
 #include <string.h>
 
 static gpu_buffer_t   constant_buffer;
@@ -11,6 +12,7 @@ static gpu_pipeline_t pipelines_to_destroy[128];
 static int            textures_to_destroy_count  = 0;
 static int            buffers_to_destroy_count   = 0;
 static int            pipelines_to_destroy_count = 0;
+static iron_mutex_t   to_destroy_mutex; // Resources can be released from worker threads
 
 extern int      draw_vb_index;
 uint32_t        constant_buffer_index              = 0;
@@ -40,6 +42,7 @@ uint32_t gpu_debug_draw_calls_frame = 0;
 #endif
 
 void gpu_init(int depth_buffer_bits, bool vsync) {
+	iron_mutex_init(&to_destroy_mutex);
 	gpu_init_internal(depth_buffer_bits, vsync);
 	gpu_constant_buffer_init(&constant_buffer, GPU_CONSTANT_BUFFER_SIZE * GPU_CONSTANT_BUFFER_MULTIPLE);
 	gpu_constant_buffer_lock(&constant_buffer, 0, GPU_CONSTANT_BUFFER_SIZE);
@@ -67,9 +70,7 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 		current_depth_buffer         = NULL;
 	}
 	else if (targets == NULL) {
-#if defined(IRON_VULKAN) || defined(IRON_METAL)
 		gpu_acquire_framebuffer();
-#endif
 		current_render_targets[0]    = &framebuffers[framebuffer_index];
 		current_render_targets_count = 1;
 		current_depth_buffer         = framebuffer_depth.width > 0 ? &framebuffer_depth : NULL;
@@ -92,7 +93,6 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 	gpu_begin_internal(flags, color, depth);
 }
 
-#ifdef IRON_METAL
 // The next draw takes these ranges of another index buffer instead of the whole set one (paint culling)
 static bool          draw_ranges_active = false;
 static gpu_buffer_t *draw_ranges_ib     = NULL;
@@ -108,18 +108,14 @@ void gpu_draw_ranges_next(gpu_buffer_t *ib, i32 *starts, i32 *counts, i32 n) {
 	draw_ranges_counts = counts;
 	draw_ranges_n      = n;
 }
-#endif
 
 void gpu_draw() {
 	if (current_pipeline == NULL || current_pipeline->impl.pipeline == NULL) {
-#ifdef IRON_METAL
 		draw_ranges_active = false;
-#endif
 		return;
 	}
 	gpu_constant_buffer_unlock(&constant_buffer);
 	gpu_set_constant_buffer(&constant_buffer, constant_buffer_index * GPU_CONSTANT_BUFFER_SIZE, GPU_CONSTANT_BUFFER_SIZE);
-#ifdef IRON_METAL
 	if (draw_ranges_active) {
 		draw_ranges_active = false;
 		for (i32 i = 0; i < draw_ranges_n; ++i) {
@@ -129,9 +125,6 @@ void gpu_draw() {
 	else {
 		gpu_draw_internal();
 	}
-#else
-	gpu_draw_internal();
-#endif
 #ifndef NDEBUG
 	gpu_debug_draw_calls++;
 #endif
@@ -160,6 +153,7 @@ void gpu_end() {
 }
 
 void gpu_cleanup() {
+	iron_mutex_lock(&to_destroy_mutex);
 	while (textures_to_destroy_count > 0) {
 		textures_to_destroy_count--;
 		gpu_texture_destroy_internal(&textures_to_destroy[textures_to_destroy_count]);
@@ -172,6 +166,7 @@ void gpu_cleanup() {
 		pipelines_to_destroy_count--;
 		gpu_pipeline_destroy_internal(&pipelines_to_destroy[pipelines_to_destroy_count]);
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
 bool gpu_cleanup_pending() {
@@ -205,34 +200,6 @@ void gpu_set_int(int location, int value) {
 	ints[0]   = value;
 }
 
-void gpu_set_int2(int location, int value1, int value2) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value1;
-	ints[1]   = value2;
-}
-
-void gpu_set_int3(int location, int value1, int value2, int value3) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value1;
-	ints[1]   = value2;
-	ints[2]   = value3;
-}
-
-void gpu_set_int4(int location, int value1, int value2, int value3, int value4) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value1;
-	ints[1]   = value2;
-	ints[2]   = value3;
-	ints[3]   = value4;
-}
-
-void gpu_set_ints(int location, int *values, int count) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	for (int i = 0; i < count; ++i) {
-		ints[i] = values[i];
-	}
-}
-
 void gpu_set_float(int location, float value) {
 	float *floats = (float *)(&constant_buffer.data[location]);
 	floats[0]     = value;
@@ -264,11 +231,6 @@ void gpu_set_floats(int location, f32_array_t *values) {
 	for (int i = 0; i < values->length; ++i) {
 		floats[i] = values->buffer[i];
 	}
-}
-
-void gpu_set_bool(int location, bool value) {
-	int *ints = (int *)(&constant_buffer.data[location]);
-	ints[0]   = value ? 1 : 0;
 }
 
 void gpu_set_mat3(int location, mat3_t value) {
@@ -324,24 +286,16 @@ void gpu_create_framebuffers(int depth_buffer_bits) {
 }
 
 void gpu_texture_destroy(gpu_texture_t *texture) {
+	iron_mutex_lock(&to_destroy_mutex);
 	textures_to_destroy[textures_to_destroy_count] = *texture;
 	textures_to_destroy_count++;
 	if (textures_to_destroy_count >= 128) {
 		gpu_execute_and_wait();
 		gpu_cleanup();
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
-#ifndef IRON_METAL
-void gpu_commit(void (*done)(void *data, double gpu_ms), void *data) {
-	gpu_execute_and_wait();
-	if (done != NULL) {
-		done(data, -1.0);
-	}
-}
-#endif
-
-#ifdef IRON_METAL
 static struct {
 	gpu_texture_t  *targets[8];
 	uint32_t        count;
@@ -374,7 +328,6 @@ void gpu_resume(void) {
 	memcpy(current_textures, gpu_suspended.textures, sizeof(current_textures));
 	memcpy(constant_buffer.data, gpu_suspended.constants, GPU_CONSTANT_BUFFER_SIZE); // The draw's constants, set before
 }
-#endif
 
 void gpu_set_pipeline(gpu_pipeline_t *pipeline) {
 	current_pipeline = pipeline;
@@ -388,21 +341,25 @@ void gpu_set_pipeline(gpu_pipeline_t *pipeline) {
 }
 
 void gpu_pipeline_destroy(gpu_pipeline_t *pipeline) {
+	iron_mutex_lock(&to_destroy_mutex);
 	pipelines_to_destroy[pipelines_to_destroy_count] = *pipeline;
 	pipelines_to_destroy_count++;
 	if (pipelines_to_destroy_count >= 128) {
 		gpu_execute_and_wait();
 		gpu_cleanup();
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
 void gpu_buffer_destroy(gpu_buffer_t *buffer) {
+	iron_mutex_lock(&to_destroy_mutex);
 	buffers_to_destroy[buffers_to_destroy_count] = *buffer;
 	buffers_to_destroy_count++;
 	if (buffers_to_destroy_count >= 128) {
 		gpu_execute_and_wait();
 		gpu_cleanup();
 	}
+	iron_mutex_unlock(&to_destroy_mutex);
 }
 
 uint32_t gpu_vertex_data_size(gpu_vertex_data_t data) {

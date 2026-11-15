@@ -299,7 +299,6 @@ int ui_color_wheel(uint32_t *value, ui_color_state_t *state, bool alpha, float w
 	current->_y = _y;
 	current->_w = _w;
 
-	ui_theme_t    *theme   = current->ops->theme;
 	uint32_t       col     = ui_color(round(state->val * 255.0f), round(state->val * 255.0f), round(state->val * 255.0f), 255);
 	gpu_texture_t *wheel   = ui_color_wheel_get_texture();
 	float          wheel_h = wheel->height * (w / wheel->width);
@@ -462,11 +461,7 @@ int ui_color_wheel(uint32_t *value, ui_color_state_t *state, bool alpha, float w
 			hex_code[1] = 'f';
 			hex_code[8] = '\0';
 		}
-#ifdef _WIN32
-		(*value) = _strtoi64(hex_code, NULL, 16);
-#else
 		(*value) = strtol(hex_code, NULL, 16);
-#endif
 	}
 	if (channel_changed) {
 		wheel_changed = current->changed = true;
@@ -530,15 +525,6 @@ static void ui_text_area_select_word(ui_t *current) {
 	current->highlight_anchor = start;
 	current->cursor_x         = end;
 	current->cursor_sticky_x  = end;
-}
-
-void ui_text_area_clear_selection() {
-	text_area_selection_start = -1;
-}
-
-// Line where the multi-line selection started, -1 when there is none
-int ui_text_area_selection_line() {
-	return text_area_selection_start;
 }
 
 static void handle_line_select(ui_t *current, int *line_index) {
@@ -682,7 +668,7 @@ void ui_text_area_word_wrap(char *lines, char **value, int *line_index, bool sel
 	ui_append_capped(new_lines, line, UI_TEXT_MAX);
 	if (selected) {
 		(*value) = string_copy(ui_extract_line(new_lines, (*line_index)));
-		strcpy(current->text_selected, (*value));
+		snprintf(current->text_selected, sizeof(current->text_selected), "%s", (*value));
 	}
 	strcpy(lines, new_lines);
 }
@@ -948,7 +934,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 		text_area_selection_start                     = -1;
 		ui_text_to_paste[0]                           = '\0';
 		ui_is_paste                                   = false;
-		strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+		snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 		(*value) = string_copy(current->text_selected);
 	}
 
@@ -1005,7 +991,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			(*line_index)     = sel_top_line;
 			current->cursor_x = current->highlight_anchor = sel_top_col;
 			text_area_selection_start                     = -1;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 		}
 		if (editable && ui_is_paste) {
@@ -1022,7 +1008,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			text_area_selection_start                     = -1;
 			ui_text_to_paste[0]                           = '\0';
 			ui_is_paste                                   = false;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 		}
 	}
@@ -1061,7 +1047,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->cursor_x         = 0;
 			current->highlight_anchor = 0;
 			current->cursor_sticky_x  = 0;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 			scroll_align(current, line_index);
 		}
@@ -1072,7 +1058,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->cursor_x         = prev_len;
 			current->highlight_anchor = prev_len;
 			current->cursor_sticky_x  = prev_len;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 			scroll_align(current, line_index);
 		}
@@ -1100,7 +1086,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->highlight_anchor     = 0;
 			current->cursor_x             = last_len;
 			current->cursor_sticky_x      = current->cursor_x;
-			strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+			snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 			(*value) = string_copy(current->text_selected);
 			scroll_align(current, line_index);
 		}
@@ -1152,7 +1138,7 @@ char *ui_text_area(char **value, int *line_index, int align, bool editable, char
 			current->highlight_anchor = current->cursor_x;
 			current->cursor_sticky_x  = current->cursor_x;
 		}
-		strcpy(current->text_selected, ui_extract_line(lines, (*line_index)));
+		snprintf(current->text_selected, sizeof(current->text_selected), "%s", ui_extract_line(lines, (*line_index)));
 	}
 
 	line_theme->ELEMENT_H        = _ELEMENT_H;
@@ -1207,7 +1193,7 @@ const char *ui_theme_keys[] = {"WINDOW_BG_COL", "HOVER_COL",         "BUTTON_COL
                                "CHECK_SIZE",    "CHECK_SELECT_SIZE", "SCROLL_W",   "SCROLL_MINI_W", "TEXT_OFFSET",    "TAB_W",      "FILL_BUTTON_BG",
                                "FULL_TABS",     "SHADOWS",           "LINK_STYLE", "VIEWPORT_COL"};
 
-int ui_theme_keys_count = sizeof(ui_theme_keys) / sizeof(ui_theme_keys[0]);
+int ui_theme_keys_count = ARRAY_LENGTH(ui_theme_keys);
 
 ////
 

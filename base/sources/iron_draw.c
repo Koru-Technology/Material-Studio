@@ -196,13 +196,6 @@ void draw_flush(void) {
 	gpu_draw();
 
 	draw_vb_index += draw_batch_count;
-#ifdef IRON_WASM
-	static int flushes = 0;
-	if (++flushes == 64) {
-		flushes = 0;
-		gpu_execute_and_wait();
-	}
-#endif
 	draw_batch_count    = 0;
 	draw_batch_pipeline = NULL;
 	draw_batch_texture  = NULL;
@@ -297,14 +290,23 @@ void draw_end(void) {
 	gpu_end();
 }
 
+draw_saved_t draw_suspend(void) {
+	draw_saved_t saved = {.target = _draw_current, .active = gpu_in_use};
+	if (saved.active) {
+		draw_end();
+	}
+	return saved;
+}
+
+void draw_resume(draw_saved_t saved) {
+	if (saved.active) {
+		draw_begin(saved.target, false, 0);
+	}
+}
+
 void draw_scissor(int x, int y, int width, int height) {
 	draw_flush();
 	gpu_scissor(x, y, width, height);
-}
-
-void draw_viewport(int x, int y, int width, int height) {
-	draw_flush();
-	gpu_viewport(x, y, width, height);
 }
 
 void draw_scaled_sub_image(gpu_texture_t *img, float sx, float sy, float sw, float sh, float dx, float dy, float dw, float dh) {
@@ -748,12 +750,6 @@ bool draw_font_load(draw_font_t *font, int size) {
 	return true;
 }
 
-gpu_texture_t *draw_font_get_texture(draw_font_t *font, int size) {
-	draw_font_load(font, size);
-	draw_font_image_t *img = draw_font_get_image_internal(font, size);
-	return img->tex;
-}
-
 int draw_font_get_char_index_internal(int char_code) {
 	int offset = 0;
 	for (int i = 0; i < draw_font_glyph_blocks->length / 2; ++i) {
@@ -775,7 +771,7 @@ int draw_font_get_char_index_internal(int char_code) {
 bool draw_font_get_baked_quad(draw_font_t *font, int size, draw_font_aligned_quad_t *q, int char_code, float xpos, float ypos) {
 	draw_font_image_t *img        = draw_font_get_image_internal(font, size);
 	int                char_index = draw_font_get_char_index_internal(char_code);
-	if (char_index >= draw_font_glyphs->length) {
+	if (char_index < 0 || char_index >= draw_font_glyphs->length) {
 		return false;
 	}
 	float           ipw     = 1.0f / (float)img->width;

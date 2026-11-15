@@ -30,8 +30,12 @@ static NSMutableDictionary *download_progress  = nil; // dst_path -> @[written, 
 	if (dstPath) {
 		NSError *error   = nil;
 		NSURL   *destURL = [NSURL fileURLWithPath:dstPath];
+		[[NSFileManager defaultManager] removeItemAtURL:destURL error:nil]; // A move does not replace an existing file
 		[[NSFileManager defaultManager] moveItemAtURL:location toURL:destURL error:&error];
-		// todo
+		if (error != nil) {
+			NSLog(@"Download could not be moved to %@: %@", dstPath, error.localizedDescription);
+		}
+		// Downloaded tools must be executable
 		if ([dstPath hasSuffix:@"iris"] || [dstPath hasSuffix:@"llama_metal"]) {
 			NSDictionary *attrs      = @{NSFilePosixPermissions : @0755};
 			NSError      *chmodError = nil;
@@ -46,7 +50,6 @@ static NSMutableDictionary *download_progress  = nil; // dst_path -> @[written, 
 }
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-	NSURLSessionDownloadTask *downloadTask = (NSURLSessionDownloadTask *)task;
 	NSValue                  *cbVal        = objc_getAssociatedObject(task, @"callback");
 	NSValue                  *dataVal      = objc_getAssociatedObject(task, @"callbackdata");
 	NSString                 *dstPath      = objc_getAssociatedObject(task, @"dst_path");
@@ -59,15 +62,19 @@ static NSMutableDictionary *download_progress  = nil; // dst_path -> @[written, 
 			[download_progress removeObjectForKey:dstPath];
 		}
 	}
+	if (callback == NULL) {
+		return;
+	}
 	dispatch_async(dispatch_get_main_queue(), ^{
 		if (dstPath) {
-			callback(status, NULL, callbackdata);
+			callback(status, NULL, 0, callbackdata);
 		}
 		else {
 			char *buffer = malloc(memoryData.length + 1);
 			memcpy(buffer, memoryData.bytes, memoryData.length);
 			buffer[memoryData.length] = '\0';
-			callback(status, buffer, callbackdata);
+			callback(status, buffer, memoryData.length, callbackdata);
+			free(buffer);
 		}
 	});
 }

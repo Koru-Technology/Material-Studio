@@ -31,7 +31,7 @@ f32             mouse_wheel_delta       = 0.0f;
 f32             mouse_last_x            = -1.0f;
 f32             mouse_last_y            = -1.0f;
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 f32 mouse_pinch_dist   = 0.0f;
 f32 mouse_pinch_total  = 0.0f;
 f32 mouse_pinch_smooth = 0.0f;
@@ -75,33 +75,11 @@ string_array_t *keyboard_keys_frame    = NULL;
 bool            keyboard_repeat_key    = false;
 f64             keyboard_repeat_time   = 0.0;
 
-#ifdef WITH_GAMEPAD
-
-// Gamepad
-
-string_array_t *gamepad_buttons_ps   = NULL;
-string_array_t *gamepad_buttons_xbox = NULL;
-string_array_t *gamepad_buttons      = NULL;
-any_array_t    *gamepad_raws         = NULL;
-
-#endif
-
-void input_reset(void) {
-	mouse_reset();
-	pen_reset();
-	keyboard_reset();
-#ifdef WITH_GAMEPAD
-	gamepad_reset();
-#endif
-}
 
 void input_end_frame(void) {
 	mouse_end_frame();
 	pen_end_frame();
 	keyboard_end_frame();
-#ifdef WITH_GAMEPAD
-	gamepad_end_frame();
-#endif
 }
 
 void input_on_foreground(void) {
@@ -141,7 +119,7 @@ void input_register(void) {
 	mouse_last_x      = -1.0f;
 	mouse_last_y      = -1.0f;
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_pinch_dist   = 0.0f;
 	mouse_pinch_total  = 0.0f;
 	mouse_pinch_smooth = 0.0f;
@@ -272,57 +250,9 @@ void input_register(void) {
 	keyboard_repeat_key  = false;
 	keyboard_repeat_time = 0.0f;
 
-#ifdef WITH_GAMEPAD
-	gamepad_buttons_ps = string_array_create(0);
-	string_array_push(gamepad_buttons_ps, "cross");
-	string_array_push(gamepad_buttons_ps, "circle");
-	string_array_push(gamepad_buttons_ps, "square");
-	string_array_push(gamepad_buttons_ps, "triangle");
-	string_array_push(gamepad_buttons_ps, "l1");
-	string_array_push(gamepad_buttons_ps, "r1");
-	string_array_push(gamepad_buttons_ps, "l2");
-	string_array_push(gamepad_buttons_ps, "r2");
-	string_array_push(gamepad_buttons_ps, "share");
-	string_array_push(gamepad_buttons_ps, "options");
-	string_array_push(gamepad_buttons_ps, "l3");
-	string_array_push(gamepad_buttons_ps, "r3");
-	string_array_push(gamepad_buttons_ps, "up");
-	string_array_push(gamepad_buttons_ps, "down");
-	string_array_push(gamepad_buttons_ps, "left");
-	string_array_push(gamepad_buttons_ps, "right");
-	string_array_push(gamepad_buttons_ps, "home");
-	string_array_push(gamepad_buttons_ps, "touchpad");
-
-	gamepad_buttons_xbox = string_array_create(0);
-	string_array_push(gamepad_buttons_xbox, "a");
-	string_array_push(gamepad_buttons_xbox, "b");
-	string_array_push(gamepad_buttons_xbox, "x");
-	string_array_push(gamepad_buttons_xbox, "y");
-	string_array_push(gamepad_buttons_xbox, "l1");
-	string_array_push(gamepad_buttons_xbox, "r1");
-	string_array_push(gamepad_buttons_xbox, "l2");
-	string_array_push(gamepad_buttons_xbox, "r2");
-	string_array_push(gamepad_buttons_xbox, "share");
-	string_array_push(gamepad_buttons_xbox, "options");
-	string_array_push(gamepad_buttons_xbox, "l3");
-	string_array_push(gamepad_buttons_xbox, "r3");
-	string_array_push(gamepad_buttons_xbox, "up");
-	string_array_push(gamepad_buttons_xbox, "down");
-	string_array_push(gamepad_buttons_xbox, "left");
-	string_array_push(gamepad_buttons_xbox, "right");
-	string_array_push(gamepad_buttons_xbox, "home");
-	string_array_push(gamepad_buttons_xbox, "touchpad");
-
-	gamepad_buttons = gamepad_buttons_ps;
-
-	gamepad_raws = any_array_create(0);
-#endif
 
 	keyboard_reset();
 	mouse_reset();
-#ifdef WITH_GAMEPAD
-	gamepad_reset();
-#endif
 }
 
 // Mouse
@@ -336,7 +266,7 @@ void mouse_end_frame(void) {
 	mouse_movement_x                                                                                             = 0;
 	mouse_movement_y                                                                                             = 0;
 	mouse_wheel_delta                                                                                            = 0;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_twist_delta = 0;
 #endif
 }
@@ -388,7 +318,7 @@ void mouse_down_listener(i32 index, i32 x, i32 y) {
 	_mouse_buttons_started->buffer[index] = true;
 	mouse_x                               = (f32)x;
 	mouse_y                               = (f32)y;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (index == 0) {
 		mouse_last_x = (f32)x;
 		mouse_last_y = (f32)y;
@@ -407,7 +337,7 @@ void mouse_up_listener(i32 index, i32 x, i32 y) {
 	mouse_y                                = (f32)y;
 }
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 // Two fingers: the mouse sits between them, so a pinch does not drag the view along with one finger
 static bool mouse_touch_two = false;
 static f32  mouse_touch_x[2];
@@ -475,7 +405,7 @@ static void mouse_move_to(f32 x, f32 y) {
 #endif
 
 void mouse_move_listener(i32 x, i32 y, i32 movement_x, i32 movement_y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (mouse_touch_two) { // First finger moved
 		mouse_touch_x[0] = (f32)x;
 		mouse_touch_y[0] = (f32)y;
@@ -510,13 +440,13 @@ void mouse_wheel_listener(f32 delta) {
 	mouse_wheel_delta = delta;
 }
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 void mouse_twist_listener(f32 radians) {
 	mouse_twist_delta += radians;
 }
 #endif
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 void mouse_on_touch_down(i32 index, i32 x, i32 y) {
 	if (index == 1) { // Two fingers down - right mouse button, placed between them
 		mouse_touch_x[0] = mouse_x;
@@ -692,13 +622,13 @@ void pen_down_listener(i32 x, i32 y, f32 pressure) {
 	pen_pressure                   = pressure;
 	pen_connected                  = true;
 
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	mouse_down_listener(0, x, y);
 #endif
 }
 
 void pen_up_listener(i32 x, i32 y, f32 pressure) {
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	if (pen_buttons_started->buffer[0]) {
 		pen_buttons_started->buffer[0] = false;
 		pen_in_use                     = true;
@@ -715,7 +645,7 @@ void pen_up_listener(i32 x, i32 y, f32 pressure) {
 		pen_pressure = pressure;
 	}
 
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	mouse_up_listener(0, x, y);
 	pen_in_use = true; // On pen release, additional mouse down & up events are fired at once - filter those out
 #endif
@@ -745,14 +675,6 @@ void pen_move_listener(i32 x, i32 y, f32 pressure) {
 	pen_moved      = true;
 	pen_pressure   = pressure;
 	pen_connected  = true;
-}
-
-f32 pen_view_x(void) {
-	return pen_x - (f32)sys_x();
-}
-
-f32 pen_view_y(void) {
-	return pen_y - (f32)sys_y();
 }
 
 // Keyboard
@@ -1029,13 +951,6 @@ void keyboard_down_listener(i32 code) {
 	i32_map_set(keyboard_keys_down, s, true);
 	keyboard_repeat_time = sys_time() + 0.4f;
 
-#ifdef IRON_ANDROID_RMB // Detect right mouse button on Android
-	if (code == KEY_CODE_BACK) {
-		if (!_mouse_buttons_down->buffer[1]) {
-			mouse_down_listener(1, (i32)mouse_x, (i32)mouse_y);
-		}
-	}
-#endif
 }
 
 void keyboard_up_listener(i32 code) {
@@ -1043,102 +958,4 @@ void keyboard_up_listener(i32 code) {
 	string_array_push(keyboard_keys_frame, s);
 	i32_map_set(keyboard_keys_released, s, true);
 	i32_map_set(keyboard_keys_down, s, false);
-
-#ifdef IRON_ANDROID_RMB
-	if (code == KEY_CODE_BACK) {
-		mouse_up_listener(1, (i32)mouse_x, (i32)mouse_y);
-	}
-#endif
 }
-
-// Gamepad
-
-#ifdef WITH_GAMEPAD
-
-void gamepad_end_frame(void) {}
-
-gamepad_stick_t *gamepad_stick_create(void) {
-	gamepad_stick_t *raw = calloc(1, sizeof(gamepad_stick_t));
-	raw->x               = 0.0f;
-	raw->y               = 0.0f;
-	raw->last_x          = 0.0f;
-	raw->last_y          = 0.0f;
-	raw->moved           = false;
-	raw->movement_x      = 0.0f;
-	raw->movement_y      = 0.0f;
-	return raw;
-}
-
-gamepad_t *gamepad_create(void) {
-	gamepad_t *raw        = calloc(1, sizeof(gamepad_t));
-	raw->buttons_down     = f32_array_create(0);
-	raw->buttons_started  = u8_array_create(0);
-	raw->buttons_released = u8_array_create(0);
-	raw->buttons_frame    = i32_array_create(0);
-	raw->left_stick       = gamepad_stick_create();
-	raw->right_stick      = gamepad_stick_create();
-	return raw;
-}
-
-void gamepad_reset(void) {
-	gamepad_raws = any_array_create(0);
-	for (i32 i = 0; i < 4; ++i) {
-		gamepad_t *g = gamepad_create();
-		any_array_push(gamepad_raws, g);
-		for (i32 j = 0; j < (i32)gamepad_buttons->length; ++j) {
-			f32_array_push(g->buttons_down, 0.0f);
-			u8_array_push(g->buttons_started, false);
-			u8_array_push(g->buttons_released, false);
-		}
-	}
-	gamepad_end_frame();
-}
-
-char *gamepad_key_code(i32 button) {
-	return gamepad_buttons->buffer[button];
-}
-
-i32 gamepad_button_index(char *button) {
-	for (i32 i = 0; i < (i32)gamepad_buttons->length; ++i) {
-		if (string_equals(gamepad_buttons->buffer[i], button)) {
-			return i;
-		}
-	}
-	return 0;
-}
-
-f32 gamepad_down(i32 i, char *button) {
-	gamepad_t *g = gamepad_raws->buffer[i];
-	return g->buttons_down->buffer[gamepad_button_index(button)];
-}
-
-bool gamepad_started(i32 i, char *button) {
-	gamepad_t *g = gamepad_raws->buffer[i];
-	return g->buttons_started->buffer[gamepad_button_index(button)];
-}
-
-bool gamepad_released(i32 i, char *button) {
-	gamepad_t *g = gamepad_raws->buffer[i];
-	return g->buttons_released->buffer[gamepad_button_index(button)];
-}
-
-void gamepad_axis_listener(i32 i, i32 axis, f32 value) {
-	gamepad_t       *raw   = gamepad_raws->buffer[i];
-	gamepad_stick_t *stick = axis <= 1 ? raw->left_stick : raw->right_stick;
-
-	if (axis == 0 || axis == 2) { // X
-		stick->last_x     = stick->x;
-		stick->x          = value;
-		stick->movement_x = stick->x - stick->last_x;
-	}
-	else if (axis == 1 || axis == 3) { // Y
-		stick->last_y     = stick->y;
-		stick->y          = value;
-		stick->movement_y = stick->y - stick->last_y;
-	}
-	stick->moved = true;
-}
-
-void gamepad_button_listener(i32 i, i32 button, f32 value) {}
-
-#endif

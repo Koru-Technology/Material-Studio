@@ -3,7 +3,6 @@
 #include "iron_alloc.h"
 #include "iron_armpack.h"
 #include "iron_array.h"
-#include "iron_audio.h"
 #include "iron_draw.h"
 #include "iron_gpu.h"
 #include "iron_map.h"
@@ -70,7 +69,7 @@ typedef struct object_desc {
 	f32_array_t           *dimensions;
 	bool                   visible;
 	bool                   spawn; // Auto add object when creating scene
-	void                  *anim;  // TODO: deprecated
+	void                  *anim;  // Unused, kept for the layout of decoded files
 	char                  *material_ref;
 	object_desc_t_array_t *children;
 } object_desc_t;
@@ -160,7 +159,7 @@ typedef struct scene {
 	any_array_t *mesh_datas;   // mesh_data_t[]
 	any_array_t *camera_datas; // camera_data_t[]
 	char        *camera_ref;
-	any_array_t *material_datas; // TODO: deprecated
+	any_array_t *material_datas; // Unused, kept for the layout of decoded files
 	any_array_t *shader_datas;   // shader_data_t[]
 	any_array_t *world_datas;    // world_data_t[]
 	char        *world_ref;
@@ -414,7 +413,6 @@ i32                  shader_context_type_size(char *t);
 i32                  shader_context_type_pad(i32 offset, i32 size);
 void                 shader_context_finish_compile(shader_context_t *raw);
 void                 shader_compile_batch_begin(void);
-void                 shader_compile_batch_end(void);
 shader_context_t   **shader_compile_batch_take(int *count);
 void                 shader_context_bind(shader_context_t *raw);
 void                 shader_context_set_sources(shader_context_t *raw, char *vs, char *fs);
@@ -502,7 +500,6 @@ shader_data_t *current_material(object_t *object);
 // ██████╔╝██║  ██║   ██║   ██║  ██║
 // ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝
 
-typedef void sound_t;
 
 extern any_map_t *data_cached_scene_raws;
 extern any_map_t *data_cached_meshes;
@@ -513,7 +510,6 @@ extern any_map_t *data_cached_blobs;
 extern any_map_t *data_cached_textures;
 extern any_map_t *data_cached_videos;
 extern any_map_t *data_cached_fonts;
-extern any_map_t *data_cached_sounds;
 extern i32        data_assets_loaded;
 
 mesh_data_t   *data_get_mesh(char *file, char *name);
@@ -525,13 +521,11 @@ gpu_texture_t *data_get_texture(char *file);
 buffer_t      *data_get_blob(char *file);
 video_t       *data_get_video(char *file);
 draw_font_t   *data_get_font(char *file);
-sound_t       *data_get_sound(char *file);
 void           data_delete_mesh(char *handle);
 void           data_delete_blob(char *handle);
 void           data_delete_texture(char *handle);
 void           data_delete_video(char *handle);
 void           data_delete_font(char *handle);
-void           data_delete_sound(char *handle);
 bool           data_is_abs(char *file);
 bool           data_is_up(char *file);
 char          *data_resolve_path(char *file);

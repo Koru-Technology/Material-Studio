@@ -24,15 +24,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef IRON_WINDOWS
-#include <Windows.h>
-#elif defined(IRON_WASM)
-#else
 #include <sys/stat.h>
-#endif
-#ifdef IRON_AUDIO
-#include "iron_audio.h"
-#endif
 #ifdef WITH_BC7
 #include "libs/bc7enc.h"
 #endif
@@ -45,9 +37,6 @@ char **_argv;
 
 #ifdef WITH_EMBED
 buffer_t *embed_get(char *key) {
-#ifdef IRON_WINDOWS
-	key = string_replace_all(key, "\\", "/");
-#endif
 	for (int i = 0; i < embed_count; ++i) {
 		if (strcmp(embed_keys[i], key) == 0) {
 			buffer_t *buffer = buffer_create(0);
@@ -80,10 +69,6 @@ int  last_window_width  = 0;
 int  last_window_height = 0;
 #endif
 char temp_string[1024 * 128];
-#ifdef IRON_WINDOWS
-wchar_t        temp_wstring[1024 * 32];
-struct HWND__ *iron_windows_window_handle();
-#endif
 
 void (*iron_update)(void);
 void (*iron_drop_files)(char *);
@@ -115,29 +100,13 @@ char *_substring(char *s, int32_t start, int32_t end) {
 int kickstart(int argc, char **argv) {
 	_argc = argc;
 	_argv = argv;
-#ifdef IRON_ANDROID
-	char *bindir = "/";
-#elif defined(IRON_IOS)
+#ifdef IRON_IOS
 	char *bindir = "";
-#elif defined(IRON_WASM)
-	char *bindir = "/";
 #else
 	char *bindir = argv[0];
 #endif
 
-#ifdef IRON_WINDOWS // Handle non-ascii path
-	HMODULE hmodule = GetModuleHandleW(NULL);
-	GetModuleFileNameW(hmodule, temp_wstring, 1024);
-	WideCharToMultiByte(CP_UTF8, 0, temp_wstring, -1, temp_string, 4096, NULL, NULL);
-	bindir = _substring(temp_string, 0, string_last_index_of(temp_string, "\\"));
-	// Running from Visual Studio
-	if (argc > 1 && strlen(argv[1]) > 4 && argv[1][strlen(argv[1]) - 4] == '\\' && argv[1][strlen(argv[1]) - 3] == 'o' && argv[1][strlen(argv[1]) - 2] == 'u' &&
-	    argv[1][strlen(argv[1]) - 1] == 't') {
-		bindir = argv[1];
-	}
-#else
 	bindir = _substring(bindir, 0, string_last_index_of(bindir, "/"));
-#endif
 
 	for (int i = 2; i < argc; ++i) {
 		if (strcmp(argv[i], "--nowindow") == 0) {
@@ -153,9 +122,6 @@ int kickstart(int argc, char **argv) {
 	iron_display_init();
 	_kickstart();
 
-#if defined(IRON_AUDIO) && !defined(IRON_EXTERNAL_LOOP) // An external loop returns here while the app keeps running
-	iron_a2_shutdown();
-#endif
 	return 0;
 }
 
@@ -186,13 +152,6 @@ char *iron_get_arg(i32 index) {
 #include <stdio.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-#ifdef IRON_DIRECT3D12
-#include <d3d12.h>
-#endif
-#ifdef WITH_D3DCOMPILER
-#include <D3Dcompiler.h>
-#include <d3d11.h>
-#endif
 #ifdef WITH_COMPRESS
 #include "iron_compress.h"
 void untar_here(const char *path);
@@ -203,17 +162,11 @@ void untar_here(const char *path);
 #ifdef WITH_VIDEO_WRITE
 #include "iron_image.h"
 #endif
-#if defined(IDLE_SLEEP) && !defined(IRON_WINDOWS)
+#ifdef IDLE_SLEEP
 #include <time.h>
 #endif
 
 void _update() {
-#ifdef IRON_WINDOWS
-	if (in_background && ++paused_frames > 3) {
-		Sleep(1);
-		return;
-	}
-#endif
 
 #ifdef IDLE_SLEEP
 	if (last_window_width != iron_window_width() || last_window_height != iron_window_height()) {
@@ -221,7 +174,7 @@ void _update() {
 		last_window_height = iron_window_height();
 		paused_frames      = 0;
 	}
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 	const int start_sleep = 1200;
 #else
 	const int start_sleep = 120;
@@ -231,9 +184,7 @@ void _update() {
 		paused_frames = 0;
 	}
 	if (paused_frames > start_sleep && !input_down) {
-#ifdef IRON_WINDOWS
-		Sleep(1);
-#elif !defined(IRON_WASM) && !defined(IRON_EXTERNAL_LOOP) // An external loop is paced by the display
+#ifndef IRON_EXTERNAL_LOOP // An external loop is paced by the display
 		struct timespec t;
 		t.tv_sec  = 0;
 		t.tv_nsec = 1000000;
@@ -355,7 +306,7 @@ void _mouse_wheel(float delta, void *data) {
 void _touch_move(int index, int x, int y) {
 	iron_touch_move(index, x, y);
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (ui_get_current())
 		ui_touch_move(ui_get_current(), index, x, y);
 #endif
@@ -368,7 +319,7 @@ void _touch_move(int index, int x, int y) {
 void _touch_down(int index, int x, int y) {
 	iron_touch_down(index, x, y);
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (ui_get_current())
 		ui_touch_down(ui_get_current(), index, x, y);
 #endif
@@ -382,7 +333,7 @@ void _touch_down(int index, int x, int y) {
 void _touch_up(int index, int x, int y) {
 	iron_touch_up(index, x, y);
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (ui_get_current())
 		ui_touch_up(ui_get_current(), index, x, y);
 #endif
@@ -427,12 +378,6 @@ void _pen_move(int x, int y, float pressure) {
 
 void _drop_files(char *file_path, void *data) {
 // Update mouse position
-#ifdef IRON_WINDOWS
-	POINT p;
-	GetCursorPos(&p);
-	ScreenToClient(iron_windows_window_handle(), &p);
-	_mouse_move(p.x, p.y, 0, 0, NULL);
-#endif
 
 	iron_drop_files(file_path);
 
@@ -633,38 +578,6 @@ void iron_set_pen_move_callback(void (*callback)(int, int, float)) {
 	iron_pen_set_move_callback(_pen_move);
 }
 
-#ifdef WITH_GAMEPAD
-
-void (*iron_gamepad_axis)(int, int, float);
-void (*iron_gamepad_button)(int, int, float);
-
-void _gamepad_axis(int gamepad, int axis, float value, void *data) {
-	iron_gamepad_axis(gamepad, axis, value);
-
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
-}
-
-void _gamepad_button(int gamepad, int button, float value, void *data) {
-	iron_gamepad_button(gamepad, button, value);
-
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
-}
-
-void iron_set_gamepad_axis_callback(void (*callback)(int, int, float)) {
-	iron_gamepad_axis = callback;
-	iron_gamepad_set_axis_callback(_gamepad_axis, NULL);
-}
-
-void iron_set_gamepad_button_callback(void (*callback)(int, int, float)) {
-	iron_gamepad_button = callback;
-	iron_gamepad_set_button_callback(_gamepad_button, NULL);
-}
-
-#endif
 
 void gpu_delete_buffer(gpu_buffer_t *buffer) {
 	gpu_buffer_destroy(buffer);
@@ -701,24 +614,9 @@ void gpu_delete_shader(gpu_shader_t *shader) {
 gpu_shader_t *gpu_create_shader_from_source(char *source, int source_size, gpu_shader_type_t shader_type) {
 	gpu_shader_t *shader = (gpu_shader_t *)malloc(sizeof(gpu_shader_t));
 
-#ifdef WITH_D3DCOMPILER
-
-	gpu_shader_init(shader, source, strlen(source) + 1, shader_type);
-	shader->impl.is_source = true;
-
-#elif defined(IRON_METAL)
 
 	gpu_shader_init(shader, source, strlen(source), shader_type);
 
-#elif defined(IRON_VULKAN)
-
-	gpu_shader_init(shader, source, source_size, shader_type);
-
-#elif defined(IRON_WASM)
-
-	gpu_shader_init(shader, source, strlen(source), shader_type);
-
-#endif
 
 	return shader;
 }
@@ -887,24 +785,6 @@ gpu_texture_t *iron_load_texture(char *file) {
 	return texture;
 }
 
-void *iron_load_sound(char *file) {
-#ifdef IRON_AUDIO
-	iron_a1_init();
-	iron_a1_sound_t *sound = iron_a1_sound_create(file);
-	return sound;
-#endif
-	return NULL;
-}
-
-void *iron_load_sound_from_bytes(buffer_t *data, char *format) {
-#ifdef IRON_AUDIO
-	iron_a1_init();
-	iron_a1_sound_t *sound = iron_a1_sound_create_from_bytes(data->buffer, data->length, format);
-	return sound;
-#endif
-	return NULL;
-}
-
 buffer_t *iron_load_blob(char *file) {
 #ifdef WITH_EMBED
 	buffer_t *b = embed_get(file);
@@ -990,6 +870,20 @@ buffer_t *gpu_get_texture_pixels(gpu_texture_t *image) {
 #endif
 
 	return image->buffer;
+}
+
+// gpu_get_texture_pixels() of an RGBA32 texture in RGBA order on every platform: with IRON_BGRA a render target holds
+// BGRA, swapped here. The buffer is the copy cached on the texture (re-read on every call): the texture owns it, it stays
+// valid until the next read and is freed by gpu_release_texture_pixels() or with the texture, callers never free it.
+// Other formats are returned as read.
+buffer_t *gpu_get_texture_pixels_rgba8(gpu_texture_t *image) {
+	buffer_t *pixels = gpu_get_texture_pixels(image);
+#ifdef IRON_BGRA
+	if (image->format == GPU_TEXTURE_FORMAT_RGBA32 && image->state == GPU_TEXTURE_STATE_RENDER_TARGET) {
+		buffer_bgra_swap(pixels);
+	}
+#endif
+	return pixels;
 }
 
 // Frees the copy gpu_get_texture_pixels() keeps on the texture, layer sized copies would stay in memory otherwise

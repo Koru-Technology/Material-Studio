@@ -4,7 +4,6 @@
 #include <iron_gpu.h>
 #include <iron_math.h>
 #include <iron_system.h>
-#include <iron_video.h>
 #include <mach/mach_time.h>
 #include <objc/runtime.h>
 #include <stdbool.h>
@@ -25,11 +24,9 @@ struct window_data {
 static struct window_data windows[1]              = {0};
 static bool               controlkey_mouse_button = false;
 static bool               keyboard_shown          = false;
-static const char        *video_formats[]         = {"ogv", NULL};
 static NSApplication     *myapp;
 static NSWindow          *window;
 static BasicMTKView      *view;
-static char               language[3];
 static int                current_cursor_index = 0;
 static int                key_translated[128];
 static bool               engine_started = false; // iron_init ran: the view may be resized into the gpu
@@ -170,23 +167,23 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 		capslock = false;
 	}
 
-	if (([theEvent modifierFlags] & NSShiftKeyMask) && !trackpad_hide_shift) {
+	if (([theEvent modifierFlags] & NSEventModifierFlagShift) && !trackpad_hide_shift) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_SHIFT);
 		shift = true;
 	}
-	if ([theEvent modifierFlags] & NSControlKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagControl) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_CONTROL);
 		ctrl = true;
 	}
-	if ([theEvent modifierFlags] & NSAlternateKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagOption) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_ALT);
 		alt = true;
 	}
-	if ([theEvent modifierFlags] & NSCommandKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagCommand) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_META);
 		cmd = true;
 	}
-	if ([theEvent modifierFlags] & NSAlphaShiftKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagCapsLock) {
 		iron_internal_keyboard_trigger_key_down(KEY_CODE_CAPS_LOCK);
 		capslock = true;
 	}
@@ -212,7 +209,7 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 	if (ch == 27)
 		return;
 
-	if ([theEvent modifierFlags] & NSCommandKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagCommand) {
 		NSString *base = [theEvent charactersIgnoringModifiers];
 		unichar   bc   = [base length] ? [base characterAtIndex:0] : ch;
 		if (bc == 'x') {
@@ -223,11 +220,10 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 		}
 		if (bc == 'v') {
 			NSPasteboard *board = [NSPasteboard generalPasteboard];
-			NSString     *data  = [board stringForType:NSStringPboardType];
-			if (data != nil) {
-				char charData[4096];
-				strcpy(charData, [data UTF8String]);
-				iron_internal_paste_callback(charData);
+			NSString     *data  = [board stringForType:NSPasteboardTypeString];
+			const char   *text  = data != nil ? [data UTF8String] : NULL;
+			if (text != NULL) {
+				iron_internal_paste_callback((char *)text);
 			}
 		}
 		return;
@@ -265,7 +261,7 @@ static int get_mouse_y(NSEvent *event) {
 }
 
 - (void)mouseDown:(NSEvent *)theEvent {
-	if ([theEvent modifierFlags] & NSControlKeyMask) {
+	if ([theEvent modifierFlags] & NSEventModifierFlagControl) {
 		controlkey_mouse_button = true;
 		iron_internal_mouse_trigger_press(1, get_mouse_x(theEvent), get_mouse_y(theEvent));
 	}
@@ -274,7 +270,7 @@ static int get_mouse_y(NSEvent *event) {
 		iron_internal_mouse_trigger_press(0, get_mouse_x(theEvent), get_mouse_y(theEvent));
 	}
 
-	if ([theEvent subtype] == NSTabletPointEventSubtype) {
+	if ([theEvent subtype] == NSEventSubtypeTabletPoint) {
 		iron_internal_pen_trigger_press(get_mouse_x(theEvent), get_mouse_y(theEvent), theEvent.pressure);
 	}
 }
@@ -288,7 +284,7 @@ static int get_mouse_y(NSEvent *event) {
 	}
 	controlkey_mouse_button = false;
 
-	if ([theEvent subtype] == NSTabletPointEventSubtype) {
+	if ([theEvent subtype] == NSEventSubtypeTabletPoint) {
 		iron_internal_pen_trigger_release(get_mouse_x(theEvent), get_mouse_y(theEvent), theEvent.pressure);
 	}
 }
@@ -300,7 +296,7 @@ static int get_mouse_y(NSEvent *event) {
 - (void)mouseDragged:(NSEvent *)theEvent {
 	iron_internal_mouse_trigger_move(get_mouse_x(theEvent), get_mouse_y(theEvent));
 
-	if ([theEvent subtype] == NSTabletPointEventSubtype) {
+	if ([theEvent subtype] == NSEventSubtypeTabletPoint) {
 		iron_internal_pen_trigger_move(get_mouse_x(theEvent), get_mouse_y(theEvent), theEvent.pressure);
 	}
 }
@@ -418,8 +414,7 @@ static void trackpad_release(void) {
 	if ([[pboard types] containsObject:NSURLPboardType]) {
 		NSArray *urls = [pboard readObjectsForClasses:@[ [NSURL class] ] options:nil];
 		for (NSURL *fileURL in urls) {
-			const char *filePath = [fileURL.path cStringUsingEncoding:NSUTF8StringEncoding];
-			iron_internal_drop_files_callback(filePath);
+			iron_internal_drop_files_callback((char *)[fileURL.path UTF8String]);
 		}
 	}
 	return YES;
@@ -511,7 +506,7 @@ static void trackpad_release(void) {
 void iron_copy_to_clipboard(const char *text) {
 	NSPasteboard *board = [NSPasteboard generalPasteboard];
 	[board clearContents];
-	[board setString:[NSString stringWithUTF8String:text] forType:NSStringPboardType];
+	[board setString:[NSString stringWithUTF8String:text] forType:NSPasteboardTypeString];
 }
 
 int iron_count_displays(void) {
@@ -627,31 +622,7 @@ const char *iron_system_id(void) {
 	return "macOS";
 }
 
-const char **iron_video_formats(void) {
-	return video_formats;
-}
-
 void iron_set_keep_screen_on(bool on) {}
-
-double iron_frequency(void) {
-	mach_timebase_info_data_t info;
-	mach_timebase_info(&info);
-	return (double)info.denom / (double)info.numer / 1e-9;
-}
-
-uint64_t iron_timestamp(void) {
-	return mach_absolute_time();
-}
-
-bool with_autoreleasepool(bool (*f)(void)) {
-	@autoreleasepool {
-		return f();
-	}
-}
-
-const char *iron_get_resource_path(void) {
-	return [[[NSBundle mainBundle] resourcePath] cStringUsingEncoding:NSUTF8StringEncoding];
-}
 
 @interface IronApplication : NSApplication {
 }
@@ -689,9 +660,9 @@ bool iron_internal_handle_messages(void) {
 		trackpad_release();
 	}
 	return true;
-#endif
+#else
 	NSEvent *event;
-	while ((event = [myapp nextEventMatchingMask:NSAnyEventMask untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode
+	while ((event = [myapp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode
 	                                     dequeue:YES]) != nil) { // distantPast: non-blocking
 		// Key up is not delivered to the view while cmd is held, keys would stay down
 		if ([event type] == NSEventTypeKeyUp && ([event modifierFlags] & NSEventModifierFlagCommand)) {
@@ -712,8 +683,10 @@ bool iron_internal_handle_messages(void) {
 		[NSThread sleepForTimeInterval:1.0 / 60];
 	}
 	return true;
+#endif
 }
 
+#ifndef IRON_EXTERNAL_LOOP // The native app makes the window and the menu
 static void create_window(iron_window_options_t *options) {
 	int width     = options->width / [[NSScreen mainScreen] backingScaleFactor];
 	int height    = options->height / [[NSScreen mainScreen] backingScaleFactor];
@@ -749,29 +722,14 @@ static void create_window(iron_window_options_t *options) {
 		windows[0].fullscreen = true;
 	}
 }
-
-void iron_window_change_window_mode(iron_window_mode_t mode) {
-	switch (mode) {
-	case IRON_WINDOW_MODE_WINDOW:
-		if (windows[0].fullscreen) {
-			[window toggleFullScreen:nil];
-			windows[0].fullscreen = false;
-		}
-		break;
-	case IRON_WINDOW_MODE_FULLSCREEN:
-		if (!windows[0].fullscreen) {
-			[window toggleFullScreen:nil];
-			windows[0].fullscreen = true;
-		}
-		break;
-	}
-}
+#endif
 
 void iron_window_set_close_callback(bool (*callback)(void *), void *data) {
 	windows[0].close_callback      = callback;
 	windows[0].close_callback_data = data;
 }
 
+#ifndef IRON_EXTERNAL_LOOP
 static void add_menubar(void) {
 	NSString *appName = [[NSProcessInfo processInfo] processName];
 
@@ -787,6 +745,7 @@ static void add_menubar(void) {
 	[menubar addItem:appMenuItem];
 	[NSApp setMainMenu:menubar];
 }
+#endif
 
 #ifdef IRON_EXTERNAL_LOOP
 void *iron_apple_engine_view(void) {
@@ -865,23 +824,19 @@ void iron_init(iron_window_options_t *win) {
 	adopt_host_window();
 	engine_started = true;
 	gpu_init(win->depth_bits, true);
-	return;
-#endif
+#else
 	@autoreleasepool {
 		myapp = [IronApplication sharedApplication];
 		[myapp finishLaunching];
-		[[NSRunningApplication currentApplication] activateWithOptions:(NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps)];
+		[[NSRunningApplication currentApplication] activateWithOptions:NSApplicationActivateAllWindows];
 		NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
 		add_menubar();
 
-#ifdef WITH_GAMEPAD
-		hidManager = (struct HIDManager *)malloc(sizeof(struct HIDManager));
-		HIDManager_init(hidManager);
-#endif
 	}
 
 	create_window(win);
 	gpu_init(win->depth_bits, true);
+#endif
 }
 
 // The engine view's size in pixels (the view fills the window, unless a native app lays it out)
@@ -899,32 +854,8 @@ void iron_load_url(const char *url) {
 	[[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:[NSString stringWithUTF8String:url]]];
 }
 
-const char *iron_language(void) {
-	NSString   *nsstr = [[NSLocale preferredLanguages] objectAtIndex:0];
-	const char *lang  = [nsstr UTF8String];
-	language[0]       = lang[0];
-	language[1]       = lang[1];
-	language[2]       = 0;
-	return language;
-}
-
 void iron_internal_shutdown(void) {
 	iron_internal_shutdown_callback();
-}
-
-const char *iron_internal_save_path(void) {
-	NSArray  *paths        = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
-	NSString *resolvedPath = [paths objectAtIndex:0];
-	NSString *appName      = [NSString stringWithUTF8String:iron_application_name()];
-	resolvedPath           = [resolvedPath stringByAppendingPathComponent:appName];
-
-	NSFileManager *fileMgr = [[NSFileManager alloc] init];
-
-	NSError *error;
-	[fileMgr createDirectoryAtPath:resolvedPath withIntermediateDirectories:YES attributes:nil error:&error];
-
-	resolvedPath = [resolvedPath stringByAppendingString:@"/"];
-	return [resolvedPath cStringUsingEncoding:NSUTF8StringEncoding];
 }
 
 #ifndef IRON_EXTERNAL_LOOP // The native app has the entry point
@@ -1044,319 +975,6 @@ int iron_window_display() {
 	return 0;
 }
 
-#ifdef WITH_GAMEPAD
-
-static struct HIDManager *hidManager;
-
-bool iron_gamepad_connected(int num) {
-	return true;
-}
-
-void iron_gamepad_rumble(int gamepad, float left, float right) {}
-
-static void inputValueCallback(void *inContext, IOReturn inResult, void *inSender, IOHIDValueRef inIOHIDValueRef);
-static void valueAvailableCallback(void *inContext, IOReturn inResult, void *inSender);
-static void reset(struct HIDGamepad *gamepad);
-static void initDeviceElements(struct HIDGamepad *gamepad, CFArrayRef elements);
-static void buttonChanged(struct HIDGamepad *gamepad, IOHIDElementRef elementRef, IOHIDValueRef valueRef, int buttonIndex);
-static void axisChanged(struct HIDGamepad *gamepad, IOHIDElementRef elementRef, IOHIDValueRef valueRef, int axisIndex);
-
-static int iron_mini(int a, int b) {
-	return a > b ? b : a;
-}
-
-static void cstringFromCFStringRef(CFStringRef string, char *cstr, size_t clen) {
-	cstr[0] = '\0';
-	if (string != NULL) {
-		char temp[256];
-		if (CFStringGetCString(string, temp, 256, kCFStringEncodingUTF8)) {
-			temp[iron_mini(255, (int)(clen - 1))] = '\0';
-			strncpy(cstr, temp, clen);
-		}
-	}
-}
-
-void HIDGamepad_init(struct HIDGamepad *gamepad) {
-	reset(gamepad);
-}
-
-void HIDGamepad_destroy(struct HIDGamepad *gamepad) {
-	HIDGamepad_unbind(gamepad);
-}
-
-void HIDGamepad_bind(struct HIDGamepad *gamepad, IOHIDDeviceRef inDeviceRef, int inPadIndex) {
-	gamepad->hidDeviceRef = inDeviceRef;
-	gamepad->padIndex     = inPadIndex;
-
-	IOHIDDeviceOpen(gamepad->hidDeviceRef, kIOHIDOptionsTypeSeizeDevice);
-	IOHIDDeviceRegisterInputValueCallback(gamepad->hidDeviceRef, inputValueCallback, gamepad);
-	IOHIDDeviceScheduleWithRunLoop(gamepad->hidDeviceRef, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-
-	gamepad->hidQueueRef = IOHIDQueueCreate(kCFAllocatorDefault, gamepad->hidDeviceRef, 32, kIOHIDOptionsTypeNone);
-	if (CFGetTypeID(gamepad->hidQueueRef) == IOHIDQueueGetTypeID()) {
-		IOHIDQueueStart(gamepad->hidQueueRef);
-		IOHIDQueueRegisterValueAvailableCallback(gamepad->hidQueueRef, valueAvailableCallback, gamepad);
-		IOHIDQueueScheduleWithRunLoop(gamepad->hidQueueRef, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-	}
-
-	CFArrayRef elementCFArrayRef = IOHIDDeviceCopyMatchingElements(gamepad->hidDeviceRef, NULL, kIOHIDOptionsTypeNone);
-	initDeviceElements(gamepad, elementCFArrayRef);
-
-	{
-		CFNumberRef vendorIdRef = (CFNumberRef)IOHIDDeviceGetProperty(gamepad->hidDeviceRef, CFSTR(kIOHIDVendorIDKey));
-		CFNumberGetValue(vendorIdRef, kCFNumberIntType, &gamepad->hidDeviceVendorID);
-
-		CFNumberRef productIdRef = (CFNumberRef)IOHIDDeviceGetProperty(gamepad->hidDeviceRef, CFSTR(kIOHIDProductIDKey));
-		CFNumberGetValue(productIdRef, kCFNumberIntType, &gamepad->hidDeviceProductID);
-
-		CFStringRef vendorRef = (CFStringRef)IOHIDDeviceGetProperty(gamepad->hidDeviceRef, CFSTR(kIOHIDManufacturerKey));
-		cstringFromCFStringRef(vendorRef, gamepad->hidDeviceVendor, sizeof(gamepad->hidDeviceVendor));
-
-		CFStringRef productRef = (CFStringRef)IOHIDDeviceGetProperty(gamepad->hidDeviceRef, CFSTR(kIOHIDProductKey));
-		cstringFromCFStringRef(productRef, gamepad->hidDeviceProduct, sizeof(gamepad->hidDeviceProduct));
-	}
-}
-
-static void initDeviceElements(struct HIDGamepad *gamepad, CFArrayRef elements) {
-
-	for (CFIndex i = 0, count = CFArrayGetCount(elements); i < count; ++i) {
-		IOHIDElementRef  elementRef = (IOHIDElementRef)CFArrayGetValueAtIndex(elements, i);
-		IOHIDElementType elemType   = IOHIDElementGetType(elementRef);
-
-		IOHIDElementCookie cookie = IOHIDElementGetCookie(elementRef);
-
-		uint32_t usagePage = IOHIDElementGetUsagePage(elementRef);
-		uint32_t usage     = IOHIDElementGetUsage(elementRef);
-
-		// Match up items
-		switch (usagePage) {
-		case kHIDPage_GenericDesktop:
-			switch (usage) {
-			case kHIDUsage_GD_X: // Left stick X
-				gamepad->axis[0] = cookie;
-				break;
-			case kHIDUsage_GD_Y: // Left stick Y
-				gamepad->axis[1] = cookie;
-				break;
-			case kHIDUsage_GD_Z: // Left trigger
-				gamepad->axis[4] = cookie;
-				break;
-			case kHIDUsage_GD_Rx: // Right stick X
-				gamepad->axis[2] = cookie;
-				break;
-			case kHIDUsage_GD_Ry: // Right stick Y
-				gamepad->axis[3] = cookie;
-				break;
-			case kHIDUsage_GD_Rz: // Right trigger
-				gamepad->axis[5] = cookie;
-				break;
-			case kHIDUsage_GD_Hatswitch:
-				break;
-			default:
-				break;
-			}
-			break;
-		case kHIDPage_Button:
-			if ((usage >= 1) && (usage <= 15)) {
-				// Button 1-11
-				gamepad->buttons[usage - 1] = cookie;
-			}
-			break;
-		default:
-			break;
-		}
-
-		if (elemType == kIOHIDElementTypeInput_Misc || elemType == kIOHIDElementTypeInput_Button || elemType == kIOHIDElementTypeInput_Axis) {
-			if (!IOHIDQueueContainsElement(gamepad->hidQueueRef, elementRef))
-				IOHIDQueueAddElement(gamepad->hidQueueRef, elementRef);
-		}
-	}
-}
-
-void HIDGamepad_unbind(struct HIDGamepad *gamepad) {
-	if (gamepad->hidQueueRef) {
-		IOHIDQueueStop(gamepad->hidQueueRef);
-		IOHIDQueueUnscheduleFromRunLoop(gamepad->hidQueueRef, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-	}
-	if (gamepad->hidDeviceRef) {
-		IOHIDDeviceUnscheduleFromRunLoop(gamepad->hidDeviceRef, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-		IOHIDDeviceClose(gamepad->hidDeviceRef, kIOHIDOptionsTypeSeizeDevice);
-	}
-	reset(gamepad);
-}
-
-static void reset(struct HIDGamepad *gamepad) {
-	gamepad->padIndex            = -1;
-	gamepad->hidDeviceRef        = NULL;
-	gamepad->hidQueueRef         = NULL;
-	gamepad->hidDeviceVendor[0]  = '\0';
-	gamepad->hidDeviceProduct[0] = '\0';
-	gamepad->hidDeviceVendorID   = 0;
-	gamepad->hidDeviceProductID  = 0;
-	memset(gamepad->axis, 0, sizeof(gamepad->axis));
-	memset(gamepad->buttons, 0, sizeof(gamepad->buttons));
-}
-
-static void buttonChanged(struct HIDGamepad *gamepad, IOHIDElementRef elementRef, IOHIDValueRef valueRef, int buttonIndex) {
-	double rawValue  = IOHIDValueGetScaledValue(valueRef, kIOHIDValueScaleTypePhysical);
-	double min       = IOHIDElementGetLogicalMin(elementRef);
-	double max       = IOHIDElementGetLogicalMax(elementRef);
-	double normalize = (rawValue - min) / (max - min);
-	iron_internal_gamepad_trigger_button(gamepad->padIndex, buttonIndex, normalize);
-}
-
-static void axisChanged(struct HIDGamepad *gamepad, IOHIDElementRef elementRef, IOHIDValueRef valueRef, int axisIndex) {
-	double rawValue  = IOHIDValueGetScaledValue(valueRef, kIOHIDValueScaleTypePhysical);
-	double min       = IOHIDElementGetPhysicalMin(elementRef);
-	double max       = IOHIDElementGetPhysicalMax(elementRef);
-	double normalize = normalize = (((rawValue - min) / (max - min)) * 2) - 1;
-	if (axisIndex % 2 == 1) {
-		normalize = -normalize;
-	}
-	iron_internal_gamepad_trigger_axis(gamepad->padIndex, axisIndex, normalize);
-}
-
-static void inputValueCallback(void *inContext, IOReturn inResult, void *inSender, IOHIDValueRef inIOHIDValueRef) {}
-
-static void valueAvailableCallback(void *inContext, IOReturn inResult, void *inSender) {
-	struct HIDGamepad *pad = (struct HIDGamepad *)inContext;
-	do {
-		IOHIDValueRef valueRef = IOHIDQueueCopyNextValueWithTimeout((IOHIDQueueRef)inSender, 0.);
-		if (!valueRef) {
-			break;
-		}
-
-		IOHIDElementRef    elementRef = IOHIDValueGetElement(valueRef);
-		IOHIDElementCookie cookie     = IOHIDElementGetCookie(elementRef);
-
-		for (int i = 0, c = sizeof(pad->buttons); i < c; ++i) {
-			if (cookie == pad->buttons[i]) {
-				buttonChanged(pad, elementRef, valueRef, i);
-				break;
-			}
-		}
-
-		for (int i = 0, c = sizeof(pad->axis); i < c; ++i) {
-			if (cookie == pad->axis[i]) {
-				axisChanged(pad, elementRef, valueRef, i);
-				break;
-			}
-		}
-
-		CFRelease(valueRef);
-	} while (1);
-}
-
-const char *iron_gamepad_vendor(int gamepad) {
-	return "unknown";
-}
-
-const char *iron_gamepad_product_name(int gamepad) {
-	return "unknown";
-}
-
-static int                    initHIDManager(struct HIDManager *manager);
-static bool                   addMatchingArray(struct HIDManager *manager, CFMutableArrayRef matchingCFArrayRef, CFDictionaryRef matchingCFDictRef);
-static CFMutableDictionaryRef createDeviceMatchingDictionary(struct HIDManager *manager, uint32_t inUsagePage, uint32_t inUsage);
-static void                   deviceConnected(void *inContext, IOReturn inResult, void *inSender, IOHIDDeviceRef inIOHIDDeviceRef);
-static void                   deviceRemoved(void *inContext, IOReturn inResult, void *inSender, IOHIDDeviceRef inIOHIDDeviceRef);
-
-void HIDManager_init(struct HIDManager *manager) {
-	manager->managerRef = 0x0;
-	initHIDManager(manager);
-}
-
-void HIDManager_destroy(struct HIDManager *manager) {
-	if (manager->managerRef) {
-		IOHIDManagerUnscheduleFromRunLoop(manager->managerRef, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-		IOHIDManagerClose(manager->managerRef, kIOHIDOptionsTypeNone);
-	}
-}
-
-static int initHIDManager(struct HIDManager *manager) {
-	manager->managerRef = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-	if (CFGetTypeID(manager->managerRef) == IOHIDManagerGetTypeID()) {
-
-		CFMutableArrayRef matchingCFArrayRef = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
-		if (matchingCFArrayRef) {
-			CFDictionaryRef matchingCFDictRef = createDeviceMatchingDictionary(manager, kHIDPage_GenericDesktop, kHIDUsage_GD_Joystick);
-			addMatchingArray(manager, matchingCFArrayRef, matchingCFDictRef);
-			matchingCFDictRef = createDeviceMatchingDictionary(manager, kHIDPage_GenericDesktop, kHIDUsage_GD_GamePad);
-			addMatchingArray(manager, matchingCFArrayRef, matchingCFDictRef);
-		}
-		else {
-			iron_error("%s: CFArrayCreateMutable failed.", __PRETTY_FUNCTION__);
-			return -1;
-		}
-
-		IOHIDManagerSetDeviceMatchingMultiple(manager->managerRef, matchingCFArrayRef);
-		CFRelease(matchingCFArrayRef);
-		IOHIDManagerOpen(manager->managerRef, kIOHIDOptionsTypeNone);
-		IOHIDManagerRegisterDeviceMatchingCallback(manager->managerRef, deviceConnected, manager);
-		IOHIDManagerRegisterDeviceRemovalCallback(manager->managerRef, deviceRemoved, manager);
-		IOHIDManagerScheduleWithRunLoop(manager->managerRef, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-		return 0;
-	}
-	return -1;
-}
-
-bool addMatchingArray(struct HIDManager *manager, CFMutableArrayRef matchingCFArrayRef, CFDictionaryRef matchingCFDictRef) {
-	if (matchingCFDictRef) {
-		CFArrayAppendValue(matchingCFArrayRef, matchingCFDictRef);
-		CFRelease(matchingCFDictRef);
-		return true;
-	}
-	return false;
-}
-
-CFMutableDictionaryRef createDeviceMatchingDictionary(struct HIDManager *manager, uint32_t inUsagePage, uint32_t inUsage) {
-	CFMutableDictionaryRef result = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-	if (result) {
-		if (inUsagePage) {
-			CFNumberRef pageCFNumberRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &inUsagePage);
-			if (pageCFNumberRef) {
-				CFDictionarySetValue(result, CFSTR(kIOHIDDeviceUsagePageKey), pageCFNumberRef);
-				CFRelease(pageCFNumberRef);
-				if (inUsage) {
-					CFNumberRef usageCFNumberRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &inUsage);
-					if (usageCFNumberRef) {
-						CFDictionarySetValue(result, CFSTR(kIOHIDDeviceUsageKey), usageCFNumberRef);
-						CFRelease(usageCFNumberRef);
-					}
-				}
-			}
-		}
-	}
-	return result;
-}
-
-void deviceConnected(void *inContext, IOReturn inResult, void *inSender, IOHIDDeviceRef inIOHIDDeviceRef) {
-	struct HIDManager             *manager = (struct HIDManager *)inContext;
-	struct HIDManagerDeviceRecord *device  = &manager->devices[0];
-	for (int i = 0; i < IRON_MAX_HID_DEVICES; ++i, ++device) {
-		if (!device->connected) {
-			device->connected = true;
-			device->device    = inIOHIDDeviceRef;
-			HIDGamepad_bind(&device->pad, inIOHIDDeviceRef, i);
-			break;
-		}
-	}
-}
-
-void deviceRemoved(void *inContext, IOReturn inResult, void *inSender, IOHIDDeviceRef inIOHIDDeviceRef) {
-	struct HIDManager             *manager = (struct HIDManager *)inContext;
-	struct HIDManagerDeviceRecord *device  = &manager->devices[0];
-	for (int i = 0; i < IRON_MAX_HID_DEVICES; ++i, ++device) {
-		if (device->connected && device->device == inIOHIDDeviceRef) {
-			device->connected = false;
-			device->device    = NULL;
-			HIDGamepad_unbind(&device->pad);
-			break;
-		}
-	}
-}
-
-#endif
 
 extern void (*iron_save_and_quit)(bool);
 
@@ -1420,25 +1038,4 @@ void iron_exec_async(const char *path, char *argv[]) {
 		iron_exec_async_done = 1;
 	};
 	[task launch];
-}
-
-// File of the system UI font (SF on Apple platforms), NULL when it can not be found
-const char *iron_system_font_path(void) {
-	static char path[1024] = {0};
-	static bool looked     = false;
-	if (!looked) {
-		looked         = true;
-		CTFontRef font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 0.0, NULL);
-		if (font != NULL) {
-			CFURLRef url = (CFURLRef)CTFontCopyAttribute(font, kCTFontURLAttribute);
-			if (url != NULL) {
-				if (!CFURLGetFileSystemRepresentation(url, true, (UInt8 *)path, sizeof(path))) {
-					path[0] = 0;
-				}
-				CFRelease(url);
-			}
-			CFRelease(font);
-		}
-	}
-	return path[0] != 0 ? path : NULL;
 }
