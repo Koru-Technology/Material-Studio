@@ -71,7 +71,8 @@ mm_json_t *mm_json_parse_persistent(const char *text, size_t len); // Not in the
 mm_json_t *mm_json_get(mm_json_t *obj, const char *key);
 mm_json_t *mm_json_at(mm_json_t *arr, int i);
 const char *mm_json_str(mm_json_t *v, const char *fallback);   // A string, or lines of an array joined
-double      mm_json_num(mm_json_t *v, double fallback);        // Numbers, bools and numeric strings
+double      mm_json_num(mm_json_t *v, double fallback);        // Numbers, bools and numeric strings ("1.2/6.0" too)
+bool        mm_const_eval(const char *s, double *out);         // Constant arithmetic: numbers, + - * /, parentheses
 bool        mm_json_bool(mm_json_t *v, bool fallback);
 bool        mm_json_truthy(mm_json_t *v); // GDScript truthiness: "true" and any non-empty string are true
 char       *mm_json_text(mm_json_t *v);   // Compact JSON, in the arena

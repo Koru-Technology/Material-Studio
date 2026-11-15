@@ -480,6 +480,81 @@ const char *mm_json_str(mm_json_t *v, const char *fallback) {
 	return fallback;
 }
 
+// Constant arithmetic as Material Maker saves in float parameters ("1.2/6.0"): numbers, + - * /, parentheses
+static double const_sum(const char **s, bool *ok);
+
+static double const_atom(const char **s, bool *ok) {
+	while (**s == ' ') {
+		++*s;
+	}
+	if (**s == '-' || **s == '+') {
+		double sign = *(*s)++ == '-' ? -1.0 : 1.0;
+		return sign * const_atom(s, ok);
+	}
+	if (**s == '(') {
+		++*s;
+		double d = const_sum(s, ok);
+		while (**s == ' ') {
+			++*s;
+		}
+		*ok = *ok && **s == ')';
+		if (*ok) {
+			++*s;
+		}
+		return d;
+	}
+	char  *end;
+	double d = strtod(*s, &end);
+	*ok      = *ok && end != *s;
+	*s       = end;
+	return d;
+}
+
+static double const_product(const char **s, bool *ok) {
+	double d = const_atom(s, ok);
+	while (*ok) {
+		while (**s == ' ') {
+			++*s;
+		}
+		if (**s != '*' && **s != '/') {
+			break;
+		}
+		char   op = *(*s)++;
+		double r  = const_atom(s, ok);
+		d         = op == '*' ? d * r : d / r;
+	}
+	return d;
+}
+
+static double const_sum(const char **s, bool *ok) {
+	double d = const_product(s, ok);
+	while (*ok) {
+		while (**s == ' ') {
+			++*s;
+		}
+		if (**s != '+' && **s != '-') {
+			break;
+		}
+		char   op = *(*s)++;
+		double r  = const_product(s, ok);
+		d         = op == '+' ? d + r : d - r;
+	}
+	return d;
+}
+
+bool mm_const_eval(const char *s, double *out) {
+	bool   ok = s != NULL;
+	double d  = ok ? const_sum(&s, &ok) : 0.0;
+	while (ok && *s == ' ') {
+		++s;
+	}
+	ok = ok && *s == 0;
+	if (ok) {
+		*out = d;
+	}
+	return ok;
+}
+
 double mm_json_num(mm_json_t *v, double fallback) {
 	if (v == NULL) {
 		return fallback;
@@ -491,8 +566,12 @@ double mm_json_num(mm_json_t *v, double fallback) {
 		return v->boolean ? 1.0 : 0.0;
 	}
 	if (v->type == MM_JSON_STRING) {
-		char  *end;
-		double d = strtod(v->string, &end);
+		double d;
+		if (mm_const_eval(v->string, &d)) {
+			return d;
+		}
+		char *end;
+		d = strtod(v->string, &end);
 		return end != v->string ? d : fallback;
 	}
 	return fallback;
