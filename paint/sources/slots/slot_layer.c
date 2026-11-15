@@ -271,6 +271,14 @@ void slot_layer_clear(slot_layer_t *raw, i32 base_color, gpu_texture_t *base_ima
 	g_context->rtdirty             = 1;
 }
 
+// Points the render target <prefix><ext> of raw at t, its textures are looked up by ext
+static void slot_layer_set_target(slot_layer_t *raw, char *prefix, gpu_texture_t *t) {
+	render_target_t *rt = any_map_get(render_path_render_targets, string_tmp("%s%s", prefix, raw->ext));
+	if (rt != NULL) {
+		rt->_image = t;
+	}
+}
+
 void slot_layer_invert_mask(slot_layer_t *raw) {
 	gpu_texture_t *inverted = gpu_create_render_target(raw->texpaint->width, raw->texpaint->height, GPU_TEXTURE_FORMAT_RGBA32);
 	draw_begin(inverted, false, 0);
@@ -280,8 +288,8 @@ void slot_layer_invert_mask(slot_layer_t *raw) {
 	draw_end();
 	gpu_texture_t *_texpaint = raw->texpaint;
 	gpu_delete_texture(_texpaint);
-	render_target_t *rt = any_map_get(render_path_render_targets, string("texpaint%d", raw->id));
-	raw->texpaint = rt->_image     = inverted;
+	raw->texpaint = inverted;
+	slot_layer_set_target(raw, "texpaint", inverted);
 	mask_stack_mark_dirty(raw);
 	g_context->layer_preview_dirty = true;
 	g_context->ddirty              = 3;
@@ -459,7 +467,6 @@ static void slot_layer_draw_resized(gpu_texture_t *src, i32 res_x, i32 res_y) {
 void slot_layer_resize_and_set_bits(slot_layer_t *raw) {
 	i32        res_x = config_get_texture_res_x();
 	i32        res_y = config_get_texture_res_y();
-	any_map_t *rts   = render_path_render_targets;
 
 	if (slot_layer_is_layer(raw)) {
 		gpu_texture_format_t format = base_bits == TEXTURE_BITS_BITS8    ? GPU_TEXTURE_FORMAT_RGBA32
@@ -504,17 +511,12 @@ void slot_layer_resize_and_set_bits(slot_layer_t *raw) {
 			gpu_delete_texture(_texpaint_pack);
 		}
 
-		render_target_t *rt = any_map_get(rts, string("texpaint%s", raw->ext));
-		rt->_image          = raw->texpaint;
-
+		slot_layer_set_target(raw, "texpaint", raw->texpaint);
 		if (raw->texpaint_nor != NULL) {
-			render_target_t *rt_nor = any_map_get(rts, string("texpaint_nor%s", raw->ext));
-			rt_nor->_image          = raw->texpaint_nor;
+			slot_layer_set_target(raw, "texpaint_nor", raw->texpaint_nor);
 		}
-
 		if (raw->texpaint_pack != NULL) {
-			render_target_t *rt_pack = any_map_get(rts, string("texpaint_pack%s", raw->ext));
-			rt_pack->_image          = raw->texpaint_pack;
+			slot_layer_set_target(raw, "texpaint_pack", raw->texpaint_pack);
 		}
 	}
 	else if (slot_layer_is_mask(raw)) {
@@ -529,8 +531,7 @@ void slot_layer_resize_and_set_bits(slot_layer_t *raw) {
 
 		gpu_delete_texture(_texpaint);
 
-		render_target_t *rt = any_map_get(rts, string("texpaint%s", raw->ext));
-		rt->_image          = raw->texpaint;
+		slot_layer_set_target(raw, "texpaint", raw->texpaint);
 
 		mask_stack_free_texture(raw); // Evaluated again at the new size
 		mask_stack_mark_dirty(raw);
