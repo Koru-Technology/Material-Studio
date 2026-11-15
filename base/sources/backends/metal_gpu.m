@@ -1306,7 +1306,7 @@ void gpu_raytrace_acceleration_structure_add(gpu_acceleration_structure_t *accel
 		vb_count++;
 	}
 
-	if (instances_count >= (int)(sizeof(instances) / sizeof(instances[0]))) {
+	if (instances_count >= (int)ARRAY_LENGTH(instances)) {
 		return;
 	}
 

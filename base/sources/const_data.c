@@ -63,7 +63,7 @@ const int _const_data_skydome_indices[] = {
     244, 233, 231, 241, 230, 241, 251, 240, 238, 248, 237, 245, 255, 244, 242, 252, 241, 239, 249, 238, 236, 246, 235, 243, 253, 242, 240, 250, 239, 237, 247,
     236, 244, 254, 243, 251, 259, 250, 248, 0,   247, 255, 263, 254, 252, 260, 251, 249, 1,   248, 256, 264, 255, 253, 261, 252, 250, 258, 249, 247, 257, 246,
     254, 262, 253};
-const int _const_data_skydome_indices_count = sizeof(_const_data_skydome_indices) / sizeof(_const_data_skydome_indices[0]);
+const int _const_data_skydome_indices_count = ARRAY_LENGTH(_const_data_skydome_indices);
 
 const float _const_data_skydome_pos[] = {
     0.0,      0.5,      0.86603,  0.0,      0.70711,  0.70711,  0.06699,  0.25,     0.96593,  0.12941,  0.48296,  0.86603,  0.18301,  0.68301,  0.70711,
@@ -120,7 +120,7 @@ const float _const_data_skydome_pos[] = {
     -0.12941, 0.48296,  -0.86603, -0.06699, 0.25,     -0.96593, -0.0,     0.25882,  0.96593,  -0.0,     0.86603,  0.5,      -0.0,     0.96593,  0.25882,
     0.0,      1.0,      -0.0,     -0.0,     0.96593,  -0.25882, -0.0,     0.86603,  -0.5,     0.0,      0.70711,  -0.70711, 0.0,      0.5,      -0.86603,
     -0.0,     0.25882,  -0.96593};
-const int _const_data_skydome_pos_count = sizeof(_const_data_skydome_pos) / sizeof(_const_data_skydome_pos[0]);
+const int _const_data_skydome_pos_count = ARRAY_LENGTH(_const_data_skydome_pos);
 
 const float _const_data_skydome_nor[] = {
     0.0,      -0.50807, -0.86132, 0.0,      -0.71246, -0.70172, -0.0696,  -0.25975, -0.96317, -0.1315,  -0.49075, -0.86132, -0.1844,  -0.68818, -0.70172,
@@ -177,7 +177,7 @@ const float _const_data_skydome_nor[] = {
     0.1315,   -0.49075, 0.86132,  0.0696,   -0.25975, 0.96317,  0.0,      -0.26891, -0.96317, 0.0,      -0.86869, -0.49536, 0.0,      -0.96664, -0.25615,
     0.0,      -1.0,     -0.0,     0.0,      -0.96664, 0.25615,  0.0,      -0.86869, 0.49536,  0.0,      -0.71246, 0.70172,  0.0,      -0.50807, 0.86132,
     0.0,      -0.26891, 0.96317};
-const int _const_data_skydome_nor_count = sizeof(_const_data_skydome_nor) / sizeof(_const_data_skydome_nor[0]);
+const int _const_data_skydome_nor_count = ARRAY_LENGTH(_const_data_skydome_nor);
 
 // Baked font data
 const char  iron_font_13_x0[] = {1,  2,  6,  11, 19,  26,  35, 43, 46, 51, 56, 62, 69, 73,  77,  81, 87,  94,  99,  106, 113, 120, 1,   8,
@@ -745,19 +745,19 @@ void const_data_create_screen_aligned_data(void) {
 	structure.size = 0;
 	gpu_vertex_structure_add(&structure, "pos", GPU_VERTEX_DATA_F32_2X);
 
-	int vertex_count             = sizeof(data) / sizeof(data[0]) / (gpu_vertex_struct_size(&structure) / 4);
+	int vertex_count             = ARRAY_LENGTH(data) / (gpu_vertex_struct_size(&structure) / 4);
 	const_data_screen_aligned_vb = malloc(sizeof(gpu_buffer_t));
 	gpu_vertex_buffer_init(const_data_screen_aligned_vb, vertex_count, &structure);
 	float *vertices = gpu_vertex_buffer_lock(const_data_screen_aligned_vb);
-	for (int i = 0; i < (int)(sizeof(data) / sizeof(data[0])); ++i) {
+	for (int i = 0; i < (int)ARRAY_LENGTH(data); ++i) {
 		vertices[i] = data[i];
 	}
 	gpu_vertex_buffer_unlock(const_data_screen_aligned_vb);
 
 	const_data_screen_aligned_ib = malloc(sizeof(gpu_buffer_t));
-	gpu_index_buffer_init(const_data_screen_aligned_ib, sizeof(indices) / sizeof(indices[0]));
+	gpu_index_buffer_init(const_data_screen_aligned_ib, ARRAY_LENGTH(indices));
 	int *id = gpu_index_buffer_lock(const_data_screen_aligned_ib);
-	for (int i = 0; i < (int)(sizeof(indices) / sizeof(indices[0])); ++i) {
+	for (int i = 0; i < (int)ARRAY_LENGTH(indices); ++i) {
 		id[i] = indices[i];
 	}
 	gpu_index_buffer_unlock(const_data_screen_aligned_ib);

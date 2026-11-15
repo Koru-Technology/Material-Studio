@@ -12,6 +12,11 @@
 
 int kickstart(int argc, char **argv);
 
+// Element count of a fixed size array (not a pointer)
+#ifndef ARRAY_LENGTH
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
+#endif
+
 typedef float    f32;
 typedef double   f64;
 typedef int8_t   i8;

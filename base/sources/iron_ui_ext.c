@@ -1203,7 +1203,7 @@ const char *ui_theme_keys[] = {"WINDOW_BG_COL", "HOVER_COL",         "BUTTON_COL
                                "CHECK_SIZE",    "CHECK_SELECT_SIZE", "SCROLL_W",   "SCROLL_MINI_W", "TEXT_OFFSET",    "TAB_W",      "FILL_BUTTON_BG",
                                "FULL_TABS",     "SHADOWS",           "LINK_STYLE", "VIEWPORT_COL"};
 
-int ui_theme_keys_count = sizeof(ui_theme_keys) / sizeof(ui_theme_keys[0]);
+int ui_theme_keys_count = ARRAY_LENGTH(ui_theme_keys);
 
 ////
 

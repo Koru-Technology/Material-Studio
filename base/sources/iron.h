@@ -939,6 +939,20 @@ buffer_t *gpu_get_texture_pixels(gpu_texture_t *image) {
 	return image->buffer;
 }
 
+// gpu_get_texture_pixels() of an RGBA32 texture in RGBA order on every platform: with IRON_BGRA a render target holds
+// BGRA, swapped here. The buffer is the copy cached on the texture (re-read on every call): the texture owns it, it stays
+// valid until the next read and is freed by gpu_release_texture_pixels() or with the texture, callers never free it.
+// Other formats are returned as read.
+buffer_t *gpu_get_texture_pixels_rgba8(gpu_texture_t *image) {
+	buffer_t *pixels = gpu_get_texture_pixels(image);
+#ifdef IRON_BGRA
+	if (image->format == GPU_TEXTURE_FORMAT_RGBA32 && image->state == GPU_TEXTURE_STATE_RENDER_TARGET) {
+		buffer_bgra_swap(pixels);
+	}
+#endif
+	return pixels;
+}
+
 // Frees the copy gpu_get_texture_pixels() keeps on the texture, layer sized copies would stay in memory otherwise
 void gpu_release_texture_pixels(gpu_texture_t *image) {
 	if (image == NULL || image->buffer == NULL) {
