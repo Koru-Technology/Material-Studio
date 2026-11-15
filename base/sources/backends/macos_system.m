@@ -224,10 +224,9 @@ static bool trackpad_hide_shift = false; // Shift selects the middle mouse butto
 		if (bc == 'v') {
 			NSPasteboard *board = [NSPasteboard generalPasteboard];
 			NSString     *data  = [board stringForType:NSStringPboardType];
-			if (data != nil) {
-				char charData[4096];
-				strcpy(charData, [data UTF8String]);
-				iron_internal_paste_callback(charData);
+			const char   *text  = data != nil ? [data UTF8String] : NULL;
+			if (text != NULL) {
+				iron_internal_paste_callback((char *)text);
 			}
 		}
 		return;
