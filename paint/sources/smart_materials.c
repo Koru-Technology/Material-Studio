@@ -137,7 +137,7 @@ static void smart_materials_write_icon(slot_material_t *m, char *path) {
 #endif
 	i32 w = m->image->width;
 	i32 f = w / SMART_MATERIALS_ICON_RES;
-	if (f < 2) {
+	if (f < 2 || (i32)m->image->height != w) { // Box filtered when square
 		iron_write_png(path, buf, w, m->image->height, 0);
 		return;
 	}
@@ -326,8 +326,17 @@ slot_layer_t *smart_materials_insert(char *name) {
 	char *mats_s  = any_map_get(m, "materials");
 	i32   count   = count_s != NULL ? atoi(count_s) : 0;
 	i32   mats    = mats_s != NULL ? atoi(mats_s) : 0;
-	if (count <= 0 || g_project->_->layers->length + count > layers_max_layers) {
+	if (count <= 0 || g_project->_->layers->length + count > layers_max_layers || mats < 0 || mats > SMART_MATERIALS_MAX) {
 		return NULL;
+	}
+	// Parents sit above their masks and children (a later index), a mask has one
+	for (i32 i = 0; i < count; ++i) {
+		char *p      = string_copy(string_tmp("l%d", i));
+		i32   kind   = smart_materials_i32(m, p, "kind", 0);
+		i32   parent = smart_materials_i32(m, p, "parent", -1);
+		if (parent >= count || (parent >= 0 && parent <= i) || (kind == 1 && parent < 0)) {
+			return NULL;
+		}
 	}
 
 	slot_material_t *_material = g_context->material;
