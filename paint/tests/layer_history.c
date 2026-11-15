@@ -36,6 +36,14 @@ int opaque(slot_layer_t *l) {
 	return n;
 }
 
+// The layer position the Layer node reads
+int layer_node_value() {
+	ui_node_button_t *b = ln->buttons->buffer[0];
+	f32_array_t      *d = b->default_value;
+	float             f = d->buffer[0];
+	return (int)f;
+}
+
 void next() {
 	frame = frame + 1;
 	if (frame < 4) {
@@ -127,22 +135,22 @@ void next() {
 		c = script_layer_new(); // Above the bottom layer, below a
 	}
 	else if (step == 13) {
-		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		int v = layer_node_value();
 		check(script_layer_index(c) < script_layer_index(a) && v == script_layer_index(a), string("layer node follows a new layer below (%d)", v));
 		script_layer_delete(script_layer_at(0));
 	}
 	else if (step == 14) {
-		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		int v = layer_node_value();
 		check(v == script_layer_index(a), string("layer node follows a deleted layer below (%d)", v));
 		history_undo();
 	}
 	else if (step == 15) {
-		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		int v = layer_node_value();
 		check(v == script_layer_index(a), string("layer node follows an undone delete (%d)", v));
 		history_undo(); // The new layer
 	}
 	else if (step == 16) {
-		int v = ln->buttons->buffer[0]->default_value->buffer[0];
+		int v = layer_node_value();
 		check(script_layer_index(c) == -1 && v == script_layer_index(a), string("layer node follows an undone new layer (%d)", v));
 	}
 	else {
