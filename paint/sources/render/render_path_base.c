@@ -133,7 +133,7 @@ f32 render_path_base_get_super_sampling() {
 }
 
 static bool render_path_base_path_trace() {
-	return g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE && g_context->tool != TOOL_TYPE_COLORID && !render_path_raytrace_bake_lightmap_busy();
+	return g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE && g_context->tool != TOOL_TYPE_COLORID;
 }
 
 void render_path_base_begin() {

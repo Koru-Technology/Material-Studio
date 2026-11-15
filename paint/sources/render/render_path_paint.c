@@ -2061,12 +2061,9 @@ void render_path_paint_draw() {
 					g_context->merged_object->base->visible = _visible;
 			}
 			else if (render_path_paint_is_rt_bake()) {
-				bool dispatched = false;
-				if (!render_path_raytrace_bake_lightmap_busy()) {
-					dispatched = render_path_raytrace_bake_commands(make_material_parse_paint_material);
-					render_path_paint_dilate(true, false);
-				}
-				// The raytrace setup frame and frames waiting on a lightmap bake trace no rays, keep their sample
+				bool dispatched = render_path_raytrace_bake_commands(make_material_parse_paint_material);
+				render_path_paint_dilate(true, false);
+				// The raytrace setup frame traces no rays, keep its sample
 				if (!dispatched && g_context->pdirty > 0) {
 					g_context->pdirty++;
 				}
