@@ -13,7 +13,7 @@ static void export_obj_reserve(u8_array_t *out, u32 size) {
 }
 
 static void export_obj_write_string(u8_array_t *out, char *str) {
-	u32 len = strlen(str);
+	u32 len = (u32)strlen(str);
 	export_obj_reserve(out, len);
 	memcpy(out->buffer + out->length, str, len);
 	out->length += len;

@@ -147,7 +147,7 @@ static void build_material_split(ufbx_scene *scene) {
 	for (size_t ni = 0; ni < scene->nodes.count; ++ni) {
 		ufbx_node *n = scene->nodes.data[ni];
 		if (n->mesh && n->mesh->max_face_triangles > max_tris)
-			max_tris = n->mesh->max_face_triangles;
+			max_tris = (uint32_t)n->mesh->max_face_triangles;
 	}
 	uint32_t *indices = malloc(sizeof(uint32_t) * max_tris * 3);
 
@@ -235,7 +235,7 @@ static void build_udim_split(ufbx_scene *scene) {
 	for (size_t ni = 0; ni < scene->nodes.count; ++ni) {
 		ufbx_node *n = scene->nodes.data[ni];
 		if (n->mesh && n->mesh->max_face_triangles > max_tris)
-			max_tris = n->mesh->max_face_triangles;
+			max_tris = (uint32_t)n->mesh->max_face_triangles;
 	}
 	uint32_t *indices = malloc(sizeof(uint32_t) * max_tris * 3);
 
@@ -316,14 +316,14 @@ static void build_udim_split(ufbx_scene *scene) {
 }
 
 void io_fbx_parse_mesh(raw_mesh_t *raw, ufbx_mesh *mesh, ufbx_matrix *to_world, ufbx_matrix *to_world_unscaled, bool force_tex, bool force_col) {
-	uint32_t  indices_size = mesh->max_face_triangles * 3;
+	uint32_t  indices_size = (uint32_t)mesh->max_face_triangles * 3;
 	uint32_t *indices      = (uint32_t *)malloc(sizeof(uint32_t) * indices_size);
 
 	bool has_tex  = mesh->vertex_uv.exists;
 	bool has_tex1 = active_tex1 && mesh->uv_sets.count > 1;
 	bool has_col  = mesh->vertex_color.exists;
 
-	int    numtri  = mesh->num_triangles;
+	int    numtri  = (int)mesh->num_triangles;
 	float *posa32  = (float *)malloc(sizeof(float) * numtri * 3 * 3);
 	float *nora32  = (float *)malloc(sizeof(float) * numtri * 3 * 3);
 	float *texa32  = (has_tex || force_tex) ? (float *)malloc(sizeof(float) * numtri * 3 * 2) : NULL;

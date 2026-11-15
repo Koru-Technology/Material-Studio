@@ -257,8 +257,6 @@ void *io_psd_parse(uint8_t *buf, size_t buf_size, const char *file_name) {
 		if (layer_info_len == 0)
 			goto fallback;
 
-		size_t layer_info_end = pos + layer_info_len;
-
 		// Layer count (signed: negative means first alpha = merged transparency)
 		if (pos + 2 > buf_size)
 			goto fallback;

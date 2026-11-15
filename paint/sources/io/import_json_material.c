@@ -71,7 +71,7 @@ void import_json_material_run(char *path) {
 			ui_node_button_t *but = n->buttons->buffer[j];
 			if (but->data != NULL) {
 				char *s   = string_replace_all((char *)but->data, "\\n", "\n");
-				but->data = u8_array_create_from_raw((uint8_t *)s, strlen(s) + 1);
+				but->data = u8_array_create_from_raw((uint8_t *)s, (uint32_t)strlen(s) + 1);
 			}
 		}
 	}

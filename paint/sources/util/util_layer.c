@@ -870,7 +870,6 @@ void layers_create_filter_on_next_frame(void *_) {
 	// Filter material
 	g_context->material->canvas->name = string_copy(g_context->layer->name);
 
-	ui_nodes_t       *nodes  = g_context->material->nodes;
 	ui_node_canvas_t *canvas = g_context->material->canvas;
 	ui_node_t        *nout   = NULL;
 	for (i32 i = 0; i < canvas->nodes->length; ++i) {
