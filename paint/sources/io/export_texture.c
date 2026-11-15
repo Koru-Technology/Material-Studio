@@ -105,7 +105,9 @@ static void export_texture_write_texture(char *file, buffer_t *pixels, i32 type,
 	}
 	else { // Exr
 		buffer_t *b = export_exr_run(res_x, res_y, pixels, bits, type, off);
-		iron_file_save_bytes(file, b, b->length);
+		if (!iron_file_save_bytes(file, b, b->length)) {
+			console_error(string("Could not save %s.", file));
+		}
 		array_free(b);
 		free(b);
 	}

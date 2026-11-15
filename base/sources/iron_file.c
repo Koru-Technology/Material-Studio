@@ -417,23 +417,40 @@ void iron_delete_file(char *path) {
 #endif
 }
 
-void iron_file_save_bytes(char *path, buffer_t *bytes, u64 length) {
+static bool iron_file_write_all(char *path, buffer_t *bytes, u64 length) {
+	FILE *file = fopen(path, "wb");
+	if (file == NULL) {
+		return false;
+	}
+	bool ok = fwrite(bytes->buffer, 1, length, file) == length;
+	ok      = fclose(file) == 0 && ok;
+	return ok;
+}
+
+// Written next to path first and moved over it, a failed write (full disk) leaves the old file as it was. Where no
+// file can be made next to it (a sandboxed single file), path is written directly. False when the bytes did not land.
+bool iron_file_save_bytes(char *path, buffer_t *bytes, u64 length) {
+	if (path == NULL || bytes == NULL) {
+		return false;
+	}
 	u64 byte_length = length > 0 ? length : (u64)bytes->length;
 	if (byte_length > (u64)bytes->length) {
 		byte_length = (u64)bytes->length;
 	}
 
-#ifdef IRON_WINDOWS
-	MultiByteToWideChar(CP_UTF8, 0, path, -1, temp_wstring, 1024);
-	FILE *file = _wfopen(temp_wstring, L"wb");
-#else
-	FILE *file = fopen(path, "wb");
-#endif
-	if (file == NULL) {
-		return;
+	char tmp[1024];
+	if (snprintf(tmp, sizeof(tmp), "%s.saving", path) < (int)sizeof(tmp)) {
+		FILE *probe = fopen(tmp, "wb");
+		if (probe != NULL) {
+			fclose(probe);
+			if (iron_file_write_all(tmp, bytes, byte_length) && rename(tmp, path) == 0) {
+				return true;
+			}
+			remove(tmp);
+			return false;
+		}
 	}
-	fwrite(bytes->buffer, 1, byte_length, file);
-	fclose(file);
+	return iron_file_write_all(path, bytes, byte_length);
 }
 
 typedef struct _callback_data {

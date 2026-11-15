@@ -197,7 +197,9 @@ void export_obj_run(char *path, mesh_object_t_array_t *paint_objects) {
 	if (!ends_with(path, ".obj")) {
 		path = string_tmp("%s.obj", path);
 	}
-	iron_file_save_bytes(path, o, 0);
+	if (!iron_file_save_bytes(path, o, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_delete(o);
 }
 

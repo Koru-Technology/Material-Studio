@@ -40,7 +40,9 @@ void export_arm_run_mesh(char *path, mesh_object_t_array_t *paint_objects) {
 	if (!ends_with(path, ".arm")) {
 		path = string("%s.arm", path);
 	}
-	iron_file_save_bytes(path, b, b->length + 1);
+	if (!iron_file_save_bytes(path, b, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(b);
 	free(b);
 }
@@ -400,8 +402,10 @@ void export_arm_run_project(char *path) {
 	export_arm_show_progress = true;
 	buffer_t *buffer         = export_arm_encode_project(path);
 	export_arm_progress(0.9);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
-	if (string_equals(path, g_project->_->filepath)) {
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path)); // Still modified, saved again later
+	}
+	else if (string_equals(path, g_project->_->filepath)) {
 		project_modified = false;
 	}
 	array_free(buffer);
@@ -564,7 +568,9 @@ void export_arm_run_material(char *path) {
 	}
 
 	buffer_t *buffer = util_encode_project(raw);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(buffer);
 	free(buffer);
 }
@@ -664,7 +670,9 @@ void export_arm_run_brush(char *path) {
 	}
 
 	buffer_t *buffer = util_encode_project(raw);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(buffer);
 	free(buffer);
 }
@@ -725,7 +733,9 @@ void export_arm_run_swatches(char *path) {
 	}
 	project_t *raw    = ALLOC_INIT(project_t, {.version = manifest_version_project, .swatches = g_project->swatches});
 	buffer_t  *buffer = util_encode_project(raw);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(buffer);
 	free(buffer);
 }

@@ -261,7 +261,7 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 	}
 	char     *json   = json_encode_end();
 	buffer_t *buffer = sys_string_to_buffer(json);
-	iron_file_save_bytes(smart_materials_path(name, ".json"), buffer, 0);
+	bool saved = iron_file_save_bytes(smart_materials_path(name, ".json"), buffer, 0);
 	array_free(buffer);
 	free(buffer);
 	free(json);
@@ -274,7 +274,7 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 	}
 	smart_materials_write_icon(icon_material, icon_path);
 	smart_materials_refresh();
-	return true;
+	return saved;
 }
 
 static char *smart_materials_get(any_map_t *m, char *prefix, char *key) {
