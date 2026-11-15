@@ -118,11 +118,11 @@ struct MaterialsProjectView: View {
 				}
 			}
 		}
-		.alert("Rename Material", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+		.alert("Rename Material", isPresented: $renaming.isPresent()) {
 			TextField("Name", text: $newName)
 			Button("Rename") {
 				if let m = renaming {
-					act { _ = app_material_rename(m.id, newName) }
+					AppStore.shared.perform { app_material_rename(m.id, newName) }
 				}
 				renaming = nil
 			}
@@ -148,7 +148,7 @@ struct MaterialsProjectView: View {
 			}
 			Menu {
 				Button(role: .destructive) {
-					act { _ = app_material_delete_unused() }
+					AppStore.shared.perform { app_material_delete_unused() }
 				} label: {
 					Label("Delete Unused Materials", systemImage: "trash.slash")
 				}
@@ -174,27 +174,27 @@ struct MaterialsProjectView: View {
 		}
 		if m.canOpenStudio {
 			Button {
-				act { _ = app_material_open_studio(m.id) }
+				AppStore.shared.perform { app_material_open_studio(m.id) }
 				closePopover(dismiss)
 			} label: {
 				Label("Edit in Material Studio", systemImage: "wand.and.stars")
 			}
 		}
 		Button {
-			act { _ = app_material_show_nodes(m.id) }
+			AppStore.shared.perform { app_material_show_nodes(m.id) }
 			closePopover(dismiss)
 		} label: {
 			Label("Edit Nodes", systemImage: "point.3.connected.trianglepath.dotted")
 		}
 		Divider()
 		Button {
-			act { _ = app_material_to_fill_layer(m.id) }
+			AppStore.shared.perform { app_material_to_fill_layer(m.id) }
 		} label: {
 			Label("New Fill Layer", systemImage: "square.stack.3d.up.fill")
 		}
 		if store.canApplyToFill {
 			Button {
-				act { _ = app_material_apply_to_fill(m.id) }
+				AppStore.shared.perform { app_material_apply_to_fill(m.id) }
 			} label: {
 				Label("Apply to Fill Layer", systemImage: "square.fill.on.square")
 			}
@@ -207,12 +207,12 @@ struct MaterialsProjectView: View {
 			Label("Rename…", systemImage: "pencil")
 		}
 		Button {
-			act { _ = app_material_duplicate(m.id) }
+			AppStore.shared.perform { app_material_duplicate(m.id) }
 		} label: {
 			Label("Duplicate", systemImage: "plus.square.on.square")
 		}
 		Button(role: .destructive) {
-			act { _ = app_material_delete(m.id) }
+			AppStore.shared.perform { app_material_delete(m.id) }
 		} label: {
 			Label("Delete", systemImage: "trash")
 		}
@@ -223,16 +223,12 @@ struct MaterialsProjectView: View {
 		guard !m.selected else {
 			return
 		}
-		act { _ = app_material_select(m.id) }
+		AppStore.shared.perform { app_material_select(m.id) }
 	}
 
 	// The Material Studio when it opens the material, the node editor otherwise
 	private func edit(_ m: MaterialRow) {
-		act { _ = app_material_edit(m.id) }
+		AppStore.shared.perform { app_material_edit(m.id) }
 		closePopover(dismiss)
-	}
-
-	private func act(_ action: () -> Void) {
-		AppStore.shared.perform(action)
 	}
 }

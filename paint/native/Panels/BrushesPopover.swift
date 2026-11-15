@@ -99,7 +99,7 @@ struct BrushesPopover: View {
 					}
 				}
 			}
-			.alert(namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } }), presenting: naming) { what in
+			.alert(namingTitle, isPresented: $naming.isPresent(), presenting: naming) { what in
 				TextField("Name", text: $name)
 				Button("Cancel", role: .cancel) {}
 				Button("OK") {
@@ -107,7 +107,7 @@ struct BrushesPopover: View {
 				}
 				.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
 			}
-			.alert(deleting?.title ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+			.alert(deleting?.title ?? "", isPresented: $deleting.isPresent(),
 			       presenting: deleting) { what in
 				Button("Cancel", role: .cancel) {}
 				Button("Delete", role: .destructive) {

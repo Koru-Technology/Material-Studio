@@ -48,7 +48,7 @@ struct MaskEffectsSection: View {
 			.buttonStyle(.borderless)
 			.tint(Color.primary)
 			Button {
-				edit { app_mask_set_effect_visible(layer.id, index, !effect.visible) }
+				AppStore.shared.perform { app_mask_set_effect_visible(layer.id, index, !effect.visible) }
 			} label: {
 				Image(systemName: effect.visible ? "eye" : "eye.slash")
 					.frame(width: 28, height: 28)
@@ -66,7 +66,7 @@ struct MaskEffectsSection: View {
 		.swipeActions(edge: .trailing) {
 			if !effect.isPaint {
 				Button(role: .destructive) {
-					edit { app_mask_remove_effect(layer.id, index) }
+					AppStore.shared.perform { app_mask_remove_effect(layer.id, index) }
 				} label: {
 					Label("Delete", systemImage: "trash")
 				}
@@ -74,19 +74,19 @@ struct MaskEffectsSection: View {
 		}
 		.contextMenu {
 			Button {
-				edit { app_mask_move_effect(layer.id, index, index - 1) }
+				AppStore.shared.perform { app_mask_move_effect(layer.id, index, index - 1) }
 			} label: {
 				Label("Move Up", systemImage: "arrow.up")
 			}
 			.disabled(index == 0)
 			Button {
-				edit { app_mask_move_effect(layer.id, index, index + 1) }
+				AppStore.shared.perform { app_mask_move_effect(layer.id, index, index + 1) }
 			} label: {
 				Label("Move Down", systemImage: "arrow.down")
 			}
 			.disabled(Int(index) == layer.effects.count - 1)
 			Button(role: .destructive) {
-				edit { app_mask_remove_effect(layer.id, index) }
+				AppStore.shared.perform { app_mask_remove_effect(layer.id, index) }
 			} label: {
 				Label("Delete", systemImage: "trash")
 			}
@@ -115,10 +115,6 @@ struct MaskEffectsSection: View {
 		else {
 			shown = index
 		}
-	}
-
-	private func edit(_ action: @escaping () -> Bool) {
-		AppStore.shared.perform { _ = action() }
 	}
 
 	private func summary(_ e: MaskEffect) -> String {

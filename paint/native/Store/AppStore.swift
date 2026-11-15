@@ -60,9 +60,10 @@ final class AppStore: ChangeOnly {
 
 	// Actions: the engine changes, refresh picks it up right away instead of on the next frame.
 	// Between frames only (app_api.h): a frame's nested modal loop must not run them.
-	func perform(_ action: () -> Void) {
+	// What the action returns (whether the engine took it) is not needed: refresh shows the outcome.
+	func perform<T>(_ action: () -> T) {
 		assert(!FrameDriver.shared.inTick, "app_* called inside a frame")
-		action()
+		_ = action()
 		refresh()
 	}
 }

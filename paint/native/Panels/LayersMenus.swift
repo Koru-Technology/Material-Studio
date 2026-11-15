@@ -74,12 +74,12 @@ struct LayerContextMenu: View {
 				Label("Rename…", systemImage: "pencil")
 			}
 			Button {
-				act { app_layer_duplicate(layer.id) }
+				store.perform { app_layer_duplicate(layer.id) }
 			} label: {
 				Label("Duplicate", systemImage: "plus.square.on.square")
 			}
 			Button {
-				act { app_layer_set_visible(layer.id, !layer.visible) }
+				store.perform { app_layer_set_visible(layer.id, !layer.visible) }
 			} label: {
 				Label(layer.visible ? "Hide" : "Show", systemImage: layer.visible ? "eye.slash" : "eye")
 			}
@@ -87,14 +87,14 @@ struct LayerContextMenu: View {
 
 		Section {
 			Button {
-				act { app_layer_merge_down(layer.id) }
+				store.perform { app_layer_merge_down(layer.id) }
 			} label: {
 				Label("Merge Down", systemImage: "arrow.down.to.line")
 			}
 			.disabled(!p.canMergeDown)
 			if p.showsMergeGroup {
 				Button {
-					act { app_layer_merge_group(layer.id) }
+					store.perform { app_layer_merge_group(layer.id) }
 				} label: {
 					Label("Merge Group", systemImage: "square.stack.3d.down.forward")
 				}
@@ -102,14 +102,14 @@ struct LayerContextMenu: View {
 			}
 			if p.showsToFill {
 				Button {
-					act { app_layer_to_fill(layer.id) }
+					store.perform { app_layer_to_fill(layer.id) }
 				} label: {
 					Label(isLayer ? "To Fill Layer" : "To Fill Mask", systemImage: "drop.fill")
 				}
 			}
 			if p.showsToPaint {
 				Button {
-					act { app_layer_to_paint(layer.id) }
+					store.perform { app_layer_to_paint(layer.id) }
 				} label: {
 					Label(layer.kind == .mask ? "To Paint Mask" : "To Paint Layer", systemImage: "paintbrush")
 				}
@@ -130,7 +130,7 @@ struct LayerContextMenu: View {
 			if p.showsAddEffect {
 				Menu {
 					MaskEffectAddItems { type in
-						act { app_layer_add_effect(layer.id, type) >= 0 }
+						store.perform { app_layer_add_effect(layer.id, type) >= 0 }
 					}
 				} label: {
 					Label("Add Effect", systemImage: "wand.and.stars")
@@ -138,14 +138,14 @@ struct LayerContextMenu: View {
 			}
 			if p.showsInvert {
 				Button {
-					act { app_layer_invert_mask(layer.id) }
+					store.perform { app_layer_invert_mask(layer.id) }
 				} label: {
 					Label("Invert", systemImage: "circle.righthalf.filled")
 				}
 			}
 			if p.showsApply {
 				Button {
-					act { app_layer_apply_mask(layer.id) }
+					store.perform { app_layer_apply_mask(layer.id) }
 				} label: {
 					Label("Apply", systemImage: "checkmark.circle")
 				}
@@ -171,13 +171,13 @@ struct LayerContextMenu: View {
 		Section {
 			if p.showsClear {
 				Button(role: .destructive) {
-					act { app_layer_clear(layer.id) }
+					store.perform { app_layer_clear(layer.id) }
 				} label: {
 					Label("Clear", systemImage: "eraser")
 				}
 			}
 			Button(role: .destructive) {
-				act { app_layer_delete(layer.id) }
+				store.perform { app_layer_delete(layer.id) }
 			} label: {
 				Label("Delete", systemImage: "trash")
 			}
@@ -193,7 +193,7 @@ struct LayerContextMenu: View {
 			Menu {
 				ForEach(groups) { group in
 					Button(group.name) {
-						act { app_layer_set_group(layer.id, group.id) }
+						store.perform { app_layer_set_group(layer.id, group.id) }
 					}
 				}
 			} label: {
@@ -202,7 +202,7 @@ struct LayerContextMenu: View {
 		}
 		if layer.kind != .mask && layer.kind != .filter, let parent = layers.layer(layer.parentID), parent.kind == .group {
 			Button {
-				act { app_layer_set_group(layer.id, -1) }
+				store.perform { app_layer_set_group(layer.id, -1) }
 			} label: {
 				Label("Remove from Group", systemImage: "folder.badge.minus")
 			}
@@ -211,13 +211,9 @@ struct LayerContextMenu: View {
 
 	private func maskItem(_ title: String, _ kind: app_layer_new_t) -> some View {
 		Button(title) {
-			act { app_layer_add_mask(layer.id, Int32(kind.rawValue)) }
+			store.perform { app_layer_add_mask(layer.id, Int32(kind.rawValue)) }
 		}
 		.disabled(kind == APP_LAYER_NEW_FILL_MASK && !layers.canNew.contains(Int32(APP_LAYER_NEW_FILL_MASK.rawValue)))
-	}
-
-	private func act(_ action: @escaping () -> Bool) {
-		store.perform { _ = action() }
 	}
 }
 
@@ -234,7 +230,7 @@ private struct LayerRenameAlert: ViewModifier {
 
 	func body(content: Content) -> some View {
 		content
-			.alert(layer?.props.isText == true ? "Edit Text" : "Rename Layer", isPresented: Binding(get: { layer != nil }, set: { if !$0 { layer = nil } })) {
+			.alert(layer?.props.isText == true ? "Edit Text" : "Rename Layer", isPresented: $layer.isPresent()) {
 				TextField("Name", text: $name)
 				Button("Cancel", role: .cancel) {
 					layer = nil
