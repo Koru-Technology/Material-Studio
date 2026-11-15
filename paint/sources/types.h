@@ -1216,6 +1216,12 @@ typedef struct ui_nodes_editor_state {
 	i32              line;
 } ui_nodes_editor_state_t;
 
+// The 2D drawing a script operation interrupts, see script_gpu_begin()
+typedef struct script_gpu {
+	struct gpu_texture *current;
+	bool                in_use;
+} script_gpu_t;
+
 typedef struct library_entry library_entry_t; // Material library item, library.c
 typedef struct cloud_item    cloud_item_t;    // Cloud material, library_cloud.c
 

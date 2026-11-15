@@ -400,11 +400,9 @@ int32_t app_material_duplicate(int32_t id) {
 		return -1;
 	}
 	_tab_materials_draw_slots = array_index_of(g_project->_->materials, m);
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
+	script_gpu_t gpu = script_gpu_begin();
 	tab_materials_draw_slots_duplicate(NULL);
-	script_gpu_end(current, in_use);
+	script_gpu_end(gpu);
 	ui_dock_redraw(1);
 	return g_context->material != NULL ? g_context->material->id : -1;
 }
