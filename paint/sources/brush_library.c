@@ -127,6 +127,17 @@ static i32 brush_library_get_i32(any_map_t *m, char *prefix, i32 i, char *key, i
 	return s != NULL ? atoi(s) : def;
 }
 
+// An id read from the file, a new one when it is not a user id or already taken (a hand edited or damaged file)
+static i32 brush_library_loaded_id(i32 id, bool taken) {
+	if (id < BRUSH_LIBRARY_USER_ID || taken) {
+		return brush_library_next_id++;
+	}
+	if (id >= brush_library_next_id) {
+		brush_library_next_id = id + 1;
+	}
+	return id;
+}
+
 static void brush_library_load_file() {
 	char *path = brush_library_file();
 	if (!iron_file_exists(path)) {
@@ -154,7 +165,8 @@ static void brush_library_load_file() {
 			continue;
 		}
 		brush_group_t *g = calloc(1, sizeof(brush_group_t));
-		g->id            = brush_library_get_i32(m, "g", i, "id", brush_library_next_id++);
+		i32 id           = brush_library_get_i32(m, "g", i, "id", -1);
+		g->id            = brush_library_loaded_id(id, brush_group_find(id) != NULL);
 		g->name          = string_copy(name);
 		g->icon          = ICON_FOLDER;
 		brush_library_groups[brush_library_groups_n++] = g;
@@ -169,7 +181,8 @@ static void brush_library_load_file() {
 		}
 		brush_def_t *d      = calloc(1, sizeof(brush_def_t));
 		brush_settings_t df = brush_settings_default();
-		d->id               = brush_library_get_i32(m, "b", i, "id", brush_library_next_id++);
+		i32 id              = brush_library_get_i32(m, "b", i, "id", -1);
+		d->id               = brush_library_loaded_id(id, brush_library_find(id) != NULL);
 		d->name             = string_copy(name);
 		d->group            = brush_library_get_i32(m, "b", i, "group", 0);
 		d->s                = df;
