@@ -80,7 +80,7 @@ private struct ColorHeader: View {
 					.textSelection(.enabled)
 			}
 			Spacer()
-			ColorPicker("System Color Picker", selection: Binding(get: { color.color }, set: setFromSystem), supportsOpacity: false)
+			ColorPicker("System Color Picker", selection: Binding(get: { color.color }, set: { setFromSystem($0) }), supportsOpacity: false)
 				.labelsHidden()
 			Button {
 				AppStore.shared.perform { _ = app_swatch_add() }
