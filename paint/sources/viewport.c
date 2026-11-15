@@ -137,20 +137,7 @@ void viewport_update_camera_type(i32 camera_type) {
 
 void viewport_save_texture(gpu_texture_t *screenshot) {
 	// Save into the textures tab
-	if (g_project->packed_assets == NULL) {
-		g_project->packed_assets = any_array_create_from_raw((void *[]){}, 0);
-	}
-
-	i32   num = 0;
-	char *abs = "/packed/screenshot0.png";
-	for (i32 i = 0; i < g_project->packed_assets->length; ++i) {
-		packed_asset_t *pa = g_project->packed_assets->buffer[i];
-		if (string_equals(pa->name, abs)) {
-			i = 0;
-			num++;
-			abs = string("/packed/screenshot%d.png", num);
-		}
-	}
+	char *abs = util_texture_packed_name("screenshot");
 	packed_asset_t *pa =
 	    ALLOC_INIT(packed_asset_t, {.name = abs, .bytes = iron_encode_png(gpu_get_texture_pixels(screenshot), screenshot->width, screenshot->height, 0)});
 	any_array_push(g_project->packed_assets, pa);

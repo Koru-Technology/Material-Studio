@@ -1466,6 +1466,7 @@ void                   util_uv_cache_dilate_map();
 void                   util_uv_cache_uv_island_map();
 void                   util_uv_cache_seam_map(i32 res_x, i32 res_y);
 void                   util_uv_blur_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t *src, i32 passes);
+char                  *util_texture_packed_name(char *basename);
 void                   util_texture_capture_output(gpu_texture_t *img, char *basename, bool bgra);
 void                   render_path_raytrace_init();
 float                  render_path_raytrace_half_to_float(uint16_t h);
