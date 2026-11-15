@@ -280,7 +280,7 @@ final class LayersStore: ChangeOnly {
 		return layers.filter { $0.kind == .group && $0.id != row.id && $0.id != row.parentID && !isDescendant($0, of: row.id) }
 	}
 
-	func isDescendant(_ row: LayerRow, of ancestor: Int32) -> Bool {
+	private func isDescendant(_ row: LayerRow, of ancestor: Int32) -> Bool {
 		var parent = row.parentID
 		while parent >= 0 {
 			if parent == ancestor {
