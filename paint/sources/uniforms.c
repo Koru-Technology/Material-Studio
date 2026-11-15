@@ -1,6 +1,76 @@
 
 #include "global.h"
 
+// Brush state as the paint shaders see it, also read by the dab batches (render_path_paint_batch_add)
+f32 uniforms_brush_radius() {
+	bool decal                   = context_is_decal();
+	bool decal_mask              = context_is_decal_mask_paint_pass();
+	f32  brush_decal_mask_radius = g_context->brush_decal_mask_radius;
+	brush_decal_mask_radius *= 2.0;
+	f32 radius = decal_mask ? brush_decal_mask_radius : g_context->brush_radius;
+	f32 val    = (radius * g_context->brush_nodes_radius * g_context->brush_dab_radius) / 15.0;
+	if (!decal) {
+		val *= util_brush_dynamic(g_context->brush_pressure_size, g_context->brush_tilt_size, true);
+	}
+	f32 scale2d = base_scale2d(base_h());
+	if (!decal) {
+		val *= 2;
+	}
+	else if (decal_mask) {
+		val *= scale2d;
+	}
+	else {
+		val *= scale2d * 2.0;
+	}
+	return val;
+}
+
+f32 uniforms_brush_flow() {
+	bool stamps = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
+	return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_context->brush_pressure_flow, 0.0, false) : 1.0;
+}
+
+f32 uniforms_brush_opacity() {
+	f32 val = g_context->brush_opacity * g_context->brush_nodes_opacity * g_context->brush_dab_opacity;
+	val *= util_brush_dynamic(g_context->brush_pressure_opacity, g_context->brush_tilt_opacity, false);
+	return math_max(0.0, math_min(1.0, val));
+}
+
+f32 uniforms_brush_hardness() {
+	bool decal_mask = context_is_decal_mask_paint_pass();
+	if (g_context->tool != TOOL_TYPE_BRUSH && g_context->tool != TOOL_TYPE_ERASER && g_context->tool != TOOL_TYPE_CLONE && !decal_mask) {
+		return 1.0;
+	}
+	f32 val = fmaxf((g_context->brush_hardness * g_context->brush_nodes_hardness) - 0.02, 0.0);
+	val *= util_brush_dynamic(g_context->brush_pressure_hardness, 0.0, false);
+	if (g_context->brush_tilt_shading) { // The side of the lead paints a softer edge
+		val *= 1.0 - 0.6 * util_brush_pen_tilt();
+	}
+	val *= val;
+	return val;
+}
+
+vec2_t uniforms_brush_dab_angle() {
+	return (vec2_t){math_cos(-g_context->brush_dab_angle), math_sin(-g_context->brush_dab_angle)};
+}
+
+vec2_t uniforms_brush_angle() {
+	f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle * (math_pi() / 180.0) : util_brush_tip_angle();
+	return (vec2_t){math_cos(-angle), math_sin(-angle)};
+}
+
+vec4_t uniforms_input_brush() {
+	bool   down = mouse_down("left") || pen_down("tip");
+	vec4_t v    = (vec4_t){g_context->paint_vec.x, g_context->paint_vec.y, down ? 1.0 : 0.0, 0.0};
+	return v;
+}
+
+vec4_t uniforms_input_brush_last() {
+	bool   down = mouse_down("left") || pen_down("tip");
+	vec4_t v    = (vec4_t){g_context->last_paint_vec_x, g_context->last_paint_vec_y, down ? 1.0 : 0.0, 0.0};
+	return v;
+}
+
 i32 uniforms_ext_i32_link(object_t *object, shader_data_t *mat, char *link) {
 	if (string_equals(link, "_bloom_current_mip")) {
 		return render_path_base_bloom_current_mip;
@@ -23,26 +93,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		return 1.0;
 	}
 	if (string_equals(link, "_brush_radius")) {
-		bool decal                   = context_is_decal();
-		bool decal_mask              = context_is_decal_mask_paint_pass();
-		f32  brush_decal_mask_radius = g_context->brush_decal_mask_radius;
-		brush_decal_mask_radius *= 2.0;
-		f32 radius = decal_mask ? brush_decal_mask_radius : g_context->brush_radius;
-		f32 val    = (radius * g_context->brush_nodes_radius * g_context->brush_dab_radius) / 15.0;
-		if (!decal) {
-			val *= util_brush_dynamic(g_context->brush_pressure_size, g_context->brush_tilt_size, true);
-		}
-		f32 scale2d = base_scale2d(base_h());
-		if (!decal) {
-			val *= 2;
-		}
-		else if (decal_mask) {
-			val *= scale2d;
-		}
-		else {
-			val *= scale2d * 2.0;
-		}
-		return val;
+		return uniforms_brush_radius();
 	}
 	else if (string_equals(link, "_pixel_snap_2d")) {
 		return g_context->paint2d_view ? 1.0f : 0.0f;
@@ -74,8 +125,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		return base * g_config->rp_bloom;
 	}
 	else if (string_equals(link, "_brush_flow")) {
-		bool stamps = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
-		return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_context->brush_pressure_flow, 0.0, false) : 1.0;
+		return uniforms_brush_flow();
 	}
 	else if (string_equals(link, "_brush_strength")) {
 		return g_context->brush_strength;
@@ -87,22 +137,10 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		return g_context->picker_color_mask_tolerance;
 	}
 	else if (string_equals(link, "_brush_opacity")) {
-		f32 val = g_context->brush_opacity * g_context->brush_nodes_opacity * g_context->brush_dab_opacity;
-		val *= util_brush_dynamic(g_context->brush_pressure_opacity, g_context->brush_tilt_opacity, false);
-		return math_max(0.0, math_min(1.0, val));
+		return uniforms_brush_opacity();
 	}
 	else if (string_equals(link, "_brush_hardness")) {
-		bool decal_mask = context_is_decal_mask_paint_pass();
-		if (g_context->tool != TOOL_TYPE_BRUSH && g_context->tool != TOOL_TYPE_ERASER && g_context->tool != TOOL_TYPE_CLONE && !decal_mask) {
-			return 1.0;
-		}
-		f32 val = fmaxf((g_context->brush_hardness * g_context->brush_nodes_hardness) - 0.02, 0.0);
-		val *= util_brush_dynamic(g_context->brush_pressure_hardness, 0.0, false);
-		if (g_context->brush_tilt_shading) { // The side of the lead paints a softer edge
-			val *= 1.0 - 0.6 * util_brush_pen_tilt();
-		}
-		val *= val;
-		return val;
+		return uniforms_brush_hardness();
 	}
 	else if (string_equals(link, "_brush_scale")) {
 		bool fill = g_context->layer->fill_material != NULL;
@@ -190,20 +228,19 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 		return (vec2_t){config_get_texture_res_x(), config_get_texture_res_y()};
 	}
 	else if (string_equals(link, "_brush_dab_angle")) {
-		return (vec2_t){math_cos(-g_context->brush_dab_angle), math_sin(-g_context->brush_dab_angle)};
+		return uniforms_brush_dab_angle();
 	}
 	else if (string_equals(link, "_uv_angle")) {
 		// Rotation of the material texture: the fill layer's own, the brush tip's for decals, else the material's
 		if (g_context->layer->fill_material == NULL && context_is_decal()) {
-			return uniforms_ext_vec2_link(object, mat, "_brush_angle");
+			return uniforms_brush_angle();
 		}
 		f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle : uniforms_material_uv_angle();
 		angle *= (math_pi() / 180.0);
 		return (vec2_t){math_cos(-angle), math_sin(-angle)};
 	}
 	else if (string_equals(link, "_brush_angle")) {
-		f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle * (math_pi() / 180.0) : util_brush_tip_angle();
-		return (vec2_t){math_cos(-angle), math_sin(-angle)};
+		return uniforms_brush_angle();
 	}
 	else if (string_equals(link, "_brush_tilt")) {
 		return util_brush_tilt_shape();
@@ -291,14 +328,10 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 		                (g_context->last_paint_vec_x * base_w() - tx) / tw, (g_context->last_paint_vec_y * base_h() + top - ty) / th};
 	}
 	if (string_equals(link, "_input_brush")) {
-		bool   down = mouse_down("left") || pen_down("tip");
-		vec4_t v    = (vec4_t){g_context->paint_vec.x, g_context->paint_vec.y, down ? 1.0 : 0.0, 0.0};
-		return v;
+		return uniforms_input_brush();
 	}
 	else if (string_equals(link, "_input_brush_last")) {
-		bool   down = mouse_down("left") || pen_down("tip");
-		vec4_t v    = (vec4_t){g_context->last_paint_vec_x, g_context->last_paint_vec_y, down ? 1.0 : 0.0, 0.0};
-		return v;
+		return uniforms_input_brush_last();
 	}
 	else if (string_equals(link, "_path_a")) {
 		return util_layer_path_segment_a();

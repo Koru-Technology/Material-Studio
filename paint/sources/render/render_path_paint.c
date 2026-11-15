@@ -379,19 +379,19 @@ void render_path_paint_batch_add() {
 	if (render_path_paint_batch_count == RENDER_PATH_PAINT_BATCH_MAX) {
 		render_path_paint_batch_flush(false);
 	}
-	vec4_t inp   = uniforms_ext_vec4_link(NULL, NULL, "_input_brush");
-	vec4_t last  = uniforms_ext_vec4_link(NULL, NULL, "_input_brush_last");
-	vec2_t angle = uniforms_ext_vec2_link(NULL, NULL, "_brush_angle");
-	vec2_t dab   = uniforms_ext_vec2_link(NULL, NULL, "_brush_dab_angle");
+	vec4_t inp   = uniforms_input_brush();
+	vec4_t last  = uniforms_input_brush_last();
+	vec2_t angle = uniforms_brush_angle();
+	vec2_t dab   = uniforms_brush_dab_angle();
 	f32   *d     = &render_path_paint_batch[render_path_paint_batch_count * 12];
 	d[0]         = inp.x;
 	d[1]         = inp.y;
 	d[2]         = last.x;
 	d[3]         = last.y;
-	d[4]         = uniforms_ext_f32_link(NULL, NULL, "_brush_radius");
-	d[5]         = uniforms_ext_f32_link(NULL, NULL, "_brush_opacity");
-	d[6]         = uniforms_ext_f32_link(NULL, NULL, "_brush_hardness");
-	d[7]         = uniforms_ext_f32_link(NULL, NULL, "_brush_flow");
+	d[4]         = uniforms_brush_radius();
+	d[5]         = uniforms_brush_opacity();
+	d[6]         = uniforms_brush_hardness();
+	d[7]         = uniforms_brush_flow();
 	d[8]         = angle.x * dab.x - angle.y * dab.y; // Both rotations of the mask
 	d[9]         = angle.x * dab.y + angle.y * dab.x;
 	vec2_t tilt  = util_brush_tilt_shape();
@@ -429,9 +429,9 @@ static void render_path_paint_cull(mesh_object_t *o) {
 		}
 	}
 	else {
-		vec4_t inp    = uniforms_ext_vec4_link(NULL, NULL, "_input_brush");
-		vec4_t last   = uniforms_ext_vec4_link(NULL, NULL, "_input_brush_last");
-		f32    radius = uniforms_ext_f32_link(NULL, NULL, "_brush_radius");
+		vec4_t inp    = uniforms_input_brush();
+		vec4_t last   = uniforms_input_brush_last();
+		f32    radius = uniforms_brush_radius();
 		dabs[count++] = (paint_cull_dab_t){inp.x * 2.0 - 1.0, 1.0 - inp.y * 2.0, last.x * 2.0 - 1.0, 1.0 - last.y * 2.0, radius * stretch};
 	}
 	paint_cull_draw_next(o, dabs, count);
