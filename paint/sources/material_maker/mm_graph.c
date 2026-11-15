@@ -404,7 +404,7 @@ static void graph_add_children(mm_gen_t *graph, mm_json_t *nodes, mm_json_t *con
 		}
 		for (int i = 0; i < connections->count; ++i) {
 			mm_json_t *ports = connections->items[i];
-			for (int k = 0; k < ports->count; ++k) {
+			for (int k = 0; ports != NULL && ports->type == MM_JSON_OBJECT && k < ports->count; ++k) { // {port: {node, port}}
 				mm_json_t *c = mm_json_new(MM_JSON_OBJECT);
 				mm_json_set(c, "from", jstring(mm_json_str(mm_json_get(ports->items[k], "node"), "")));
 				mm_json_set(c, "from_port", jnumber(mm_json_num(mm_json_get(ports->items[k], "port"), 0)));
