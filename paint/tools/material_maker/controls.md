@@ -48,9 +48,16 @@ Material node's parameters), so they work the same on every material and preview
 | Bumps | surface | slider, percent | 0 .. 2 (1) | strength of the normal map |
 | Height | surface | slider, percent | 0 .. 2 (1) | depth of the relief (displacement, parallax) |
 | Glow | color | slider, percent | 0 .. 4 (1) | strength of the emission; only on materials that emit |
-| Scale | pattern | slider, multiplier | 0.25 .. 4 (1), logarithmic | size of the whole material on the surface |
-| Rotation | pattern | slider, degrees | 0 .. 360 (0) | turns the whole material on the surface |
 | Shuffle | detail | seed | | a new random variation of every random node |
+
+Scale and rotation of the whole material on the surface are not controls: they are the material's UV Scale and UV
+Rotation (the header, for paint layers) and a fill layer's own scale and angle.
+
+They are made at import (`mm_controls_common`, `mm_controls.c`): Variables with an order below 0, so they come first in
+their groups, wired into a Hue/Saturation/Value node (Hue through a Map Range from degrees), Math nodes (Roughness and
+Metallic added and clamped, Height and Glow multiplied) and a Normal Map node (Bumps as its strength) between the
+Material node and the output. The Studio previews them live (`parser_material_live_variable`). Shuffle drives no node:
+its value is Material Maker's `seed_variation` in the material's shader and buffer passes.
 
 ## controls.json
 

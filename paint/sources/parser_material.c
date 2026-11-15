@@ -777,7 +777,8 @@ char *u8_array_string_at(u8_array_t *a, i32 i) {
 typedef struct parser_material_live {
 	i32 node_id;
 	i32 index;
-	i32 kind; // 0 input, 1 color of the index-th ramp stop by position, 2 positions of ramp stops 4 * index ..
+	i32 kind; // 0 input, 1 color of the index-th ramp stop by position, 2 positions of ramp stops 4 * index .., 3 value of a
+	          // Variable (its first 4 floats)
 } parser_material_live_t;
 
 ui_node_canvas_t             *parser_material_live_canvas = NULL;
@@ -847,6 +848,11 @@ char *parser_material_live_input(ui_node_socket_t *inp) {
 	return NULL;
 }
 
+// float4 value of a Variable (variable_node.c)
+char *parser_material_live_variable(ui_node_t *node) {
+	return parser_material_live_ref(node->id, 0, 3);
+}
+
 // float4 color of the index-th stop sorted by position
 char *parser_material_live_ramp_color(ui_node_t *node, i32 index) {
 	return parser_material_live_ref(node->id, index, 1);
@@ -886,6 +892,10 @@ void parser_material_live_update(ui_node_canvas_t *canvas, i32 table) {
 		ui_node_t              *node = canvas != NULL ? ui_get_node(canvas->nodes, e->node_id) : NULL;
 		f32                    *out  = values + i * 4;
 		if (node == NULL) {
+			continue;
+		}
+		if (e->kind == 3) {
+			variable_get(node, out, 4, NULL);
 			continue;
 		}
 		if (e->kind == 0) {

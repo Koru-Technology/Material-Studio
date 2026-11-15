@@ -244,12 +244,18 @@ void variable_sync(ui_node_t *node) {
 	}
 }
 
-// Shader value of the output, a constant (the Studio previews Material Maker parameters through variable_propagate)
+// Shader value of the output: read from the live values texture when compiled with live values (the Material Studio, so
+// dragging a control that feeds native nodes only renders again), else a constant. Material Maker parameters do not
+// read it, variable_propagate writes the values into them before they compile.
 static char *variable_output(ui_node_t *node, ui_node_socket_t *socket) {
 	f32 v[4] = {0, 0, 0, 1};
 	i32 k    = variable_kind(node);
 	if (k == VARIABLE_GRADIENT) {
 		return "0.0";
+	}
+	char *live = parser_material_live_variable(node);
+	if (live != NULL) {
+		return k == VARIABLE_COLOR ? live : string_tmp("%s.x", live);
 	}
 	variable_get(node, v, 4, NULL);
 	if (k == VARIABLE_COLOR) {
@@ -457,6 +463,40 @@ i32 variable_count(ui_node_canvas_t *canvas) {
 	return n;
 }
 
+// The value of the material's Shuffle (the common control, mm_controls_common): the seed variation of its Material Maker
+// nodes, 0 without one
+f32 variable_shuffle(ui_node_t_array_t *nodes) {
+	for (i32 i = 0; nodes != NULL && i < nodes->length; ++i) {
+		ui_node_t *n = nodes->buffer[i];
+		if (variable_is(n) && string_equals(variable_id(n), "shuffle")) {
+			return variable_value(n, 0);
+		}
+	}
+	return 0.0;
+}
+
+static bool variable_reaches_mm(ui_node_canvas_t *canvas, ui_node_t *node, i32 depth) {
+	if (mm_node_is(node)) {
+		return true;
+	}
+	for (i32 i = 0; depth < VARIABLE_MAX_DEPTH && i < canvas->links->length; ++i) {
+		ui_node_link_t *l = canvas->links->buffer[i];
+		if (l->from_id == node->id) {
+			ui_node_t *to = ui_get_node(canvas->nodes, l->to_id);
+			if (to != NULL && variable_reaches_mm(canvas, to, depth + 1)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+// Whether a change of the Variable's value compiles the material: it drives Material Maker nodes (their parameters are
+// compiled in), or it is the Shuffle. Else it only feeds native nodes, which read it live.
+bool variable_compiles(ui_node_canvas_t *canvas, ui_node_t *node) {
+	return string_equals(variable_id(node), "shuffle") || variable_reaches_mm(canvas, node, 0);
+}
+
 ui_node_t *variable_find(ui_node_canvas_t *canvas, char *id) {
 	for (i32 i = 0; canvas != NULL && i < canvas->nodes->length; ++i) {
 		ui_node_t *n = canvas->nodes->buffer[i];
@@ -483,6 +523,9 @@ f32 variable_param(ui_node_t *node, i32 what) {
 	if (what == 4) {
 		f32_array_t *arr = variable_value_array(node);
 		return arr != NULL ? arr->length : 0;
+	}
+	if (what == 5) {
+		return variable_order(node); // Negative for the common controls
 	}
 	return what == 0 ? min : what == 1 ? max : step;
 }

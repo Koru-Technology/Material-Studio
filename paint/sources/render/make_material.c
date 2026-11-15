@@ -479,19 +479,19 @@ char *make_material_blend_mode(node_shader_t *shader, i32 blending, char *cola, 
 	}
 	else if (blending == BLEND_TYPE_HUE) {
 		node_shader_add_function(shader, str_hue_sat);
-		return string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", cola, colb, cola, cola, opac);
+		return string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", cola, colb, cola, cola, opac);
 	}
 	else if (blending == BLEND_TYPE_SATURATION) {
 		node_shader_add_function(shader, str_hue_sat);
-		return string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", cola, cola, colb, cola, opac);
+		return string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", cola, cola, colb, cola, opac);
 	}
 	else if (blending == BLEND_TYPE_COLOR) {
 		node_shader_add_function(shader, str_hue_sat);
-		return string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", cola, colb, colb, cola, opac);
+		return string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", cola, colb, colb, cola, opac);
 	}
 	else { // BlendValue
 		node_shader_add_function(shader, str_hue_sat);
-		return string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", cola, cola, cola, colb, opac);
+		return string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", cola, cola, cola, colb, opac);
 	}
 }
 

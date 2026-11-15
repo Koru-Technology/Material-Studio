@@ -56,6 +56,30 @@ int mine(int i) {
 	return i - (i / shards) * shards == shard;
 }
 
+// The material's own controls: the common ones (order below 0, mm_controls_common) are not in controls.json
+int own_count(ui_node_canvas_t *c) {
+	int n = 0;
+	for (int i = 0; i < variable_count(c); ++i) {
+		if (variable_param(variable_at(c, i), 5) >= 0) {
+			n = n + 1;
+		}
+	}
+	return n;
+}
+
+ui_node_t *own_at(ui_node_canvas_t *c, int k) {
+	for (int i = 0; i < variable_count(c); ++i) {
+		ui_node_t *v = variable_at(c, i);
+		if (variable_param(v, 5) >= 0) {
+			if (k == 0) {
+				return v;
+			}
+			k = k - 1;
+		}
+	}
+	return NULL;
+}
+
 gpu_texture_t *preview(slot_material_t *s, int socket) {
 	script_material_set(s);
 	gpu_texture_t *t = mm_import_preview(mm_import_material_node(s), socket, 64);
@@ -201,7 +225,7 @@ void step_import() {
 	t_import = sys_time() - began;
 	char *report = string_copy(mm_import_report());
 	int want = mm_controls_material_controls(at);
-	int vars = m != NULL ? variable_count(m->canvas) : -1;
+	int vars = m != NULL ? own_count(m->canvas) : -1;
 	controls = controls + want;
 	if (vars != want) {
 		fail(string("%d Variables of %d controls", vars, want));
@@ -258,7 +282,7 @@ int step_defaults() {
 
 // One control moved alone
 void step_move() {
-	ui_node_t *v = variable_at(m->canvas, ci);
+	ui_node_t *v = own_at(m->canvas, ci);
 	kept         = save(v);
 	move(v);
 	variable_propagate_canvas(m->canvas);
@@ -268,7 +292,7 @@ void step_move() {
 
 // True when it must be redone
 int step_moved_check() {
-	ui_node_t *v = variable_at(m->canvas, ci);
+	ui_node_t *v = own_at(m->canvas, ci);
 	int        k = differs();
 	if (redo()) {
 		return 1;
@@ -401,7 +425,7 @@ void next() {
 		empty_trash();
 	}
 	else if (step == 3) {
-		if (ci < variable_count(m->canvas)) {
+		if (ci < own_count(m->canvas)) {
 			step_move();
 			step = 4;
 		}

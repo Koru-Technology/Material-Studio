@@ -737,6 +737,7 @@ slot_material_t *mm_import_library(i32 id) {
 	free(txt);
 	if (m != NULL) {
 		mm_controls_apply(m, id); // Its controls as Variables, before it compiles on the next frame
+		mm_controls_common(m);
 	}
 	return m;
 }

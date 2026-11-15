@@ -92,19 +92,19 @@ char *mix_color_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	}
 	else if (string_equals(blend, "HUE")) {
 		node_shader_add_function(parser_material_shader, str_hue_sat);
-		out_col = string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", col1, col2, col1, col1, fac_var);
+		out_col = string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", col1, col2, col1, col1, fac_var);
 	}
 	else if (string_equals(blend, "SATURATION")) {
 		node_shader_add_function(parser_material_shader, str_hue_sat);
-		out_col = string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", col1, col1, col2, col1, fac_var);
+		out_col = string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", col1, col1, col2, col1, fac_var);
 	}
 	else if (string_equals(blend, "COLOR")) {
 		node_shader_add_function(parser_material_shader, str_hue_sat);
-		out_col = string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", col1, col2, col2, col1, fac_var);
+		out_col = string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", col1, col2, col2, col1, fac_var);
 	}
 	else if (string_equals(blend, "VALUE")) {
 		node_shader_add_function(parser_material_shader, str_hue_sat);
-		out_col = string_tmp("mix(%s, hsv_to_rgb(vec3(rgb_to_hsv(%s).r, rgb_to_hsv(%s).g, rgb_to_hsv(%s).b)), %s)", col1, col1, col1, col2, fac_var);
+		out_col = string_tmp("mix(%s, ms_hsv_to_rgb(vec3(ms_rgb_to_hsv(%s).r, ms_rgb_to_hsv(%s).g, ms_rgb_to_hsv(%s).b)), %s)", col1, col1, col1, col2, fac_var);
 	}
 	if (clamp_result) {
 		return string_tmp("clamp(%s, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))", out_col);

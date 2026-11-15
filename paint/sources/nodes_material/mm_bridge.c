@@ -40,6 +40,7 @@ static struct {
 	bool               decl_init;
 	i32                depth;   // Nested scopes (our nodes parsed at another uv)
 	bool               emitted; // The declarations are in the shader
+	f32                seed;    // Seed variation of the material's random nodes (its Shuffle, variable_shuffle)
 } mm_bridge;
 
 #define MM_BRIDGE_KEY "// Material Maker"
@@ -74,6 +75,7 @@ static void mm_bridge_reset(void) {
 	mm_bridge.ncanvases = 0;
 	mm_bridge.depth     = 0;
 	mm_bridge.emitted   = false;
+	mm_bridge.seed      = 0.0;
 	mm_reset_ids();
 	mm_bridge.emitter = mm_emitter_new("constants.mm_zero");
 	if (!mm_bridge.decl_init) {
@@ -118,6 +120,9 @@ static mm_gen_t *mm_bridge_graph(void) {
 		}
 	}
 	variable_propagate(nodes, parser_material_links); // Parameters wired to Variables take their values first
+	if (mm_bridge.ncanvases == 0) {                   // The material's own canvas, not a group's
+		mm_bridge.seed = variable_shuffle(nodes);
+	}
 	mm_gen_t *graph = mm_graph_new();
 	for (i32 i = 0; i < nodes->length; ++i) {
 		ui_node_t *n = nodes->buffer[i];
@@ -282,7 +287,8 @@ char *mm_bridge_output(ui_node_t *node, ui_node_socket_t *socket) {
 			return parser_material_socket_zero(socket->type);
 		}
 		i32       *pass = mm_alloc(sizeof(i32) * e.nbuffers);
-		mm_plan_t *plan = mm_plan_buffers(e.buffer_gens, e.nbuffers, pass);
+		mm_plan_seed_variation = mm_bridge.seed;
+		mm_plan_t *plan        = mm_plan_buffers(e.buffer_gens, e.nbuffers, pass);
 		if (plan->error != NULL) {
 			iron_log("Material Maker: node %s, buffers not rendered: %s", node->name, plan->error);
 			mm_emitter_reset(mm_bridge.emitter, mark);
@@ -341,7 +347,8 @@ void mm_bridge_finalize(node_shader_t *shader) {
 		return;
 	}
 	node_shader_write_attrib_frag(shader, "mm_g_uv0 = tex_coord;");
-	node_shader_write_attrib_frag(shader, "float _seed_variation_ = seed_variation; vec4 _controlled_variation_ = vec4(0.0);");
+	node_shader_write_attrib_frag(shader, string_tmp("float _seed_variation_ = %s; vec4 _controlled_variation_ = vec4(0.0);",
+	                                                 f32_to_string_with_zeros(mm_bridge.seed)));
 	if (mm_bridge_builtins[0].used) {
 		node_shader_write_attrib_frag(shader, "mm_g_bposition = bposition;");
 		// d(bposition)/d(uv) from the screen space derivatives of both

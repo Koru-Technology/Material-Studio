@@ -293,7 +293,7 @@ static char *compose(plan_t *s, mm_code_t *c, mm_gen_t *self, bool loop, mm_gen_
 	mm_buf_add(&b, mm_buf_get(&uni));
 	mm_buf_add(&b, "\nconst float PI = 3.14159265359;\nconst float TAU = 2.0*PI;\n\n");
 	mm_buf_add(&b, mm_shader_functions());
-	mm_buf_add(&b, "\nconst float seed_variation = 0.0;\nconst float elapsed_time = 0.0;\n\n");
+	mm_buf_printf(&b, "\nconst float seed_variation = %.6f;\nconst float elapsed_time = 0.0;\n\n", mm_plan_seed_variation);
 	mm_buf_add(&b, globs);
 	mm_buf_add(&b, "\n");
 	mm_buf_add(&b, defs);
@@ -617,6 +617,8 @@ static mm_plan_t *plan_buffers(mm_gen_t **gens, int n, int *pass) {
 	finish(&s, rv);
 	return rv;
 }
+
+double mm_plan_seed_variation = 0.0;
 
 mm_plan_t *mm_plan_buffers(mm_gen_t **gens, int n, int *pass) {
 	jmp_buf  guard;

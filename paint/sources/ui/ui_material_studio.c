@@ -79,13 +79,14 @@ static ui_node_canvas_t *studio_canvas() {
 	return studio_graph_is(c) || (studio_vars && variable_count(c) > 0) ? c : NULL;
 }
 
-// The values of the Variables, a change compiles the preview in Variables mode
+// The values of the Variables a change of compiles the preview in Variables mode (variable_compiles: they drive Material
+// Maker parameters, or Shuffle). The others feed native nodes, which read them live: they only render again.
 static f64 studio_hash_vars(ui_node_canvas_t *c) {
 	f64 sum = 0.0;
 	f64 w   = 1.0;
 	for (i32 i = 0; i < c->nodes->length; ++i) {
 		ui_node_t *n = c->nodes->buffer[i];
-		if (!variable_is(n)) {
+		if (!variable_is(n) || !variable_compiles(c, n)) {
 			continue;
 		}
 		f32 v[320];
@@ -1581,6 +1582,20 @@ static void studio_draw_variable(ui_node_t *v, i32 slot) {
 	char        *label = variable_name(v);
 	f32_array_t *arr   = variable_value_array(v);
 	if (arr == NULL || arr->length == 0) {
+		return;
+	}
+	if (string_equals(variable_id(v), "shuffle")) { // A new random variation of every random node
+		ui_row2();
+		if (ui_icon_button(label, ICON_REFRESH, UI_ALIGN_CENTER)) {
+			studio_begin_edit();
+			arr->buffer[0] = (f32)iron_random_get_max(1000) / 1000.0;
+			studio_edited();
+		}
+		if (ui_icon_button(tr("Original"), ICON_UNDO, UI_ALIGN_CENTER) && arr->buffer[0] != 0.0) {
+			studio_begin_edit();
+			arr->buffer[0] = 0.0;
+			studio_edited();
+		}
 		return;
 	}
 	if (k == 0 || k == 1) { // Number, Whole Number

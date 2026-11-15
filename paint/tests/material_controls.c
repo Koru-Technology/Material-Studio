@@ -4,7 +4,8 @@
 // (data/material_maker/controls.json) get a Variable per control wired to the parameters it drives, look as they did
 // at the defaults, follow the controls' mappings (Map Range) and choices (Select Value), compile without shader failures
 // when a control moves, open in the Material Studio, survive save and load. Export Parameter wires a Variable to a
-// parameter.
+// parameter. The common controls (mm_controls_common) are on every library material: a common control feeding native
+// nodes previews in the Studio without compiling, Shuffle compiles.
 
 int fails  = 0;
 int checks = 0;
@@ -13,7 +14,7 @@ int wait   = 0;
 
 // The pilot: id and number of controls
 int ids[5]      = {30, 133, 1271, 1391, 1714};
-int controls[5] = {5, 3, 5, 4, 5};
+int controls[5] = {5, 3, 5, 4, 3}; // 1714 lost Shingle Colors and Moss Color, which change nothing (bulk test)
 int count       = 5;
 
 any_array_t *mats   = NULL; // With controls
@@ -59,6 +60,19 @@ char *fingerprint(slot_material_t *m) {
 	return s;
 }
 
+// The material's own controls, the common ones have an order below 0
+int own_count(ui_node_canvas_t *c) {
+	int n = 0;
+	for (int i = 0; i < variable_count(c); ++i) {
+		if (variable_param(variable_at(c, i), 5) >= 0) {
+			n = n + 1;
+		}
+	}
+	return n;
+}
+
+char *commons[8] = {"hue", "saturation", "brightness", "roughness", "metallic", "bumps", "height", "shuffle"};
+
 // Mean difference of the base color previews of a material with and without its controls
 int base_diff(slot_material_t *a, slot_material_t *b) {
 	script_material_set(a);
@@ -77,8 +91,13 @@ void step_import() {
 		slot_material_t *m  = mm_import_library(id);
 		any_array_push(mats, m);
 		char *report = string_copy(mm_import_report());
-		int   vars   = m != NULL ? variable_count(m->canvas) : -1;
+		int   vars   = m != NULL ? own_count(m->canvas) : -1;
 		check(vars == controls[i], string("%d %s: %d Variables of %d controls", id, mm_import_library_name(id), vars, controls[i]));
+		int common = 0;
+		for (int k = 0; m != NULL && k < 8; ++k) {
+			common = common + (variable_find(m->canvas, commons[k]) != NULL ? 1 : 0);
+		}
+		check(common == 8, string("%d has the common controls (%d of 8)", id, common));
 		check(string_index_of(report, "control ") < 0, string("%d: every control's targets found", id));
 		slot_material_t *p = script_material_create(string("plain_%d", id));
 		mm_import_library_into(id, p);
@@ -120,16 +139,6 @@ void step_mappings() {
 	float sx = mm_node_param_value(c, "tiler", "scale_x", -1, 0);
 	check(near(tx, 8.0) && near(sx, 0.24), string("1714 Shingle Columns 8 sets 8 columns of scale 0.24 (%.3f, %.3f)", tx, sx));
 	variable_set_value(cols, 0, cols0);
-
-	ui_node_t *moss_color = variable_find(c, "moss_color");
-	check(moss_color != NULL && variable_kind(moss_color) == 4, "1714 Moss Color is a Color");
-	float other = mm_node_param_value(c, "colorize_5", "gradient", 1, 0);
-	variable_set_value(moss_color, 0, 1.0);
-	variable_set_value(moss_color, 1, 0.0);
-	variable_set_value(moss_color, 2, 0.0);
-	variable_propagate_canvas(c);
-	check(near(mm_node_param_value(c, "colorize_5", "gradient", 0, 0), 1.0) && near(mm_node_param_value(c, "colorize_5", "gradient", 1, 0), other),
-	      "1714 Moss Color sets the color of the gradient's first stop only");
 
 	ui_node_canvas_t *t       = mat(1271)->canvas;
 	ui_node_t        *pattern = variable_find(t, "tile_pattern");
@@ -230,6 +239,34 @@ void step_reload_check() {
 	check(material_studio_is_open() == 0, "the Studio closed");
 }
 
+// A common control in the Studio: Hue feeds native nodes, it renders without compiling
+void step_common_open() {
+	material_studio_open(mat(1391));
+}
+
+void step_common() {
+	compiles        = material_studio_compiles(); // After the Studio's first compile
+	failures_before = gpu_shader_failures();
+	ui_node_t *v    = variable_find(mat(1391)->canvas, "hue");
+	if (v != NULL) {
+		variable_set_value(v, 0, 90.0);
+	}
+}
+
+void step_common_check() {
+	check(material_studio_compiles() == compiles, string("moving Hue does not compile the Studio preview (%d compiles)", material_studio_compiles() - compiles));
+	ui_node_t *v = variable_find(mat(1391)->canvas, "shuffle");
+	if (v != NULL) {
+		variable_set_value(v, 0, 0.37);
+	}
+}
+
+void step_shuffle_check() {
+	check(material_studio_compiles() > compiles, string("Shuffle compiles the Studio preview (%d compiles)", material_studio_compiles() - compiles));
+	check(gpu_shader_failures() == failures_before, "the common controls compile without shader failures");
+	material_studio_close();
+}
+
 void next() {
 	if (wait > 0) {
 		wait = wait - 1;
@@ -262,18 +299,30 @@ void next() {
 		step_studio_check();
 	}
 	else if (step == 8) {
-		step_export();
+		step_common_open();
 	}
 	else if (step == 9) {
-		step_save();
+		step_common();
 	}
 	else if (step == 10) {
-		script_project_new();
+		step_common_check();
 	}
 	else if (step == 11) {
-		script_project_open(file);
+		step_shuffle_check();
 	}
 	else if (step == 12) {
+		step_export();
+	}
+	else if (step == 13) {
+		step_save();
+	}
+	else if (step == 14) {
+		script_project_new();
+	}
+	else if (step == 15) {
+		script_project_open(file);
+	}
+	else if (step == 16) {
 		step_reload_check();
 	}
 	else {

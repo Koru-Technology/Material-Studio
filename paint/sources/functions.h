@@ -1197,6 +1197,7 @@ i32                       mm_node_export_count(ui_node_t *node);
 bool                      mm_node_export_param_at(ui_node_t *node, i32 i, char **name, char **label, i32 *kind);
 void                      mm_nodes_gradient_edit(ui_node_t *node, i32 button, char *label);
 bool                      mm_controls_apply(slot_material_t *m, i32 id); // nodes_material/mm_controls.c: the library's controls as Variables
+void                      mm_controls_common(slot_material_t *m);        // and the common controls of every library material
 i32                       mm_controls_material_count(void);
 i32                       mm_controls_material_id(i32 i);
 i32                       mm_controls_material_controls(i32 i);
@@ -1494,6 +1495,7 @@ void              parser_material_live_end();
 i32               parser_material_live_entries(i32 table);
 char             *parser_material_live_input(ui_node_socket_t *inp);
 char             *parser_material_live_ramp_color(ui_node_t *node, i32 index);
+char             *parser_material_live_variable(ui_node_t *node);
 char             *parser_material_live_ramp_pos(ui_node_t *node, i32 pack);
 void              parser_material_live_update(ui_node_canvas_t *canvas, i32 table);
 i32               studio_role(ui_node_t *n);
@@ -1602,8 +1604,10 @@ bool              variable_propagate(ui_node_t_array_t *nodes, ui_node_link_t_ar
 ui_node_t_array_t *variable_list(ui_node_canvas_t *canvas);
 i32               variable_count(ui_node_canvas_t *canvas);
 ui_node_t        *variable_find(ui_node_canvas_t *canvas, char *id);
+f32               variable_shuffle(ui_node_t_array_t *nodes);
+bool              variable_compiles(ui_node_canvas_t *canvas, ui_node_t *node);
 ui_node_t        *variable_at(ui_node_canvas_t *canvas, i32 i);
-f32               variable_param(ui_node_t *node, i32 what);
+f32               variable_param(ui_node_t *node, i32 what); // 0 min, 1 max, 2 step, 3 options, 4 value length, 5 order
 void              variable_setup(ui_node_t *node, i32 kind, char *label, char *id, char *group, char *unit, i32 order);
 void              variable_set_range(ui_node_t *node, f32 min, f32 max, f32 step);
 void              variable_set_options(ui_node_t *node, char *options);

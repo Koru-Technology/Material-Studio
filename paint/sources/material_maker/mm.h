@@ -190,6 +190,7 @@ typedef struct {
 mm_emitter_t *mm_emitter_new(const char *zero); // zero: an expression worth 0.0 the compiler can not fold (a uniform),
                                                // added to parameters (see mm_uniform_runtime_declaration)
 mm_emit_t     mm_emit(mm_emitter_t *e, mm_gen_t *g, int output, const char *uv, const char *type);
+extern double mm_plan_seed_variation; // Material Maker's seed_variation in the passes planned next (a material's Shuffle)
 mm_plan_t    *mm_plan_buffers(mm_gen_t **gens, int n, int *pass); // Passes rendering buffer_gens; pass[i]: buffer i's
                                                                   // pass, -1 when not rendered (error set)
 typedef struct {

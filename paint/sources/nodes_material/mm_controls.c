@@ -252,6 +252,127 @@ bool mm_controls_apply(slot_material_t *m, i32 id) {
 	return any;
 }
 
+// The common controls of every library material (controls.md), shown before the material's own in their groups. They act
+// after the Material Maker graph, between its Material node and the output, in native nodes the Variables feed, so they
+// preview live: Hue, Saturation and Brightness through a Hue/Saturation/Value node, Roughness and Metallic added to the
+// material's (clamped), Bumps as the strength of a Normal Map node, Height and Glow multiplying the material's (Glow only
+// on a material that emits). Shuffle drives no node: its value is the seed variation of every random node of the graph
+// (mm_bridge.c, mm_plan.c). Scale and Rotation are the material's UV Scale and UV Rotation, not Variables.
+
+static ui_node_t *mm_controls_common_var(ui_node_canvas_t *canvas, char *label, char *id, char *group, char *unit, i32 order, f32 min,
+                                         f32 max, f32 value, f32 x, f32 y) {
+	ui_node_t *v = mm_controls_node(canvas, "VARIABLE", x, y);
+	if (v != NULL) {
+		variable_setup(v, 0, label, id, group, unit, order - 100); // Before the material's own
+		variable_set_range(v, min, max, 0.0);
+		variable_set(v, &value, 1, 0);
+	}
+	return v;
+}
+
+// node in the link of the material's output socket to the output: material -> node input in, node output 0 -> output
+static bool mm_controls_splice(ui_node_canvas_t *canvas, ui_node_t *material, ui_node_t *output, i32 socket, ui_node_t *node, i32 in) {
+	for (i32 i = 0; i < canvas->links->length; ++i) {
+		ui_node_link_t *l = canvas->links->buffer[i];
+		if (l->from_id == material->id && l->from_socket == socket && l->to_id == output->id && l->to_socket == socket) {
+			array_remove(canvas->links, l);
+			mm_controls_link(canvas, material, socket, node, in);
+			mm_controls_link(canvas, node, 0, output, socket);
+			return true;
+		}
+	}
+	return false;
+}
+
+static ui_node_t *mm_controls_math(ui_node_canvas_t *canvas, i32 op, bool clamp, f32 x, f32 y) {
+	ui_node_t *n = mm_controls_node(canvas, "MATH", x, y);
+	if (n != NULL) {
+		n->buttons->buffer[0]->default_value->buffer[0] = op; // 0 Add, 2 Multiply
+		n->buttons->buffer[1]->default_value->buffer[0] = clamp ? 1 : 0;
+	}
+	return n;
+}
+
+void mm_controls_common(slot_material_t *m) {
+	ui_node_canvas_t *canvas   = m != NULL ? m->canvas : NULL;
+	ui_node_t        *material = NULL;
+	ui_node_t        *output   = NULL;
+	for (i32 i = 0; canvas != NULL && i < canvas->nodes->length; ++i) {
+		ui_node_t *n = canvas->nodes->buffer[i];
+		material     = string_equals(n->type, "MM_MATERIAL") ? n : material;
+		output       = string_equals(n->type, "OUTPUT_MATERIAL_PBR") ? n : output;
+	}
+	if (material == NULL || output == NULL) {
+		return; // An unlit material, or none
+	}
+	bool emits = false;
+	for (i32 i = 0; i < canvas->links->length; ++i) {
+		ui_node_link_t *l = canvas->links->buffer[i];
+		emits             = emits || (l->to_id == material->id && l->to_socket == 3); // emission_tex
+	}
+	// A column of adjustments between the material and the output, their Variables left of it
+	f32 ax    = material->x + 300;
+	f32 y     = material->y - 200;
+	f32 vx    = material->x;
+	f32 vy    = material->y + 900;
+	output->x = ax + 600;
+
+	// Base Color: Hue (degrees to the node's 0..1, 0.5 none), Saturation, Brightness
+	ui_node_t *hsv = mm_controls_node(canvas, "HUE_SAT", ax + 300, y);
+	if (hsv != NULL && mm_controls_splice(canvas, material, output, 0, hsv, 4)) {
+		ui_node_t *hue = mm_controls_common_var(canvas, "Hue", "hue", "color", "degrees", 0, -180, 180, 0, vx, vy);
+		ui_node_t *map = mm_controls_node(canvas, "MAPRANGE", ax, y);
+		f32        r[5] = {0, -180, 180, 0, 1};
+		for (i32 i = 1; i < 5; ++i) {
+			map->inputs->buffer[i]->default_value->buffer[0] = r[i];
+		}
+		map->buttons->buffer[0]->default_value->buffer[0] = 0;
+		mm_controls_link(canvas, hue, 0, map, 0);
+		mm_controls_link(canvas, map, 0, hsv, 0);
+		ui_node_t *sat = mm_controls_common_var(canvas, "Saturation", "saturation", "color", "percent", 1, 0, 2, 1, vx, vy + 240);
+		mm_controls_link(canvas, sat, 0, hsv, 1);
+		ui_node_t *bri = mm_controls_common_var(canvas, "Brightness", "brightness", "color", "percent", 2, 0, 2, 1, vx, vy + 480);
+		mm_controls_link(canvas, bri, 0, hsv, 2);
+		vy += 720;
+	}
+	// Roughness and Metallic: shifted, kept in 0..1
+	char *shift_label[2] = {"Roughness", "Metallic"};
+	char *shift_id[2]    = {"roughness", "metallic"};
+	i32   shift_socket[2] = {3, 4};
+	for (i32 k = 0; k < 2; ++k) {
+		ui_node_t *add = mm_controls_math(canvas, 0, true, ax + 300, y + 400 + k * 260);
+		if (add != NULL && mm_controls_splice(canvas, material, output, shift_socket[k], add, 0)) {
+			ui_node_t *v = mm_controls_common_var(canvas, shift_label[k], shift_id[k], "surface", "percent", k, -1, 1, 0, vx, vy);
+			mm_controls_link(canvas, v, 0, add, 1);
+			vy += 240;
+		}
+	}
+	// Bumps: the normal map's strength
+	ui_node_t *nm = mm_controls_node(canvas, "NORMAL_MAP", ax + 300, y + 920);
+	if (nm != NULL && mm_controls_splice(canvas, material, output, 5, nm, 1)) {
+		ui_node_t *v = mm_controls_common_var(canvas, "Bumps", "bumps", "surface", "percent", 2, 0, 2, 1, vx, vy);
+		mm_controls_link(canvas, v, 0, nm, 0);
+		vy += 240;
+	}
+	// Height and Glow: scaled
+	ui_node_t *hm = mm_controls_math(canvas, 2, false, ax + 300, y + 1180);
+	if (hm != NULL && mm_controls_splice(canvas, material, output, 7, hm, 0)) {
+		ui_node_t *v = mm_controls_common_var(canvas, "Height", "height", "surface", "percent", 3, 0, 2, 1, vx, vy);
+		mm_controls_link(canvas, v, 0, hm, 1);
+		vy += 240;
+	}
+	if (emits) {
+		ui_node_t *gm = mm_controls_math(canvas, 2, false, ax + 300, y + 1440);
+		if (gm != NULL && mm_controls_splice(canvas, material, output, 6, gm, 0)) {
+			ui_node_t *v = mm_controls_common_var(canvas, "Glow", "glow", "color", "percent", 3, 0, 4, 1, vx, vy);
+			mm_controls_link(canvas, v, 0, gm, 1);
+			vy += 240;
+		}
+	}
+	// Shuffle: a seed variation in 0..1, the Studio shows a button
+	mm_controls_common_var(canvas, "Shuffle", "shuffle", "detail", "", 0, 0, 1, 0, vx, vy);
+}
+
 // For scripts: the library materials with controls (ids in the order of controls.json) and their number of controls
 static i32 *mm_controls_ids    = NULL;
 static i32 *mm_controls_counts = NULL;
