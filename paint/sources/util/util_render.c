@@ -624,9 +624,12 @@ void util_render_brush_scene_end(util_render_brush_scene_t *sc) {
 	// Restore paint mesh
 	g_context->material_preview = false;
 	sc->plane->base->visible    = false;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
+	for (i32 i = 0; i < g_project->_->paint_objects->length && i < (i32)sc->visibles->length; ++i) {
 		g_project->_->paint_objects->buffer[i]->base->visible = sc->visibles->buffer[i];
 	}
+	array_free(sc->visibles);
+	free(sc->visibles);
+	sc->visibles = NULL;
 	if (g_context->merged_object != NULL) {
 		g_context->merged_object->base->visible = sc->merged_visible;
 	}
@@ -803,8 +806,12 @@ bool util_render_load_material_icon(slot_material_t *m, buffer_t *icon) {
 	if (icon == NULL || icon->length == 0 || m->image == NULL || m->image_icon == NULL || (i32)m->image->width != w) {
 		return false;
 	}
-	buffer_t *pixels = lz4_decode(icon, size);
+	buffer_t *pixels = lz4_decode(icon, size); // NULL for corrupt data
 	if (pixels == NULL || pixels->length != size) {
+		if (pixels != NULL) {
+			array_free(pixels);
+			free(pixels);
+		}
 		return false;
 	}
 	pixels = buffer_bgra64_swap(pixels);
