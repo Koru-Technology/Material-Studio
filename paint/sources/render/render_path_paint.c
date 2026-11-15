@@ -411,8 +411,7 @@ static mesh_object_t *render_path_paint_pick_object() {
 	render_path_bind_target("gbuffer2", "gbuffer2");
 	render_path_paint_draw_fullscreen_triangle();
 
-	render_target_t *rt    = any_map_get(render_path_render_targets, "texpaint_picker");
-	buffer_t        *pixel = gpu_get_texture_pixels(rt->_image);
+	buffer_t *pixel = gpu_get_texture_pixels(render_path_target_image("texpaint_picker"));
 	if (buffer_get_u8(pixel, 3) > 0) {
 #ifdef IRON_BGRA
 		i32 r_byte = buffer_get_u8(pixel, 2);
@@ -680,8 +679,7 @@ static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_m
 }
 
 static gpu_texture_t *render_path_paint_picker_target(char *name) {
-	render_target_t *rt = any_map_get(render_path_render_targets, name);
-	return rt->_image;
+	return render_path_target_image(name);
 }
 
 #ifdef IRON_METAL
@@ -736,8 +734,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		render_path_set_target("texpaint_colorid", NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
 		render_path_bind_target("gbuffer2", "gbuffer2");
 		render_path_paint_draw_fullscreen_triangle();
-		render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid");
-		buffer_t        *a  = gpu_get_texture_pixels(rt->_image);
+		buffer_t *a = gpu_get_texture_pixels(render_path_target_image("texpaint_colorid"));
 #ifdef IRON_BGRA
 		i32 i0 = 2;
 		i32 i1 = 1;
@@ -773,10 +770,8 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			render_path_bind_target("gbuffer2", "gbuffer2");
 			render_path_bind_target("main", "gbufferD");
 			render_path_paint_draw_fullscreen_triangle();
-			render_target_t *picker0                    = any_map_get(render_path_render_targets, "texpaint_posnortex_picker0");
-			render_target_t *picker1                    = any_map_get(render_path_render_targets, "texpaint_posnortex_picker1");
-			gpu_texture_t   *texpaint_posnortex_picker0 = picker0->_image;
-			gpu_texture_t   *texpaint_posnortex_picker1 = picker1->_image;
+			gpu_texture_t *texpaint_posnortex_picker0 = render_path_target_image("texpaint_posnortex_picker0");
+			gpu_texture_t *texpaint_posnortex_picker1 = render_path_target_image("texpaint_posnortex_picker1");
 			buffer_t        *a                          = gpu_get_texture_pixels(texpaint_posnortex_picker0);
 			buffer_t        *b                          = gpu_get_texture_pixels(texpaint_posnortex_picker1);
 			g_context->posx_picked                      = buffer_get_f32(a, 0);
@@ -1117,8 +1112,7 @@ void render_path_paint_draw_cursor(f32 mx, f32 my, f32 radius, f32 tint_r, f32 t
 	gpu_vertex_textures = true;
 	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_cursor);
-	render_target_t *rt   = any_map_get(render_path_render_targets, render_path_paint_depth());
-	gpu_texture_t   *main = rt->_image;
+	gpu_texture_t *main = render_path_target_image(render_path_paint_depth());
 	gpu_set_texture(pipes_cursor_gbufferd, main);
 	gpu_set_float2(pipes_cursor_mouse, mx, my);
 	gpu_set_float2(pipes_cursor_tex_step, 1 / (float)main->width, 1 / (float)main->height);
@@ -1157,12 +1151,10 @@ void render_path_paint_draw_cursor_decal(f32 mx, f32 my, f32 radius, f32 opacity
 	gpu_vertex_textures = true;
 	render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_cursor_decal);
-	render_target_t *rt   = any_map_get(render_path_render_targets, render_path_paint_depth());
-	gpu_texture_t   *main = rt->_image;
+	gpu_texture_t *main = render_path_target_image(render_path_paint_depth());
 	gpu_set_texture(pipes_cursor_decal_gbufferd, main);
 	gpu_set_texture(pipes_cursor_decal_texdecal, image);
-	render_target_t *gbuffer0_rt = any_map_get(render_path_render_targets, "gbuffer0");
-	gpu_set_texture(pipes_cursor_decal_gbuffer0, gbuffer0_rt->_image);
+	gpu_set_texture(pipes_cursor_decal_gbuffer0, render_path_target_image("gbuffer0"));
 	gpu_set_float2(pipes_cursor_decal_mouse, mx, my);
 	gpu_set_float2(pipes_cursor_decal_tex_step, 1 / (float)main->width, 1 / (float)main->height);
 	gpu_set_float(pipes_cursor_decal_radius, radius);

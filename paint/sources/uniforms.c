@@ -177,8 +177,8 @@ static f32 uniforms_material_uv_angle() {
 
 vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) {
 	if (string_equals(link, "_gbuffer_size")) {
-		render_target_t *gbuffer2 = any_map_get(render_path_render_targets, "gbuffer2");
-		return (vec2_t){gbuffer2->_image->width, gbuffer2->_image->height};
+		gpu_texture_t *gbuffer2 = render_path_target_image("gbuffer2");
+		return (vec2_t){gbuffer2->width, gbuffer2->height};
 	}
 	else if (string_equals(link, "_clone_delta")) {
 		return (vec2_t){g_context->clone_delta_x, g_context->clone_delta_y};
@@ -365,19 +365,14 @@ void uniforms_ext_cache_uv_map(void *_) {
 }
 
 static gpu_texture_t *_uniforms_ext_get_target(char *name) {
-	render_target_t *rt = any_map_get(render_path_render_targets, name);
-	if (rt == NULL) {
-		rt = any_map_get(render_path_render_targets, "empty_black");
-	}
-	return rt->_image;
+	return render_path_target_image(name);
 }
 
 // A layer texture bound as a render target of the current pass reads as black
 static gpu_texture_t *uniforms_layer_tex(gpu_texture_t *t) {
 	for (i32 i = 0; gpu_in_use && i < current_render_targets_count; ++i) {
 		if (t == current_render_targets[i]) {
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-			return rt->_image;
+			return render_path_empty_black();
 		}
 	}
 	return t;
@@ -417,17 +412,16 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 	}
 	else if (string_equals(link, "_texviewport")) {
 		gpu_texture_t *image = g_context->viewport_texture;
-		return image != NULL ? image : ((render_target_t *)any_map_get(render_path_render_targets, "empty_black"))->_image;
+		return image != NULL ? image : render_path_empty_black();
 	}
 	else if (string_equals(link, "_texinpaint_overlay")) {
 		gpu_texture_t *overlay = box_bake_maps_inpaint_overlay();
-		return overlay != NULL ? overlay : ((render_target_t *)any_map_get(render_path_render_targets, "empty_black"))->_image;
+		return overlay != NULL ? overlay : render_path_empty_black();
 	}
 	else if (string_equals(link, "_texcolorid")) {
 		asset_t *map = project_id_map_asset();
 		if (map == NULL) {
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
-			return rt->_image;
+			return render_path_empty_white();
 		}
 		return project_get_image(map);
 	}
@@ -435,15 +429,14 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		return mesh_maps_texture(parse_int(link + 11));
 	}
 	else if (string_equals(link, "_texcolorid_sel")) {
-		render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid_sel");
-		return rt->_image;
+		return render_path_target_image("texpaint_colorid_sel");
 	}
 	else if (string_equals(link, "_textexttool")) { // Opacity map for text
 		return g_context->text_tool_image;
 	}
 	else if (string_equals(link, "_texpaintdabs")) {
 		gpu_texture_t *t = render_path_paint_batch_texture;
-		return t != NULL ? t : ((render_target_t *)any_map_get(render_path_render_targets, "empty_black"))->_image;
+		return t != NULL ? t : render_path_empty_black();
 	}
 	else if (string_equals(link, "_texbrushmask")) {
 		return g_context->brush_mask_image;
@@ -468,8 +461,7 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			return util_uv_dilatemap;
 		}
 		sys_notify_on_next_frame(&uniforms_ext_cache_dilate_map, NULL);
-		render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
-		return rt->_image;
+		return render_path_empty_white();
 	}
 	else if (string_equals(link, "_texuvislandmap")) {
 		sys_notify_on_next_frame(&uniforms_ext_cache_uv_island_map, NULL);
@@ -477,16 +469,14 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			return util_uv_uvislandmap;
 		}
 		else {
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-			return rt->_image;
+			return render_path_empty_black();
 		}
 	}
 	else if (string_equals(link, "_texdilatemap")) {
 		return util_uv_dilatemap;
 	}
 	if (starts_with(link, "_texpaint_pack_vert")) {
-		render_target_t *rt = any_map_get(render_path_render_targets, string_tmp("texpaint_pack%c", link[string_length(link) - 1]));
-		return rt->_image;
+		return render_path_target_image(string_tmp("texpaint_pack%c", link[string_length(link) - 1]));
 	}
 	if (starts_with(link, "_texpaint_vert")) {
 		i32 tid = parse_int(link + string_length("_texpaint_vert"));
@@ -520,8 +510,7 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			return any_map_get(g_context->node_previews, id);
 		}
 		else {
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-			return rt->_image;
+			return render_path_empty_black();
 		}
 	}
 	if (starts_with(link, "_texwarp_")) {
@@ -530,21 +519,19 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			return any_map_get(g_context->node_previews, id);
 		}
 		else {
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-			return rt->_image;
+			return render_path_empty_black();
 		}
 	}
 	if (starts_with(link, "_mmbuf")) { // Material Maker buffers, see mm_buffers_link
 		gpu_texture_t *buf = mm_buffers_texture(link);
-		return buf != NULL ? buf : ((render_target_t *)any_map_get(render_path_render_targets, "empty_black"))->_image;
+		return buf != NULL ? buf : render_path_empty_black();
 	}
 	if (starts_with(link, "_texlive")) { // Material Studio preview values
 		gpu_texture_t *live = parser_material_live_texture(link);
 		if (live != NULL) {
 			return live;
 		}
-		render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-		return rt->_image;
+		return render_path_empty_black();
 	}
 	if (starts_with(link, "_texbake_")) {
 		char *id = link + 9;
@@ -552,18 +539,15 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			return any_map_get(g_context->node_previews, id);
 		}
 		else {
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-			return rt->_image;
+			return render_path_empty_black();
 		}
 	}
 	if (string_equals(link, "_camera_texture")) {
-		render_target_t *rt = any_map_get(render_path_render_targets, "last");
-		return rt->_image;
+		return render_path_target_image("last");
 	}
 	if (string_equals(link, "_lut_tex")) {
 		if (lut_image == NULL) {
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
-			return rt->_image;
+			return render_path_empty_white();
 		}
 		return lut_image;
 	}

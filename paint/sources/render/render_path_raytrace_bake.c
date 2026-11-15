@@ -121,11 +121,7 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 			g_context->layer->texpaint = _texpaint;
 		}
 		else {
-			render_target_t *texpaint_undo = any_map_get(render_path_render_targets, string_tmp("texpaint_undo%d", history_undo_i));
-			if (texpaint_undo == NULL) {
-				texpaint_undo = any_map_get(render_path_render_targets, "empty_black");
-			}
-			tex2 = texpaint_undo->_image;
+			tex2 = render_path_target_image(string_tmp("texpaint_undo%d", history_undo_i));
 		}
 
 		gpu_texture_t *env_cdf                 = g_context->bake_type == BAKE_TYPE_LIGHTMAP ? render_path_raytrace_update_env_cdf() : NULL;
@@ -149,8 +145,7 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 		f32a->buffer[7]   = render_path_raytrace_bake_env_sampling ? 1.0f : 0.0f;
 		f32a->buffer[8]   = 0.0f; // Multiply by layer base
 
-		render_target_t *framebuffer = any_map_get(render_path_render_targets, "baketex2");
-		_gpu_raytrace_dispatch_rays(framebuffer->_image, f32a);
+		_gpu_raytrace_dispatch_rays(render_path_target_image("baketex2"), f32a);
 
 		i32   id          = g_context->layer->id;
 		char *texpaint_id = string_tmp("texpaint%d", id);

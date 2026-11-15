@@ -228,6 +228,24 @@ void render_path_base_draw_split(void (*draw_commands)(void)) {
 static char *render_path_base_presented       = NULL; // Target the last image was presented from
 static i32   render_path_base_presented_count = 0;    // Images presented, a new one changes it
 
+// The image of a render target, empty_black when there is no such target
+gpu_texture_t *render_path_target_image(char *name) {
+	render_target_t *rt = any_map_get(render_path_render_targets, name);
+	if (rt == NULL || rt->_image == NULL) {
+		rt = any_map_get(render_path_render_targets, "empty_black");
+	}
+	return rt->_image;
+}
+
+gpu_texture_t *render_path_empty_black() {
+	return render_path_target_image("empty_black");
+}
+
+gpu_texture_t *render_path_empty_white() {
+	render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
+	return rt != NULL ? rt->_image : render_path_empty_black();
+}
+
 // Last image of the 3D view and a count that changes with every new image, NULL before the first
 gpu_texture_t *render_path_base_presented_image(i32 *count) {
 	*count = render_path_base_presented_count;
@@ -551,7 +569,7 @@ void render_path_base_draw_taa(char *bufa, char *bufb) {
 	}
 
 	render_path_base_swap_buf(bufa);
-	render_path_base_taa_history = ((render_target_t *)any_map_get(render_path_render_targets, "last"))->_image;
+	render_path_base_taa_history = render_path_target_image("last");
 }
 
 void render_path_base_swap_buf(char *bufa) {
@@ -566,7 +584,7 @@ void render_path_base_swap_buf(char *bufa) {
 }
 
 void render_path_base_make_gbuffer_copy_textures() {
-	gpu_texture_t *g0      = ((render_target_t *)any_map_get(render_path_render_targets, "gbuffer0"))->_image;
+	gpu_texture_t *g0      = render_path_target_image("gbuffer0");
 	char          *names[] = {"gbuffer0_copy", "gbuffer1_copy", "gbuffer2_copy"};
 	for (i32 i = 0; i < 3; ++i) {
 		render_target_t *t = any_map_get(render_path_render_targets, names[i]);

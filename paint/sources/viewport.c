@@ -170,8 +170,7 @@ void viewport_save_texture_to_file(gpu_texture_t *screenshot, char *path) {
 }
 
 void viewport_capture_screenshot() {
-	render_target_t *rt  = any_map_get(render_path_render_targets, "last");
-	gpu_texture_t   *tex = rt->_image;
+	gpu_texture_t *tex = render_path_target_image("last");
 
 	gpu_texture_t *screenshot = gpu_create_render_target(tex->width, tex->height, GPU_TEXTURE_FORMAT_RGBA32);
 	draw_begin(screenshot, false, 0);
@@ -184,8 +183,7 @@ void viewport_capture_screenshot() {
 }
 
 void viewport_capture_screenshot_to(gpu_texture_t *target, float x, float y, float w, float h) {
-	render_target_t *rt  = any_map_get(render_path_render_targets, "last");
-	gpu_texture_t   *tex = rt->_image;
+	gpu_texture_t *tex = render_path_target_image("last");
 
 	// Crop the viewport texture to a square
 	float size = tex->width < tex->height ? tex->width : tex->height;
