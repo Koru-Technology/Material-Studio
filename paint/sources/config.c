@@ -816,8 +816,13 @@ void config_load_theme(char *theme, bool tag_redraw) {
 
 	if (!string_equals(theme, "default.json")) {
 		buffer_t   *b      = data_get_blob(string("themes/%s", theme));
-		ui_theme_t *parsed = json_parse(sys_buffer_to_string(b));
-		g_theme            = parsed;
+		ui_theme_t *parsed = b != NULL ? json_parse(sys_buffer_to_string(b)) : NULL;
+		if (parsed != NULL) {
+			g_theme = parsed;
+		}
+		else { // The theme file is gone, the default theme stays
+			g_config->theme = "default.json";
+		}
 	}
 
 	if (tag_redraw) {
