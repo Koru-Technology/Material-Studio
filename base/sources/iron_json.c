@@ -371,7 +371,11 @@ static void load_tokens(char *s) {
 	ti     = 0;
 }
 
+// NULL for NULL (a missing file read as a string)
 void *json_parse(char *s) {
+	if (s == NULL) {
+		return NULL;
+	}
 	load_tokens(s);
 
 	uint32_t out_size = strlen(s) * 2;
@@ -425,6 +429,9 @@ static int token_write_to_map(any_map_t *m, int i, char *prefix) {
 }
 
 any_map_t *json_parse_to_map(char *s) {
+	if (s == NULL) {
+		return NULL;
+	}
 	load_tokens(s);
 
 	any_map_t *m = any_map_create();
