@@ -1,7 +1,7 @@
 import SwiftUI
 
-// The Library: materials saved from the Material Studio, the materials folder and Material Maker's library, or the cloud
-// catalogs. Searched, filtered by style and type; tapping one adds it to the project.
+// The Library: materials saved from the Material Studio, the materials folder and Material Maker's library.
+// Searched, filtered by style and type; tapping one adds it to the project.
 struct MaterialsLibraryView: View {
 	var onUse: () -> Void = {}
 	@Bindable private var store = MaterialsStore.shared
@@ -46,24 +46,10 @@ struct MaterialsLibraryView: View {
 				.padding(.horizontal, 10)
 				.padding(.vertical, 7)
 				.background(.fill.tertiary, in: .capsule)
-
-				Toggle(isOn: Binding(get: { store.libraryCloud }, set: { store.setCloud($0) })) {
-					Label("Cloud Materials", systemImage: store.libraryCloud ? "cloud.fill" : "cloud")
-				}
-				.toggleStyle(.button)
-				.labelStyle(.iconOnly)
-				.help(store.libraryCloud ? "Show my materials" : "Show the cloud materials")
 			}
 			HStack(spacing: 8) {
 				filterMenu
 				Spacer(minLength: 0)
-				if !store.libraryCloud && !store.libraryHasFolder {
-					Button("Choose Folder…", systemImage: "folder.badge.plus") {
-						app_library_pick_folder()
-					}
-					.font(.caption)
-					.buttonStyle(.borderless)
-				}
 			}
 			if !store.libraryStatus.isEmpty {
 				Text(store.libraryStatus)
@@ -77,25 +63,23 @@ struct MaterialsLibraryView: View {
 	}
 
 	private var filterMenu: some View {
+		// Buttons in titled sections: a Picker inside the menu loses the Stylized and Realistic headings on iOS
 		Menu {
-			Picker("Type", selection: $store.libraryFilter) {
-				ForEach(Array(store.libraryFilterOptions.enumerated()), id: \.offset) { i, group in
-					if i == 0 {
-						ForEach(group) { option in
-							Text("\(option.title) (\(option.count))").tag(option.filter)
-						}
+			ForEach(Array(store.libraryFilterOptions.enumerated()), id: \.offset) { i, group in
+				if i == 0 {
+					ForEach(group) { option in
+						filterButton(option.filter, "\(option.title) (\(option.count))")
 					}
-					else if let style = group.first {
-						Section(style.title) {
-							Text("All (\(style.count))").tag(style.filter)
-							ForEach(group.dropFirst()) { option in
-								Text("\(option.title) (\(option.count))").tag(option.filter)
-							}
+				}
+				else if let style = group.first {
+					Section(style.title) {
+						filterButton(style.filter, "All \(style.title) (\(style.count))")
+						ForEach(group.dropFirst()) { option in
+							filterButton(option.filter, "\(option.title) (\(option.count))")
 						}
 					}
 				}
 			}
-			.pickerStyle(.inline)
 		} label: {
 			HStack(spacing: 4) {
 				Text(store.filterTitle(store.libraryFilter))
@@ -109,23 +93,27 @@ struct MaterialsLibraryView: View {
 		.fixedSize()
 	}
 
+	private func filterButton(_ filter: LibraryFilter, _ title: String) -> some View {
+		Button {
+			store.libraryFilter = filter
+		} label: {
+			if store.libraryFilter == filter {
+				Label(title, systemImage: "checkmark")
+			}
+			else {
+				Text(title)
+			}
+		}
+	}
+
 	@ViewBuilder private var content: some View {
 		if store.librarySections.isEmpty {
 			Group {
 				if !store.librarySearch.isEmpty {
 					ContentUnavailableView.search(text: store.librarySearch)
 				}
-				else if store.libraryCloud {
-					if store.libraryStatus.isEmpty {
-						ContentUnavailableView("No Cloud Materials", systemImage: "cloud")
-					}
-					else {
-						ProgressView()
-					}
-				}
 				else {
-					ContentUnavailableView("No Materials", systemImage: "books.vertical",
-					                       description: Text("Choose a materials folder to fill the library."))
+					ContentUnavailableView("No Materials", systemImage: "books.vertical")
 				}
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -149,9 +137,6 @@ struct MaterialsLibraryView: View {
 					.id("top")
 				}
 				.onChange(of: store.libraryFilter) {
-					proxy.scrollTo("top", anchor: .top)
-				}
-				.onChange(of: store.libraryCloud) {
 					proxy.scrollTo("top", anchor: .top)
 				}
 			}
@@ -191,20 +176,7 @@ private struct LibraryCell: View {
 
 	var body: some View {
 		let image = store.icons[row.key]
-		MaterialTile(image: image, name: row.name, loading: image == nil && !store.iconsMissing.contains(row.key),
-		             dimmed: row.busy) {
-			if row.busy {
-				DownloadRing(progress: store.libraryProgress[row.key] ?? 0)
-			}
-			else if row.downloaded {
-				Image(systemName: "checkmark.circle.fill")
-					.symbolRenderingMode(.palette)
-					.foregroundStyle(.white, .green)
-					.font(.body)
-					.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-					.padding(4)
-			}
-		}
+		MaterialTile(image: image, name: row.name, loading: image == nil && !store.iconsMissing.contains(row.key))
 		.onTapGesture {
 			use()
 		}
@@ -214,7 +186,6 @@ private struct LibraryCell: View {
 			} label: {
 				Label("Add to Project", systemImage: "plus.circle")
 			}
-			.disabled(row.busy)
 			if !row.detail.isEmpty {
 				Text(row.detail)
 			}
@@ -238,12 +209,7 @@ private struct LibraryCell: View {
 	}
 
 	private func use() {
-		guard !row.busy else {
-			return
-		}
 		store.use(row)
-		if row.source != .cloud || row.downloaded {
-			onUse()
-		}
+		onUse()
 	}
 }

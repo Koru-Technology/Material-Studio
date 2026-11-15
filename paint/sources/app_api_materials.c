@@ -566,21 +566,8 @@ static i32 app_lib_mm_sections(void) {
 }
 
 static uint32_t app_lib_compute_signature(void) {
-	uint32_t h = 2166136261u;
-	h          = app_mat_hash(h, g_config->library_cloud);
-	if (g_config->library_cloud) {
-		library_cloud_open();
-		i32 n = library_cloud_count();
-		h     = app_mat_hash(h, n);
-		h     = app_mat_hash_str(h, library_cloud_status());
-		for (i32 i = 0; i < n; ++i) {
-			cloud_item_t *it = library_cloud_get(i);
-			h                = app_mat_hash_ptr(h, it);
-			h                = app_mat_hash(h, (library_cloud_item_busy(it) ? 1 : 0) | (library_cloud_item_downloaded(it) ? 2 : 0));
-		}
-		return h;
-	}
-	i32 saved = saved_materials_count();
+	uint32_t h     = 2166136261u;
+	i32      saved = saved_materials_count();
 	h         = app_mat_hash(h, saved);
 	for (i32 i = 0; i < saved; ++i) {
 		h = app_mat_hash_str(h, saved_materials_name(i));
@@ -602,22 +589,6 @@ static void app_lib_build(void) {
 		free(app_lib_items[i].rel);
 	}
 	app_lib_n = 0;
-	if (g_config->library_cloud) {
-		i32 n     = library_cloud_count();
-		i32 types = library_cloud_type_count();
-		for (i32 st = 0; st < 2; ++st) { // Stylized first, then by type, the items keep their name order
-			for (i32 t = 0; t < types; ++t) {
-				for (i32 i = 0; i < n; ++i) {
-					cloud_item_t *it       = library_cloud_get(i);
-					bool          stylized = library_cloud_item_stylized(it);
-					if ((stylized ? 0 : 1) == st && library_cloud_item_type(it) == t) {
-						app_lib_push(APP_LIBRARY_CLOUD, i, st * types + t, t, stylized, NULL);
-					}
-				}
-			}
-		}
-		return;
-	}
 	for (i32 i = 0; i < saved_materials_count(); ++i) {
 		app_lib_push(APP_LIBRARY_SAVED, i, 0, -1, false, NULL);
 	}
@@ -658,19 +629,6 @@ uint32_t app_library_signature(void) {
 	return app_lib_sig;
 }
 
-bool app_library_cloud(void) {
-	return g_config != NULL && g_config->library_cloud;
-}
-
-void app_library_set_cloud(bool on) {
-	if (g_config == NULL || g_config->library_cloud == on) {
-		return;
-	}
-	g_config->library_cloud = on;
-	config_save();
-	app_library_signature();
-}
-
 int32_t app_library_count(void) {
 	if (!app_lib_has_built) {
 		app_library_signature();
@@ -689,10 +647,8 @@ static app_lib_ref_t *app_lib_ref(int32_t index) {
 		return r->index < saved_materials_count() ? r : NULL;
 	case APP_LIBRARY_FOLDER:
 		return r->index < library_entry_count() && string_equals(library_entry_rel(library_entry_get(r->index)), r->rel) ? r : NULL;
-	case APP_LIBRARY_MM:
-		return r->index < mm_library_count() ? r : NULL;
 	default:
-		return g_config->library_cloud && r->index < library_cloud_count() ? r : NULL;
+		return r->index < mm_library_count() ? r : NULL;
 	}
 }
 
@@ -742,18 +698,6 @@ bool app_library_item(int32_t index, app_library_item_t *out) {
 		key = app_mat_hash(key, (uint32_t)mm_library_id(r->index));
 		break;
 	}
-	default: {
-		cloud_item_t *it  = library_cloud_get(r->index);
-		out->name         = library_cloud_item_name(it);
-		out->group_name   = library_cloud_type_name(r->group);
-		out->detail       = library_cloud_item_source(it);
-		out->busy         = library_cloud_item_busy(it);
-		out->downloaded   = library_cloud_item_downloaded(it);
-		out->progress     = out->busy ? library_cloud_item_progress(it) : 0.0f;
-		snprintf(section, sizeof(section), "%s %s", app_lib_style_name(r->stylized), out->group_name);
-		key = app_mat_hash_str(app_mat_hash_str(key, out->detail), out->name);
-		break;
-	}
 	}
 	out->section_name = section;
 	out->key          = key;
@@ -800,22 +744,20 @@ bool app_library_matches(int32_t index, const char *search) {
 		return app_lib_contains(saved_materials_name(r->index), s);
 	case APP_LIBRARY_FOLDER:
 		return app_lib_contains(library_entry_rel(library_entry_get(r->index)), s);
-	case APP_LIBRARY_MM:
-		return mm_library_matches(r->index, s);
 	default:
-		return library_cloud_item_matches(library_cloud_get(r->index), s);
+		return mm_library_matches(r->index, s);
 	}
 }
 
 int32_t app_library_group_count(void) {
-	return app_library_cloud() ? library_cloud_type_count() : app_lib_mm_sections();
+	return app_lib_mm_sections();
 }
 
 const char *app_library_group_name(int32_t group) {
 	if (group < 0 || group >= app_library_group_count()) {
 		return "";
 	}
-	return app_library_cloud() ? library_cloud_type_name(group) : mm_library_section_name(group);
+	return mm_library_section_name(group);
 }
 
 static void app_lib_use_saved_next(void *data) {
@@ -853,11 +795,8 @@ bool app_library_use(int32_t index) {
 	case APP_LIBRARY_FOLDER:
 		sys_notify_on_next_frame(&app_lib_use_folder_next, strdup(r->rel));
 		break;
-	case APP_LIBRARY_MM:
-		mm_library_use(r->index); // On the next frame
-		break;
 	default:
-		library_cloud_use(library_cloud_get(r->index)); // Queued for download
+		mm_library_use(r->index); // On the next frame
 		break;
 	}
 	iron_delay_idle_sleep();
@@ -875,9 +814,6 @@ bool app_library_delete(int32_t index) {
 }
 
 const char *app_library_status(void) {
-	if (app_library_cloud()) {
-		return library_cloud_status();
-	}
 	if (!library_has_folder()) {
 		return "";
 	}
@@ -890,20 +826,6 @@ bool app_library_has_folder(void) {
 
 void app_library_pick_folder(void) {
 	library_pick_folder();
-}
-
-int32_t app_library_busy(void) {
-	if (!app_library_cloud()) {
-		return 0;
-	}
-	i32 n = 0;
-	for (i32 i = 0; i < app_lib_n; ++i) {
-		if (app_lib_items[i].source == APP_LIBRARY_CLOUD && app_lib_items[i].index < library_cloud_count() &&
-		    library_cloud_item_busy(library_cloud_get(app_lib_items[i].index))) {
-			n++;
-		}
-	}
-	return n;
 }
 
 int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
@@ -927,11 +849,8 @@ int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t 
 		}
 		break;
 	}
-	case APP_LIBRARY_MM:
-		icon = mm_library_icon(r->index); // Requests it, loaded a few per frame
-		break;
 	default:
-		icon = library_cloud_item_icon(library_cloud_get(r->index)); // Downloads it
+		icon = mm_library_icon(r->index); // Requests it, loaded a few per frame
 		break;
 	}
 	if (icon == NULL) {

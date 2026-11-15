@@ -225,7 +225,6 @@
 #include "camera.c"
 #include "config.c"
 #include "library.c"
-#include "library_cloud.c"
 #include "builtin_brushes.c"
 #include "brush_library.c"
 #include "brush_pad.c"

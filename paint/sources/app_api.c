@@ -80,6 +80,12 @@ void app_get_state(app_state_t *out) {
 	out->project_modified  = project_modified;
 	out->engine_modal      = ui_box_show || ui_menu_show || ui_brush_creator_shown() || material_studio_show || ui_id_mask_active;
 	if (scene_camera != NULL) {
+		out->camera_fov = scene_camera->data->fov;
+	}
+	out->camera_pivot    = g_context->camera_pivot;
+	out->camera_controls = g_context->camera_controls;
+	out->camera_type     = g_context->camera_type;
+	if (scene_camera != NULL) {
 		quat_t rot         = scene_camera->base->transform->rot;
 		out->camera_rot[0] = rot.x;
 		out->camera_rot[1] = rot.y;
@@ -164,6 +170,48 @@ void app_view_orbit(float x, float y) {
 	iron_delay_idle_sleep();
 }
 
+// As the old Camera menu's FoV slider: a perspective camera moves along its view to keep the pivot's framing
+void app_set_camera_fov(float fov) {
+	if (scene_camera == NULL) {
+		return;
+	}
+	fov         = math_max(0.3, math_min(1.4, fov));
+	f32 old_fov = scene_camera->data->fov;
+	scene_camera->data->fov = fov;
+	if (g_context->camera_type == CAMERA_TYPE_PERSPECTIVE && fov != old_fov) {
+		transform_t *t    = scene_camera->base->transform;
+		vec4_t       look = camera_object_look(scene_camera);
+		f32          d    = vec4_dot(vec4_sub(camera_origins[camera_index()], t->loc), look);
+		f32          d2   = d * math_tan(old_fov / 2.0) / math_tan(fov / 2.0);
+		if (d > 0.0) {
+			transform_move(t, look, d - d2);
+		}
+	}
+	viewport_update_camera_type(g_context->camera_type);
+	g_context->ddirty = 2;
+	iron_delay_idle_sleep();
+}
+
+void app_set_camera_pivot(int32_t pivot) {
+	g_context->camera_pivot = pivot == 1 ? 1 : 0;
+}
+
+void app_set_camera_controls(int32_t controls) {
+	if (controls >= CAMERA_CONTROLS_ORBIT && controls <= CAMERA_CONTROLS_FLY) {
+		g_context->camera_controls = controls;
+	}
+}
+
+void app_set_camera_type(int32_t type) {
+	if (type != CAMERA_TYPE_PERSPECTIVE && type != CAMERA_TYPE_ORTHOGRAPHIC) {
+		return;
+	}
+	g_context->camera_type = type;
+	viewport_update_camera_type(type);
+	g_context->ddirty = 2;
+	iron_delay_idle_sleep();
+}
+
 static void app_capture_screenshot(void *_) {
 	viewport_capture_screenshot();
 }
@@ -232,6 +280,7 @@ void app_command(int32_t command) {
 		break;
 	case APP_COMMAND_VIEW_RESET:
 		viewport_reset();
+		viewport_scale_to_bounds(2.0);
 		break;
 	case APP_COMMAND_VIEW_FRAME:
 		viewport_frame();

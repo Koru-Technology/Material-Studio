@@ -20,30 +20,47 @@ struct MaterialsPopover: View {
 	@State private var segment = Segment(rawValue: UserDefaults.standard.string(forKey: "materials.segment") ?? "") ?? .project
 
 	var body: some View {
-		VStack(spacing: 0) {
-			Picker("Materials", selection: Binding(get: { segment }, set: { s in
-				segment = s
-				UserDefaults.standard.set(s.rawValue, forKey: "materials.segment")
-			})) {
-				ForEach(Segment.allCases) { s in
-					Text(s.title).tag(s)
+		NavigationStack {
+			VStack(spacing: 0) {
+				Picker("Materials", selection: Binding(get: { segment }, set: { s in
+					segment = s
+					UserDefaults.standard.set(s.rawValue, forKey: "materials.segment")
+				})) {
+					ForEach(Segment.allCases) { s in
+						Text(s.title).tag(s)
+					}
+				}
+				.pickerStyle(.segmented)
+				.labelsHidden()
+				.padding(.horizontal, 12)
+				.padding(.top, 4)
+				.padding(.bottom, 8)
+
+				switch segment {
+				case .project:
+					MaterialsProjectView()
+				case .library:
+					MaterialsLibraryView {
+						segment = .project // The new material shows selected there
+					}
+				case .smart:
+					MaterialsSmartView()
 				}
 			}
-			.pickerStyle(.segmented)
-			.labelsHidden()
-			.padding(.horizontal, 12)
-			.padding(.top, 12)
-			.padding(.bottom, 8)
-
-			switch segment {
-			case .project:
-				MaterialsProjectView()
-			case .library:
-				MaterialsLibraryView {
-					segment = .project // The new material shows selected there
+			.navigationTitle("Materials")
+#if os(iOS)
+			.navigationBarTitleDisplayMode(.inline)
+#endif
+			.toolbar {
+				if segment == .project {
+					ToolbarItem(placement: .primaryAction) {
+						Button {
+							AppStore.shared.perform { _ = app_material_new() }
+						} label: {
+							Label("New Material", systemImage: "plus")
+						}
+					}
 				}
-			case .smart:
-				MaterialsSmartView()
 			}
 		}
 #if os(iOS)
@@ -129,23 +146,6 @@ struct MaterialsProjectView: View {
 				}
 				.help("Edit the selected material")
 			}
-			Menu {
-				Button {
-					act { _ = app_material_new() }
-				} label: {
-					Label("New Material", systemImage: "circle.fill")
-				}
-				Button {
-					app_material_new_studio()
-					closePopover(dismiss)
-				} label: {
-					Label("New Studio Material", systemImage: "wand.and.stars")
-				}
-			} label: {
-				Label("New Material", systemImage: "plus")
-			}
-			.menuIndicator(.hidden)
-			.fixedSize()
 			Menu {
 				Button(role: .destructive) {
 					act { _ = app_material_delete_unused() }

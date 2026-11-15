@@ -13,7 +13,7 @@ struct MaterialRow: Identifiable, Equatable {
 
 struct LibraryRow: Identifiable, Equatable {
 	enum Source: Int32 {
-		case saved = 0, folder = 1, materialMaker = 2, cloud = 3
+		case saved = 0, folder = 1, materialMaker = 2
 	}
 
 	var id: Int32 { index }
@@ -25,8 +25,6 @@ struct LibraryRow: Identifiable, Equatable {
 	let group: Int32 // -1: no type, no style
 	let groupName: String
 	let stylized: Bool
-	let busy: Bool
-	let downloaded: Bool
 	let canDelete: Bool
 	let name: String
 	let detail: String
@@ -61,7 +59,7 @@ struct SmartRow: Identifiable, Equatable {
 
 // Project materials, the Library and smart materials (app_api_materials.h), refreshed by AppStore after every frame.
 // The Library and smart materials are only read while they show (libraryShown, smartShown): opening Material Maker's
-// library or the cloud catalog costs.
+// library costs.
 @Observable
 final class MaterialsStore: ChangeOnly {
 	static let shared = MaterialsStore()
@@ -75,13 +73,11 @@ final class MaterialsStore: ChangeOnly {
 	private(set) var studioOpen                  = false
 
 	// Library
-	private(set) var libraryCloud                = false
 	private(set) var libraryStatus               = ""
 	private(set) var libraryHasFolder            = true
 	private(set) var library: [LibraryRow]       = []
 	private(set) var librarySections: [LibrarySection] = []
 	private(set) var libraryFilterOptions: [[LibraryFilterOption]] = [] // All, then one group per style
-	private(set) var libraryProgress: [UInt32: Float] = [:]          // Cloud downloads by key
 	var librarySearch = "" {
 		didSet {
 			if librarySearch != oldValue {
@@ -199,15 +195,11 @@ final class MaterialsStore: ChangeOnly {
 
 	private func refreshLibrary() {
 		let sig = app_library_signature()
-		update(\.libraryCloud, app_library_cloud())
 		update(\.libraryStatus, String(cString: app_library_status()))
 		update(\.libraryHasFolder, app_library_has_folder())
 		if sig != librarySignature {
 			librarySignature = sig
 			readLibrary()
-		}
-		if libraryCloud {
-			readProgress()
 		}
 	}
 
@@ -220,25 +212,12 @@ final class MaterialsStore: ChangeOnly {
 			rows.append(LibraryRow(index: i, key: item.key, source: LibraryRow.Source(rawValue: item.source) ?? .materialMaker,
 			                       section: item.section, sectionName: String(cString: item.section_name),
 			                       group: item.group, groupName: String(cString: item.group_name), stylized: item.stylized,
-			                       busy: item.busy, downloaded: item.downloaded, canDelete: item.can_delete,
+			                       canDelete: item.can_delete,
 			                       name: String(cString: item.name), detail: String(cString: item.detail)))
 		}
 		libraryIndex = Dictionary(rows.map { ($0.key, $0.index) }, uniquingKeysWith: { a, _ in a })
 		update(\.library, rows)
 		updateSections()
-	}
-
-	private func readProgress() {
-		guard library.contains(where: \.busy) else {
-			update(\.libraryProgress, [:])
-			return
-		}
-		var progress: [UInt32: Float] = [:]
-		var item = app_library_item_t()
-		for row in library where row.busy && app_library_item(row.index, &item) {
-			progress[row.key] = item.progress
-		}
-		update(\.libraryProgress, progress)
 	}
 
 	// Sections of the items matching the search and the type picked, and the type menu with its counts
@@ -326,12 +305,6 @@ final class MaterialsStore: ChangeOnly {
 			}
 		}
 		return "All Types"
-	}
-
-	func setCloud(_ on: Bool) {
-		app_library_set_cloud(on)
-		libraryFilter = .all
-		refreshLibrary()
 	}
 
 	func use(_ row: LibraryRow) {

@@ -128,7 +128,6 @@ void next() {
 		}
 	}
 	else if (step == 9) {
-		app_library_set_cloud(false);
 		app_library_signature();
 		int n = app_library_count();
 		check(n >= 900, string("library lists %d items", n));

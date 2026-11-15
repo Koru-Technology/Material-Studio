@@ -268,6 +268,7 @@ struct PadHistoryControls: View {
 				Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 40)
 			}
 			.disabled(!store.canUndo)
+			.opacity(store.canUndo ? 1 : 0.3) // The primary style set on the capsule keeps the system's dimming away
 			.accessibilityLabel("Undo")
 			Button {
 				store.perform { app_redo() }
@@ -275,6 +276,7 @@ struct PadHistoryControls: View {
 				Image(systemName: "arrow.uturn.forward").frame(width: 44, height: 40)
 			}
 			.disabled(!store.canRedo)
+			.opacity(store.canRedo ? 1 : 0.3)
 			.accessibilityLabel("Redo")
 		}
 		.padding(4)
@@ -342,7 +344,10 @@ struct PadViewControls: View {
 	var body: some View {
 		GlassEffectContainer(spacing: 10) {
 			HStack(alignment: .bottom, spacing: 10) {
-				ViewportButton()
+				VStack(spacing: 10) {
+					CameraButton()
+					ViewportButton()
+				}
 				VStack(spacing: 10) {
 					Button {
 						run(APP_COMMAND_VIEW_FRAME)

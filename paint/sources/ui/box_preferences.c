@@ -1068,52 +1068,10 @@ void box_preferences_keymap_tab() {
 }
 
 void box_preferences_library_tab() {
-	box_preferences_section(tr("Materials Folder"));
-	bool set = !string_equals(g_config->materials_folder, "");
-	ui_text(set ? g_config->materials_folder : tr("No folder selected"), UI_ALIGN_LEFT, 0x00000000);
-	ui_text(tr("Each folder of textures inside it becomes a material in the Library tab."), UI_ALIGN_LEFT, 0x00000000);
-	if (set) {
-		ui_text(library_status(), UI_ALIGN_LEFT, 0x00000000);
-	}
-	ui_row3();
-	if (ui_icon_button(tr("Choose Folder..."), ICON_FOLDER_OPEN, UI_ALIGN_CENTER)) {
-		library_pick_folder();
-	}
-	if (set && ui_icon_button(tr("Rescan Now"), ICON_REFRESH, UI_ALIGN_CENTER)) {
-		library_rescan();
-	}
-	if (set && ui_icon_button(tr("Forget Folder"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-		library_forget();
-	}
-
 	box_preferences_section(tr("Built-in Brushes"));
 	ui_check(&g_config->hide_builtin_brushes, tr("Hide Built-in Brushes"), "");
 	if (ui_item_changed()) {
 		ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	}
-
-	box_preferences_section(tr("Cloud"));
-	ui_text(tr("Materials from Poly Haven, ambientCG and FreeStylized, shown with the cloud button of the Library tab."), UI_ALIGN_LEFT, 0x00000000);
-	string_array_t *sizes = any_array_create_from_raw_tmp((void *[]){"1K", "2K", "4K", "8K"}, 4);
-	i32             res   = g_config->cloud_resolution;
-	ui_combo(&res, sizes, tr("Texture Size"), true, UI_ALIGN_LEFT, false);
-	if (res != g_config->cloud_resolution) {
-		g_config->cloud_resolution = res;
-		library_cloud_resolution_changed();
-	}
-	if (g_config->cloud_resolution >= 2) {
-		ui_text(tr("Large textures take a lot of memory and time to download."), UI_ALIGN_LEFT, 0x00000000);
-	}
-	any_map_t *vars = any_map_create();
-	any_map_set(vars, "size", string("%.0f", library_cloud_disk_usage() / (1024.0 * 1024.0)));
-	ui_text(vtr("Downloaded: {size} MB", vars), UI_ALIGN_LEFT, 0x00000000);
-	map_free(vars);
-	ui_row2();
-	if (ui_icon_button(tr("Clear Downloads"), ICON_DELETE, UI_ALIGN_CENTER)) {
-		library_cloud_clear_downloads();
-	}
-	if (ui_icon_button(tr("Refresh Catalog"), ICON_REFRESH, UI_ALIGN_CENTER)) {
-		library_cloud_refresh();
 	}
 }
 

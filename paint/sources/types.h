@@ -318,9 +318,6 @@ typedef struct config {
 	bool                 tooltips;
 	char                *materials_folder; // Library root, "" when not set
 	bool                 reload_project;   // Open the last project on startup
-	i32                  cloud_resolution; // Cloud materials texture size, 0 - 1K, 1 - 2K, 2 - 4K, 3 - 8K
-	bool                 library_cloud;      // Library tab shows the cloud materials
-	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
 	f32                  library_scroll;     // Scroll position of the Library tab
 	f32                  brush_radius; // Brush settings kept across launches, the others come with the picked brush
 	f32                  brush_opacity;
@@ -1184,7 +1181,6 @@ typedef struct ui_nodes_editor_state {
 } ui_nodes_editor_state_t;
 
 typedef struct library_entry library_entry_t; // Material library item, library.c
-typedef struct cloud_item    cloud_item_t;    // Cloud material, library_cloud.c
 
 #define STUDIO_LAYERS 6
 

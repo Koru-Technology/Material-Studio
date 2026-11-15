@@ -1,14 +1,14 @@
 #pragma once
 
 // app_api.h, materials: what the native materials popover needs. Self-contained, imported by Swift.
-// The project's materials (by id), the Library (saved materials, the materials folder, Material Maker's library, or the
-// cloud catalogs) and the smart materials (by index). Indices are valid until the matching signature changes.
+// The project's materials (by id), the Library (saved materials, the materials folder, Material Maker's library) and the
+// smart materials (by index). Indices are valid until the matching signature changes.
 // Thumbnails are RGBA8 rows top to bottom, premultiplied alpha, as app_layer_thumbnail: with out NULL the byte count needed.
 
 #include <stdbool.h>
 #include <stdint.h>
 
-// Read once per frame. Material Maker's library and the cloud are only opened once the Library is shown
+// Read once per frame. Material Maker's library is only opened once the Library is shown
 // (app_library_signature), the smart materials once app_smart_signature is called.
 typedef struct {
 	bool     ready;               // The engine has started, the other fields are valid
@@ -57,47 +57,40 @@ bool app_material_apply_to_fill(int32_t id);    // The selected fill layer takes
 int32_t app_material_thumbnail(int32_t id, int32_t max_size, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h);
 int32_t app_material_preview_version(int32_t id); // For scripts
 
-// Library: the local one (saved materials, the materials folder, Material Maker's library) or the cloud catalogs.
+// Library: saved materials, the materials folder and Material Maker's library.
 // Ordered by section (style, then type): items of a section are next to each other.
 
 typedef enum {
 	APP_LIBRARY_SAVED  = 0, // Saved from the Material Studio
 	APP_LIBRARY_FOLDER = 1, // The materials folder ("My Materials")
 	APP_LIBRARY_MM     = 2, // Material Maker's library
-	APP_LIBRARY_CLOUD  = 3, // Poly Haven, ambientCG, FreeStylized
 } app_library_source_t;
 
 typedef struct {
 	int32_t     source;  // app_library_source_t
 	uint32_t    key;     // Stable while the item does not change: caches its icon
 	int32_t     section; // Same for the items of a section, see section_name
-	int32_t     group;   // Type of Material Maker's library or of the cloud, -1 for the others (no style either)
+	int32_t     group;   // Type of Material Maker's library, -1 for the others (no style either)
 	bool        stylized;
-	bool        busy;       // Cloud: downloading or waiting to
-	bool        downloaded; // Cloud: its textures are on the device
 	bool        can_delete; // Saved materials
-	float       progress;   // Cloud download, 0 to 1
 	const char *name;         // These are valid until the next app_* call, copy them
 	const char *section_name; // "Saved", "My Materials", "Stylized Wood", ...
 	const char *group_name;   // "Wood", "" without a group
 	const char *detail;       // Credit, folder or source
 } app_library_item_t;
 
-// Changes when the items change. Opens the library (or the cloud catalog) on first call, call it while the Library shows.
+// Changes when the items change. Opens the library on first call, call it while the Library shows.
 uint32_t    app_library_signature(void);
-bool        app_library_cloud(void);
-void        app_library_set_cloud(bool on);
 int32_t     app_library_count(void);
 bool        app_library_item(int32_t index, app_library_item_t *out);
 bool        app_library_matches(int32_t index, const char *search); // Name, tags, author, style; any case
 int32_t     app_library_group_count(void);                          // Types of the current view, for the type menu
 const char *app_library_group_name(int32_t group);
-bool        app_library_use(int32_t index); // Adds it to the project (downloads a cloud item first), selected
+bool        app_library_use(int32_t index); // Adds it to the project, selected
 bool        app_library_delete(int32_t index); // Saved materials only
-const char *app_library_status(void);          // Importing progress, folder state, or the cloud catalog state; "" for none
+const char *app_library_status(void);          // Importing progress or folder state; "" for none
 bool        app_library_has_folder(void);      // The local library has a materials folder
 void        app_library_pick_folder(void);
-int32_t     app_library_busy(void); // Cloud items downloading or waiting to
 
 // Its icon, requested when it is not loaded yet: 0 until it is (ask again on a later frame), -1 when it has none
 int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h);

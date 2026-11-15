@@ -34,6 +34,10 @@ typedef struct {
 	bool     project_modified;
 	float    camera_rot[4]; // Quaternion x, y, z, w: the view cube turns with it
 	bool     engine_modal;  // An engine drawn dialog, menu or full screen editor is up: the native controls step aside
+	float    camera_fov;      // 0.3 to 1.4
+	int32_t  camera_pivot;    // 0 cursor, 1 center
+	int32_t  camera_controls; // 0 orbit, 1 rotate, 2 fly
+	int32_t  camera_type;     // 0 perspective, 1 orthographic
 } app_state_t;
 
 void app_get_state(app_state_t *out);
@@ -55,6 +59,10 @@ void app_cycle_view_mode(void);       // 3D, 2D alone, both side by side
 void app_set_viewport_mode(int32_t mode); // viewport_mode_t
 void app_view_face(int32_t face);     // 0 right, 1 left, 2 back, 3 front, 4 top, 5 bottom
 void app_view_orbit(float x, float y); // Turns the camera by these angles (radians), the view cube drag
+void app_set_camera_fov(float fov);    // The view keeps its framing: the camera moves to make up for it
+void app_set_camera_pivot(int32_t pivot);
+void app_set_camera_controls(int32_t controls);
+void app_set_camera_type(int32_t type);
 
 // Menu commands, run like the old menus run them (some open the engine's dialogs)
 typedef enum {

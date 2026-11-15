@@ -62,29 +62,5 @@ extension MaterialTile where Overlay == EmptyView {
 	}
 }
 
-// Download progress over a cloud item: a ring filling clockwise around an arrow
-struct DownloadRing: View {
-	let progress: Float
-
-	var body: some View {
-		ZStack {
-			Circle()
-				.fill(.black.opacity(0.35))
-			Circle()
-				.stroke(.white.opacity(0.3), lineWidth: 3)
-				.padding(3)
-			Circle()
-				.trim(from: 0, to: CGFloat(max(0.02, progress)))
-				.stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-				.rotationEffect(.degrees(-90))
-				.padding(3)
-				.animation(.linear(duration: 0.2), value: progress)
-			Image(systemName: "arrow.down")
-				.font(.caption.bold())
-				.foregroundStyle(.white)
-		}
-		.frame(width: 34, height: 34)
-	}
-}
 
 let materialColumns = [GridItem(.adaptive(minimum: 76, maximum: 110), spacing: 10, alignment: .top)]

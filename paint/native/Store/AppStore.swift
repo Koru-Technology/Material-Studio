@@ -22,6 +22,10 @@ final class AppStore: ChangeOnly {
 	private(set) var symmetry            = [false, false, false]
 	private(set) var projectModified     = false
 	private(set) var engineModal         = false
+	private(set) var cameraFov           = Float(0.8)
+	private(set) var cameraPivot: Int32    = 0
+	private(set) var cameraControls: Int32 = 0
+	private(set) var cameraType: Int32     = 0
 	private(set) var cameraRotation      = SIMD4<Float>(0, 0, 0, 1)
 
 
@@ -45,6 +49,10 @@ final class AppStore: ChangeOnly {
 		update(\.symmetry, [s.sym_x, s.sym_y, s.sym_z])
 		update(\.projectModified, s.project_modified)
 		update(\.engineModal, s.engine_modal)
+		update(\.cameraFov, s.camera_fov)
+		update(\.cameraPivot, s.camera_pivot)
+		update(\.cameraControls, s.camera_controls)
+		update(\.cameraType, s.camera_type)
 		update(\.cameraRotation, SIMD4(s.camera_rot.0, s.camera_rot.1, s.camera_rot.2, s.camera_rot.3))
 		LayersStore.shared.refresh(s)
 		MaterialsStore.shared.refresh()
