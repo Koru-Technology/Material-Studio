@@ -123,10 +123,10 @@ char *mm_library_name(i32 i) {
 	return mm_library_entries[i].name;
 }
 
-// Name, author and licence, for the tooltip
+// Name, author and licence, for the tooltip, temporary (callers copy it)
 char *mm_library_credit(i32 i) {
 	mm_library_entry_t *l = &mm_library_entries[i];
-	return string("%s\n%s %s, %s", l->name, tr("by"), l->author, l->license);
+	return string_tmp("%s\n%s %s, %s", l->name, tr("by"), l->author, l->license);
 }
 
 // search is lower case
