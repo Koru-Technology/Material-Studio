@@ -363,21 +363,6 @@ void        iron_internal_surface_trigger_touch_start(int index, int x, int y);
 void        iron_internal_surface_trigger_move(int index, int x, int y);
 void        iron_internal_surface_trigger_touch_end(int index, int x, int y);
 
-#ifdef WITH_GAMEPAD
-#define IRON_GAMEPAD_MAX_COUNT 8
-void        iron_gamepad_set_connect_callback(void (*value)(int /*gamepad*/, void        */*userdata*/), void *userdata);
-void        iron_gamepad_set_disconnect_callback(void (*value)(int /*gamepad*/, void        */*userdata*/), void *userdata);
-void        iron_gamepad_set_axis_callback(void (*value)(int /*gamepad*/, int /*axis*/, float /*value*/, void        */*userdata*/), void *userdata);
-void        iron_gamepad_set_button_callback(void (*value)(int /*gamepad*/, int /*button*/, float /*value*/, void        */*userdata*/), void *userdata);
-const char *iron_gamepad_vendor(int gamepad);
-const char *iron_gamepad_product_name(int gamepad);
-bool        iron_gamepad_connected(int gamepad);
-void        iron_gamepad_rumble(int gamepad, float left, float right);
-void        iron_internal_gamepad_trigger_connect(int gamepad);
-void        iron_internal_gamepad_trigger_disconnect(int gamepad);
-void        iron_internal_gamepad_trigger_axis(int gamepad, int axis, float value);
-void        iron_internal_gamepad_trigger_button(int gamepad, int button, float value);
-#endif
 
 i32             iron_sys_command(char *cmd);
 string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool open_multiple);
@@ -464,10 +449,6 @@ char         *sys_buffer_to_string(buffer_t *b);
 buffer_t     *sys_string_to_buffer(char *str);
 char         *data_path(void);
 void          scene_render_frame(void);
-#ifdef WITH_GAMEPAD
-void sys_gamepad_axis_callback(i32 gamepad, i32 axis, f32 value);
-void sys_gamepad_button_callback(i32 gamepad, i32 button, f32 value);
-#endif
 
 typedef struct {
 	void *video_;

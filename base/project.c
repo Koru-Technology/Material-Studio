@@ -33,11 +33,6 @@ project_t *main() {
 		add_cfiles(project, "sources/backends/ios_file_dialog.m");
 		add_cfiles(project, "sources/backends/ios_folder.m");
 		add_lib(project, "CoreText");
-		if (flags->with_audio) {
-			add_cfiles(project, "sources/backends/ios_audio.m");
-			add_lib(project, "AudioToolbox");
-			add_lib(project, "AVFoundation");
-		}
 		add_define(project, "IRON_METAL");
 		project->ios.build   = string("%d", version_code());
 		project->ios.version = string("%d", version_code());
@@ -90,11 +85,6 @@ project_t *main() {
 		add_assets(project, string("%s/version.json", dir), "data/{name}", 0);
 	}
 
-	if (flags->with_audio) {
-		add_define(project, "IRON_AUDIO");
-		add_cfiles(project, "sources/libs/stb_vorbis.c");
-	}
-
 	if (flags->with_eval) {
 		add_define(project, "WITH_EVAL");
 		add_cfiles(project, "sources/libs/minic.c");
@@ -104,10 +94,6 @@ project_t *main() {
 	if (flags->with_bc7) {
 		add_define(project, "WITH_BC7");
 		add_cfiles(project, "sources/libs/bc7enc.c");
-	}
-
-	if (flags->with_gamepad) {
-		add_define(project, "WITH_GAMEPAD");
 	}
 
 	if (platform == PLATFORM_MACOS) {

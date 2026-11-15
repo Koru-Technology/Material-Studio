@@ -69,11 +69,6 @@ static void shader_compile_parallel(shader_context_t **items, int count) {
 	iron_mutex_destroy(&p.mutex);
 }
 
-#ifdef WITH_D3DCOMPILER
-static void shader_compile_vertex_worker(void *shader) {
-	gpu_shader_compile(shader, true);
-}
-#endif
 
 static void shader_context_bind_constants(shader_context_t *raw);
 
@@ -660,15 +655,6 @@ void shader_context_compile(shader_context_t *raw) {
 		return;
 	}
 
-#ifdef WITH_D3DCOMPILER
-	// No batch - compile the two stages side by side
-	if (raw->shader_from_source) {
-		iron_thread_t vs_thread;
-		iron_thread_init(&vs_thread, shader_compile_vertex_worker, raw->_->pipe->vertex_shader);
-		gpu_shader_compile(raw->_->pipe->fragment_shader, false);
-		iron_thread_wait_and_destroy(&vs_thread);
-	}
-#endif
 
 	shader_context_finish_compile(raw);
 }
@@ -1824,13 +1810,11 @@ any_map_t *data_cached_blobs      = NULL;
 any_map_t *data_cached_textures   = NULL;
 any_map_t *data_cached_videos     = NULL;
 any_map_t *data_cached_fonts      = NULL;
-any_map_t *data_cached_sounds     = NULL;
 i32        data_assets_loaded     = 0;
 
 buffer_t      *iron_load_blob(char *file);
 gpu_texture_t *iron_load_texture(char *file);
 void           gpu_delete_texture(gpu_texture_t *texture);
-void          *iron_load_sound(char *file);
 #ifdef WITH_EMBED
 bool embed_owns(uint8_t *buffer);
 #endif
@@ -1995,34 +1979,6 @@ draw_font_t *data_get_font(char *file) {
 	any_map_set(data_cached_fonts, string_copy(file), b);
 	data_assets_loaded++;
 	return b;
-}
-
-sound_t *data_get_sound(char *file) {
-	if (data_cached_sounds == NULL) {
-		data_cached_sounds = any_map_create();
-	}
-	sound_t *cached = (sound_t *)any_map_get(data_cached_sounds, file);
-	if (cached != NULL) {
-		return cached;
-	}
-	sound_t *b = iron_load_sound(data_resolve_path(file));
-	any_map_set(data_cached_sounds, string_copy(file), b);
-	data_assets_loaded++;
-	return b;
-}
-
-void data_delete_sound(char *handle) {
-	if (data_cached_sounds == NULL) {
-		return;
-	}
-	sound_t *sound = (sound_t *)any_map_get(data_cached_sounds, handle);
-	if (sound == NULL) {
-		return;
-	}
-#ifdef IRON_AUDIO
-	iron_a1_sound_destroy(sound);
-#endif
-	map_delete(data_cached_sounds, handle);
 }
 
 void data_delete_mesh(char *handle) {

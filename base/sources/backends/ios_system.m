@@ -1,9 +1,6 @@
 #include "ios_system.h"
 #import <CoreText/CoreText.h>
 #import <Foundation/Foundation.h>
-#ifdef IRON_AUDIO
-#import <AVFoundation/AVFoundation.h>
-#endif
 #import <UIKit/UIKit.h>
 #include <iron_gpu.h>
 #include <iron_math.h>
@@ -1270,12 +1267,6 @@ bool iron_apple_should_terminate(void) {
 }
 
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
-#ifdef IRON_AUDIO
-	AVAudioSession *sessionInstance = [AVAudioSession sharedInstance];
-	NSError        *error;
-	NSString       *category = AVAudioSessionCategoryAmbient;
-	[sessionInstance setCategory:category error:&error];
-#endif
 
 	UIWindowScene *windowScene = (UIWindowScene *)scene;
 	self.window                = [[UIWindow alloc] initWithWindowScene:windowScene];
@@ -1322,23 +1313,6 @@ bool iron_apple_should_terminate(void) {
 
 @end
 
-#ifdef WITH_GAMEPAD
-
-const char *iron_gamepad_vendor(int gamepad) {
-	return "nobody";
-}
-
-const char *iron_gamepad_product_name(int gamepad) {
-	return "none";
-}
-
-bool iron_gamepad_connected(int num) {
-	return true;
-}
-
-void iron_gamepad_rumble(int gamepad, float left, float right) {}
-
-#endif
 
 bool _save_and_quit_callback_internal() {
 	return false;

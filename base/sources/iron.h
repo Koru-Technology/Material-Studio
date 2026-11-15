@@ -25,9 +25,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#ifdef IRON_AUDIO
-#include "iron_audio.h"
-#endif
 #ifdef WITH_BC7
 #include "libs/bc7enc.h"
 #endif
@@ -125,9 +122,6 @@ int kickstart(int argc, char **argv) {
 	iron_display_init();
 	_kickstart();
 
-#if defined(IRON_AUDIO) && !defined(IRON_EXTERNAL_LOOP) // An external loop returns here while the app keeps running
-	iron_a2_shutdown();
-#endif
 	return 0;
 }
 
@@ -158,10 +152,6 @@ char *iron_get_arg(i32 index) {
 #include <stdio.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-#ifdef WITH_D3DCOMPILER
-#include <D3Dcompiler.h>
-#include <d3d11.h>
-#endif
 #ifdef WITH_COMPRESS
 #include "iron_compress.h"
 void untar_here(const char *path);
@@ -588,38 +578,6 @@ void iron_set_pen_move_callback(void (*callback)(int, int, float)) {
 	iron_pen_set_move_callback(_pen_move);
 }
 
-#ifdef WITH_GAMEPAD
-
-void (*iron_gamepad_axis)(int, int, float);
-void (*iron_gamepad_button)(int, int, float);
-
-void _gamepad_axis(int gamepad, int axis, float value, void *data) {
-	iron_gamepad_axis(gamepad, axis, value);
-
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
-}
-
-void _gamepad_button(int gamepad, int button, float value, void *data) {
-	iron_gamepad_button(gamepad, button, value);
-
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
-}
-
-void iron_set_gamepad_axis_callback(void (*callback)(int, int, float)) {
-	iron_gamepad_axis = callback;
-	iron_gamepad_set_axis_callback(_gamepad_axis, NULL);
-}
-
-void iron_set_gamepad_button_callback(void (*callback)(int, int, float)) {
-	iron_gamepad_button = callback;
-	iron_gamepad_set_button_callback(_gamepad_button, NULL);
-}
-
-#endif
 
 void gpu_delete_buffer(gpu_buffer_t *buffer) {
 	gpu_buffer_destroy(buffer);
@@ -656,16 +614,9 @@ void gpu_delete_shader(gpu_shader_t *shader) {
 gpu_shader_t *gpu_create_shader_from_source(char *source, int source_size, gpu_shader_type_t shader_type) {
 	gpu_shader_t *shader = (gpu_shader_t *)malloc(sizeof(gpu_shader_t));
 
-#ifdef WITH_D3DCOMPILER
-
-	gpu_shader_init(shader, source, strlen(source) + 1, shader_type);
-	shader->impl.is_source = true;
-
-#else
 
 	gpu_shader_init(shader, source, strlen(source), shader_type);
 
-#endif
 
 	return shader;
 }
@@ -832,24 +783,6 @@ gpu_texture_t *iron_load_texture(char *file) {
 	gpu_texture_t *texture = gpu_create_texture_from_encoded_bytes(&buf, file);
 	free(data); // Encoded bytes are decoded into a separate buffer
 	return texture;
-}
-
-void *iron_load_sound(char *file) {
-#ifdef IRON_AUDIO
-	iron_a1_init();
-	iron_a1_sound_t *sound = iron_a1_sound_create(file);
-	return sound;
-#endif
-	return NULL;
-}
-
-void *iron_load_sound_from_bytes(buffer_t *data, char *format) {
-#ifdef IRON_AUDIO
-	iron_a1_init();
-	iron_a1_sound_t *sound = iron_a1_sound_create_from_bytes(data->buffer, data->length, format);
-	return sound;
-#endif
-	return NULL;
 }
 
 buffer_t *iron_load_blob(char *file) {

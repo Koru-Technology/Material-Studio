@@ -8,15 +8,13 @@ project_t *main() {
 	flags->with_nfd            = true;
 	flags->with_compress       = true;
 	flags->with_image_write    = true;
-	flags->with_video_write    = !has_arg("tcc");
+	flags->with_video_write    = true;
 	flags->with_eval           = true;
 	flags->with_plugins        = true;
 	flags->with_raytrace       = true;
 	flags->with_bc7            = true;
-	flags->with_audio          = false;
 	flags->idle_sleep          = !has_arg("--debug");
 	flags->export_version_info = true;
-	bool with_tcc              = false; // Compile scripts with libtcc
 	bool with_mipmaps          = false;
 
 	project_t *project = project_create(flags->name);
@@ -50,17 +48,6 @@ project_t *main() {
 	// metal_msl_pack.h) are not shipped: ~35 MB per platform for a first-use-only saving, iOS caches compiled shaders.
 	// To ship them: generate assets/material_maker/msl/msl_<platform>.pack and add it here as data/material_maker/{name},
 	// ASSET_NOEMBED.
-	if (with_tcc) {
-		add_define(project, "WITH_TCC");
-		add_cfiles(project, "../base/sources/libs/minic_tcc.c");
-		if (!fs_exists("build/tinycc/libtcc.c")) {
-			os_popen(string("unzip -qo %s/../base/tools/tcc/src.zip -d %s/build", flags->dirname, flags->dirname));
-			fs_writefile("build/tinycc/config.h", "#define TCC_VERSION \"0.9.28rc\"\n#define CONFIG_TCC_PREDEFS 1\n");
-			fs_writefile("build/tinycc/tccdefs_.h", "\"\"\n");
-		}
-		add_include_dir(project, "build/tinycc");
-		add_cfiles(project, "build/tinycc/libtcc.c");
-	}
 	if (!flags->embed) {
 		add_assets(project, "../base/assets/extra/*", "data/{name}", 0); // font_cjk.ttc
 	}
