@@ -8,11 +8,6 @@
 #include <stdlib.h>
 
 #define IRON_OUTDIR "out"
-#ifdef IRON_ANDROID
-struct AAsset;
-struct __sFILE;
-typedef struct __sFILE FILE;
-#endif
 
 #define IRON_FILE_TYPE_ASSET 0
 #define IRON_FILE_TYPE_SAVE  1

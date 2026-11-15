@@ -13,56 +13,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef IRON_WINDOWS
-#include <backends/windows_mini.h>
-#include <backends/windows_system.h>
-#endif
-#ifdef IRON_ANDROID
-#include <android/log.h>
-#endif
 
 void iron_log_args(iron_log_level_t level, const char *format, va_list args) {
-#ifdef IRON_ANDROID
-	va_list args_android_copy;
-	va_copy(args_android_copy, args);
-	switch (level) {
-	case IRON_LOG_LEVEL_INFO:
-		__android_log_vprint(ANDROID_LOG_INFO, "Iron", format, args_android_copy);
-		break;
-	case IRON_LOG_LEVEL_ERROR:
-		__android_log_vprint(ANDROID_LOG_ERROR, "Iron", format, args_android_copy);
-		break;
-	}
-	va_end(args_android_copy);
-#endif
 
-#ifdef IRON_WINDOWS
-	wchar_t buffer[4096];
-	iron_microsoft_format(format, args, buffer);
-	wcscat(buffer, L"\r\n");
-	OutputDebugStringW(buffer);
-	HANDLE out = GetStdHandle(level == IRON_LOG_LEVEL_INFO ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
-	DWORD  written;
-	if (GetFileType(out) == FILE_TYPE_CHAR) {
-		WriteConsoleW(out, buffer, (DWORD)wcslen(buffer), &written, NULL);
-	}
-	else {
-		char utf8[4096 * 3];
-		int  len = WideCharToMultiByte(CP_UTF8, 0, buffer, (int)wcslen(buffer), utf8, sizeof(utf8), NULL, NULL);
-		if (len > 0) {
-			WriteFile(out, utf8, (DWORD)len, &written, NULL);
-		}
-	}
-#else
 	char buffer[4096];
 	vsnprintf(buffer, 4090, format, args);
 	strcat(buffer, "\n");
-#ifdef IRON_WASM
-	printf("%s", buffer); ////
-#else
 	fprintf(level == IRON_LOG_LEVEL_INFO ? stdout : stderr, "%s", buffer);
-#endif
-#endif
 }
 
 void iron_log(const char *format, ...) {
@@ -80,23 +37,11 @@ void iron_error(const char *format, ...) {
 		va_end(args);
 	}
 
-#ifdef IRON_WINDOWS
-	{
-		va_list args;
-		va_start(args, format);
-		wchar_t buffer[4096];
-		iron_microsoft_format(format, args, buffer);
-		MessageBoxW(NULL, buffer, L"Error", 0);
-		va_end(args);
-	}
-#endif
 }
 
-#if !defined(IRON_WASM) && !defined(IRON_ANDROID) && !defined(IRON_WINDOWS)
 double iron_time(void) {
 	return iron_timestamp() / iron_frequency();
 }
-#endif
 
 static void (*update_callback)(void)               = NULL;
 static void (*foreground_callback)(void *)         = NULL;
@@ -296,7 +241,7 @@ void iron_external_shutdown(void) {
 void iron_start(void) {
 	running = true;
 
-#if !defined(IRON_WASM) && !defined(IRON_EXTERNAL_LOOP)
+#ifndef IRON_EXTERNAL_LOOP
 
 #if defined(IRON_IOS) || defined(IRON_MACOS)
 	while (with_autoreleasepool(iron_internal_frame)) {
@@ -350,7 +295,7 @@ bool iron_save_is_saving(void) {
 	return false;
 }
 
-#if !defined(IRON_WINDOWS) && !defined(IRON_LINUX) && !defined(IRON_MACOS)
+#ifdef IRON_IOS
 void iron_copy_to_clipboard(const char *text) {
 	iron_log("Oh no, iron_copy_to_clipboard is not implemented for this system.");
 }
@@ -595,7 +540,7 @@ void iron_internal_pen_trigger_predicted(float x, float y) {
 }
 
 void iron_internal_mouse_trigger_twist(float radians) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_twist_listener(radians);
 #endif
 }
@@ -746,32 +691,7 @@ void iron_internal_gamepad_trigger_button(int gamepad, int button, float value) 
 #endif
 
 i32 iron_sys_command(char *cmd) {
-#ifdef IRON_WINDOWS
-
-	int      wlen = MultiByteToWideChar(CP_UTF8, 0, cmd, -1, NULL, 0);
-	wchar_t *wstr = malloc(sizeof(wchar_t) * wlen);
-	MultiByteToWideChar(CP_UTF8, 0, cmd, -1, wstr, wlen);
-	wchar_t comspec[MAX_PATH];
-	GetEnvironmentVariableW(L"ComSpec", comspec, MAX_PATH);
-	wchar_t cmdline[2048];
-	swprintf(cmdline, 2048, L"\"%s\" /c \"%s\"", comspec, wstr);
-	STARTUPINFO si;
-	memset(&si, 0, sizeof(si));
-	si.cb          = sizeof(si);
-	si.dwFlags     = STARTF_USESHOWWINDOW;
-	si.wShowWindow = SW_HIDE;
-	PROCESS_INFORMATION pi;
-	memset(&pi, 0, sizeof(pi));
-	CreateProcessW(NULL, cmdline, NULL, NULL, false, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-	free(wstr);
-	WaitForSingleObject(pi.hProcess, INFINITE);
-	DWORD exit_code = 0;
-	GetExitCodeProcess(pi.hProcess, &exit_code);
-	CloseHandle(pi.hProcess);
-	CloseHandle(pi.hThread);
-	int result = (int)exit_code;
-
-#elif defined(IRON_IOS)
+#ifdef IRON_IOS
 	int result = 0;
 #else
 	int result = system(cmd);
@@ -821,23 +741,6 @@ char *iron_save_dialog(char *filter_list, char *default_path) {
 	return NULL;
 }
 
-#elif defined(IRON_ANDROID)
-
-#include "backends/android_file_dialog.h"
-
-extern char temp_string[1024 * 128];
-
-string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool open_multiple) {
-	AndroidFileDialogOpen();
-	return NULL;
-}
-
-char *iron_save_dialog(char *filter_list, char *default_path) {
-	wchar_t *out_path = AndroidFileDialogSave();
-	wcstombs(temp_string, out_path, sizeof(temp_string));
-	return temp_string;
-}
-
 #elif defined(IRON_IOS)
 
 #include "backends/ios_file_dialog.h"
@@ -856,31 +759,6 @@ char *iron_save_dialog(char *filter_list, char *default_path) {
 	wchar_t *out_path = IOSFileDialogSave();
 	wcstombs(temp_string, out_path, sizeof(temp_string));
 	return temp_string;
-}
-
-#elif defined(IRON_WASM)
-
-// Picked files are addressed as /files/<id>/<name>
-__attribute__((import_module("imports"), import_name("js_open_dialog"))) char   *js_open_dialog(const char *filter_list, bool open_multiple);
-__attribute__((import_module("imports"), import_name("js_save_dialog"))) char   *js_save_dialog(const char *filter_list, const char *default_path);
-__attribute__((import_module("imports"), import_name("js_folder_dialog"))) char *js_folder_dialog(const char *name);
-
-string_array_t *iron_open_dialog(char *filter_list, char *default_path, bool open_multiple) {
-	char *paths = js_open_dialog(filter_list, open_multiple);
-	if (paths == NULL) {
-		return NULL;
-	}
-	string_array_t *files = string_split(paths, "\n");
-	free(paths);
-	return files;
-}
-
-char *iron_save_dialog(char *filter_list, char *default_path) {
-	return js_save_dialog(filter_list, default_path);
-}
-
-char *iron_folder_dialog(char *name) {
-	return js_folder_dialog(name);
 }
 
 #endif
@@ -1125,19 +1003,19 @@ void sys_mouse_wheel_callback(f32 delta) {
 }
 
 void sys_touch_down_callback(i32 index, i32 x, i32 y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_on_touch_down(index, x, y);
 #endif
 }
 
 void sys_touch_up_callback(i32 index, i32 x, i32 y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_on_touch_up(index, x, y);
 #endif
 }
 
 void sys_touch_move_callback(i32 index, i32 x, i32 y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_on_touch_move(index, x, y);
 #endif
 }
@@ -1199,15 +1077,7 @@ i32 sys_display_ppi(void) {
 }
 
 char *sys_shader_ext(void) {
-#if defined(IRON_VULKAN)
-	return ".spirv";
-#elif defined(IRON_METAL)
 	return ".metal";
-#elif defined(IRON_WASM)
-	return ".wgsl";
-#else
-	return ".d3d11";
-#endif
 }
 
 gpu_shader_t *sys_get_shader(char *name) {

@@ -9,10 +9,6 @@
 #include "iron_map.h"
 #include "iron_string.h"
 
-#ifdef IRON_LINUX
-bool path_is_protected_linux = false;
-#endif
-
 string_array_t        *_path_mesh_formats     = NULL;
 string_array_t        *_path_texture_formats  = NULL;
 string_array_t        *_path_sound_formats    = NULL;
@@ -175,11 +171,7 @@ char *path_ext(char *path) {
 }
 
 static char *data_path(void) {
-#ifdef IRON_ANDROID
-	return "data" PATH_SEP;
-#else
 	return "." PATH_SEP "data" PATH_SEP;
-#endif
 }
 
 char *path_data(void) {
@@ -415,13 +407,7 @@ bool path_is_folder(char *p) {
 }
 
 bool path_is_protected(void) {
-#ifdef IRON_WINDOWS
-	return string_index_of(iron_internal_files_location(), "Program Files") >= 0;
-#elif defined(IRON_LINUX)
-	return path_is_protected_linux;
-#elif defined(IRON_ANDROID)
-	return true;
-#elif defined(IRON_IOS)
+#ifdef IRON_IOS
 	return true;
 #else
 	return false;

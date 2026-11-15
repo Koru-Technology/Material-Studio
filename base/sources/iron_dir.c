@@ -5,63 +5,6 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#ifdef _WIN32
-
-#include <Windows.h>
-
-directory open_dir(const char *dirname) {
-	char pattern[1024];
-	strcpy(pattern, dirname);
-	strcat(pattern, "\\*");
-
-	wchar_t wpattern[1024];
-	MultiByteToWideChar(CP_UTF8, 0, pattern, -1, wpattern, 1024);
-
-	WIN32_FIND_DATAW data;
-	directory        dir;
-	dir.handle = FindFirstFileW(wpattern, &data);
-	if (dir.handle == INVALID_HANDLE_VALUE) {
-		return dir;
-	}
-	FindNextFileW(dir.handle, &data);
-	return dir;
-}
-
-file read_next_file(directory *dir) {
-	WIN32_FIND_DATAW data;
-	file             file;
-	file.valid = FindNextFileW(dir->handle, &data) != 0;
-	if (file.valid) {
-		WideCharToMultiByte(CP_UTF8, 0, data.cFileName, -1, file.name, sizeof(file.name), NULL, NULL);
-		file.name[sizeof(file.name) - 1] = 0;
-	}
-	else {
-		file.name[0] = 0;
-	}
-	return file;
-}
-
-void close_dir(directory *dir) {
-	FindClose(dir->handle);
-}
-
-#elif defined(IRON_WASM)
-
-directory open_dir(const char *dirname) {
-	directory dir;
-	dir.handle = NULL;
-	return dir;
-}
-
-file read_next_file(directory *dir) {
-	file f;
-	return f;
-}
-
-void close_dir(directory *dir) {}
-
-#else
-
 #include <dirent.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -97,4 +40,3 @@ void close_dir(directory *dir) {
 	}
 }
 
-#endif

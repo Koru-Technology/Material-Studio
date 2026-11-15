@@ -462,11 +462,7 @@ int ui_color_wheel(uint32_t *value, ui_color_state_t *state, bool alpha, float w
 			hex_code[1] = 'f';
 			hex_code[8] = '\0';
 		}
-#ifdef _WIN32
-		(*value) = _strtoi64(hex_code, NULL, 16);
-#else
 		(*value) = strtol(hex_code, NULL, 16);
-#endif
 	}
 	if (channel_changed) {
 		wheel_changed = current->changed = true;

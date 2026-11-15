@@ -5,15 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifdef IRON_WINDOWS
-#define PATH_SEP "\\"
-#else
 #define PATH_SEP "/"
-#endif
-
-#ifdef IRON_LINUX
-extern bool path_is_protected_linux;
-#endif
 
 string_array_t *path_mesh_formats(void);
 string_array_t *path_texture_formats(void);

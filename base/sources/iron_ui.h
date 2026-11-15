@@ -349,7 +349,7 @@ void  ui_pen_move(ui_t *ui, int x, int y, float pressure);
 void  ui_key_down(ui_t *ui, int key_code);
 void  ui_key_up(ui_t *ui, int key_code);
 void  ui_key_press(ui_t *ui, unsigned character);
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 void ui_touch_down(ui_t *ui, int index, int x, int y);
 void ui_touch_up(ui_t *ui, int index, int x, int y);
 void ui_touch_move(ui_t *ui, int index, int x, int y);

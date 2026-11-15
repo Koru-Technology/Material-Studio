@@ -43,7 +43,7 @@ void mouse_up_listener(i32 index, i32 x, i32 y);
 void mouse_move_listener(i32 x, i32 y, i32 movement_x, i32 movement_y);
 void mouse_wheel_listener(f32 delta);
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 extern f32 mouse_pinch_dist;
 extern f32 mouse_pinch_total;
 extern f32 mouse_pinch_smooth;

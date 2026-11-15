@@ -8,11 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef IRON_WASM
-#define PTR_SIZE 4
-#else
 #define PTR_SIZE 8
-#endif
 
 static char      *source;
 static jsmntok_t *tokens;
@@ -272,11 +268,7 @@ static void token_write() {
 		}
 		else {
 			has_dot(source + t.start, t.end - t.start) ? store_f32(strtof(source + t.start, NULL)) :
-#ifdef _WIN32
-			                                           store_i32(_strtoi64(source + t.start, NULL, 10));
-#else
 			                                           store_i32(strtol(source + t.start, NULL, 10));
-#endif
 		}
 	}
 	else if (t.type == JSMN_ARRAY) {
@@ -782,33 +774,21 @@ static void jenc_array(int count) {
 		armpack_write_u8(0xd2);
 		for (int i = 0; i < count; i++) {
 			jsmntok_t t = jenc_tokens[jenc_ti++];
-#ifdef _WIN32
-			armpack_write_i32((int32_t)_strtoi64(jenc_src + t.start, NULL, 10));
-#else
 			armpack_write_i32((int32_t)strtol(jenc_src + t.start, NULL, 10));
-#endif
 		}
 	}
 	else if (elem_type == 0xd1) { // typed i16
 		armpack_write_u8(0xd1);
 		for (int i = 0; i < count; i++) {
 			jsmntok_t t = jenc_tokens[jenc_ti++];
-#ifdef _WIN32
-			armpack_write_i16((int16_t)_strtoi64(jenc_src + t.start, NULL, 10));
-#else
 			armpack_write_i16((int16_t)strtol(jenc_src + t.start, NULL, 10));
-#endif
 		}
 	}
 	else if (elem_type == 0xc4) { // typed u8
 		armpack_write_u8(0xc4);
 		for (int i = 0; i < count; i++) {
 			jsmntok_t t = jenc_tokens[jenc_ti++];
-#ifdef _WIN32
-			armpack_write_u8((uint8_t)_strtoi64(jenc_src + t.start, NULL, 10));
-#else
 			armpack_write_u8((uint8_t)strtol(jenc_src + t.start, NULL, 10));
-#endif
 		}
 	}
 	else { // dynamic
@@ -849,11 +829,7 @@ static void jenc_value() {
 	}
 	else {
 		armpack_write_u8(0xd2);
-#ifdef _WIN32
-		armpack_write_i32((int32_t)_strtoi64(jenc_src + t.start, NULL, 10));
-#else
 		armpack_write_i32((int32_t)strtol(jenc_src + t.start, NULL, 10));
-#endif
 	}
 }
 

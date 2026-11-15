@@ -31,7 +31,7 @@ f32             mouse_wheel_delta       = 0.0f;
 f32             mouse_last_x            = -1.0f;
 f32             mouse_last_y            = -1.0f;
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 f32 mouse_pinch_dist   = 0.0f;
 f32 mouse_pinch_total  = 0.0f;
 f32 mouse_pinch_smooth = 0.0f;
@@ -141,7 +141,7 @@ void input_register(void) {
 	mouse_last_x      = -1.0f;
 	mouse_last_y      = -1.0f;
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_pinch_dist   = 0.0f;
 	mouse_pinch_total  = 0.0f;
 	mouse_pinch_smooth = 0.0f;
@@ -336,7 +336,7 @@ void mouse_end_frame(void) {
 	mouse_movement_x                                                                                             = 0;
 	mouse_movement_y                                                                                             = 0;
 	mouse_wheel_delta                                                                                            = 0;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	mouse_twist_delta = 0;
 #endif
 }
@@ -388,7 +388,7 @@ void mouse_down_listener(i32 index, i32 x, i32 y) {
 	_mouse_buttons_started->buffer[index] = true;
 	mouse_x                               = (f32)x;
 	mouse_y                               = (f32)y;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (index == 0) {
 		mouse_last_x = (f32)x;
 		mouse_last_y = (f32)y;
@@ -407,7 +407,7 @@ void mouse_up_listener(i32 index, i32 x, i32 y) {
 	mouse_y                                = (f32)y;
 }
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 // Two fingers: the mouse sits between them, so a pinch does not drag the view along with one finger
 static bool mouse_touch_two = false;
 static f32  mouse_touch_x[2];
@@ -475,7 +475,7 @@ static void mouse_move_to(f32 x, f32 y) {
 #endif
 
 void mouse_move_listener(i32 x, i32 y, i32 movement_x, i32 movement_y) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (mouse_touch_two) { // First finger moved
 		mouse_touch_x[0] = (f32)x;
 		mouse_touch_y[0] = (f32)y;
@@ -510,13 +510,13 @@ void mouse_wheel_listener(f32 delta) {
 	mouse_wheel_delta = delta;
 }
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 void mouse_twist_listener(f32 radians) {
 	mouse_twist_delta += radians;
 }
 #endif
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 void mouse_on_touch_down(i32 index, i32 x, i32 y) {
 	if (index == 1) { // Two fingers down - right mouse button, placed between them
 		mouse_touch_x[0] = mouse_x;
@@ -692,13 +692,13 @@ void pen_down_listener(i32 x, i32 y, f32 pressure) {
 	pen_pressure                   = pressure;
 	pen_connected                  = true;
 
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	mouse_down_listener(0, x, y);
 #endif
 }
 
 void pen_up_listener(i32 x, i32 y, f32 pressure) {
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	if (pen_buttons_started->buffer[0]) {
 		pen_buttons_started->buffer[0] = false;
 		pen_in_use                     = true;
@@ -715,7 +715,7 @@ void pen_up_listener(i32 x, i32 y, f32 pressure) {
 		pen_pressure = pressure;
 	}
 
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	mouse_up_listener(0, x, y);
 	pen_in_use = true; // On pen release, additional mouse down & up events are fired at once - filter those out
 #endif
@@ -1029,13 +1029,6 @@ void keyboard_down_listener(i32 code) {
 	i32_map_set(keyboard_keys_down, s, true);
 	keyboard_repeat_time = sys_time() + 0.4f;
 
-#ifdef IRON_ANDROID_RMB // Detect right mouse button on Android
-	if (code == KEY_CODE_BACK) {
-		if (!_mouse_buttons_down->buffer[1]) {
-			mouse_down_listener(1, (i32)mouse_x, (i32)mouse_y);
-		}
-	}
-#endif
 }
 
 void keyboard_up_listener(i32 code) {
@@ -1043,12 +1036,6 @@ void keyboard_up_listener(i32 code) {
 	string_array_push(keyboard_keys_frame, s);
 	i32_map_set(keyboard_keys_released, s, true);
 	i32_map_set(keyboard_keys_down, s, false);
-
-#ifdef IRON_ANDROID_RMB
-	if (code == KEY_CODE_BACK) {
-		mouse_up_listener(1, (i32)mouse_x, (i32)mouse_y);
-	}
-#endif
 }
 
 // Gamepad

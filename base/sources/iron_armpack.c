@@ -9,11 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef IRON_WASM
-#define PTR_SIZE 4
-#else
 #define PTR_SIZE 8
-#endif
 static uint32_t di;     // Decoded index
 static uint32_t ei;     // Encoded index
 static uint32_t bottom; // Decoded bottom

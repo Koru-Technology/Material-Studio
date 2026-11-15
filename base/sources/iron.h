@@ -24,12 +24,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef IRON_WINDOWS
-#include <Windows.h>
-#elif defined(IRON_WASM)
-#else
 #include <sys/stat.h>
-#endif
 #ifdef IRON_AUDIO
 #include "iron_audio.h"
 #endif
@@ -45,9 +40,6 @@ char **_argv;
 
 #ifdef WITH_EMBED
 buffer_t *embed_get(char *key) {
-#ifdef IRON_WINDOWS
-	key = string_replace_all(key, "\\", "/");
-#endif
 	for (int i = 0; i < embed_count; ++i) {
 		if (strcmp(embed_keys[i], key) == 0) {
 			buffer_t *buffer = buffer_create(0);
@@ -80,10 +72,6 @@ int  last_window_width  = 0;
 int  last_window_height = 0;
 #endif
 char temp_string[1024 * 128];
-#ifdef IRON_WINDOWS
-wchar_t        temp_wstring[1024 * 32];
-struct HWND__ *iron_windows_window_handle();
-#endif
 
 void (*iron_update)(void);
 void (*iron_drop_files)(char *);
@@ -115,29 +103,13 @@ char *_substring(char *s, int32_t start, int32_t end) {
 int kickstart(int argc, char **argv) {
 	_argc = argc;
 	_argv = argv;
-#ifdef IRON_ANDROID
-	char *bindir = "/";
-#elif defined(IRON_IOS)
+#ifdef IRON_IOS
 	char *bindir = "";
-#elif defined(IRON_WASM)
-	char *bindir = "/";
 #else
 	char *bindir = argv[0];
 #endif
 
-#ifdef IRON_WINDOWS // Handle non-ascii path
-	HMODULE hmodule = GetModuleHandleW(NULL);
-	GetModuleFileNameW(hmodule, temp_wstring, 1024);
-	WideCharToMultiByte(CP_UTF8, 0, temp_wstring, -1, temp_string, 4096, NULL, NULL);
-	bindir = _substring(temp_string, 0, string_last_index_of(temp_string, "\\"));
-	// Running from Visual Studio
-	if (argc > 1 && strlen(argv[1]) > 4 && argv[1][strlen(argv[1]) - 4] == '\\' && argv[1][strlen(argv[1]) - 3] == 'o' && argv[1][strlen(argv[1]) - 2] == 'u' &&
-	    argv[1][strlen(argv[1]) - 1] == 't') {
-		bindir = argv[1];
-	}
-#else
 	bindir = _substring(bindir, 0, string_last_index_of(bindir, "/"));
-#endif
 
 	for (int i = 2; i < argc; ++i) {
 		if (strcmp(argv[i], "--nowindow") == 0) {
@@ -186,9 +158,6 @@ char *iron_get_arg(i32 index) {
 #include <stdio.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-#ifdef IRON_DIRECT3D12
-#include <d3d12.h>
-#endif
 #ifdef WITH_D3DCOMPILER
 #include <D3Dcompiler.h>
 #include <d3d11.h>
@@ -203,17 +172,11 @@ void untar_here(const char *path);
 #ifdef WITH_VIDEO_WRITE
 #include "iron_image.h"
 #endif
-#if defined(IDLE_SLEEP) && !defined(IRON_WINDOWS)
+#ifdef IDLE_SLEEP
 #include <time.h>
 #endif
 
 void _update() {
-#ifdef IRON_WINDOWS
-	if (in_background && ++paused_frames > 3) {
-		Sleep(1);
-		return;
-	}
-#endif
 
 #ifdef IDLE_SLEEP
 	if (last_window_width != iron_window_width() || last_window_height != iron_window_height()) {
@@ -221,7 +184,7 @@ void _update() {
 		last_window_height = iron_window_height();
 		paused_frames      = 0;
 	}
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 	const int start_sleep = 1200;
 #else
 	const int start_sleep = 120;
@@ -231,9 +194,7 @@ void _update() {
 		paused_frames = 0;
 	}
 	if (paused_frames > start_sleep && !input_down) {
-#ifdef IRON_WINDOWS
-		Sleep(1);
-#elif !defined(IRON_WASM) && !defined(IRON_EXTERNAL_LOOP) // An external loop is paced by the display
+#ifndef IRON_EXTERNAL_LOOP // An external loop is paced by the display
 		struct timespec t;
 		t.tv_sec  = 0;
 		t.tv_nsec = 1000000;
@@ -355,7 +316,7 @@ void _mouse_wheel(float delta, void *data) {
 void _touch_move(int index, int x, int y) {
 	iron_touch_move(index, x, y);
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (ui_get_current())
 		ui_touch_move(ui_get_current(), index, x, y);
 #endif
@@ -368,7 +329,7 @@ void _touch_move(int index, int x, int y) {
 void _touch_down(int index, int x, int y) {
 	iron_touch_down(index, x, y);
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (ui_get_current())
 		ui_touch_down(ui_get_current(), index, x, y);
 #endif
@@ -382,7 +343,7 @@ void _touch_down(int index, int x, int y) {
 void _touch_up(int index, int x, int y) {
 	iron_touch_up(index, x, y);
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	if (ui_get_current())
 		ui_touch_up(ui_get_current(), index, x, y);
 #endif
@@ -427,12 +388,6 @@ void _pen_move(int x, int y, float pressure) {
 
 void _drop_files(char *file_path, void *data) {
 // Update mouse position
-#ifdef IRON_WINDOWS
-	POINT p;
-	GetCursorPos(&p);
-	ScreenToClient(iron_windows_window_handle(), &p);
-	_mouse_move(p.x, p.y, 0, 0, NULL);
-#endif
 
 	iron_drop_files(file_path);
 
@@ -706,15 +661,7 @@ gpu_shader_t *gpu_create_shader_from_source(char *source, int source_size, gpu_s
 	gpu_shader_init(shader, source, strlen(source) + 1, shader_type);
 	shader->impl.is_source = true;
 
-#elif defined(IRON_METAL)
-
-	gpu_shader_init(shader, source, strlen(source), shader_type);
-
-#elif defined(IRON_VULKAN)
-
-	gpu_shader_init(shader, source, source_size, shader_type);
-
-#elif defined(IRON_WASM)
+#else
 
 	gpu_shader_init(shader, source, strlen(source), shader_type);
 

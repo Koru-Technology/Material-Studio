@@ -196,13 +196,6 @@ void draw_flush(void) {
 	gpu_draw();
 
 	draw_vb_index += draw_batch_count;
-#ifdef IRON_WASM
-	static int flushes = 0;
-	if (++flushes == 64) {
-		flushes = 0;
-		gpu_execute_and_wait();
-	}
-#endif
 	draw_batch_count    = 0;
 	draw_batch_pipeline = NULL;
 	draw_batch_texture  = NULL;

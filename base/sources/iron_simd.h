@@ -3,7 +3,7 @@
 #include "iron_global.h"
 #include <string.h>
 
-#if defined(__SSE2__) || defined(IRON_WINDOWS)
+#if defined(__SSE2__)
 #define IRON_SSE
 #endif
 

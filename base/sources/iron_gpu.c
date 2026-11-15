@@ -67,9 +67,7 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 		current_depth_buffer         = NULL;
 	}
 	else if (targets == NULL) {
-#if defined(IRON_VULKAN) || defined(IRON_METAL)
 		gpu_acquire_framebuffer();
-#endif
 		current_render_targets[0]    = &framebuffers[framebuffer_index];
 		current_render_targets_count = 1;
 		current_depth_buffer         = framebuffer_depth.width > 0 ? &framebuffer_depth : NULL;
@@ -92,7 +90,6 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 	gpu_begin_internal(flags, color, depth);
 }
 
-#ifdef IRON_METAL
 // The next draw takes these ranges of another index buffer instead of the whole set one (paint culling)
 static bool          draw_ranges_active = false;
 static gpu_buffer_t *draw_ranges_ib     = NULL;
@@ -108,18 +105,14 @@ void gpu_draw_ranges_next(gpu_buffer_t *ib, i32 *starts, i32 *counts, i32 n) {
 	draw_ranges_counts = counts;
 	draw_ranges_n      = n;
 }
-#endif
 
 void gpu_draw() {
 	if (current_pipeline == NULL || current_pipeline->impl.pipeline == NULL) {
-#ifdef IRON_METAL
 		draw_ranges_active = false;
-#endif
 		return;
 	}
 	gpu_constant_buffer_unlock(&constant_buffer);
 	gpu_set_constant_buffer(&constant_buffer, constant_buffer_index * GPU_CONSTANT_BUFFER_SIZE, GPU_CONSTANT_BUFFER_SIZE);
-#ifdef IRON_METAL
 	if (draw_ranges_active) {
 		draw_ranges_active = false;
 		for (i32 i = 0; i < draw_ranges_n; ++i) {
@@ -129,9 +122,6 @@ void gpu_draw() {
 	else {
 		gpu_draw_internal();
 	}
-#else
-	gpu_draw_internal();
-#endif
 #ifndef NDEBUG
 	gpu_debug_draw_calls++;
 #endif
@@ -332,16 +322,6 @@ void gpu_texture_destroy(gpu_texture_t *texture) {
 	}
 }
 
-#ifndef IRON_METAL
-void gpu_commit(void (*done)(void *data, double gpu_ms), void *data) {
-	gpu_execute_and_wait();
-	if (done != NULL) {
-		done(data, -1.0);
-	}
-}
-#endif
-
-#ifdef IRON_METAL
 static struct {
 	gpu_texture_t  *targets[8];
 	uint32_t        count;
@@ -374,7 +354,6 @@ void gpu_resume(void) {
 	memcpy(current_textures, gpu_suspended.textures, sizeof(current_textures));
 	memcpy(constant_buffer.data, gpu_suspended.constants, GPU_CONSTANT_BUFFER_SIZE); // The draw's constants, set before
 }
-#endif
 
 void gpu_set_pipeline(gpu_pipeline_t *pipeline) {
 	current_pipeline = pipeline;

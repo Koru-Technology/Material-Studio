@@ -1107,7 +1107,7 @@ void ui_draw_combo() {
 			current->combo_first = true; // Keep combo open
 		}
 		if (current->combo_first) {
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 			ui_start_edit(ui_widget_id(&current->combo_search, UI_ID_TEXT), current->combo_search, UI_ALIGN_LEFT); // Focus search bar
 #endif
 		}
@@ -2767,7 +2767,7 @@ float ui_slider(float *value, char *text, float from, float to, bool filled, flo
 		current->item_changed = false;
 	}
 
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	if (id == current->slider_id && current->input_dx != 0) { // Scroll
 #else
 	if (id == current->slider_id) { // Scroll
@@ -2889,7 +2889,7 @@ void ui_mouse_down(ui_t *ui, int button, int x, int y) {
 		ui->input_started_r = ui->input_down_r = true;
 	}
 	ui->input_started_time = iron_time();
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	ui_set_input_position(ui, x, y);
 #endif
 	ui->input_started_x = x;
@@ -2897,7 +2897,7 @@ void ui_mouse_down(ui_t *ui, int button, int x, int y) {
 }
 
 void ui_mouse_move(ui_t *ui, int x, int y, int movement_x, int movement_y) {
-#if !defined(IRON_ANDROID) && !defined(IRON_IOS)
+#ifndef IRON_IOS
 	if (iron_mouse_movement_only) {
 		ui->input_dx += movement_x;
 		ui->input_dy += movement_y;
@@ -2946,7 +2946,7 @@ void ui_mouse_up(ui_t *ui, int button, int x, int y) {
 	else {
 		ui->input_down_r = false;
 	}
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	ui_set_input_position(ui, x, y);
 #endif
 	ui_deselect_text(ui);
@@ -2957,7 +2957,7 @@ void ui_mouse_wheel(ui_t *ui, float delta) {
 }
 
 void ui_pen_down(ui_t *ui, int x, int y, float pressure) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	return;
 #endif
 
@@ -2965,7 +2965,7 @@ void ui_pen_down(ui_t *ui, int x, int y, float pressure) {
 }
 
 void ui_pen_up(ui_t *ui, int x, int y, float pressure) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	return;
 #endif
 
@@ -2989,7 +2989,7 @@ void ui_pen_move(ui_t *ui, int x, int y, float pressure) {
 	}
 #endif
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	return;
 #endif
 
@@ -3037,12 +3037,6 @@ void ui_key_down(ui_t *ui, int key_code) {
 	case KEY_CODE_SPACE:
 		ui->key_char = ' ';
 		break;
-#ifdef IRON_ANDROID // Detect right mouse button on Android..
-	case KEY_CODE_BACK:
-		if (!ui->input_down_r)
-			ui_mouse_down(ui, 1, ui->input_x, ui->input_y);
-		break;
-#endif
 	}
 }
 
@@ -3081,11 +3075,6 @@ void ui_key_up(ui_t *ui, int key_code) {
 	case KEY_CODE_A:
 		ui->is_a_down = false;
 		break;
-#ifdef IRON_ANDROID
-	case KEY_CODE_BACK:
-		ui_mouse_down(ui, 1, ui->input_x, ui->input_y);
-		break;
-#endif
 	}
 }
 
@@ -3094,7 +3083,7 @@ void ui_key_press(ui_t *ui, unsigned key_char) {
 	ui->is_key_pressed = true;
 }
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 static float ui_pinch_distance = 0.0;
 static float ui_pinch_total    = 0.0;
 static float ui_pinch_smooth   = 0.0;

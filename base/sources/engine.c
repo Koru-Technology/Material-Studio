@@ -503,15 +503,7 @@ shader_data_t *shader_data_create(shader_data_t *raw) {
 }
 
 char *shader_data_ext() {
-#ifdef IRON_VULKAN
-	return ".spirv";
-#elif defined(IRON_METAL)
 	return ".metal";
-#elif defined(IRON_WASM)
-	return ".wgsl";
-#else
-	return ".d3d11";
-#endif
 }
 
 shader_data_t *shader_data_parse(char *file, char *name) {
@@ -647,13 +639,6 @@ void shader_context_compile(shader_context_t *raw) {
 		raw->_->pipe->vertex_shader   = gpu_create_shader_from_source(raw->vertex_shader, raw->_->vertex_shader_size, GPU_SHADER_TYPE_VERTEX);
 		raw->_->pipe->fragment_shader = gpu_create_shader_from_source(raw->fragment_shader, raw->_->fragment_shader_size, GPU_SHADER_TYPE_FRAGMENT);
 
-#ifdef IRON_WASM
-		free(raw->vertex_shader);
-		raw->vertex_shader = NULL;
-		free(raw->fragment_shader);
-		raw->fragment_shader = NULL;
-#endif
-
 		if (raw->_->pipe->vertex_shader == NULL || raw->_->pipe->fragment_shader == NULL) {
 			return;
 		}
@@ -699,36 +684,18 @@ i32 shader_context_type_size(char *t) {
 		return 16;
 	if (strcmp(t, "float4x4") == 0)
 		return 64;
-#ifdef IRON_DIRECT3D12
-	if (strcmp(t, "float3") == 0)
-		return 12;
-	if (strcmp(t, "float3x3") == 0)
-		return 44; // 16 + 16 + 12
-#else
 	if (strcmp(t, "float3") == 0)
 		return 16;
 	if (strcmp(t, "float3x3") == 0)
 		return 48; // std140 array elements are padded to 16
-#endif
 	return 0;
 }
 
 i32 shader_context_type_pad(i32 offset, i32 size) {
-#ifdef IRON_DIRECT3D12
-	i32 r = offset % 16;
-	if (r == 0) {
-		return 0;
-	}
-	if (size >= 16 || r + size > 16) {
-		return 16 - r;
-	}
-	return 0;
-#else
 	if (size > 16) {
 		size = 16;
 	}
 	return (size - (offset % size)) % size;
-#endif
 }
 
 void shader_context_finish_compile(shader_context_t *raw) {
@@ -1869,11 +1836,7 @@ bool embed_owns(uint8_t *buffer);
 #endif
 
 char *data_path(void) {
-#ifdef IRON_ANDROID
-	return "data" PATH_SEP;
-#else
 	return "." PATH_SEP "data" PATH_SEP;
-#endif
 }
 
 bool data_is_abs(char *file) {
