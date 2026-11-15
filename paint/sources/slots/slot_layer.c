@@ -99,7 +99,14 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 	raw->decal_mat          = mat4_identity(); // Decal layer
 
 	if (string_equals(ext, "")) {
-		raw->id = 0;
+		// Ids are not reused in a project, an anchor of a deleted layer must not find a new one
+		static slot_layer_t_array_t *ids_of  = NULL;
+		static i32                   next_id = 0;
+		if (ids_of != g_project->_->layers) {
+			ids_of  = g_project->_->layers;
+			next_id = 0;
+		}
+		raw->id = next_id;
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 			slot_layer_t *l = g_project->_->layers->buffer[i];
 			if (l->id >= raw->id) {
@@ -112,7 +119,8 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 				raw->id = saved->buffer[i]->id + 1;
 			}
 		}
-		ext = string("%d", raw->id);
+		next_id = raw->id + 1;
+		ext     = string("%d", raw->id);
 	}
 	raw->ext    = string_copy(ext);
 	raw->parent = parent;
