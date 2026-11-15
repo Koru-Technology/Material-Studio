@@ -404,8 +404,14 @@ static uint32_t       app_lib_sig       = 0;
 
 static void app_lib_push(int8_t source, i32 index, i32 section, i32 group, bool stylized, char *ident) {
 	if (app_lib_n == app_lib_cap) {
-		app_lib_cap   = app_lib_cap * 2 + 256;
-		app_lib_items = realloc(app_lib_items, sizeof(app_lib_ref_t) * app_lib_cap);
+		i32            cap   = app_lib_cap * 2 + 256;
+		app_lib_ref_t *items = realloc(app_lib_items, sizeof(app_lib_ref_t) * cap);
+		if (items == NULL) { // Out of memory: the item is left out
+			free(ident);
+			return;
+		}
+		app_lib_items = items;
+		app_lib_cap   = cap;
 	}
 	app_lib_items[app_lib_n++] = (app_lib_ref_t){.source = source, .index = index, .section = section, .group = group, .stylized = stylized, .ident = ident};
 }
