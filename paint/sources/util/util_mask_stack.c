@@ -1,5 +1,6 @@
 
 #include "../global.h"
+#include "util_hash.h"
 
 // Mask stacks: a mask is a list of effects evaluated bottom to top from black into texmask, which the viewport and
 // every other reader of the mask sample (slot_layer_mask_texture). Brushes and fills keep writing texpaint, the stack's
@@ -499,11 +500,7 @@ static u64 mask_stack_inputs_key(slot_layer_t *m) {
 		else {
 			continue;
 		}
-		const u8 *p = (const u8 *)v;
-		for (size_t k = 0; k < sizeof(v); ++k) {
-			h ^= p[k];
-			h *= 1099511628211ull;
-		}
+		h = hash_fnv1a(h, v, sizeof(v));
 	}
 	return h;
 }

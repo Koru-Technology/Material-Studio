@@ -110,7 +110,7 @@ string_array_t *path_occlusion_ext(void) {
 		_path_occlusion_ext = string_array_create(0);
 		string_array_push(_path_occlusion_ext, "ao");
 		string_array_push(_path_occlusion_ext, "occlusion");
-		string_array_push(_path_occlusion_ext, "ambientOcclusion");
+		string_array_push(_path_occlusion_ext, "ambientocclusion");
 		string_array_push(_path_occlusion_ext, "o");
 		string_array_push(_path_occlusion_ext, "occ");
 	}

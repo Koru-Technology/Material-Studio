@@ -20,6 +20,12 @@ void nodes_brush_init() {
 	float_node_init();
 	vector_node_init();
 	vector_math_node_init();
+	// Defaults of unlinked inputs (parser_logic_build_default_node)
+	boolean_node_init();
+	color_node_init();
+	integer_node_init();
+	null_node_init();
+	string_node_init();
 
 	nodes_brush_list = any_array_create_from_raw(
 	    (void *[]){

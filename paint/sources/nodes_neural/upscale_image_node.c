@@ -4,7 +4,7 @@
 void upscale_image_node_button(i32 node_id) {
 	ui_node_canvas_t *canvas = ui_nodes_get_canvas(true);
 	ui_node_t        *node   = ui_get_node(canvas->nodes, node_id);
-	string_array_t   *models = any_array_create_from_raw(
+	string_array_t   *models = any_array_create_from_raw_tmp(
         (void *[]){
             "Real-ESRGAN",
         },
@@ -58,30 +58,12 @@ void upscale_image_node_init() {
 	                           .color  = 0xff4982a0,
 	                           .inputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Color"),
-	                                                                 .type          = "RGBA",
-	                                                                 .color         = 0xffc7c729,
-	                                                                 .default_value = f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_def(_tr("Color"), "RGBA", f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0), 0.0, 1.0),
 	                               },
 	                               1),
 	                           .outputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Color"),
-	                                                                 .type          = "RGBA",
-	                                                                 .color         = 0xffc7c729,
-	                                                                 .default_value = f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_def(_tr("Color"), "RGBA", f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0), 0.0, 1.0),
 	                               },
 	                               1),
 	                           .buttons = any_array_create_from_raw(

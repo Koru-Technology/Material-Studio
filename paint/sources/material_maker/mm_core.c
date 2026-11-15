@@ -2,6 +2,7 @@
 
 #include "mm.h"
 #include <ctype.h>
+#include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -208,7 +209,7 @@ typedef struct {
 } mm_parser_t;
 
 static void json_ws(mm_parser_t *p) {
-	while (p->s < p->end && (isspace((unsigned char)*p->s) || *p->s == ',' && false)) {
+	while (p->s < p->end && isspace((unsigned char)*p->s)) {
 		p->s++;
 	}
 }
@@ -218,6 +219,25 @@ static mm_json_t *json_value(mm_parser_t *p);
 mm_json_t *mm_json_new(mm_json_type_t type) {
 	mm_json_t *v = mm_alloc(sizeof(mm_json_t));
 	v->type      = type;
+	return v;
+}
+
+mm_json_t *mm_json_string(const char *s) {
+	mm_json_t *v = mm_json_new(MM_JSON_STRING);
+	v->string    = mm_strdup(s);
+	return v;
+}
+
+mm_json_t *mm_json_number(double d) {
+	mm_json_t *v = mm_json_new(MM_JSON_NUMBER);
+	v->number    = d;
+	v->is_int    = d == floor(d);
+	return v;
+}
+
+mm_json_t *mm_json_boolean(bool b) {
+	mm_json_t *v = mm_json_new(MM_JSON_BOOL);
+	v->boolean   = b;
 	return v;
 }
 
@@ -577,6 +597,32 @@ double mm_json_num(mm_json_t *v, double fallback) {
 	return fallback;
 }
 
+static void json_string_text(mm_buf_t *b, const char *s) {
+	mm_buf_add(b, "\"");
+	for (const unsigned char *p = (const unsigned char *)s; *p; ++p) {
+		if (*p == '"' || *p == '\\') {
+			char e[3] = {'\\', (char)*p, 0};
+			mm_buf_add(b, e);
+		}
+		else if (*p == '\n') {
+			mm_buf_add(b, "\\n");
+		}
+		else if (*p == '\t') {
+			mm_buf_add(b, "\\t");
+		}
+		else if (*p == '\r') {
+			mm_buf_add(b, "\\r");
+		}
+		else if (*p < 0x20) {
+			mm_buf_printf(b, "\\u%04x", *p);
+		}
+		else {
+			mm_buf_addn(b, (const char *)p, 1);
+		}
+	}
+	mm_buf_add(b, "\"");
+}
+
 static void json_text(mm_buf_t *b, mm_json_t *v) {
 	if (v == NULL) {
 		mm_buf_add(b, "null");
@@ -590,41 +636,40 @@ static void json_text(mm_buf_t *b, mm_json_t *v) {
 		mm_buf_add(b, v->boolean ? "true" : "false");
 		break;
 	case MM_JSON_NUMBER:
-		mm_buf_printf(b, "%.17g", v->number);
+		if (v->number != v->number || v->number > 1e300 || v->number < -1e300) { // NaN and infinities are not json
+			mm_buf_add(b, "0");
+		}
+		else if (v->is_int && v->number == floor(v->number) && fabs(v->number) < 9e15) {
+			mm_buf_printf(b, "%lld", (long long)v->number);
+		}
+		else {
+			mm_buf_printf(b, "%.17g", v->number);
+		}
 		break;
 	case MM_JSON_STRING:
-		mm_buf_add(b, "\"");
-		for (const char *s = v->string; *s; ++s) {
-			if (*s == '"' || *s == '\\') {
-				mm_buf_addn(b, "\\", 1);
-			}
-			if (*s == '\n') {
-				mm_buf_add(b, "\\n");
-				continue;
-			}
-			mm_buf_addn(b, s, 1);
-		}
-		mm_buf_add(b, "\"");
+		json_string_text(b, v->string != NULL ? v->string : "");
 		break;
 	case MM_JSON_ARRAY:
-	case MM_JSON_OBJECT:
+	case MM_JSON_OBJECT: {
 		mm_buf_add(b, v->type == MM_JSON_ARRAY ? "[" : "{");
+		bool first = true;
 		for (int i = 0; i < v->count; ++i) {
 			if (v->items[i] == NULL && v->type == MM_JSON_OBJECT) { // Removed member (mm_json_set NULL)
 				continue;
 			}
-			if (b->len > 0 && b->data[b->len - 1] != '[' && b->data[b->len - 1] != '{') {
+			if (!first) {
 				mm_buf_add(b, ",");
 			}
+			first = false;
 			if (v->type == MM_JSON_OBJECT) {
-				mm_json_t k = {.type = MM_JSON_STRING, .string = v->keys[i]};
-				json_text(b, &k);
+				json_string_text(b, v->keys[i]);
 				mm_buf_add(b, ":");
 			}
 			json_text(b, v->items[i]);
 		}
 		mm_buf_add(b, v->type == MM_JSON_ARRAY ? "]" : "}");
 		break;
+	}
 	}
 }
 

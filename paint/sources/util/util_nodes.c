@@ -74,7 +74,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 	}
 	else if (string_equals(n->type, "MATERIAL")) {
 		i32 id = n->buttons->buffer[0]->default_value->buffer[0];
-		if (id < g_project->_->materials->length) {
+		if (id >= 0 && id < g_project->_->materials->length) {
 			img = g_project->_->materials->buffer[id]->image;
 		}
 	}
@@ -98,6 +98,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 			img = rt->_image;
 		}
 	}
+#ifdef WITH_NEURAL
 	else if (starts_with(n->type, "NEURAL_") && n->outputs->length > 0) {
 		i32 socket = i32_imap_get(g_context->node_preview_socket_map, n->id);
 		if (socket < 0 || socket >= n->outputs->length) {
@@ -105,7 +106,8 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 		}
 		img = any_imap_get(neural_node_results, n->outputs->buffer[socket]->id);
 	}
-	else if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
+#endif
+	else {
 		img = any_imap_get(g_context->node_preview_map, n->id);
 	}
 	return img;
@@ -157,46 +159,31 @@ i32 ui_nodes_get_node_y() {
 	return math_floor((mouse_y - ui_nodes_wy - UI_NODES_PAN_Y()) / (float)UI_NODES_SCALE());
 }
 
+// The node editor shows material canvases only (the brush canvas has no editor)
 node_list_t_array_t *ui_nodes_get_node_list() {
-	return ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? nodes_material_list : nodes_brush_list;
+	return nodes_material_list;
 }
 
 string_array_t *ui_nodes_get_categories() {
-	return ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL ? nodes_material_categories : nodes_brush_categories;
+	return nodes_material_categories;
 }
 
 ui_node_canvas_t *ui_nodes_get_canvas(bool groups) {
-	if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
-		if (groups && ui_nodes_group_stack->length > 0) {
-			return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->canvas;
-		}
-		else {
-			return g_context->material->canvas;
-		}
+	if (groups && ui_nodes_group_stack->length > 0) {
+		return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->canvas;
 	}
-	else {
-		return g_context->brush->canvas;
-	}
+	return g_context->material->canvas;
 }
 
 ui_nodes_t *ui_nodes_get_nodes() {
-	if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
-		if (ui_nodes_group_stack->length > 0) {
-			return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->nodes;
-		}
-		else {
-			return g_context->material->nodes;
-		}
+	if (ui_nodes_group_stack->length > 0) {
+		return ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]->nodes;
 	}
-	else {
-		return g_context->brush->nodes;
-	}
+	return g_context->material->nodes;
 }
 
 void ui_nodes_canvas_changed() {
-	if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) { // A parameter socket whose link went: the parameter keeps its value
-		mm_nodes_prune_param_sockets(ui_nodes_get_canvas(true));
-	}
+	mm_nodes_prune_param_sockets(ui_nodes_get_canvas(true)); // A parameter socket whose link went: the parameter keeps its value
 	ui_nodes_recompile_mat       = true;
 	ui_nodes_recompile_mat_final = true;
 }
@@ -206,11 +193,11 @@ void ui_nodes_push_undo(ui_node_canvas_t *last_canvas) {
 		last_canvas = ui_nodes_get_canvas(true);
 	}
 	i32 canvas_group = -1;
-	if (ui_nodes_canvas_type != CANVAS_TYPE_BRUSH && ui_nodes_group_stack->length > 0) {
+	if (ui_nodes_group_stack->length > 0) {
 		canvas_group = array_index_of(ui_nodes_groups(), ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]);
 	}
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-	history_edit_nodes(last_canvas, ui_nodes_canvas_type, canvas_group);
+	history_edit_nodes(last_canvas, CANVAS_TYPE_MATERIAL, canvas_group);
 }
 
 void ui_viewnodes_on_node_remove(ui_node_t *n) {
@@ -283,28 +270,18 @@ void ui_nodes_recompile() {
 
 
 	if (ui_nodes_recompile_mat) {
-		if (ui_nodes_canvas_type == CANVAS_TYPE_BRUSH) {
-			make_material_parse_brush();
-			util_render_make_brush_preview();
-			if (slot_layer_is_path(g_context->layer)) {
-				util_layer_repaint_path(g_context->layer);
-			}
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
+		if (layers_is_fill_material()) {
+			layers_update_fill_layers();
+		}
+		else if (layers_is_path_material()) {
+			layers_update_path_layers();
 		}
 		else {
-			if (layers_is_fill_material()) {
-				layers_update_fill_layers();
-			}
-			else if (layers_is_path_material()) {
-				layers_update_path_layers();
-			}
-			else {
-				util_render_make_material_preview();
-			}
+			util_render_make_material_preview();
+		}
 
-			if (ui_view2d_show && ui_view2d_type == VIEW_2D_TYPE_NODE) {
-				ui_view2d_hwnd->redraws = 2;
-			}
+		if (ui_view2d_show && ui_view2d_type == VIEW_2D_TYPE_NODE) {
+			ui_view2d_hwnd->redraws = 2;
 		}
 
 		ui_dock_redraw(TAB_AREA_SIDEBAR1);
@@ -317,15 +294,13 @@ void ui_nodes_recompile() {
 	else if (ui_nodes_recompile_mat_final) {
 		make_material_parse_paint_material(true);
 
-		if (ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
-			if (layers_is_fill_material()) {
-				layers_update_fill_layers();
-				util_render_make_material_preview();
-			}
-			if (layers_is_path_material()) {
-				layers_update_path_layers();
-				util_render_make_material_preview();
-			}
+		if (layers_is_fill_material()) {
+			layers_update_fill_layers();
+			util_render_make_material_preview();
+		}
+		if (layers_is_path_material()) {
+			layers_update_path_layers();
+			util_render_make_material_preview();
 		}
 
 		bool decal = context_is_decal();
@@ -386,10 +361,6 @@ void ui_nodes_make_node_preview(ui_node_t *node) {
 
 	if (string_equals(node->type, "LAYER") || string_equals(node->type, "LAYER_MASK") || string_equals(node->type, "MATERIAL") ||
 	    string_equals(node->type, "OUTPUT_MATERIAL_PBR")) {
-		return;
-	}
-
-	if (ui_nodes_canvas_type != CANVAS_TYPE_MATERIAL) {
 		return;
 	}
 
@@ -500,6 +471,44 @@ ui_node_t *ui_nodes_make_node(ui_node_t *n, ui_nodes_t *nodes, ui_node_canvas_t 
 	return node;
 }
 
+// First node of the type in the canvas, NULL when there is none
+ui_node_t *util_nodes_find_type(ui_node_canvas_t *c, char *type) {
+	for (i32 i = 0; i < c->nodes->length; ++i) {
+		if (string_equals(c->nodes->buffer[i]->type, type)) {
+			return c->nodes->buffer[i];
+		}
+	}
+	return NULL;
+}
+
+// Removes the links into input `in` of the node
+void util_nodes_unlink_input(ui_node_canvas_t *c, ui_node_t *to, i32 in) {
+	for (i32 i = c->links->length - 1; i >= 0; --i) {
+		ui_node_link_t *l = c->links->buffer[i];
+		if (l->to_id == to->id && l->to_socket == in) {
+			array_splice(c->links, i, 1);
+		}
+	}
+}
+
+// Removes the node and its links, without the node editor's callbacks (ui_remove_node): for graphs edited in code
+void util_nodes_remove_node(ui_node_canvas_t *c, ui_node_t *n) {
+	if (n == NULL) {
+		return;
+	}
+	for (i32 i = c->links->length - 1; i >= 0; --i) {
+		ui_node_link_t *l = c->links->buffer[i];
+		if (l->from_id == n->id || l->to_id == n->id) {
+			array_splice(c->links, i, 1);
+		}
+	}
+	i32 i = array_index_of(c->nodes, n);
+	if (i >= 0) {
+		array_splice(c->nodes, i, 1);
+	}
+}
+
+// The link into input `socket` of the node, NULL when unlinked
 ui_node_link_t *util_nodes_link(ui_node_canvas_t *c, ui_node_t *node, i32 socket) {
 	for (i32 i = 0; i < c->links->length; ++i) {
 		ui_node_link_t *l = c->links->buffer[i];

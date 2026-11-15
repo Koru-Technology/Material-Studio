@@ -1,7 +1,8 @@
 
 #include "../global.h"
 
-char *str_tex_noise = "\
+// Value noise, also read by the Wave Texture
+char *str_tex_noise_f = "\
 float hash(float n) { return fract(sin(n) * 10000.0); } \
 float tex_noise_f(vec3 x) { \
 	vec3 step = vec3(110.0, 241.0, 171.0); \
@@ -14,6 +15,9 @@ float tex_noise_f(vec3 x) { \
 	                mix(mix(hash(n + dot(step, vec3(0.0, 0.0, 1.0))), hash(n + dot(step, vec3(1.0, 0.0, 1.0))), u.x), \
 	                     mix(hash(n + dot(step, vec3(0.0, 1.0, 1.0))), hash(n + dot(step, vec3(1.0, 1.0, 1.0))), u.x), u.y), u.z); \
 } \
+";
+
+char *str_tex_noise = "\
 float tex_noise_fbm(vec3 p, float detail, float roughness, float lacunarity) { \
 	float fscale = 1.0; \
 	float amp = 1.0; \
@@ -46,6 +50,7 @@ vec3 tex_noise(vec3 p, float scale, float detail, float roughness, float lacunar
 ";
 
 static char *noise_texture_node_result(ui_node_t *node) {
+	node_shader_add_function(parser_material_shader, str_tex_noise_f);
 	node_shader_add_function(parser_material_shader, str_tex_noise);
 	char *co         = parser_material_get_coord(node);
 	char *scale      = parser_material_parse_value_input(node->inputs->buffer[1], false);
@@ -77,90 +82,18 @@ void noise_texture_node_init() {
 	                           .color  = 0xff4982a0,
 	                           .inputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Vector"),
-	                                                                 .type          = "VECTOR",
-	                                                                 .color         = 0xff6363c7,
-	                                                                 .default_value = f32_array_create_xyz(0.0, 0.0, 0.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Scale"),
-	                                                                 .type          = "VALUE",
-	                                                                 .color         = 0xffa1a1a1,
-	                                                                 .default_value = f32_array_create_x(5.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 10.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Detail"),
-	                                                                 .type          = "VALUE",
-	                                                                 .color         = 0xffa1a1a1,
-	                                                                 .default_value = f32_array_create_x(2.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 8.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Roughness"),
-	                                                                 .type          = "VALUE",
-	                                                                 .color         = 0xffa1a1a1,
-	                                                                 .default_value = f32_array_create_x(0.5),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Lacunarity"),
-	                                                                 .type          = "VALUE",
-	                                                                 .color         = 0xffa1a1a1,
-	                                                                 .default_value = f32_array_create_x(2.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 10.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Distortion"),
-	                                                                 .type          = "VALUE",
-	                                                                 .color         = 0xffa1a1a1,
-	                                                                 .default_value = f32_array_create_x(0.0),
-	                                                                 .min           = -10.0,
-	                                                                 .max           = 10.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_def(_tr("Vector"), "VECTOR", f32_array_create_xyz(0.0, 0.0, 0.0), 0.0, 1.0),
+	                                   nodes_material_socket_def(_tr("Scale"), "VALUE", f32_array_create_x(5.0), 0.0, 10.0),
+	                                   nodes_material_socket_def(_tr("Detail"), "VALUE", f32_array_create_x(2.0), 0.0, 8.0),
+	                                   nodes_material_socket_def(_tr("Roughness"), "VALUE", f32_array_create_x(0.5), 0.0, 1.0),
+	                                   nodes_material_socket_def(_tr("Lacunarity"), "VALUE", f32_array_create_x(2.0), 0.0, 10.0),
+	                                   nodes_material_socket_def(_tr("Distortion"), "VALUE", f32_array_create_x(0.0), -10.0, 10.0),
 	                               },
 	                               6),
 	                           .outputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Factor"),
-	                                                                 .type          = "VALUE",
-	                                                                 .color         = 0xffa1a1a1,
-	                                                                 .default_value = f32_array_create_x(0.5),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Color"),
-	                                                                 .type          = "RGBA",
-	                                                                 .color         = 0xffc7c729,
-	                                                                 .default_value = f32_array_create_xyzw(0.5, 0.5, 0.5, 1.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_def(_tr("Factor"), "VALUE", f32_array_create_x(0.5), 0.0, 1.0),
+	                                   nodes_material_socket_def(_tr("Color"), "RGBA", f32_array_create_xyzw(0.5, 0.5, 0.5, 1.0), 0.0, 1.0),
 	                               },
 	                               2),
 	                           .buttons = any_array_create_from_raw(

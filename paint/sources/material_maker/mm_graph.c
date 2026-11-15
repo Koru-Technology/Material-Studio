@@ -69,19 +69,6 @@ static const char *jstr(mm_json_t *o, const char *k) {
 	return mm_json_str(mm_json_get(o, k), NULL);
 }
 
-static mm_json_t *jstring(const char *s) {
-	mm_json_t *v = mm_json_new(MM_JSON_STRING);
-	v->string    = mm_strdup(s);
-	return v;
-}
-
-static mm_json_t *jnumber(double d) {
-	mm_json_t *v = mm_json_new(MM_JSON_NUMBER);
-	v->number    = d;
-	v->is_int    = d == floor(d);
-	return v;
-}
-
 mm_gen_t *mm_gen_child(mm_gen_t *graph, const char *name) {
 	for (int i = 0; graph != NULL && i < graph->nchildren; ++i) {
 		if (strcmp(graph->children[i]->name, name) == 0) {
@@ -160,9 +147,9 @@ bool mm_gen_has_randomness(mm_gen_t *g) {
 
 static mm_json_t *def(const char *name, const char *type, double dflt) {
 	mm_json_t *d = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(d, "name", jstring(name));
-	mm_json_set(d, "type", jstring(type));
-	mm_json_set(d, "default", jnumber(dflt));
+	mm_json_set(d, "name", mm_json_string(name));
+	mm_json_set(d, "type", mm_json_string(type));
+	mm_json_set(d, "default", mm_json_number(dflt));
 	return d;
 }
 
@@ -189,7 +176,7 @@ static mm_json_t *remote_param_defs(mm_gen_t *g) {
 			}
 			if (pd != NULL) {
 				pd = mm_json_copy(pd);
-				mm_json_set(pd, "name", jstring(name));
+				mm_json_set(pd, "name", mm_json_string(name));
 				mm_json_push(rv, pd);
 			}
 		}
@@ -213,7 +200,7 @@ static mm_json_t *param_defs(mm_gen_t *g) {
 		return remote_param_defs(g);
 	case MM_G_BUFFER: {
 		mm_json_t *s = def("size", "size", 4);
-		mm_json_set(s, "first", jnumber(4));
+		mm_json_set(s, "first", mm_json_number(4));
 		mm_json_push(rv, s);
 		if (g->version == 0) {
 			mm_json_push(rv, def("lod", "float", 0));
@@ -227,7 +214,7 @@ static mm_json_t *param_defs(mm_gen_t *g) {
 	}
 	case MM_G_ITERATE: {
 		mm_json_t *s = def("size", "size", 4);
-		mm_json_set(s, "first", jnumber(4));
+		mm_json_set(s, "first", mm_json_number(4));
 		mm_json_push(rv, s);
 		mm_json_push(rv, def("shrink", "boolean", 0));
 		mm_json_push(rv, def("autostop", "boolean", 0));
@@ -263,7 +250,7 @@ mm_json_t *mm_gen_param(mm_gen_t *g, const char *name) {
 		return v;
 	}
 	if ((g->kind == MM_G_BUFFER || g->kind == MM_G_ITERATE) && strcmp(name, "size") == 0) {
-		return jnumber(9); // _ready / _init set it when missing
+		return mm_json_number(9); // _ready / _init set it when missing
 	}
 	mm_json_t *d = mm_gen_param_def(g, name);
 	if (d == NULL) {
@@ -271,7 +258,7 @@ mm_json_t *mm_gen_param(mm_gen_t *g, const char *name) {
 	}
 	mm_json_t *dv = mm_json_get(d, "default");
 	if (strcmp(mm_json_str(mm_json_get(d, "type"), ""), "size") == 0) { // init_parameters
-		return jnumber(mm_json_num(dv, 0) - mm_json_num(mm_json_get(d, "first"), 0));
+		return mm_json_number(mm_json_num(dv, 0) - mm_json_num(mm_json_get(d, "first"), 0));
 	}
 	return dv;
 }
@@ -404,12 +391,12 @@ static void graph_add_children(mm_gen_t *graph, mm_json_t *nodes, mm_json_t *con
 		}
 		for (int i = 0; i < connections->count; ++i) {
 			mm_json_t *ports = connections->items[i];
-			for (int k = 0; k < ports->count; ++k) {
+			for (int k = 0; ports != NULL && ports->type == MM_JSON_OBJECT && k < ports->count; ++k) { // {port: {node, port}}
 				mm_json_t *c = mm_json_new(MM_JSON_OBJECT);
-				mm_json_set(c, "from", jstring(mm_json_str(mm_json_get(ports->items[k], "node"), "")));
-				mm_json_set(c, "from_port", jnumber(mm_json_num(mm_json_get(ports->items[k], "port"), 0)));
-				mm_json_set(c, "to", jstring(connections->keys[i]));
-				mm_json_set(c, "to_port", jnumber(atof(ports->keys[k])));
+				mm_json_set(c, "from", mm_json_string(mm_json_str(mm_json_get(ports->items[k], "node"), "")));
+				mm_json_set(c, "from_port", mm_json_number(mm_json_num(mm_json_get(ports->items[k], "port"), 0)));
+				mm_json_set(c, "to", mm_json_string(connections->keys[i]));
+				mm_json_set(c, "to_port", mm_json_number(atof(ports->keys[k])));
 				mm_json_push(graph->connections, c);
 			}
 		}
@@ -526,7 +513,7 @@ static mm_gen_t *create_gen(mm_json_t *data, bool fix, mm_gen_t *parent) {
 	if (fix) { // fix_data
 		if (mm_json_get(data, "nodes") != NULL && mm_json_get(data, "connections") != NULL && strcmp(mm_json_str(mm_json_get(data, "label"), ""), "HBAO") == 0) {
 			data = mm_json_copy(data);
-			mm_json_set(data, "type", jstring("hbao"));
+			mm_json_set(data, "type", mm_json_string("hbao"));
 			mm_json_set(data, "nodes", NULL);
 			mm_json_set(data, "connections", NULL);
 		}
@@ -534,7 +521,7 @@ static mm_gen_t *create_gen(mm_json_t *data, bool fix, mm_gen_t *parent) {
 		         strcmp(mm_json_str(mm_json_get(mm_json_get(data, "shader_model"), "name"), ""), "Levels") == 0) {
 			data = mm_json_copy(data);
 			mm_json_set(data, "shader_model", NULL);
-			mm_json_set(data, "type", jstring("height_blend_levels"));
+			mm_json_set(data, "type", mm_json_string("height_blend_levels"));
 		}
 	}
 	mm_gen_t   *g    = NULL;

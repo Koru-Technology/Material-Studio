@@ -1,6 +1,10 @@
 
 #include "global.h"
 
+#ifdef IRON_MACOS
+#define WITH_NEURAL // Neural nodes: they run downloaded desktop binaries (nodes_neural/neural_node.c)
+#endif
+
 #ifndef WITH_COMPRESS
 #define MM_STANDALONE // No iron_compress.c (Android): mm_core.c brings its own inflate
 #endif
@@ -75,14 +79,21 @@
 #include "nodes_material/material_mix_node.c"
 #include "nodes_material/mapping_node.c"
 #include "nodes_material/material_node.c"
-#include "nodes_material/material_output_node.c"
 #include "nodes_material/math2_node.c"
 #include "nodes_material/mm_nodes.c"
+#include "nodes_material/mm_nodes_params.c"
+#include "nodes_material/mm_nodes_sync.c"
+#include "nodes_material/mm_nodes_buttons.c"
+#include "nodes_material/mm_nodes_register.c"
+#include "nodes_material/mm_material_node.c"
 #include "nodes_material/mm_import.c"
 #include "nodes_material/mm_library.c"
 #include "nodes_material/mm_controls.c"
 #include "nodes_material/mm_bridge.c"
 #include "nodes_material/mm_buffers.c"
+#include "nodes_material/mm_buffers_pipes.c"
+#include "nodes_material/mm_buffers_render.c"
+#include "nodes_material/mm_buffers_test.c"
 #include "nodes_material/mix_color_node.c"
 #include "nodes_material/mix_normal_map_node.c"
 #include "nodes_material/noise_texture_node.c"
@@ -115,6 +126,7 @@
 #include "nodes_material/wireframe_node.c"
 
 
+#ifdef WITH_NEURAL
 #include "nodes_neural/edit_image_node.c"
 #include "nodes_neural/image_to_pbr_node.c"
 #include "nodes_neural/neural_node.c"
@@ -123,6 +135,7 @@
 #include "nodes_neural/save_image_node.c"
 #include "nodes_neural/text_to_image_node.c"
 #include "nodes_neural/upscale_image_node.c"
+#endif
 
 #include "render/make_bake.c"
 #include "render/make_blur.c"
@@ -379,30 +392,7 @@ void _kickstart() {
 	    },
 	    1);
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-	nodes_material_categories = any_array_create_from_raw(
-	    (void *[]){
-	        _tr("Input"),
-	        _tr("Texture"),
-	        _tr("Color"),
-	        _tr("Utilities"),
-	        _tr("Neural"),
-	        _tr("Material Maker"),
-	        _tr("Group"),
-	    },
-	    7);
-#else
-	nodes_material_categories = any_array_create_from_raw(
-	    (void *[]){
-	        _tr("Input"),
-	        _tr("Texture"),
-	        _tr("Color"),
-	        _tr("Utilities"),
-	        _tr("Material Maker"),
-	        _tr("Group"),
-	    },
-	    6);
-#endif
+	nodes_material_categories = nodes_material_category_names(); // In the order of nodes_material_list
 
 #if defined(IRON_ANDROID) || defined(IRON_IOS)
 	ui_sidebar_default_w = ui_sidebar_default_w_mini;

@@ -649,8 +649,8 @@ static void variable_range_button(i32 node_id) {
 	f32 min, max, step;
 	variable_range(node, &min, &max, &step);
 	ui_row2();
-	char *a = string_copy(f32_to_string(min));
-	char *b = string_copy(f32_to_string(max));
+	char *a = f32_to_string(min); // Temporary, the text input copies what it keeps
+	char *b = f32_to_string(max);
 	variable_next_id(node, 0);
 	char *ea = ui_text_input(&a, tr("Min"), UI_ALIGN_LEFT, true, false);
 	variable_next_id(node, 1);
@@ -734,16 +734,7 @@ void variable_node_init() {
 	                                        .inputs  = any_array_create_from_raw((void *[]){}, 0),
 	                                        .outputs = any_array_create_from_raw(
 	                                            (void *[]){
-	                                                ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                              .node_id       = 0,
-	                                                                              .name          = _tr("Value"),
-	                                                                              .type          = "VALUE",
-	                                                                              .color         = 0xffa1a1a1,
-	                                                                              .default_value = f32_array_create_x(0.0),
-	                                                                              .min           = 0.0,
-	                                                                              .max           = 1.0,
-	                                                                              .precision     = 100,
-	                                                                              .display       = 0}),
+	                                                nodes_material_socket_def(_tr("Value"), "VALUE", f32_array_create_x(0.0), 0.0, 1.0),
 	                                            },
 	                                            1),
 	                                        .buttons = any_array_create_from_raw(
@@ -780,30 +771,12 @@ void select_value_node_init() {
 	                                           .color  = 0xff62676d,
 	                                           .inputs = any_array_create_from_raw(
 	                                               (void *[]){
-	                                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                                 .node_id       = 0,
-	                                                                                 .name          = _tr("Index"),
-	                                                                                 .type          = "VALUE",
-	                                                                                 .color         = 0xffa1a1a1,
-	                                                                                 .default_value = f32_array_create_x(0.0),
-	                                                                                 .min           = 0.0,
-	                                                                                 .max           = 8.0,
-	                                                                                 .precision     = 1,
-	                                                                                 .display       = 0}),
+	                                                   nodes_material_socket_ex(_tr("Index"), "VALUE", 0xffa1a1a1, f32_array_create_x(0.0), 0.0, 8.0, 1, 0),
 	                                               },
 	                                               1),
 	                                           .outputs = any_array_create_from_raw(
 	                                               (void *[]){
-	                                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                                 .node_id       = 0,
-	                                                                                 .name          = _tr("Value"),
-	                                                                                 .type          = "VALUE",
-	                                                                                 .color         = 0xffa1a1a1,
-	                                                                                 .default_value = f32_array_create_x(0.0),
-	                                                                                 .min           = 0.0,
-	                                                                                 .max           = 1.0,
-	                                                                                 .precision     = 100,
-	                                                                                 .display       = 0}),
+	                                                   nodes_material_socket_def(_tr("Value"), "VALUE", f32_array_create_x(0.0), 0.0, 1.0),
 	                                               },
 	                                               1),
 	                                           .buttons = any_array_create_from_raw(

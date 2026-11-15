@@ -149,7 +149,7 @@ static void bake_texture_node_button(i32 node_id) {
 	ui_push_id((ui_id_t)ui_nodes_get_nodes());
 	ui_push_id((ui_id_t)node_id); // Shared bake settings still need distinct controls per node
 
-	string_array_t *bakes = any_array_create_from_raw(
+	string_array_t *bakes = any_array_create_from_raw_tmp(
 	    (void *[]){
 	        tr("Curvature"),
 	        tr("Normal"),
@@ -296,16 +296,7 @@ void bake_texture_node_init() {
 	                                                          .inputs  = any_array_create_from_raw((void *[]){}, 0),
 	                                                          .outputs = any_array_create_from_raw(
 	                                                              (void *[]){
-	                                                                  ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                                                .node_id       = 0,
-	                                                                                                .name          = _tr("Color"),
-	                                                                                                .type          = "RGBA",
-	                                                                                                .color         = 0xffc7c729,
-	                                                                                                .default_value = f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0),
-	                                                                                                .min           = 0.0,
-	                                                                                                .max           = 1.0,
-	                                                                                                .precision     = 100,
-	                                                                                                .display       = 0}),
+	                                                                  nodes_material_socket_def(_tr("Color"), "RGBA", f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0), 0.0, 1.0),
 	                                                              },
 	                                                              1),
 	                                                          .buttons = any_array_create_from_raw(

@@ -13,14 +13,10 @@ string_array_t *text_to_image_node_flux_klein_args(char *dir, char *prompt) {
 }
 
 void text_to_image_node_run(ui_node_t *node, void (*callback)(ui_node_t *)) {
-	i32   model  = (i32)neural_node_values(node, 1)[0];
 	char *prompt = neural_node_prompt(node);
 	char *dir    = neural_node_dir();
 
-	string_array_t *argv;
-	if (model == 0) {
-		argv = text_to_image_node_flux_klein_args(dir, prompt);
-	}
+	string_array_t *argv = text_to_image_node_flux_klein_args(dir, prompt); // FLUX 2 klein, the only model
 
 	if (g_config->neural_res >= 2048) {
 		string_array_push(argv, "--vae-tiling");
@@ -46,14 +42,14 @@ void text_to_image_node_run(ui_node_t *node, void (*callback)(ui_node_t *)) {
 
 void text_to_image_node_button(i32 node_id) {
 	ui_node_t      *node   = ui_get_node(ui_nodes_get_canvas(true)->nodes, node_id);
-	string_array_t *models = any_array_create_from_raw(
+	string_array_t *models = any_array_create_from_raw_tmp(
 	    (void *[]){
 	        "FLUX 2 klein",
 	    },
 	    1);
 	i32   model                      = neural_node_model(node, models);
 	char *prompt                     = neural_node_prompt_area(node);
-	node->buttons->buffer[0]->height = string_split(prompt, "\n")->length * UI_TEXT_AREA_LINE_H() / UI_LINE_H() + 2;
+	node->buttons->buffer[0]->height = neural_node_prompt_lines(prompt) * UI_TEXT_AREA_LINE_H() / UI_LINE_H() + 2;
 
 	if (neural_node_button(node, models->buffer[model])) {
 		text_to_image_node_run(node, neural_node_check_result);
@@ -71,30 +67,12 @@ void text_to_image_node_init() {
 	                           .color  = 0xff4982a0,
 	                           .inputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("In"),
-	                                                                 .type          = "BOOL",
-	                                                                 .color         = 0xff6363c7,
-	                                                                 .default_value = f32_array_create_xyz(0.0, 0.0, 0.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_ex(_tr("In"), "BOOL", 0xff6363c7, f32_array_create_xyz(0.0, 0.0, 0.0), 0.0, 1.0, 100, 0),
 	                               },
 	                               1),
 	                           .outputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Color"),
-	                                                                 .type          = "RGBA",
-	                                                                 .color         = 0xffc7c729,
-	                                                                 .default_value = f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_def(_tr("Color"), "RGBA", f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0), 0.0, 1.0),
 	                               },
 	                               1),
 	                           .buttons = any_array_create_from_raw(

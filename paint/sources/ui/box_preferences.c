@@ -884,6 +884,7 @@ void box_preferences_keymap_tab_new_box() {
 	}
 }
 
+#ifdef WITH_NEURAL
 // ███╗   ██╗███████╗██╗   ██╗██████╗  █████╗ ██╗
 // ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔══██╗██║
 // ██╔██╗ ██║█████╗  ██║   ██║██████╔╝███████║██║
@@ -996,6 +997,7 @@ void box_preferences_neural_tab() {
 
 	ui_text(tr("All processing is done locally on device"), UI_ALIGN_LEFT, 0x00000000);
 }
+#endif
 
 // ██╗  ██╗███████╗██╗   ██╗███╗   ███╗ █████╗ ██████╗
 // ██║ ██╔╝██╔════╝╚██╗ ██╔╝████╗ ████║██╔══██╗██╔══██╗
@@ -1113,7 +1115,7 @@ void box_preferences_show_box() {
 		box_preferences_keymap_tab();
 	}
 #endif
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#ifdef WITH_NEURAL
 	if (ui_tab(&box_preferences_tab, tr("Neural"), true, -1, false)) {
 		box_preferences_neural_tab();
 	}

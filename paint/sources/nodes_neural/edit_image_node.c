@@ -16,10 +16,10 @@ void edit_image_node_button(i32 node_id) {
 	ui_node_canvas_t *canvas = ui_nodes_get_canvas(true);
 	ui_node_t        *node   = ui_get_node(canvas->nodes, node_id);
 
-	string_array_t *models           = any_array_create_from_raw((void *[]){"FLUX 2 klein"}, 1);
+	string_array_t *models           = any_array_create_from_raw_tmp((void *[]){"FLUX 2 klein"}, 1);
 	i32             model            = neural_node_model(node, models);
 	char           *prompt           = neural_node_prompt_area(node);
-	node->buttons->buffer[0]->height = string_split(prompt, "\n")->length * UI_TEXT_AREA_LINE_H() / UI_LINE_H() + 4;
+	node->buttons->buffer[0]->height = neural_node_prompt_lines(prompt) * UI_TEXT_AREA_LINE_H() / UI_LINE_H() + 4;
 
 	f32 *values   = neural_node_values(node, 3); // Model, variance, tile
 	f32  variance = ui_slider(&values[1], tr("Variance"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_LEFT, true);
@@ -62,10 +62,7 @@ void edit_image_node_button(i32 node_id) {
 				iron_write_png(string("%s%smask.png", dir, PATH_SEP), mask_buf, mask->width, mask->height, 0);
 			}
 
-			string_array_t *argv;
-			if (model == 0) {
-				argv = edit_image_node_flux_klein_args(dir);
-			}
+			string_array_t *argv = edit_image_node_flux_klein_args(dir); // FLUX 2 klein, the only model
 
 			if (variance > 0.0) {
 				string_array_push(argv, "--vary");
@@ -112,40 +109,13 @@ void edit_image_node_init() {
 	                           .color  = 0xff4982a0,
 	                           .inputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Color"),
-	                                                                 .type          = "RGBA",
-	                                                                 .color         = 0xffc7c729,
-	                                                                 .default_value = f32_array_create_xyzw(1.0, 1.0, 1.0, 1.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Mask"),
-	                                                                 .type          = "VALUE",
-	                                                                 .color         = 0xffa1a1a1,
-	                                                                 .default_value = f32_array_create_x(1.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_def(_tr("Color"), "RGBA", f32_array_create_xyzw(1.0, 1.0, 1.0, 1.0), 0.0, 1.0),
+	                                   nodes_material_socket_def(_tr("Mask"), "VALUE", f32_array_create_x(1.0), 0.0, 1.0),
 	                               },
 	                               2),
 	                           .outputs = any_array_create_from_raw(
 	                               (void *[]){
-	                                   ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                 .node_id       = 0,
-	                                                                 .name          = _tr("Color"),
-	                                                                 .type          = "RGBA",
-	                                                                 .color         = 0xffc7c729,
-	                                                                 .default_value = f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0),
-	                                                                 .min           = 0.0,
-	                                                                 .max           = 1.0,
-	                                                                 .precision     = 100,
-	                                                                 .display       = 0}),
+	                                   nodes_material_socket_def(_tr("Color"), "RGBA", f32_array_create_xyzw(0.0, 0.0, 0.0, 1.0), 0.0, 1.0),
 	                               },
 	                               1),
 	                           .buttons = any_array_create_from_raw(

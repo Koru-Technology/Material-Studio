@@ -1190,20 +1190,6 @@ char *pattern_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	return string_tmp(socket == node->outputs->buffer[1] ? "vec3(%s.y, %s.y, %s.y)" : "vec3(%s.x, %s.x, %s.x)", store, store, store);
 }
 
-ui_node_socket_t *nodes_material_socket_def(char *name, char *type, f32_array_t *value, f32 min, f32 max) {
-	u32 color = string_equals(type, "VALUE") ? 0xffa1a1a1 : string_equals(type, "VECTOR") ? 0xff6363c7 : 0xffc7c729;
-	return ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                     .node_id       = 0,
-	                                     .name          = name,
-	                                     .type          = type,
-	                                     .color         = color,
-	                                     .default_value = value,
-	                                     .min           = min,
-	                                     .max           = max,
-	                                     .precision     = 100,
-	                                     .display       = 0});
-}
-
 ui_node_button_t *nodes_material_button_def(char *name, char *type, f32 value, char *data) {
 	return ALLOC_INIT(ui_node_button_t, {.name          = name,
 	                                     .type          = type,

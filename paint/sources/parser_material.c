@@ -11,16 +11,18 @@ ui_node_t *parser_material_get_node(i32 id) {
 	return NULL;
 }
 
+// The link into the input, NULL when unlinked or when the link is broken (its node or output gone): read as unlinked
 ui_node_link_t *parser_material_get_input_link(ui_node_socket_t *inp) {
 	for (i32 i = 0; i < parser_material_links->length; ++i) {
 		ui_node_link_t *l = parser_material_links->buffer[i];
 		if (l->to_id == inp->node_id) {
 			ui_node_t *node = parser_material_get_node(inp->node_id);
-			if (node->inputs->length <= l->to_socket) {
+			if (node == NULL || node->inputs->length <= l->to_socket) {
 				return NULL;
 			}
 			if (node->inputs->buffer[l->to_socket] == inp) {
-				return l;
+				ui_node_t *from = parser_material_get_node(l->from_id);
+				return from != NULL && l->from_socket >= 0 && l->from_socket < from->outputs->length ? l : NULL;
 			}
 		}
 	}
@@ -79,7 +81,7 @@ shader_out_t *parser_material_parse_shader(ui_node_t *node, ui_node_socket_t *so
 	                                                   .out_height     = "0.0",
 	                                                   .out_emission   = "0.0",
 	                                                   .out_subsurface = "0.0"});
-	if (string_equals(node->type, "OUTPUT_MATERIAL_PBR")) {
+	if (string_equals(node->type, "OUTPUT_MATERIAL_PBR") && node->inputs->length >= 9) {
 
 		// Normal - parsed first to retrieve uv coords
 		parse_normal_map_color_input(node->inputs->buffer[5]);
@@ -278,6 +280,12 @@ ui_node_canvas_t *parser_material_get_group(char *name) {
 		}
 	}
 	return NULL;
+}
+
+// The canvas is being parsed: a group or material reached again from inside itself (a file can hold a group that
+// contains itself, a Material node can pick its own material)
+bool parser_material_is_open(ui_node_canvas_t *g) {
+	return parser_material_canvases != NULL && array_index_of((any_array_t *)parser_material_canvases, g) >= 0;
 }
 
 void parser_material_push_group(ui_node_canvas_t *g) {
@@ -483,8 +491,8 @@ char *parser_material_parse_group(ui_node_t *node, ui_node_socket_t *socket) {
 	ui_node_canvas_t *g           = parser_material_get_group(node->name);
 	ui_node_t        *output_node = g != NULL ? parser_material_node_by_type(g->nodes, "GROUP_OUTPUT") : NULL;
 	i32               index       = parser_material_socket_index(node, socket);
-	if (output_node == NULL || index < 0 || index >= output_node->inputs->length) {
-		return parser_material_socket_zero(socket->type); // Group deleted, renamed or out of sync
+	if (output_node == NULL || index < 0 || index >= output_node->inputs->length || parser_material_is_open(g)) {
+		return parser_material_socket_zero(socket->type); // Group deleted, renamed, out of sync or inside itself
 	}
 	any_array_push(parser_material_parents, node); // Entering group
 	parser_material_push_group(g);
@@ -595,7 +603,9 @@ char *parser_material_parse_value_input(ui_node_socket_t *inp, bool vector_as_gr
 	}
 	else {
 		char *live = parser_material_live_input(inp);
-		return live != NULL ? string_tmp("%s.x", live) : parser_material_vec1(inp->default_value->buffer[0]);
+		return live != NULL                                                    ? string_tmp("%s.x", live)
+		       : inp->default_value != NULL && inp->default_value->length > 0 ? parser_material_vec1(inp->default_value->buffer[0])
+		                                                                       : "0.0";
 	}
 }
 
@@ -652,7 +662,10 @@ char *parser_material_res_var_name(ui_node_t *node, ui_node_socket_t *socket) {
 
 // Declares the result variable of the linked output once, typed by the socket (see parser_material_socket_glsl_type)
 char *parser_material_write_result(ui_node_link_t *l) {
-	ui_node_t        *from_node   = parser_material_get_node(l->from_id);
+	ui_node_t *from_node = parser_material_get_node(l->from_id);
+	if (from_node == NULL || l->from_socket < 0 || l->from_socket >= from_node->outputs->length) {
+		return "0.0";
+	}
 	ui_node_socket_t *from_socket = from_node->outputs->buffer[l->from_socket];
 	char             *res_var     = parser_material_res_var_name(from_node, from_socket);
 	char             *st          = from_socket->type;
@@ -696,22 +709,20 @@ char *parser_material_store_var_name(ui_node_t *node) {
 
 char *parser_material_vec1(f32 v) {
 	return f32_to_string_with_zeros(v);
-	// return "float(" + v + ")";
-	// return v + "";
 }
 
+// Missing components repeat the first one
 char *parser_material_vec3(f32_array_t *v) {
-	// let v0: f32 = v[0];
-	// let v1: f32 = v[1];
-	// let v2: f32 = v[2];
+	if (v == NULL || v->length == 0) {
+		return "vec3(0.0, 0.0, 0.0)";
+	}
 	char *v0 = f32_to_string_with_zeros(v->buffer[0]);
-	char *v1 = f32_to_string_with_zeros(v->buffer[1]);
-	char *v2 = f32_to_string_with_zeros(v->buffer[2]);
+	char *v1 = f32_to_string_with_zeros(v->buffer[v->length > 1 ? 1 : 0]);
+	char *v2 = f32_to_string_with_zeros(v->buffer[v->length > 2 ? 2 : 0]);
 	return string_tmp("vec3(%s, %s, %s)", v0, v1, v2);
 }
 
 char *parser_material_to_vec3(char *s) {
-	// return "float3(" + s + ")";
 	return string_tmp("vec3(%s, %s, %s)", s, s, s);
 }
 
@@ -732,12 +743,10 @@ char *parser_material_node_name(ui_node_t *node, ui_node_t_array_t *_parents) {
 	char *s = node->name;
 	for (i32 i = 0; i < _parents->length; ++i) {
 		ui_node_t *p = _parents->buffer[i];
-		s            = string_tmp("%s%s_%s", p->name, i32_to_string(p->id), s);
+		s            = string_tmp("%s_%s_%s", p->name, i32_to_string(p->id), s);
 	}
-	s       = parser_material_safesrc(s);
-	i32 nid = node->id;
-	s       = string_tmp("%s%s", s, i32_to_string(nid));
-	return s;
+	// The id after a separator: "Mix 1" (id 12) and "Mix 11" (id 2) were both Mix_112 and shared a result
+	return string_tmp("%s_%s", parser_material_safesrc(s), i32_to_string(node->id));
 }
 
 bind_tex_t *parser_material_make_bind_tex(char *tex_name, char *file) {
@@ -809,7 +818,7 @@ gpu_texture_t *parser_material_live_texture(char *link) {
 }
 
 static char *parser_material_live_ref(i32 node_id, i32 index, i32 kind) {
-	if (parser_material_live_canvas == NULL || !parser_material_is_frag || parser_material_nodes != parser_material_live_canvas->nodes) {
+	if (parser_material_live_canvas == NULL || !parser_material_is_frag || (void *)parser_material_nodes != (void *)parser_material_live_canvas->nodes) {
 		return NULL; // Not the live canvas: inside a group, or the vertex shader
 	}
 	i32                     t       = parser_material_live_table;

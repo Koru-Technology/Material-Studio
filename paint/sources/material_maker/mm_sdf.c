@@ -1260,18 +1260,12 @@ static color_t get_color_code(mm_json_t *scene, ctxt_t *ctxt) {
 
 // gen_sdf.gd set_sdf_scene
 
-static mm_json_t *jstr(const char *s) {
-	mm_json_t *v = mm_json_new(MM_JSON_STRING);
-	v->string    = mm_strdup(s);
-	return v;
-}
-
 static mm_json_t *joutput(const char *key, const char *value, const char *type, const char *shortdesc) {
 	mm_json_t *o = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(o, key, jstr(value));
-	mm_json_set(o, "type", jstr(type));
+	mm_json_set(o, key, mm_json_string(value));
+	mm_json_set(o, "type", mm_json_string(type));
 	if (shortdesc != NULL) {
-		mm_json_set(o, "shortdesc", jstr(shortdesc));
+		mm_json_set(o, "shortdesc", mm_json_string(shortdesc));
 	}
 	return o;
 }
@@ -1321,7 +1315,7 @@ mm_json_t *mm_sdf_shader_model(mm_json_t *sdf_scene) {
 			continue;
 		}
 		mm_json_t *shortdesc = mm_json_get(p, "shortdesc");
-		mm_json_set(p, "label", shortdesc != NULL ? mm_json_copy(shortdesc) : jstr(""));
+		mm_json_set(p, "label", shortdesc != NULL ? mm_json_copy(shortdesc) : mm_json_string(""));
 		mm_json_push(parameters, p);
 	}
 
@@ -1362,7 +1356,7 @@ mm_json_t *mm_sdf_shader_model(mm_json_t *sdf_scene) {
 	mm_json_t fake_scene = {0};
 	fake_scene.type      = MM_JSON_OBJECT;
 	mm_json_set(&fake_scene, "index", mm_json_new(MM_JSON_NUMBER));
-	mm_json_set(&fake_scene, "type", jstr(is2d ? "Union" : "Union3D"));
+	mm_json_set(&fake_scene, "type", mm_json_string(is2d ? "Union" : "Union3D"));
 	mm_json_set(&fake_scene, "children", sdf_scene);
 	mm_json_set(&fake_scene, "parameters", mm_json_new(MM_JSON_OBJECT));
 	static const struct {
@@ -1400,7 +1394,7 @@ mm_json_t *mm_sdf_shader_model(mm_json_t *sdf_scene) {
 	mm_json_t *model = mm_json_new(MM_JSON_OBJECT);
 	mm_json_set(model, "includes", includes);
 	mm_json_set(model, "parameters", parameters);
-	mm_json_set(model, "instance", jstr(mm_printf("%s%s", mm_buf_get(&d), mm_replace(mm_buf_get(&c), "$(name_uv)", ""))));
+	mm_json_set(model, "instance", mm_json_string(mm_printf("%s%s", mm_buf_get(&d), mm_replace(mm_buf_get(&c), "$(name_uv)", ""))));
 	mm_buf_t code = {0};
 	mm_buf_add(&code, "vec4 $(name_uv)_albedo;\n");
 	mm_buf_add(&code, "float $(name_uv)_metallic;\n");
@@ -1423,7 +1417,7 @@ mm_json_t *mm_sdf_shader_model(mm_json_t *sdf_scene) {
 		mm_json_push(outputs, joutput("f", "$(name_uv)_roughness", "f", "Roughness"));
 		mm_json_push(outputs, joutput("rgb", "$(name_uv)_emission", "rgb", "Emission"));
 	}
-	mm_json_set(model, "code", jstr(mm_buf_get(&code)));
+	mm_json_set(model, "code", mm_json_string(mm_buf_get(&code)));
 	mm_json_set(model, "outputs", outputs);
 	return model;
 }

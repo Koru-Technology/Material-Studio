@@ -21,7 +21,7 @@ ui_node_link_t *parser_logic_get_input_link(ui_node_socket_t *inp) {
 		ui_node_link_t *l = parser_logic_links->buffer[i];
 		if (l->to_id == inp->node_id) {
 			ui_node_t *node = parser_logic_get_node(inp->node_id);
-			if (node->inputs->length <= l->to_socket) {
+			if (node == NULL || node->inputs->length <= l->to_socket) {
 				return NULL;
 			}
 			if (node->inputs->buffer[l->to_socket] == inp) {
@@ -38,7 +38,7 @@ ui_node_link_t_array_t *parser_logic_get_output_links(ui_node_socket_t *out) {
 		ui_node_link_t *l = parser_logic_links->buffer[i];
 		if (l->from_id == out->node_id) {
 			ui_node_t *node = parser_logic_get_node(out->node_id);
-			if (node->outputs->length <= l->from_socket) {
+			if (node == NULL || node->outputs->length <= l->from_socket) {
 				continue;
 			}
 			if (node->outputs->buffer[l->from_socket] == out) {
@@ -104,7 +104,7 @@ logic_node_ext_t *parser_logic_build_default_node(ui_node_socket_t *inp) {
 	else if (string_equals(inp->type, "INT")) {
 		v = parser_logic_create_node_instance("integer_node", NULL, inp->default_value);
 	}
-	else if (string_equals(inp->type, "BOOLEAN")) {
+	else if (string_equals(inp->type, "BOOLEAN") || string_equals(inp->type, "BOOL")) {
 		v = parser_logic_create_node_instance("boolean_node", NULL, inp->default_value);
 	}
 	else if (string_equals(inp->type, "STRING")) {
@@ -135,15 +135,15 @@ char *parser_logic_build_node(ui_node_t *node) {
 	any_map_set(parser_logic_node_map, name, v);
 
 	// Create inputs
-	logic_node_ext_t *inp_node = NULL;
-	i32               inp_from = 0;
 	for (i32 i = 0; i < node->inputs->length; ++i) {
-		ui_node_socket_t *inp = node->inputs->buffer[i];
+		ui_node_socket_t *inp      = node->inputs->buffer[i];
+		logic_node_ext_t *inp_node = NULL;
+		i32               inp_from = 0;
 		// Is linked - find node
 		ui_node_link_t *l = parser_logic_get_input_link(inp);
-		if (l != NULL) {
-			ui_node_t *n = parser_logic_get_node(l->from_id);
-			char      *s = parser_logic_build_node(n);
+		ui_node_t      *n = l != NULL ? parser_logic_get_node(l->from_id) : NULL;
+		if (n != NULL) {
+			char *s = parser_logic_build_node(n);
 			if (s != NULL) {
 				inp_node = any_map_get(parser_logic_node_map, s);
 				inp_from = l->from_socket;
@@ -152,6 +152,10 @@ char *parser_logic_build_node(ui_node_t *node) {
 		// Not linked - create node with default values
 		else {
 			inp_node = parser_logic_build_default_node(inp);
+			inp_from = 0;
+		}
+		if (inp_node == NULL) { // Linked to a node that could not be made: a zero value
+			inp_node = parser_logic_create_node_instance("null_node", NULL, NULL);
 			inp_from = 0;
 		}
 		// Add input
@@ -167,7 +171,7 @@ char *parser_logic_build_node(ui_node_t *node) {
 			for (i32 i = 0; i < ls->length; ++i) {
 				ui_node_link_t *l        = ls->buffer[i];
 				ui_node_t      *n        = parser_logic_get_node(l->to_id);
-				char           *out_name = parser_logic_build_node(n);
+				char           *out_name = n != NULL ? parser_logic_build_node(n) : NULL;
 				if (out_name != NULL) {
 					any_array_push(out_nodes, any_map_get(parser_logic_node_map, out_name));
 				}

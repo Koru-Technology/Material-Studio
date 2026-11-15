@@ -17,18 +17,6 @@ void mm_reset_ids(void) {
 	mm_next_id = 1;
 }
 
-static mm_json_t *jstring(const char *s) {
-	mm_json_t *v = mm_json_new(MM_JSON_STRING);
-	v->string    = mm_strdup(s);
-	return v;
-}
-
-static mm_json_t *jnumber(double d) {
-	mm_json_t *v = mm_json_new(MM_JSON_NUMBER);
-	v->number    = d;
-	return v;
-}
-
 static void add_child(mm_gen_t *graph, mm_gen_t *g) {
 	mm_gen_t **ch = mm_alloc(sizeof(mm_gen_t *) * (graph->nchildren + 1));
 	if (graph->nchildren > 0) {
@@ -40,7 +28,7 @@ static void add_child(mm_gen_t *graph, mm_gen_t *g) {
 
 mm_gen_t *mm_graph_new(void) {
 	mm_json_t *data = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(data, "type", jstring("graph"));
+	mm_json_set(data, "type", mm_json_string("graph"));
 	mm_json_set(data, "nodes", mm_json_new(MM_JSON_ARRAY));
 	mm_json_set(data, "connections", mm_json_new(MM_JSON_ARRAY));
 	return mm_create_gen(data, NULL);
@@ -48,17 +36,17 @@ mm_gen_t *mm_graph_new(void) {
 
 mm_gen_t *mm_graph_add_node(mm_gen_t *graph, const char *name, const char *type, mm_json_t *parameters, double seed, double x, double y) {
 	mm_json_t *data = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(data, "name", jstring(name));
-	mm_json_set(data, "type", jstring(type));
+	mm_json_set(data, "name", mm_json_string(name));
+	mm_json_set(data, "type", mm_json_string(type));
 	if (parameters != NULL) {
 		mm_json_set(data, "parameters", parameters);
 	}
 	mm_json_t *pos = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(pos, "x", jnumber(x));
-	mm_json_set(pos, "y", jnumber(y));
+	mm_json_set(pos, "x", mm_json_number(x));
+	mm_json_set(pos, "y", mm_json_number(y));
 	mm_json_set(data, "node_position", pos);
 	if (seed >= 0.0) {
-		mm_json_set(data, "seed", jnumber(seed));
+		mm_json_set(data, "seed", mm_json_number(seed));
 	}
 	mm_gen_t *g = mm_create_gen(data, graph);
 	if (g != NULL) {
@@ -69,7 +57,7 @@ mm_gen_t *mm_graph_add_node(mm_gen_t *graph, const char *name, const char *type,
 
 mm_gen_t *mm_graph_add_data(mm_gen_t *graph, const char *name, mm_json_t *data) {
 	data = mm_json_copy(data);
-	mm_json_set(data, "name", jstring(name));
+	mm_json_set(data, "name", mm_json_string(name));
 	mm_gen_t *g = mm_create_gen(data, graph);
 	if (g != NULL) {
 		add_child(graph, g);
@@ -107,10 +95,10 @@ void mm_graph_connect(mm_gen_t *graph, const char *from, int from_port, const ch
 		graph->connections = mm_json_new(MM_JSON_ARRAY);
 	}
 	mm_json_t *c = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(c, "from", jstring(from));
-	mm_json_set(c, "from_port", jnumber(from_port));
-	mm_json_set(c, "to", jstring(to));
-	mm_json_set(c, "to_port", jnumber(to_port));
+	mm_json_set(c, "from", mm_json_string(from));
+	mm_json_set(c, "from_port", mm_json_number(from_port));
+	mm_json_set(c, "to", mm_json_string(to));
+	mm_json_set(c, "to_port", mm_json_number(to_port));
 	mm_json_push(graph->connections, c);
 }
 

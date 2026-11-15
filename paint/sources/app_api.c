@@ -2,6 +2,7 @@
 
 #include "app_api.h"
 #include "app_api_scripts.h"
+#include "util/util_hash.h"
 
 #define APP_SAME(a, b) ((i32)(a) == (i32)(b))
 _Static_assert(APP_SAME(APP_TOOL_BRUSH, TOOL_TYPE_BRUSH) && APP_SAME(APP_TOOL_ERASER, TOOL_TYPE_ERASER) && APP_SAME(APP_TOOL_FILL, TOOL_TYPE_FILL) &&
@@ -143,23 +144,6 @@ void app_get_state(app_state_t *out) {
 // Thumbnails, read back from the GPU
 
 
-static float app_half(uint16_t h) {
-	uint32_t sign = (h >> 15) & 1;
-	int32_t  exp  = (h >> 10) & 0x1f;
-	uint32_t mant = h & 0x3ff;
-	float    v;
-	if (exp == 0) {
-		v = mant / 1024.0f / 16384.0f; // Subnormal
-	}
-	else if (exp == 31) {
-		v = mant == 0 ? 65504.0f : 0.0f;
-	}
-	else {
-		v = (1.0f + mant / 1024.0f) * ldexpf(1.0f, exp - 15);
-	}
-	return sign ? -v : v;
-}
-
 static float app_clamp01(float v) {
 	return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
 }
@@ -170,7 +154,8 @@ static void app_texel(gpu_texture_t *t, uint8_t *px, i32 i, float *c) {
 	case GPU_TEXTURE_FORMAT_RGBA64: { // Reads back in RGBA order
 		uint16_t *s = (uint16_t *)px + i * 4;
 		for (i32 k = 0; k < 4; ++k) {
-			c[k] = app_clamp01(app_half(s[k]));
+			f32 v = f16_to_f32(s[k]);
+			c[k]  = app_clamp01(v == v ? v : 0.0f); // NaN reads as 0
 		}
 		break;
 	}
