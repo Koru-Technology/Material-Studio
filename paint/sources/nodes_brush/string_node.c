@@ -30,8 +30,10 @@ void *string_node_create(ui_node_t *raw, f32_array_t *args) {
 	n->base          = logic_node_create(n);
 	n->base->get     = string_node_get;
 	n->base->set     = string_node_set;
-	n->value         = args == NULL ? "" : sys_buffer_to_string(args);
+	n->value         = ""; // Socket defaults are floats
 	return n;
 }
 
-void string_node_init() {}
+void string_node_init() {
+	any_map_set(nodes_brush_creates, "string_node", string_node_create);
+}

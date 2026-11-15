@@ -10,6 +10,9 @@ static brush_output_node_t *brush_output_node_inst;
 
 void brush_output_node_parse_inputs() {
 	brush_output_node_t *self         = brush_output_node_inst;
+	if (self == NULL || self->base->inputs->length < 7) { // The brush canvas has no output node
+		return;
+	}
 	gpu_texture_t       *last_mask    = g_context->brush_mask_image;
 	gpu_texture_t       *last_stencil = g_context->brush_stencil_image;
 

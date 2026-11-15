@@ -1699,6 +1699,11 @@ void              random_node_init();
 void              separate_vector_node_init();
 void              time_node_init();
 void              float_node_init();
+void              boolean_node_init();
+void              color_node_init();
+void              integer_node_init();
+void              null_node_init();
+void              string_node_init();
 void              vector_node_init();
 void              vector_math_node_init();
 
