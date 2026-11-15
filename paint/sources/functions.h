@@ -1198,6 +1198,7 @@ bool                      mm_node_export_param_at(ui_node_t *node, i32 i, char *
 void                      mm_nodes_gradient_edit(ui_node_t *node, i32 button, char *label);
 bool                      mm_controls_apply(slot_material_t *m, i32 id); // nodes_material/mm_controls.c: the library's controls as Variables
 void                      mm_controls_common(slot_material_t *m);        // and the common controls of every library material
+bool                      mm_controls_common_missing(ui_node_canvas_t *canvas);
 i32                       mm_controls_material_count(void);
 i32                       mm_controls_material_id(i32 i);
 i32                       mm_controls_material_controls(i32 i);
@@ -1530,6 +1531,7 @@ char             *studio_layer_preset_name(i32 i);
 i32               studio_graph_add_layer_preset(ui_node_canvas_t *c, i32 i);
 void              studio_graph_apply_preset(ui_node_canvas_t *c, i32 i);
 void              material_studio_open(slot_material_t *m);
+bool              material_studio_can_open(slot_material_t *m);
 void              material_studio_close();
 void              material_studio_save();
 void              material_studio_cancel();

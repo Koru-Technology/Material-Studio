@@ -293,6 +293,24 @@ static ui_node_t *mm_controls_math(ui_node_canvas_t *canvas, i32 op, bool clamp,
 	return n;
 }
 
+// A Material Maker material without the common controls: its Material node wired straight to the output (materials
+// imported before they existed, saved copies of those, .ptex files), they are added when it opens in the Studio
+bool mm_controls_common_missing(ui_node_canvas_t *canvas) {
+	if (canvas == NULL || variable_find(canvas, "shuffle") != NULL) {
+		return false;
+	}
+	for (i32 i = 0; i < canvas->links->length; ++i) {
+		ui_node_link_t *l    = canvas->links->buffer[i];
+		ui_node_t      *from = ui_get_node(canvas->nodes, l->from_id);
+		ui_node_t      *to   = ui_get_node(canvas->nodes, l->to_id);
+		if (from != NULL && to != NULL && string_equals(from->type, "MM_MATERIAL") && string_equals(to->type, "OUTPUT_MATERIAL_PBR") &&
+		    l->from_socket == 0 && l->to_socket == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void mm_controls_common(slot_material_t *m) {
 	ui_node_canvas_t *canvas   = m != NULL ? m->canvas : NULL;
 	ui_node_t        *material = NULL;

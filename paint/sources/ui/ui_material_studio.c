@@ -699,9 +699,18 @@ static void studio_update(void *_) {
 	}
 }
 
+// Studio materials, materials with Variables (controls) and Material Maker materials, which get the common controls
+bool material_studio_can_open(slot_material_t *m) {
+	return m != NULL && (studio_graph_is(m->canvas) || variable_count(m->canvas) > 0 || mm_controls_common_missing(m->canvas));
+}
+
 void material_studio_open(slot_material_t *m) {
-	if (m == NULL || (!studio_graph_is(m->canvas) && variable_count(m->canvas) == 0)) {
+	if (!material_studio_can_open(m)) {
 		return;
+	}
+	if (mm_controls_common_missing(m->canvas)) { // Made before they existed: the same as at their defaults
+		mm_controls_common(m);
+		project_modified = true;
 	}
 	studio_vars = !studio_graph_is(m->canvas);
 	if (studio_vars) {

@@ -267,6 +267,20 @@ void step_shuffle_check() {
 	material_studio_close();
 }
 
+// A Material Maker material without the common controls (imported before they existed) gets them in the Studio
+void step_old_open() {
+	slot_material_t *p = plains->buffer[0];
+	check(variable_count(p->canvas) == 0, "a plain import has no Variables");
+	material_studio_open(p);
+}
+
+void step_old_check() {
+	slot_material_t *p = plains->buffer[0];
+	check(material_studio_is_open() && variable_find(p->canvas, "hue") != NULL && variable_find(p->canvas, "shuffle") != NULL,
+	      "it opens in the Studio with the common controls");
+	material_studio_close();
+}
+
 void next() {
 	if (wait > 0) {
 		wait = wait - 1;
@@ -311,18 +325,24 @@ void next() {
 		step_shuffle_check();
 	}
 	else if (step == 12) {
-		step_export();
+		step_old_open();
 	}
 	else if (step == 13) {
-		step_save();
+		step_old_check();
 	}
 	else if (step == 14) {
-		script_project_new();
+		step_export();
 	}
 	else if (step == 15) {
-		script_project_open(file);
+		step_save();
 	}
 	else if (step == 16) {
+		script_project_new();
+	}
+	else if (step == 17) {
+		script_project_open(file);
+	}
+	else if (step == 18) {
 		step_reload_check();
 	}
 	else {
