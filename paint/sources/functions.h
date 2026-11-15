@@ -1269,7 +1269,7 @@ f32                    camera_distance();
 void                   camera_reset(i32 view_index);
 bool                   box_preferences_model_exists(char *file_name);
 char                  *box_preferences_file_name_from_url(char *url);
-char                  *box_preferneces_model_url_from_name(char *name);
+char                  *box_preferences_model_url_from_name(char *name);
 void                   box_preferences_lut_picked(char *path);
 void                   box_preferences_show();
 void                   box_preferences_show_tab(i32 tab);

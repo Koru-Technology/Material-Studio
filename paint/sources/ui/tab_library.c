@@ -109,7 +109,7 @@ static ui_state_t tab_library_image(gpu_texture_t *icon, f32 imgh, u32 tint) {
 	return state;
 }
 
-// Groups of the type menus, of Material Maker's library and of the cloud: all, all of a style, or one type of a style.
+// Groups of the type menus of Material Maker's library: all, all of a style, or one type of a style.
 // The stylized types come first, then the realistic ones.
 #define TAB_LIBRARY_ALL           -1
 #define TAB_LIBRARY_ALL_STYLIZED  -2

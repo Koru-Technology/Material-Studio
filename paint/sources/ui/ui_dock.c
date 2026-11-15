@@ -403,7 +403,7 @@ static void dock_save_node(i32_array_t *a, dock_node_t *n) {
 	dock_save_node(a, n->b);
 }
 
-// Not stored while a workspace preset is being set up or the player runs
+// Not stored while a workspace preset is being set up
 void ui_dock_save() {
 	if (ui_dock_root == NULL || ui_dock_preset || base_workspace_pending) {
 		return;

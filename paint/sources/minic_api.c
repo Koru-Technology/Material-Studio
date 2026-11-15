@@ -430,7 +430,7 @@ static const char *minic_api_sig_hint(const char *name) {
 #define MINIC_RET_i(call) return minic_val_int((int)(call))
 #define MINIC_RET_f(call) return minic_val_float(call)
 #define MINIC_RET_d(call) return minic_val_double(call)
-#define MINIC_RET_p(call) return minic_val_ptr(call)
+#define MINIC_RET_p(call) return minic_val_ptr((void *)(call)) // Strings returned as const char * too
 #define MINIC_RET_b(call) return minic_val_int((call) ? 1 : 0)
 #define MINIC_RET_c(call) return minic_val_int((int)(call))
 #define MINIC_RET_v(call)        \

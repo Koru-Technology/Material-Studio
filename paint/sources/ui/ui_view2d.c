@@ -465,7 +465,6 @@ void ui_view2d_update(void *_) {
 
 			// Limit panning to keep texture in viewport
 			i32 border = 32;
-			f32 wm     = fmin(ui_view2d_ww, ui_view2d_wh);
 			f32 tw     = ui_view2d_ww * 0.9 * ui_view2d_pan_scale;
 			f32 tx     = ui_view2d_ww / 2.0 - tw / 2.0 + ui_view2d_pan_x;
 			f32 hh     = sys_h();

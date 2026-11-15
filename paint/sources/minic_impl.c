@@ -1298,7 +1298,7 @@ void script_append_mesh_obj(char *data) {
 	import_mesh_no_reset     = true;
 	import_mesh_append       = true;
 	g_context->layer_filter  = 0;
-	buffer_t *b              = buffer_create_from_raw((u8 *)data, strlen(data));
+	buffer_t *b              = buffer_create_from_raw((u8 *)data, (u32)strlen(data));
 	obj_parse_y_to_z_up      = false;
 	i32 first                = g_project->_->paint_objects->length;
 	import_obj_parse(b, false);

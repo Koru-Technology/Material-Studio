@@ -889,7 +889,7 @@ char *box_preferences_file_name_from_url(char *url) {
 	return substring(url, string_last_index_of(url, "/") + 1, string_length(url));
 }
 
-char *box_preferneces_model_url_from_name(char *name) {
+char *box_preferences_model_url_from_name(char *name) {
 	if (neural_node_models == NULL) {
 		neural_node_models_init();
 	}

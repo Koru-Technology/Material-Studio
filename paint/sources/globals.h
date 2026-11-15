@@ -40,7 +40,6 @@ i32              box_export_preset_index;
 export_preset_t *box_export_preset = NULL;
 string_array_t  *box_export_channels;
 string_array_t  *box_export_color_spaces;
-i32              box_export_player_target;
 gpu_pipeline_t  *pipes_copy;
 gpu_pipeline_t  *pipes_copy8;
 gpu_pipeline_t  *pipes_copy64;

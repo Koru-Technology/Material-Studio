@@ -51,7 +51,6 @@ static void ui_search_press_keys(void *_) {
 }
 
 static void ui_search_run(char *shortcut) {
-	char *key           = string_index_of(shortcut, "+") > 0 ? shortcut + string_last_index_of(shortcut, "+") + 1 : shortcut;
 	_ui_search_shortcut = shortcut;
 	sys_notify_on_next_frame(&ui_search_press_keys, NULL);
 }

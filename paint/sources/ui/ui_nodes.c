@@ -847,7 +847,7 @@ static char *ui_nodes_menu_dir(ui_node_t *n, char *cat_name) {
 	if (last == NULL) {
 		return "";
 	}
-	i32 cl = strlen(cat_name);
+	i32 cl = (i32)strlen(cat_name);
 	if (strncmp(path, cat_name, cl) == 0 && path[cl] == '/') {
 		path += cl + 1;
 	}
@@ -865,7 +865,7 @@ static char *ui_nodes_menu_dir(ui_node_t *n, char *cat_name) {
 static ui_nodes_menu_entry_t *ui_nodes_menu_entries(ui_node_t_array_t *category, char *cat_name, char *prefix, i32 *count) {
 	ui_nodes_menu_entry_t *entries = (ui_nodes_menu_entry_t *)string_tmp_alloc(sizeof(ui_nodes_menu_entry_t) * (category->length + 1));
 	i32                    n       = 0;
-	i32                    pl      = strlen(prefix);
+	i32                    pl      = (i32)strlen(prefix);
 	for (i32 i = 0; i < category->length; ++i) {
 		ui_node_t *node = category->buffer[i];
 		char      *dir  = ui_nodes_menu_dir(node, cat_name);
@@ -918,7 +918,7 @@ static void ui_nodes_menu_entry(ui_nodes_menu_entry_t *e, char *prefix, i32 *ope
 			ui_nodes_menu_spawn(e->node);
 		}
 		// Hovering a node closes deeper sub menus of this level, unless the pointer heads sideways into one
-		i32 pl = strlen(prefix);
+		i32 pl = (i32)strlen(prefix);
 		if (g_ui->is_hovered && math_abs(g_ui->input_dy) > math_abs(g_ui->input_dx) && strlen(ui_nodes_menu_open) > pl &&
 		    strncmp(ui_nodes_menu_open, prefix, pl) == 0) {
 			ui_nodes_menu_open[pl] = '\0';
@@ -926,7 +926,7 @@ static void ui_nodes_menu_entry(ui_nodes_menu_entry_t *e, char *prefix, i32 *ope
 		return;
 	}
 	i32 y   = g_ui->_y;
-	i32 len = strlen(e->sub) - 1; // Label is the last folder, without the slash
+	i32 len = (i32)strlen(e->sub) - 1; // Label is the last folder, without the slash
 	i32 beg = len;
 	while (beg > 0 && e->sub[beg - 1] != '/') {
 		beg--;

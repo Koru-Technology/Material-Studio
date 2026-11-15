@@ -85,11 +85,8 @@ void args_parse() {
 				printf("  --export-mesh <path>              Export mesh to path\n");
 				printf("  --export-material <path>          Export material to path\n");
 				printf("  --reload-mesh                     Reimport mesh on startup\n");
-				printf("  --script <path>                   Run script on the opened project, or a script from its Scripts tab by name\n");
-				printf("  --mcp                             Serve the open instance to agents over the model context protocol (stdio)\n");
+				printf("  --script <path>                   Run a script (minic) on the opened project\n");
 				printf("  --api                             Print the scripting API reference\n");
-				printf("                                    Contents of the opened project are included\n");
-				printf("  --player                          Run in player mode\n");
 				printf("  --help                            Show this help message\n");
 				exit(1);
 			}

@@ -44,7 +44,7 @@ void neural_node_button_on_next_frame(void *_) {
 }
 
 bool neural_node_button(ui_node_t *node, char *model) {
-	char *url       = box_preferneces_model_url_from_name(model);
+	char *url       = box_preferences_model_url_from_name(model);
 	char *file_name = box_preferences_file_name_from_url(url);
 	bool  found     = box_preferences_model_exists(file_name);
 	if (iron_exec_async_done == 0) {
