@@ -160,8 +160,6 @@ static void path_set_camera(f32_array_t *points_camera, i32 num_camera, i32 ci) 
 }
 
 static void path_paint(f32 px, f32 py, f32 *prev_px, f32 *prev_py, bool sphere_mode) {
-	// Re-evaluate the brush nodes for every stroke
-	// brush_output_node_parse_inputs();
 
 	g_context->decal_x          = px;
 	g_context->decal_y          = py;

@@ -555,7 +555,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 			node_shader_write_frag(shader, "vec2 g0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
 			node_shader_write_frag(shader, "vec3 wn;");
 			node_shader_write_frag(shader, "wn.z = 1.0 - abs(g0.x) - abs(g0.y);");
-			// node_shader_write_frag(shader, "wn.xy = wn.z >= 0.0 ? g0.xy : octahedron_wrap(g0.xy);");
 			node_shader_write_frag(shader,
 			                       "if (wn.z >= 0.0) { wn.x = g0.x; wn.y = g0.y; } else { vec2 f2 = octahedron_wrap(g0.xy); wn.x = f2.x; wn.y = f2.y; }");
 			node_shader_write_frag(shader, "wn = normalize(wn);");

@@ -47,10 +47,6 @@ gpu_pipeline_t *pipes_get_merge_a() {
 void pipes_init() {
 
 	pipes_merge = _pipes_make_merge(true, true, true, true);
-	// pipes_merge_r = _pipes_make_merge(true, false, false, false);
-	// pipes_merge_g = _pipes_make_merge(false, true, false, false);
-	// pipes_merge_b = _pipes_make_merge(false, false, true, false);
-	// pipes_merge_a = _pipes_make_merge(false, false, false, true);
 	pipes_tex0     = 0; // Always binding texpaint.a for blending
 	pipes_tex1     = 1;
 	pipes_texmask  = 2;

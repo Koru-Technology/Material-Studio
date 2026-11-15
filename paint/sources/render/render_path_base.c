@@ -523,21 +523,6 @@ void render_path_base_draw_deferred_light() {
 	render_path_draw_skydome("Scene/world_pass/world_pass");
 }
 
-// function render_path_base_draw_histogram() {
-// 	{
-// 		let t: render_target_t = RenderTarget.create();
-// 		t.name = "histogram";
-// 		t.width = 1;
-// 		t.height = 1;
-// 		t.format = "RGBA64";
-// 		render_path_create_render_target(t);
-// 		render_path_load_shader("Scene/histogram_pass/histogram_pass");
-// 	}
-// 	render_path_set_target("histogram");
-// 	render_path_bind_target("last", "tex");
-// 	render_path_draw_shader("Scene/histogram_pass/histogram_pass");
-// }
-
 static gpu_texture_t *render_path_base_taa_history = NULL;
 mat4_t                render_path_base_taa_prev_vp = {0}; // Camera of the frame in the history, without jitter
 

@@ -123,7 +123,6 @@ node_shader_context_t *make_mesh_preview_run(material_t *data, bool viewport) {
 	}
 
 	node_shader_write_frag(shader, "n = n / (abs(n.x) + abs(n.y) + abs(n.z));");
-	// node_shader_write_frag(shader, "n.xy = n.z >= 0.0 ? n.xy : octahedron_wrap(n.xy);");
 	node_shader_write_frag(shader, "if (n.z < 0.0) { n.xy = octahedron_wrap(n.xy); }");
 	// uint matid = uint(0);
 
