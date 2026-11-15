@@ -1,8 +1,9 @@
 
 #include "../global.h"
 
-bool make_paint_is_raytraced_bake() {
-	return g_context->bake_type == BAKE_TYPE_INIT;
+// The setup draw of a ray traced bake (render_path_raytrace_bake_commands): positions and normals of the mesh in uv space
+static bool make_paint_is_raytrace_bake_setup() {
+	return g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_INIT;
 }
 
 #define MAKE_PAINT_CACHE_SIZE 4
@@ -125,7 +126,7 @@ string_array_t *make_paint_color_attachments() {
 		    4);
 		return res;
 	}
-	if (g_context->tool == TOOL_TYPE_BAKE && make_paint_is_raytraced_bake()) {
+	if (make_paint_is_raytrace_bake_setup()) {
 		string_array_t *res = any_array_create_from_raw(
 		    (void *[]){
 		        "RGBA64",
@@ -416,7 +417,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 
 	node_shader_t *shader = node_shader_context_make_shader(con_paint);
 
-	if (g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_INIT) {
+	if (make_paint_is_raytrace_bake_setup()) {
 		// Init raytraced bake
 		make_bake_position_normal(shader);
 		con_paint->data->shader_from_source = true;

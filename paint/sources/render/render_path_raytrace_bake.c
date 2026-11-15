@@ -59,7 +59,7 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 		sys_notify_on_next_frame(&render_path_raytrace_bake_commands_parse_paint_material, parse_paint_material);
 
 		render_path_raytrace_init_shader = true;
-		render_path_raytrace_raytrace_init(render_path_raytrace_bake_get_bake_shader_name(), rebuild);
+		render_path_raytrace_setup(render_path_raytrace_bake_get_bake_shader_name(), rebuild);
 
 		return false;
 	}

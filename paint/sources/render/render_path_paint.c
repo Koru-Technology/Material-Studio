@@ -1261,7 +1261,7 @@ static void render_path_paint_commands_low_poly() {
 	context_select_paint_object(_paint_object);
 }
 
-void _render_path_paint_final() {
+static void render_path_paint_bake_final() {
 	g_context->bake_type = _render_path_paint_bake_type;
 	make_material_parse_paint_material(false);
 	g_context->pdirty = 1;
@@ -1270,11 +1270,11 @@ void _render_path_paint_final() {
 	render_path_paint_baking = false;
 }
 
-void _render_path_paint_deriv_on_next_frame(void *_) {
-	_render_path_paint_final();
+static void render_path_paint_bake_deriv_on_next_frame(void *_) {
+	render_path_paint_bake_final();
 }
 
-void _render_path_paint_deriv() {
+static void render_path_paint_bake_deriv() {
 	g_context->bake_type = BAKE_TYPE_HEIGHT;
 	make_material_parse_paint_material(false);
 	g_context->pdirty = 1;
@@ -1283,7 +1283,7 @@ void _render_path_paint_deriv() {
 	if (render_path_paint_push_undo_last) {
 		history_paint();
 	}
-	sys_notify_on_next_frame(&_render_path_paint_deriv_on_next_frame, NULL);
+	sys_notify_on_next_frame(&render_path_paint_bake_deriv_on_next_frame, NULL);
 }
 
 bool render_path_paint_is_rt_bake() {
@@ -1292,11 +1292,11 @@ bool render_path_paint_is_rt_bake() {
 }
 
 void render_path_paint_draw_bake(void *_) {
-	_render_path_paint_final();
+	render_path_paint_bake_final();
 }
 
 void render_path_paint_draw_bake_derivative(void *_) {
-	_render_path_paint_deriv();
+	render_path_paint_bake_deriv();
 }
 
 void render_path_paint_clear_blend() {

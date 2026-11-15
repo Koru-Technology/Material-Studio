@@ -416,7 +416,7 @@ void render_path_raytrace_commands(bool use_live_layer) {
 			render_path_raytrace_init_shader = true;
 		}
 		char *mode = config_is_raytrace_fast() ? "core" : "full";
-		render_path_raytrace_raytrace_init(string("raytrace_brute_%s%s", mode, render_path_raytrace_ext), true);
+		render_path_raytrace_setup(string("raytrace_brute_%s%s", mode, render_path_raytrace_ext), true);
 		render_path_raytrace_last_envmap = NULL;
 	}
 
@@ -518,7 +518,7 @@ void render_path_raytrace_commands(bool use_live_layer) {
 	g_context->pdirty--;
 }
 
-void render_path_raytrace_raytrace_init(char *shader_name, bool build) {
+void render_path_raytrace_setup(char *shader_name, bool build) {
 	if (render_path_raytrace_init_shader) {
 		render_path_raytrace_init_shader = false;
 		buffer_t *shader                 = data_get_blob(shader_name);

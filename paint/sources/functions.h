@@ -1484,7 +1484,7 @@ char                  *util_texture_packed_name(char *basename);
 void                   util_texture_capture_output(gpu_texture_t *img, char *basename, bool bgra);
 void                   render_path_raytrace_init();
 float                  render_path_raytrace_half_to_float(uint16_t h);
-void                   render_path_raytrace_raytrace_init(char *shader_name, bool build);
+void                   render_path_raytrace_setup(char *shader_name, bool build);
 void                   render_path_raytrace_draw_overrides(bool all);
 void                   render_path_raytrace_draw(bool use_live_layer);
 void                   import_envmap_run(char *path, gpu_texture_t *image);
