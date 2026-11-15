@@ -369,7 +369,7 @@ static void minic_register_array_struct(const char *name, int size, minic_type_t
 	minic_struct_field("capacity", (int)offsetof(u8_array_t, capacity), MINIC_T_INT, MINIC_T_INT, NULL);
 }
 
-#define MINIC_API_MAX_SIGS 1024
+#define MINIC_API_MAX_SIGS MINIC_MAX_EXTFUNS // One per native function
 
 static const char *minic_api_sig_names[MINIC_API_MAX_SIGS];
 static const char *minic_api_sig_hints[MINIC_API_MAX_SIGS];
@@ -380,6 +380,9 @@ static void minic_api_sig_add(const char *name, const char *sig) {
 		minic_api_sig_names[minic_api_sig_count] = name;
 		minic_api_sig_hints[minic_api_sig_count] = sig;
 		minic_api_sig_count++;
+	}
+	else { // The API header would list it without its argument names and types
+		fprintf(stderr, "minic: more than %d signatures, %s has none\n", MINIC_API_MAX_SIGS, name);
 	}
 }
 
