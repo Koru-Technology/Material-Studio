@@ -740,12 +740,10 @@ char *parser_material_node_name(ui_node_t *node, ui_node_t_array_t *_parents) {
 	char *s = node->name;
 	for (i32 i = 0; i < _parents->length; ++i) {
 		ui_node_t *p = _parents->buffer[i];
-		s            = string_tmp("%s%s_%s", p->name, i32_to_string(p->id), s);
+		s            = string_tmp("%s_%s_%s", p->name, i32_to_string(p->id), s);
 	}
-	s       = parser_material_safesrc(s);
-	i32 nid = node->id;
-	s       = string_tmp("%s%s", s, i32_to_string(nid));
-	return s;
+	// The id after a separator: "Mix 1" (id 12) and "Mix 11" (id 2) were both Mix_112 and shared a result
+	return string_tmp("%s_%s", parser_material_safesrc(s), i32_to_string(node->id));
 }
 
 bind_tex_t *parser_material_make_bind_tex(char *tex_name, char *file) {
