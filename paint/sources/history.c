@@ -469,6 +469,7 @@ void history_undo() {
 			history_swap_merge(step, true);
 		}
 		else if (step->action == HISTORY_ACTION_CLEAR_LAYER) {
+			context_set_layer(g_project->_->layers->buffer[step->layer]); // The cleared layer, not the selected one
 			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
@@ -542,6 +543,7 @@ void history_undo() {
 			g_context->layer_preview_dirty = true;
 		}
 		else if (step->action == HISTORY_ACTION_TO_FILL_LAYER || step->action == HISTORY_ACTION_TO_FILL_MASK) {
+			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_to_paint_layer(g_context->layer);
 			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
@@ -549,6 +551,7 @@ void history_undo() {
 			mask_stack_mark_dirty(g_context->layer);
 		}
 		else if (step->action == HISTORY_ACTION_TO_PAINT_LAYER || step->action == HISTORY_ACTION_TO_PAINT_MASK) {
+			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
@@ -836,6 +839,7 @@ void history_redo() {
 			history_undo_i                 = (history_undo_i + 1) % g_config->undo_steps;
 		}
 		else if (step->action == HISTORY_ACTION_TO_FILL_LAYER || step->action == HISTORY_ACTION_TO_FILL_MASK) {
+			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
 			mask_stack_mark_dirty(g_context->layer);
@@ -843,6 +847,7 @@ void history_redo() {
 			history_undo_i                  = (history_undo_i + 1) % g_config->undo_steps;
 		}
 		else if (step->action == HISTORY_ACTION_TO_PAINT_LAYER || step->action == HISTORY_ACTION_TO_PAINT_MASK) {
+			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_to_paint_layer(g_context->layer);
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
