@@ -368,6 +368,9 @@ static void camera_twist() {
 #endif
 
 void camera_update(void *_) {
+	if (!base_view3d_show) { // The 2D view alone: its pan and zoom gestures are its own, the 3D view stays as it was left
+		return;
+	}
 	if (g_context->stencil_edit && context_is_stencil_editing()) { // Pinch scales the stencil
 		return;
 	}

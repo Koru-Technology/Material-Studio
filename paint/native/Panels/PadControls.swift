@@ -3,7 +3,8 @@ import simd
 
 #if os(iOS)
 // iPad: the canvas fills the screen, the controls float over it on Liquid Glass.
-// Top left: actions and view menus. Top right: library popovers. Left: tools, size, opacity, undo. Bottom right: view cube.
+// Top left: actions and viewport menus. Top right: library popovers. Left: tools, size, opacity.
+// Bottom left: undo, redo. Bottom right: frame, views, view cube.
 struct PadControls: View {
 	var body: some View {
 		ZStack {
@@ -21,7 +22,8 @@ struct PadControls: View {
 			}
 			VStack {
 				Spacer()
-				HStack {
+				HStack(alignment: .bottom) {
+					PadHistoryControls()
 					Spacer()
 					PadViewControls()
 				}
@@ -38,6 +40,15 @@ let viewportModes: [(Int32, String)] = [
 	(8, "Emission"), (9, "Subsurface"), (10, "TexCoord"), (11, "Object Normal"), (12, "World Normal"), (13, "Material ID"),
 	(14, "Object ID"), (15, "Mask"), (16, "Path Traced"),
 ]
+
+// Lit shows the light, path tracing its rays, the channel views a layered square
+func viewportModeSymbol(_ mode: Int32) -> String {
+	switch mode {
+	case 0: "sun.max"
+	case 16: "sparkles"
+	default: "square.3.layers.3d.top.filled"
+	}
+}
 
 private func run(_ command: app_command_t) {
 	AppStore.shared.perform { app_command(Int32(command.rawValue)) }
@@ -87,14 +98,6 @@ struct PadMenuBar: View {
 				}
 				.glassEffect(.regular.interactive(), in: .circle)
 
-				Button {
-					store.perform { app_cycle_view_mode() }
-				} label: {
-					Image(systemName: store.viewMode == 0 ? "cube" : store.viewMode == 1 ? "rectangle.split.2x1" : "photo")
-						.frame(width: 44, height: 44)
-				}
-				.glassEffect(.regular.interactive(), in: .circle)
-
 				Menu {
 					Picker("Viewport", selection: Binding(get: { store.viewportMode }, set: { m in store.perform { app_set_viewport_mode(m) } })) {
 						ForEach(viewportModes, id: \.0) { mode in
@@ -102,12 +105,11 @@ struct PadMenuBar: View {
 						}
 					}
 				} label: {
-					Text(viewportModes.first { $0.0 == store.viewportMode }?.1 ?? "Lit")
-						.font(.subheadline.weight(.medium))
-						.padding(.horizontal, 14)
-						.frame(height: 44)
+					Image(systemName: viewportModeSymbol(store.viewportMode))
+						.frame(width: 44, height: 44)
 				}
-				.glassEffect(.regular.interactive(), in: .capsule)
+				.glassEffect(.regular.interactive(), in: .circle)
+				.accessibilityLabel("Viewport: \(viewportModes.first { $0.0 == store.viewportMode }?.1 ?? "Lit")")
 			}
 		}
 		.foregroundStyle(.primary)
@@ -122,19 +124,33 @@ struct PadPopoverBar: View {
 		GlassEffectContainer(spacing: 8) {
 			HStack(spacing: 8) {
 				item("Brushes", "paintbrush.pointed") { BrushesPopover() }
-				item("Materials", "circle.circle") { MaterialsPopover() }
+				item("Materials", "circle.circle", image: MaterialsStore.shared.selectedMaterial.flatMap { MaterialsStore.shared.thumbnail(for: $0) }) {
+					MaterialsPopover()
+				}
 				item("Layers", "square.3.layers.3d") { LayersView() }
 				item("Color", "paintpalette") { ColorPopover() }
 			}
 		}
 	}
 
-	private func item<Content: View>(_ name: String, _ symbol: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+	// image: the button shows it instead of the symbol (the current material's sphere)
+	private func item<Content: View>(_ name: String, _ symbol: String, image: CGImage? = nil,
+	                                 @ViewBuilder content: @escaping () -> Content) -> some View {
 		Button {
 			shown = shown == name ? nil : name
 		} label: {
-			Image(systemName: symbol)
-				.frame(width: 44, height: 44)
+			Group {
+				if let image {
+					Image(decorative: image, scale: 1)
+						.resizable()
+						.scaledToFit()
+						.frame(width: 34, height: 34)
+				}
+				else {
+					Image(systemName: symbol)
+				}
+			}
+			.frame(width: 44, height: 44)
 		}
 		.glassEffect(shown == name ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
 		.foregroundStyle(.primary)
@@ -192,25 +208,35 @@ struct PadToolColumn: View {
 					}
 				}
 				.frame(height: 220)
-
-				VStack(spacing: 2) {
-					Button {
-						store.perform { app_undo() }
-					} label: {
-						Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 40)
-					}
-					.disabled(!store.canUndo)
-					Button {
-						store.perform { app_redo() }
-					} label: {
-						Image(systemName: "arrow.uturn.forward").frame(width: 44, height: 40)
-					}
-					.disabled(!store.canRedo)
-				}
-				.padding(4)
-				.glassEffect(.regular, in: .rect(cornerRadius: 16))
 			}
 		}
+		.foregroundStyle(.primary)
+	}
+}
+
+// Undo and redo side by side in the bottom left corner
+struct PadHistoryControls: View {
+	private var store = AppStore.shared
+
+	var body: some View {
+		HStack(spacing: 2) {
+			Button {
+				store.perform { app_undo() }
+			} label: {
+				Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 40)
+			}
+			.disabled(!store.canUndo)
+			.accessibilityLabel("Undo")
+			Button {
+				store.perform { app_redo() }
+			} label: {
+				Image(systemName: "arrow.uturn.forward").frame(width: 44, height: 40)
+			}
+			.disabled(!store.canRedo)
+			.accessibilityLabel("Redo")
+		}
+		.padding(4)
+		.glassEffect(.regular, in: .capsule)
 		.foregroundStyle(.primary)
 	}
 }
@@ -256,18 +282,31 @@ struct VerticalSlider: View {
 // MARK: - View cube and frame
 
 struct PadViewControls: View {
+	private var store = AppStore.shared
+
 	var body: some View {
 		GlassEffectContainer(spacing: 10) {
 			HStack(alignment: .bottom, spacing: 10) {
-				Button {
-					run(APP_COMMAND_VIEW_FRAME)
-				} label: {
-					Image(systemName: "viewfinder")
-						.frame(width: 44, height: 44)
+				VStack(spacing: 10) {
+					Button {
+						run(APP_COMMAND_VIEW_FRAME)
+					} label: {
+						Image(systemName: "viewfinder")
+							.frame(width: 44, height: 44)
+					}
+					.glassEffect(.regular.interactive(), in: .circle)
+					.accessibilityLabel("Frame")
+					// 3D view, then the 2D view alone, then both side by side (ui_base_view_mode: 0, 1, 2)
+					Button {
+						store.perform { app_cycle_view_mode() }
+					} label: {
+						Image(systemName: store.viewMode == 0 ? "cube" : store.viewMode == 1 ? "photo" : "rectangle.split.2x1")
+							.frame(width: 44, height: 44)
+					}
+					.glassEffect(.regular.interactive(), in: .circle)
+					.accessibilityLabel("Views")
 				}
-				.glassEffect(.regular.interactive(), in: .circle)
 				.foregroundStyle(.primary)
-				.accessibilityLabel("Frame")
 				ViewCube()
 					.frame(width: 96, height: 96)
 					.glassEffect(.regular.interactive(), in: .circle)
@@ -330,7 +369,7 @@ struct ViewCube: View {
 		.gesture(DragGesture(minimumDistance: 4)
 			.onChanged { g in
 				let dx = Float(g.translation.width - last.width) * 0.02
-				let dy = Float(g.translation.height - last.height) * 0.02
+				let dy = -Float(g.translation.height - last.height) * 0.02 // Drag up turns the view up
 				last   = g.translation
 				store.perform { app_view_orbit(dx, dy) }
 			}

@@ -25,7 +25,7 @@ typedef struct {
 	int32_t  selected_layer_id;
 	uint32_t layers_signature; // Layer ids, order, names, visibility, opacity, selection
 	uint32_t previews_version; // Layer thumbnails were redrawn
-	int32_t  view_mode;        // 0 3D, 1 3D and 2D, 2 2D (ui_base_view_mode)
+	int32_t  view_mode;        // 0 3D, 1 2D alone, 2 both side by side (ui_base_view_mode)
 	int32_t  viewport_mode;    // viewport_mode_t
 	float    brush_angle;
 	bool     sym_x;
@@ -51,7 +51,7 @@ void app_set_brush_angle(float degrees);
 void app_set_symmetry(bool x, bool y, bool z);
 
 // Views and camera
-void app_cycle_view_mode(void);       // 3D, 3D and 2D, 2D
+void app_cycle_view_mode(void);       // 3D, 2D alone, both side by side
 void app_set_viewport_mode(int32_t mode); // viewport_mode_t
 void app_view_face(int32_t face);     // 0 right, 1 left, 2 back, 3 front, 4 top, 5 bottom
 void app_view_orbit(float x, float y); // Turns the camera by these angles (radians), the view cube drag
