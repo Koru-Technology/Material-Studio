@@ -71,6 +71,113 @@ void config_brush_save_update() {
 	config_save();
 }
 
+// The config as JSON, every key in the order of config_t
+static char *config_to_json(config_t *c) {
+	json_encode_begin();
+	json_encode_string("version", c->version);
+	json_encode_string("sha", c->sha);
+	json_encode_string("locale", c->locale);
+	json_encode_i32("window_mode", c->window_mode);
+	json_encode_i32("window_w", c->window_w);
+	json_encode_i32("window_h", c->window_h);
+	json_encode_i32("window_x", c->window_x);
+	json_encode_i32("window_y", c->window_y);
+	json_encode_bool("window_resizable", c->window_resizable);
+	json_encode_bool("window_maximizable", c->window_maximizable);
+	json_encode_bool("window_minimizable", c->window_minimizable);
+	json_encode_bool("window_vsync", c->window_vsync);
+	json_encode_i32("window_frequency", c->window_frequency);
+	json_encode_f32("window_scale", c->window_scale);
+	json_encode_f32("rp_supersample", c->rp_supersample);
+	json_encode_f32("rp_ssao", c->rp_ssao);
+	json_encode_f32("rp_bloom", c->rp_bloom);
+	json_encode_f32("rp_vignette", c->rp_vignette);
+	json_encode_f32("rp_grain", c->rp_grain);
+	json_encode_f32("rp_contrast", c->rp_contrast);
+	json_encode_f32("rp_gamma", c->rp_gamma);
+	json_encode_string("lut_path", c->lut_path);
+	json_encode_bool("texture_filter", c->texture_filter);
+	json_encode_string_array("recent_projects", c->recent_projects);
+	json_encode_string_array("bookmarks", c->bookmarks);
+	json_encode_string("keymap", c->keymap);
+	json_encode_string("theme", c->theme);
+	json_encode_i32("undo_steps", c->undo_steps);
+	json_encode_f32("camera_fov", c->camera_fov);
+	json_encode_f32("camera_pan_speed", c->camera_pan_speed);
+	json_encode_f32("camera_zoom_speed", c->camera_zoom_speed);
+	json_encode_f32("camera_rotation_speed", c->camera_rotation_speed);
+	json_encode_bool("camera_upside_down", c->camera_upside_down);
+	json_encode_i32("zoom_direction", c->zoom_direction);
+	json_encode_bool("wrap_mouse", c->wrap_mouse);
+	json_encode_bool("show_asset_names", c->show_asset_names);
+	json_encode_bool("material_params", c->material_params);
+	json_encode_bool("brush_params", c->brush_params);
+	json_encode_bool("touch_ui", c->touch_ui);
+	json_encode_bool("splash_screen", c->splash_screen);
+	json_encode_bool("header_pinned", c->header_pinned);
+	if (c->layout_tabs != NULL) {
+		json_encode_i32_array("layout_tabs", c->layout_tabs);
+	}
+	else {
+		json_encode_null("layout_tabs");
+	}
+	json_encode_i32("camera_pivot", c->camera_pivot);
+	json_encode_i32("camera_controls", c->camera_controls);
+	json_encode_i32("viewport_mode", c->viewport_mode);
+	json_encode_i32("pathtrace_mode", c->pathtrace_mode);
+	json_encode_i32("pathtrace_frames", c->pathtrace_frames);
+	json_encode_bool("pressure_radius", c->pressure_radius);
+	json_encode_f32("pressure_sensitivity", c->pressure_sensitivity);
+	json_encode_i32("layer_res", c->layer_res);
+	json_encode_bool("brush_live", c->brush_live);
+	json_encode_bool("node_previews", c->node_previews);
+	json_encode_bool("pressure_hardness", c->pressure_hardness);
+	json_encode_bool("pressure_angle", c->pressure_angle);
+	json_encode_bool("pressure_opacity", c->pressure_opacity);
+	json_encode_bool("material_live", c->material_live);
+	json_encode_bool("brush_depth_reject", c->brush_depth_reject);
+	json_encode_bool("brush_angle_reject", c->brush_angle_reject);
+	json_encode_f32("brush_alpha_discard", c->brush_alpha_discard);
+	json_encode_i32("dilate_radius", c->dilate_radius);
+	json_encode_string("blender", c->blender);
+	json_encode_bool("grid_snap", c->grid_snap);
+	json_encode_bool("experimental", c->experimental);
+	json_encode_i32("neural_res", c->neural_res);
+	json_encode_bool("view2d_grid_show", c->view2d_grid_show);
+	json_encode_i32("view2d_grid_cell", c->view2d_grid_cell);
+	json_encode_bool("view2d_grid_snap", c->view2d_grid_snap);
+	json_encode_bool("pixel_snap", c->pixel_snap);
+	json_encode_bool("large_asset_previews", c->large_asset_previews);
+	json_encode_bool("tooltips", c->tooltips);
+	json_encode_string("materials_folder", c->materials_folder);
+	json_encode_bool("reload_project", c->reload_project);
+	json_encode_i32("cloud_resolution", c->cloud_resolution);
+	json_encode_bool("library_cloud", c->library_cloud);
+	json_encode_i32("library_cloud_type", c->library_cloud_type);
+	json_encode_f32("library_scroll", c->library_scroll);
+	json_encode_f32("brush_radius", c->brush_radius);
+	json_encode_f32("brush_opacity", c->brush_opacity);
+	json_encode_f32("brush_strength", c->brush_strength);
+	json_encode_f32("pressure_curve", c->pressure_curve);
+	json_encode_f32("pressure_min", c->pressure_min);
+	json_encode_i32("brush_selected", c->brush_selected);
+	json_encode_bool("hide_builtin_brushes", c->hide_builtin_brushes);
+	json_encode_i32("rp_view_transform", c->rp_view_transform);
+	json_encode_bool("autosave", c->autosave);
+	json_encode_i32("autosave_interval", c->autosave_interval);
+	json_encode_i32("finger_paint", c->finger_paint);
+	json_encode_i32("pencil_double_tap", c->pencil_double_tap);
+	json_encode_i32("pencil_squeeze", c->pencil_squeeze);
+	if (c->quick_menu_slots != NULL) {
+		json_encode_i32_array("quick_menu_slots", c->quick_menu_slots);
+	}
+	else {
+		json_encode_null("quick_menu_slots");
+	}
+	json_encode_i32("undo_memory_mb", c->undo_memory_mb);
+	return json_encode_end();
+}
+
 static void config_save_now() {
 	if (g_context != NULL) { // Brush settings kept across launches
 		g_config->brush_radius   = g_context->brush_radius;
@@ -89,109 +196,7 @@ static void config_save_now() {
 		path = string("%s%sconfig.json", path_data(), PATH_SEP);
 	}
 
-	json_encode_begin();
-	json_encode_string("version", g_config->version);
-	json_encode_string("sha", g_config->sha);
-	json_encode_string("locale", g_config->locale);
-	json_encode_i32("window_mode", g_config->window_mode);
-	json_encode_i32("window_w", g_config->window_w);
-	json_encode_i32("window_h", g_config->window_h);
-	json_encode_i32("window_x", g_config->window_x);
-	json_encode_i32("window_y", g_config->window_y);
-	json_encode_bool("window_resizable", g_config->window_resizable);
-	json_encode_bool("window_maximizable", g_config->window_maximizable);
-	json_encode_bool("window_minimizable", g_config->window_minimizable);
-	json_encode_bool("window_vsync", g_config->window_vsync);
-	json_encode_i32("window_frequency", g_config->window_frequency);
-	json_encode_f32("window_scale", g_config->window_scale);
-	json_encode_f32("rp_supersample", g_config->rp_supersample);
-	json_encode_f32("rp_ssao", g_config->rp_ssao);
-	json_encode_f32("rp_bloom", g_config->rp_bloom);
-	json_encode_f32("rp_vignette", g_config->rp_vignette);
-	json_encode_f32("rp_grain", g_config->rp_grain);
-	json_encode_f32("rp_contrast", g_config->rp_contrast);
-	json_encode_f32("rp_gamma", g_config->rp_gamma);
-	json_encode_string("lut_path", g_config->lut_path);
-	json_encode_bool("texture_filter", g_config->texture_filter);
-	json_encode_string_array("recent_projects", g_config->recent_projects);
-	json_encode_string_array("bookmarks", g_config->bookmarks);
-	json_encode_string("keymap", g_config->keymap);
-	json_encode_string("theme", g_config->theme);
-	json_encode_i32("undo_steps", g_config->undo_steps);
-	json_encode_f32("camera_fov", g_config->camera_fov);
-	json_encode_f32("camera_pan_speed", g_config->camera_pan_speed);
-	json_encode_f32("camera_zoom_speed", g_config->camera_zoom_speed);
-	json_encode_f32("camera_rotation_speed", g_config->camera_rotation_speed);
-	json_encode_bool("camera_upside_down", g_config->camera_upside_down);
-	json_encode_i32("zoom_direction", g_config->zoom_direction);
-	json_encode_bool("wrap_mouse", g_config->wrap_mouse);
-	json_encode_bool("show_asset_names", g_config->show_asset_names);
-	json_encode_bool("material_params", g_config->material_params);
-	json_encode_bool("brush_params", g_config->brush_params);
-	json_encode_bool("touch_ui", g_config->touch_ui);
-	json_encode_bool("splash_screen", g_config->splash_screen);
-	json_encode_bool("header_pinned", g_config->header_pinned);
-	if (g_config->layout_tabs != NULL) {
-		json_encode_i32_array("layout_tabs", g_config->layout_tabs);
-	}
-	else {
-		json_encode_null("layout_tabs");
-	}
-	json_encode_i32("camera_pivot", g_config->camera_pivot);
-	json_encode_i32("camera_controls", g_config->camera_controls);
-	json_encode_i32("viewport_mode", g_config->viewport_mode);
-	json_encode_i32("pathtrace_mode", g_config->pathtrace_mode);
-	json_encode_i32("pathtrace_frames", g_config->pathtrace_frames);
-	json_encode_bool("pressure_radius", g_config->pressure_radius);
-	json_encode_f32("pressure_sensitivity", g_config->pressure_sensitivity);
-	json_encode_i32("layer_res", g_config->layer_res);
-	json_encode_bool("brush_live", g_config->brush_live);
-	json_encode_bool("node_previews", g_config->node_previews);
-	json_encode_bool("pressure_hardness", g_config->pressure_hardness);
-	json_encode_bool("pressure_angle", g_config->pressure_angle);
-	json_encode_bool("pressure_opacity", g_config->pressure_opacity);
-	json_encode_bool("material_live", g_config->material_live);
-	json_encode_bool("brush_depth_reject", g_config->brush_depth_reject);
-	json_encode_bool("brush_angle_reject", g_config->brush_angle_reject);
-	json_encode_f32("brush_alpha_discard", g_config->brush_alpha_discard);
-	json_encode_i32("dilate_radius", g_config->dilate_radius);
-	json_encode_string("blender", g_config->blender);
-	json_encode_bool("grid_snap", g_config->grid_snap);
-	json_encode_bool("experimental", g_config->experimental);
-	json_encode_i32("neural_res", g_config->neural_res);
-	json_encode_bool("view2d_grid_show", g_config->view2d_grid_show);
-	json_encode_i32("view2d_grid_cell", g_config->view2d_grid_cell);
-	json_encode_bool("view2d_grid_snap", g_config->view2d_grid_snap);
-	json_encode_bool("pixel_snap", g_config->pixel_snap);
-	json_encode_bool("large_asset_previews", g_config->large_asset_previews);
-	json_encode_bool("tooltips", g_config->tooltips);
-	json_encode_string("materials_folder", g_config->materials_folder);
-	json_encode_bool("reload_project", g_config->reload_project);
-	json_encode_i32("cloud_resolution", g_config->cloud_resolution);
-	json_encode_bool("library_cloud", g_config->library_cloud);
-	json_encode_i32("library_cloud_type", g_config->library_cloud_type);
-	json_encode_f32("library_scroll", g_config->library_scroll);
-	json_encode_f32("brush_radius", g_config->brush_radius);
-	json_encode_f32("brush_opacity", g_config->brush_opacity);
-	json_encode_f32("brush_strength", g_config->brush_strength);
-	json_encode_f32("pressure_curve", g_config->pressure_curve);
-	json_encode_f32("pressure_min", g_config->pressure_min);
-	json_encode_i32("brush_selected", g_config->brush_selected);
-	json_encode_bool("hide_builtin_brushes", g_config->hide_builtin_brushes);
-	json_encode_i32("rp_view_transform", g_config->rp_view_transform);
-	json_encode_bool("autosave", g_config->autosave);
-	json_encode_i32("autosave_interval", g_config->autosave_interval);
-	json_encode_i32("finger_paint", g_config->finger_paint);
-	json_encode_i32("pencil_double_tap", g_config->pencil_double_tap);
-	json_encode_i32("pencil_squeeze", g_config->pencil_squeeze);
-	if (g_config->quick_menu_slots != NULL) {
-		json_encode_i32_array("quick_menu_slots", g_config->quick_menu_slots);
-	}
-	else {
-		json_encode_null("quick_menu_slots");
-	}
-	json_encode_i32("undo_memory_mb", g_config->undo_memory_mb);
-	char *config_json = json_encode_end();
+	char *config_json = config_to_json(g_config);
 
 	buffer_t *buffer = sys_string_to_buffer(config_json);
 	iron_file_save_bytes(path, buffer, 0);
@@ -654,9 +659,35 @@ config_t *config_from_old(char *s) {
 	return NULL;
 }
 
+// The current version by key name, not json_parse's key order: a config of the same version written by a build with other
+// keys (another branch) would shift every later field. Missing keys get the defaults, unknown ones are ignored.
+static config_t *config_from_current(char *s) {
+	buffer_t *b = json_encode_to_armpack(s);
+	if (b == NULL) {
+		return NULL;
+	}
+	any_map_t   *old  = armpack_decode_to_map(b);
+	char        *dj   = config_to_json(config_create_default());
+	any_map_t   *def  = armpack_decode_to_map(json_encode_to_armpack(dj));
+	any_array_t *have = map_keys(old);
+	any_array_t *keys = map_keys(def);
+	for (i32 i = 0; i < keys->length; ++i) {
+		char *k     = keys->buffer[i];
+		bool  found = false;
+		for (i32 j = 0; j < have->length && !found; ++j) {
+			found = string_equals(have->buffer[j], k);
+		}
+		if (!found) {
+			any_map_set(old, k, any_map_get(def, k));
+		}
+	}
+	free(dj);
+	return config_from_map_to_config(old);
+}
+
 config_t *config_from_json(char *s) {
 	if (config_is_version(s, manifest_version_config)) {
-		return json_parse(s);
+		return config_from_current(s);
 	}
 	return config_from_old(s);
 }
