@@ -792,7 +792,7 @@ void history_redo() {
 		else if (step->action == HISTORY_ACTION_CLEAR_LAYER) {
 			g_context->layer = g_project->_->layers->buffer[step->layer];
 			history_swap_active();
-			slot_layer_clear(g_context->layer, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+			slot_layer_clear(g_context->layer, slot_layer_is_mask(g_context->layer) ? 0xffffffff : 0x00000000, NULL, 1.0, layers_default_rough, 0.0); // As the clear
 			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
 		}

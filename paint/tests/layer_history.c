@@ -10,6 +10,7 @@ int frame  = 0;
 slot_material_t *mat_red = NULL;
 slot_layer_t    *a       = NULL;
 slot_layer_t    *b       = NULL;
+slot_layer_t    *m       = NULL;
 int              texels  = 0;
 
 void check(int ok, char *name) {
@@ -79,6 +80,23 @@ void next() {
 	}
 	else if (step == 6) {
 		check(a->fill_material == mat_red && b->fill_material == NULL, "redo of to fill converts the layer it was made on");
+		m = script_layer_new_mask(b, 0); // Black
+	}
+	else if (step == 7) {
+		check(m != NULL && opaque(m) == 0, "black mask");
+		script_layer_clear(m); // Clears a mask white
+	}
+	else if (step == 8) {
+		texels = opaque(m);
+		check(texels > 1000, "cleared mask is white");
+		history_undo();
+	}
+	else if (step == 9) {
+		check(opaque(m) == 0, "undo of the clear brings the black mask back");
+		history_redo();
+	}
+	else if (step == 10) {
+		check(opaque(m) == texels, "redo of a mask clear clears it white again");
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
