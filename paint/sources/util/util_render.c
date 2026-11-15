@@ -210,48 +210,81 @@ void util_render_preview_lighting_end() {
 	scene_world->strength            = util_render_saved_strength;
 }
 
+// A preview frame of one object in front of the camera, in the preview lighting, the view restored after it
+typedef struct {
+	mesh_object_t         *object;
+	mesh_object_t_array_t *meshes;
+	mesh_object_t         *paint_object;
+	f32                    fov;
+	gpu_texture_t         *envmap;
+	i32                    last_w;
+	i32                    last_h;
+} util_render_preview_t;
+
+static void util_render_preview_begin(util_render_preview_t *p, mesh_object_t *o, mat4_t camera, i32 size, f32 ambient) {
+	p->object               = o;
+	o->base->visible        = true;
+	p->meshes               = scene_meshes;
+	scene_meshes            = any_array_create_from_raw((void *[]){o}, 1);
+	p->paint_object         = g_context->paint_object;
+	g_context->paint_object = o;
+
+	g_context->saved_camera = scene_camera->base->transform->local;
+	transform_set_matrix(scene_camera->base->transform, camera);
+	p->fov                  = scene_camera->data->fov;
+	scene_camera->data->fov = 0.92;
+	viewport_update_camera_type(CAMERA_TYPE_PERSPECTIVE);
+
+	p->envmap              = scene_world->_->envmap;
+	scene_world->_->envmap = g_context->preview_envmap;
+	util_render_preview_lighting_begin(ambient, 0.65);
+
+	// No resize
+	p->last_w           = _render_path_last_w;
+	p->last_h           = _render_path_last_h;
+	_render_path_last_w = size;
+	_render_path_last_h = size;
+	camera_object_build_proj(scene_camera, -1.0);
+	camera_object_build_mat(scene_camera);
+}
+
+static void util_render_preview_end(util_render_preview_t *p) {
+	_render_path_last_w = p->last_w; // Keep a pending viewport resize
+	_render_path_last_h = p->last_h;
+
+	p->object->base->visible = false;
+	array_free(scene_meshes);
+	free(scene_meshes);
+	scene_meshes            = p->meshes;
+	g_context->paint_object = p->paint_object;
+
+	transform_set_matrix(scene_camera->base->transform, g_context->saved_camera);
+	scene_camera->data->fov = p->fov; // Before the camera type: an orthographic camera sizes its view by the fov
+	viewport_update_camera_type(g_context->camera_type);
+	camera_object_build_proj(scene_camera, -1.0);
+	camera_object_build_mat(scene_camera);
+
+	scene_world->_->envmap = p->envmap;
+	util_render_preview_lighting_end();
+}
+
 void util_render_make_material_preview() {
 	g_context->material_preview = true;
 
-	mesh_object_t *sphere         = scene_get_child(".Sphere")->ext;
-	sphere->base->visible         = true;
-	mesh_object_t_array_t *meshes = scene_meshes;
-	scene_meshes                  = any_array_create_from_raw(
-        (void *[]){
-            sphere,
-        },
-        1);
-	mesh_object_t *painto   = g_context->paint_object;
-	g_context->paint_object = sphere;
-
+	mesh_object_t *sphere              = scene_get_child(".Sphere")->ext;
 	sphere->material                   = g_project->_->materials->buffer[0]->data;
 	g_context->material->preview_ready = true;
-
-	g_context->saved_camera = scene_camera->base->transform->local;
-	mat4_t m =
-	    (mat4_t){0.9146286343879498, 0.404295023959927,   0.000007410128652369705, 0, -0.0032648027153306235, 0.007367569133732468, 0.9999675337275382,   0,
-	             0.404281837254303,  -0.9145989516155143, 0.008058532943908717,    0, 0.4659988049397712,     -1.0687517188018691,  0.015935682577325486, 1};
-
-	transform_set_matrix(scene_camera->base->transform, m);
-	f32 saved_fov           = scene_camera->data->fov;
-	scene_camera->data->fov = 0.92;
-	viewport_update_camera_type(CAMERA_TYPE_PERSPECTIVE);
 
 	f32 _brush_scale             = g_context->brush_scale;
 	g_context->brush_scale       = 1.5;
 	f32 _brush_nodes_scale       = g_context->brush_nodes_scale;
 	g_context->brush_nodes_scale = 1.0;
 
-	gpu_texture_t *_envmap = scene_world->_->envmap;
-	scene_world->_->envmap = g_context->preview_envmap;
-	util_render_preview_lighting_begin(0.5, 0.65);
-	// No resize
-	i32 _last_w         = _render_path_last_w;
-	i32 _last_h         = _render_path_last_h;
-	_render_path_last_w = util_render_material_preview_size;
-	_render_path_last_h = util_render_material_preview_size;
-	camera_object_build_proj(scene_camera, -1.0);
-	camera_object_build_mat(scene_camera);
+	mat4_t m =
+	    (mat4_t){0.9146286343879498, 0.404295023959927,   0.000007410128652369705, 0, -0.0032648027153306235, 0.007367569133732468, 0.9999675337275382,   0,
+	             0.404281837254303,  -0.9145989516155143, 0.008058532943908717,    0, 0.4659988049397712,     -1.0687517188018691,  0.015935682577325486, 1};
+	util_render_preview_t preview;
+	util_render_preview_begin(&preview, sphere, m, util_render_material_preview_size, 0.5);
 
 	// Material Maker buffers: usable ones (low resolution) are enough, a missing one renders now at most the preview's
 	// size: rendering them at the material's size (2048 and more) for a 256 px sphere cost seconds on the iPad.
@@ -266,26 +299,9 @@ void util_render_make_material_preview() {
 	mm_buffers_set_size_cap(0);
 
 	g_context->material_preview = false;
-	_render_path_last_w         = _last_w; // Keep a pending viewport resize
-	_render_path_last_h         = _last_h;
-
-	// Restore
-	sphere->base->visible = false;
-	array_free(scene_meshes);
-	free(scene_meshes);
-	scene_meshes            = meshes;
-	g_context->paint_object = painto;
-
-	transform_set_matrix(scene_camera->base->transform, g_context->saved_camera);
-	viewport_update_camera_type(g_context->camera_type);
-	scene_camera->data->fov = saved_fov;
-	camera_object_build_proj(scene_camera, -1.0);
-	camera_object_build_mat(scene_camera);
-
+	util_render_preview_end(&preview);
 	g_context->brush_scale       = _brush_scale;
 	g_context->brush_nodes_scale = _brush_nodes_scale;
-	scene_world->_->envmap       = _envmap;
-	util_render_preview_lighting_end();
 
 	make_material_parse_mesh_material();
 	g_context->ddirty = 0;
@@ -301,34 +317,8 @@ void util_render_make_decal_preview() {
 	plane->base->transform->scale = (vec4_t){1, 1, 1, 1.0};
 	plane->base->transform->rot   = quat_from_euler(-math_pi() / 2.0, 0, 0);
 	transform_build_matrix(plane->base->transform);
-	plane->base->visible          = true;
-	mesh_object_t_array_t *meshes = scene_meshes;
-	scene_meshes                  = any_array_create_from_raw(
-        (void *[]){
-            plane,
-        },
-        1);
-	mesh_object_t *painto   = g_context->paint_object;
-	g_context->paint_object = plane;
-
-	g_context->saved_camera = scene_camera->base->transform->local;
-	mat4_t m                = mat4_identity();
-	m                       = mat4_translate(m, 0, 0, 1);
-	transform_set_matrix(scene_camera->base->transform, m);
-	f32 saved_fov           = scene_camera->data->fov;
-	scene_camera->data->fov = 0.92;
-	viewport_update_camera_type(CAMERA_TYPE_PERSPECTIVE);
-	gpu_texture_t *_envmap = scene_world->_->envmap;
-	scene_world->_->envmap = g_context->preview_envmap;
-	util_render_preview_lighting_begin(0.7, 0.65);
-
-	// No resize
-	i32 _last_w         = _render_path_last_w;
-	i32 _last_h         = _render_path_last_h;
-	_render_path_last_w = util_render_decal_preview_size;
-	_render_path_last_h = util_render_decal_preview_size;
-	camera_object_build_proj(scene_camera, -1.0);
-	camera_object_build_mat(scene_camera);
+	util_render_preview_t preview;
+	util_render_preview_begin(&preview, plane, mat4_translate(mat4_identity(), 0, 0, 1), util_render_decal_preview_size, 0.7);
 
 	make_material_parse_mesh_preview_material();
 	void (*_commands)(void) = render_path_commands;
@@ -339,24 +329,7 @@ void util_render_make_decal_preview() {
 	render_path_commands = _commands;
 
 	g_context->decal_preview = false;
-	_render_path_last_w      = _last_w; // Keep a pending viewport resize
-	_render_path_last_h      = _last_h;
-
-	// Restore
-	plane->base->visible = false;
-	array_free(scene_meshes);
-	free(scene_meshes);
-	scene_meshes            = meshes;
-	g_context->paint_object = painto;
-
-	transform_set_matrix(scene_camera->base->transform, g_context->saved_camera);
-	scene_camera->data->fov = saved_fov;
-	viewport_update_camera_type(g_context->camera_type);
-	camera_object_build_proj(scene_camera, -1.0);
-	camera_object_build_mat(scene_camera);
-
-	scene_world->_->envmap = _envmap;
-	util_render_preview_lighting_end();
+	util_render_preview_end(&preview);
 
 	make_material_parse_mesh_material();
 	g_context->ddirty = 1; // Refresh depth for decal paint
