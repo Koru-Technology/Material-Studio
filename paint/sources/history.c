@@ -556,7 +556,7 @@ void history_undo() {
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
 			mask_stack_mark_dirty(g_context->layer);
-			g_context->layer->fill_material = g_project->_->materials->buffer[step->material];
+			g_context->layer->fill_material = step->material >= 0 && step->material < g_project->_->materials->length ? g_project->_->materials->buffer[step->material] : NULL;
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_OPACITY) {
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
@@ -1201,14 +1201,19 @@ void history_to_fill_mask() {
 	history_push(HISTORY_ACTION_TO_FILL_MASK);
 }
 
+// The step keeps the layer's fill material, not the selected one: undo gives it back
+static void history_to_paint(history_action_t action) {
+	history_copy_to_undo(g_context->layer->id, history_undo_i, action == HISTORY_ACTION_TO_PAINT_MASK);
+	history_step_t *step = history_push(action);
+	step->material       = array_index_of(g_project->_->materials, g_context->layer->fill_material);
+}
+
 void history_to_paint_layer() {
-	history_copy_to_undo(g_context->layer->id, history_undo_i, false);
-	history_push(HISTORY_ACTION_TO_PAINT_LAYER);
+	history_to_paint(HISTORY_ACTION_TO_PAINT_LAYER);
 }
 
 void history_to_paint_mask() {
-	history_copy_to_undo(g_context->layer->id, history_undo_i, true);
-	history_push(HISTORY_ACTION_TO_PAINT_MASK);
+	history_to_paint(HISTORY_ACTION_TO_PAINT_MASK);
 }
 
 void history_layer_opacity() {

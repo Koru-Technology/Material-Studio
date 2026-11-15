@@ -7,7 +7,8 @@ int checks = 0;
 int step   = 0;
 int frame  = 0;
 
-slot_material_t *mat_red = NULL;
+slot_material_t *mat_red  = NULL;
+slot_material_t *mat_blue = NULL;
 slot_layer_t    *a       = NULL;
 slot_layer_t    *b       = NULL;
 slot_layer_t    *m       = NULL;
@@ -97,6 +98,14 @@ void next() {
 	}
 	else if (step == 10) {
 		check(opaque(m) == texels, "redo of a mask clear clears it white again");
+		script_material_set(mat_blue); // Another material selected than the one of the fill layer
+		check(script_layer_to_paint(a) && a->fill_material == NULL, "a to paint layer");
+	}
+	else if (step == 11) {
+		history_undo();
+	}
+	else if (step == 12) {
+		check(a->fill_material == mat_red, "undo of to paint gives the layer its own material back");
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
@@ -115,6 +124,11 @@ void main() {
 	ui_node_t *r = script_material_create_node_at("RGB", -300.0, 0.0);
 	script_material_set_color(r, 0, 0, 0.9, 0.1, 0.1, 1.0);
 	script_material_connect(r, 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
+	script_material_update();
+	mat_blue     = script_material_create("history_blue");
+	ui_node_t *u = script_material_create_node_at("RGB", -300.0, 0.0);
+	script_material_set_color(u, 0, 0, 0.1, 0.1, 0.9, 1.0);
+	script_material_connect(u, 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
 	script_material_update();
 	script_notify_on_next_frame(next);
 }
