@@ -260,7 +260,7 @@ int32_t app_material_duplicate(int32_t id) {
 	script_gpu_begin(&current, &in_use);
 	tab_materials_draw_slots_duplicate(NULL);
 	script_gpu_end(current, in_use);
-	ui_dock_redraw(1);
+	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return g_context->material != NULL ? g_context->material->id : -1;
 }
 
@@ -275,7 +275,7 @@ bool app_material_delete(int32_t id) {
 	}
 	script_material_delete(m);
 	iron_delay_idle_sleep();
-	return app_mat_by_id(id) == NULL || app_mat_by_id(id) != m;
+	return app_mat_by_id(id) != m;
 }
 
 int32_t app_material_delete_unused(void) {
@@ -298,7 +298,7 @@ bool app_material_rename(int32_t id, const char *name) {
 	}
 	m->canvas->name  = string_copy(slot_material_unique_name(m->canvas, (char *)name));
 	project_modified = true;
-	ui_dock_redraw(1);
+	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return true;
 }
 
