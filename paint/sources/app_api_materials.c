@@ -540,7 +540,7 @@ typedef struct {
 	int32_t section;
 	int32_t group;
 	bool    stylized;
-	char   *rel; // Folder items, how they are found again
+	char   *ident; // Saved items: the name, folder items: the relative path. How they are found again
 } app_lib_ref_t;
 
 static app_lib_ref_t *app_lib_items     = NULL;
@@ -552,12 +552,12 @@ static uint32_t       app_lib_sig       = 0;
 
 #define APP_LIB_MM_SECTIONS_MAX 64
 
-static void app_lib_push(int8_t source, i32 index, i32 section, i32 group, bool stylized, char *rel) {
+static void app_lib_push(int8_t source, i32 index, i32 section, i32 group, bool stylized, char *ident) {
 	if (app_lib_n == app_lib_cap) {
 		app_lib_cap   = app_lib_cap * 2 + 256;
 		app_lib_items = realloc(app_lib_items, sizeof(app_lib_ref_t) * app_lib_cap);
 	}
-	app_lib_items[app_lib_n++] = (app_lib_ref_t){.source = source, .index = index, .section = section, .group = group, .stylized = stylized, .rel = rel};
+	app_lib_items[app_lib_n++] = (app_lib_ref_t){.source = source, .index = index, .section = section, .group = group, .stylized = stylized, .ident = ident};
 }
 
 static i32 app_lib_mm_sections(void) {
@@ -586,11 +586,11 @@ static uint32_t app_lib_compute_signature(void) {
 
 static void app_lib_build(void) {
 	for (i32 i = 0; i < app_lib_n; ++i) {
-		free(app_lib_items[i].rel);
+		free(app_lib_items[i].ident);
 	}
 	app_lib_n = 0;
 	for (i32 i = 0; i < saved_materials_count(); ++i) {
-		app_lib_push(APP_LIBRARY_SAVED, i, 0, -1, false, NULL);
+		app_lib_push(APP_LIBRARY_SAVED, i, 0, -1, false, strdup(saved_materials_name(i)));
 	}
 	for (i32 i = 0; i < library_entry_count(); ++i) {
 		library_entry_t *e = library_entry_get(i);
@@ -641,12 +641,12 @@ static app_lib_ref_t *app_lib_ref(int32_t index) {
 		return NULL;
 	}
 	app_lib_ref_t *r = &app_lib_items[index];
-	// The sources keep their items while the signature stays, a stale index is not found
+	// The sources keep their items while the signature stays, a stale index is not found (nor another item taken for it)
 	switch (r->source) {
 	case APP_LIBRARY_SAVED:
-		return r->index < saved_materials_count() ? r : NULL;
+		return r->index < saved_materials_count() && string_equals(saved_materials_name(r->index), r->ident) ? r : NULL;
 	case APP_LIBRARY_FOLDER:
-		return r->index < library_entry_count() && string_equals(library_entry_rel(library_entry_get(r->index)), r->rel) ? r : NULL;
+		return r->index < library_entry_count() && string_equals(library_entry_rel(library_entry_get(r->index)), r->ident) ? r : NULL;
 	default:
 		return r->index < mm_library_count() ? r : NULL;
 	}
@@ -793,7 +793,7 @@ bool app_library_use(int32_t index) {
 		sys_notify_on_next_frame(&app_lib_use_saved_next, strdup(saved_materials_name(r->index)));
 		break;
 	case APP_LIBRARY_FOLDER:
-		sys_notify_on_next_frame(&app_lib_use_folder_next, strdup(r->rel));
+		sys_notify_on_next_frame(&app_lib_use_folder_next, strdup(r->ident));
 		break;
 	default:
 		mm_library_use(r->index); // On the next frame
