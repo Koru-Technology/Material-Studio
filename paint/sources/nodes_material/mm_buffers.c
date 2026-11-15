@@ -63,11 +63,7 @@
 #include "../util/util_hash.h"
 #include <iron_profile.h>
 #include <stdatomic.h>
-#ifdef _WIN32
-#include <windows.h>
-#else
 #include <unistd.h>
-#endif
 
 #define MM_BUFFERS_MAX_PIPES 256 // Compiled pass pipelines kept, the least recently used go first past it
 #define MM_BUFFERS_FLUSH 64 // Draws between submits, short command buffers (the ios gpu watchdog, iterate buffers draw thousands)

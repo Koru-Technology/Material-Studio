@@ -1095,11 +1095,7 @@ static bool mm_buffers_pipes_first(mm_buffers_recipe_t *r, i32 level, double *ms
 			mm_buffers_pipe_make(p);
 		}
 		else {
-#ifdef _WIN32
-			Sleep(1);
-#else
 			usleep(500);
-#endif
 		}
 	}
 	free(list);

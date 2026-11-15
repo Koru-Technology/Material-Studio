@@ -232,11 +232,7 @@ static void mm_buffers_pipe_wait(mm_buffers_pipe_t *p) {
 		return;
 	}
 	while (!mm_buffers_pipe_ready(p)) {
-#ifdef _WIN32
-		Sleep(1);
-#else
 		usleep(500);
-#endif
 	}
 }
 
