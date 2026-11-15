@@ -112,10 +112,11 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 	raw->decal_mat          = mat4_identity(); // Decal layer
 
 	if (string_equals(ext, "")) {
-		// Ids are not reused in a project, an anchor of a deleted layer must not find a new one
+		// Ids are not reused in a project, an anchor of a deleted layer must not find a new one. A new project (another
+		// layer array, or the layers all removed) starts over.
 		static slot_layer_t_array_t *ids_of  = NULL;
 		static i32                   next_id = 0;
-		if (ids_of != g_project->_->layers) {
+		if (ids_of != g_project->_->layers || g_project->_->layers->length == 0) {
 			ids_of  = g_project->_->layers;
 			next_id = 0;
 		}
