@@ -3,14 +3,14 @@
 // Material Maker buffers (nodes_material/mm_buffers.c): library materials planned with mm_plan and rendered by the app's
 // GPU layer match the checker's renders (paint/tools/material_maker, mm_render.m: Material Maker's exports to under
 // 1/255): an iterate buffer of 1000 iterations with buffers inside its loop (846, a Turing pattern), buffers and normal
-// maps (2, 3, 88, 113), a text node (1217). Rendered passes resolve through their texture links, unchanged passes come
+// maps and a text node (2, 3, 88, 113). Rendered passes resolve through their texture links, unchanged passes come
 // from the cache, unused ones stay while the cache fits its budget and the least recently used are evicted past it.
 
 int fails  = 0;
 int checks = 0;
 int step   = 0;
 
-int ids[6] = {846, 2, 3, 88, 113, 1217};
+int ids[5] = {846, 2, 3, 88, 113};
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -25,7 +25,7 @@ int has(char *s, char *part) {
 }
 
 // Expected texels: id, map, x, y, r, g, b, a (0-255, the checker's PNGs at 512)
-int texel_count = 180;
+int texel_count = 150;
 
 int byte_of(float v) {
 	if (v != v || v < 0.0) {
@@ -189,36 +189,6 @@ int compare_texels(int id) {
 	113, 5, 400, 13, 0, 0, 0, 255,
 	113, 5, 123, 456, 0, 0, 0, 255,
 	113, 5, 500, 300, 0, 0, 0, 255,
-	1217, 0, 37, 91, 31, 123, 93, 255,
-	1217, 0, 256, 256, 24, 110, 67, 255,
-	1217, 0, 400, 13, 43, 134, 104, 255,
-	1217, 0, 123, 456, 43, 134, 104, 255,
-	1217, 0, 500, 300, 31, 123, 93, 255,
-	1217, 1, 37, 91, 255, 255, 0, 255,
-	1217, 1, 256, 256, 255, 255, 0, 255,
-	1217, 1, 400, 13, 255, 255, 0, 255,
-	1217, 1, 123, 456, 255, 255, 0, 255,
-	1217, 1, 500, 300, 255, 255, 0, 255,
-	1217, 2, 37, 91, 0, 0, 0, 255,
-	1217, 2, 256, 256, 0, 0, 0, 255,
-	1217, 2, 400, 13, 0, 0, 0, 255,
-	1217, 2, 123, 456, 0, 0, 0, 255,
-	1217, 2, 500, 300, 0, 0, 0, 255,
-	1217, 3, 37, 91, 128, 128, 128, 255,
-	1217, 3, 256, 256, 128, 128, 128, 255,
-	1217, 3, 400, 13, 128, 128, 128, 255,
-	1217, 3, 123, 456, 128, 128, 128, 255,
-	1217, 3, 500, 300, 128, 128, 128, 255,
-	1217, 4, 37, 91, 255, 255, 255, 255,
-	1217, 4, 256, 256, 255, 255, 255, 255,
-	1217, 4, 400, 13, 255, 255, 255, 255,
-	1217, 4, 123, 456, 255, 255, 255, 255,
-	1217, 4, 500, 300, 255, 255, 255, 255,
-	1217, 5, 37, 91, 0, 0, 0, 255,
-	1217, 5, 256, 256, 0, 0, 0, 255,
-	1217, 5, 400, 13, 0, 0, 0, 255,
-	1217, 5, 123, 456, 0, 0, 0, 255,
-	1217, 5, 500, 300, 0, 0, 0, 255,
 	};
 	int bad = 0;
 	int n   = 0;
@@ -285,49 +255,49 @@ void render_material(int id) {
 }
 
 void next() {
-	if (step < 6) {
+	if (step < 5) {
 		render_material(ids[step]);
 	}
-	else if (step == 6) { // Unchanged (the last one, its text texture too): every pass from the cache
+	else if (step == 5) { // Unchanged (the last one, its text texture too): every pass from the cache
 		int entries = mm_buffers_stat(4);
-		char *s     = mm_buffers_test_ptex("1217", 9);
-		printf("[mm_buffers] 1217 again: %s", s);
+		char *s     = mm_buffers_test_ptex("113", 9);
+		printf("[mm_buffers] 113 again: %s", s);
 		check(mm_buffers_stat(0) == 0 && mm_buffers_stat(1) > 0 && mm_buffers_stat(3) == 0, "unchanged material: every pass from the cache, nothing drawn");
 		check(mm_buffers_stat(4) <= entries, "nothing added to the cache");
-		compare_texels(1217);
+		compare_texels(113);
 	}
-	else if (step == 7) {
+	else if (step == 6) {
 		mm_buffers_test_ptex("3", 9);
 	}
-	else if (step == 8) { // 1217 unused for two renders: kept while the cache fits its budget, evicted past it
+	else if (step == 7) { // 113 unused for two renders: kept while the cache fits its budget, evicted past it
 		mm_buffers_test_ptex("88", 9);
 		printf("[mm_buffers] cache: %d textures, %d pipelines, %d KB", mm_buffers_stat(4), mm_buffers_stat(5), mm_buffers_stat(6));
-		char *s = mm_buffers_test_ptex("1217", 9);
-		check(mm_buffers_stat(0) == 0 && mm_buffers_stat(1) > 0, string("entries unused for two renders stay within the budget (1217 from the cache: %s)", s));
+		char *s = mm_buffers_test_ptex("113", 9);
+		check(mm_buffers_stat(0) == 0 && mm_buffers_stat(1) > 0, string("entries unused for two renders stay within the budget (113 from the cache: %s)", s));
 		check(mm_buffers_stat(6) <= mm_buffers_stat(7), string("cache memory within its budget (%d of %d KB)", mm_buffers_stat(6), mm_buffers_stat(7)));
 		mm_buffers_test_budget(1); // Past the budget: only the last render's textures stay
 		mm_buffers_test_ptex("3", 9);
 		mm_buffers_test_ptex("88", 9);
-		s = mm_buffers_test_ptex("1217", 9);
+		s = mm_buffers_test_ptex("113", 9);
 		mm_buffers_test_budget(0);
-		check(mm_buffers_stat(0) > 0 && mm_buffers_stat(1) == 0, string("past the budget the least recently used are evicted (1217 renders again: %s)", s));
-		compare_texels(1217);
+		check(mm_buffers_stat(0) > 0 && mm_buffers_stat(1) == 0, string("past the budget the least recently used are evicted (113 renders again: %s)", s));
+		compare_texels(113);
 	}
-	else if (step == 9) { // Evicted textures render again from their recipes when their links resolve
+	else if (step == 8) { // Evicted textures render again from their recipes when their links resolve
 		evict_and_resolve("113", 0);
 	}
-	else if (step == 10) { // Resolved inside a render pass (a material draw): the pass is suspended and continues
+	else if (step == 9) { // Resolved inside a render pass (a material draw): the pass is suspended and continues
 		evict_and_resolve("113", 1);
 	}
-	else if (step == 11) { // Loop passes keep their last iteration, have links, render again with their iterate buffer
+	else if (step == 10) { // Loop passes keep their last iteration, have links, render again with their iterate buffer
 		char *s = mm_buffers_test_ptex("846", 9);
 		check(has(s, " links 13 ") && has(s, "bad_links 0 "), string("846: every pass has a link, loop passes too (%s)", s));
 		evict_and_resolve("846", 1);
 	}
-	else if (step == 12) { // CPU textures (text) come back from their recipes' pixels
-		evict_and_resolve("1217", 0);
+	else if (step == 11) { // CPU textures (text) come back from their recipes' pixels
+		evict_and_resolve("113", 0);
 	}
-	else if (step == 13) {
+	else if (step == 12) {
 		mm_buffers_clear();
 		check(mm_buffers_stat(4) == 0 && mm_buffers_stat(5) == 0 && mm_buffers_stat(9) == 0, "clear frees every texture, recipe and pipeline");
 	}

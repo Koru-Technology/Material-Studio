@@ -2,7 +2,7 @@
 
 // Picking a library material: its paint shader is parsed at once, translated and compiled on a thread
 // (make_material_parse_paint_material_async), the frames go on meanwhile.
-// - the longest frame of each pick (Mosaic Tiles 1081, 1819, 784, 569), from the pick until its paint shader is in use
+// - the longest frame of each pick (Medieval Stone Brick Wall 1403, 1819, 784, 569), from the pick until its paint shader is in use
 // - a stroke the frame after the pick, while the shader compiles, waits for it and paints the new material, not the
 //   previous one (a magenta material)
 // - a stroke start as util_brush_update makes it: waits at most 250 ms, then starts on the first frame the shader is
@@ -15,7 +15,7 @@ int checks = 0;
 int phase  = 0;
 int frame  = 0;
 
-int    ids[4]     = {1081, 1819, 784, 569};
+int    ids[4]     = {1403, 1819, 784, 569};
 float  longest[4] = {0.0, 0.0, 0.0, 0.0};
 int    pick_k     = 0;
 int    parses0    = 0; // make_material_paint_stat(1) before a pick
@@ -159,7 +159,7 @@ void next() {
 			for (int j = 1; j < 50 && k < 3; ++j) {
 				int i  = (n * j) / 7 % n;
 				int id = mm_library_id(i);
-				if (id != 1081 && id != 1819 && id != 784 && id != 569) {
+				if (id != 1403 && id != 1819 && id != 784 && id != 569) {
 					others[k] = i;
 					k         = k + 1;
 				}

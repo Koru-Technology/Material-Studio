@@ -1183,8 +1183,7 @@ static void mm_buffers_draw(mm_buffers_pipe_t *pipe, gpu_texture_t *target, gpu_
 	if (profile < 0) {
 		profile = getenv("IRON_BUFFERS_PROFILE") != NULL;
 	}
-	if (profile) { // Logged before it runs too: a draw that hangs the GPU is the last one named
-		iron_log("[buffers] drawing %s: size %d, rows %d to %d, iteration %d", mm_buffers_drawing != NULL ? mm_buffers_drawing : "?", size, y0, y1, iteration);
+	if (profile) {
 		double t0 = iron_time();
 		gpu_execute_and_wait();
 		iron_log("[buffers] pass %s: size %d, iteration %d, %d inputs, %.1f ms", mm_buffers_drawing != NULL ? mm_buffers_drawing : "?", size, iteration, n,

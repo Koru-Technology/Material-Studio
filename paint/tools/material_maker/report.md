@@ -1,17 +1,17 @@
 # Material Maker library report
 
-988 of 1776 materials included.
+900 of 1776 materials included.
 
-- Tiles & Floors: 164
-- Bricks & Walls: 149
-- Stone & Rock: 148
-- Ground & Nature: 115
-- Metal: 115
-- Wood: 102
-- Fabric & Leather: 54
+- Tiles & Floors: 147
+- Bricks & Walls: 135
+- Stone & Rock: 121
+- Ground & Nature: 105
+- Metal: 109
+- Wood: 94
+- Fabric & Leather: 53
 - Food: 44
-- Patterns: 37
-- Creatures & Organic: 36
+- Patterns: 35
+- Creatures & Organic: 33
 - Sci-Fi & Tech: 24
 
 ## Left out: needs files from its author (87)
@@ -824,3 +824,96 @@ Shader that does not compile, or hangs the GPU (by id in overrides.json).
 ## Left out: removed by hand (1)
 
 - 910 "Swimming Pool Tiles (Animated)" by unfa
+
+## Left out: too heavy for the iPad (88)
+
+They hang the GPU or crash the app on the iPad (the bulk test of the material controls, tests/material_controls_all.c).
+
+- 215 "MDF Board" by unfa
+- 223 "Grassy Ground" by rovacado
+- 240 "Overgrown Paving Stones" by QbieShay
+- 252 "Speckled MDF Board" by unfa
+- 425 "Rooted Stone Floor" by Tarox
+- 506 "Mossy Rock" by Tarox
+- 586 "Oak Bark" by Schrottkatze
+- 605 "Stone Brick Trim" by muhuk
+- 608 "Mossy Tree Bark" by Schrottkatze
+- 610 "Nordic Stone Floor" by Stan
+- 612 "Forest Floor" by Dark_Randy24
+- 703 "Smeared Clay" by Tarox
+- 712 "Gilded Dragon Scales" by Tarox
+- 713 "Kintsugi" by DroppedBeat
+- 720 "Layered Cliff Rock" by pixelpoops
+- 738 "Floating Magma Rocks" by Tarox
+- 745 "Organic Cell Tiles" by Nic
+- 751 "Celestial Marble Tiles" by Tarox
+- 851 "Autumn Garden" by Stan
+- 863 "Mountain Path" by Tarox
+- 872 "Pirate Coins" by Tarox
+- 879 "Scorched Ground" by Tarox
+- 908 "Weathered Sandstone Slab" by Richard_S
+- 925 "Mud Brick Wall" by aaws424
+- 948 "Bricks with Mortar" by Schrottkatze
+- 969 "Construction Debris" by Tarox
+- 971 "Rustic Brick Wall" by Tarox
+- 975 "Broken floor" by Tarox
+- 976 "Mosaic Pavement" by Tarox
+- 985 "Grass Clumps" by Tarox
+- 996 "Gold-Inlaid Marble Floor" by Tarox
+- 1022 "Mossy Stone" by Saurav72
+- 1076 "Tufted Leather Couch" by SJHooks
+- 1077 "Ceramic Roof Tiles" by SJHooks
+- 1081 "Mosaic Tiles" by SJHooks
+- 1096 "Scree Rocks" by Tarox
+- 1097 "Dry Stone Wall" by SJHooks
+- 1100 "Ivy-Covered Dry Stone Wall" by SJHooks
+- 1104 "Infected rock" by Tarox
+- 1105 "Fossil Sandstone" by Tarox
+- 1111 "Arabesque Stone Tiles" by Tarox
+- 1117 "Mossy Metal Tiles" by NotArme
+- 1126 "Concrete Rubble" by NotArme
+- 1140 "Chunky Brick Wall" by sinexq
+- 1181 "Stylized Strata Rock" by rubberduck
+- 1187 "Crystal Moss" by rubberduck
+- 1195 "Riveted Rusty Panels" by any_other
+- 1215 "Stylized Rock Cliff" by rubberduck
+- 1217 "UV Grid" by muhuk
+- 1221 "Glowing Flowing Lava" by rubberduck
+- 1230 "Rustic Wood Flooring" by any_other
+- 1231 "Diamond Patterned Tiles" by any_other
+- 1243 "Rusty Peeling Paint" by rubberduck
+- 1244 "Mud" by Saurav72
+- 1251 "Leaky Rust Grunge" by rubberduck
+- 1265 "Cobweb Wall" by Adamyuyuyu
+- 1291 "Rock Formation" by leoskateman
+- 1298 "Damaged Tiles" by leoskateman
+- 1306 "Damaged Concrete Tiles" by leoskateman
+- 1310 "Dune Sandstone Bricks" by Adamyuyuyu
+- 1323 "Obsidian Rock" by Adamyuyuyu
+- 1337 "Mossy Stone Floor" by leoskateman
+- 1341 "Small Pebbles" by leoskateman
+- 1348 "Rough Marble" by Adamyuyuyu
+- 1349 "Polished Marble" by Adamyuyuyu
+- 1352 "Weathered Bunker Planks" by Adamyuyuyu
+- 1356 "Bunker Rock" by Adamyuyuyu
+- 1370 "Cobwebbed Rock" by Adamyuyuyu
+- 1417 "Hollow Terracotta Bricks" by leoskateman
+- 1538 "Scree" by rubberduck
+- 1580 "Sandy Bricks" by Adamyuyuyu
+- 1585 "Classic Flower Net Tiles" by leoskateman
+- 1590 "Strata Rock (Pixel Art)" by rubberduck
+- 1619 "Coal Pile" by Tarox
+- 1621 "OSB" by any_other
+- 1637 "Overgrown Aggregate Tiles" by leoskateman
+- 1651 "Coral Seabed" by Tarox
+- 1664 "Jade" by Tarox
+- 1670 "Cracked Lava Crust" by william19431
+- 1693 "metal_grid_rust" by leoskateman
+- 1698 "Blue patterned worn tiles" by any_other
+- 1730 "Bloody Pebbles" by Tarox
+- 1798 "Faceted Rock" by Saurav72
+- 1806 "Lime Washed Plaster" by leoskateman
+- 1815 "Dungeon Bricks" by Adamyuyuyu
+- 1844 "Rock (Pixel Art)" by Schrottkatze
+- 1932 "Herringbone Wood" by rk3
+- 1964 "Stone Slab Wall" by accorp

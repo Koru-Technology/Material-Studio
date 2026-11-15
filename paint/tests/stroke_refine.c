@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Strokes painted right after picking a heavy Material Maker library material (Mosaic Tiles, 1081) paint at once with
+// Strokes painted right after picking a heavy Material Maker library material (Medieval Stone Brick Wall, 1403) paint at once with
 // tiny buffers rendered on the spot (within an allowance), then sharpen in place as better tiers land
 // (util_stroke_refine.c):
 // - a live stroke (raw mouse events) right after the pick: no frame of it or of the seconds after it takes 350 ms
@@ -173,7 +173,7 @@ void stroke_b2() {
 void pick() {
 	m0 = script_get_context()->material;
 	mm_library_count();
-	int i = mm_library_find(1081);
+	int i = mm_library_find(1403);
 	printf("[refine] picking %s", mm_library_name(i));
 	t_pick   = sys_time();
 	max_pick = 0.0;

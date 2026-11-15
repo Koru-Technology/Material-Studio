@@ -14,7 +14,7 @@ int bgra   = 0;
 char *dir  = NULL;
 
 // Library materials: kinds and node types (graph, text, remote, portal, unlit, iterate buffer, Easy SDF, switch)
-int  ids[15]      = {2, 3, 846, 1217, 93, 4, 1582, 451, 171, 290, 542, 836, 1535, 129, 0};
+int  ids[15]      = {2, 3, 846, 113, 93, 4, 1582, 451, 171, 290, 542, 836, 1535, 129, 0};
 int  buffered[15] = {0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0}; // Albedo samples a buffer (not rendered in materials yet)
 int  flat[15]     = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0}; // Albedo not linked: the albedo color
 int  count        = 14;
