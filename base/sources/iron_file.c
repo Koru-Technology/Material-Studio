@@ -11,41 +11,31 @@
 #ifdef IRON_IOS
 #include "backends/ios_file_dialog.h"
 #endif
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#ifdef IRON_MACOS
+#include <copyfile.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#endif
 
-i32         iron_sys_command(char *cmd);
-extern char temp_string[1024 * 128];
 
 static char *fileslocation = NULL;
-#if defined(IRON_MACOS) || defined(IRON_IOS)
-const char *iron_get_resource_path();
-#endif
+const char  *iron_get_resource_path();
 
 void iron_internal_set_files_location(char *dir) {
 	fileslocation = dir;
 }
 
 char *iron_internal_files_location(void) {
-#ifdef IRON_MACOS
-	static char path[1024];
-	strcpy(path, iron_get_resource_path());
-	strcat(path, "/");
-	strcat(path, IRON_OUTDIR);
-	strcat(path, "/");
+	static char path[PATH_MAX];
+	snprintf(path, sizeof(path), "%s/%s/", iron_get_resource_path(), IRON_OUTDIR);
 	return path;
-#elif defined(IRON_IOS)
-	static char path[1024];
-	strcpy(path, iron_get_resource_path());
-	strcat(path, "/");
-	strcat(path, IRON_OUTDIR);
-	strcat(path, "/");
-	return path;
-#else
-	return fileslocation;
-#endif
 }
 
 static size_t iron_libc_file_reader_read(iron_file_reader_t *reader, void *data, size_t size) {
@@ -70,36 +60,23 @@ static size_t iron_libc_file_reader_pos(iron_file_reader_t *reader) {
 }
 
 bool iron_internal_file_reader_open(iron_file_reader_t *reader, const char *filename, int type) {
-	char filepath[1001];
-#ifdef IRON_IOS
-	strcpy(filepath, type == IRON_FILE_TYPE_SAVE ? iron_internal_save_path() : iron_get_resource_path());
-	if (type != IRON_FILE_TYPE_SAVE) {
-		strcat(filepath, "/");
-		strcat(filepath, IRON_OUTDIR);
-		strcat(filepath, "/");
-	}
-
-	strcat(filepath, filename);
-#endif
-#ifdef IRON_MACOS
-	strcpy(filepath, type == IRON_FILE_TYPE_SAVE ? iron_internal_save_path() : iron_get_resource_path());
-	if (type != IRON_FILE_TYPE_SAVE) {
-		strcat(filepath, "/");
-		strcat(filepath, IRON_OUTDIR);
-		strcat(filepath, "/");
-	}
-	strcat(filepath, filename);
-#endif
-
-	bool is_abs = filename[0] == '/';
-
-	if (is_abs) {
-		strcpy(filepath, filename);
+	// Absolute, else relative to the files location, the save folder or the bundled data
+	char filepath[PATH_MAX];
+	int  length;
+	if (filename[0] == '/') {
+		length = snprintf(filepath, sizeof(filepath), "%s", filename);
 	}
 	else if (fileslocation != NULL && type != IRON_FILE_TYPE_SAVE) {
-		strcpy(filepath, fileslocation);
-		strcat(filepath, "/");
-		strcat(filepath, filename);
+		length = snprintf(filepath, sizeof(filepath), "%s/%s", fileslocation, filename);
+	}
+	else if (type == IRON_FILE_TYPE_SAVE) {
+		length = snprintf(filepath, sizeof(filepath), "%s%s", iron_internal_save_path(), filename);
+	}
+	else {
+		length = snprintf(filepath, sizeof(filepath), "%s/%s/%s", iron_get_resource_path(), IRON_OUTDIR, filename);
+	}
+	if (length < 0 || length >= (int)sizeof(filepath)) {
+		return false;
 	}
 
 	reader->data = fopen(filepath, "rb");
@@ -108,7 +85,8 @@ bool iron_internal_file_reader_open(iron_file_reader_t *reader, const char *file
 	}
 
 	fseek((FILE *)reader->data, 0, SEEK_END);
-	reader->size = ftell((FILE *)reader->data);
+	long size    = ftell((FILE *)reader->data);
+	reader->size = size > 0 ? (size_t)size : 0;
 	fseek((FILE *)reader->data, 0, SEEK_SET);
 
 	reader->read  = iron_libc_file_reader_read;
@@ -183,11 +161,11 @@ int8_t iron_read_s8(uint8_t *data) {
 bool iron_file_writer_open(iron_file_writer_t *writer, const char *filepath) {
 	writer->file = NULL;
 
-	char path[1001];
-	strcpy(path, iron_internal_save_path());
-	strcat(path, filepath);
-
-	writer->file = fopen(path, "wb");
+	char path[PATH_MAX];
+	int  length = snprintf(path, sizeof(path), "%s%s", iron_internal_save_path(), filepath);
+	if (length > 0 && length < (int)sizeof(path)) {
+		writer->file = fopen(path, "wb");
+	}
 	if (writer->file == NULL) {
 		iron_log("Could not open file %s.", filepath);
 		return false;
@@ -206,9 +184,16 @@ void iron_file_writer_write(iron_file_writer_t *writer, void *data, int size) {
 	fwrite(data, 1, size, (FILE *)writer->file);
 }
 
+// Names separated by \n, valid until the next call
 char *iron_read_directory(char *path) {
-	char *files = temp_string;
-	files[0]    = 0;
+	static char  *files    = NULL;
+	static size_t capacity = 0;
+	size_t        length   = 0;
+	if (files == NULL) {
+		capacity = 4096;
+		files    = malloc(capacity);
+	}
+	files[0] = '\0';
 
 	directory dir = open_dir(path);
 	if (dir.handle == NULL) {
@@ -220,26 +205,38 @@ char *iron_read_directory(char *path) {
 		if (!f.valid) {
 			break;
 		}
-
-		if (files[0] != '\0') {
-			strcat(files, "\n");
+		size_t name_length = strlen(f.name);
+		if (length + name_length + 2 > capacity) {
+			while (length + name_length + 2 > capacity) {
+				capacity *= 2;
+			}
+			files = realloc(files, capacity);
 		}
-		strcat(files, f.name);
+		if (length > 0) {
+			files[length++] = '\n';
+		}
+		memcpy(files + length, f.name, name_length + 1);
+		length += name_length;
 	}
 	close_dir(&dir);
 	return files;
 }
 
+// With the missing parent folders, as mkdir -p
 void iron_create_directory(char *path) {
-#ifdef IRON_IOS
-	IOSCreateDirectory(path);
-#else
-	char cmd[1024];
-	strcpy(cmd, "mkdir -p \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
-#endif
+	char dir[PATH_MAX];
+	int  length = snprintf(dir, sizeof(dir), "%s", path);
+	if (length <= 0 || length >= (int)sizeof(dir)) {
+		return;
+	}
+	for (char *p = dir + 1; *p != '\0'; ++p) {
+		if (*p == '/') {
+			*p = '\0';
+			mkdir(dir, 0777);
+			*p = '/';
+		}
+	}
+	mkdir(dir, 0777);
 }
 
 bool iron_is_directory(char *path) {
@@ -260,11 +257,7 @@ void iron_delete_file(char *path) {
 #ifdef IRON_IOS
 	IOSDeleteFile(path);
 #else
-	char cmd[1024];
-	strcpy(cmd, "rm \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
+	unlink(path);
 #endif
 }
 
@@ -328,8 +321,6 @@ void iron_file_download(char *url, void (*callback)(char *, buffer_t *), i32 siz
 char     *sys_buffer_to_string(buffer_t *b);
 buffer_t *data_get_blob(char *file);
 
-static char *file_cmd_copy = "cp";
-
 static any_map_t *_file_download_map = NULL;
 
 any_array_t *file_read_directory(char *path) {
@@ -365,6 +356,10 @@ void file_copy(char *src_path, char *dst_path) {
 	}
 	size_t size = iron_file_reader_size(&reader);
 	void  *data = malloc(size > 0 ? size : 1);
+	if (data == NULL) {
+		iron_file_reader_close(&reader);
+		return;
+	}
 	size_t read = iron_file_reader_read(&reader, data, size);
 	iron_file_reader_close(&reader);
 	FILE *f = fopen(dst_path, "wb");
@@ -374,23 +369,22 @@ void file_copy(char *src_path, char *dst_path) {
 	}
 	free(data);
 #else
-	char cmd[1024];
-	strcpy(cmd, file_cmd_copy);
-	strcat(cmd, " \"");
-	strcat(cmd, src_path);
-	strcat(cmd, "\" \"");
-	strcat(cmd, dst_path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
+	if (copyfile(src_path, dst_path, NULL, COPYFILE_DATA | COPYFILE_STAT | COPYFILE_XATTR) != 0) {
+		iron_log("Could not copy %s to %s: %s", src_path, dst_path, strerror(errno));
+	}
 #endif
 }
 
+// Opens a file or folder in the default app (Finder for a folder)
 void file_start(char *path) {
-	char cmd[1024];
-	strcpy(cmd, "open \"");
-	strcat(cmd, path);
-	strcat(cmd, "\"");
-	iron_sys_command(cmd);
+#ifdef IRON_MACOS
+	extern char **environ;
+	char         *argv[] = {"/usr/bin/open", path, NULL};
+	pid_t         pid;
+	if (posix_spawn(&pid, argv[0], NULL, NULL, argv, environ) == 0) {
+		waitpid(pid, NULL, 0);
+	}
+#endif
 }
 
 static void _file_download_to_callback(char *url, buffer_t *ab) {
