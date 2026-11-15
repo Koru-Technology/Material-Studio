@@ -20,7 +20,9 @@ void iron_thread_init(iron_thread_t *t, void (*thread)(void *param), void *param
 	t->impl.thread = thread;
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
-	// pthread_attr_setstacksize(&attr, 1024 * 64);
+	// As the main thread's: shader translation (SPIRV-Cross) recurses deep on big shaders, past the 512 KB default of
+	// secondary threads. Only the pages touched are committed.
+	pthread_attr_setstacksize(&attr, 8 * 1024 * 1024);
 	struct sched_param sp;
 	memset(&sp, 0, sizeof(sp));
 	sp.sched_priority = 0;
