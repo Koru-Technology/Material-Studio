@@ -371,15 +371,15 @@ static mm_json_t *mm_import_defaults(mm_json_t *n) {
 	const char *type = mm_nodes_jstr(n, "type");
 	mm_json_t  *d    = mm_json_copy(n);
 	if (type != NULL && strcmp(type, "buffer") == 0 && mm_json_get(d, "version") == NULL) {
-		mm_json_set(d, "version", mm_nodes_num(0));
+		mm_json_set(d, "version", mm_json_number(0));
 	}
 	if (mm_json_get(d, "seed") == NULL && mm_json_get(d, "seed_int") == NULL && mm_json_get(d, "seed_value") == NULL) {
 		// get_seed_from_position, from its position in Material Maker's graph
 		mm_json_t *p = mm_json_get(n, "node_position");
 		int64_t    x = (int64_t)mm_json_num(mm_json_get(p, "x"), 0);
 		int64_t    y = (int64_t)mm_json_num(mm_json_get(p, "y"), 0);
-		mm_json_set(d, "seed", mm_nodes_num((double)(((x * 0x1f1f1f1f) ^ y) % 65536)));
-		mm_json_set(d, "seed_locked", mm_nodes_bool(false));
+		mm_json_set(d, "seed", mm_json_number((double)(((x * 0x1f1f1f1f) ^ y) % 65536)));
+		mm_json_set(d, "seed_locked", mm_json_boolean(false));
 	}
 	if (mm_json_get(d, "generic_size") == NULL) {
 		mm_json_t *lib = type != NULL && mm_json_get(n, "shader_model") == NULL ? mm_library_node(type) : NULL;
@@ -458,8 +458,8 @@ char *mm_material_parameters_json(ui_node_t *node) {
 			mm_json_set(o, params[i].name, v);
 		}
 	}
-	mm_json_set(o, "kind", mm_nodes_str(mm_material_kind(node)));
-	char *s = string_copy(mm_nodes_json_text(o));
+	mm_json_set(o, "kind", mm_json_string(mm_material_kind(node)));
+	char *s = string_copy(mm_json_text(o));
 	mm_arena_release(mk);
 	return s;
 }
@@ -564,8 +564,8 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 				mm_json_t *c = mm_json_new(MM_JSON_OBJECT);
 				mm_json_set(c, "from", mm_json_get(ports->items[k], "node"));
 				mm_json_set(c, "from_port", mm_json_get(ports->items[k], "port"));
-				mm_json_set(c, "to", mm_nodes_str(cons->keys[i]));
-				mm_json_set(c, "to_port", mm_nodes_num(atof(ports->keys[k])));
+				mm_json_set(c, "to", mm_json_string(cons->keys[i]));
+				mm_json_set(c, "to_port", mm_json_number(atof(ports->keys[k])));
 				mm_json_push(list, c);
 			}
 		}

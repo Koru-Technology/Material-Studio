@@ -77,6 +77,9 @@ bool        mm_json_bool(mm_json_t *v, bool fallback);
 bool        mm_json_truthy(mm_json_t *v); // GDScript truthiness: "true" and any non-empty string are true
 char       *mm_json_text(mm_json_t *v);   // Compact JSON, in the arena
 mm_json_t  *mm_json_new(mm_json_type_t type);
+mm_json_t  *mm_json_string(const char *s); // In the arena
+mm_json_t  *mm_json_number(double d);
+mm_json_t  *mm_json_boolean(bool b);
 void        mm_json_set(mm_json_t *obj, const char *key, mm_json_t *v);
 void        mm_json_push(mm_json_t *arr, mm_json_t *v);
 mm_json_t  *mm_json_copy(mm_json_t *v); // Deep

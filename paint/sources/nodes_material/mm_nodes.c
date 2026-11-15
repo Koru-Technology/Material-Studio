@@ -85,116 +85,6 @@ static f32               mm_nodes_ms        = 0.0;
 static mm_buf_t          mm_nodes_skips     = {0}; // Skipped library entries and why, malloc'd
 static bool              mm_nodes_done_init = false;
 
-// Json writing
-
-static void mm_nodes_json_string(mm_buf_t *b, const char *s) {
-	mm_buf_add(b, "\"");
-	for (const unsigned char *p = (const unsigned char *)s; *p; ++p) {
-		if (*p == '"' || *p == '\\') {
-			char e[3] = {'\\', (char)*p, 0};
-			mm_buf_add(b, e);
-		}
-		else if (*p == '\n') {
-			mm_buf_add(b, "\\n");
-		}
-		else if (*p == '\t') {
-			mm_buf_add(b, "\\t");
-		}
-		else if (*p == '\r') {
-			mm_buf_add(b, "\\r");
-		}
-		else if (*p < 0x20) {
-			mm_buf_printf(b, "\\u%04x", *p);
-		}
-		else {
-			mm_buf_addn(b, (const char *)p, 1);
-		}
-	}
-	mm_buf_add(b, "\"");
-}
-
-static void mm_nodes_json_write(mm_buf_t *b, mm_json_t *v) {
-	if (v == NULL) {
-		mm_buf_add(b, "null");
-		return;
-	}
-	switch (v->type) {
-	case MM_JSON_NULL:
-		mm_buf_add(b, "null");
-		break;
-	case MM_JSON_BOOL:
-		mm_buf_add(b, v->boolean ? "true" : "false");
-		break;
-	case MM_JSON_NUMBER:
-		if (v->number != v->number || v->number > 1e300 || v->number < -1e300) {
-			mm_buf_add(b, "0");
-		}
-		else if (v->is_int && v->number == floor(v->number) && fabs(v->number) < 9e15) {
-			mm_buf_printf(b, "%lld", (long long)v->number);
-		}
-		else {
-			mm_buf_printf(b, "%.17g", v->number);
-		}
-		break;
-	case MM_JSON_STRING:
-		mm_nodes_json_string(b, v->string != NULL ? v->string : "");
-		break;
-	case MM_JSON_ARRAY:
-		mm_buf_add(b, "[");
-		for (i32 i = 0; i < v->count; ++i) {
-			if (i > 0) {
-				mm_buf_add(b, ",");
-			}
-			mm_nodes_json_write(b, v->items[i]);
-		}
-		mm_buf_add(b, "]");
-		break;
-	case MM_JSON_OBJECT: {
-		mm_buf_add(b, "{");
-		bool first = true;
-		for (i32 i = 0; i < v->count; ++i) {
-			if (v->items[i] == NULL) { // Removed with mm_json_set(obj, key, NULL)
-				continue;
-			}
-			if (!first) {
-				mm_buf_add(b, ",");
-			}
-			first = false;
-			mm_nodes_json_string(b, v->keys[i]);
-			mm_buf_add(b, ":");
-			mm_nodes_json_write(b, v->items[i]);
-		}
-		mm_buf_add(b, "}");
-		break;
-	}
-	}
-}
-
-static char *mm_nodes_json_text(mm_json_t *v) { // In the arena
-	mm_buf_t b = {0};
-	mm_nodes_json_write(&b, v);
-	return mm_buf_get(&b);
-}
-
-static mm_json_t *mm_nodes_num(double d) {
-	mm_json_t *v = mm_json_new(MM_JSON_NUMBER);
-	v->number    = d;
-	v->is_int    = d == floor(d);
-	return v;
-}
-
-static mm_json_t *mm_nodes_bool(bool b) {
-	mm_json_t *v = mm_json_new(MM_JSON_BOOL);
-	v->boolean   = b;
-	return v;
-}
-
-static mm_json_t *mm_nodes_str(const char *s) {
-	mm_json_t *v = mm_json_new(MM_JSON_STRING);
-	v->string    = mm_strdup(s);
-	return v;
-}
-
 static const char *mm_nodes_jstr(mm_json_t *o, const char *k) {
 	mm_json_t *v = mm_json_get(o, k);
 	return v != NULL && v->type == MM_JSON_STRING ? v->string : NULL;
@@ -436,7 +326,7 @@ static bool mm_nodes_generic_item(mm_json_t *item, const char *field, bool indir
 static void mm_nodes_replace_field(mm_json_t *o, const char *k, i32 index) {
 	const char *s = mm_nodes_jstr(o, k);
 	if (s != NULL) {
-		mm_json_set(o, k, mm_nodes_str(mm_replace(s, "#", mm_printf("%d", index))));
+		mm_json_set(o, k, mm_json_string(mm_replace(s, "#", mm_printf("%d", index))));
 	}
 }
 
@@ -498,12 +388,12 @@ static mm_json_t *mm_nodes_builtin_model(const char *type, mm_json_t *data, mm_j
 
 static mm_json_t *mm_nodes_def(const char *name, const char *type, double dflt, double first) {
 	mm_json_t *d = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(d, "name", mm_nodes_str(name));
-	mm_json_set(d, "type", mm_nodes_str(type));
-	mm_json_set(d, "default", mm_nodes_num(dflt));
+	mm_json_set(d, "name", mm_json_string(name));
+	mm_json_set(d, "type", mm_json_string(type));
+	mm_json_set(d, "default", mm_json_number(dflt));
 	if (first >= 0) {
-		mm_json_set(d, "first", mm_nodes_num(first));
-		mm_json_set(d, "last", mm_nodes_num(13));
+		mm_json_set(d, "first", mm_json_number(first));
+		mm_json_set(d, "last", mm_json_number(13));
 	}
 	return d;
 }
@@ -542,22 +432,22 @@ static mm_json_t *mm_nodes_remote_defs(mm_json_t *widgets, mm_json_t *nodes, i32
 			}
 			qsort(ks, n, sizeof(char *), mm_nodes_str_cmp);
 			p = mm_json_new(MM_JSON_OBJECT);
-			mm_json_set(p, "name", mm_nodes_str(name));
+			mm_json_set(p, "name", mm_json_string(name));
 			if (n == 2 && strcmp(ks[0], "False") == 0 && strcmp(ks[1], "True") == 0) {
-				mm_json_set(p, "type", mm_nodes_str("boolean"));
+				mm_json_set(p, "type", mm_json_string("boolean"));
 			}
 			else {
-				mm_json_set(p, "type", mm_nodes_str("enum"));
+				mm_json_set(p, "type", mm_json_string("enum"));
 				mm_json_t *values = mm_json_new(MM_JSON_ARRAY);
 				for (i32 k = 0; k < n; ++k) {
 					mm_json_t *e = mm_json_new(MM_JSON_OBJECT);
-					mm_json_set(e, "name", mm_nodes_str(ks[k]));
-					mm_json_set(e, "value", mm_nodes_str(ks[k]));
+					mm_json_set(e, "name", mm_json_string(ks[k]));
+					mm_json_set(e, "value", mm_json_string(ks[k]));
 					mm_json_push(values, e);
 				}
 				mm_json_set(p, "values", values);
 			}
-			mm_json_set(p, "default", mm_nodes_num(0));
+			mm_json_set(p, "default", mm_json_number(0));
 		}
 		else if (strcmp(type, "linked_control") == 0) {
 			// The first linked widget that still exists gives the definition (fix() drops the others)
@@ -577,18 +467,18 @@ static mm_json_t *mm_nodes_remote_defs(mm_json_t *widgets, mm_json_t *nodes, i32
 			if (p == NULL) {
 				continue;
 			}
-			mm_json_set(p, "name", mm_nodes_str(name));
-			mm_json_set(p, "label", mm_nodes_str(mm_json_str(mm_json_get(w, "label"), "")));
+			mm_json_set(p, "name", mm_json_string(name));
+			mm_json_set(p, "label", mm_json_string(mm_json_str(mm_json_get(w, "label"), "")));
 		}
 		else if (strcmp(type, "named_parameter") == 0) {
 			p = mm_json_new(MM_JSON_OBJECT);
-			mm_json_set(p, "name", mm_nodes_str(name));
-			mm_json_set(p, "label", mm_nodes_str(mm_json_str(mm_json_get(w, "label"), "")));
-			mm_json_set(p, "type", mm_nodes_str("float"));
-			mm_json_set(p, "min", mm_nodes_num(mm_json_num(mm_json_get(w, "min"), 0)));
-			mm_json_set(p, "max", mm_nodes_num(mm_json_num(mm_json_get(w, "max"), 1)));
-			mm_json_set(p, "step", mm_nodes_num(mm_json_num(mm_json_get(w, "step"), 0.01)));
-			mm_json_set(p, "default", mm_nodes_num(mm_json_num(mm_json_get(w, "default"), 0.5)));
+			mm_json_set(p, "name", mm_json_string(name));
+			mm_json_set(p, "label", mm_json_string(mm_json_str(mm_json_get(w, "label"), "")));
+			mm_json_set(p, "type", mm_json_string("float"));
+			mm_json_set(p, "min", mm_json_number(mm_json_num(mm_json_get(w, "min"), 0)));
+			mm_json_set(p, "max", mm_json_number(mm_json_num(mm_json_get(w, "max"), 1)));
+			mm_json_set(p, "step", mm_json_number(mm_json_num(mm_json_get(w, "step"), 0.01)));
+			mm_json_set(p, "default", mm_json_number(mm_json_num(mm_json_get(w, "default"), 0.5)));
 		}
 		else {
 			continue;
@@ -835,7 +725,7 @@ static void mm_nodes_add_param(mm_nodes_param_t **params, i32 *count, ui_node_t 
 		mm_json_t *v = value != NULL ? value : dv;
 		p.kind       = MM_NODES_PARAM_OTHER;
 		p.button     = def->buttons->length;
-		any_array_push(def->buttons, mm_nodes_button("mm_value", "CUSTOM", f32_array_create_x(0), mm_nodes_text_data(mm_nodes_json_text(v)), 0, 1, 100, 1));
+		any_array_push(def->buttons, mm_nodes_button("mm_value", "CUSTOM", f32_array_create_x(0), mm_nodes_text_data(mm_json_text(v)), 0, 1, 100, 1));
 		p.label = string_copy(string_tmp("%s: %s", label, ptype));
 	}
 	*params             = realloc(*params, sizeof(mm_nodes_param_t) * (*count + 1));
@@ -879,7 +769,7 @@ static mm_json_t *mm_nodes_output_typed(mm_json_t *o) {
 	for (i32 i = 0; i < (i32)(sizeof(types) / sizeof(types[0])); ++i) {
 		if (mm_json_get(o, types[i]) != NULL) {
 			o = mm_json_copy(o);
-			mm_json_set(o, "type", mm_nodes_str(types[i]));
+			mm_json_set(o, "type", mm_json_string(types[i]));
 			return o;
 		}
 	}
@@ -1139,11 +1029,11 @@ static mm_json_t *mm_nodes_state_of(mm_json_t *data, mm_nodes_param_t *params, i
 	mm_json_t *layout = mm_json_new(MM_JSON_ARRAY);
 	for (i32 i = 0; i < count; ++i) {
 		mm_json_t *e = mm_json_new(MM_JSON_ARRAY);
-		mm_json_push(e, mm_nodes_str(params[i].name));
-		mm_json_push(e, mm_nodes_num(params[i].kind));
-		mm_json_push(e, mm_nodes_num(params[i].button));
-		mm_json_push(e, mm_nodes_num(params[i].first));
-		mm_json_push(e, mm_nodes_str(params[i].label));
+		mm_json_push(e, mm_json_string(params[i].name));
+		mm_json_push(e, mm_json_number(params[i].kind));
+		mm_json_push(e, mm_json_number(params[i].button));
+		mm_json_push(e, mm_json_number(params[i].first));
+		mm_json_push(e, mm_json_string(params[i].label));
 		mm_json_push(layout, e);
 	}
 	mm_json_set(s, "layout", layout);
@@ -1151,7 +1041,7 @@ static mm_json_t *mm_nodes_state_of(mm_json_t *data, mm_nodes_param_t *params, i
 }
 
 static ui_node_button_t *mm_nodes_state_button(mm_json_t *state) {
-	return mm_nodes_button("mm_state", "CUSTOM", f32_array_create_x(0), mm_nodes_text_data(mm_nodes_json_text(state)), 0, 1, 100, 0);
+	return mm_nodes_button("mm_state", "CUSTOM", f32_array_create_x(0), mm_nodes_text_data(mm_json_text(state)), 0, 1, 100, 0);
 }
 
 static ui_node_button_t *mm_nodes_seed_button_of(mm_json_t *data) {
@@ -1174,7 +1064,7 @@ static void mm_nodes_build(mm_nodes_type_t *t) {
 		}
 	}
 	if (e != NULL && mm_json_get(e, "generic_size") != NULL) { // The library's generic nodes register with generic_size 1
-		mm_json_set(e, "generic_size", mm_nodes_num(1));
+		mm_json_set(e, "generic_size", mm_json_number(1));
 	}
 	mm_nodes_model_t m;
 	mm_nodes_make_model(t, e, NULL, &m);
@@ -1257,7 +1147,7 @@ static mm_json_t *mm_nodes_state(ui_node_t *node) { // In the arena, NULL for st
 static void mm_nodes_set_state(ui_node_t *node, mm_json_t *state) {
 	i32 i = mm_nodes_button_index(node, "mm_state");
 	if (i >= 0) {
-		node->buttons->buffer[i]->data = mm_nodes_text_data(mm_nodes_json_text(state));
+		node->buttons->buffer[i]->data = mm_nodes_text_data(mm_json_text(state));
 	}
 }
 
@@ -1368,25 +1258,25 @@ static mm_json_t *mm_nodes_param_value(mm_nodes_param_t *p, ui_node_button_t *b)
 	switch (p->kind) {
 	case MM_NODES_PARAM_FLOAT:
 		if (n > 0 && string_equals(b->type, "VALUE") && b->data != NULL && b->data->length > 1) { // An expression
-			return mm_nodes_str(mm_strndup((const char *)b->data->buffer, strnlen((const char *)b->data->buffer, b->data->length)));
+			return mm_json_string(mm_strndup((const char *)b->data->buffer, strnlen((const char *)b->data->buffer, b->data->length)));
 		}
-		return n > 0 && string_equals(b->type, "VALUE") ? mm_nodes_num(v[0]) : NULL;
+		return n > 0 && string_equals(b->type, "VALUE") ? mm_json_number(v[0]) : NULL;
 	case MM_NODES_PARAM_ENUM:
-		return n > 0 && string_equals(b->type, "ENUM") ? mm_nodes_num((i32)v[0]) : NULL;
+		return n > 0 && string_equals(b->type, "ENUM") ? mm_json_number((i32)v[0]) : NULL;
 	case MM_NODES_PARAM_BOOL:
-		return n > 0 && string_equals(b->type, "BOOL") ? mm_nodes_bool(v[0] != 0) : NULL;
+		return n > 0 && string_equals(b->type, "BOOL") ? mm_json_boolean(v[0] != 0) : NULL;
 	case MM_NODES_PARAM_SIZE:
-		return n > 0 && string_equals(b->type, "ENUM") ? mm_nodes_num(p->first + (i32)v[0]) : NULL;
+		return n > 0 && string_equals(b->type, "ENUM") ? mm_json_number(p->first + (i32)v[0]) : NULL;
 	case MM_NODES_PARAM_COLOR: {
 		if (n < 3 || !string_equals(b->type, "RGBA")) {
 			return NULL;
 		}
 		mm_json_t *c = mm_json_new(MM_JSON_OBJECT);
-		mm_json_set(c, "type", mm_nodes_str("Color"));
-		mm_json_set(c, "r", mm_nodes_num(v[0]));
-		mm_json_set(c, "g", mm_nodes_num(v[1]));
-		mm_json_set(c, "b", mm_nodes_num(v[2]));
-		mm_json_set(c, "a", mm_nodes_num(n > 3 ? v[3] : 1.0));
+		mm_json_set(c, "type", mm_json_string("Color"));
+		mm_json_set(c, "r", mm_json_number(v[0]));
+		mm_json_set(c, "g", mm_json_number(v[1]));
+		mm_json_set(c, "b", mm_json_number(v[2]));
+		mm_json_set(c, "a", mm_json_number(n > 3 ? v[3] : 1.0));
 		return c;
 	}
 	case MM_NODES_PARAM_GRAD: {
@@ -1395,15 +1285,15 @@ static mm_json_t *mm_nodes_param_value(mm_nodes_param_t *p, ui_node_button_t *b)
 		}
 		mm_json_t *g = mm_json_new(MM_JSON_OBJECT);
 		mm_json_t *a = mm_json_new(MM_JSON_ARRAY);
-		mm_json_set(g, "type", mm_nodes_str("Gradient"));
-		mm_json_set(g, "interpolation", mm_nodes_num(b->data != NULL && b->data->length > 0 ? b->data->buffer[0] : 1));
+		mm_json_set(g, "type", mm_json_string("Gradient"));
+		mm_json_set(g, "interpolation", mm_json_number(b->data != NULL && b->data->length > 0 ? b->data->buffer[0] : 1));
 		for (i32 i = 0; i + 4 < n; i += 5) {
 			mm_json_t *pt = mm_json_new(MM_JSON_OBJECT);
-			mm_json_set(pt, "pos", mm_nodes_num(v[i + 4]));
-			mm_json_set(pt, "r", mm_nodes_num(v[i + 0]));
-			mm_json_set(pt, "g", mm_nodes_num(v[i + 1]));
-			mm_json_set(pt, "b", mm_nodes_num(v[i + 2]));
-			mm_json_set(pt, "a", mm_nodes_num(v[i + 3]));
+			mm_json_set(pt, "pos", mm_json_number(v[i + 4]));
+			mm_json_set(pt, "r", mm_json_number(v[i + 0]));
+			mm_json_set(pt, "g", mm_json_number(v[i + 1]));
+			mm_json_set(pt, "b", mm_json_number(v[i + 2]));
+			mm_json_set(pt, "a", mm_json_number(v[i + 3]));
 			mm_json_push(a, pt);
 		}
 		mm_json_set(g, "points", a);
@@ -1415,13 +1305,13 @@ static mm_json_t *mm_nodes_param_value(mm_nodes_param_t *p, ui_node_button_t *b)
 		}
 		mm_json_t *c = mm_json_new(MM_JSON_OBJECT);
 		mm_json_t *a = mm_json_new(MM_JSON_ARRAY);
-		mm_json_set(c, "type", mm_nodes_str("Curve"));
+		mm_json_set(c, "type", mm_json_string("Curve"));
 		for (i32 i = 0; i + 3 < n; i += 4) {
 			mm_json_t *pt = mm_json_new(MM_JSON_OBJECT);
-			mm_json_set(pt, "x", mm_nodes_num(v[i + 0]));
-			mm_json_set(pt, "y", mm_nodes_num(v[i + 1]));
-			mm_json_set(pt, "ls", mm_nodes_num(v[i + 2]));
-			mm_json_set(pt, "rs", mm_nodes_num(v[i + 3]));
+			mm_json_set(pt, "x", mm_json_number(v[i + 0]));
+			mm_json_set(pt, "y", mm_json_number(v[i + 1]));
+			mm_json_set(pt, "ls", mm_json_number(v[i + 2]));
+			mm_json_set(pt, "rs", mm_json_number(v[i + 3]));
 			mm_json_push(a, pt);
 		}
 		mm_json_set(c, "points", a);
@@ -1429,7 +1319,7 @@ static mm_json_t *mm_nodes_param_value(mm_nodes_param_t *p, ui_node_button_t *b)
 	}
 	case MM_NODES_PARAM_STRING:
 		return b->data != NULL && b->data->length > 0 && string_equals(b->name, "mm_string")
-		           ? mm_nodes_str(mm_strndup((const char *)b->data->buffer, strnlen((const char *)b->data->buffer, b->data->length)))
+		           ? mm_json_string(mm_strndup((const char *)b->data->buffer, strnlen((const char *)b->data->buffer, b->data->length)))
 		           : NULL;
 	default:
 		if (b->data == NULL || b->data->length == 0 || !string_equals(b->name, "mm_value")) {
@@ -1481,9 +1371,9 @@ mm_json_t *mm_node_data(ui_node_t *node) {
 		return NULL;
 	}
 	mm_json_t *d = mm_json_new(MM_JSON_OBJECT);
-	mm_json_set(d, "type", mm_nodes_str(t->mm_type));
+	mm_json_set(d, "type", mm_json_string(t->mm_type));
 	if (mm_node_name(node) != NULL) {
-		mm_json_set(d, "name", mm_nodes_str(mm_node_name(node)));
+		mm_json_set(d, "name", mm_json_string(mm_node_name(node)));
 	}
 	if (strcmp(t->mm_type, "graph") == 0) {
 		mm_json_t *e = mm_json_parse(t->entry, strlen(t->entry));
@@ -1499,21 +1389,21 @@ mm_json_t *mm_node_data(ui_node_t *node) {
 	}
 	if (strcmp(t->mm_type, "portal") == 0) { // The type it carries
 		ui_node_socket_t *s = node->inputs->length > 0 ? node->inputs->buffer[0] : node->outputs->length > 0 ? node->outputs->buffer[0] : NULL;
-		mm_json_set(d, "port_type", mm_nodes_str(mm_nodes_mm_socket_type(s != NULL ? s->type : NULL)));
+		mm_json_set(d, "port_type", mm_json_string(mm_nodes_mm_socket_type(s != NULL ? s->type : NULL)));
 	}
 	bool   locked = false;
 	double seed   = mm_node_seed(node, &locked);
-	mm_json_set(d, "seed", mm_nodes_num(seed));
-	mm_json_set(d, "seed_locked", mm_nodes_bool(locked));
+	mm_json_set(d, "seed", mm_json_number(seed));
+	mm_json_set(d, "seed_locked", mm_json_boolean(locked));
 	if (t->generic && mm_json_get(d, "generic_size") == NULL) {
-		mm_json_set(d, "generic_size", mm_nodes_num(1));
+		mm_json_set(d, "generic_size", mm_json_number(1));
 	}
 	return d;
 }
 
 char *mm_node_parameters_json(ui_node_t *node) {
 	mm_mark_t m = mm_arena_mark();
-	char     *s = string_copy(mm_nodes_json_text(mm_node_parameters(node)));
+	char     *s = string_copy(mm_json_text(mm_node_parameters(node)));
 	mm_arena_release(m);
 	return s;
 }
@@ -1525,7 +1415,7 @@ char *mm_node_data_json(ui_node_t *node) {
 		mm_json_set(d, "nodes", NULL); // Long, the parameters and seed are what changes
 		mm_json_set(d, "connections", NULL);
 	}
-	char *s = string_copy(d != NULL ? mm_nodes_json_text(d) : "");
+	char *s = string_copy(d != NULL ? mm_json_text(d) : "");
 	mm_arena_release(m);
 	return s;
 }
@@ -1572,7 +1462,7 @@ static void mm_nodes_store(mm_nodes_param_t *p, ui_node_button_t *b, mm_json_t *
 		b->data = mm_nodes_text_data(mm_json_str(v, ""));
 		break;
 	default:
-		b->data = mm_nodes_text_data(mm_nodes_json_text(v));
+		b->data = mm_nodes_text_data(mm_json_text(v));
 		break;
 	}
 }
@@ -2187,12 +2077,12 @@ void mm_node_update(ui_node_t *node, ui_node_canvas_t *canvas) {
 		char      *key  = string_tmp("%p", node);
 		char      *last = any_map_get(mm_nodes_remote_seen, key);
 		mm_json_t *now  = mm_node_parameters(node);
-		char      *text = mm_nodes_json_text(now);
+		char      *text = mm_json_text(now);
 		if (last != NULL && strcmp(last, text) != 0) {
 			mm_json_t *before = mm_json_parse(last, strlen(last));
 			for (i32 i = 0; i < now->count; ++i) {
 				mm_json_t *b = mm_json_get(before, now->keys[i]);
-				if (b == NULL || strcmp(mm_nodes_json_text(b), mm_nodes_json_text(now->items[i])) != 0) {
+				if (b == NULL || strcmp(mm_json_text(b), mm_json_text(now->items[i])) != 0) {
 					mm_nodes_remote_apply(node, now->keys[i], now->items[i], canvas, 0);
 				}
 			}
@@ -2593,7 +2483,7 @@ static void mm_nodes_register(mm_json_t *entry, char *type, char *mm_type, const
 	t->type            = type;
 	t->mm_type         = string_copy(mm_type);
 	t->path            = string_copy((char *)path);
-	t->entry           = string_copy(mm_nodes_json_text(copy));
+	t->entry           = string_copy(mm_json_text(copy));
 	t->seed_button     = -1;
 	t->dynamic         = mm_nodes_is_dynamic(mm_type);
 	const char *name   = mm_nodes_jstr(entry, "display_name");
@@ -2703,16 +2593,16 @@ void mm_nodes_init() {
 		char       *t    = string_tmp("MM_%s", name);
 		if (strcmp(mm_json_str(mm_json_get(pe, "kind"), ""), "mmg") == 0 && mm_nodes_find(t) == NULL && !starts_with((char *)name, "material")) { // MM_MATERIAL takes materials
 			mm_json_t *e = mm_json_new(MM_JSON_OBJECT);
-			mm_json_set(e, "type", mm_nodes_str(name));
-			mm_json_set(e, "display_name", mm_nodes_str(name));
+			mm_json_set(e, "type", mm_json_string(name));
+			mm_json_set(e, "display_name", mm_json_string(name));
 			mm_nodes_register(e, string_copy(t), (char *)name, name, true);
 		}
 	}
 	const char *inline_types[][2] = {{"graph", "Graph"}, {"shader", "Shader"}, {"sdf", "Easy SDF"}};
 	for (i32 i = 0; i < 3; ++i) {
 		mm_json_t *e = mm_json_new(MM_JSON_OBJECT);
-		mm_json_set(e, "type", mm_nodes_str(inline_types[i][0]));
-		mm_json_set(e, "display_name", mm_nodes_str(inline_types[i][1]));
+		mm_json_set(e, "type", mm_json_string(inline_types[i][0]));
+		mm_json_set(e, "display_name", mm_json_string(inline_types[i][1]));
 		mm_nodes_register(e, string_copy(string_tmp("MM_%s", inline_types[i][0])), (char *)inline_types[i][0], inline_types[i][1], true);
 	}
 	mm_arena_release(m);

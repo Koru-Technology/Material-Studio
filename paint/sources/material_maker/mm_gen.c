@@ -928,16 +928,10 @@ static void generic_range(mm_json_t *arr, const char *field, bool indirect, int 
 	}
 }
 
-static mm_json_t *jstring(const char *s) {
-	mm_json_t *v = mm_json_new(MM_JSON_STRING);
-	v->string    = mm_strdup(s);
-	return v;
-}
-
 static void replace_field(mm_json_t *o, const char *k, int gv) {
 	const char *s = jstr(o, k);
 	if (s != NULL && o->type == MM_JSON_OBJECT && mm_json_get(o, k)->type == MM_JSON_STRING) {
-		mm_json_set(o, k, jstring(mm_replace(s, "#", mm_printf("%d", gv))));
+		mm_json_set(o, k, mm_json_string(mm_replace(s, "#", mm_printf("%d", gv))));
 	}
 }
 
@@ -1005,7 +999,7 @@ void mm_shader_set_model(mm_gen_t *g, mm_json_t *model) {
 						}
 						mm_json_t *e = mm_json_new(MM_JSON_OBJECT);
 						mm_json_set(e, "name", mm_json_copy(mm_json_get(vals->items[k], "name")));
-						mm_json_set(e, "value", jstring(fv));
+						mm_json_set(e, "value", mm_json_string(fv));
 						mm_json_push(nv, e);
 					}
 					if (replace) {
@@ -1024,7 +1018,7 @@ void mm_shader_set_model(mm_gen_t *g, mm_json_t *model) {
 				output_set_type(o);
 				const char *t = jstr(o, "type");
 				if (t != NULL && jstr(o, t) != NULL) {
-					mm_json_set(o, t, jstring(fix_instance_functions(jstr(o, t), &funcs)));
+					mm_json_set(o, t, mm_json_string(fix_instance_functions(jstr(o, t), &funcs)));
 				}
 				mm_json_push(no, o);
 			}
@@ -1647,21 +1641,21 @@ static mm_json_t *output_attributes(mm_gen_t *src, int output) {
 	mm_json_t *a  = mm_json_new(MM_JSON_OBJECT);
 	char      *gn = genname(src);
 	if (src->kind == MM_G_BUFFER) {
-		mm_json_set(a, "texture", jstring(mm_printf("%s_tex", gn)));
-		mm_json_set(a, "texture_size", jstring(mm_printf("%s_tex_size", gn)));
+		mm_json_set(a, "texture", mm_json_string(mm_printf("%s_tex", gn)));
+		mm_json_set(a, "texture_size", mm_json_string(mm_printf("%s_tex_size", gn)));
 		return a;
 	}
 	if (src->kind == MM_G_ITERATE) {
-		mm_json_set(a, "texture", jstring(mm_printf(output == 0 ? "%s_tex" : "%s_loop_tex", gn)));
-		mm_json_set(a, "texture_size", jstring(mm_printf("%s_it_tex_size", gn)));
+		mm_json_set(a, "texture", mm_json_string(mm_printf(output == 0 ? "%s_tex" : "%s_loop_tex", gn)));
+		mm_json_set(a, "texture_size", mm_json_string(mm_printf("%s_it_tex_size", gn)));
 		if (output == 1) {
-			mm_json_set(a, "iteration", jstring(mm_printf("%s_iteration", gn)));
+			mm_json_set(a, "iteration", mm_json_string(mm_printf("%s_iteration", gn)));
 		}
 		return a;
 	}
 	if (src->kind == MM_G_IMAGE || src->kind == MM_G_TEXT) {
-		mm_json_set(a, "texture", jstring(mm_printf("%s_tex", gn)));
-		mm_json_set(a, "texture_size", jstring(mm_printf("%s_tex_size", gn)));
+		mm_json_set(a, "texture", mm_json_string(mm_printf("%s_tex", gn)));
+		mm_json_set(a, "texture_size", mm_json_string(mm_printf("%s_tex_size", gn)));
 		return a;
 	}
 	return NULL;
