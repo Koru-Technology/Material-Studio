@@ -1277,6 +1277,12 @@ static gpu_texture_t *mm_buffers_cpu_texture(mm_buffers_recipe_t *r) {
 	gpu_texture_t *t   = calloc(1, sizeof(gpu_texture_t));
 	u32            len = r->w * r->h * 4;
 	buffer_t      *px  = r->raw ? r->pixels : lz4_decode(r->pixels, len);
+	if (px == NULL) { // Corrupt: a cleared texture, as for a pass that does not compile
+		u8 *zero = calloc(len, 1);
+		gpu_texture_init_from_bytes(t, zero, r->w, r->h, GPU_TEXTURE_FORMAT_RGBA32, false);
+		free(zero);
+		return t;
+	}
 	gpu_texture_init_from_bytes(t, px->buffer, r->w, r->h, GPU_TEXTURE_FORMAT_RGBA32, false);
 	if (px != r->pixels) {
 		iron_delete_blob(px);
