@@ -1248,7 +1248,7 @@ i32                       mm_controls_material_controls(i32 i);
 ui_node_t                *mm_node_export_param(ui_node_canvas_t *canvas, ui_node_t *node, char *param, i32 stop);
 f32                       mm_node_param_value(ui_node_canvas_t *canvas, char *name, char *param, i32 stop, i32 i);
 i32                       mm_nodes_count_all();
-void                      mm_material_init();                               // nodes_material/mm_import.c: MM Material, .ptex import
+void                      mm_material_init();                               // nodes_material/mm_material_node.c: MM Material
 bool                      mm_material_is(ui_node_t *n);
 char                     *mm_material_parameters_json(ui_node_t *node);
 bool                      mm_import_ptex(char *ptex_text, slot_material_t *target);
