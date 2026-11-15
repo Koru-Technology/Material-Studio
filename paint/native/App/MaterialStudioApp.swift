@@ -24,7 +24,7 @@ struct MaterialStudioApp: App {
 }
 
 #if os(macOS)
-// Sidebar, canvas, inspector: the panels are placeholders until the app API lands
+// Sidebar (layers), canvas, inspector (tool, brush and the selected layer's settings)
 struct MacRootView: View {
 	@State private var inspectorShown = true
 

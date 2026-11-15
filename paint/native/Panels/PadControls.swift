@@ -480,10 +480,20 @@ struct ViewCube: View {
 // MARK: - Tool properties (iPad popover, Mac inspector)
 
 struct ToolPropertiesView: View {
+	var body: some View {
+		Form {
+			ToolPropertiesSections()
+		}
+		.formStyle(.grouped)
+	}
+}
+
+// The brush and symmetry sections, in the iPad popover's form and the Mac inspector's
+struct ToolPropertiesSections: View {
 	private var store = AppStore.shared
 
 	var body: some View {
-		Form {
+		Group {
 			Section(paintTools.first { $0.id == store.tool }?.name ?? "Tool") {
 				slider("Radius", store.brushRadius, 0.01...2, radiusText) { app_set_brush_radius($0) }
 				slider("Opacity", store.brushOpacity, 0...1, percent) { app_set_brush_opacity($0) }
@@ -507,7 +517,6 @@ struct ToolPropertiesView: View {
 				}
 			}
 		}
-		.formStyle(.grouped)
 	}
 
 	private func slider(_ title: String, _ value: Float, _ range: ClosedRange<Float>, _ format: @escaping (Float) -> String,
