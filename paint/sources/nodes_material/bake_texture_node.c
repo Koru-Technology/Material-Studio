@@ -149,7 +149,7 @@ static void bake_texture_node_button(i32 node_id) {
 	ui_push_id((ui_id_t)ui_nodes_get_nodes());
 	ui_push_id((ui_id_t)node_id); // Shared bake settings still need distinct controls per node
 
-	string_array_t *bakes = any_array_create_from_raw(
+	string_array_t *bakes = any_array_create_from_raw_tmp(
 	    (void *[]){
 	        tr("Curvature"),
 	        tr("Normal"),

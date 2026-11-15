@@ -649,8 +649,8 @@ static void variable_range_button(i32 node_id) {
 	f32 min, max, step;
 	variable_range(node, &min, &max, &step);
 	ui_row2();
-	char *a = string_copy(f32_to_string(min));
-	char *b = string_copy(f32_to_string(max));
+	char *a = f32_to_string(min); // Temporary, the text input copies what it keeps
+	char *b = f32_to_string(max);
 	variable_next_id(node, 0);
 	char *ea = ui_text_input(&a, tr("Min"), UI_ALIGN_LEFT, true, false);
 	variable_next_id(node, 1);

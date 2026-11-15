@@ -95,6 +95,15 @@ void neural_node_check_result(ui_node_t *node) {
 	}
 }
 
+// Lines of a prompt, without allocating (drawn every frame)
+i32 neural_node_prompt_lines(char *prompt) {
+	i32 lines = 1;
+	for (char *c = prompt; *c != 0; ++c) {
+		lines += *c == '\n';
+	}
+	return lines;
+}
+
 char *neural_node_iris_bin() {
 	return "iris";
 }

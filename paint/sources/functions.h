@@ -1689,6 +1689,7 @@ ui_node_t        *neural_from_node(ui_node_socket_t *inp, i32 socket);
 bool              neural_node_button(ui_node_t *node, char *model);
 void              neural_node_check_result(ui_node_t *node);
 char             *neural_node_iris_bin();
+i32               neural_node_prompt_lines(char *prompt);
 char             *neural_node_dir();
 void              neural_node_download_models(string_array_t *models);
 void              neural_node_models_init();
