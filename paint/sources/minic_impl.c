@@ -2013,15 +2013,19 @@ void script_brush_category_add(char *category_name, any_array_t *node_list) {
 }
 
 void script_material_category_remove(char *category_name) {
-	int i = array_index_of(nodes_material_categories, category_name);
-	array_splice(nodes_material_list, i, 1);
-	array_splice(nodes_material_categories, i, 1);
+	int i = string_array_index_of(nodes_material_categories, category_name); // By name, scripts pass their own string
+	if (i >= 0 && i < nodes_material_list->length) {
+		array_splice(nodes_material_list, i, 1);
+		array_splice(nodes_material_categories, i, 1);
+	}
 }
 
 void script_brush_category_remove(char *category_name) {
-	int i = array_index_of(nodes_brush_categories, category_name);
-	array_splice(nodes_brush_list, i, 1);
-	array_splice(nodes_brush_categories, i, 1);
+	int i = string_array_index_of(nodes_brush_categories, category_name); // By name, scripts pass their own string
+	if (i >= 0 && i < nodes_brush_list->length) {
+		array_splice(nodes_brush_list, i, 1);
+		array_splice(nodes_brush_categories, i, 1);
+	}
 }
 
 void script_material_custom_nodes_set(char *node_type, void *fn) {
