@@ -89,6 +89,8 @@ char *history_action_to_string(history_action_t action) {
 		return tr("Edit Swatch");
 	case HISTORY_ACTION_MASK_HEIGHT_BLEND:
 		return tr("Mask Height Blend");
+	case HISTORY_ACTION_MASK_STACK:
+		return tr("Edit Mask Stack");
 	}
 	return tr("Paint");
 }
@@ -96,6 +98,7 @@ char *history_action_to_string(history_action_t action) {
 void history_undo_invert_mask(history_step_t *step) {
 	g_context->layer = g_project->_->layers->buffer[step->layer];
 	slot_layer_invert_mask(g_context->layer);
+	mask_stack_mark_dirty(g_context->layer);
 }
 
 static void history_step_free(history_step_t *step) {
@@ -103,6 +106,7 @@ static void history_step_free(history_step_t *step) {
 		slot_layer_unload(step->merge_layers->buffer[i]);
 	}
 	history_tiles_release(step);
+	array_delete(step->mask_effects);
 	free(step);
 }
 
@@ -225,6 +229,28 @@ static void history_get_height_blend(slot_layer_t *l, f32 *out) {
 	out[5] = l->height_blend_reach;
 }
 
+static void history_set_height_blend(slot_layer_t *l, f32 *in) {
+	l->height_blend           = in[0] > 0.5;
+	l->height_blend_below     = in[1] > 0.5;
+	l->height_blend_influence = in[2];
+	l->height_blend_sharpness = in[3];
+	l->height_blend_offset    = in[4];
+	l->height_blend_reach     = in[5];
+}
+
+// The mask recreated by an apply mask undo gets the settings it had, the step keeps its copy for the next undo
+static void history_restore_applied_mask(history_step_t *step, slot_layer_t *m) {
+	m->mask_opacity = step->layer_opacity;
+	m->blending     = step->layer_blending;
+	history_set_height_blend(m, step->layer_height_blend);
+	m->mask_effects = mask_stack_copy_effects(step->mask_effects);
+	mask_stack_mark_dirty(m);
+	if (m->height_blend) {
+		make_material_height_used = true;
+	}
+	make_material_parse_mesh_material();
+}
+
 void history_swap_layer_props(history_step_t *step) {
 	slot_layer_t *l = g_project->_->layers->buffer[step->layer];
 
@@ -279,15 +305,20 @@ void history_swap_layer_props(history_step_t *step) {
 	else if (step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
 		f32 t[6];
 		history_get_height_blend(l, t);
-		l->height_blend           = step->layer_height_blend[0] > 0.5;
-		l->height_blend_below     = step->layer_height_blend[1] > 0.5;
-		l->height_blend_influence = step->layer_height_blend[2];
-		l->height_blend_sharpness = step->layer_height_blend[3];
-		l->height_blend_offset    = step->layer_height_blend[4];
-		l->height_blend_reach     = step->layer_height_blend[5];
+		history_set_height_blend(l, step->layer_height_blend);
 		memcpy(step->layer_height_blend, t, sizeof(t));
 		context_set_layer(l);
 		make_material_parse_mesh_material();
+	}
+	else if (step->action == HISTORY_ACTION_MASK_STACK) {
+		f32_array_t *t     = l->mask_effects;
+		l->mask_effects    = step->mask_effects;
+		step->mask_effects = t;
+		context_set_layer(l);
+		if (g_context->mask_effect >= mask_stack_count(l)) {
+			g_context->mask_effect = -1; // The selected effect went with the edit
+		}
+		mask_stack_mark_dirty(l);
 	}
 	else if (step->action == HISTORY_ACTION_LAYER_UV_TYPE) {
 		i32 t               = l->uv_type;
@@ -440,6 +471,7 @@ void history_undo() {
 			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
 		}
 		else if (step->action == HISTORY_ACTION_DUPLICATE_LAYER) {
@@ -492,6 +524,7 @@ void history_undo() {
 			slot_layer_t *mask = history_undo_slot(history_undo_i);
 			layers_new_mask(false, current_layer, mask_pos);
 			slot_layer_swap(g_context->layer, mask);
+			history_restore_applied_mask(step, g_context->layer);
 			g_context->layers_preview_dirty = true;
 			context_set_layer(g_context->layer);
 		}
@@ -512,11 +545,13 @@ void history_undo() {
 			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
+			mask_stack_mark_dirty(g_context->layer);
 		}
 		else if (step->action == HISTORY_ACTION_TO_PAINT_LAYER || step->action == HISTORY_ACTION_TO_PAINT_MASK) {
 			history_undo_i    = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer->fill_material = g_project->_->materials->buffer[step->material];
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_OPACITY) {
@@ -535,7 +570,8 @@ void history_undo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
-		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
+		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
+		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
@@ -582,6 +618,7 @@ void history_undo() {
 			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			history_tiles_swap(step, g_context->layer);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
 		}
 		else { // Paint operation
@@ -590,6 +627,7 @@ void history_undo() {
 			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_swap(g_context->layer, lay);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
 		}
 
@@ -618,6 +656,7 @@ void history_undo() {
 void history_redo_invert_mask(history_step_t *step) {
 	g_context->layer = g_project->_->layers->buffer[step->layer];
 	slot_layer_invert_mask(g_context->layer);
+	mask_stack_mark_dirty(g_context->layer);
 }
 
 void history_redo_apply_mask(void *_) {
@@ -749,6 +788,7 @@ void history_redo() {
 			g_context->layer = g_project->_->layers->buffer[step->layer];
 			history_swap_active();
 			slot_layer_clear(g_context->layer, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
 		}
 		else if (step->action == HISTORY_ACTION_DUPLICATE_LAYER) {
@@ -796,6 +836,7 @@ void history_redo() {
 		else if (step->action == HISTORY_ACTION_TO_FILL_LAYER || step->action == HISTORY_ACTION_TO_FILL_MASK) {
 			slot_layer_t *lay = history_undo_slot(history_undo_i);
 			slot_layer_swap(g_context->layer, lay);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer->fill_material = g_project->_->materials->buffer[step->material];
 			history_undo_i                  = (history_undo_i + 1) % g_config->undo_steps;
 		}
@@ -821,7 +862,8 @@ void history_redo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
-		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
+		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
+		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_BRUSH || step->action == HISTORY_ACTION_DUPLICATE_BRUSH) {
@@ -869,6 +911,7 @@ void history_redo() {
 			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			history_tiles_swap(step, g_context->layer);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
 		}
 		else { // Paint operation
@@ -876,6 +919,7 @@ void history_redo() {
 			context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
 			context_set_layer(g_project->_->layers->buffer[step->layer]);
 			slot_layer_swap(g_context->layer, lay);
+			mask_stack_mark_dirty(g_context->layer);
 			g_context->layer_preview_dirty = true;
 			history_undo_i                 = (history_undo_i + 1) % g_config->undo_steps;
 		}
@@ -1129,7 +1173,11 @@ void history_apply_mask() {
 		    2);
 		history_copy_merging_layers2(layers);
 	}
-	history_push(HISTORY_ACTION_APPLY_MASK);
+	// The mask's settings, undo brings it back with them (opacity and blending are kept by history_push)
+	slot_layer_t   *m    = g_context->layer;
+	history_step_t *step = history_push(HISTORY_ACTION_APPLY_MASK);
+	history_get_height_blend(m, step->layer_height_blend);
+	step->mask_effects = mask_stack_copy_effects(m->mask_effects);
 }
 
 void history_invert_mask() {
@@ -1297,4 +1345,10 @@ void history_delete_material_group(node_group_t *group) {
 	step->canvas_type    = CANVAS_TYPE_MATERIAL;
 	step->canvas_group   = array_index_of(history_groups(step), group);
 	step->canvas         = util_clone_canvas(group->canvas);
+}
+
+// Before a mask stack edit of the current layer: keeps its effects for undo
+void history_mask_stack() {
+	history_step_t *step = history_push(HISTORY_ACTION_MASK_STACK);
+	step->mask_effects   = mask_stack_copy_effects(g_context->layer->mask_effects);
 }

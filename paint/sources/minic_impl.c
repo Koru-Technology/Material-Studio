@@ -795,6 +795,106 @@ bool script_layer_invert_mask(slot_layer_t *m) {
 	return true;
 }
 
+// Mask stacks: each edit is one undo step, as in the layers panel
+
+static bool script_mask_valid(slot_layer_t *m, i32 i) {
+	return script_layer_valid(m) && slot_layer_is_mask(m) && i >= 0 && i < mask_stack_count(m);
+}
+
+i32 script_mask_add_effect(slot_layer_t *m, i32 type, i32 index) {
+	if (!script_layer_valid(m) || !slot_layer_is_mask(m) || type < 0 || type >= MASK_EFFECT_COUNT) {
+		return -1;
+	}
+	context_set_layer(m);
+	history_mask_stack();
+	return mask_stack_add(m, type, index);
+}
+
+bool script_mask_remove_effect(slot_layer_t *m, i32 i) {
+	if (!script_mask_valid(m, i)) {
+		return false;
+	}
+	context_set_layer(m);
+	history_mask_stack();
+	return mask_stack_remove(m, i);
+}
+
+void script_mask_move_effect(slot_layer_t *m, i32 from, i32 to) {
+	if (!script_mask_valid(m, from) || !script_mask_valid(m, to)) {
+		return;
+	}
+	context_set_layer(m);
+	history_mask_stack();
+	mask_stack_move(m, from, to);
+}
+
+i32 script_mask_effect_type(slot_layer_t *m, i32 i) {
+	return script_mask_valid(m, i) ? mask_stack_get(m, i).type : -1;
+}
+
+void script_mask_set_effect(slot_layer_t *m, i32 i, bool visible, f32 opacity, i32 blending) {
+	if (!script_mask_valid(m, i)) {
+		return;
+	}
+	context_set_layer(m);
+	history_mask_stack();
+	mask_effect_t e = mask_stack_get(m, i);
+	e.visible       = visible;
+	e.opacity       = opacity;
+	e.blending      = blending;
+	mask_stack_set(m, i, e);
+}
+
+void script_mask_set_effect_param(slot_layer_t *m, i32 i, i32 param, f32 value) {
+	if (!script_mask_valid(m, i) || param < 0 || param >= MASK_EFFECT_PARAMS) {
+		return;
+	}
+	context_set_layer(m);
+	history_mask_stack();
+	mask_effect_t e  = mask_stack_get(m, i);
+	e.params[param] = value;
+	mask_stack_set(m, i, e);
+}
+
+f32 script_mask_get_effect_param(slot_layer_t *m, i32 i, i32 param) {
+	if (!script_mask_valid(m, i) || param < 0 || param >= MASK_EFFECT_PARAMS) {
+		return 0.0;
+	}
+	return mask_stack_get(m, i).params[param];
+}
+
+// The packed effects of a mask as text, "null" for the implicit stack
+char *script_mask_effects_string(slot_layer_t *m) {
+	if (!script_layer_valid(m) || m->mask_effects == NULL) {
+		return "null";
+	}
+	char *s = "";
+	for (i32 i = 0; i < m->mask_effects->length; ++i) {
+		s = string("%s%s%.9g", s, i > 0 ? " " : "", m->mask_effects->buffer[i]);
+	}
+	return s;
+}
+
+// Asset name saved for mesh map type, "" for none
+char *script_mesh_map_name(i32 type) {
+	string_array_t *a = g_project->mesh_maps;
+	return a != NULL && type >= 0 && type < a->length && a->buffer[type] != NULL ? a->buffer[type] : "";
+}
+
+// Sets the saved name as is, no asset is looked up (tests of the project file)
+void script_mesh_map_set_name(i32 type, char *name) {
+	if (type < 0 || type >= MESH_MAP_COUNT) {
+		return;
+	}
+	if (g_project->mesh_maps == NULL) {
+		g_project->mesh_maps = any_array_create_from_raw((void *[]){}, 0);
+	}
+	while (g_project->mesh_maps->length < MESH_MAP_COUNT) {
+		string_array_push(g_project->mesh_maps, "");
+	}
+	g_project->mesh_maps->buffer[type] = string_copy(name);
+}
+
 slot_layer_t *script_layer_apply_mask(slot_layer_t *m) {
 	if (!script_layer_valid(m) || !slot_layer_is_mask(m)) {
 		return NULL;
@@ -1141,6 +1241,10 @@ i32 script_set_id_map(i32 index) {
 		return 0;
 	}
 	return project_set_id_map(g_project->_->assets->buffer[index]) ? 1 : 0;
+}
+
+asset_t *script_get_asset(i32 index) {
+	return index >= 0 && index < g_project->_->assets->length ? g_project->_->assets->buffer[index] : NULL;
 }
 
 i32 script_asset_index(char *search) {

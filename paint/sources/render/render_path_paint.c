@@ -564,6 +564,9 @@ void render_path_paint_commands_paint(bool dilation) {
 		return;
 	}
 	material_cache_paint_check(); // A paint shader reading a material cache that no longer fits paints live
+	if (slot_layer_is_mask(g_context->layer)) {
+		g_context->layer->mask_stack_dirty = true; // The paint effect changes
+	}
 	if (render_path_paint_batched() && !render_path_paint_batch_ready) { // Single draw, from the current brush state
 		render_path_paint_batch_count = 0;
 		render_path_paint_batch_add();
@@ -1339,6 +1342,9 @@ void render_path_paint_end() {
 	}
 
 	if (g_context->pdirty > 0) {
+		if (slot_layer_is_mask(g_context->layer)) {
+			g_context->layer->mask_stack_dirty = true; // The paint effect changed
+		}
 		layers_update_linked_layers();
 	}
 
@@ -2233,6 +2239,11 @@ void render_path_paint_bind_layers() {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		char         *n = string_tmp("texpaint%d", l->id);
 		render_path_bind_target(n, n);
+
+		if (slot_layer_is_mask(l)) { // Masks are sampled as texmask: the evaluated stack, texpaint for an implicit one
+			char *t = l->texmask != NULL && !mask_stack_is_trivial(l) ? string_tmp("texmask%s", l->ext) : n;
+			render_path_bind_target(t, string_tmp("texmask%d", l->id));
+		}
 
 		if (slot_layer_is_layer(l)) {
 			n = string_tmp("texpaint_nor%d", l->id);

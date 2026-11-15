@@ -1,0 +1,479 @@
+
+#include "../global.h"
+
+// Mask stacks: a mask is a list of effects evaluated bottom to top from black into texmask, which the viewport and
+// every other reader of the mask sample (slot_layer_mask_texture). Brushes and fills keep writing texpaint, the stack's
+// one paint effect. A mask without a stack (mask_effects NULL) is the implicit stack of one paint effect: it reads
+// texpaint directly, with no extra texture and no passes.
+//
+// Effects are packed MASK_EFFECT_STRIDE floats each in slot_layer_t.mask_effects, saved and undone as is.
+
+// Packing
+
+// Settings of each effect type: what the effect panels draw (native UI, tab_layers.c) and the defaults. Generators end
+// with the shared noise block, params[MASK_EFFECT_NOISE_*].
+
+#define MASK_NOISE_PARAMS                                                                                                   \
+	{"Noise Scale", MASK_EFFECT_NOISE_SCALE, MASK_PARAM_SLIDER, 0.5, 32.0, 4.0, NULL},                                     \
+	    {"Noise Amount", MASK_EFFECT_NOISE_AMOUNT, MASK_PARAM_SLIDER, 0.0, 1.0, 0.3, NULL},                                \
+	    {"Noise Detail", MASK_EFFECT_NOISE_DETAIL, MASK_PARAM_SLIDER, 1.0, 6.0, 3.0, NULL},                                \
+	{                                                                                                                       \
+		"Seed", MASK_EFFECT_NOISE_SEED, MASK_PARAM_SEED, 0.0, 1000.0, 0.0, NULL                                             \
+	}
+
+static mask_effect_param_t mask_params_fill[]   = {{"Value", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL}};
+static mask_effect_param_t mask_params_levels[] = {
+    {"In Low", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},  {"In High", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL},
+    {"Gamma", 2, MASK_PARAM_SLIDER, 0.1, 10.0, 1.0, NULL},  {"Out Low", 3, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"Out High", 4, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL},
+};
+static mask_effect_param_t mask_params_edge_wear[] = {
+    {"Amount", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    {"Sharpness", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    MASK_NOISE_PARAMS,
+};
+static mask_effect_param_t mask_params_dirt[] = {
+    {"Amount", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    {"Sharpness", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    {"AO Weight", 2, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    MASK_NOISE_PARAMS,
+};
+static mask_effect_param_t mask_params_position[] = {
+    {"Axis", 0, MASK_PARAM_CHOICE, 0.0, 2.0, 1.0, "X,Y,Z"},
+    {"Start", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"End", 2, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL},
+    MASK_NOISE_PARAMS,
+};
+static mask_effect_param_t mask_params_directional[] = {
+    {"Direction", 0, MASK_PARAM_CHOICE, 0.0, 5.0, 0.0, "+Y,-Y,+X,-X,+Z,-Z"},
+    {"Spread", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    {"Sharpness", 2, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    MASK_NOISE_PARAMS,
+};
+
+#define MASK_PARAMS_OF(a) *count = sizeof(a) / sizeof(a[0]); return a
+
+// The settings of an effect type, NULL with count 0 when it has none (paint, invert)
+mask_effect_param_t *mask_effect_params(i32 type, i32 *count) {
+	switch (type) {
+	case MASK_EFFECT_FILL:
+		MASK_PARAMS_OF(mask_params_fill);
+	case MASK_EFFECT_LEVELS:
+		MASK_PARAMS_OF(mask_params_levels);
+	case MASK_EFFECT_EDGE_WEAR:
+		MASK_PARAMS_OF(mask_params_edge_wear);
+	case MASK_EFFECT_DIRT:
+		MASK_PARAMS_OF(mask_params_dirt);
+	case MASK_EFFECT_POSITION:
+		MASK_PARAMS_OF(mask_params_position);
+	case MASK_EFFECT_DIRECTIONAL:
+		MASK_PARAMS_OF(mask_params_directional);
+	}
+	*count = 0;
+	return NULL;
+}
+
+// The setting of type that writes params[index], NULL when none does
+mask_effect_param_t *mask_effect_param_at(i32 type, i32 index) {
+	i32                  count = 0;
+	mask_effect_param_t *ps    = mask_effect_params(type, &count);
+	for (i32 i = 0; i < count; ++i) {
+		if (ps[i].index == index) {
+			return &ps[i];
+		}
+	}
+	return NULL;
+}
+
+// value clamped to the range of params[index] of type, whole for a choice or seed
+f32 mask_effect_param_clamp(i32 type, i32 index, f32 value) {
+	mask_effect_param_t *p = mask_effect_param_at(type, index);
+	if (p == NULL) {
+		return value;
+	}
+	f32 v = math_max(p->min, math_min(p->max, value));
+	return p->kind == MASK_PARAM_SLIDER ? v : math_floor(v + 0.5);
+}
+
+// Painter's rule: a layer or group has at most one mask, anything more goes into that mask's effects. Masks of older
+// projects stay as they are (they multiply).
+bool slot_layer_takes_mask(slot_layer_t *l) {
+	if (l == NULL || slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
+		return false;
+	}
+	slot_layer_t_array_t *masks = slot_layer_get_masks(l, false);
+	return masks == NULL || masks->length == 0;
+}
+
+char *mask_effect_name(i32 type) {
+	switch (type) {
+	case MASK_EFFECT_PAINT:
+		return "Paint";
+	case MASK_EFFECT_FILL:
+		return "Fill";
+	case MASK_EFFECT_LEVELS:
+		return "Levels";
+	case MASK_EFFECT_INVERT:
+		return "Invert";
+	case MASK_EFFECT_EDGE_WEAR:
+		return "Edge Wear";
+	case MASK_EFFECT_DIRT:
+		return "Dirt";
+	case MASK_EFFECT_POSITION:
+		return "Position Gradient";
+	case MASK_EFFECT_DIRECTIONAL:
+		return "Directional";
+	}
+	return "Effect";
+}
+
+bool mask_effect_is_filter(i32 type) {
+	return type == MASK_EFFECT_LEVELS || type == MASK_EFFECT_INVERT;
+}
+
+bool mask_effect_is_generator(i32 type) {
+	return type >= MASK_EFFECT_EDGE_WEAR && type <= MASK_EFFECT_DIRECTIONAL;
+}
+
+mask_effect_t mask_effect_default(i32 type) {
+	mask_effect_t e = {.type = type, .visible = true, .opacity = 1.0, .blending = MASK_BLEND_NORMAL};
+	if (mask_effect_is_generator(type)) {
+		e.blending = MASK_BLEND_MAX; // Stacked generators add up (wear here and dirt there), the first one looks the same
+	}
+	for (i32 i = 0; i < MASK_EFFECT_PARAMS; ++i) {
+		e.params[i] = 0.0;
+	}
+	i32                  count = 0;
+	mask_effect_param_t *ps    = mask_effect_params(type, &count);
+	for (i32 i = 0; i < count; ++i) {
+		e.params[ps[i].index] = ps[i].def;
+	}
+	return e;
+}
+
+i32 mask_stack_count(slot_layer_t *m) {
+	return m->mask_effects == NULL ? 1 : (i32)(m->mask_effects->length / MASK_EFFECT_STRIDE);
+}
+
+mask_effect_t mask_stack_get(slot_layer_t *m, i32 i) {
+	if (m->mask_effects == NULL) {
+		return mask_effect_default(MASK_EFFECT_PAINT);
+	}
+	f32          *f = m->mask_effects->buffer + i * MASK_EFFECT_STRIDE;
+	mask_effect_t e = {.type = (i32)f[0], .visible = f[1] > 0.5, .opacity = f[2], .blending = (i32)f[3]};
+	for (i32 j = 0; j < MASK_EFFECT_PARAMS; ++j) {
+		e.params[j] = f[4 + j];
+	}
+	return e;
+}
+
+static void mask_stack_pack(f32 *f, mask_effect_t e) {
+	f[0] = (f32)e.type;
+	f[1] = e.visible ? 1.0 : 0.0;
+	f[2] = e.opacity;
+	f[3] = (f32)e.blending;
+	for (i32 j = 0; j < MASK_EFFECT_PARAMS; ++j) {
+		f[4 + j] = e.params[j];
+	}
+}
+
+// Turns the implicit stack into an explicit one of a single paint effect
+void mask_stack_materialize(slot_layer_t *m) {
+	if (m->mask_effects != NULL) {
+		return;
+	}
+	m->mask_effects = f32_array_create(MASK_EFFECT_STRIDE);
+	mask_stack_pack(m->mask_effects->buffer, mask_effect_default(MASK_EFFECT_PAINT));
+}
+
+void mask_stack_set(slot_layer_t *m, i32 i, mask_effect_t e) {
+	mask_stack_materialize(m);
+	mask_stack_pack(m->mask_effects->buffer + i * MASK_EFFECT_STRIDE, e);
+	mask_stack_mark_dirty(m);
+}
+
+i32 mask_stack_paint_index(slot_layer_t *m) {
+	i32 n = mask_stack_count(m);
+	for (i32 i = 0; i < n; ++i) {
+		if (mask_stack_get(m, i).type == MASK_EFFECT_PAINT) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// The stack reads as texpaint itself: no stack, or only a visible paint effect at full opacity
+bool mask_stack_is_trivial(slot_layer_t *m) {
+	if (m->mask_effects == NULL) {
+		return true;
+	}
+	if (mask_stack_count(m) != 1) {
+		return false;
+	}
+	mask_effect_t e = mask_stack_get(m, 0);
+	return e.type == MASK_EFFECT_PAINT && e.visible && e.opacity >= 1.0 &&
+	       (e.blending == MASK_BLEND_NORMAL || e.blending == MASK_BLEND_ADD || e.blending == MASK_BLEND_MAX);
+}
+
+f32_array_t *mask_stack_copy_effects(f32_array_t *effects) {
+	return effects == NULL ? NULL : f32_array_create_from_array(effects);
+}
+
+// Inserts a new effect of type at index (-1: on top), returns its index. A second paint effect is refused (-1).
+i32 mask_stack_add(slot_layer_t *m, i32 type, i32 index) {
+	if (type == MASK_EFFECT_PAINT && mask_stack_paint_index(m) >= 0) {
+		return -1;
+	}
+	mask_stack_materialize(m);
+	i32 n = mask_stack_count(m);
+	if (index < 0 || index > n) {
+		index = n;
+	}
+	f32_array_t *a = f32_array_create((n + 1) * MASK_EFFECT_STRIDE);
+	for (i32 i = 0, j = 0; i <= n; ++i) {
+		f32 *dst = a->buffer + i * MASK_EFFECT_STRIDE;
+		if (i == index) {
+			mask_stack_pack(dst, mask_effect_default(type));
+		}
+		else {
+			memcpy(dst, m->mask_effects->buffer + j * MASK_EFFECT_STRIDE, sizeof(f32) * MASK_EFFECT_STRIDE);
+			j++;
+		}
+	}
+	m->mask_effects = a;
+	mask_stack_mark_dirty(m);
+	return index;
+}
+
+// Removes effect i, the paint effect stays. Returns whether it was removed.
+bool mask_stack_remove(slot_layer_t *m, i32 i) {
+	i32 n = mask_stack_count(m);
+	if (i < 0 || i >= n || mask_stack_get(m, i).type == MASK_EFFECT_PAINT) {
+		return false;
+	}
+	f32_array_t *a = f32_array_create((n - 1) * MASK_EFFECT_STRIDE);
+	for (i32 k = 0, j = 0; k < n; ++k) {
+		if (k == i) {
+			continue;
+		}
+		memcpy(a->buffer + j * MASK_EFFECT_STRIDE, m->mask_effects->buffer + k * MASK_EFFECT_STRIDE, sizeof(f32) * MASK_EFFECT_STRIDE);
+		j++;
+	}
+	m->mask_effects = a;
+	mask_stack_mark_dirty(m);
+	return true;
+}
+
+// Moves effect from to position to (both indices into the current stack)
+void mask_stack_move(slot_layer_t *m, i32 from, i32 to) {
+	i32 n = mask_stack_count(m);
+	if (from < 0 || from >= n || to < 0 || to >= n || from == to) {
+		return;
+	}
+	f32 tmp[MASK_EFFECT_STRIDE];
+	f32 *b = m->mask_effects->buffer;
+	memcpy(tmp, b + from * MASK_EFFECT_STRIDE, sizeof(tmp));
+	if (from < to) {
+		memmove(b + from * MASK_EFFECT_STRIDE, b + (from + 1) * MASK_EFFECT_STRIDE, sizeof(f32) * MASK_EFFECT_STRIDE * (to - from));
+	}
+	else {
+		memmove(b + (to + 1) * MASK_EFFECT_STRIDE, b + to * MASK_EFFECT_STRIDE, sizeof(f32) * MASK_EFFECT_STRIDE * (from - to));
+	}
+	memcpy(b + to * MASK_EFFECT_STRIDE, tmp, sizeof(tmp));
+	mask_stack_mark_dirty(m);
+}
+
+void mask_stack_mark_dirty(slot_layer_t *m) {
+	if (m == NULL || !slot_layer_is_mask(m)) {
+		return;
+	}
+	m->mask_stack_dirty            = true;
+	g_context->layer_preview_dirty = true;
+	g_context->ddirty              = 3;
+	g_context->rtdirty             = 1;
+}
+
+// Evaluation (GPU passes)
+// One pass per visible effect. The passes ping-pong between texmask and one scratch texture, starting where the last pass
+// lands in texmask; the first reads black.
+
+static gpu_texture_t *mask_stack_scratch = NULL;
+
+static gpu_texture_t *mask_stack_black() {
+	render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
+	return rt->_image;
+}
+
+static void mask_stack_alloc_texture(slot_layer_t *m) {
+	if (m->texmask != NULL && (m->texmask->width != m->texpaint->width || m->texmask->height != m->texpaint->height)) {
+		mask_stack_free_texture(m); // Resized
+	}
+	if (m->texmask != NULL) {
+		return;
+	}
+	render_target_t *t = render_target_create();
+	t->name            = string("texmask%s", m->ext);
+	t->width           = m->texpaint->width;
+	t->height          = m->texpaint->height;
+	t->format          = string_copy("RGBA32");
+	m->texmask         = render_path_create_render_target(t)->_image;
+}
+
+gpu_texture_t *mask_stack_get_scratch(i32 w, i32 h) {
+	if (mask_stack_scratch != NULL && (mask_stack_scratch->width != w || mask_stack_scratch->height != h)) {
+		gpu_delete_texture(mask_stack_scratch);
+		mask_stack_scratch = NULL;
+	}
+	if (mask_stack_scratch == NULL) {
+		mask_stack_scratch = gpu_create_render_target(w, h, GPU_TEXTURE_FORMAT_RGBA32);
+	}
+	return mask_stack_scratch;
+}
+
+// The layers panel thumbnail shows the evaluated stack (util_layer.c, same unit)
+static void mask_stack_draw_preview(slot_layer_t *m) {
+	if (m->texpaint_preview != NULL) {
+		util_layer_draw_preview(m, m->texpaint_preview);
+		ui_dock_redraw(TAB_AREA_SIDEBAR0);
+	}
+}
+
+static void mask_stack_pass(slot_layer_t *m, mask_effect_t e, gpu_texture_t *acc, gpu_texture_t *dst) {
+	gpu_texture_t *src = e.type == MASK_EFFECT_PAINT         ? m->texpaint
+	                     : mask_effect_is_generator(e.type) ? mask_gen_texture(m, e)
+	                                                        : mask_stack_black();
+	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	gpu_set_pipeline(pipes_mask_stack);
+	gpu_set_texture(pipes_texa_mask_stack, acc);
+	gpu_set_texture(pipes_texsrc_mask_stack, src);
+	gpu_set_int(pipes_type_mask_stack, e.type);
+	gpu_set_int(pipes_blending_mask_stack, e.blending);
+	gpu_set_float(pipes_opac_mask_stack, e.opacity);
+	gpu_set_float4(pipes_params0_mask_stack, e.params[0], e.params[1], e.params[2], e.params[3]);
+	gpu_set_float4(pipes_params1_mask_stack, e.params[4], e.params[5], e.params[6], e.params[7]);
+	gpu_set_float4(pipes_params2_mask_stack, e.params[8], e.params[9], e.params[10], e.params[11]);
+	gpu_set_float4(pipes_params3_mask_stack, e.params[12], e.params[13], e.params[14], e.params[15]);
+	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+	gpu_set_index_buffer(const_data_screen_aligned_ib);
+	gpu_draw();
+	gpu_end();
+}
+
+// Texture every reader of the mask samples: the evaluated stack, or texpaint for an implicit stack.
+// A dirty stack is evaluated first when no pass is open, inside a pass the last result is read.
+gpu_texture_t *slot_layer_mask_texture(slot_layer_t *m) {
+	if (mask_stack_is_trivial(m)) {
+		return m->texpaint;
+	}
+	if ((m->mask_stack_dirty || m->texmask == NULL) && !gpu_in_use) {
+		mask_stack_evaluate(m);
+	}
+	return m->texmask != NULL ? m->texmask : m->texpaint;
+}
+
+// Evaluates the dirty stacks of every mask, called once per frame before the viewport renders
+void mask_stack_evaluate_dirty() {
+	bool any = false;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *m = g_project->_->layers->buffer[i];
+		if (!slot_layer_is_mask(m)) {
+			continue;
+		}
+		if (mask_stack_is_trivial(m)) {
+			if (m->texmask != NULL) {
+				mask_stack_evaluate(m); // Frees texmask
+			}
+			m->mask_stack_dirty = false;
+			continue;
+		}
+		any = true;
+		if (mask_gen_stale(m)) { // Mesh, transform or mesh maps changed
+			m->mask_stack_dirty = true;
+		}
+		if (m->mask_stack_dirty || m->texmask == NULL || m->texmask->width != m->texpaint->width || m->texmask->height != m->texpaint->height) {
+			mask_stack_evaluate(m);
+		}
+	}
+	if (!any && mask_stack_scratch != NULL) { // Only implicit stacks left
+		gpu_delete_texture(mask_stack_scratch);
+		mask_stack_scratch = NULL;
+	}
+}
+
+// Evaluates the stack of m into texmask now
+void mask_stack_evaluate(slot_layer_t *m) {
+	if (m == NULL || !slot_layer_is_mask(m)) {
+		return;
+	}
+	m->mask_stack_dirty = false;
+	if (mask_stack_is_trivial(m)) {
+		bool had = m->texmask != NULL;
+		mask_stack_free_texture(m);
+		if (had && !gpu_in_use) {
+			mask_stack_draw_preview(m);
+		}
+		return;
+	}
+	mask_stack_alloc_texture(m);
+
+	// Passes can not run inside an open one
+	gpu_texture_t *current     = _draw_current;
+	bool           in_use      = gpu_in_use;
+	bool           render_path = in_use && _render_path_current_image != NULL;
+	if (render_path) {
+		render_path_end();
+	}
+	else if (in_use) {
+		draw_end();
+	}
+
+	if (const_data_screen_aligned_vb == NULL) {
+		const_data_create_screen_aligned_data();
+	}
+
+	i32 n       = mask_stack_count(m);
+	i32 visible = 0;
+	for (i32 i = 0; i < n; ++i) {
+		if (mask_stack_get(m, i).visible) {
+			visible++;
+		}
+	}
+
+	mask_gen_update(m); // Generators render first, through the scratch the passes below use
+
+	if (visible == 0) {
+		_gpu_begin(m->texmask, NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
+		gpu_end();
+	}
+	else {
+		gpu_texture_t *scratch = visible > 1 ? mask_stack_get_scratch(m->texmask->width, m->texmask->height) : NULL;
+		gpu_texture_t *acc     = mask_stack_black();
+		i32            k       = 0;
+		for (i32 i = 0; i < n; ++i) {
+			mask_effect_t e = mask_stack_get(m, i);
+			if (!e.visible) {
+				continue;
+			}
+			gpu_texture_t *dst = (visible - 1 - k) % 2 == 0 ? m->texmask : scratch;
+			mask_stack_pass(m, e, acc, dst);
+			acc = dst;
+			k++;
+		}
+	}
+	mask_stack_draw_preview(m);
+
+	if (in_use && !render_path) {
+		draw_begin(current, false, 0);
+	}
+}
+
+// Frees texmask (unload, or the stack became trivial)
+void mask_stack_free_texture(slot_layer_t *m) {
+	mask_gen_free(m);
+	if (m->texmask == NULL) {
+		return;
+	}
+	gpu_delete_texture(m->texmask);
+	map_delete(render_path_render_targets, string("texmask%s", m->ext));
+	m->texmask = NULL;
+}

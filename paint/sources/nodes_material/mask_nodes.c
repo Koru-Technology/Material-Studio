@@ -36,10 +36,17 @@ void curvature_mask_bake_meshes(ui_node_t *node, mesh_object_t_array_t *objs, i3
 	                         CURVATURE_MASK_SPREAD);
 }
 
+// A curvature map registered with the project replaces the node's own bake. Not in the Material Studio preview
+// (live parse): its cube or sphere swaps in their own bakes, see studio_swap_curvature.
+extern ui_node_canvas_t *parser_material_live_canvas;
+static bool              curvature_mask_uses_mesh_map() {
+	return parser_material_live_canvas == NULL && mesh_maps_get_asset(MESH_MAP_CURVATURE) != NULL;
+}
+
 // Curvature of the paint meshes, with the material's other node previews
 void curvature_mask_bake(ui_node_t *node) {
 	slot_material_t *m = nodes_material_node_material(node);
-	if (m == NULL) {
+	if (m == NULL || curvature_mask_uses_mesh_map()) {
 		return;
 	}
 	curvature_mask_bake_meshes(node, g_project->_->paint_objects, math_floor(config_get_texture_res_x()), string_copy(curvature_mask_bake_id(node, m)));
@@ -53,6 +60,7 @@ static i32            curvature_swap_count = 0;
 
 void curvature_mask_preview_begin(slot_material_t *m) {
 	curvature_swap_count = 0;
+	mesh_maps_preview_neutral(true); // Flat curvature, no mask
 	if (m == NULL || m->canvas == NULL || g_context->node_previews == NULL) {
 		return;
 	}
@@ -76,6 +84,7 @@ void curvature_mask_preview_begin(slot_material_t *m) {
 }
 
 void curvature_mask_preview_end() {
+	mesh_maps_preview_neutral(false);
 	for (i32 i = 0; i < curvature_swap_count; ++i) {
 		any_map_set(g_context->node_previews, curvature_swap_keys[i], curvature_swap_saved[i]);
 	}
@@ -109,12 +118,23 @@ static char *curvature_mask_eval(ui_node_t *node) {
 	char *noise   = string_copy(mask_breakup(breakup, bscale));
 
 	node_shader_context_add_elem(parser_material_shader->context, "tex", "short2norm");
-	char *tex = string("texbake_%s", curvature_mask_bake_id(node, m));
-	node_shader_add_texture(parser_material_shader, tex, string("_%s", tex));
+	char *curv;
+	if (curvature_mask_uses_mesh_map()) {
+		// Signed map, 0.5 is flat: the ridges or the grooves side of it
+		node_shader_add_texture(parser_material_shader, "texmeshmap1", "_texmeshmap1");
+		curv = string_tmp(curvature_mask_cavities(node) ? "clamp((0.5 - texture(sampler2D(texmeshmap1, sampler_linear), tex_coord).r) * 2.0, 0.0, 1.0)"
+		                                                : "clamp((texture(sampler2D(texmeshmap1, sampler_linear), tex_coord).r - 0.5) * 2.0, 0.0, 1.0)");
+	}
+	else {
+		char *tex = string("texbake_%s", curvature_mask_bake_id(node, m));
+		node_shader_add_texture(parser_material_shader, tex, string("_%s", tex));
+		curv = string_tmp("texture(sampler2D(%s, sampler_linear), tex_coord).r", tex);
+	}
+	curv = string_copy(curv);
 	// The amount lowers the curvature it starts at, the noise breaks the border up, a narrow ramp keeps half mixed metal out
 	parser_material_write(parser_material_shader,
-	                      string_tmp("float %s = clamp((texture(sampler2D(%s, sampler_linear), tex_coord).r - (1.0 - %s)) * 4.0, 0.0, 1.0) * clamp(%s, 0.0, 1.0);", store,
-	                                 tex, amount, noise));
+	                      string_tmp("float %s = clamp((%s - (1.0 - %s)) * 4.0, 0.0, 1.0) * clamp(%s, 0.0, 1.0);", store, curv, amount, noise));
+	free(curv);
 	if (curvature_mask_cavities(node)) { // Dirt settles in the recesses of the height too
 		parser_material_write(parser_material_shader, string_tmp("%s = max(%s, (1.0 - %s) * %s * 0.55);", store, store, height, amount));
 	}

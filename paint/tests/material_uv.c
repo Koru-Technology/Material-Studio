@@ -132,7 +132,8 @@ void next() {
 		check(iron_file_exists(file_new), "project saved");
 		// The same file marked as version 26, before materials had a scale and rotation
 		buffer_t *b = script_load_blob(file_new);
-		buffer_set_u8(b, 23, 54); // "27" -> "26"
+		buffer_set_u8(b, 22, 50); // Current version -> "26"
+		buffer_set_u8(b, 23, 54);
 		iron_file_save_bytes(file_old, b, b->length);
 		script_project_new();
 	}

@@ -127,6 +127,15 @@ struct LayerContextMenu: View {
 					Label("Add Mask", systemImage: "circle.lefthalf.filled")
 				}
 			}
+			if p.showsAddEffect {
+				Menu {
+					MaskEffectAddItems { type in
+						act { app_layer_add_effect(layer.id, type) >= 0 }
+					}
+				} label: {
+					Label("Add Effect", systemImage: "wand.and.stars")
+				}
+			}
 			if p.showsInvert {
 				Button {
 					act { app_layer_invert_mask(layer.id) }

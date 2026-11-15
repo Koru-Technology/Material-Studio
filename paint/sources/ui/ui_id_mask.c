@@ -285,6 +285,7 @@ static void ui_id_mask_build(void *_m) {
 		gpu_end();
 	}
 
+	mask_stack_mark_dirty(m);
 	g_context->layer_preview_dirty = true;
 	layers_update_fill_layers();
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);

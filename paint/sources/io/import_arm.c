@@ -154,6 +154,7 @@ void import_arm_run_mesh(project_t *raw) {
 		viewport_scale_to_bounds(2.0);
 	}
 	sys_notify_on_next_frame(&import_arm_run_mesh_on_next_frame, NULL);
+	mesh_maps_mesh_changed();
 	history_reset();
 }
 
@@ -286,6 +287,7 @@ static void import_arm_run_mesh_append_from_project(project_t *project, i32_arra
 	util_uv_seammap_cached     = false;
 	util_uv_dilatemap_cached   = false;
 	g_context->ddirty          = 4;
+	mesh_maps_mesh_changed(); // The registered maps miss the appended meshes
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
@@ -781,6 +783,11 @@ void import_arm_run_project(char *path) {
 		project = armpack_decode(b);
 	}
 
+	if (project == NULL) { // A version this build does not know
+		console_error(string("Could not open file %s.", path));
+		return;
+	}
+
 	if (project->version != NULL && project->layer_datas == NULL) {
 		// Import as material
 		if (project->material_nodes != NULL) {
@@ -1087,6 +1094,10 @@ void import_arm_run_project(char *path) {
 			l->height_blend_sharpness = ld->height_blend_sharpness;
 			l->height_blend_offset    = ld->height_blend_offset;
 			l->height_blend_reach     = ld->height_blend_reach;
+			if (is_mask && ld->mask_effects != NULL && ld->mask_effects->length > 0) {
+				l->mask_effects     = mask_stack_copy_effects(ld->mask_effects); // Owned, the decoded one lives in the project blob
+				l->mask_stack_dirty = true;                                       // Evaluated before the first frame renders
+			}
 			if (l->height_blend) {
 				make_material_height_used = true; // The mask compares heights
 			}

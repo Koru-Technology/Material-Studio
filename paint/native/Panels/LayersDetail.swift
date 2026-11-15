@@ -76,6 +76,7 @@ struct LayerDetailSections: View {
 		}
 
 		if layer.kind == .mask {
+			MaskEffectsSection(layer: layer) // MaskEffectDetail.swift
 			heightBlendSection(layer)
 		}
 

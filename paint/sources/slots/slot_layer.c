@@ -202,6 +202,7 @@ void slot_layer_unload(slot_layer_t *raw) {
 	}
 
 	map_delete(render_path_render_targets, string("texpaint%s", raw->ext));
+	mask_stack_free_texture(raw);
 	if (slot_layer_is_layer(raw)) {
 		map_delete(render_path_render_targets, string("texpaint_nor%s", raw->ext));
 		map_delete(render_path_render_targets, string("texpaint_pack%s", raw->ext));
@@ -221,6 +222,9 @@ void slot_layer_swap(slot_layer_t *raw, slot_layer_t *other) {
 		gpu_texture_t *_texpaint_preview = raw->texpaint_preview;
 		raw->texpaint_preview            = other->texpaint_preview;
 		other->texpaint_preview          = _texpaint_preview;
+
+		mask_stack_mark_dirty(raw); // Undo brought back other paint
+		mask_stack_mark_dirty(other);
 	}
 
 	if (slot_layer_is_layer(raw) && slot_layer_is_layer(other)) {
@@ -260,6 +264,7 @@ void slot_layer_clear(slot_layer_t *raw, i32 base_color, gpu_texture_t *base_ima
 		gpu_end();
 	}
 
+	mask_stack_mark_dirty(raw);
 	g_context->layer_preview_dirty = true;
 	g_context->ddirty              = 3;
 	g_context->rtdirty             = 1;
@@ -276,6 +281,7 @@ void slot_layer_invert_mask(slot_layer_t *raw) {
 	gpu_delete_texture(_texpaint);
 	render_target_t *rt = any_map_get(render_path_render_targets, string("texpaint%d", raw->id));
 	raw->texpaint = rt->_image     = inverted;
+	mask_stack_mark_dirty(raw);
 	g_context->layer_preview_dirty = true;
 	g_context->ddirty              = 3;
 	g_context->rtdirty             = 1;
@@ -287,7 +293,7 @@ void layers_apply_mask(slot_layer_t *l, slot_layer_t *m) {
 	}
 
 	// Height blended mask: bake its edge against the height of the layer and the layers below
-	gpu_texture_t *mask_tex  = m->texpaint;
+	gpu_texture_t *mask_tex  = slot_layer_mask_texture(m); // Evaluated stack
 	f32            mask_opac = m->mask_opacity;
 	if (m->height_blend) {
 		gpu_texture_t *below = m->height_blend_below ? layers_height_below(l) : NULL;
@@ -385,6 +391,8 @@ static slot_layer_t *slot_layer_copy(slot_layer_t *raw) {
 
 	l->visible            = raw->visible;
 	l->mask_opacity       = raw->mask_opacity;
+	l->mask_effects       = mask_stack_copy_effects(raw->mask_effects);
+	l->mask_stack_dirty   = true;
 	l->fill_material      = raw->fill_material;
 	l->object_mask        = raw->object_mask;
 	l->blending           = raw->blending;
@@ -522,6 +530,9 @@ void slot_layer_resize_and_set_bits(slot_layer_t *raw) {
 
 		render_target_t *rt = any_map_get(rts, string("texpaint%s", raw->ext));
 		rt->_image          = raw->texpaint;
+
+		mask_stack_free_texture(raw); // Evaluated again at the new size
+		mask_stack_mark_dirty(raw);
 	}
 }
 

@@ -58,11 +58,13 @@ void tab_layers_handle_layer_icon_state(slot_layer_t *l, i32 i, ui_state_t state
 	// Show context menu
 	if (g_ui->is_hovered && g_ui->input_released_r) {
 		context_set_layer(l);
+		g_context->mask_effect       = -1;
 		tab_layers_show_context_menu = true;
 	}
 
 	if (state == UI_STATE_STARTED) {
 		context_set_layer(l);
+		g_context->mask_effect = -1;
 		tab_layers_set_drag_layer(g_context->layer, -(mouse_x - uix - g_ui->_window_x - 3), -(mouse_y - uiy - g_ui->_window_y + 1));
 	}
 	else if (state == UI_STATE_RELEASED) {
@@ -255,9 +257,36 @@ void tab_layers_draw_layer_context_menu_duplicate(void *_) {
 	layers_duplicate_layer(l);
 }
 
+// Mask stacks: a mask with an explicit stack lists its effects as rows under it, top effect first
+static bool tab_layers_mask_has_stack(slot_layer_t *l) {
+	return slot_layer_is_mask(l) && l->mask_effects != NULL;
+}
+
+// Selected effect of mask m, -1 when m is not the current layer or nothing is selected
+static i32 tab_layers_selected_effect(slot_layer_t *m) {
+	if (g_context->layer != m || !tab_layers_mask_has_stack(m)) {
+		return -1;
+	}
+	i32 i = g_context->mask_effect;
+	return i >= 0 && i < mask_stack_count(m) ? i : -1;
+}
+
+// Removes the selected effect of the current mask, the paint effect stays
+static bool tab_layers_delete_selected_effect() {
+	slot_layer_t *m = g_context->layer;
+	i32           i = tab_layers_selected_effect(m);
+	if (i < 0 || mask_stack_get(m, i).type == MASK_EFFECT_PAINT) {
+		return false;
+	}
+	history_mask_stack();
+	mask_stack_remove(m, i);
+	g_context->mask_effect = -1;
+	return true;
+}
+
 bool tab_layers_has_children(slot_layer_t *l) {
 	return slot_layer_is_group(l) || (slot_layer_is_layer(l) && slot_layer_get_masks(l, false) != NULL) ||
-	       (slot_layer_is_layer(l) && slot_layer_get_filters(l, false));
+	       (slot_layer_is_layer(l) && slot_layer_get_filters(l, false)) || tab_layers_mask_has_stack(l);
 }
 
 void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
@@ -340,10 +369,12 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 		    g_ui->input_y < g_ui->_window_y + g_ui->_y - center + (step * UI_SCALE()) * 2) {
 			if (g_ui->input_started) {
 				context_set_layer(l);
+				g_context->mask_effect = -1; // The mask row itself, not one of its effects
 				tab_layers_set_drag_layer(g_context->layer, -(mouse_x - uix - g_ui->_window_x - 3), -(mouse_y - uiy - g_ui->_window_y + 1));
 			}
 			else if (g_ui->input_released_r) {
 				context_set_layer(l);
+				g_context->mask_effect       = -1;
 				tab_layers_show_context_menu = true;
 			}
 		}
@@ -361,7 +392,12 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 
 		bool in_focus = g_ui->input_x > g_ui->_window_x && g_ui->input_x < g_ui->_window_x + g_ui->_window_w && g_ui->input_y > g_ui->_window_y &&
 		                g_ui->input_y < g_ui->_window_y + g_ui->_window_h;
-		if (in_focus && !g_ui->is_typing && g_ui->is_delete_down && tab_layers_can_delete(g_context->layer)) {
+		if (in_focus && !g_ui->is_typing && g_ui->is_delete_down && tab_layers_selected_effect(g_context->layer) >= 0) {
+			// An effect row is selected: delete removes the effect, never the mask (the paint effect stays)
+			g_ui->is_delete_down = false;
+			tab_layers_delete_selected_effect();
+		}
+		else if (in_focus && !g_ui->is_typing && g_ui->is_delete_down && tab_layers_can_delete(g_context->layer)) {
 			g_ui->is_delete_down = false;
 			sys_notify_on_next_frame(&tab_layers_draw_layer_slot_full_delete_layer, NULL);
 		}
@@ -403,8 +439,8 @@ void tab_layers_draw_layer_highlight(slot_layer_t *l, bool mini) {
 	// Separator line
 	ui_fill(0, 0, (g_ui->_w / (float)UI_SCALE() - 2), 1 * UI_SCALE(), g_theme->SEPARATOR_COL);
 
-	// Highlight selected
-	if (g_context->layer == l) {
+	// Highlight selected, the effect row instead when one of the mask's effects is
+	if (g_context->layer == l && (mini || tab_layers_selected_effect(l) < 0)) {
 		if (mini) {
 			ui_rect_round(1, -step * 2, g_ui->_w / (float)UI_SCALE() - 1, step * 2 + (mini ? -1 : 1), g_theme->HIGHLIGHT_COL, 3);
 		}
@@ -423,8 +459,9 @@ void tab_layers_draw_layer_context_menu_export_on_file_picked(char *path) {
 	if (!ends_with(f, ".png")) {
 		f = string("%s.png", f);
 	}
-	iron_write_png(string("%s%s%s", path, PATH_SEP, f), gpu_get_texture_pixels(l->texpaint), l->texpaint->width, l->texpaint->height, 3); // RRR1
-	gpu_release_texture_pixels(l->texpaint);
+	gpu_texture_t *t = slot_layer_mask_texture(l); // Evaluated mask stack, texpaint for layers
+	iron_write_png(string("%s%s%s", path, PATH_SEP, f), gpu_get_texture_pixels(t), t->width, t->height, 3); // RRR1
+	gpu_release_texture_pixels(t);
 }
 
 void tab_layers_draw_layer_context_menu_delete(void *_) {
@@ -727,6 +764,269 @@ void tab_layers_fill_properties(slot_layer_t *l, bool menu) {
 	}
 }
 
+// Mask stack effects: rows under the mask, parameters of the selected one inline, edits in the mask menu
+
+static char *tab_layers_mask_effect_name(i32 type) {
+	return tr(mask_effect_name(type));
+}
+
+// Filters transform the result below, their blending is ignored
+static bool tab_layers_mask_effect_is_filter(i32 type) {
+	return mask_effect_is_filter(type);
+}
+
+static string_array_t *tab_layers_mask_blend_names() {
+	return any_array_create_from_raw_tmp(
+	    (void *[]){
+	        tr("Normal"),
+	        tr("Multiply"),
+	        tr("Add"),
+	        tr("Subtract"),
+	        tr("Max"),
+	        tr("Min"),
+	        tr("Overlay"),
+	    },
+	    MASK_BLEND_COUNT);
+}
+
+// New effect of type above the selected one, on top when none is
+static void tab_layers_mask_effect_add(slot_layer_t *m, i32 type) {
+	context_set_layer(m);
+	i32 sel = tab_layers_selected_effect(m);
+	history_mask_stack();
+	i32 at = mask_stack_add(m, type, sel >= 0 ? sel + 1 : -1);
+	if (at >= 0) {
+		g_context->mask_effect = at;
+	}
+	m->show_panel = true;
+}
+
+static void tab_layers_mask_effect_move(slot_layer_t *m, i32 from, i32 to) {
+	history_mask_stack();
+	mask_stack_move(m, from, to);
+	g_context->mask_effect = to;
+}
+
+static void tab_layers_draw_mask_effect_menu(slot_layer_t *m) {
+	if (ui_menu_button(tr("Add Fill"), "", ICON_MASK_FILL)) {
+		tab_layers_mask_effect_add(m, MASK_EFFECT_FILL);
+	}
+	if (ui_menu_button(tr("Add Levels"), "", ICON_NONE)) {
+		tab_layers_mask_effect_add(m, MASK_EFFECT_LEVELS);
+	}
+	// Non-destructive: an invert effect, the painted texture stays as it is
+	if (ui_menu_button(tr("Invert"), "", ICON_INVERT)) {
+		tab_layers_mask_effect_add(m, MASK_EFFECT_INVERT);
+	}
+	for (i32 type = MASK_EFFECT_EDGE_WEAR; type <= MASK_EFFECT_DIRECTIONAL; ++type) {
+		if (ui_menu_button(string("%s %s", tr("Add"), tab_layers_mask_effect_name(type)), "", ICON_NONE)) {
+			tab_layers_mask_effect_add(m, type);
+		}
+	}
+
+	i32 sel = tab_layers_selected_effect(m);
+	if (sel < 0 || mask_stack_get(m, sel).type == MASK_EFFECT_PAINT) {
+		return;
+	}
+	if (ui_menu_button(tr("Delete Effect"), "", ICON_DELETE)) {
+		tab_layers_delete_selected_effect();
+	}
+	g_ui->enabled = sel < mask_stack_count(m) - 1;
+	if (ui_menu_button(tr("Move Effect Up"), "", ICON_ARROW_UP)) {
+		tab_layers_mask_effect_move(m, sel, sel + 1);
+	}
+	g_ui->enabled = sel > 0;
+	if (ui_menu_button(tr("Move Effect Down"), "", ICON_ARROW_DOWN)) {
+		tab_layers_mask_effect_move(m, sel, sel - 1);
+	}
+	g_ui->enabled = true;
+}
+
+// field: -1 for the opacity, otherwise a params index
+static void tab_layers_mask_effect_slider(slot_layer_t *m, i32 i, i32 field, char *label, f32 min, f32 max) {
+	mask_effect_t e = mask_stack_get(m, i);
+	f32           v = field < 0 ? e.opacity : e.params[field];
+	ui_set_next_id(1 + i * MASK_EFFECT_STRIDE + (field < 0 ? 2 : 4 + field)); // Under the mask's id, see below
+	ui_slider(&v, label, min, max, true, 100.0, true, UI_ALIGN_RIGHT, true);
+	if (ui_item_changed()) {
+		if (g_ui->input_started) {
+			history_mask_stack();
+		}
+		v = field < 0 ? math_max(min, math_min(max, v)) : mask_effect_param_clamp(e.type, field, v);
+		if (field < 0) {
+			e.opacity = v;
+		}
+		else {
+			e.params[field] = v;
+		}
+		mask_stack_set(m, i, e);
+	}
+}
+
+// Rows the parameters of an effect of type take
+static i32 tab_layers_mask_effect_param_rows(i32 type) {
+	i32 rows  = tab_layers_mask_effect_is_filter(type) ? 1 : 2; // Opacity, blending
+	i32 count = 0;
+	mask_effect_params(type, &count);
+	return rows + count + (count > 0 ? 1 : 0); // Settings, reset
+}
+
+// Parameters of effect i under its row, the block is padded to whole layer rows
+static void tab_layers_draw_mask_effect_params(slot_layer_t *m, i32 i, f32 x, f32 w) {
+	f32           uix   = g_ui->_x;
+	f32           uiy   = g_ui->_y;
+	f32           uiw   = g_ui->_w;
+	f32           row_h = g_theme->ELEMENT_H * 2 * UI_SCALE();
+	mask_effect_t e     = mask_stack_get(m, i);
+	f32           pad   = 4 * UI_SCALE();
+	f32           h     = tab_layers_mask_effect_param_rows(e.type) * (UI_ELEMENT_H() + UI_ELEMENT_OFFSET()) + pad * 2;
+	h                   = math_ceil(h / row_h) * row_h;
+
+	ui_fill(0, 1, uiw / (float)UI_SCALE() - 2, h / (float)UI_SCALE() - 1, base_darker(g_theme->WINDOW_BG_COL, 0x00080808));
+	g_ui->_x = x;
+	g_ui->_y = uiy + pad;
+	g_ui->_w = w;
+	ui_push_id((ui_id_t)m); // Widgets keyed by the effect's float index, the stack array is replaced on edits
+
+	tab_layers_mask_effect_slider(m, i, -1, tr("Opacity"), 0.0, 1.0);
+	if (!tab_layers_mask_effect_is_filter(e.type)) {
+		i32 blending = e.blending;
+		ui_set_next_id(1 + i * MASK_EFFECT_STRIDE + 3);
+		ui_combo(&blending, tab_layers_mask_blend_names(), tr("Blending"), true, UI_ALIGN_LEFT, false);
+		if (ui_item_changed() && blending != e.blending) {
+			history_mask_stack();
+			e.blending = blending;
+			mask_stack_set(m, i, e);
+		}
+	}
+	i32                  count = 0;
+	mask_effect_param_t *ps    = mask_effect_params(e.type, &count);
+	for (i32 j = 0; j < count; ++j) {
+		mask_effect_param_t *p = &ps[j];
+		if (p->kind == MASK_PARAM_SLIDER) {
+			tab_layers_mask_effect_slider(m, i, p->index, tr(p->name), p->min, p->max);
+		}
+		else if (p->kind == MASK_PARAM_CHOICE) {
+			i32 v = (i32)e.params[p->index];
+			ui_set_next_id(1 + i * MASK_EFFECT_STRIDE + 4 + p->index);
+			any_array_t *options = string_split(p->options, ",");
+			ui_combo(&v, options, tr(p->name), true, UI_ALIGN_LEFT, false);
+			string_split_free(options);
+			if (ui_item_changed() && v != (i32)e.params[p->index]) {
+				history_mask_stack();
+				e.params[p->index] = v;
+				mask_stack_set(m, i, e);
+			}
+		}
+		else if (ui_button(string("%s (%d)", tr("Shuffle"), (i32)e.params[p->index]), UI_ALIGN_CENTER, "")) { // Seed
+			history_mask_stack();
+			e.params[p->index] = iron_random_get_max(1000);
+			mask_stack_set(m, i, e);
+		}
+	}
+	if (count > 0 && ui_button(tr("Reset"), UI_ALIGN_CENTER, "")) {
+		history_mask_stack();
+		mask_effect_t d = mask_effect_default(e.type);
+		for (i32 j = 0; j < MASK_EFFECT_PARAMS; ++j) {
+			e.params[j] = d.params[j];
+		}
+		mask_stack_set(m, i, e);
+	}
+	ui_pop_id();
+
+	g_ui->_x = uix;
+	g_ui->_y = uiy + h;
+	g_ui->_w = uiw;
+	ui_fill(0, 0, (g_ui->_w / (float)UI_SCALE() - 2), 1 * UI_SCALE(), g_theme->SEPARATOR_COL);
+}
+
+// Effect rows of mask m while its row is expanded, as tall as layer rows so the stripes line up
+static i32 tab_layers_mask_effect_rows(slot_layer_t *m) {
+	return tab_layers_mask_has_stack(m) && m->show_panel ? mask_stack_count(m) : 0;
+}
+
+static void tab_layers_draw_mask_effects(slot_layer_t *m) {
+	i32            step   = g_theme->ELEMENT_H;
+	f32            center = (step / 2.0) * UI_SCALE();
+	f32            row_h  = step * 2 * UI_SCALE();
+	f32            uix    = g_ui->_x;
+	f32            uiw    = g_ui->_w;
+	gpu_texture_t *icons  = resource_get("icons.k");
+
+	// Same columns as the layer rows, one level deeper than the mask
+	i32 depth = 1;
+	for (slot_layer_t *p = m->parent; p != NULL; p = p->parent) {
+		++depth;
+	}
+	f32 eye_x  = uix + 4;
+	f32 eye_w  = 18 * UI_SCALE();
+	f32 name_x = eye_x + eye_w + 4 * UI_SCALE() + depth * 14 * UI_SCALE();
+	f32 right  = uix + uiw - 8 * UI_SCALE();
+
+	i32 col = g_theme->HOVER_COL + 0x00282828;
+	if (!slot_layer_is_visible(m)) {
+		col -= 0x99000000;
+	}
+
+	i32 n = mask_stack_count(m);
+	for (i32 i = n - 1; i >= 0; --i) {
+		mask_effect_t e   = mask_stack_get(m, i);
+		f32           uiy = g_ui->_y;
+
+		// Eye
+		rect_t *r = resource_tile18(icons, e.visible ? ICON18_EYE_ON : ICON18_EYE_OFF);
+		g_ui->_x  = eye_x;
+		g_ui->_y  = uiy + 3 + center;
+		g_ui->_w  = eye_w;
+		if (ui_sub_image(icons, col, 18 * UI_SCALE(), r->x, r->y, r->w, r->h) == UI_STATE_RELEASED) {
+			context_set_layer(m);
+			history_mask_stack();
+			e.visible = !e.visible;
+			mask_stack_set(m, i, e);
+		}
+
+		// Tap selects the effect, the right click or long press opens the mask menu for it
+		if (g_ui->combo_selected_id == 0 && ui_input_in_rect(g_ui->_window_x + name_x, g_ui->_window_y + uiy, uix + uiw - name_x, row_h)) {
+			if (g_ui->input_started || g_ui->input_released_r) {
+				context_set_layer(m);
+				g_context->mask_effect = i;
+			}
+			if (g_ui->input_released_r) {
+				tab_layers_show_context_menu = true;
+			}
+		}
+
+		// Name, blending and opacity
+		g_ui->_x = name_x;
+		g_ui->_y = uiy + center;
+		g_ui->_w = math_max(right - name_x, 0);
+		ui_text(tab_layers_mask_effect_name(e.type), UI_ALIGN_LEFT, 0x00000000);
+		char *summary = tab_layers_mask_effect_is_filter(e.type)
+		                    ? string_tmp("%d%%", (i32)math_round(e.opacity * 100))
+		                    : string_tmp("%s  %d%%", tab_layers_mask_blend_names()->buffer[e.blending >= 0 && e.blending < MASK_BLEND_COUNT ? e.blending : 0],
+		                                 (i32)math_round(e.opacity * 100));
+		i32 text_col       = g_theme->TEXT_COL;
+		g_theme->TEXT_COL  = g_theme->LABEL_COL;
+		g_ui->_y           = uiy + center;
+		ui_text(summary, UI_ALIGN_RIGHT, 0x00000000);
+		g_theme->TEXT_COL  = text_col;
+
+		g_ui->_x = uix;
+		g_ui->_y = uiy + row_h;
+		g_ui->_w = uiw;
+
+		// Separator and highlight, as tab_layers_draw_layer_highlight
+		ui_fill(0, 0, (g_ui->_w / (float)UI_SCALE() - 2), 1 * UI_SCALE(), g_theme->SEPARATOR_COL);
+		if (tab_layers_selected_effect(m) == i) {
+			ui_rect_round(1, -step * 2 - 1, g_ui->_w / (float)UI_SCALE() - 2, step * 2 + 1, g_theme->HIGHLIGHT_COL, 2);
+			tab_layers_draw_mask_effect_params(m, i, name_x, math_max(right - name_x, 0));
+		}
+		if (mask_stack_count(m) != n) {
+			break; // Edited from the parameters
+		}
+	}
+}
+
 void tab_layers_draw_layer_context_menu_draw() {
 	slot_layer_t *l    = tab_layers_l;
 	bool          mini = tab_layers_mini;
@@ -764,7 +1064,7 @@ void tab_layers_draw_layer_context_menu_draw() {
 			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_to_paint_layer, NULL);
 		}
 	}
-	if (slot_layer_is_layer(l) && ui_menu_button(tr("Add Black Mask"), "", ICON_MASK)) {
+	if (slot_layer_is_layer(l) && slot_layer_takes_mask(l) && ui_menu_button(tr("Add Black Mask"), "", ICON_MASK)) {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_add_black_mask, l);
 	}
 	if ((slot_layer_is_group(l) || (slot_layer_is_layer(l) && l->fill_material != NULL)) && ui_menu_button(tr("Save as Smart Material"), "", ICON_SAVE)) {
@@ -782,8 +1082,8 @@ void tab_layers_draw_layer_context_menu_draw() {
 		context_set_layer(l);
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_clear, NULL);
 	}
-	if (slot_layer_is_mask(l) && l->fill_material == NULL && ui_menu_button(tr("Invert"), "", ICON_INVERT)) {
-		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_invert, NULL);
+	if (slot_layer_is_mask(l)) {
+		tab_layers_draw_mask_effect_menu(l); // Invert is an effect now, tab_layers_draw_layer_context_menu_invert bakes it
 	}
 	if (slot_layer_is_mask(l) && ui_menu_button(tr("Apply"), "", ICON_CHECK)) {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_apply, NULL);
@@ -964,6 +1264,10 @@ void tab_layers_draw_layer_slot(slot_layer_t *l, i32 i, bool mini) {
 
 	tab_layers_draw_layer_highlight(l, mini);
 
+	if (!mini && tab_layers_mask_effect_rows(l) > 0) {
+		tab_layers_draw_mask_effects(l);
+	}
+
 	if (tab_layers_menu_layer == l) {
 		tab_layers_menu_layer = NULL;
 		context_set_layer(l);
@@ -1035,6 +1339,8 @@ void tab_layers_button_new_menu() {
 		layers_new_path_layer(true);
 		history_new_layer();
 	}
+	slot_layer_t *mask_target = slot_layer_is_mask(l) || slot_layer_is_filter(l) ? l->parent : l;
+	g_ui->enabled             = slot_layer_takes_mask(mask_target); // One mask per layer
 	if (ui_menu_button(tr("Black Mask"), "", ICON_MASK)) {
 		if (slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
 			context_set_layer(l->parent);
@@ -1095,7 +1401,7 @@ void tab_layers_button_new_menu() {
 		sys_notify_on_next_frame(&tab_layers_button_new_update_fill_layers, NULL);
 	}
 	// Mask of the parts picked on the project's ID map
-	g_ui->enabled = !slot_layer_is_group(slot_layer_is_mask(l) || slot_layer_is_filter(l) ? l->parent : l);
+	g_ui->enabled = slot_layer_takes_mask(mask_target) && !slot_layer_is_group(mask_target);
 	if (ui_menu_button(tr("ID Mask..."), "", ICON_COLOR_ID)) {
 		ui_id_mask_begin();
 	}
@@ -1161,7 +1467,7 @@ static void tab_layers_scroll_to_layer(slot_layer_t *l) {
 		if (c == l) {
 			break;
 		}
-		++row;
+		row += 1 + tab_layers_mask_effect_rows(c);
 	}
 
 	// Scroll the row into view

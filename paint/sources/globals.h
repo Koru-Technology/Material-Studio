@@ -8,7 +8,7 @@
 char *manifest_title           = "Material Studio";
 i32   brush_previews_group       = -1; // Group shown in the brush list, its strokes render first
 char *manifest_version         = "1.1rc1";
-char *manifest_version_project = "29";
+char *manifest_version_project = "30";
 char *manifest_version_config  = "19";
 char *manifest_url             = "https://armorpaint.org";
 char *manifest_url_android     = "https://play.google.com/store/apps/details?id=org.armorpaint";
@@ -84,6 +84,16 @@ i32              pipes_size_colorid;
 i32              pipes_opac_merge_mask;
 i32              pipes_blending_merge_mask;
 gpu_texture_t   *pipes_temp_mask_image = NULL;
+gpu_pipeline_t  *pipes_mask_stack; // One mask stack effect, see util_mask_stack.c
+i32              pipes_texa_mask_stack;
+i32              pipes_texsrc_mask_stack;
+i32              pipes_type_mask_stack;
+i32              pipes_blending_mask_stack;
+i32              pipes_opac_mask_stack;
+i32              pipes_params0_mask_stack;
+i32              pipes_params1_mask_stack;
+i32              pipes_params2_mask_stack;
+i32              pipes_params3_mask_stack;
 gpu_pipeline_t  *pipes_cursor;
 i32              pipes_cursor_vp;
 i32              pipes_cursor_inv_vp;
@@ -284,6 +294,7 @@ i32                   ui_header_h;
 bool                  ui_id_mask_active       = false; // Picking the parts of an ID mask, see ui_id_mask.c
 bool                  ui_id_mask_pick_pending = false; // A tap waits for the ID map color under it, see render_path_paint
 bool                  ui_id_mask_pressed      = false; // The press already picked, one pick per tap
+bool                  mesh_maps_stale         = false; // The paint meshes changed after the registered mesh maps were baked
 ui_window_t          *ui_header_handle;
 ui_window_t          *ui_header_split_handle;
 any_map_t            *parser_logic_custom_nodes;

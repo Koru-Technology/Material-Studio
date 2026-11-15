@@ -149,7 +149,7 @@ buffer_t *util_encode_project(project_t *raw) {
 	buffer_t *encoded = buffer_create(size);
 
 	armpack_encode_start(encoded->buffer);
-	armpack_encode_map(32);
+	armpack_encode_map(33);
 
 	armpack_encode_string("version");
 	armpack_encode_string(raw->version);
@@ -315,7 +315,7 @@ buffer_t *util_encode_project(project_t *raw) {
 	if (raw->layer_datas != NULL) {
 		armpack_encode_array(raw->layer_datas->length);
 		for (i32 i = 0; i < raw->layer_datas->length; ++i) {
-			armpack_encode_map(43);
+			armpack_encode_map(44);
 			armpack_encode_string("name");
 			armpack_encode_string(raw->layer_datas->buffer[i]->name);
 			armpack_encode_string("res");
@@ -402,6 +402,8 @@ buffer_t *util_encode_project(project_t *raw) {
 			armpack_encode_f32(raw->layer_datas->buffer[i]->height_blend_offset);
 			armpack_encode_string("height_blend_reach");
 			armpack_encode_f32(raw->layer_datas->buffer[i]->height_blend_reach);
+			armpack_encode_string("mask_effects");
+			armpack_encode_array_f32(raw->layer_datas->buffer[i]->mask_effects);
 		}
 	}
 	else {
@@ -446,6 +448,8 @@ buffer_t *util_encode_project(project_t *raw) {
 	armpack_encode_bool(raw->linear_blending);
 	armpack_encode_string("id_map");
 	armpack_encode_string(raw->id_map);
+	armpack_encode_string("mesh_maps");
+	armpack_encode_array_string(raw->mesh_maps);
 
 	i32 ei          = armpack_encode_end();
 	encoded->length = ei;

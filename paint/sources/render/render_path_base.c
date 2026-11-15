@@ -301,6 +301,8 @@ void render_path_base_commands(void (*draw_commands)(void)) {
 
 	gpu_vertex_textures = false;
 
+	mask_stack_evaluate_dirty(); // Mask stacks the viewport samples
+
 	render_path_base_begin();
 	render_path_paint_begin();
 

@@ -227,6 +227,7 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 			ld->height_blend_sharpness = armpack_map_get_f32(old, "height_blend_sharpness");
 			ld->height_blend_offset    = armpack_map_get_f32(old, "height_blend_offset");
 			ld->height_blend_reach     = armpack_map_get_f32(old, "height_blend_reach");
+			ld->mask_effects           = any_map_get(old, "mask_effects");
 			any_array_push(project->layer_datas, ld);
 		}
 	}
@@ -263,13 +264,19 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 	project->atlas_names     = any_map_get(old, "atlas_names");
 	project->linear_blending = armpack_map_get_i32(old, "linear_blending") > 0;
 	project->id_map          = string_copy(any_map_get(old, "id_map"));
+	project->mesh_maps       = any_map_get(old, "mesh_maps");
 
 	return project;
 }
 
+project_t *import_arm_from_version_29(any_map_t *old) {
+	// Projects from before have no mask stacks (masks read their paint) and no registered mesh maps
+	return import_arm_from_map_to_arm(old);
+}
+
 // Scene data (per-mesh materials, physics, skins, scripts, timeline, stages, mesh nodes, sounds) was removed, its keys are dropped
 project_t *import_arm_from_version_28(any_map_t *old) {
-	return import_arm_from_map_to_arm(old);
+	return import_arm_from_version_29(old);
 }
 
 project_t *import_arm_from_version_27(any_map_t *old) {
@@ -538,7 +545,7 @@ project_t *import_arm_from_old(buffer_t *b) {
 	    import_arm_from_version_10, import_arm_from_version_11, import_arm_from_version_12, import_arm_from_version_13, import_arm_from_version_14,
 	    import_arm_from_version_15, import_arm_from_version_16, import_arm_from_version_17, import_arm_from_version_18, import_arm_from_version_19,
 	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22, import_arm_from_version_23, import_arm_from_version_24, import_arm_from_version_25,
-	    import_arm_from_version_26, import_arm_from_version_27, import_arm_from_version_28,
+	    import_arm_from_version_26, import_arm_from_version_27, import_arm_from_version_28, import_arm_from_version_29,
 	};
 	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
 		if (import_arm_is_version(b, i32_to_string(v))) {

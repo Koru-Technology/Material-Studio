@@ -80,7 +80,7 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 
 	*out = (app_layer_props_t){
 	    .id                     = l->id,
-	    .has_children           = tab_layers_has_children(l),
+	    .has_children           = tab_layers_has_children(l) && !mask, // A mask's effects list in its settings, not as rows
 	    .expanded               = l->show_panel,
 	    .is_path                = slot_layer_is_path(l),
 	    .is_text                = l->path_text,
@@ -100,15 +100,17 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	    .height_blend_influence = l->height_blend_influence,
 	    .height_blend_sharpness = l->height_blend_sharpness,
 	    .height_blend_offset    = l->height_blend_offset,
+	    .effect_count           = app_mask_effect_count(l->id),
 
 	    .shows_blending            = !group && !mask && !filter,
 	    .shows_channels            = !group,
 	    .shows_to_fill             = !group && !fill,
 	    .shows_to_paint            = !group && fill,
 	    .shows_clear               = l->fill_material == NULL,
-	    .shows_invert              = mask && l->fill_material == NULL,
+	    .shows_invert              = mask,
 	    .shows_apply               = mask,
-	    .shows_add_mask            = layer || group,
+	    .shows_add_mask            = slot_layer_takes_mask(l),
+	    .shows_add_effect          = layer || group || mask,
 	    .shows_merge_group         = group,
 	    .shows_save_smart_material = group || (layer && l->fill_material != NULL),
 
@@ -147,7 +149,12 @@ uint32_t app_layers_props_signature(void) {
 		h               = app_hash_f(h, l->height_blend_influence);
 		h               = app_hash_f(h, l->height_blend_sharpness);
 		h               = app_hash_f(h, l->height_blend_offset);
+		for (i32 j = 0; slot_layer_is_mask(l) && l->mask_effects != NULL && j < l->mask_effects->length; ++j) {
+			h = app_hash_f(h, l->mask_effects->buffer[j]);
+		}
+		h = app_hash(h, l->mask_effects != NULL ? l->mask_effects->length : 0);
 	}
+	h = app_hash(h, mesh_maps_get_asset(MESH_MAP_AO) != NULL); // app_mask_effect_t.needs_ao
 	// The fill material picker lists the project materials, the UV map picker depends on the mesh
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		h = app_hash_str(h, g_project->_->materials->buffer[i]->canvas->name);
@@ -231,13 +238,18 @@ bool app_layer_can_new(int32_t kind) {
 	case APP_LAYER_NEW_TEXT:
 	case APP_LAYER_NEW_PATH:
 	case APP_LAYER_NEW_CURVE:
-	case APP_LAYER_NEW_FILL_MASK:
 		return g_context->material != NULL;
+	case APP_LAYER_NEW_FILL_MASK:
+		return g_context->material != NULL && slot_layer_takes_mask(app_layer_mask_target(g_context->layer));
 	case APP_LAYER_NEW_COLOR:
 		return g_context->swatch != NULL;
+	case APP_LAYER_NEW_BLACK_MASK:
+	case APP_LAYER_NEW_WHITE_MASK:
+	case APP_LAYER_NEW_HEIGHT_MASK:
+		return slot_layer_takes_mask(app_layer_mask_target(g_context->layer));
 	case APP_LAYER_NEW_ID_MASK: {
 		slot_layer_t *target = app_layer_mask_target(g_context->layer);
-		return target != NULL && !slot_layer_is_group(target);
+		return slot_layer_takes_mask(target) && !slot_layer_is_group(target);
 	}
 	}
 	return kind >= APP_LAYER_NEW_PAINT && kind <= APP_LAYER_NEW_ID_MASK;
@@ -367,7 +379,7 @@ bool app_layer_to_paint(int32_t id) {
 }
 
 bool app_layer_invert_mask(int32_t id) {
-	return app_layer_done(script_layer_invert_mask(app_layer_by_id(id)));
+	return app_mask_add_effect(id, APP_MASK_EFFECT_INVERT) >= 0;
 }
 
 bool app_layer_apply_mask(int32_t id) {
@@ -376,7 +388,7 @@ bool app_layer_apply_mask(int32_t id) {
 
 bool app_layer_add_mask(int32_t id, int32_t kind) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || slot_layer_is_mask(l) || slot_layer_is_filter(l) || kind < APP_LAYER_NEW_BLACK_MASK || kind > APP_LAYER_NEW_FILL_MASK) {
+	if (!slot_layer_takes_mask(l) || kind < APP_LAYER_NEW_BLACK_MASK || kind > APP_LAYER_NEW_FILL_MASK) {
 		return false;
 	}
 	if (kind == APP_LAYER_NEW_FILL_MASK && g_context->material == NULL) {
@@ -760,4 +772,311 @@ bool app_layer_expanded(int32_t id) {
 int32_t app_layer_uv_type(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
 	return l != NULL ? (int32_t)l->uv_type : -1;
+}
+
+// Mask effects. The stack is listed bottom first in slot_layer_t.mask_effects, the API counts from the top.
+
+_Static_assert((i32)APP_MASK_EFFECT_DIRECTIONAL == (i32)MASK_EFFECT_DIRECTIONAL && APP_MASK_EFFECT_PARAMS == MASK_EFFECT_PARAMS &&
+                   APP_MASK_NOISE_FIRST == MASK_EFFECT_NOISE_SCALE && (i32)APP_MASK_PARAM_SEED == (i32)MASK_PARAM_SEED,
+               "app_api_layers.h mirrors enums.h");
+
+static slot_layer_t *app_mask_by_id(int32_t id) {
+	slot_layer_t *m = app_layer_by_id(id);
+	return m != NULL && slot_layer_is_mask(m) ? m : NULL;
+}
+
+// The stack index of effect index of m, -1 when out of range
+static i32 app_mask_stack_index(slot_layer_t *m, int32_t index) {
+	i32 n = m != NULL ? mask_stack_count(m) : 0;
+	return index >= 0 && index < n ? n - 1 - index : -1;
+}
+
+// Before an edit of m: selects it (history steps are of the current layer) and keeps its effects for undo
+static void app_mask_history(slot_layer_t *m) {
+	context_set_layer(m);
+	history_mask_stack();
+}
+
+static bool app_mask_done(bool ok) {
+	if (ok) {
+		ui_dock_redraw(TAB_AREA_SIDEBAR0);
+		iron_delay_idle_sleep();
+	}
+	return ok;
+}
+
+int32_t app_mask_effect_count(int32_t id) {
+	slot_layer_t *m = app_mask_by_id(id);
+	return m != NULL ? mask_stack_count(m) : 0;
+}
+
+bool app_mask_effect(int32_t id, int32_t index, app_mask_effect_t *out) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           i = app_mask_stack_index(m, index);
+	if (i < 0) {
+		return false;
+	}
+	mask_effect_t e = mask_stack_get(m, i);
+	*out            = (app_mask_effect_t){
+	    .type         = e.type,
+	    .visible      = e.visible,
+	    .opacity      = e.opacity,
+	    .blending     = e.blending,
+	    .is_paint     = e.type == MASK_EFFECT_PAINT,
+	    .is_filter    = mask_effect_is_filter(e.type),
+	    .is_generator = mask_effect_is_generator(e.type),
+	    .needs_ao     = e.type == MASK_EFFECT_DIRT && mesh_maps_get_asset(MESH_MAP_AO) == NULL,
+	};
+	for (i32 j = 0; j < MASK_EFFECT_PARAMS; ++j) {
+		out->params[j] = e.params[j];
+	}
+	return true;
+}
+
+int32_t app_mask_effect_type_count(void) {
+	return MASK_EFFECT_COUNT;
+}
+
+const char *app_mask_effect_type_name(int32_t type) {
+	return type >= 0 && type < MASK_EFFECT_COUNT ? tr(mask_effect_name(type)) : NULL;
+}
+
+int32_t app_mask_effect_param_count(int32_t type) {
+	i32 count = 0;
+	mask_effect_params(type, &count);
+	return count;
+}
+
+bool app_mask_effect_param(int32_t type, int32_t p, app_mask_param_t *out) {
+	i32                  count = 0;
+	mask_effect_param_t *ps    = mask_effect_params(type, &count);
+	if (p < 0 || p >= count) {
+		return false;
+	}
+	*out = (app_mask_param_t){
+	    .name    = tr(ps[p].name),
+	    .index   = ps[p].index,
+	    .kind    = ps[p].kind,
+	    .min     = ps[p].min,
+	    .max     = ps[p].max,
+	    .def     = ps[p].def,
+	    .options = ps[p].options != NULL ? ps[p].options : "",
+	};
+	return true;
+}
+
+static char *app_mask_blending_names[] = {"Normal", "Multiply", "Add", "Subtract", "Max", "Min", "Overlay"};
+
+int32_t app_mask_blending_count(void) {
+	return MASK_BLEND_COUNT;
+}
+
+const char *app_mask_blending_name(int32_t blending) {
+	return blending >= 0 && blending < MASK_BLEND_COUNT ? tr(app_mask_blending_names[blending]) : NULL;
+}
+
+int32_t app_mask_add_effect(int32_t id, int32_t type) {
+	slot_layer_t *m = app_mask_by_id(id);
+	if (m == NULL || type < 0 || type >= MASK_EFFECT_COUNT || (type == MASK_EFFECT_PAINT && mask_stack_paint_index(m) >= 0)) {
+		return -1;
+	}
+	app_mask_history(m);
+	i32 at = mask_stack_add(m, type, -1); // On top: the native list shows no selected effect
+	if (at < 0) {
+		return -1;
+	}
+	g_context->mask_effect = at;
+	m->show_panel          = true; // The engine's layers tab lists the effects under the mask
+	app_mask_done(true);
+	return mask_stack_count(m) - 1 - at;
+}
+
+bool app_mask_remove_effect(int32_t id, int32_t index) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           i = app_mask_stack_index(m, index);
+	if (i < 0 || mask_stack_get(m, i).type == MASK_EFFECT_PAINT) {
+		return false;
+	}
+	app_mask_history(m);
+	mask_stack_remove(m, i);
+	g_context->mask_effect = -1;
+	return app_mask_done(true);
+}
+
+bool app_mask_move_effect(int32_t id, int32_t from, int32_t to) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           f = app_mask_stack_index(m, from);
+	i32           t = app_mask_stack_index(m, to);
+	if (f < 0 || t < 0 || f == t) {
+		return false;
+	}
+	app_mask_history(m);
+	mask_stack_move(m, f, t);
+	g_context->mask_effect = t;
+	return app_mask_done(true);
+}
+
+// Edits effect index of m through edit, one undo step. Refused when edit leaves it as it was.
+static bool app_mask_edit(int32_t id, int32_t index, bool (*edit)(mask_effect_t *e, i32 a), i32 a) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           i = app_mask_stack_index(m, index);
+	if (i < 0) {
+		return false;
+	}
+	mask_effect_t e = mask_stack_get(m, i);
+	if (!edit(&e, a)) {
+		return false;
+	}
+	app_mask_history(m);
+	mask_stack_set(m, i, e);
+	return app_mask_done(true);
+}
+
+static bool app_mask_edit_visible(mask_effect_t *e, i32 on) {
+	if (e->visible == (bool)on) {
+		return false;
+	}
+	e->visible = on;
+	return true;
+}
+
+static bool app_mask_edit_blending(mask_effect_t *e, i32 blending) {
+	if (blending < 0 || blending >= MASK_BLEND_COUNT || e->blending == blending || mask_effect_is_filter(e->type)) {
+		return false;
+	}
+	e->blending = blending;
+	return true;
+}
+
+static bool app_mask_edit_reset(mask_effect_t *e, i32 _) {
+	mask_effect_t d       = mask_effect_default(e->type);
+	bool          changed = false;
+	for (i32 j = 0; j < MASK_EFFECT_PARAMS; ++j) {
+		changed      = changed || e->params[j] != d.params[j];
+		e->params[j] = d.params[j];
+	}
+	return changed;
+}
+
+bool app_mask_set_effect_visible(int32_t id, int32_t index, bool on) {
+	return app_mask_edit(id, index, app_mask_edit_visible, on);
+}
+
+bool app_mask_set_effect_blending(int32_t id, int32_t index, int32_t blending) {
+	return app_mask_edit(id, index, app_mask_edit_blending, blending);
+}
+
+bool app_mask_reset_effect(int32_t id, int32_t index) {
+	return app_mask_edit(id, index, app_mask_edit_reset, 0);
+}
+
+// Slider drags
+
+static slot_layer_t *app_mask_value_mask  = NULL; // Effect and field of the drag in progress
+static i32           app_mask_value_index = -1;
+static i32           app_mask_value_field = -2;
+
+// Field -1 is the opacity, the others are settings of the effect's type
+static bool app_mask_valid_field(i32 type, i32 field) {
+	return field == -1 || (field >= 0 && field < MASK_EFFECT_PARAMS && mask_effect_param_at(type, field) != NULL);
+}
+
+void app_mask_effect_value_begin(int32_t id, int32_t index, int32_t field) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           i = app_mask_stack_index(m, index);
+	if (i < 0 || !app_mask_valid_field(mask_stack_get(m, i).type, field)) {
+		return;
+	}
+	app_mask_history(m);
+	app_mask_value_mask  = m;
+	app_mask_value_index = i;
+	app_mask_value_field = field;
+}
+
+bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           i = app_mask_stack_index(m, index);
+	if (i < 0) {
+		return false;
+	}
+	mask_effect_t e = mask_stack_get(m, i);
+	if (!app_mask_valid_field(e.type, field)) {
+		return false;
+	}
+	f32 *f    = field < 0 ? &e.opacity : &e.params[field];
+	f32  c    = field < 0 ? math_max(0.0, math_min(1.0, v)) : mask_effect_param_clamp(e.type, field, v);
+	bool drag = m == app_mask_value_mask && i == app_mask_value_index && field == app_mask_value_field;
+	if (!drag) { // A change without a drag: its own undo step
+		if (*f == c) {
+			return false;
+		}
+		app_mask_history(m);
+	}
+	*f = c;
+	mask_stack_set(m, i, e);
+	iron_delay_idle_sleep();
+	return true;
+}
+
+void app_mask_effect_value_end(void) {
+	app_mask_value_mask  = NULL;
+	app_mask_value_index = -1;
+	app_mask_value_field = -2;
+}
+
+int32_t app_mask_effect_type(int32_t id, int32_t index) {
+	app_mask_effect_t e;
+	return app_mask_effect(id, index, &e) ? e.type : -1;
+}
+
+bool app_mask_effect_visible(int32_t id, int32_t index) {
+	app_mask_effect_t e;
+	return app_mask_effect(id, index, &e) && e.visible;
+}
+
+int32_t app_mask_effect_blending(int32_t id, int32_t index) {
+	app_mask_effect_t e;
+	return app_mask_effect(id, index, &e) ? e.blending : -1;
+}
+
+float app_mask_effect_value(int32_t id, int32_t index, int32_t field) {
+	app_mask_effect_t e;
+	if (!app_mask_effect(id, index, &e) || field < -1 || field >= APP_MASK_EFFECT_PARAMS) {
+		return 0.0;
+	}
+	return field < 0 ? e.opacity : e.params[field];
+}
+
+bool app_mask_effect_needs_ao(int32_t id, int32_t index) {
+	app_mask_effect_t e;
+	return app_mask_effect(id, index, &e) && e.needs_ao;
+}
+
+uint32_t app_layer_previews_version(void) {
+	return app_previews_counter;
+}
+
+// An effect from a layer's menu: into its mask, a black mask made first when it has none (one undo step)
+int32_t app_layer_add_effect(int32_t id, int32_t type) {
+	slot_layer_t *l = app_layer_by_id(id);
+	if (l == NULL || slot_layer_is_filter(l) || type <= MASK_EFFECT_PAINT || type >= MASK_EFFECT_COUNT) {
+		return -1;
+	}
+	slot_layer_t *m       = slot_layer_is_mask(l) ? l : app_layer_first_mask(l);
+	bool          created = false;
+	if (m == NULL) {
+		m = app_layer_new_mask(l, APP_LAYER_NEW_BLACK_MASK);
+		if (m == NULL) {
+			return -1;
+		}
+		created = true;
+	}
+	if (app_mask_add_effect(m->id, type) < 0) {
+		return -1;
+	}
+	if (created) {
+		history_steps->buffer[history_steps->length - 1]->with_prev = true; // Undone with the new mask
+	}
+	context_set_layer(m);
+	return m->id;
 }

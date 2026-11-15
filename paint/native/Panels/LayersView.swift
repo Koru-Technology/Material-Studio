@@ -13,8 +13,24 @@ struct LayersView: View {
 }
 
 #if os(iOS)
+// What the popover's stack shows: a layer's settings, then one of its mask effects
+private enum LayersRoute: Hashable {
+	case layer(Int32)
+	case effect(layerID: Int32, index: Int32)
+
+	// A deleted layer's settings close, as do those of an effect no longer there (deleted, or gone with an undo)
+	func exists(in rows: [LayerRow]) -> Bool {
+		switch self {
+		case let .layer(id):
+			rows.contains { $0.id == id }
+		case let .effect(id, index):
+			rows.first { $0.id == id }.map { Int(index) < $0.effects.count } ?? false
+		}
+	}
+}
+
 private struct LayersNavigation: View {
-	@State private var path: [Int32] = []
+	@State private var path: [LayersRoute] = []
 
 	var body: some View {
 		NavigationStack(path: $path) {
@@ -26,16 +42,27 @@ private struct LayersNavigation: View {
 						NewLayerMenu()
 					}
 				}
-				.navigationDestination(for: Int32.self) { id in
-					LayerDetailView(layerID: id)
+				.navigationDestination(for: LayersRoute.self) { route in
+					switch route {
+					case let .layer(id):
+						LayerDetailView(layerID: id)
+					case let .effect(id, index):
+						MaskEffectDetailView(layerID: id, index: index)
+					}
 				}
 		}
 		.environment(\.openLayerDetail) { id in
-			path = [id]
+			path = [.layer(id)]
+		}
+		.environment(\.openMaskEffect) { id, index in
+			path.append(.effect(layerID: id, index: index))
 		}
 		.frame(idealWidth: 360, idealHeight: 560)
-		.onChange(of: LayersStore.shared.layers.map(\.id)) { _, ids in
-			path.removeAll { !ids.contains($0) } // A deleted layer's settings close
+		.onChange(of: LayersStore.shared.layers) { _, rows in
+			let kept = path.filter { $0.exists(in: rows) }
+			if kept != path {
+				path = kept
+			}
 		}
 	}
 }
@@ -369,4 +396,5 @@ extension EnvironmentValues {
 	@Entry var layersCompact = false
 	@Entry var renameLayer: (LayerRow) -> Void = { _ in }
 	@Entry var openLayerDetail: (Int32) -> Void = { _ in }
+	@Entry var openMaskEffect: ((Int32, Int32) -> Void)? = nil // Pushes an effect's settings, nil: no navigation stack (Mac)
 }

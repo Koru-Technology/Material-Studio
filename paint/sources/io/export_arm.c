@@ -263,6 +263,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .height_blend_sharpness = l->height_blend_sharpness,
 		                              .height_blend_offset    = l->height_blend_offset,
 		                              .height_blend_reach     = l->height_blend_reach,
+		                              .mask_effects           = l->mask_effects,
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1});
 		any_array_push(ld, d);
 	}

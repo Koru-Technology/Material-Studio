@@ -210,6 +210,27 @@ void pipes_init() {
 
 	{
 
+		pipes_mask_stack                  = gpu_create_pipeline();
+		pipes_mask_stack->vertex_shader   = sys_get_shader("mask_stack.vert");
+		pipes_mask_stack->fragment_shader = sys_get_shader("mask_stack.frag");
+		gpu_vertex_structure_t *vs        = ALLOC_INIT(gpu_vertex_structure_t, {0});
+		gpu_vertex_structure_add(vs, "pos", GPU_VERTEX_DATA_F32_2X);
+		pipes_mask_stack->input_layout = vs;
+		gpu_pipeline_compile(pipes_mask_stack);
+		pipes_texa_mask_stack     = 0;
+		pipes_texsrc_mask_stack   = 1;
+		pipes_offset              = 0;
+		pipes_type_mask_stack     = pipes_get_constant_location("int");
+		pipes_blending_mask_stack = pipes_get_constant_location("int");
+		pipes_opac_mask_stack     = pipes_get_constant_location("float");
+		pipes_params0_mask_stack  = pipes_get_constant_location("float4");
+		pipes_params1_mask_stack  = pipes_get_constant_location("float4");
+		pipes_params2_mask_stack  = pipes_get_constant_location("float4");
+		pipes_params3_mask_stack  = pipes_get_constant_location("float4");
+	}
+
+	{
+
 		pipes_copy_rgb                  = gpu_create_pipeline();
 		pipes_copy_rgb->vertex_shader   = sys_get_shader("layer_copy.vert");
 		pipes_copy_rgb->fragment_shader = sys_get_shader("layer_copy.frag");

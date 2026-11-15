@@ -139,7 +139,7 @@ static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *
 		}
 		char *mid  = string_copy(i32_to_string(m->id));
 		char *opac = make_mesh_opacity(shader, m);
-		node_shader_add_texture(shader, string_tmp("texpaint%s", mid), NULL);
+		node_shader_add_texture(shader, string_tmp("texmask%s", mid), NULL); // Evaluated stack or texpaint, see render_path_paint_bind_layers
 		bool reach = m->height_blend && m->height_blend_reach > 0.0;
 		char *soft = string("mask_soft%d_%d", l->id, m->id);
 		if (reach && center) {
@@ -156,10 +156,10 @@ static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *
 			node_shader_write_frag(shader, "float aa = fk * 2.39996;");
 			node_shader_write_frag(shader, string_tmp("vec2 tco = %s + vec2(cos(aa), sin(aa)) * rr;", coord));
 			node_shader_write_frag(shader, cover ? "float w = step(0.5, textureLod(sampler2D(texdilatemap, sampler_linear), tco, 0.0).r);" : "float w = 1.0;");
-			node_shader_write_frag(shader, string_tmp("%s += textureLod(sampler2D(texpaint%s, sampler_linear), tco, 0.0).r * w;", soft, mid));
+			node_shader_write_frag(shader, string_tmp("%s += textureLod(sampler2D(texmask%s, sampler_linear), tco, 0.0).r * w;", soft, mid));
 			node_shader_write_frag(shader, "wsum += w;");
 			node_shader_write_frag(shader, "}");
-			node_shader_write_frag(shader, string_tmp("if (wsum > 0.0) { %s = %s / wsum; } else { %s = textureLod(sampler2D(texpaint%s, sampler_linear), %s, 0.0).r; }", soft, soft, soft, mid, coord));
+			node_shader_write_frag(shader, string_tmp("if (wsum > 0.0) { %s = %s / wsum; } else { %s = textureLod(sampler2D(texmask%s, sampler_linear), %s, 0.0).r; }", soft, soft, soft, mid, coord));
 			node_shader_write_frag(shader, "}");
 		}
 		node_shader_write_frag(shader, "{"); // Group mask is sampled across multiple layers
@@ -167,7 +167,7 @@ static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *
 			node_shader_write_frag(shader, string_tmp("float mask_sample = mix(1.0, %s, float(%s));", soft, opac));
 		}
 		else {
-			node_shader_write_frag(shader, string_tmp("float mask_sample = mix(1.0, textureLod(sampler2D(texpaint%s, sampler_linear), %s, 0.0).r, float(%s));", mid, coord, opac));
+			node_shader_write_frag(shader, string_tmp("float mask_sample = mix(1.0, textureLod(sampler2D(texmask%s, sampler_linear), %s, 0.0).r, float(%s));", mid, coord, opac));
 		}
 		if (m->height_blend) {
 			char *below = m->height_blend_below && make_material_height_used ? height_below : "0.5";
@@ -745,8 +745,9 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		         (slot_layer_get_masks(g_context->layer, true) != NULL || slot_layer_is_mask(g_context->layer))) {
 			if (slot_layer_is_mask(g_context->layer)) {
 				i32 id = g_context->layer->id;
+				node_shader_add_texture(shader, string_tmp("texmask%s", i32_to_string(id)), NULL);
 				node_shader_write_frag(shader,
-				                       string_tmp("float mask_view = textureLod(sampler2D(texpaint%s, sampler_linear), %s, 0.0).r;", i32_to_string(id), tex_coord_layer));
+				                       string_tmp("float mask_view = textureLod(sampler2D(texmask%s, sampler_linear), %s, 0.0).r;", i32_to_string(id), tex_coord_layer));
 			}
 			else {
 				node_shader_write_frag(shader, "float mask_view = 1.0;");

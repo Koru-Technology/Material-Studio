@@ -960,6 +960,12 @@ static void bake_rays_texel_curvature(bake_rays_surf_t *s, i32 ti, i32 x, i32 y,
 		static f32 axes[7][3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {-1, 0, 0}, {0, -1, 0}, {0, 0, -1}};
 		c *= bake_rays_v3_dot(s->n, axes[bake_rays_job.axis]);
 	}
+	// Signed, 0.5 is flat: normals diverging along the surface make a ridge (brighter), converging a groove (darker)
+	f32 px[3], py[3];
+	bake_rays_v3_sub(px, sx.p, s->p);
+	bake_rays_v3_sub(py, sy.p, s->p);
+	f32 h = bake_rays_v3_dot(dx, px) + bake_rays_v3_dot(dy, py);
+	c     = 0.5 + (h >= 0.0 ? 0.5 : -0.5) * bake_rays_fmax(c, 0.0);
 	bake_rays_store(o, c, c, c);
 }
 

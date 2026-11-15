@@ -80,6 +80,11 @@ static i32  bbm_queue_i    = 0;
 static i32  bbm_done_count = 0;
 static i32  bbm_bake_res   = 2048;
 static bool bbm_add_layer  = false; // Add Baked Layer clicked, run outside of the ui pass
+static i32  bbm_tab_before = 0;     // Tab to show again once the bake is done
+static bool bbm_baked_types[MESH_MAP_COUNT]; // Mesh maps baked by this run
+static bool bbm_cancelled  = false;
+static i32  bbm_mesh_map_sel[MESH_MAP_COUNT]; // Texture combo of each mesh map, 0 for none
+static i32  bbm_mesh_maps_pending = 0;        // 1 bake the missing mesh maps, 2 all of them, once a folder is picked
 
 static i32            bbm_inpaint_mode    = 0;     // Copy, Smooth
 static i32            bbm_inpaint_target  = 0;     // 0: every baked map, n: the n-th of them
@@ -193,12 +198,43 @@ static void bbm_update_material() {
 	console_info(string("%s %s", tr("Baked maps linked in material"), name));
 }
 
+// Mesh map type of a dialog map, -1 for none
+static i32 bbm_mesh_map_type(i32 i) {
+	for (i32 t = 0; t < MESH_MAP_COUNT; ++t) {
+		if (string_equals(bbm_maps[i].suffix, mesh_map_suffix(t))) {
+			return t;
+		}
+	}
+	return -1;
+}
+
+// Dialog map of a mesh map type
+static i32 bbm_map_of_type(i32 type) {
+	for (i32 i = 0; i < BBM_MAP_COUNT; ++i) {
+		if (bbm_mesh_map_type(i) == type) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 static void bbm_finish() {
 	bbm_running = false;
+	bbm_tab     = bbm_tab_before;
 	bake_maps_end_images();
 	console_info(string("%s: %d", tr("Baked maps"), bbm_done_count));
 	if (bbm_done_count > 0) {
 		bbm_update_material();
+	}
+	// Registered maps all baked again fit the mesh
+	bool fresh = !bbm_cancelled && bbm_done_count > 0;
+	for (i32 t = 0; t < MESH_MAP_COUNT; ++t) {
+		if (mesh_maps_get_asset(t) != NULL && !bbm_baked_types[t]) {
+			fresh = false;
+		}
+	}
+	if (fresh) {
+		mesh_maps_stale = false;
 	}
 	if (!bbm_box_open) {
 		bbm_release(); // Window was closed while baking
@@ -234,17 +270,8 @@ static void bbm_start_next() {
 	bbm_finish();
 }
 
-static void bbm_run() {
-	bbm_queue_len = 0;
-	for (i32 i = 0; i < BBM_MAP_COUNT; ++i) {
-		if (bbm_maps[i].enabled) {
-			bbm_queue[bbm_queue_len++] = i;
-		}
-	}
-	if (bbm_queue_len == 0) {
-		console_error(tr("No maps selected"));
-		return;
-	}
+// Bakes the maps in bbm_queue
+static void bbm_start() {
 	if (string_equals(bbm_out_name, "")) {
 		bbm_out_name = string_copy(bbm_default_name());
 	}
@@ -271,14 +298,48 @@ static void bbm_run() {
 	i32 sizes[4]   = {1024, 2048, 4096, 8192};
 	bbm_bake_res   = sizes[bbm_res_index];
 	bbm_running    = true;
+	bbm_tab_before = bbm_tab;
 	bbm_tab        = 0; // The progress is the only tab
 	bbm_queue_i    = 0;
 	bbm_done_count = 0;
+	bbm_cancelled  = false;
+	memset(bbm_baked_types, 0, sizeof(bbm_baked_types));
 	bbm_start_next();
+}
+
+static void bbm_run() {
+	bbm_queue_len = 0;
+	for (i32 i = 0; i < BBM_MAP_COUNT; ++i) {
+		if (bbm_maps[i].enabled) {
+			bbm_queue[bbm_queue_len++] = i;
+		}
+	}
+	if (bbm_queue_len == 0) {
+		console_error(tr("No maps selected"));
+		return;
+	}
+	bbm_start();
+}
+
+// Bakes the mesh maps without a texture, or all of them, and registers them with the project
+static void bbm_run_mesh_maps(bool missing_only) {
+	bbm_queue_len = 0;
+	for (i32 t = 0; t < MESH_MAP_COUNT; ++t) {
+		i32 i = bbm_map_of_type(t);
+		if (i >= 0 && (!missing_only || mesh_maps_get_asset(t) == NULL)) {
+			bbm_queue[bbm_queue_len++] = i;
+		}
+	}
+	if (bbm_queue_len == 0) {
+		console_info(tr("Every mesh map has a texture"));
+		return;
+	}
+	bbm_start();
 }
 
 // Called every update, steps the bake and runs deferred actions
 void box_bake_maps_update() {
+	mesh_maps_update();
 	if (bbm_add_layer) {
 		bbm_add_layer          = false;
 		slot_material_t *baked = script_get_material(bbm_baked_material_name());
@@ -298,6 +359,13 @@ void box_bake_maps_update() {
 	i32 i = bbm_queue[bbm_queue_i];
 	if (bake_maps_save(bbm_out_folder, string("%s_%s.png", bbm_out_name, bbm_maps[i].suffix))) {
 		bbm_done_count++;
+		// The baked map becomes the project's mesh map of its kind
+		i32 type = bbm_mesh_map_type(i);
+		i32 a    = script_asset_index(string("%s%s%s_%s.png", bbm_out_folder, PATH_SEP, bbm_out_name, bbm_maps[i].suffix));
+		if (type >= 0 && a >= 0) {
+			mesh_maps_set(type, g_project->_->assets->buffer[a]);
+			bbm_baked_types[type] = true;
+		}
 	}
 	bbm_queue_i++;
 	bbm_start_next();
@@ -314,6 +382,11 @@ static void bbm_folder_picked(char *path) {
 static void bbm_folder_picked_and_run(char *path) {
 	bbm_folder_picked(path);
 	bbm_run();
+}
+
+static void bbm_folder_picked_and_run_mesh_maps(char *path) {
+	bbm_folder_picked(path);
+	bbm_run_mesh_maps(bbm_mesh_maps_pending == 1);
 }
 
 static void bbm_high_picked(char *path) {
@@ -334,6 +407,7 @@ static void bbm_draw_progress() {
 	ui_slider(&total, "", 0.0, 1.0, true, 100, false, UI_ALIGN_CENTER, false);
 	if (ui_icon_button(tr("Stop"), ICON_STOP, UI_ALIGN_CENTER)) {
 		bake_maps_cancel();
+		bbm_cancelled = true;
 		bbm_finish();
 	}
 }
@@ -500,6 +574,56 @@ static void bbm_draw_output() {
 	}
 }
 
+static void bbm_bake_mesh_maps(i32 mode) {
+	bbm_mesh_maps_pending = mode;
+	if (string_equals(bbm_out_folder, "")) {
+		ui_files_show("png", true, false, &bbm_folder_picked_and_run_mesh_maps);
+	}
+	else {
+		bbm_run_mesh_maps(mode == 1);
+	}
+}
+
+// Mesh maps of the project: the texture of each kind, mask generators read them
+static void bbm_draw_mesh_maps() {
+	bbm_section(tr("Mesh Maps"));
+	if (mesh_maps_stale) {
+		ui_text(tr("Warning: the mesh changed since the maps were baked, bake them again"), UI_ALIGN_LEFT, 0x00000000);
+	}
+	asset_t_array_t *assets = g_project->_->assets;
+	string_array_t  *names  = any_array_create_from_raw_tmp(NULL, assets->length + 1); // Full size, temp arrays can not grow
+	names->buffer[0]        = tr("None");
+	for (i32 i = 0; i < assets->length; ++i) {
+		names->buffer[i + 1] = assets->buffer[i]->name;
+	}
+	i32 missing = 0;
+	for (i32 t = 0; t < MESH_MAP_COUNT; ++t) {
+		asset_t *a             = mesh_maps_get_asset(t);
+		bbm_mesh_map_sel[t]    = a != NULL ? array_index_of(assets, a) + 1 : 0;
+		i32 sel                = bbm_mesh_map_sel[t];
+		missing += a == NULL ? 1 : 0;
+		ui_row(f32_array_create_from_raw_tmp((f32[]){0.35, 0.65}, 2));
+		ui_text(tr(mesh_map_name(t)), UI_ALIGN_LEFT, 0x00000000);
+		ui_combo(&bbm_mesh_map_sel[t], names, tr(mesh_map_name(t)), false, UI_ALIGN_LEFT, true);
+		if (bbm_mesh_map_sel[t] != sel) {
+			mesh_maps_set(t, bbm_mesh_map_sel[t] > 0 ? assets->buffer[bbm_mesh_map_sel[t] - 1] : NULL);
+		}
+		if (t == MESH_MAP_CURVATURE && a == NULL) {
+			ui_text(tr("Without a texture the curvature is baked from the mesh"), UI_ALIGN_LEFT, 0x00000000);
+		}
+	}
+	ui_row2();
+	g_ui->enabled = missing > 0;
+	if (ui_icon_button(tr("Bake Missing"), ICON_BAKE, UI_ALIGN_CENTER) && missing > 0) {
+		bbm_bake_mesh_maps(1);
+	}
+	g_ui->enabled = true;
+	if (ui_icon_button(tr("Bake All"), ICON_BAKE, UI_ALIGN_CENTER)) {
+		bbm_bake_mesh_maps(2);
+	}
+	ui_text(tr("Maps are saved to the output folder with the settings of the other tabs"), UI_ALIGN_LEFT, 0x00000000);
+}
+
 static void bbm_draw_buttons() {
 	ui_separator(8, false);
 	slot_material_t *baked = script_get_material(bbm_baked_material_name());
@@ -581,6 +705,15 @@ static void bbm_draw_box() {
 	if (ui_tab(&bbm_tab, tr("Settings"), false, -1, false)) {
 		bbm_column(0);
 		bbm_draw_settings();
+		bbm_column(1);
+		bbm_draw_preview();
+		bbm_column(-1);
+		bbm_draw_buttons();
+	}
+	if (ui_tab(&bbm_tab, tr("Mesh Maps"), false, -1, false)) {
+		bbm_column(0);
+		bbm_draw_mesh_maps();
+		bbm_draw_output();
 		bbm_column(1);
 		bbm_draw_preview();
 		bbm_column(-1);
@@ -700,9 +833,10 @@ void box_bake_maps_inpaint_header() {
 
 	i32             targets[BBM_MAP_COUNT];
 	i32             count     = bbm_inpaint_targets(targets);
-	string_array_t *map_combo = any_array_create_from_raw_tmp((void *[]){tr("All Baked Maps")}, 1);
+	string_array_t *map_combo = any_array_create_from_raw_tmp(NULL, count + 1); // Full size, temp arrays can not grow
+	map_combo->buffer[0]      = tr("All Baked Maps");
 	for (i32 k = 0; k < count; ++k) {
-		any_array_push(map_combo, tr(bbm_maps[targets[k]].name));
+		map_combo->buffer[k + 1] = tr(bbm_maps[targets[k]].name);
 	}
 	if (bbm_inpaint_target > count) {
 		bbm_inpaint_target = 0;
@@ -722,7 +856,9 @@ gpu_texture_t *box_bake_maps_inpaint_overlay() {
 
 #else
 
-void box_bake_maps_update() {}
+void box_bake_maps_update() {
+	mesh_maps_update();
+}
 bool box_bake_maps_running() {
 	return false;
 }

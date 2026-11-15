@@ -228,7 +228,38 @@ typedef struct slot_layer {
 	f32                   height_blend_sharpness;
 	f32                   height_blend_offset;
 	f32                   height_blend_reach; // Distance the mask edge is widened over (uv), strands reach that far with a hard brush
+	// Mask stack (util_mask_stack.c): MASK_EFFECT_STRIDE floats per effect, bottom first. NULL is the implicit stack of
+	// one paint effect, the mask is then texpaint itself. Brushes and fills always write texpaint (the paint effect).
+	f32_array_t        *mask_effects;
+	struct gpu_texture *texmask;          // Evaluated stack, render target texmask<id>, NULL while the stack is implicit
+	bool                mask_stack_dirty; // texmask is evaluated again before the next frame renders
+	// Generator outputs (util_mask_generators.c), R8 at the mask's size with their signatures. Runtime only: never saved,
+	// copied or undone, rendered again when missing.
+	struct gpu_texture **mask_gen_textures; // malloc'd, mask_gen_count of each
+	u64                 *mask_gen_signatures;
+	i32                  mask_gen_count;
+	u64                  mask_gen_key; // Generators texmask was last evaluated with
 } slot_layer_t;
+
+// One effect of a mask stack, unpacked from slot_layer_t.mask_effects (mask_stack_get / mask_stack_set)
+typedef struct mask_effect {
+	i32  type;     // mask_effect_type_t
+	bool visible;
+	f32  opacity;
+	i32  blending; // mask_blend_t
+	f32  params[MASK_EFFECT_PARAMS];
+} mask_effect_t;
+
+// One setting of a mask effect type (mask_effect_params), what the effect panels draw
+typedef struct mask_effect_param {
+	char *name;
+	i32   index; // Into mask_effect_t.params
+	i32   kind;  // mask_param_kind_t
+	f32   min;
+	f32   max;
+	f32   def;
+	char *options; // MASK_PARAM_CHOICE: "X,Y,Z"
+} mask_effect_param_t;
 
 typedef struct slot_font {
 	struct gpu_texture *image; // 200px
@@ -569,6 +600,7 @@ typedef struct context {
 	f32                         brush_scale;
 	f32                         brush_angle;
 	f32                         mask_value; // Gray painted on masks, 1 reveals
+	i32                         mask_effect; // Selected effect of the current mask's stack, -1 for none (brushes paint its paint effect)
 	f32                         brush_hardness;
 	f32                         brush_lazy_radius;
 	f32                         brush_lazy_step;
@@ -759,6 +791,7 @@ typedef struct history_step {
 	f32                          layer_angle;
 	i32                          layer_uv_type;
 	f32                          layer_height_blend[6]; // Mask height blend: on, below, influence, sharpness, offset, reach
+	f32_array_t                 *mask_effects;          // Mask stack on the other side of the step, NULL for the implicit stack
 	i32                          swatch;
 	struct swatch_color         *swatch_color;
 	struct swatch_color_t_array *swatch_colors;
@@ -852,6 +885,7 @@ typedef struct project {
 	struct string_array                         *atlas_names;
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
+	struct string_array                         *mesh_maps;       // Asset name per mesh_map_t, "" for none, NULL when none ever set
 	project_runtime_t                           *_;
 } project_t;
 
@@ -923,6 +957,7 @@ typedef struct layer_data {
 	f32               height_blend_sharpness;
 	f32               height_blend_offset;
 	f32               height_blend_reach;
+	f32_array_t      *mask_effects; // slot_layer_t.mask_effects as is, NULL for the implicit stack
 } layer_data_t;
 
 typedef struct shader_out {

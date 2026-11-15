@@ -167,6 +167,32 @@ static void smart_materials_write_icon(slot_material_t *m, char *path) {
 	free(out);
 }
 
+// Mask stacks as a string of floats, json arrays are not read back into the flat map
+static char *smart_materials_floats_to_string(f32_array_t *a) {
+	char *s = "";
+	for (i32 i = 0; i < a->length; ++i) {
+		s = string("%s%s%.9g", s, i > 0 ? " " : "", a->buffer[i]);
+	}
+	return s;
+}
+
+static f32_array_t *smart_materials_string_to_floats(char *s) {
+	if (s == NULL) {
+		return NULL;
+	}
+	f32_array_t *a = f32_array_create(0);
+	char        *end;
+	for (f32 f = strtof(s, &end); end != s; f = strtof(s, &end)) {
+		f32_array_push(a, f);
+		s = end;
+	}
+	if (a->length == 0 || a->length % MASK_EFFECT_STRIDE != 0) {
+		array_delete(a);
+		return NULL;
+	}
+	return a;
+}
+
 // Saves root (a fill layer with its masks, or a group) as smart material name, one of that name is replaced
 bool smart_materials_save(slot_layer_t *root, char *name) {
 	if (root == NULL || name == NULL || name[0] == '\0' || slot_layer_is_mask(root)) {
@@ -228,6 +254,9 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 		json_encode_f32("height_blend_sharpness", l->height_blend_sharpness);
 		json_encode_f32("height_blend_offset", l->height_blend_offset);
 		json_encode_f32("height_blend_reach", l->height_blend_reach);
+		if (l->mask_effects != NULL) {
+			json_encode_string("mask_effects", smart_materials_floats_to_string(l->mask_effects));
+		}
 		json_encode_end_object();
 	}
 	char     *json   = json_encode_end();
@@ -350,6 +379,10 @@ slot_layer_t *smart_materials_insert(char *name) {
 		l->height_blend_sharpness = smart_materials_f32(m, p, "height_blend_sharpness", 16.0);
 		l->height_blend_offset    = smart_materials_f32(m, p, "height_blend_offset", 0.0);
 		l->height_blend_reach     = smart_materials_f32(m, p, "height_blend_reach", 0.03);
+		if (slot_layer_is_mask(l)) {
+			l->mask_effects     = smart_materials_string_to_floats(smart_materials_get(m, p, "mask_effects"));
+			l->mask_stack_dirty = l->mask_effects != NULL;
+		}
 		if (l->height_blend) {
 			make_material_height_used = true;
 		}

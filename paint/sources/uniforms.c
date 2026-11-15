@@ -431,6 +431,9 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		}
 		return project_get_image(map);
 	}
+	else if (starts_with(link, "_texmeshmap")) { // _texmeshmap<mesh_map_t>
+		return mesh_maps_texture(parse_int(link + 11));
+	}
 	else if (string_equals(link, "_texcolorid_sel")) {
 		render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid_sel");
 		return rt->_image;
@@ -505,7 +508,11 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 	}
 	if (starts_with(link, "_texpaint")) {
 		i32 tid = parse_int(link + string_length("_texpaint"));
-		return tid < g_project->_->layers->length ? uniforms_layer_tex(g_project->_->layers->buffer[tid]->texpaint) : NULL;
+		if (tid >= g_project->_->layers->length) {
+			return NULL;
+		}
+		slot_layer_t *l = g_project->_->layers->buffer[tid];
+		return uniforms_layer_tex(slot_layer_is_mask(l) ? slot_layer_mask_texture(l) : l->texpaint); // Masks read their evaluated stack
 	}
 	if (starts_with(link, "_texblur_")) {
 		char *id = link + 9;

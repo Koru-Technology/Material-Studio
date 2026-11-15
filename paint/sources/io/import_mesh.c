@@ -153,6 +153,7 @@ void import_mesh_finish_import(void *_) {
 	render_path_raytrace_ready = false;
 	g_context->paint_body      = NULL;
 	base_update_tools();
+	mesh_maps_mesh_changed(); // The curvature is baked again once the meshes settled, see mesh_maps_update
 
 	if (import_mesh_needs_unwrap) {
 		import_mesh_needs_unwrap = false;

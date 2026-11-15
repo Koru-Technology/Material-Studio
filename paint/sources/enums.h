@@ -235,6 +235,63 @@ typedef enum {
 	LAYER_SLOT_TYPE_GROUP = 2,
 } layer_slot_type_t;
 
+// Baked maps of the paint meshes registered with the project (util_mesh_maps.c), read by mask generators.
+// Saved by index in project_t.mesh_maps: append only.
+typedef enum {
+	MESH_MAP_AO           = 0,
+	MESH_MAP_CURVATURE    = 1,
+	MESH_MAP_CAVITY       = 2,
+	MESH_MAP_THICKNESS    = 3,
+	MESH_MAP_POSITION     = 4,
+	MESH_MAP_WORLD_NORMAL = 5,
+	MESH_MAP_NORMAL       = 6,
+	MESH_MAP_COUNT,
+} mesh_map_t;
+
+// Effects of a mask stack (util_mask_stack.c), evaluated bottom to top from black.
+// Sources (paint, fill, later generators) blend their value over the result below, filters (levels, invert) transform it.
+// Saved by value in layer_data_t.mask_effects: append only.
+typedef enum {
+	MASK_EFFECT_PAINT  = 0, // The mask's own texpaint, exactly one per stack
+	MASK_EFFECT_FILL   = 1, // params[0]: value
+	MASK_EFFECT_LEVELS = 2, // params: in low, in high, gamma, out low, out high
+	MASK_EFFECT_INVERT = 3,
+	// Generators (util_mask_generators.c): sources computed from the mesh, params[12..15] are their noise
+	MASK_EFFECT_EDGE_WEAR   = 4, // amount, sharpness
+	MASK_EFFECT_DIRT        = 5, // amount, sharpness, ao weight
+	MASK_EFFECT_POSITION    = 6, // axis (0 x, 1 y, 2 z), start, end
+	MASK_EFFECT_DIRECTIONAL = 7, // axis (0 +y, 1 -y, 2 +x, 3 -x, 4 +z, 5 -z), spread, sharpness
+	MASK_EFFECT_COUNT,
+} mask_effect_type_t;
+
+// Shared noise block of the generators
+#define MASK_EFFECT_NOISE_SCALE  12
+#define MASK_EFFECT_NOISE_AMOUNT 13
+#define MASK_EFFECT_NOISE_SEED   14
+#define MASK_EFFECT_NOISE_DETAIL 15
+
+// Kinds of mask_effect_param_t
+typedef enum {
+	MASK_PARAM_SLIDER = 0,
+	MASK_PARAM_CHOICE = 1, // Whole values 0..count-1 of the comma separated options
+	MASK_PARAM_SEED   = 2, // A Shuffle button
+} mask_param_kind_t;
+
+typedef enum {
+	MASK_BLEND_NORMAL   = 0,
+	MASK_BLEND_MULTIPLY = 1,
+	MASK_BLEND_ADD      = 2,
+	MASK_BLEND_SUBTRACT = 3,
+	MASK_BLEND_MAX      = 4,
+	MASK_BLEND_MIN      = 5,
+	MASK_BLEND_OVERLAY  = 6,
+	MASK_BLEND_COUNT,
+} mask_blend_t;
+
+#define MASK_EFFECT_PARAMS 16
+// Floats per effect in slot_layer_t.mask_effects: type, visible, opacity, blending, params[MASK_EFFECT_PARAMS]
+#define MASK_EFFECT_STRIDE (4 + MASK_EFFECT_PARAMS)
+
 typedef enum {
 	TOOL_TYPE_BRUSH     = 0,
 	TOOL_TYPE_ERASER    = 1,
@@ -563,6 +620,7 @@ typedef enum {
 	HISTORY_ACTION_REPLACE_SWATCHES,
 	HISTORY_ACTION_EDIT_SWATCH,
 	HISTORY_ACTION_MASK_HEIGHT_BLEND,
+	HISTORY_ACTION_MASK_STACK, // Effects of a mask stack added, removed, moved or edited
 } history_action_t;
 
 // Rounded corners of floating panels

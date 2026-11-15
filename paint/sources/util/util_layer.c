@@ -25,7 +25,7 @@ static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
 		draw_begin(target, true, 0x00000000);
 		// draw_set_pipeline(l.is_mask() ? pipes_copy8 : pipes_copy);
 		draw_set_pipeline(pipes_copy); // texpaint_preview is always RGBA32 for now
-		draw_scaled_image(l->texpaint, 0, 0, target->width, target->height);
+		draw_scaled_image(slot_layer_is_mask(l) ? slot_layer_mask_texture(l) : l->texpaint, 0, 0, target->width, target->height);
 		draw_set_pipeline(NULL);
 		draw_end();
 		return;
@@ -973,6 +973,16 @@ void layers_apply_masks(slot_layer_t *l) {
 }
 
 static void layers_bake_opacity(slot_layer_t *l) {
+	if (slot_layer_is_mask(l) && !mask_stack_is_trivial(l)) { // The evaluated stack becomes the paint
+		gpu_texture_t *eval = slot_layer_mask_texture(l);
+		draw_begin(l->texpaint, false, 0);
+		draw_set_pipeline(pipes_copy);
+		draw_image(eval, 0, 0);
+		draw_set_pipeline(NULL);
+		draw_end();
+		l->mask_effects = NULL;
+		mask_stack_free_texture(l);
+	}
 	if (l->mask_opacity < 1.0 && slot_layer_is_mask(l)) {
 		layers_make_temp_img();
 		draw_begin(layers_temp_image, false, 0);
@@ -1119,10 +1129,11 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 		// for (let i: i32 = 1; i < l1masks.length - 1; ++i) {
 		// 	merge_layer(l1masks[i + 1], l1masks[i]);
 		// }
+		gpu_texture_t *m0 = slot_layer_mask_texture(l1masks->buffer[0]);
 		layers_make_temp_mask_img();
 		_gpu_begin(pipes_temp_mask_image, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		gpu_set_pipeline(pipes_merge_mask);
-		gpu_set_texture(pipes_tex0_merge_mask, l1masks->buffer[0]->texpaint);
+		gpu_set_texture(pipes_tex0_merge_mask, m0);
 		gpu_set_texture(pipes_texa_merge_mask, empty);
 		gpu_set_float(pipes_opac_merge_mask, l1masks->buffer[0]->mask_opacity);
 		gpu_set_int(pipes_blending_merge_mask, BLEND_TYPE_MIX);
@@ -1134,9 +1145,10 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 	}
 
 	if (slot_layer_is_mask(l1)) {
+		gpu_texture_t *m1 = slot_layer_mask_texture(l1); // Evaluated stack
 		_gpu_begin(l0->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		gpu_set_pipeline(pipes_merge_mask);
-		gpu_set_texture(pipes_tex0_merge_mask, l1->texpaint);
+		gpu_set_texture(pipes_tex0_merge_mask, m1);
 		gpu_set_texture(pipes_texa_merge_mask, layers_temp_image);
 		gpu_set_float(pipes_opac_merge_mask, l1->mask_opacity);
 		gpu_set_int(pipes_blending_merge_mask, BLEND_TYPE_MULTIPLY);
@@ -1251,9 +1263,10 @@ void layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer,
 	draw_end();
 
 	render_target_t *empty_rt = any_map_get(render_path_render_targets, "empty_white");
+	gpu_texture_t   *mask_tex = slot_layer_mask_texture(m); // Evaluated stack
 	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_height_blend_mask);
-	gpu_set_texture(0, m->texpaint);
+	gpu_set_texture(0, mask_tex);
 	gpu_set_texture(1, layers_temp_image);
 	gpu_set_texture(2, layer->texpaint_pack);
 	gpu_set_texture(3, below != NULL ? below : empty_rt->_image);
@@ -1371,7 +1384,9 @@ static slot_layer_t *layers_move_preview(slot_layer_t *l) {
 	static slot_layer_t moved;
 	moved = *l;
 	if (slot_layer_is_mask(l)) {
-		moved.texpaint = _layers_move_copy(&layers_move_mask, l->texpaint, pipes_copy8, dx, dy);
+		moved.texpaint     = _layers_move_copy(&layers_move_mask, slot_layer_mask_texture(l), pipes_copy8, dx, dy);
+		moved.mask_effects = NULL; // The moved copy is the evaluated stack
+		moved.texmask      = NULL;
 	}
 	else {
 		gpu_pipeline_t *pipe = base_bits == TEXTURE_BITS_BITS8 ? pipes_copy : base_bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;

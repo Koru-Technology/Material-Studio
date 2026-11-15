@@ -388,15 +388,24 @@ static void make_curvature_raster(make_curvature_grid_t *g, i32 w, i32 h, i32 ro
 						e->raw[y * w + x] = fminf(fmaxf(powf(c, e->exponent) * e->strength * 2.0 + e->offset / 10.0, 0.0), 1.0);
 					}
 					// Surface around a ridge lies behind it, around a groove in front of it
+					f32 sign = 0.0; // Side 3: ridges positive, grooves negative
 					if (e->side != 0 && sum[4] > 0.0) {
 						f32 d     = ((p[0] - sum[5] / sum[4]) * n[0] + (p[1] - sum[6] / sum[4]) * n[1] + (p[2] - sum[7] / sum[4]) * n[2]) / g->size;
 						f32 ridge = fminf(fmaxf(0.5 + d * 25.0, 0.0), 1.0);
-						c *= e->side == 1 ? ridge : 1.0 - ridge;
+						if (e->side == 3) {
+							sign = ridge * 2.0 - 1.0;
+						}
+						else {
+							c *= e->side == 1 ? ridge : 1.0 - ridge;
+						}
 					}
 					c = powf(c, e->exponent) * e->strength * 2.0 + e->offset / 10.0;
 					c = fminf(fmaxf(c, 0.0), 1.0);
 					if (e->use_axis) {
 						c *= n[0] * e->axis[0] + n[1] * e->axis[1] + n[2] * e->axis[2];
+					}
+					if (e->side == 3) {
+						c *= sign;
 					}
 					e->out[y * w + x]  = c;
 					e->mask[y * w + x] = 1;
@@ -612,7 +621,22 @@ void make_curvature_bake(ui_node_t *node, ui_node_canvas_t *group, ui_node_t_arr
 	                         offset, convex ? 1 : 0, true, false, 1.0);
 }
 
-// Curvature of the meshes into texture id of g_context->node_previews, baked again only when a setting or the meshes changed
+// The meshes changed in place (unwrap keeps the mesh data): read them again and bake every curvature again
+void make_curvature_mesh_changed() {
+	make_curvature_free_mesh();
+	if (make_curvature_baked != NULL) {
+		string_array_t *keys = map_keys(make_curvature_baked);
+		for (i32 i = 0; i < keys->length; ++i) {
+			f32_array_t *baked = any_map_get(make_curvature_baked, keys->buffer[i]);
+			baked->buffer[0]   = -1.0; // No setting matches
+		}
+		array_free(keys);
+		free(keys);
+	}
+}
+
+// Curvature of the meshes into texture id of g_context->node_previews, baked again only when a setting or the meshes changed.
+// Side 0 both, 1 ridges, 2 grooves, 3 signed: 0.5 flat, brighter ridges and darker grooves.
 void make_curvature_bake_mesh(char *id, mesh_object_t_array_t *objs, i32 res_x, i32 res_y, f32 strength, f32 radius, f32 offset, i32 side, bool use_axis,
                               bool normalize, f32 spread) {
 	u64 key = make_curvature_objects_key(objs);
@@ -724,13 +748,13 @@ void make_curvature_bake_mesh(char *id, mesh_object_t_array_t *objs, i32 res_x, 
 		}
 		f32 scale = 255.0 / fmaxf((f32)top, 1.0);
 		for (i32 i = 0; i < res_x * res_y; ++i) {
-			out[i] = fminf(out[i] * scale, 1.0);
+			out[i] = fmaxf(fminf(out[i] * scale, 1.0), -1.0);
 		}
 	}
 	u16     *hb = malloc(res_x * res_y * 2);
 	buffer_t b  = {.buffer = (u8 *)hb, .length = res_x * res_y * 2};
 	for (i32 i = 0; i < res_x * res_y; ++i) {
-		hb[i] = float_to_half_fast(out[i]);
+		hb[i] = float_to_half_fast(side == 3 ? 0.5 + out[i] * 0.5 : out[i]);
 	}
 	free(out);
 	free(mask);

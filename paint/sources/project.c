@@ -249,6 +249,7 @@ void project_new(bool reset_layers) {
 	}
 	g_project->linear_blending = true; // New projects blend colors in linear space
 	g_project->id_map          = NULL;
+	g_project->mesh_maps       = NULL;
 	g_project->_->translucency = false;
 
 	if (g_project->_->layers->length == 0) {

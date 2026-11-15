@@ -571,7 +571,7 @@ void ui_view2d_update(void *_) {
 				draw_set_color(color_from_floats(layer->mask_opacity, layer->mask_opacity, layer->mask_opacity, 1.0));
 			}
 
-			tex = slot_layer_is_mask(g_context->layer)      ? layer->texpaint
+			tex = slot_layer_is_mask(g_context->layer)      ? slot_layer_mask_texture(layer)
 			      : ui_view2d_tex_type == PAINT_TEX_BASE    ? layer->texpaint
 			      : ui_view2d_tex_type == PAINT_TEX_OPACITY ? layer->texpaint
 			      : ui_view2d_tex_type == PAINT_TEX_NORMAL  ? layer->texpaint_nor

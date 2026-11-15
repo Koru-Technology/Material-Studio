@@ -32,6 +32,7 @@ struct LayerProps: Equatable {
 	var showsInvert = false
 	var showsApply = false
 	var showsAddMask = false
+	var showsAddEffect = false
 	var showsMergeGroup = false
 	var showsSaveSmartMaterial = false
 	var canDelete = false
@@ -69,6 +70,7 @@ struct LayerProps: Equatable {
 		showsInvert = p.shows_invert
 		showsApply = p.shows_apply
 		showsAddMask = p.shows_add_mask
+		showsAddEffect = p.shows_add_effect
 		showsMergeGroup = p.shows_merge_group
 		showsSaveSmartMaterial = p.shows_save_smart_material
 		canDelete = p.can_delete
@@ -78,6 +80,56 @@ struct LayerProps: Equatable {
 
 	func paints(_ channel: app_layer_channel_t) -> Bool {
 		channels & (1 << channel.rawValue) != 0
+	}
+}
+
+// One effect of a mask's stack (app_mask_effect_t)
+struct MaskEffect: Equatable {
+	let type: Int32
+	let visible: Bool
+	let opacity: Float
+	let blending: Int32
+	let params: [Float]
+	let isPaint: Bool
+	let isFilter: Bool
+	let isGenerator: Bool
+	let needsAO: Bool
+
+	init(_ e: app_mask_effect_t) {
+		type = e.type
+		visible = e.visible
+		opacity = e.opacity
+		blending = e.blending
+		params = withUnsafeBytes(of: e.params) { Array($0.bindMemory(to: Float.self)) }
+		isPaint = e.is_paint
+		isFilter = e.is_filter
+		isGenerator = e.is_generator
+		needsAO = e.needs_ao
+	}
+
+	var name: String {
+		LayersStore.effectTypeNames.indices.contains(Int(type)) ? LayersStore.effectTypeNames[Int(type)] : "Effect"
+	}
+
+	var settings: [MaskParam] { // Of its type
+		LayersStore.effectParams.indices.contains(Int(type)) ? LayersStore.effectParams[Int(type)] : []
+	}
+}
+
+// One setting of an effect type (app_mask_param_t)
+struct MaskParam: Identifiable {
+	let name: String
+	let index: Int32 // Into MaskEffect.params
+	let kind: app_mask_param_kind_t
+	let range: ClosedRange<Float>
+	let options: [String] // Choices
+
+	var id: Int32 {
+		index
+	}
+
+	var isNoise: Bool {
+		index >= APP_MASK_NOISE_FIRST
 	}
 }
 
@@ -97,6 +149,7 @@ struct LayerRow: Identifiable, Equatable {
 	let name: String
 	var props = LayerProps()
 	var parentHidden = false // A group or layer above it is hidden, so it is too
+	var effects: [MaskEffect] = [] // Masks: the effect stack, top first
 }
 
 // The project's layers (app_api.h, app_api_layers.h), refreshed by AppStore after every frame
@@ -117,6 +170,19 @@ final class LayersStore: ChangeOnly {
 	@ObservationIgnored private var thumbnailBuffer = [UInt8](repeating: 0, count: 512 * 512 * 4)
 
 	static let blendingNames: [String] = (0..<app_layer_blending_count()).map { String(cString: app_layer_blending_name($0)) }
+	static let maskBlendingNames: [String] = (0..<app_mask_blending_count()).map { String(cString: app_mask_blending_name($0)) }
+	static let effectTypeNames: [String] = (0..<app_mask_effect_type_count()).map { String(cString: app_mask_effect_type_name($0)) }
+	static let effectParams: [[MaskParam]] = (0..<app_mask_effect_type_count()).map { type in
+		var p = app_mask_param_t()
+		return (0..<app_mask_effect_param_count(type)).compactMap { i in
+			guard app_mask_effect_param(type, i, &p) else {
+				return nil
+			}
+			let options = String(cString: p.options)
+			return MaskParam(name: String(cString: p.name), index: p.index, kind: app_mask_param_kind_t(UInt32(p.kind)),
+			                 range: p.min...p.max, options: options.isEmpty ? [] : options.components(separatedBy: ","))
+		}
+	}
 
 	func refresh(_ s: app_state_t) {
 		update(\.selectedLayerID, s.selected_layer_id)
@@ -148,6 +214,8 @@ final class LayersStore: ChangeOnly {
 			                   name: String(cString: info.name))
 			if app_layer_props(info.id, &props) {
 				row.props = LayerProps(props)
+				var effect = app_mask_effect_t()
+				row.effects = (0..<props.effect_count).compactMap { app_mask_effect(info.id, $0, &effect) ? MaskEffect(effect) : nil }
 			}
 			row.parentHidden = hidden[info.parent_id] ?? false // Listed top first: parents before their children
 			hidden[info.id] = row.parentHidden || !info.visible

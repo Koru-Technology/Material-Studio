@@ -672,6 +672,7 @@ void minic_register_builtins() {
 	MINIC_P(texpaint_pack);
 	MINIC_S(name);
 	MINIC_B(visible);
+	MINIC_B(show_panel);
 	MINIC_O(parent, slot_layer_t);
 	MINIC_F(mask_opacity);
 	MINIC_O(fill_material, slot_material_t);
@@ -700,6 +701,9 @@ void minic_register_builtins() {
 	MINIC_F(height_blend_sharpness);
 	MINIC_F(height_blend_offset);
 	MINIC_F(height_blend_reach);
+	MINIC_O(mask_effects, f32_array_t);
+	MINIC_P(texmask);
+	MINIC_B(mask_stack_dirty);
 	MINIC_END();
 
 	MINIC_STRUCT(ui_nodes_t);
@@ -929,6 +933,7 @@ void minic_register_builtins() {
 	MINIC_I(pencil_double_tap);
 	MINIC_I(pencil_squeeze);
 	MINIC_I(undo_memory_mb);
+	MINIC_I(dilate_radius);
 	MINIC_END();
 
 	MINIC_STRUCT(context_t);
@@ -945,6 +950,7 @@ void minic_register_builtins() {
 	MINIC_F(brush_scale);
 	MINIC_F(brush_angle);
 	MINIC_F(mask_value);
+	MINIC_I(mask_effect);
 	MINIC_F(brush_spacing);
 	MINIC_I(brush_selected);
 	MINIC_F(brush_jitter_lateral);
@@ -988,6 +994,7 @@ void minic_register_builtins() {
 	MINIC_O(font_assets, string_array_t);
 	MINIC_P(layer_datas);
 	MINIC_P(mesh_datas);
+	MINIC_O(mesh_maps, string_array_t);
 	MINIC_END();
 
 	// iron_math wrappers

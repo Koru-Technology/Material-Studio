@@ -144,6 +144,7 @@ void context_init() {
 	g_context->brush_scale                  = 1.0;
 	g_context->brush_angle                  = 0.0;
 	g_context->mask_value                   = 1.0;
+	g_context->mask_effect                  = -1;
 	g_context->brush_lazy_radius            = 0.0;
 	g_context->brush_lazy_step              = 0.0;
 	g_context->brush_lazy_x                 = 0.0;
@@ -281,6 +282,7 @@ void context_set_layer(slot_layer_t *l) {
 		return;
 	}
 	g_context->layer          = l;
+	g_context->mask_effect    = -1; // Effect rows belong to the previous mask
 	ui_header_handle->redraws = 2;
 
 	gpu_texture_t *current = _draw_current;

@@ -455,6 +455,7 @@ static void _util_mesh_merge(mesh_object_t_array_t *paint_objects, bool paintabl
 		return;
 	}
 	material_cache_mesh_changed(); // Material caches of the old mesh no longer match
+	mask_gen_mesh_changed();
 	g_context->merged_object_is_atlas = paint_objects->length < g_project->_->paint_objects->length;
 
 	// Meshes rendered with an override material are not painted
@@ -550,6 +551,7 @@ bool util_mesh_merge_refresh() {
 
 	md->scale_pos = util_mesh_pack_merged_positions(objects, g_context->merged_object->base->parent, va0, va1);
 	mesh_data_build_vertices(md->_->vertex_buffer, md->vertex_arrays);
+	mask_gen_mesh_changed(); // Positions and normals moved
 
 	transform_t *t = g_context->merged_object->base->transform;
 	t->scale_world = md->scale_pos;
@@ -668,6 +670,7 @@ void util_mesh_uv_unwrap(mesh_object_t_array_t *objects) {
 
 	util_mesh_merge(NULL);
 	util_uv_uvmap_cached = false;
+	mesh_maps_mesh_changed(); // New uvs
 }
 
 static i32 *_cc_he_vlo;

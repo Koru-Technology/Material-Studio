@@ -24,6 +24,17 @@ void tab_textures_draw_use_as_id_map(void *asset) {
 	project_set_id_map(asset);
 }
 
+// Registered mesh maps of the asset, or "" if none
+static char *tab_textures_mesh_maps_of(asset_t *asset) {
+	char *s = "";
+	for (i32 i = 0; i < MESH_MAP_COUNT; ++i) {
+		if (mesh_maps_get_asset(i) == asset) {
+			s = string("%s%s%s", s, s[0] != '\0' ? ", " : "", tr(mesh_map_name(i)));
+		}
+	}
+	return s;
+}
+
 void tab_textures_draw_export_on_next_frame2(gpu_texture_t *target) {
 	char *path = _tab_textures_draw_path;
 	char *f    = ui_files_filename;
@@ -100,6 +111,7 @@ void tab_textures_delete_texture(asset_t *asset) {
 	ui_dock_redraw(TAB_AREA_STATUS);
 
 	project_id_map_removed(asset);
+	mesh_maps_asset_removed(asset);
 
 	if (data_get_texture(asset->file) == scene_world->_->envmap) {
 		project_set_default_envmap();
@@ -156,6 +168,19 @@ void tab_textures_draw_context_menu() {
 	if (ui_menu_button(tr("Use as ID Map"), "", ICON_COLOR_ID)) {
 		sys_notify_on_next_frame(&tab_textures_draw_use_as_id_map, _tab_textures_draw_asset);
 	}
+	if (ui_menu_sub_button(tr("Use as Mesh Map"))) {
+		ui_menu_sub_begin(MESH_MAP_COUNT + 1);
+		for (i32 i = 0; i < MESH_MAP_COUNT; ++i) {
+			bool used = mesh_maps_get_asset(i) == _tab_textures_draw_asset;
+			if (ui_menu_button(used ? string_tmp("%s *", tr(mesh_map_name(i))) : tr(mesh_map_name(i)), "", ICON_NONE)) {
+				mesh_maps_set(i, _tab_textures_draw_asset);
+			}
+		}
+		if (ui_menu_button(tr("None"), "", ICON_NONE)) {
+			mesh_maps_asset_removed(_tab_textures_draw_asset); // Unregister it from every type
+		}
+		ui_menu_sub_end();
+	}
 	if (ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
 		tab_textures_delete_texture(_tab_textures_draw_asset);
 	}
@@ -180,6 +205,9 @@ bool tab_textures_nodes_use_texture(ui_node_t_array_t *nodes, i32 index) {
 bool tab_textures_is_texture_used(i32 index) {
 	asset_t *asset = g_project->_->assets->buffer[index];
 	if (g_project->id_map != NULL && string_equals(g_project->id_map, asset->name)) {
+		return true;
+	}
+	if (!string_equals(tab_textures_mesh_maps_of(asset), "")) {
 		return true;
 	}
 	if (g_project->envmap != NULL && string_equals(g_project->envmap, asset->file)) {
@@ -437,6 +465,10 @@ void tab_textures_draw(i32 *htab) {
 						char *tooltip = asset->name;
 						if (is_packed) {
 							tooltip = string_tmp("%s %s", tooltip, tr("(packed)"));
+						}
+						char *mesh_maps = tab_textures_mesh_maps_of(asset);
+						if (!string_equals(mesh_maps, "")) {
+							tooltip = string_tmp("%s (%s %s)", tooltip, tr("Mesh Map:"), mesh_maps);
 						}
 #ifdef WITH_BC7
 						if (img->format == GPU_TEXTURE_FORMAT_RGBA32_BC7) {
