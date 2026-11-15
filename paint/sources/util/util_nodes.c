@@ -98,6 +98,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 			img = rt->_image;
 		}
 	}
+#ifdef WITH_NEURAL
 	else if (starts_with(n->type, "NEURAL_") && n->outputs->length > 0) {
 		i32 socket = i32_imap_get(g_context->node_preview_socket_map, n->id);
 		if (socket < 0 || socket >= n->outputs->length) {
@@ -105,6 +106,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 		}
 		img = any_imap_get(neural_node_results, n->outputs->buffer[socket]->id);
 	}
+#endif
 	else {
 		img = any_imap_get(g_context->node_preview_map, n->id);
 	}

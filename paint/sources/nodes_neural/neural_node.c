@@ -95,23 +95,12 @@ void neural_node_check_result(ui_node_t *node) {
 	}
 }
 
-char *neural_node_bin_ext() {
-#ifdef IRON_WINDOWS
-	return ".exe";
-#else
-	return "";
-#endif
-}
-
 char *neural_node_iris_bin() {
-	return string("iris%s", neural_node_bin_ext());
+	return "iris";
 }
 
 char *neural_node_llama_bin() {
-#ifdef IRON_MACOS
 	return "llama_metal";
-#endif
-	return string("llama_vulkan%s", neural_node_bin_ext());
 }
 
 char *neural_node_dir() {
@@ -125,23 +114,9 @@ char *neural_node_dir() {
 	return dir;
 }
 
-#ifdef IRON_LINUX
-static void neural_node_chmod_x(char *url, char *bin_name) {
-	if (ends_with(url, bin_name)) {
-		char *bin = string("%s/%s", neural_node_dir(), bin_name);
-		iron_sys_command(string("chmod +x \"%s\"", bin));
-	}
-}
-#endif
-
 void neural_node_download_done(char *url) {
 	neural_node_downloading--;
 	console_log(string("%s %s", tr("Downloaded file from"), url));
-
-#ifdef IRON_LINUX
-	neural_node_chmod_x(url, "iris");
-	neural_node_chmod_x(url, "llama_vulkan");
-#endif
 }
 
 void neural_node_download(char *url) {
@@ -161,16 +136,8 @@ void neural_node_download_models(string_array_t *models) {
 		iron_create_directory(neural_node_dir());
 	}
 
-#ifdef IRON_WINDOWS
-	neural_node_download("https://huggingface.co/armory3d/iris_bin/resolve/main/windows_x64/iris.exe");
-	neural_node_download("https://huggingface.co/armory3d/llamacpp_bin/resolve/main/windows_x64/llama_vulkan.exe");
-#elif defined(IRON_LINUX)
-	neural_node_download("https://huggingface.co/armory3d/iris_bin/resolve/main/linux_x64/iris");
-	neural_node_download("https://huggingface.co/armory3d/llamacpp_bin/resolve/main/linux_x64/llama_vulkan");
-#else
 	neural_node_download("https://huggingface.co/armory3d/iris_bin/resolve/main/macos/iris");
 	neural_node_download("https://huggingface.co/armory3d/llamacpp_bin/resolve/main/macos/llama_metal");
-#endif
 
 	iron_net_bytes_downloaded = 0;
 

@@ -1334,6 +1334,7 @@ void                      make_blur_run(node_shader_t *shader);
 void                      import_font_run(char *path);
 buffer_t                 *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 type, i32 off);
 void                      nodes_material_init();
+string_array_t           *nodes_material_category_names();
 ui_node_t                *nodes_material_get_node_t(char *node_type);
 ui_node_t                *nodes_material_create_node(char *node_type, node_group_t *group);
 raw_mesh_t               *geom_make_plane(f32 size_x, f32 size_y, i32 verts_x, i32 verts_y, f32 uv_scale);

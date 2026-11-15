@@ -13,14 +13,10 @@ string_array_t *text_to_image_node_flux_klein_args(char *dir, char *prompt) {
 }
 
 void text_to_image_node_run(ui_node_t *node, void (*callback)(ui_node_t *)) {
-	i32   model  = (i32)neural_node_values(node, 1)[0];
 	char *prompt = neural_node_prompt(node);
 	char *dir    = neural_node_dir();
 
-	string_array_t *argv;
-	if (model == 0) {
-		argv = text_to_image_node_flux_klein_args(dir, prompt);
-	}
+	string_array_t *argv = text_to_image_node_flux_klein_args(dir, prompt); // FLUX 2 klein, the only model
 
 	if (g_config->neural_res >= 2048) {
 		string_array_push(argv, "--vae-tiling");
@@ -46,7 +42,7 @@ void text_to_image_node_run(ui_node_t *node, void (*callback)(ui_node_t *)) {
 
 void text_to_image_node_button(i32 node_id) {
 	ui_node_t      *node   = ui_get_node(ui_nodes_get_canvas(true)->nodes, node_id);
-	string_array_t *models = any_array_create_from_raw(
+	string_array_t *models = any_array_create_from_raw_tmp(
 	    (void *[]){
 	        "FLUX 2 klein",
 	    },

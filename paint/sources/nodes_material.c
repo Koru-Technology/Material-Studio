@@ -75,8 +75,7 @@ void nodes_material_init() {
 	vector_rotate_node_init();
 	vector_transform_node_init();
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-
+#ifdef WITH_NEURAL
 	nodes_material_neural = any_array_create_from_raw((void *[]){}, 0);
 	edit_image_node_init();
 	image_to_pbr_node_init();
@@ -84,7 +83,6 @@ void nodes_material_init() {
 	save_image_node_init();
 	text_to_image_node_init();
 	upscale_image_node_init();
-
 #endif
 
 	nodes_material_mm = any_array_create_from_raw((void *[]){}, 0);
@@ -95,34 +93,32 @@ void nodes_material_init() {
 	nodes_material_group = any_array_create_from_raw((void *[]){}, 0);
 	group_node_init();
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
-
-	nodes_material_list = any_array_create_from_raw(
-	    (void *[]){
-	        nodes_material_input,
-	        nodes_material_texture,
-	        nodes_material_color,
-	        nodes_material_utilities,
-	        nodes_material_neural,
-	        nodes_material_mm,
-	        nodes_material_group,
-	    },
-	    7);
-
-#else
-
-	nodes_material_list = any_array_create_from_raw(
-	    (void *[]){
-	        nodes_material_input,
-	        nodes_material_texture,
-	        nodes_material_color,
-	        nodes_material_utilities,
-	        nodes_material_mm,
-	        nodes_material_group,
-	    },
-	    6);
-
+	// The categories of nodes_material_category_names
+	nodes_material_list = any_array_create(0);
+	any_array_push(nodes_material_list, nodes_material_input);
+	any_array_push(nodes_material_list, nodes_material_texture);
+	any_array_push(nodes_material_list, nodes_material_color);
+	any_array_push(nodes_material_list, nodes_material_utilities);
+#ifdef WITH_NEURAL
+	any_array_push(nodes_material_list, nodes_material_neural);
 #endif
+	any_array_push(nodes_material_list, nodes_material_mm);
+	any_array_push(nodes_material_list, nodes_material_group);
+}
+
+// Names of the node menu categories, in the order of nodes_material_list
+string_array_t *nodes_material_category_names() {
+	string_array_t *names = any_array_create(0);
+	any_array_push(names, _tr("Input"));
+	any_array_push(names, _tr("Texture"));
+	any_array_push(names, _tr("Color"));
+	any_array_push(names, _tr("Utilities"));
+#ifdef WITH_NEURAL
+	any_array_push(names, _tr("Neural"));
+#endif
+	any_array_push(names, _tr("Material Maker"));
+	any_array_push(names, _tr("Group"));
+	return names;
 }
 
 ui_node_t *nodes_material_get_node_t(char *node_type) {

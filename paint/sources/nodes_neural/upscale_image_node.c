@@ -4,7 +4,7 @@
 void upscale_image_node_button(i32 node_id) {
 	ui_node_canvas_t *canvas = ui_nodes_get_canvas(true);
 	ui_node_t        *node   = ui_get_node(canvas->nodes, node_id);
-	string_array_t   *models = any_array_create_from_raw(
+	string_array_t   *models = any_array_create_from_raw_tmp(
         (void *[]){
             "Real-ESRGAN",
         },
