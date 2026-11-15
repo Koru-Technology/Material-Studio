@@ -2952,18 +2952,13 @@ void ui_mouse_wheel(ui_t *ui, float delta) {
 }
 
 void ui_pen_down(ui_t *ui, int x, int y, float pressure) {
-#ifdef IRON_IOS
-	return;
-#endif
-
+#ifndef IRON_IOS // The pen comes as touches on ios
 	ui_mouse_down(ui, 0, x, y);
+#endif
 }
 
 void ui_pen_up(ui_t *ui, int x, int y, float pressure) {
-#ifdef IRON_IOS
-	return;
-#endif
-
+#ifndef IRON_IOS
 	if (ui->input_started) {
 		ui->input_started = false;
 		ui->pen_in_use    = true;
@@ -2971,24 +2966,18 @@ void ui_pen_up(ui_t *ui, int x, int y, float pressure) {
 	}
 	ui_mouse_up(ui, 0, x, y);
 	ui->pen_in_use = true; // On pen release, additional mouse down & up events are fired at once - filter those out
+#endif
 }
 
 void ui_pen_move(ui_t *ui, int x, int y, float pressure) {
-#if defined(IRON_IOS)
-	// Listen to pen hover if no other input is active
-	if (pressure == 0.0) {
-		if (!ui->input_down && !ui->input_down_r) {
-			ui_set_input_position(ui, x, y);
-		}
-		return;
-	}
-#endif
-
 #ifdef IRON_IOS
-	return;
-#endif
-
+	// Listen to pen hover if no other input is active
+	if (pressure == 0.0 && !ui->input_down && !ui->input_down_r) {
+		ui_set_input_position(ui, x, y);
+	}
+#else
 	ui_mouse_move(ui, x, y, 0, 0);
+#endif
 }
 
 void ui_key_down(ui_t *ui, int key_code) {

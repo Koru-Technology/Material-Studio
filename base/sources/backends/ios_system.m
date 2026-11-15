@@ -106,7 +106,7 @@ iron_display_mode_t iron_display_current_mode(int display) {
 	dm.height          = iron_window_height();
 	dm.frequency       = (int)screen.maximumFramesPerSecond;
 	dm.bits_per_pixel  = 32;
-	dm.pixels_per_inch = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad ? 326.0f : 460.0f; // Approx
+	dm.pixels_per_inch = [[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad ? 326.0f : 460.0f; // Approx
 	return dm;
 }
 
@@ -1148,8 +1148,7 @@ void importFile(NSURL *url) {
 	if (file_path == nil) {
 		return;
 	}
-	const char *cpath = [file_path cStringUsingEncoding:NSUTF8StringEncoding];
-	iron_internal_drop_files_callback(cpath);
+	iron_internal_drop_files_callback((char *)[file_path UTF8String]);
 }
 
 // A file shared with the app (Open in / Share sheet): copied off the main thread, opened on it
