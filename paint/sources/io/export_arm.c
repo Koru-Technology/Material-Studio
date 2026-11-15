@@ -8,6 +8,15 @@ static buffer_t *export_arm_encode_layer_texture(gpu_texture_t *t) {
 	return b;
 }
 
+// A material preview (RGBA64) compressed, in RGBA order
+static buffer_t *export_arm_encode_icon(gpu_texture_t *t) {
+#ifdef IRON_BGRA
+	return lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(t)));
+#else
+	return lz4_encode(gpu_get_texture_pixels(t));
+#endif
+}
+
 static mesh_data_t *export_arm_named_mesh_data(mesh_object_t *p) {
 	// Mesh data shared by linked duplicates is named after the object holding it
 	if (string_equals(p->data->name, p->base->name)) {
@@ -40,7 +49,9 @@ void export_arm_run_mesh(char *path, mesh_object_t_array_t *paint_objects) {
 	if (!ends_with(path, ".arm")) {
 		path = string("%s.arm", path);
 	}
-	iron_file_save_bytes(path, b, b->length + 1);
+	if (!iron_file_save_bytes(path, b, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(b);
 	free(b);
 }
@@ -222,7 +233,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
-		                              .res                = l->texpaint != NULL ? l->texpaint->width : g_project->_->layers->buffer[0]->texpaint->width,
+		                              .res                = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
 		                              .bpp                = bpp,
 		                              .texpaint           = l->texpaint != NULL ? export_arm_encode_layer_texture(l->texpaint) : NULL,
 		                              .uv_scale           = l->scale,
@@ -334,11 +345,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
 		buffer_t        *icon;
 		if (m->preview_ready && m->image != NULL) {
-#ifdef IRON_BGRA
-			icon = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
-#else
-			icon = lz4_encode(gpu_get_texture_pixels(m->image));
-#endif
+			icon = export_arm_encode_icon(m->image);
 			gpu_release_texture_pixels(m->image);
 		}
 		else {
@@ -361,9 +368,6 @@ buffer_t *export_arm_encode_project(char *path) {
 #endif
 
 	bool pack_assets = g_context->pack_assets_on_save;
-#ifdef IRON_WASM
-	pack_assets = true;
-#endif
 	export_arm_progress(0.7);
 	if (pack_assets) {
 		export_arm_pack_assets(g_project, g_project->_->assets);
@@ -400,8 +404,10 @@ void export_arm_run_project(char *path) {
 	export_arm_show_progress = true;
 	buffer_t *buffer         = export_arm_encode_project(path);
 	export_arm_progress(0.9);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
-	if (string_equals(path, g_project->_->filepath)) {
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path)); // Still modified, saved again later
+	}
+	else if (string_equals(path, g_project->_->filepath)) {
 		project_modified = false;
 	}
 	array_free(buffer);
@@ -410,12 +416,8 @@ void export_arm_run_project(char *path) {
 	export_arm_show_progress = false;
 	base_redraw_ui();
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS) || defined(IRON_WASM)
-#ifdef IRON_WASM
-	if (box_projects_is_cloud_path(path)) { // Icons are shown in the cloud projects box only
-#else
+#ifdef IRON_IOS
 	{
-#endif
 		render_target_t *rt        = any_map_get(render_path_render_targets, "buf");
 		gpu_texture_t   *tex       = rt->_image;
 		gpu_texture_t   *mesh_icon = gpu_create_render_target(256, 256, GPU_TEXTURE_FORMAT_RGBA32);
@@ -445,9 +447,6 @@ void export_arm_run_project(char *path) {
 	char *recent_path = path;
 #endif
 
-#ifdef IRON_WINDOWS
-	recent_path = string_copy(string_replace_all(recent_path, "\\", "/"));
-#endif
 	string_array_t *recent = g_config->recent_projects;
 	string_array_remove(recent, recent_path);
 	array_insert(recent, 0, recent_path);
@@ -515,11 +514,7 @@ void export_arm_run_material(char *path) {
 		packed_assets = export_arm_get_packed_assets(path, texture_files);
 	}
 
-#ifdef IRON_BGRA
-	buffer_t *buf = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
-#else
-	buffer_t *buf = lz4_encode(gpu_get_texture_pixels(m->image));
-#endif
+	buffer_t *buf = export_arm_encode_icon(m->image);
 	buffer_t_array_t *micons = any_array_create_from_raw(
 	    (void *[]){
 	        buf,
@@ -564,7 +559,9 @@ void export_arm_run_material(char *path) {
 	}
 
 	buffer_t *buffer = util_encode_project(raw);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(buffer);
 	free(buffer);
 }
@@ -586,11 +583,7 @@ buffer_t *export_arm_encode_library_material(slot_material_t *m) {
 		any_array_push(texture_files, string_copy(a->name)); // File name with extension
 	}
 
-#ifdef IRON_BGRA
-	buffer_t *icon = lz4_encode(buffer_bgra64_swap(gpu_get_texture_pixels(m->image)));
-#else
-	buffer_t *icon = lz4_encode(gpu_get_texture_pixels(m->image));
-#endif
+	buffer_t *icon = export_arm_encode_icon(m->image);
 	material_data2_t_array_t *mdata2 = any_array_create_from_raw((void *[]){}, 0);
 	material_data2_t         *md2    = ALLOC_INIT(material_data2_t, {
 	                                                                    .paint_base   = m->paint_base,
@@ -664,7 +657,9 @@ void export_arm_run_brush(char *path) {
 	}
 
 	buffer_t *buffer = util_encode_project(raw);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(buffer);
 	free(buffer);
 }
@@ -725,7 +720,9 @@ void export_arm_run_swatches(char *path) {
 	}
 	project_t *raw    = ALLOC_INIT(project_t, {.version = manifest_version_project, .swatches = g_project->swatches});
 	buffer_t  *buffer = util_encode_project(raw);
-	iron_file_save_bytes(path, buffer, buffer->length + 1);
+	if (!iron_file_save_bytes(path, buffer, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_free(buffer);
 	free(buffer);
 }

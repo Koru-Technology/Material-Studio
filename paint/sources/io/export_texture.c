@@ -105,7 +105,9 @@ static void export_texture_write_texture(char *file, buffer_t *pixels, i32 type,
 	}
 	else { // Exr
 		buffer_t *b = export_exr_run(res_x, res_y, pixels, bits, type, off);
-		iron_file_save_bytes(file, b, b->length);
+		if (!iron_file_save_bytes(file, b, b->length)) {
+			console_error(string("Could not save %s.", file));
+		}
 		array_free(b);
 		free(b);
 	}
@@ -238,7 +240,7 @@ static void export_texture_set_channel(f32 value, buffer_t *to, i32 to_channel, 
 static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, char *object_name, bool bake_material) {
 	i32 texture_size_x = config_get_texture_res_x();
 	i32 texture_size_y = config_get_texture_res_y();
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#ifdef IRON_IOS
 	char *f = sys_title();
 #else
 	char *f = ui_files_filename;
@@ -340,11 +342,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		}
 
 		if (l1->paint_base || l1->paint_opac) {
-			draw_begin(layers_temp_image, false, 0); // Copy to temp
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expa, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expa, pipes_copy); // Copy to temp
 
 			_gpu_begin(layers_expa, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			gpu_set_pipeline(l1->paint_base ? pipes_merge : pipes_get_merge_a());
@@ -362,11 +360,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		}
 
 		if (l1->paint_nor) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expb, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expb, pipes_copy);
 
 			_gpu_begin(layers_expb, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 			gpu_set_pipeline(pipes_merge);
@@ -384,11 +378,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		}
 
 		if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
-			draw_begin(layers_temp_image, false, 0);
-			draw_set_pipeline(pipes_copy);
-			draw_image(layers_expc, 0, 0);
-			draw_set_pipeline(NULL);
-			draw_end();
+			util_copy_texture(layers_temp_image, layers_expc, pipes_copy);
 
 			// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
 			bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
@@ -758,8 +748,9 @@ void export_texture_run(char *path, bool bake_material) {
 		string_array_t *object_names = any_array_create_from_raw((void *[]){}, 0);
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 			slot_layer_t *l = g_project->_->layers->buffer[i];
-			if (slot_layer_get_object_mask(l) > 0) {
-				char *name = g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l) - 1]->base->name;
+			i32           o = slot_layer_get_object_mask(l);
+			if (o > 0 && o <= g_project->_->paint_objects->length) { // Larger masks are atlases
+				char *name = g_project->_->paint_objects->buffer[o - 1]->base->name;
 				if (string_array_index_of(object_names, name) == -1) {
 					any_array_push(object_names, name);
 				}
@@ -853,8 +844,6 @@ void export_texture_run(char *path, bool bake_material) {
 	else {
 		console_info(string("%s (\"Files/On My iPad/%s\")", tr("Textures exported"), manifest_title));
 	}
-#elif defined(IRON_ANDROID)
-	console_info(string("%s (\"Files/Internal storage/Pictures/%s\")", tr("Textures exported"), manifest_title));
 #else
 	console_info(tr("Textures exported"));
 #endif

@@ -576,12 +576,6 @@ void util_mesh_transform_changed() {
 }
 
 void util_mesh_visibility_changed() {
-	if (base_player) {
-		util_mesh_merged_stale     = true;
-		render_path_raytrace_ready = false;
-		g_context->ddirty          = 2;
-		return;
-	}
 	mesh_object_t_array_t *visibles = util_mesh_get_visible();
 	util_mesh_merge(visibles);
 	array_delete(visibles);

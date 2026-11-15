@@ -103,7 +103,9 @@ raw_mesh_t *import_stl_run_raw(char *path) {
 			vec4_t e1 = {v[3] - v[0], v[4] - v[1], v[5] - v[2], 0.0};
 			vec4_t e2 = {v[6] - v[0], v[7] - v[1], v[8] - v[2], 0.0};
 			vec4_t c  = vec4_norm(vec4_cross(e1, e2));
-			n[0] = c.x, n[1] = c.y, n[2] = c.z;
+			n[0]      = c.x;
+			n[1]      = c.y;
+			n[2]      = c.z;
 		}
 	}
 

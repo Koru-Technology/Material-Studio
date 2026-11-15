@@ -13,7 +13,7 @@ static void export_obj_reserve(u8_array_t *out, u32 size) {
 }
 
 static void export_obj_write_string(u8_array_t *out, char *str) {
-	u32 len = strlen(str);
+	u32 len = (u32)strlen(str);
 	export_obj_reserve(out, len);
 	memcpy(out->buffer + out->length, str, len);
 	out->length += len;
@@ -197,7 +197,9 @@ void export_obj_run(char *path, mesh_object_t_array_t *paint_objects) {
 	if (!ends_with(path, ".obj")) {
 		path = string_tmp("%s.obj", path);
 	}
-	iron_file_save_bytes(path, o, 0);
+	if (!iron_file_save_bytes(path, o, 0)) {
+		console_error(string("Could not save %s.", path));
+	}
 	array_delete(o);
 }
 

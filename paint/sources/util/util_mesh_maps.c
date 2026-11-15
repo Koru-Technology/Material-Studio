@@ -234,7 +234,7 @@ void mesh_maps_update() {
 		mesh_maps_project = g_project;
 		mesh_maps_stale   = false;
 	}
-	if (base_player || g_project->_->paint_objects->length == 0 || mesh_maps_get_asset(MESH_MAP_CURVATURE) != NULL) {
+	if (g_project->_->paint_objects->length == 0 || mesh_maps_get_asset(MESH_MAP_CURVATURE) != NULL) {
 		return;
 	}
 	u64 key = mesh_maps_meshes_key();
