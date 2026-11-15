@@ -12,55 +12,8 @@ project_t *main() {
 	add_cfiles(project, "sources/*.c");
 	add_define(project, string("EMBED_H_PATH=\"%s/build/embed.h\"", flags->dirname));
 
-	if (platform == PLATFORM_WINDOWS) {
-		add_cfiles(project, "sources/backends/windows_system.*");
-		add_cfiles(project, "sources/backends/windows_net.*");
-		add_cfiles(project, "sources/backends/windows_thread.*");
-		add_cfiles(project, "sources/backends/direct3d12_gpu.*");
-		add_define(project, "_CRT_SECURE_NO_WARNINGS");
-		add_define(project, "_WINSOCK_DEPRECATED_NO_WARNINGS");
-		add_define(project, "IRON_DIRECT3D12");
-		add_lib(project, "dxguid");
-		add_lib(project, "Winhttp");
-		add_lib(project, "dxgi");
-		add_lib(project, "d3d12");
-		add_lib(project, "Dwmapi"); // DWMWA_USE_IMMERSIVE_DARK_MODE
-		if (flags->with_audio) {
-			add_lib(project, "dsound");
-			add_cfiles(project, "sources/backends/windows_audio.*");
-		}
-		if (flags->with_gamepad) {
-			add_lib(project, "dinput8");
-		}
-		if (flags->with_d3dcompiler) {
-			add_define(project, "WITH_D3DCOMPILER");
-			add_lib(project, "d3d11");
-			add_lib(project, "d3dcompiler");
-		}
-	}
-	else if (platform == PLATFORM_LINUX) {
-		add_cfiles(project, "sources/backends/linux_system.*");
-		add_cfiles(project, "sources/backends/posix_net.*");
-		add_cfiles(project, "sources/backends/posix_thread.*");
-		add_cfiles(project, "sources/backends/vulkan_gpu.*");
-		add_define(project, "IRON_VULKAN");
-		add_define(project, "_POSIX_C_SOURCE=200809L");
-		add_lib(project, "X11");
-		add_lib(project, "Xi");
-		add_lib(project, "Xcursor");
-		add_lib(project, "Xrandr");
-		add_lib(project, "ssl");
-		add_lib(project, "crypto");
-		add_lib(project, "vulkan");
-		if (flags->with_audio) {
-			add_lib(project, "asound");
-			add_cfiles(project, "sources/backends/linux_audio.*");
-		}
-		if (flags->with_gamepad) {
-			add_lib(project, "udev");
-		}
-	}
-	else if (platform == PLATFORM_MACOS) {
+	// Mac and iPad, Metal
+	if (platform == PLATFORM_MACOS) {
 		add_cfiles(project, "sources/backends/macos_system.*");
 		add_cfiles(project, "sources/backends/apple_net.*");
 		if (flags->with_audio) {
@@ -90,63 +43,23 @@ project_t *main() {
 		project->ios.build   = string("%d", version_code());
 		project->ios.version = string("%d", version_code());
 	}
-	else if (platform == PLATFORM_ANDROID) {
-		add_cfiles(project, "sources/backends/android_system.*");
-		add_cfiles(project, "sources/backends/posix_thread.*");
-		add_cfiles(project, "sources/backends/vulkan_gpu.*");
-		add_cfiles(project, "sources/backends/android_file_dialog.c");
-		add_cfiles(project, "sources/backends/android_net.c");
-		add_cfiles(project, "sources/backends/android_native_app_glue.c");
-		add_define(project, "IRON_ANDROID");
-		add_define(project, "IRON_VULKAN");
-		add_define(project, "VK_USE_PLATFORM_ANDROID_KHR");
-		add_lib(project, "vulkan");
-		add_lib(project, "log");
-		add_lib(project, "android");
-		if (flags->with_audio) {
-			add_lib(project, "OpenSLES");
-			add_cfiles(project, "sources/backends/android_audio.c");
-		}
-		project->android.package      = flags->package;
-		project->android.permissions  = "android.permission.INTERNET";
-		project->android.version_code = version_code();
-		project->android.version_name = string("%d", version_code());
-	}
-	else if (platform == PLATFORM_WASM) {
-		add_cfiles(project, "sources/backends/wasm_system.*");
-		add_cfiles(project, "sources/backends/wasm_thread.*");
-		if (flags->with_audio) {
-			add_cfiles(project, "sources/backends/wasm_audio.*");
-		}
-		add_cfiles(project, "sources/backends/webgpu_gpu.*");
-		add_define(project, "IRON_WASM");
-		add_define(project, "IRON_WEBGPU");
-		add_cfiles(project, "sources/miniclib/**");
-		add_include_dir(project, "sources/miniclib");
-		add_assets(project, "sources/backends/data/wasm/*", NULL, 0);
-	}
+	add_define(project, "IRON_BGRA");
 
-	if (graphics == GRAPHICS_METAL || (graphics == GRAPHICS_VULKAN && platform != PLATFORM_ANDROID)) {
-		add_define(project, "IRON_BGRA");
-	}
-
-	if (graphics == GRAPHICS_METAL) {
-		// GLSL shaders: glslang (GLSL -> SPIR-V) and SPIRV-Cross (SPIR-V -> MSL), see iron_glsl.c
-		add_define(project, "WITH_GLSL");
-		add_define(project, "SPIRV_CROSS_C_API_MSL=1");
-		add_define(project, "SPIRV_CROSS_C_API_GLSL=1");
-		add_include_dir(project, "sources/libs/glslang");
-		add_include_dir(project, "sources/libs/spirv_cross");
-		add_cfiles(project, "sources/libs/glslang/glslang/MachineIndependent/*.cpp");
-		add_cfiles(project, "sources/libs/glslang/glslang/MachineIndependent/preprocessor/*.cpp");
-		add_cfiles(project, "sources/libs/glslang/glslang/GenericCodeGen/*.cpp");
-		add_cfiles(project, "sources/libs/glslang/glslang/OSDependent/Unix/ossource.cpp");
-		add_cfiles(project, "sources/libs/glslang/glslang/CInterface/*.cpp");
-		add_cfiles(project, "sources/libs/glslang/glslang/ResourceLimits/*.cpp");
-		add_cfiles(project, "sources/libs/glslang/SPIRV/*.cpp");
-		add_cfiles(project, "sources/libs/glslang/SPIRV/CInterface/*.cpp");
-		add_cfiles(project, "sources/libs/spirv_cross/*.cpp");
-	}
+	// GLSL shaders: glslang (GLSL -> SPIR-V) and SPIRV-Cross (SPIR-V -> MSL), see iron_glsl.c
+	add_define(project, "WITH_GLSL");
+	add_define(project, "SPIRV_CROSS_C_API_MSL=1");
+	add_define(project, "SPIRV_CROSS_C_API_GLSL=1");
+	add_include_dir(project, "sources/libs/glslang");
+	add_include_dir(project, "sources/libs/spirv_cross");
+	add_cfiles(project, "sources/libs/glslang/glslang/MachineIndependent/*.cpp");
+	add_cfiles(project, "sources/libs/glslang/glslang/MachineIndependent/preprocessor/*.cpp");
+	add_cfiles(project, "sources/libs/glslang/glslang/GenericCodeGen/*.cpp");
+	add_cfiles(project, "sources/libs/glslang/glslang/OSDependent/Unix/ossource.cpp");
+	add_cfiles(project, "sources/libs/glslang/glslang/CInterface/*.cpp");
+	add_cfiles(project, "sources/libs/glslang/glslang/ResourceLimits/*.cpp");
+	add_cfiles(project, "sources/libs/glslang/SPIRV/*.cpp");
+	add_cfiles(project, "sources/libs/glslang/SPIRV/CInterface/*.cpp");
+	add_cfiles(project, "sources/libs/spirv_cross/*.cpp");
 
 	if (flags->with_plugins) {
 		add_define(project, "WITH_PLUGINS");
@@ -165,18 +78,7 @@ project_t *main() {
 	if (flags->with_raytrace) {
 		add_define(project, "WITH_RAYTRACE");
 		add_assets(project, "assets/raytrace/*", "data/{name}", 0);
-		if (graphics == GRAPHICS_DIRECT3D12) {
-			add_assets(project, "shaders/raytrace/*.cso", "data/{name}", 0);
-		}
-		else if (graphics == GRAPHICS_VULKAN) {
-			add_assets(project, "shaders/raytrace/*.spirv", "data/{name}", 0);
-		}
-		else if (graphics == GRAPHICS_METAL) {
-			add_assets(project, "shaders/raytrace/*.metal", "data/{name}", 0);
-		}
-		else if (graphics == GRAPHICS_WEBGPU) {
-			add_assets(project, "shaders/raytrace/*.wgsl", "data/{name}", 0);
-		}
+		add_assets(project, "shaders/raytrace/*.metal", "data/{name}", 0);
 	}
 
 	if (flags->export_version_info) {
@@ -187,19 +89,6 @@ project_t *main() {
 		fs_writefile(string("%s/version.json", dir), data);
 		// Adds version.json to embed.txt list
 		add_assets(project, string("%s/version.json", dir), "data/{name}", 0);
-	}
-
-	if (flags->export_data_list) {
-		char *root   = flags->dirname;
-		char *dir    = string("%s/build", root);
-		char *format = "{\"/data/export_presets\":\"%s\",\"/data/keymap_presets\":\"%s\",\"/data/locale\":\"%s\",\"/data/"
-		               "meshes\":\"%s\",\"/data/themes\":\"%s\"}";
-		char *data   = string(format, fs_list_files(string("%s/assets/export_presets", root)),
-		                      fs_list_files(string("%s/assets/keymap_presets", root)), fs_list_files(string("%s/assets/locale", root)),
-		                      fs_list_files(string("%s/assets/meshes", root)), fs_list_files("assets/themes"));
-		fs_ensuredir(dir);
-		fs_writefile(string("%s/data_list.json", dir), data);
-		add_assets(project, string("%s/data_list.json", dir), "data/{name}", 0);
 	}
 
 	if (flags->with_audio) {
@@ -222,18 +111,9 @@ project_t *main() {
 		add_define(project, "WITH_GAMEPAD");
 	}
 
-	bool with_websocket = platform == PLATFORM_LINUX || platform == PLATFORM_WINDOWS || platform == PLATFORM_MACOS;
-	if (with_websocket) {
+	if (platform == PLATFORM_MACOS) {
 		add_define(project, "WITH_WEBSOCKET");
-		if (platform == PLATFORM_WINDOWS) {
-			add_cfiles(project, "sources/backends/windows_websocket.c");
-		}
-		else if (platform == PLATFORM_LINUX) {
-			add_cfiles(project, "sources/backends/posix_websocket.c");
-		}
-		else if (platform == PLATFORM_MACOS) {
-			add_cfiles(project, "sources/backends/macos_websocket.m");
-		}
+		add_cfiles(project, "sources/backends/macos_websocket.m");
 	}
 
 	if (flags->idle_sleep) {
@@ -249,32 +129,12 @@ project_t *main() {
 		else if (platform == PLATFORM_IOS && fs_exists(string("%s/icon_ios.png", root))) {
 			project->icon = "icon_ios.png";
 		}
-		else if (platform == PLATFORM_LINUX) {
-			add_assets(project, string("%s/icon.png", root), "{name}", ASSET_NOPROCESSING | ASSET_NOEMBED);
-		}
 	}
 
-	if (flags->with_nfd && (platform == PLATFORM_WINDOWS || platform == PLATFORM_LINUX || platform == PLATFORM_MACOS)) {
+	if (flags->with_nfd && platform == PLATFORM_MACOS) {
 		add_define(project, "WITH_NFD");
 		add_cfiles(project, "sources/libs/nfd.c");
-		if (platform == PLATFORM_LINUX) {
-			add_include_dir(project, "/usr/include/gtk-3.0");
-			add_include_dir(project, "/usr/include/glib-2.0");
-			add_include_dir(project, "/usr/lib/x86_64-linux-gnu/glib-2.0/include");
-			add_include_dir(project, "/usr/include/pango-1.0");
-			add_include_dir(project, "/usr/include/cairo");
-			add_include_dir(project, "/usr/include/gdk-pixbuf-2.0");
-			add_include_dir(project, "/usr/include/atk-1.0");
-			add_include_dir(project, "/usr/lib64/glib-2.0/include");
-			add_include_dir(project, "/usr/lib/glib-2.0/include");
-			add_include_dir(project, "/usr/include/harfbuzz");
-			add_lib(project, "gtk-3");
-			add_lib(project, "gobject-2.0");
-			add_lib(project, "glib-2.0");
-		}
-		else if (platform == PLATFORM_MACOS) {
-			add_cfiles(project, "sources/libs/nfd.m");
-		}
+		add_cfiles(project, "sources/libs/nfd.m");
 	}
 
 	if (flags->with_compress) {

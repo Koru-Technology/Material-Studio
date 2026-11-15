@@ -5,9 +5,8 @@ project_t *main() {
 	flags->package             = "technology.koru.materialstudio";
 	flags->embed               = has_arg("--embed"); // !has_arg("--debug"); // clang 19
 	flags->with_physics        = true;
-	flags->with_d3dcompiler    = true;
 	flags->with_nfd            = true;
-	flags->with_compress       = platform != PLATFORM_ANDROID;
+	flags->with_compress       = true;
 	flags->with_image_write    = true;
 	flags->with_video_write    = !has_arg("tcc");
 	flags->with_eval           = true;
@@ -17,16 +16,8 @@ project_t *main() {
 	flags->with_audio          = false;
 	flags->idle_sleep          = !has_arg("--debug");
 	flags->export_version_info = true;
-	flags->export_data_list    = platform == PLATFORM_ANDROID; // .apk contents
-	bool with_tcc              = false;                        // Compile scripts with libtcc
+	bool with_tcc              = false; // Compile scripts with libtcc
 	bool with_mipmaps          = false;
-
-	if (platform == PLATFORM_WASM) {
-		flags->with_nfd         = false;
-		flags->with_compress    = false;
-		flags->with_plugins     = false;
-		flags->export_data_list = true;
-	}
 
 	project_t *project = project_create(flags->name);
 	if (platform == PLATFORM_MACOS || platform == PLATFORM_IOS) {
