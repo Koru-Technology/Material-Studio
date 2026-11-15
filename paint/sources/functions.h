@@ -1524,6 +1524,7 @@ char             *pattern_node_name(i32 i);
 i32               pattern_node_index(char *type);
 bool              pattern_node_is(ui_node_t *node);
 ui_node_socket_t *nodes_material_socket_def(char *name, char *type, f32_array_t *value, f32 min, f32 max);
+ui_node_socket_t *nodes_material_socket_ex(char *name, char *type, u32 color, f32_array_t *value, f32 min, f32 max, f32 precision, i32 display);
 ui_node_button_t *nodes_material_button_def(char *name, char *type, f32 value, char *data);
 void              material_mix_node_init();
 void              mask_nodes_init();

@@ -55,16 +55,7 @@ void repeat_node_init() {
 	                                                    .inputs  = any_array_create_from_raw((void *[]){}, 0),
 	                                                    .outputs = any_array_create_from_raw(
 	                                                        (void *[]){
-	                                                            ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                                                                          .node_id       = 0,
-	                                                                                          .name          = _tr("Out"),
-	                                                                                          .type          = "BOOL",
-	                                                                                          .color         = 0xff6363c7,
-	                                                                                          .default_value = f32_array_create_xyz(0.0, 0.0, 0.0),
-	                                                                                          .min           = 0.0,
-	                                                                                          .max           = 1.0,
-	                                                                                          .precision     = 100,
-	                                                                                          .display       = 0}),
+	                                                            nodes_material_socket_ex(_tr("Out"), "BOOL", 0xff6363c7, f32_array_create_xyz(0.0, 0.0, 0.0), 0.0, 1.0, 100, 0),
 	                                                        },
 	                                                        1),
 	                                                    .buttons = any_array_create_from_raw(

@@ -300,16 +300,7 @@ static ui_node_socket_t *mm_nodes_socket(ui_node_socket_array_t *sockets, char *
 	for (i32 i = 0; i < size; ++i) {
 		dv->buffer[i] = i < n ? v[i] : (n == 1 && i < 3 ? v[0] : (i == 3 && string_equals(type, "RGBA") ? 1.0 : 0.0));
 	}
-	return ALLOC_INIT(ui_node_socket_t, {.id            = 0,
-	                                     .node_id       = 0,
-	                                     .name          = mm_nodes_unique(sockets, name),
-	                                     .type          = type,
-	                                     .color         = mm_nodes_socket_color(type),
-	                                     .default_value = dv,
-	                                     .min           = 0.0,
-	                                     .max           = 1.0,
-	                                     .precision     = 100,
-	                                     .display       = 0});
+	return nodes_material_socket_ex(mm_nodes_unique(sockets, name), type, mm_nodes_socket_color(type), dv, 0.0, 1.0, 100, 0);
 }
 
 // Generic expansion (gen_shader.gd set_shader_model): the run of items whose field holds "#" repeats gs times with # as

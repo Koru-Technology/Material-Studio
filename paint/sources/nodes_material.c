@@ -145,3 +145,23 @@ ui_node_t *nodes_material_create_node(char *node_type, node_group_t *group) {
 	any_array_push(canvas->nodes, node);
 	return node;
 }
+
+// Socket of a node definition, the color of its type, precision 100
+ui_node_socket_t *nodes_material_socket_def(char *name, char *type, f32_array_t *value, f32 min, f32 max) {
+	u32 color = string_equals(type, "VALUE") ? 0xffa1a1a1 : string_equals(type, "VECTOR") ? 0xff6363c7 : 0xffc7c729;
+	return nodes_material_socket_ex(name, type, color, value, min, max, 100, 0);
+}
+
+// Socket of a node definition with its own color, precision or display
+ui_node_socket_t *nodes_material_socket_ex(char *name, char *type, u32 color, f32_array_t *value, f32 min, f32 max, f32 precision, i32 display) {
+	return ALLOC_INIT(ui_node_socket_t, {.id            = 0,
+	                                     .node_id       = 0,
+	                                     .name          = name,
+	                                     .type          = type,
+	                                     .color         = color,
+	                                     .default_value = value,
+	                                     .min           = min,
+	                                     .max           = max,
+	                                     .precision     = precision,
+	                                     .display       = display});
+}
