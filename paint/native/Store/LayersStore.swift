@@ -94,6 +94,8 @@ struct MaskEffect: Equatable {
 	let isFilter: Bool
 	let isGenerator: Bool
 	let needsAO: Bool
+	let needsThickness: Bool
+	let needsIDMap: Bool
 
 	init(_ e: app_mask_effect_t) {
 		type = e.type
@@ -105,6 +107,8 @@ struct MaskEffect: Equatable {
 		isFilter = e.is_filter
 		isGenerator = e.is_generator
 		needsAO = e.needs_ao
+		needsThickness = e.needs_thickness
+		needsIDMap = e.needs_id_map
 	}
 
 	var name: String {
@@ -172,6 +176,10 @@ final class LayersStore: ChangeOnly {
 	static let blendingNames: [String] = (0..<app_layer_blending_count()).map { String(cString: app_layer_blending_name($0)) }
 	static let maskBlendingNames: [String] = (0..<app_mask_blending_count()).map { String(cString: app_mask_blending_name($0)) }
 	static let effectTypeNames: [String] = (0..<app_mask_effect_type_count()).map { String(cString: app_mask_effect_type_name($0)) }
+	// The Add Effect menu's sections, all types but Paint
+	static let effectSources: [Int32] = (1..<app_mask_effect_type_count()).filter { !app_mask_effect_type_is_filter($0) && !app_mask_effect_type_is_generator($0) }
+	static let effectFilters: [Int32] = (1..<app_mask_effect_type_count()).filter { app_mask_effect_type_is_filter($0) }
+	static let effectGenerators: [Int32] = (1..<app_mask_effect_type_count()).filter { app_mask_effect_type_is_generator($0) }
 	static let effectParams: [[MaskParam]] = (0..<app_mask_effect_type_count()).map { type in
 		var p = app_mask_param_t()
 		return (0..<app_mask_effect_param_count(type)).compactMap { i in

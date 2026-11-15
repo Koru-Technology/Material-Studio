@@ -1,6 +1,7 @@
 #include "../global.h"
 
-// ID masks: the project's ID map paints each part of the model a flat color. Picking parts on the mesh makes a mask of them.
+// ID masks: the project's ID map paints each part of the model a flat color. Picking parts on the mesh makes a mask of them,
+// or sets the parts of a mask's ID Selection effect (ui_id_mask_begin_effect).
 // While picking, the viewport shows the ID map (TOOL_TYPE_COLORID) and each tap adds or removes the part under it.
 
 #define UI_ID_MASK_MAX       16    // Parts in one mask, texels of texpaint_colorid_sel
@@ -14,6 +15,10 @@ static i32           ui_id_mask_assets_before = 0; // Assets before importing an
 static char         *ui_id_mask_import_path  = NULL;
 static ui_window_t  *ui_id_mask_bar          = NULL;
 static i32           ui_id_mask_bar_count    = -1; // Count the bar was drawn with
+static slot_layer_t *ui_id_mask_effect_mask  = NULL; // Picking for effect ui_id_mask_effect of this mask, NULL: a new mask
+static i32           ui_id_mask_effect       = -1;   // Stack index
+static slot_layer_t *ui_id_mask_next_mask    = NULL; // Effect of the next begin
+static i32           ui_id_mask_next_effect  = -1;
 
 asset_t *project_id_map_asset() {
 	if (g_project->id_map == NULL) {
@@ -130,6 +135,16 @@ static void ui_id_mask_write_colors(void *_) {
 	g_context->ddirty = 2;
 }
 
+// The ID Selection effect picked for, NULL when gone (an undo) or picking for a new mask
+static bool ui_id_mask_effect_get(mask_effect_t *e) {
+	slot_layer_t *m = ui_id_mask_effect_mask;
+	if (m == NULL || array_index_of(g_project->_->layers, m) < 0 || ui_id_mask_effect >= mask_stack_count(m)) {
+		return false;
+	}
+	*e = mask_stack_get(m, ui_id_mask_effect);
+	return e->type == MASK_EFFECT_ID_SELECTION;
+}
+
 static void ui_id_mask_start_picking() {
 	ui_id_mask_count        = 0;
 	ui_id_mask_pick_pending = false;
@@ -137,6 +152,13 @@ static void ui_id_mask_start_picking() {
 	ui_id_mask_prev_tool    = g_context->tool == TOOL_TYPE_COLORID ? TOOL_TYPE_BRUSH : g_context->tool;
 	ui_id_mask_active       = true;
 	ui_id_mask_bar_count    = -1;
+	mask_effect_t e;
+	if (ui_id_mask_effect_get(&e)) { // Its parts picked already
+		i32 n = math_min(math_max((i32)e.params[0], 0), MASK_ID_SELECTION_MAX);
+		for (i32 i = 0; i < n; ++i) {
+			ui_id_mask_colors[ui_id_mask_count++] = (u32)e.params[1 + i] & 0x00ffffff;
+		}
+	}
 	sys_notify_on_next_frame(&ui_id_mask_write_colors, NULL);
 	context_select_tool(TOOL_TYPE_COLORID);
 	base_redraw_ui();
@@ -192,9 +214,12 @@ static void ui_id_mask_no_map_box() {
 	}
 }
 
-// The layer an ID mask is made for: the layer of a selected mask or filter
+// The layer an ID mask is made for: the layer of a selected mask or filter. The mask itself when picking for its effect.
 static slot_layer_t *ui_id_mask_layer() {
 	slot_layer_t *l = g_context->layer;
+	if (ui_id_mask_effect_mask != NULL) {
+		return array_index_of(g_project->_->layers, ui_id_mask_effect_mask) >= 0 ? ui_id_mask_effect_mask : NULL;
+	}
 	if (slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
 		l = l->parent;
 	}
@@ -203,7 +228,10 @@ static slot_layer_t *ui_id_mask_layer() {
 
 static void ui_id_mask_begin_on_next_frame(void *_) {
 	ui_id_mask_cancel();
-	slot_layer_t *l = ui_id_mask_layer();
+	ui_id_mask_effect_mask = ui_id_mask_next_mask;
+	ui_id_mask_effect      = ui_id_mask_next_effect;
+	ui_id_mask_next_mask   = NULL;
+	slot_layer_t *l        = ui_id_mask_layer();
 	if (l == NULL) {
 		return;
 	}
@@ -219,6 +247,18 @@ static void ui_id_mask_begin_on_next_frame(void *_) {
 }
 
 void ui_id_mask_begin() {
+	ui_id_mask_next_mask = NULL;
+	sys_notify_on_next_frame(&ui_id_mask_begin_on_next_frame, NULL);
+}
+
+// Picks the parts of ID Selection effect i (stack index) of mask m, starting from the ones it has. Done sets them as one
+// undo step, Cancel leaves the effect as it was.
+void ui_id_mask_begin_effect(slot_layer_t *m, i32 i) {
+	if (m == NULL || !slot_layer_is_mask(m) || i < 0 || i >= mask_stack_count(m) || mask_stack_get(m, i).type != MASK_EFFECT_ID_SELECTION) {
+		return;
+	}
+	ui_id_mask_next_mask   = m;
+	ui_id_mask_next_effect = i;
 	sys_notify_on_next_frame(&ui_id_mask_begin_on_next_frame, NULL);
 }
 
@@ -247,7 +287,7 @@ void ui_id_mask_toggle(u32 color) {
 			return;
 		}
 	}
-	if (ui_id_mask_count < UI_ID_MASK_MAX) {
+	if (ui_id_mask_count < (ui_id_mask_effect_mask != NULL ? MASK_ID_SELECTION_MAX : UI_ID_MASK_MAX)) {
 		ui_id_mask_colors[ui_id_mask_count++] = color;
 		sys_notify_on_next_frame(&ui_id_mask_write_colors, NULL);
 	}
@@ -292,8 +332,37 @@ static void ui_id_mask_build(void *_m) {
 	base_redraw_ui();
 }
 
+// The picked parts become the parts of the effect, one undo step when they changed
+static void ui_id_mask_done_effect() {
+	slot_layer_t *m = ui_id_mask_effect_mask;
+	mask_effect_t e;
+	bool          found = ui_id_mask_effect_get(&e);
+	ui_id_mask_cancel();
+	if (!found) {
+		return;
+	}
+	mask_effect_t picked = e;
+	picked.params[0]     = (f32)ui_id_mask_count;
+	for (i32 i = 0; i < MASK_ID_SELECTION_MAX; ++i) {
+		picked.params[1 + i] = i < ui_id_mask_count ? (f32)ui_id_mask_colors[i] : 0.0;
+	}
+	if (memcmp(picked.params, e.params, sizeof(e.params)) == 0) {
+		return;
+	}
+	slot_layer_t *_layer = g_context->layer;
+	g_context->layer     = m; // History of the mask
+	history_mask_stack();
+	g_context->layer = _layer;
+	mask_stack_set(m, ui_id_mask_effect, picked);
+	ui_dock_redraw(TAB_AREA_SIDEBAR0);
+}
+
 // The picked parts become a mask of the layer
 void ui_id_mask_done() {
+	if (ui_id_mask_active && ui_id_mask_effect_mask != NULL) {
+		ui_id_mask_done_effect();
+		return;
+	}
 	if (!ui_id_mask_active || ui_id_mask_count == 0) {
 		return;
 	}
@@ -355,7 +424,7 @@ void ui_id_mask_render_ui() {
 		if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
 			ui_id_mask_cancel();
 		}
-		g_ui->enabled = ui_id_mask_count > 0;
+		g_ui->enabled = ui_id_mask_count > 0 || ui_id_mask_effect_mask != NULL; // An effect may pick none
 		if (ui_icon_button(tr("Done"), ICON_CHECK, UI_ALIGN_CENTER)) {
 			ui_id_mask_done();
 		}

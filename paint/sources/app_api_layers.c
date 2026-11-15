@@ -155,6 +155,8 @@ uint32_t app_layers_props_signature(void) {
 		h = app_hash(h, l->mask_effects != NULL ? l->mask_effects->length : 0);
 	}
 	h = app_hash(h, mesh_maps_get_asset(MESH_MAP_AO) != NULL); // app_mask_effect_t.needs_ao
+	h = app_hash(h, mesh_maps_get_asset(MESH_MAP_THICKNESS) != NULL);
+	h = app_hash(h, project_id_map_asset() != NULL);
 	// The fill material picker lists the project materials, the UV map picker depends on the mesh
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		h = app_hash_str(h, g_project->_->materials->buffer[i]->canvas->name);
@@ -247,9 +249,9 @@ bool app_layer_can_new(int32_t kind) {
 	case APP_LAYER_NEW_WHITE_MASK:
 	case APP_LAYER_NEW_HEIGHT_MASK:
 		return slot_layer_takes_mask(app_layer_mask_target(g_context->layer));
-	case APP_LAYER_NEW_ID_MASK: {
+	case APP_LAYER_NEW_ID_MASK: { // Into the layer's mask, as Painter's mask with color selection
 		slot_layer_t *target = app_layer_mask_target(g_context->layer);
-		return slot_layer_takes_mask(target) && !slot_layer_is_group(target);
+		return target != NULL && !slot_layer_is_group(target);
 	}
 	}
 	return kind >= APP_LAYER_NEW_PAINT && kind <= APP_LAYER_NEW_ID_MASK;
@@ -321,7 +323,7 @@ bool app_layer_new(int32_t kind) {
 		layers_create_filter();
 		break;
 	case APP_LAYER_NEW_ID_MASK:
-		ui_id_mask_begin();
+		ok = app_layer_add_effect(app_layer_mask_target(l)->id, MASK_EFFECT_ID_SELECTION) >= 0; // Starts picking
 		break;
 	default:
 		ok = app_layer_new_mask(l, kind) != NULL;
@@ -776,8 +778,10 @@ int32_t app_layer_uv_type(int32_t id) {
 
 // Mask effects. The stack is listed bottom first in slot_layer_t.mask_effects, the API counts from the top.
 
-_Static_assert((i32)APP_MASK_EFFECT_DIRECTIONAL == (i32)MASK_EFFECT_DIRECTIONAL && APP_MASK_EFFECT_PARAMS == MASK_EFFECT_PARAMS &&
-                   APP_MASK_NOISE_FIRST == MASK_EFFECT_NOISE_SCALE && (i32)APP_MASK_PARAM_SEED == (i32)MASK_PARAM_SEED,
+_Static_assert((i32)APP_MASK_EFFECT_DIRECTIONAL == (i32)MASK_EFFECT_DIRECTIONAL && (i32)APP_MASK_EFFECT_ANCHOR == (i32)MASK_EFFECT_ANCHOR &&
+                   APP_MASK_EFFECT_ANCHOR + 1 == MASK_EFFECT_COUNT && APP_MASK_EFFECT_PARAMS == MASK_EFFECT_PARAMS &&
+                   APP_MASK_NOISE_FIRST == MASK_EFFECT_NOISE_SCALE && APP_MASK_ID_SELECTION_MAX == MASK_ID_SELECTION_MAX &&
+                   (i32)APP_MASK_PARAM_LAYER == (i32)MASK_PARAM_LAYER,
                "app_api_layers.h mirrors enums.h");
 
 static slot_layer_t *app_mask_by_id(int32_t id) {
@@ -818,14 +822,16 @@ bool app_mask_effect(int32_t id, int32_t index, app_mask_effect_t *out) {
 	}
 	mask_effect_t e = mask_stack_get(m, i);
 	*out            = (app_mask_effect_t){
-	    .type         = e.type,
-	    .visible      = e.visible,
-	    .opacity      = e.opacity,
-	    .blending     = e.blending,
-	    .is_paint     = e.type == MASK_EFFECT_PAINT,
-	    .is_filter    = mask_effect_is_filter(e.type),
-	    .is_generator = mask_effect_is_generator(e.type),
-	    .needs_ao     = e.type == MASK_EFFECT_DIRT && mesh_maps_get_asset(MESH_MAP_AO) == NULL,
+	    .type            = e.type,
+	    .visible         = e.visible,
+	    .opacity         = e.opacity,
+	    .blending        = e.blending,
+	    .is_paint        = e.type == MASK_EFFECT_PAINT,
+	    .is_filter       = mask_effect_is_filter(e.type),
+	    .is_generator    = mask_effect_is_generator(e.type),
+	    .needs_ao        = e.type == MASK_EFFECT_DIRT && mesh_maps_get_asset(MESH_MAP_AO) == NULL,
+	    .needs_thickness = e.type == MASK_EFFECT_THICKNESS && mesh_maps_get_asset(MESH_MAP_THICKNESS) == NULL,
+	    .needs_id_map    = e.type == MASK_EFFECT_ID_SELECTION && project_id_map_asset() == NULL,
 	};
 	for (i32 j = 0; j < MASK_EFFECT_PARAMS; ++j) {
 		out->params[j] = e.params[j];
@@ -839,6 +845,14 @@ int32_t app_mask_effect_type_count(void) {
 
 const char *app_mask_effect_type_name(int32_t type) {
 	return type >= 0 && type < MASK_EFFECT_COUNT ? tr(mask_effect_name(type)) : NULL;
+}
+
+bool app_mask_effect_type_is_filter(int32_t type) {
+	return type >= 0 && type < MASK_EFFECT_COUNT && mask_effect_is_filter(type);
+}
+
+bool app_mask_effect_type_is_generator(int32_t type) {
+	return type >= 0 && type < MASK_EFFECT_COUNT && mask_effect_is_generator(type);
 }
 
 int32_t app_mask_effect_param_count(int32_t type) {
@@ -887,6 +901,9 @@ int32_t app_mask_add_effect(int32_t id, int32_t type) {
 	}
 	g_context->mask_effect = at;
 	m->show_panel          = true; // The engine's layers tab lists the effects under the mask
+	if (type == MASK_EFFECT_ID_SELECTION) {
+		ui_id_mask_begin_effect(m, at); // Its parts are picked right away
+	}
 	app_mask_done(true);
 	return mask_stack_count(m) - 1 - at;
 }
@@ -970,6 +987,56 @@ bool app_mask_reset_effect(int32_t id, int32_t index) {
 	return app_mask_edit(id, index, app_mask_edit_reset, 0);
 }
 
+bool app_mask_effect_pick_ids(int32_t id, int32_t index) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           i = app_mask_stack_index(m, index);
+	if (i < 0 || mask_stack_get(m, i).type != MASK_EFFECT_ID_SELECTION) {
+		return false;
+	}
+	ui_id_mask_begin_effect(m, i);
+	iron_delay_idle_sleep();
+	return true;
+}
+
+// Anchors: an Anchor effect reads another paint or fill layer, not the layer the mask is of
+static bool app_mask_anchors(slot_layer_t *m, slot_layer_t *l) {
+	return l != m->parent && slot_layer_is_layer(l) && !slot_layer_is_filter(l);
+}
+
+// Layer i of the anchor list of mask id, top first as the layers panel
+static slot_layer_t *app_mask_anchor_layer(int32_t id, int32_t i) {
+	slot_layer_t *m = app_mask_by_id(id);
+	if (m == NULL || i < 0) {
+		return NULL;
+	}
+	for (i32 k = g_project->_->layers->length - 1; k >= 0; --k) {
+		slot_layer_t *l = g_project->_->layers->buffer[k];
+		if (app_mask_anchors(m, l) && i-- == 0) {
+			return l;
+		}
+	}
+	return NULL;
+}
+
+int32_t app_mask_anchor_layer_count(int32_t id) {
+	slot_layer_t *m = app_mask_by_id(id);
+	i32           n = 0;
+	for (i32 k = 0; m != NULL && k < g_project->_->layers->length; ++k) {
+		n += app_mask_anchors(m, g_project->_->layers->buffer[k]);
+	}
+	return n;
+}
+
+int32_t app_mask_anchor_layer_id(int32_t id, int32_t i) {
+	slot_layer_t *l = app_mask_anchor_layer(id, i);
+	return l != NULL ? l->id : -1;
+}
+
+const char *app_mask_anchor_layer_name(int32_t id, int32_t i) {
+	slot_layer_t *l = app_mask_anchor_layer(id, i);
+	return l != NULL ? l->name : "";
+}
+
 // Slider drags
 
 static slot_layer_t *app_mask_value_mask  = NULL; // Effect and field of the drag in progress
@@ -1005,6 +1072,12 @@ bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v
 	}
 	f32 *f    = field < 0 ? &e.opacity : &e.params[field];
 	f32  c    = field < 0 ? math_max(0.0, math_min(1.0, v)) : mask_effect_param_clamp(e.type, field, v);
+	if (field >= 0 && mask_effect_param_at(e.type, field)->kind == MASK_PARAM_LAYER && c >= 0.0) {
+		slot_layer_t *l = app_layer_by_id((i32)c);
+		if (l == NULL || !app_mask_anchors(m, l)) {
+			return false; // Not a layer it can reference
+		}
+	}
 	bool drag = m == app_mask_value_mask && i == app_mask_value_index && field == app_mask_value_field;
 	if (!drag) { // A change without a drag: its own undo step
 		if (*f == c) {
@@ -1050,6 +1123,16 @@ float app_mask_effect_value(int32_t id, int32_t index, int32_t field) {
 bool app_mask_effect_needs_ao(int32_t id, int32_t index) {
 	app_mask_effect_t e;
 	return app_mask_effect(id, index, &e) && e.needs_ao;
+}
+
+bool app_mask_effect_needs_thickness(int32_t id, int32_t index) {
+	app_mask_effect_t e;
+	return app_mask_effect(id, index, &e) && e.needs_thickness;
+}
+
+bool app_mask_effect_needs_id_map(int32_t id, int32_t index) {
+	app_mask_effect_t e;
+	return app_mask_effect(id, index, &e) && e.needs_id_map;
 }
 
 uint32_t app_layer_previews_version(void) {

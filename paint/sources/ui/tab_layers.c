@@ -798,6 +798,9 @@ static void tab_layers_mask_effect_add(slot_layer_t *m, i32 type) {
 	if (at >= 0) {
 		g_context->mask_effect = at;
 	}
+	if (at >= 0 && type == MASK_EFFECT_ID_SELECTION) {
+		ui_id_mask_begin_effect(m, at); // Its parts are picked right away
+	}
 	m->show_panel = true;
 }
 
@@ -818,7 +821,7 @@ static void tab_layers_draw_mask_effect_menu(slot_layer_t *m) {
 	if (ui_menu_button(tr("Invert"), "", ICON_INVERT)) {
 		tab_layers_mask_effect_add(m, MASK_EFFECT_INVERT);
 	}
-	for (i32 type = MASK_EFFECT_EDGE_WEAR; type <= MASK_EFFECT_DIRECTIONAL; ++type) {
+	for (i32 type = MASK_EFFECT_EDGE_WEAR; type < MASK_EFFECT_COUNT; ++type) {
 		if (ui_menu_button(string("%s %s", tr("Add"), tab_layers_mask_effect_name(type)), "", ICON_NONE)) {
 			tab_layers_mask_effect_add(m, type);
 		}
@@ -868,7 +871,27 @@ static i32 tab_layers_mask_effect_param_rows(i32 type) {
 	i32 rows  = tab_layers_mask_effect_is_filter(type) ? 1 : 2; // Opacity, blending
 	i32 count = 0;
 	mask_effect_params(type, &count);
-	return rows + count + (count > 0 ? 1 : 0); // Settings, reset
+	return rows + count + (count > 0 ? 1 : 0) + (type == MASK_EFFECT_ID_SELECTION ? 1 : 0); // Settings, reset, pick parts
+}
+
+// Layer a layer setting (anchor) of mask m picks: -1 none, then the paint and fill layers top first but m's own
+static i32 tab_layers_mask_effect_layer_combo(slot_layer_t *m, i32 id, char *label, i32 handle_id) {
+	string_array_t *names = any_array_create_from_raw((void *[]){tr("None")}, 1);
+	i32_array_t    *ids   = i32_array_create_from_raw((i32[]){-1}, 1);
+	i32             pos   = 0;
+	for (i32 k = g_project->_->layers->length - 1; k >= 0; --k) {
+		slot_layer_t *l = g_project->_->layers->buffer[k];
+		if (l != m->parent && slot_layer_is_layer(l) && !slot_layer_is_filter(l)) {
+			if (l->id == id) {
+				pos = ids->length;
+			}
+			any_array_push(names, l->name);
+			i32_array_push(ids, l->id);
+		}
+	}
+	ui_set_next_id(handle_id);
+	ui_combo(&pos, names, label, true, UI_ALIGN_LEFT, false);
+	return ui_item_changed() ? ids->buffer[pos] : id;
 }
 
 // Parameters of effect i under its row, the block is padded to whole layer rows
@@ -918,11 +941,22 @@ static void tab_layers_draw_mask_effect_params(slot_layer_t *m, i32 i, f32 x, f3
 				mask_stack_set(m, i, e);
 			}
 		}
-		else if (ui_button(string("%s (%d)", tr("Shuffle"), (i32)e.params[p->index]), UI_ALIGN_CENTER, "")) { // Seed
+		else if (p->kind == MASK_PARAM_LAYER) {
+			i32 id = tab_layers_mask_effect_layer_combo(m, (i32)e.params[p->index], tr(p->name), 1 + i * MASK_EFFECT_STRIDE + 4 + p->index);
+			if (id != (i32)e.params[p->index]) {
+				history_mask_stack();
+				e.params[p->index] = id;
+				mask_stack_set(m, i, e);
+			}
+		}
+		else if (p->kind == MASK_PARAM_SEED && ui_button(string("%s (%d)", tr("Shuffle"), (i32)e.params[p->index]), UI_ALIGN_CENTER, "")) {
 			history_mask_stack();
 			e.params[p->index] = iron_random_get_max(1000);
 			mask_stack_set(m, i, e);
 		}
+	}
+	if (e.type == MASK_EFFECT_ID_SELECTION && ui_button(string("%s (%d)", tr("Pick Parts"), (i32)e.params[0]), UI_ALIGN_CENTER, "")) {
+		ui_id_mask_begin_effect(m, i);
 	}
 	if (count > 0 && ui_button(tr("Reset"), UI_ALIGN_CENTER, "")) {
 		history_mask_stack();

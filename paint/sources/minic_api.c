@@ -704,6 +704,7 @@ void minic_register_builtins() {
 	MINIC_O(mask_effects, f32_array_t);
 	MINIC_P(texmask);
 	MINIC_B(mask_stack_dirty);
+	MINIC_I(revision);
 	MINIC_END();
 
 	MINIC_STRUCT(ui_nodes_t);

@@ -2,18 +2,20 @@
 
 // One effect of a mask stack (util_mask_stack.c): reads the result below (texa), writes it with the effect applied
 layout(set = 0, binding = 0, std140) uniform Constants {
-	layout(offset = 0) int type;      // mask_effect_type_t
+	layout(offset = 0) int type;      // mask_effect_type_t, -1 downsamples texa for a blur
 	layout(offset = 4) int blending;  // mask_blend_t, sources only
 	layout(offset = 8) float opac;
 	layout(offset = 16) vec4 params0; // params[0..3]
 	layout(offset = 32) vec4 params1; // params[4..7]
 	layout(offset = 48) vec4 params2; // params[8..11]
 	layout(offset = 64) vec4 params3; // params[12..15]
+	layout(offset = 80) vec2 src_size; // ID map size for ID Selection, texa size for the downsample
 } constants;
 
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
 layout(set = 0, binding = 2) uniform texture2D texa;   // Accumulated
-layout(set = 0, binding = 3) uniform texture2D texsrc; // Paint effect texpaint, a generator's cached output
+layout(set = 0, binding = 3) uniform texture2D texsrc; // Paint effect texpaint, a generator's cached output, the ID map,
+                                                       // the blurred result, the anchored layer
 
 layout(location = 0) VARYING Varyings {
 	vec2 tex;
@@ -54,15 +56,64 @@ float blend(float a, float v, int mode) {
 	return v; // Normal
 }
 
+// Picked part i (0..14) of an ID Selection, 0xrrggbb as a float
+float id_part(int i) {
+	vec4 p = i < 3 ? constants.params0 : i < 7 ? constants.params1 : i < 11 ? constants.params2 : constants.params3;
+	int  k = (i + 1) % 4;
+	return k == 0 ? p.x : k == 1 ? p.y : k == 2 ? p.z : p.w;
+}
+
+// The ID map texel matches a picked part within ui_id_mask.c's tolerance
+float id_selected(vec3 c) {
+	int n = int(constants.params0.x + 0.5);
+	for (int i = 0; i < 15; i += 1) {
+		if (i >= n) {
+			break;
+		}
+		float f = floor(id_part(i) + 0.5);
+		float r = floor(f / 65536.0);
+		float g = floor((f - r * 65536.0) / 256.0);
+		float b = f - r * 65536.0 - g * 256.0;
+		vec3  d = abs(vec3(r, g, b) / 255.0 - c);
+		if (d.x < 0.02 && d.y < 0.02 && d.z < 0.02) {
+			return 1.0;
+		}
+	}
+	return 0.0;
+}
+
 void main() {
+	if (constants.type == -1) { // Downsample by params0.x, 2x2 texels a linear tap
+		int   s   = int(constants.params0.x + 0.5);
+		vec2  inv = vec2(1.0, 1.0) / constants.src_size;
+		vec2  o   = floor(vin.tex * constants.src_size / float(s)) * float(s);
+		float sum = 0.0;
+		int   h   = s / 2;
+		if (h == 0) {
+			sum = textureLod(sampler2D(texa, sampler_linear), (o + 0.5) * inv, 0.0).r;
+		}
+		else {
+			for (int j = 0; j < 16; j += 1) {
+				if (j >= h) {
+					break;
+				}
+				for (int i = 0; i < 16; i += 1) {
+					if (i >= h) {
+						break;
+					}
+					sum += textureLod(sampler2D(texa, sampler_linear), (o + vec2(float(i), float(j)) * 2.0 + 1.0) * inv, 0.0).r;
+				}
+			}
+			sum /= float(h * h);
+		}
+		frag_color = vec4(sum, sum, sum, 1.0);
+		return;
+	}
+
 	float a = textureLod(sampler2D(texa, sampler_linear), vin.tex, 0.0).r;
 	float r = a;
 
-	if (constants.type == 0 || constants.type >= 4) { // Paint, generators
-		float v = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
-		r = blend(a, v, constants.blending);
-	}
-	else if (constants.type == 1) { // Fill
+	if (constants.type == 1) { // Fill
 		r = blend(a, constants.params0.x, constants.blending);
 	}
 	else if (constants.type == 2) { // Levels
@@ -72,6 +123,29 @@ void main() {
 	}
 	else if (constants.type == 3) { // Invert
 		r = 1.0 - a;
+	}
+	else if (constants.type == 8) { // ID Selection, texsrc the ID map (black without one)
+		vec2  texel = min(vin.tex * constants.src_size, constants.src_size - vec2(1.0, 1.0));
+		vec3  c     = texelFetch(sampler2D(texsrc, sampler_linear), ivec2(int(texel.x), int(texel.y)), 0).rgb;
+		float v     = constants.src_size.x > 1.0 ? id_selected(c) : 0.0;
+		r           = blend(a, v, constants.blending);
+	}
+	else if (constants.type == 12) { // Histogram Scan: a ramp of width 1 - contrast centred on 1 - position
+		float w = max(1.0 - constants.params0.y, 0.0001);
+		float c = 1.0 - constants.params0.x;
+		r       = clamp((a - (c - w * 0.5)) / w, 0.0, 1.0);
+	}
+	else if (constants.type == 13) { // Blur, texsrc the blurred result
+		r = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
+	}
+	else if (constants.type == 14) { // Anchor: mask (r), height or opacity (a) of another layer
+		vec4  s = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0);
+		float v = constants.params0.y < 0.5 ? s.r : s.a;
+		r       = blend(a, v, constants.blending);
+	}
+	else { // Paint, generators
+		float v = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
+		r = blend(a, v, constants.blending);
 	}
 
 	float o = clamp(mix(a, clamp(r, 0.0, 1.0), constants.opac), 0.0, 1.0);

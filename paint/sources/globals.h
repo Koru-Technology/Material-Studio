@@ -94,6 +94,7 @@ i32              pipes_params0_mask_stack;
 i32              pipes_params1_mask_stack;
 i32              pipes_params2_mask_stack;
 i32              pipes_params3_mask_stack;
+i32              pipes_src_size_mask_stack;
 gpu_pipeline_t  *pipes_cursor;
 i32              pipes_cursor_vp;
 i32              pipes_cursor_inv_vp;

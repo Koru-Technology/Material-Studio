@@ -567,6 +567,7 @@ void render_path_paint_commands_paint(bool dilation) {
 	if (slot_layer_is_mask(g_context->layer)) {
 		g_context->layer->mask_stack_dirty = true; // The paint effect changes
 	}
+	mask_stack_layer_changed(g_context->layer); // Masks anchoring it follow the stroke
 	if (render_path_paint_batched() && !render_path_paint_batch_ready) { // Single draw, from the current brush state
 		render_path_paint_batch_count = 0;
 		render_path_paint_batch_add();

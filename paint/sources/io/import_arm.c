@@ -1130,6 +1130,8 @@ void import_arm_run_project(char *path) {
 		if (ld->parent >= 0) {
 			g_project->_->layers->buffer[i]->parent = g_project->_->layers->buffer[ld->parent];
 		}
+		// Anchors saved the index of their layer, it has an id now
+		mask_stack_anchors_from_index(g_project->_->layers->buffer[i]->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length);
 	}
 
 	// Layer

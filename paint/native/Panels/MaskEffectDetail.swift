@@ -141,6 +141,13 @@ func maskEffectSymbol(_ type: Int32) -> String {
 	case APP_MASK_EFFECT_DIRT: "aqi.medium"
 	case APP_MASK_EFFECT_POSITION: "square.bottomhalf.filled"
 	case APP_MASK_EFFECT_DIRECTIONAL: "sun.max"
+	case APP_MASK_EFFECT_ID_SELECTION: "square.grid.3x3.square"
+	case APP_MASK_EFFECT_NOISE: "cloud"
+	case APP_MASK_EFFECT_LIGHT: "lightbulb"
+	case APP_MASK_EFFECT_THICKNESS: "rectangle.compress.vertical"
+	case APP_MASK_EFFECT_HISTOGRAM: "chart.bar"
+	case APP_MASK_EFFECT_BLUR: "drop"
+	case APP_MASK_EFFECT_ANCHOR: "link"
 	default: "wand.and.stars"
 	}
 }
@@ -204,10 +211,26 @@ private struct MaskEffectSections: View {
 			}
 		}
 
+		if effect.type == Int32(APP_MASK_EFFECT_ID_SELECTION.rawValue) {
+			let parts = max(Int(effect.params[0]), 0)
+			Section {
+				LabeledContent("Parts", value: parts == 1 ? "1 part" : "\(parts) parts")
+				Button("Pick Parts…", systemImage: "hand.tap") {
+					AppStore.shared.perform { _ = app_mask_effect_pick_ids(layerID, index) }
+				}
+			} header: {
+				Text("Settings")
+			} footer: {
+				if effect.needsIDMap {
+					Text("This project has no ID map yet: picking asks to import one.")
+				}
+			}
+		}
+
 		if !own.isEmpty {
 			Section {
 				ForEach(own) { setting($0) }
-				if effect.needsAO {
+				if effect.needsAO || effect.needsThickness {
 					Button("Bake Mesh Maps…", systemImage: "flame") {
 						AppStore.shared.perform { app_command(Int32(APP_COMMAND_BAKE_MESH_MAPS.rawValue)) }
 					}
@@ -217,6 +240,12 @@ private struct MaskEffectSections: View {
 			} footer: {
 				if effect.needsAO {
 					Text("No AO map: cavity only")
+				}
+				else if effect.needsThickness {
+					Text("No thickness map")
+				}
+				else if effect.type == Int32(APP_MASK_EFFECT_ANCHOR.rawValue) {
+					Text("Uses another layer's mask, height or opacity")
 				}
 			}
 		}
@@ -253,6 +282,16 @@ private struct MaskEffectSections: View {
 				.pickerStyle(.segmented)
 				.labelsHidden()
 			}
+		case APP_MASK_PARAM_LAYER:
+			let anchors = anchorLayers
+			Picker(p.name, selection: Binding(get: { anchors.contains { $0.id == Int32(value) } ? Int32(value) : -1 }, set: { v in
+				AppStore.shared.perform { _ = app_mask_set_effect_value(layerID, index, p.index, Float(v)) }
+			})) {
+				Text("None").tag(Int32(-1))
+				ForEach(anchors, id: \.id) { layer in
+					Text(layer.name).tag(layer.id)
+				}
+			}
 		case APP_MASK_PARAM_SEED:
 			HStack {
 				Text(p.name)
@@ -274,6 +313,11 @@ private struct MaskEffectSections: View {
 		}
 	}
 
+	// Layers an anchor can reference, top first
+	private var anchorLayers: [(id: Int32, name: String)] {
+		(0..<app_mask_anchor_layer_count(layerID)).map { (app_mask_anchor_layer_id(layerID, $0), String(cString: app_mask_anchor_layer_name(layerID, $0))) }
+	}
+
 	private func slider(_ title: String, field: Int32, value: Float, range: ClosedRange<Float>) -> some View {
 		let unit = range.lowerBound >= 0 && range.upperBound <= 1 // 0..1 shows as a percentage
 		let format: (Float) -> String = { unit ? percent($0) : String(format: "%.2f", $0) }
@@ -289,15 +333,14 @@ struct MaskEffectAddItems: View {
 	let add: (Int32) -> Void
 
 	var body: some View {
-		Section {
-			item(Int32(APP_MASK_EFFECT_FILL.rawValue))
-			item(Int32(APP_MASK_EFFECT_LEVELS.rawValue))
-			item(Int32(APP_MASK_EFFECT_INVERT.rawValue))
+		Section("Sources") {
+			ForEach(LayersStore.effectSources, id: \.self) { item($0) }
+		}
+		Section("Filters") {
+			ForEach(LayersStore.effectFilters, id: \.self) { item($0) }
 		}
 		Section("Generators") {
-			ForEach(Int32(APP_MASK_EFFECT_EDGE_WEAR.rawValue)..<app_mask_effect_type_count(), id: \.self) { type in
-				item(type)
-			}
+			ForEach(LayersStore.effectGenerators, id: \.self) { item($0) }
 		}
 	}
 

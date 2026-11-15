@@ -261,6 +261,13 @@ typedef enum {
 	MASK_EFFECT_DIRT        = 5, // amount, sharpness, ao weight
 	MASK_EFFECT_POSITION    = 6, // axis (0 x, 1 y, 2 z), start, end
 	MASK_EFFECT_DIRECTIONAL = 7, // axis (0 +y, 1 -y, 2 +x, 3 -x, 4 +z, 5 -z), spread, sharpness
+	MASK_EFFECT_ID_SELECTION = 8,  // Parts of the ID map: params[0] count, params[1..15] their rgb (0xrrggbb as a float)
+	MASK_EFFECT_NOISE        = 9,  // Generator: pattern, coverage, sharpness; [12..15] scale, distortion, seed, detail
+	MASK_EFFECT_LIGHT        = 10, // Generator: azimuth, elevation, softness, ao weight
+	MASK_EFFECT_THICKNESS    = 11, // Generator: side (0 thin, 1 thick), amount, sharpness
+	MASK_EFFECT_HISTOGRAM    = 12, // Filter: position, contrast
+	MASK_EFFECT_BLUR         = 13, // Filter: radius (seam aware)
+	MASK_EFFECT_ANCHOR       = 14, // Another layer: params[0] its id (saved as its index in the file), [1] channel
 	MASK_EFFECT_COUNT,
 } mask_effect_type_t;
 
@@ -270,11 +277,14 @@ typedef enum {
 #define MASK_EFFECT_NOISE_SEED   14
 #define MASK_EFFECT_NOISE_DETAIL 15
 
+#define MASK_ID_SELECTION_MAX 15 // Parts one ID selection holds
+
 // Kinds of mask_effect_param_t
 typedef enum {
 	MASK_PARAM_SLIDER = 0,
 	MASK_PARAM_CHOICE = 1, // Whole values 0..count-1 of the comma separated options
 	MASK_PARAM_SEED   = 2, // A Shuffle button
+	MASK_PARAM_LAYER  = 3, // A layer id of the project, -1 for none (anchor)
 } mask_param_kind_t;
 
 typedef enum {

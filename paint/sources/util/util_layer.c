@@ -55,6 +55,7 @@ void util_layer_update_preview() {
 		g_context->layers_preview_dirty = false;
 		g_context->layer_preview_dirty  = false;
 		g_context->mask_preview_last    = NULL;
+		mask_stack_layer_changed(NULL); // Anchors
 		// Update all layer previews
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 			slot_layer_t *l = g_project->_->layers->buffer[i];
@@ -77,6 +78,7 @@ void util_layer_update_preview() {
 		g_context->mask_preview_last   = NULL;
 		// Update layer preview
 		slot_layer_t  *l      = g_context->layer;
+		mask_stack_layer_changed(l); // Anchors
 		gpu_texture_t *target = l->texpaint_preview;
 		if (target != NULL) {
 			util_layer_draw_preview(l, target);

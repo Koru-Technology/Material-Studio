@@ -239,6 +239,10 @@ typedef struct slot_layer {
 	u64                 *mask_gen_signatures;
 	i32                  mask_gen_count;
 	u64                  mask_gen_key; // Generators texmask was last evaluated with
+	// Anchors (util_mask_stack.c), runtime only
+	u32                  revision;        // Bumped when the pixels change, the masks anchoring the layer evaluate again
+	u64                  mask_inputs_key; // Anchored layers and ID map texmask was last evaluated with
+	bool                 mask_evaluating; // Cycle guard: a mask anchoring one being evaluated reads its last texmask
 } slot_layer_t;
 
 // One effect of a mask stack, unpacked from slot_layer_t.mask_effects (mask_stack_get / mask_stack_set)

@@ -255,7 +255,7 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 		json_encode_f32("height_blend_offset", l->height_blend_offset);
 		json_encode_f32("height_blend_reach", l->height_blend_reach);
 		if (l->mask_effects != NULL) {
-			json_encode_string("mask_effects", smart_materials_floats_to_string(l->mask_effects));
+			json_encode_string("mask_effects", smart_materials_floats_to_string(mask_stack_anchors_to_index(l->mask_effects, layers->buffer, layers->length)));
 		}
 		json_encode_end_object();
 	}
@@ -398,6 +398,9 @@ slot_layer_t *smart_materials_insert(char *name) {
 			continue;
 		}
 		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+	}
+	for (i32 i = 0; i < count; ++i) {
+		mask_stack_anchors_from_index(created[i]->mask_effects, created, count); // Anchors within the smart material
 	}
 	for (i32 i = 0; i < count; ++i) {
 		if (created[i]->fill_material != NULL) {

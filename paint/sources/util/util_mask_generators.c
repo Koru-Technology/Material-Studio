@@ -1,7 +1,7 @@
 #include "../global.h"
 
 // Mask generators: effects of a mask stack (util_mask_stack.c) whose source is made from the mesh shape (Edge Wear, Dirt,
-// Position Gradient, Directional). The paint mesh is drawn flat in uv space (mask_generator.glsl) into the stack's
+// Position Gradient, Directional, 3D Noise, Light, Thickness). The paint mesh is drawn flat in uv space (mask_generator.glsl) into the stack's
 // scratch, giving each texel its object position and normal, then dilated (mask_generator_dilate.glsl) into an R8
 // texture cached on the mask. Inside the stack a generator then reads like the paint effect.
 //
@@ -79,12 +79,12 @@ static mesh_object_t *mask_gen_object(slot_layer_t *m) {
 // What every generator depends on: the meshes and the mesh maps
 static u64 mask_gen_epoch() {
 	u64 h    = 1469598103934665603ull;
-	u64 v[4] = {mesh_maps_generation(), mask_gen_mesh_gen, (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_CURVATURE),
-	            (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_AO)};
+	u64 v[5] = {mesh_maps_generation(), mask_gen_mesh_gen, (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_CURVATURE),
+	            (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_AO), (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_THICKNESS)};
 	h        = mask_gen_hash(h, v, sizeof(v));
 	string_array_t *maps = g_project->mesh_maps;
 	for (i32 i = 0; maps != NULL && i < maps->length; ++i) {
-		if (i == MESH_MAP_CURVATURE || i == MESH_MAP_AO) {
+		if (i == MESH_MAP_CURVATURE || i == MESH_MAP_AO || i == MESH_MAP_THICKNESS) {
 			h = mask_gen_hash_string(h, maps->buffer[i]);
 		}
 	}
@@ -232,8 +232,9 @@ static void mask_gen_timing_done(void *data, f64 gpu_ms) {
 
 // Generator e of m into dst: the mesh into scratch (R value, A coverage), dilated into dst. No pass may be open.
 static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *scratch, gpu_texture_t *dst) {
-	slot_layer_t *owner = mask_gen_owner(m);
-	if (util_mesh_udim_layer(owner)) { // Not supported yet: black
+	slot_layer_t *owner  = mask_gen_owner(m);
+	bool          no_map = e->type == MASK_EFFECT_THICKNESS && project_get_image(mesh_maps_get_asset(MESH_MAP_THICKNESS)) == NULL;
+	if (util_mesh_udim_layer(owner) || no_map) { // Not supported yet, or no thickness map (its neutral white would read thick): black
 		_gpu_begin(dst, NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
 		gpu_end();
 		return;
@@ -280,6 +281,7 @@ static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *sc
 	gpu_set_float(mask_gen_noise_inv, 1.0 / emax);
 	gpu_set_texture(0, mesh_maps_texture_model(MESH_MAP_CURVATURE));
 	gpu_set_texture(1, mesh_maps_texture_model(MESH_MAP_AO));
+	gpu_set_texture(2, mesh_maps_texture_model(MESH_MAP_THICKNESS));
 	gpu_set_vertex_buffer(md->_->vertex_buffer);
 	gpu_set_index_buffer(md->_->index_buffer);
 	gpu_draw();

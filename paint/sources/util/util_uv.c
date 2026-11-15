@@ -202,11 +202,18 @@ void util_uv_cache_uv_island_map() {
 	free(coords_y);
 }
 
-static gpu_texture_t *util_uv_seammap0     = NULL;
-static gpu_texture_t *util_uv_seammap1     = NULL;
-static mesh_data_t   *util_uv_seammap_mesh = NULL;
-static i32            util_uv_seam_dx[4]   = {-1, 1, 0, 0};
-static i32            util_uv_seam_dy[4]   = {0, 0, -1, 1};
+static gpu_texture_t *util_uv_seammap0 = NULL; // Of the last util_uv_cache_seam_map
+static gpu_texture_t *util_uv_seammap1 = NULL;
+
+// Two sizes stay cached: the Blur node's and a mask stack blur's (util_mask_stack.c)
+#define UTIL_UV_SEAM_SLOTS 4 // Sizes kept: the Blur node and the mask blur, whose size follows its radius
+static gpu_texture_t *util_uv_seam_slot0[UTIL_UV_SEAM_SLOTS];
+static gpu_texture_t *util_uv_seam_slot1[UTIL_UV_SEAM_SLOTS];
+static mesh_data_t   *util_uv_seam_slot_mesh[UTIL_UV_SEAM_SLOTS];
+static u32            util_uv_seam_slot_used[UTIL_UV_SEAM_SLOTS]; // Last use, the oldest slot is replaced
+static u32            util_uv_seam_slot_clock = 0;
+static i32            util_uv_seam_dx[4]     = {-1, 1, 0, 0};
+static i32            util_uv_seam_dy[4]     = {0, 0, -1, 1};
 static i16           *util_uv_seam_pos;
 
 static int util_uv_seam_pos_compare(const void *a, const void *b) {
@@ -276,18 +283,40 @@ static void util_uv_seam_raster_tri(i32 *chart, i32 w, i32 h, f32 *x, f32 *y, i3
 
 void util_uv_cache_seam_map(i32 res_x, i32 res_y) {
 	mesh_data_t *mesh = g_context->merged_object != NULL ? g_context->merged_object->data : g_context->paint_object->data;
-	if (util_uv_seammap0 != NULL && (util_uv_seammap0->width != res_x || util_uv_seammap0->height != res_y || util_uv_seammap_mesh != mesh)) {
-		util_uv_seammap_cached = false;
+	if (!util_uv_seammap_cached) { // The meshes changed
+		for (i32 k = 0; k < UTIL_UV_SEAM_SLOTS; ++k) {
+			if (util_uv_seam_slot0[k] != NULL) {
+				gpu_delete_texture(util_uv_seam_slot0[k]);
+				gpu_delete_texture(util_uv_seam_slot1[k]);
+				util_uv_seam_slot0[k] = NULL;
+				util_uv_seam_slot1[k] = NULL;
+			}
+		}
+		util_uv_seammap_cached = true;
 	}
-
-	if (util_uv_seammap_cached) {
-		return;
+	for (i32 k = 0; k < UTIL_UV_SEAM_SLOTS; ++k) {
+		gpu_texture_t *t = util_uv_seam_slot0[k];
+		if (t != NULL && t->width == res_x && t->height == res_y && util_uv_seam_slot_mesh[k] == mesh) {
+			util_uv_seammap0       = t;
+			util_uv_seammap1       = util_uv_seam_slot1[k];
+			util_uv_seam_slot_used[k] = ++util_uv_seam_slot_clock;
+			return;
+		}
 	}
-	util_uv_seammap_cached = true;
-	util_uv_seammap_mesh   = mesh;
-	if (util_uv_seammap0 != NULL) {
-		gpu_delete_texture(util_uv_seammap0);
-		gpu_delete_texture(util_uv_seammap1);
+	// An empty slot, or the least recently used
+	i32 use = 0;
+	for (i32 k = 0; k < UTIL_UV_SEAM_SLOTS; ++k) {
+		if (util_uv_seam_slot0[k] == NULL) {
+			use = k;
+			break;
+		}
+		if (util_uv_seam_slot_used[k] < util_uv_seam_slot_used[use]) {
+			use = k;
+		}
+	}
+	if (util_uv_seam_slot0[use] != NULL) {
+		gpu_delete_texture(util_uv_seam_slot0[use]);
+		gpu_delete_texture(util_uv_seam_slot1[use]);
 	}
 
 	i16_array_t *posa     = mesh->vertex_arrays->buffer[0]->values;
@@ -533,31 +562,48 @@ void util_uv_cache_seam_map(i32 res_x, i32 res_y) {
 	free(slot);
 	free(slot_d);
 
-	util_uv_seammap0 = gpu_create_texture_from_bytes_raw(bytes0, w, h, GPU_TEXTURE_FORMAT_RGBA128);
-	util_uv_seammap1 = gpu_create_texture_from_bytes_raw(bytes1, w, h, GPU_TEXTURE_FORMAT_RGBA128);
+	util_uv_seammap0            = gpu_create_texture_from_bytes_raw(bytes0, w, h, GPU_TEXTURE_FORMAT_RGBA128);
+	util_uv_seammap1            = gpu_create_texture_from_bytes_raw(bytes1, w, h, GPU_TEXTURE_FORMAT_RGBA128);
+	util_uv_seam_slot0[use]     = util_uv_seammap0;
+	util_uv_seam_slot1[use]     = util_uv_seammap1;
+	util_uv_seam_slot_mesh[use] = mesh;
+	util_uv_seam_slot_used[use] = ++util_uv_seam_slot_clock;
 	array_free(bytes0);
 	free(bytes0);
 	array_free(bytes1);
 	free(bytes1);
 }
 
-static gpu_pipeline_t *util_uv_pipe_blur_seam = NULL;
+static gpu_pipeline_t *util_uv_pipe_blur_seam[2]; // One a target format
+static i32             util_uv_pipe_blur_seam_format[2];
 static i32             util_uv_blur_seam_size;
 
-// Blurs src into dst along the surface with passes diffusion steps, tmp is a scratch target of the dst size and format
+// Blurs src into dst along the surface with passes diffusion steps, tmp is a scratch target of the dst size and format.
+// The seam map of the dst size must be cached (util_uv_cache_seam_map).
 void util_uv_blur_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t *src, i32 passes) {
-	if (util_uv_pipe_blur_seam == NULL) {
-		util_uv_pipe_blur_seam                  = gpu_create_pipeline();
-		util_uv_pipe_blur_seam->vertex_shader   = sys_get_shader("blur_seam.vert");
-		util_uv_pipe_blur_seam->fragment_shader = sys_get_shader("blur_seam.frag");
-		gpu_vertex_structure_t *vs              = ALLOC_INIT(gpu_vertex_structure_t, {0});
+	i32 k = 0;
+	while (k < 2 && util_uv_pipe_blur_seam[k] != NULL && util_uv_pipe_blur_seam_format[k] != (i32)dst->format) {
+		k++;
+	}
+	if (k == 2) { // A third format, never used yet
+		k = 1;
+		gpu_delete_pipeline(util_uv_pipe_blur_seam[k]);
+		util_uv_pipe_blur_seam[k] = NULL;
+	}
+	if (util_uv_pipe_blur_seam[k] == NULL) {
+		gpu_pipeline_t *pipe       = gpu_create_pipeline();
+		pipe->vertex_shader        = sys_get_shader("blur_seam.vert");
+		pipe->fragment_shader      = sys_get_shader("blur_seam.frag");
+		gpu_vertex_structure_t *vs = ALLOC_INIT(gpu_vertex_structure_t, {0});
 		gpu_vertex_structure_add(vs, "pos", GPU_VERTEX_DATA_F32_2X);
-		util_uv_pipe_blur_seam->input_layout           = vs;
-		util_uv_pipe_blur_seam->color_attachment_count = 1;
-		util_uv_pipe_blur_seam->color_attachment[0]    = dst->format;
-		gpu_pipeline_compile(util_uv_pipe_blur_seam);
-		pipes_offset           = 0;
-		util_uv_blur_seam_size = pipes_get_constant_location("float2");
+		pipe->input_layout           = vs;
+		pipe->color_attachment_count = 1;
+		pipe->color_attachment[0]    = dst->format;
+		gpu_pipeline_compile(pipe);
+		util_uv_pipe_blur_seam[k]        = pipe;
+		util_uv_pipe_blur_seam_format[k] = dst->format;
+		pipes_offset                     = 0;
+		util_uv_blur_seam_size           = pipes_get_constant_location("float2");
 	}
 
 	// The last pass lands in dst
@@ -565,7 +611,7 @@ void util_uv_blur_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t
 		gpu_texture_t *from = i == 0 ? src : ((passes - i) % 2 == 0 ? dst : tmp);
 		gpu_texture_t *to   = (passes - 1 - i) % 2 == 0 ? dst : tmp;
 		_gpu_begin(to, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-		gpu_set_pipeline(util_uv_pipe_blur_seam);
+		gpu_set_pipeline(util_uv_pipe_blur_seam[k]);
 		gpu_set_texture(0, from);
 		gpu_set_texture(1, util_uv_seammap0);
 		gpu_set_texture(2, util_uv_seammap1);

@@ -2,7 +2,9 @@
 
 // The native mask effects interface (app_api_layers.h, app_mask_*): effects listed top first, adding each type, order,
 // delete, visibility, blending, slider drags as one undo step, clamping to the settings table, the props signature,
-// Invert as an effect, the AO warning of Dirt and the mask thumbnail after an edit
+// Invert as an effect, the AO warning of Dirt and the mask thumbnail after an edit. The Add Effect menu's classification,
+// the newer types, the thickness and ID map warnings, picking the parts of an ID Selection (also from "ID Mask..."), and
+// the layers an Anchor references
 
 int step   = 0;
 int frame  = 0;
@@ -12,6 +14,10 @@ int a      = -1; // Paint layer
 int m      = -1; // Its mask
 int sig    = 0;
 int pv     = 0;
+int b      = -1; // Paint layer of the newer types
+int c      = -1; // Paint layer of "ID Mask..."
+int k      = -1; // Its mask
+int n      = 0;
 
 int PAINT       = 0;
 int FILL        = 1;
@@ -21,7 +27,19 @@ int EDGE_WEAR   = 4;
 int DIRT        = 5;
 int POSITION    = 6;
 int DIRECTIONAL = 7;
+int ID          = 8;
+int NOISE       = 9;
+int LIGHT       = 10;
+int THICKNESS   = 11;
+int HISTOGRAM   = 12;
+int BLUR        = 13;
+int ANCHOR      = 14;
+int TYPES       = 15;
 int AO          = 0;
+int THICK_MAP   = 3;
+int NEW_ID_MASK = 13;
+int RED         = 16711680; // 0xff0000
+int BLUE        = 255;
 
 void check(bool ok, char *name) {
 	checks = checks + 1;
@@ -47,6 +65,11 @@ bool near(float v, float to) {
 	return v > to - 0.001 && v < to + 0.001;
 }
 
+// Colors as floats: whole, too large for near
+bool same(float v, float to) {
+	return v >= to - 0.5 && v <= to + 0.5;
+}
+
 int index_of(int type) {
 	for (int i = 0; i < app_mask_effect_count(m); ++i) {
 		if (app_mask_effect_type(m, i) == type) {
@@ -70,6 +93,47 @@ char *test_path(char *name) {
 	return string("%s/%s", script_save_path(), name);
 }
 
+slot_layer_t *layer_by_id(int id) {
+	for (int i = 0; i < script_layer_count(); ++i) {
+		slot_layer_t *l = script_layer_at(i);
+		if (l->id == id) {
+			return l;
+		}
+	}
+	return NULL;
+}
+
+bool is_filter(slot_layer_t *l) {
+	return l->texpaint != NULL && l->texpaint_nor != NULL && l->parent != NULL && l->parent->texpaint != NULL && l->parent->texpaint_nor != NULL;
+}
+
+// Paint and fill layers: not groups (no texpaint), masks (no texpaint_nor) or filters
+bool is_paint_or_fill(slot_layer_t *l) {
+	return l->texpaint != NULL && l->texpaint_nor != NULL && !is_filter(l);
+}
+
+// Four flat quadrants: red, green, blue, yellow
+void write_id_map(char *path) {
+	int       w   = 64;
+	buffer_t *buf = buffer_create(w * w * 4);
+	for (int y = 0; y < w; ++y) {
+		for (int x = 0; x < w; ++x) {
+			int i = (y * w + x) * 4;
+			bool left = x < w / 2;
+			bool top  = y < w / 2;
+			buffer_set_u8(buf, i, (left && top) || (!left && !top) ? 255 : 0);
+			buffer_set_u8(buf, i + 1, !left ? 255 : 0);
+			buffer_set_u8(buf, i + 2, left && !top ? 255 : 0);
+			buffer_set_u8(buf, i + 3, 255);
+		}
+	}
+	iron_write_png(path, buf, w, w, 0);
+}
+
+bool picking() {
+	return script_get_context()->tool == TOOL_TYPE_COLORID;
+}
+
 void next() {
 	frame = frame + 1;
 	if (frame < 3) { // Let each step's work reach the screen before the next
@@ -79,8 +143,16 @@ void next() {
 	frame = 0;
 
 	if (step == 0) {
-		check(app_mask_effect_type_count() == 8, "eight effect types");
-		check(app_mask_effect_type_name(EDGE_WEAR) != NULL && app_mask_effect_type_name(8) == NULL, "type names, none past the last");
+		check(app_mask_effect_type_count() == TYPES, "fifteen effect types");
+		check(app_mask_effect_type_name(ANCHOR) != NULL && app_mask_effect_type_name(TYPES) == NULL, "type names, none past the last");
+		bool classified = true;
+		for (int t = 0; t <= TYPES; ++t) {
+			bool filter    = t == LEVELS || t == INVERT || t == HISTOGRAM || t == BLUR;
+			bool generator = (t >= EDGE_WEAR && t <= DIRECTIONAL) || (t >= NOISE && t <= THICKNESS);
+			classified     = classified && app_mask_effect_type_is_filter(t) == filter && app_mask_effect_type_is_generator(t) == generator;
+		}
+		check(classified, "filters and generators, the rest are sources (Fill, ID Selection, Anchor)");
+		check(app_mask_effect_param_count(ANCHOR) == 2 && app_mask_effect_param_count(ID) == 0, "anchor: layer and channel, ID Selection: picked");
 		check(app_mask_effect_param_count(PAINT) == 0 && app_mask_effect_param_count(FILL) == 1 && app_mask_effect_param_count(LEVELS) == 5,
 		      "settings of the plain effects");
 		check(app_mask_effect_param_count(EDGE_WEAR) == 6 && app_mask_effect_param_count(DIRT) == 7, "generators end with the noise block");
@@ -99,7 +171,7 @@ void next() {
 		}
 		check(app_mask_effect_count(m) == 8, "eight effects");
 		check(app_mask_add_effect(m, PAINT) == -1 && app_mask_effect_count(m) == 8, "a second Paint effect refused");
-		check(app_mask_add_effect(m, 8) == -1, "unknown type refused");
+		check(app_mask_add_effect(m, TYPES) == -1, "unknown type refused");
 		bool ordered = true;
 		for (int i = 0; i < 8; ++i) {
 			ordered = ordered && app_mask_effect_type(m, i) == DIRECTIONAL - i;
@@ -227,7 +299,165 @@ void next() {
 		check(app_layer_count() == n, "one undo takes the effect and the mask it made");
 		app_redo();
 		check(app_layer_count() == n + 1, "redo brings the mask back");
-		check(app_layer_add_effect(a, 0) == -1 && app_layer_add_effect(a, 8) == -1, "Paint and unknown types refused");
+		check(app_layer_add_effect(a, 0) == -1 && app_layer_add_effect(a, TYPES) == -1, "Paint and unknown types refused");
+	}
+	else if (step == 9) { // The newer types
+		check(app_layer_new(0), "paint layer for the newer types");
+		b = selected();
+		check(app_layer_add_mask(b, 9), "its black mask");
+		m = selected();
+		sig_changed();
+		for (int t = NOISE; t <= ANCHOR; ++t) {
+			check(app_mask_add_effect(m, t) == 0 && app_mask_effect_type(m, 0) == t, string("type %d added on top", t));
+			check(sig_changed(), string("signature changes with type %d", t));
+		}
+		check(app_mask_effect_blending(m, index_of(NOISE)) == 4 && app_mask_effect_blending(m, index_of(ANCHOR)) == 4, "sources start on max");
+		check(near(app_mask_effect_value(m, index_of(ANCHOR), 0), -1.0), "an anchor starts on no layer");
+
+		mesh_maps_set(THICK_MAP, NULL);
+		sig_changed();
+		check(app_mask_effect_needs_thickness(m, index_of(THICKNESS)), "Thickness without a thickness map");
+		check(!app_mask_effect_needs_thickness(m, index_of(LIGHT)) && !app_mask_effect_needs_ao(m, index_of(THICKNESS)), "only Thickness");
+		iron_write_png(test_path("koru_app_api_masks_thickness.png"), buffer_create(16 * 16 * 4), 16, 16, 0);
+		script_import_asset(test_path("koru_app_api_masks_thickness.png"), 0); // *_thickness registers as the thickness map
+	}
+	else if (step == 10) {
+		check(mesh_maps_get_asset(THICK_MAP) != NULL, "thickness map registered");
+		check(!app_mask_effect_needs_thickness(m, index_of(THICKNESS)), "Thickness with a thickness map");
+		check(sig_changed(), "signature changes with the thickness map");
+		mesh_maps_set(THICK_MAP, NULL);
+		check(app_mask_effect_needs_thickness(m, index_of(THICKNESS)) && sig_changed(), "cleared again");
+		script_assets_remove("koru_app_api_masks_thickness.png");
+
+		n = app_mask_effect_count(m);
+		check(app_mask_add_effect(m, ID) == 0 && app_mask_effect_needs_id_map(m, 0), "ID Selection without an ID map");
+		check(!app_mask_effect_needs_id_map(m, 1), "only ID Selection");
+	}
+	else if (step == 11) {
+		check(!picking(), "no ID map: asks to import one instead of picking");
+		ui_box_hide();
+		app_undo();
+		check(app_mask_effect_count(m) == n, "undo the ID Selection");
+		write_id_map(test_path("koru_app_api_masks_id.png"));
+		script_import_asset(test_path("koru_app_api_masks_id.png"), 0);
+	}
+	else if (step == 12) {
+		sig_changed();
+		check(script_set_id_map(script_asset_index("koru_app_api_masks_id.png")) == 1, "ID map set");
+		check(sig_changed(), "signature changes with the ID map");
+		check(app_mask_add_effect(m, ID) == 0 && !app_mask_effect_needs_id_map(m, 0), "ID Selection with an ID map");
+		check(near(app_mask_effect_value(m, 0, 0), 0.0), "no parts yet");
+	}
+	else if (step == 13) {
+		check(picking() && ui_id_mask_selected() == 0, "adding an ID Selection starts picking");
+		ui_id_mask_toggle(RED);
+		ui_id_mask_toggle(BLUE);
+		check(ui_id_mask_selected() == 2, "two parts picked");
+		ui_id_mask_done();
+	}
+	else if (step == 14) {
+		check(!picking(), "done leaves the ID map view");
+		check(near(app_mask_effect_value(m, 0, 0), 2.0) && same(app_mask_effect_value(m, 0, 1), RED) && same(app_mask_effect_value(m, 0, 2), BLUE),
+		      "done writes the count and the colors");
+		check(app_mask_effect_type(m, 0) == ID && app_mask_effect_count(m) == n + 1, "into the effect, nothing else added");
+		app_undo();
+		check(near(app_mask_effect_value(m, 0, 0), 0.0) && app_mask_effect_type(m, 0) == ID, "one undo step takes the parts back");
+		app_redo();
+		check(near(app_mask_effect_value(m, 0, 0), 2.0), "redo");
+		check(!app_mask_effect_pick_ids(m, 1) && !app_mask_effect_pick_ids(a, 0), "picks only for an ID Selection");
+		check(app_mask_effect_pick_ids(m, 0), "pick again");
+	}
+	else if (step == 15) {
+		check(picking() && ui_id_mask_selected() == 2, "picking again starts from its parts");
+		ui_id_mask_toggle(65280); // Green
+		check(ui_id_mask_selected() == 3, "a third part");
+		ui_id_mask_cancel();
+	}
+	else if (step == 16) {
+		check(!picking() && near(app_mask_effect_value(m, 0, 0), 2.0), "cancel leaves the parts as they were");
+		app_mask_effect_pick_ids(m, 0);
+	}
+	else if (step == 17) {
+		for (int i = 1; i <= 20; ++i) {
+			ui_id_mask_toggle(4194304 + i * 12 * 256); // 0x40 red, green apart by more than the tolerance
+		}
+		check(ui_id_mask_selected() == 15, "at most fifteen parts");
+		ui_id_mask_done();
+	}
+	else if (step == 18) {
+		check(near(app_mask_effect_value(m, 0, 0), 15.0) && same(app_mask_effect_value(m, 0, 15), 4194304 + 13 * 12 * 256), "fifteen written");
+		app_undo();
+		check(near(app_mask_effect_value(m, 0, 0), 2.0), "undo");
+	}
+	else if (step == 19) { // "ID Mask...": an ID Selection in the layer's mask, made first when it has none
+		check(app_layer_new(0), "paint layer for an ID mask");
+		c = selected();
+		n = app_layer_count();
+		check(app_layer_can_new(NEW_ID_MASK) && app_layer_new(NEW_ID_MASK), "ID Mask... on a layer without a mask");
+		k = selected();
+		check(app_layer_count() == n + 1 && layer_by_id(k)->parent == layer_by_id(c), "makes its mask");
+		check(app_mask_effect_count(k) == 2 && app_mask_effect_type(k, 0) == ID && app_mask_effect_type(k, 1) == PAINT, "with an ID Selection on its paint");
+	}
+	else if (step == 20) {
+		check(picking(), "and picks its parts");
+		ui_id_mask_toggle(65280);
+		ui_id_mask_done();
+	}
+	else if (step == 21) {
+		check(near(app_mask_effect_value(k, 0, 0), 1.0), "one part");
+		app_undo();
+		check(near(app_mask_effect_value(k, 0, 0), 0.0), "undo the part");
+		app_undo();
+		check(app_layer_count() == n, "one undo takes the effect and the mask it made");
+		app_redo();
+		app_redo();
+		check(app_layer_count() == n + 1, "redo");
+		check(app_layer_pick(c) && app_layer_can_new(NEW_ID_MASK) && app_layer_new(NEW_ID_MASK), "ID Mask... on a layer with a mask");
+		k = selected();
+		check(app_layer_count() == n + 1 && app_mask_effect_count(k) == 3 && app_mask_effect_type(k, 0) == ID, "adds to its mask");
+	}
+	else if (step == 22) {
+		check(picking(), "picking");
+		ui_id_mask_cancel();
+	}
+	else if (step == 23) {
+		check(!picking() && app_mask_effect_count(k) == 3 && near(app_mask_effect_value(k, 0, 0), 0.0), "cancel leaves the new effect, no parts");
+		check(app_layer_pick(c) && app_layer_new(7) && !app_layer_can_new(NEW_ID_MASK), "a group takes no ID mask");
+		check(app_layer_pick(c) && app_layer_new(8), "filter, next frame");
+	}
+	else if (step == 24) { // Anchor: other paint and fill layers
+		int  count    = app_mask_anchor_layer_count(m);
+		int  expected = 0;
+		bool filters  = false;
+		for (int i = 0; i < script_layer_count(); ++i) {
+			slot_layer_t *l = script_layer_at(i);
+			filters         = filters || is_filter(l);
+			if (is_paint_or_fill(l) && l->id != b) {
+				expected = expected + 1;
+			}
+		}
+		check(filters, "the project has a filter");
+		check(count == expected && count >= 2, string("anchor list: every paint or fill layer but the mask's own (%d of %d)", count, expected));
+		bool right = true;
+		bool has_c = false;
+		for (int i = 0; i < count; ++i) {
+			int id = app_mask_anchor_layer_id(m, i);
+			right  = right && id != b && id != m && is_paint_or_fill(layer_by_id(id));
+			has_c  = has_c || id == c;
+		}
+		check(right && has_c && app_mask_anchor_layer_id(m, count) == -1, "no groups, masks, filters or its own layer");
+		check(app_mask_anchor_layer_count(b) == 0, "only masks have anchors");
+
+		int ai = index_of(ANCHOR);
+		sig_changed();
+		check(app_mask_set_effect_value(m, ai, 0, c) && near(app_mask_effect_value(m, ai, 0), c), "anchored to another layer");
+		check(sig_changed(), "signature changes with the anchor");
+		check(!app_mask_set_effect_value(m, ai, 0, b) && !app_mask_set_effect_value(m, ai, 0, k) && !app_mask_set_effect_value(m, ai, 0, m),
+		      "its own layer and masks refused");
+		app_undo();
+		check(near(app_mask_effect_value(m, ai, 0), -1.0), "one undo step");
+		app_redo();
+		check(app_mask_set_effect_value(m, ai, 0, -1) && near(app_mask_effect_value(m, ai, 0), -1.0), "back to none");
 	}
 	else {
 		printf("[app_api_masks] %d checks, %d failures", checks, fails);

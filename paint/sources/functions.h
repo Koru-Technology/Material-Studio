@@ -1065,6 +1065,7 @@ bool                      project_is_id_map(asset_t *a);
 bool                      project_set_id_map(asset_t *a);
 void                      project_id_map_removed(asset_t *a);
 void                      ui_id_mask_begin();
+void                      ui_id_mask_begin_effect(slot_layer_t *m, i32 i);
 void                      ui_id_mask_cancel();
 void                      ui_id_mask_toggle(u32 color);
 i32                       ui_id_mask_selected();
@@ -1777,6 +1778,10 @@ void           mask_stack_evaluate_dirty();
 void           mask_stack_evaluate(slot_layer_t *m);
 void           mask_stack_free_texture(slot_layer_t *m);
 gpu_texture_t *mask_stack_get_scratch(i32 w, i32 h);
+void           mask_stack_layer_changed(slot_layer_t *l);
+slot_layer_t  *mask_stack_layer_by_id(i32 id);
+f32_array_t   *mask_stack_anchors_to_index(f32_array_t *effects, slot_layer_t **layers, i32 count);
+void           mask_stack_anchors_from_index(f32_array_t *effects, slot_layer_t **layers, i32 count);
 void           history_mask_stack();
 
 // Mask generators (util/util_mask_generators.c)

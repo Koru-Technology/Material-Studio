@@ -246,6 +246,7 @@ void slot_layer_swap(slot_layer_t *raw, slot_layer_t *other) {
 }
 
 void slot_layer_clear(slot_layer_t *raw, i32 base_color, gpu_texture_t *base_image, f32 occlusion, f32 roughness, f32 metallic) {
+	mask_stack_layer_changed(raw); // Anchors
 	// Base
 	_gpu_begin(raw->texpaint, NULL, NULL, GPU_CLEAR_COLOR, base_color, 0.0);
 	gpu_end();

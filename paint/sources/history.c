@@ -437,6 +437,7 @@ void history_undo() {
 	if (history_undos > 0) {
 		stroke_refine_end_all(); // Strokes keep the tier they reached
 		project_modified = true;
+		mask_stack_layer_changed(NULL); // Anchors read the layers as they were
 		render_path_base_redraw();
 		i32             active = history_steps->length - 1 - history_redos;
 		history_step_t *step   = history_steps->buffer[active];
@@ -744,6 +745,7 @@ void history_redo() {
 	if (history_redos > 0) {
 		stroke_refine_end_all();
 		project_modified = true;
+		mask_stack_layer_changed(NULL);
 		render_path_base_redraw();
 		i32             active = history_steps->length - history_redos;
 		history_step_t *step   = history_steps->buffer[active];

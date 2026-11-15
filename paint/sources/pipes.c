@@ -227,6 +227,7 @@ void pipes_init() {
 		pipes_params1_mask_stack  = pipes_get_constant_location("float4");
 		pipes_params2_mask_stack  = pipes_get_constant_location("float4");
 		pipes_params3_mask_stack  = pipes_get_constant_location("float4");
+		pipes_src_size_mask_stack = pipes_get_constant_location("float2");
 	}
 
 	{
