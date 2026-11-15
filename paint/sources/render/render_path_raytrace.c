@@ -306,21 +306,11 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	render_path_raytrace_override_height = height;
 
 	if (any_map_get(render_path_render_targets, "raytrace_override_mask") == NULL) {
-		render_target_t *t = render_target_create();
-		t->name            = "raytrace_override_mask";
-		t->width           = width;
-		t->height          = height;
-		t->format          = "R16"; // Same format as the paint pass stroke mask
-		render_path_create_render_target(t);
+		render_path_add_target("raytrace_override_mask", width, height, "R16", 1.0); // Same format as the paint pass stroke mask
 	}
 	while (render_path_raytrace_override_allocated < count) {
 		for (char *c = "abc"; *c != '\0'; ++c) {
-			render_target_t *t = render_target_create();
-			t->name            = string_copy(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c));
-			t->width           = width;
-			t->height          = height;
-			t->format          = format;
-			render_path_create_render_target(t);
+			render_path_add_target(string_copy(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c)), width, height, format, 1.0);
 		}
 		render_path_raytrace_override_allocated++;
 	}

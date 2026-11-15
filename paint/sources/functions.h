@@ -678,6 +678,7 @@ void                   ui_menu_end();
 i32                    ui_menu_padding();
 void                   ui_menu_sub_begin(i32 items);
 void                   ui_menu_sub_end();
+render_target_t       *render_path_add_target(char *name, i32 w, i32 h, char *format, f32 scale);
 void                   render_path_base_init();
 void                   render_path_base_apply_config();
 f32                    render_path_base_get_super_sampling();

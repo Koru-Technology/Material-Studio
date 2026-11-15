@@ -46,86 +46,16 @@ bake_type_t      _render_path_paint_bake_type;
 
 void render_path_paint_init() {
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_blend0"; // Stroke coverage, 16 bit so low flow builds up without banding
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = "R16";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_blend1";
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = "R16";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_colorid";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_colorid_sel"; // Colors of the parts picked for an ID mask, see ui_id_mask.c
-		t->width           = 16;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_nor_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_pack_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_uv_picker";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_posnortex_picker0";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA128";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpaint_posnortex_picker1";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA128";
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("texpaint_blend0", config_get_texture_res_x(), config_get_texture_res_y(), "R16", 1.0); // Stroke coverage, 16 bit so low flow builds up without banding
+	render_path_add_target("texpaint_blend1", config_get_texture_res_x(), config_get_texture_res_y(), "R16", 1.0);
+	render_path_add_target("texpaint_colorid", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_colorid_sel", 16, 1, "RGBA32", 1.0); // Colors of the parts picked for an ID mask, see ui_id_mask.c
+	render_path_add_target("texpaint_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_nor_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_pack_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_uv_picker", 1, 1, "RGBA32", 1.0);
+	render_path_add_target("texpaint_posnortex_picker0", 1, 1, "RGBA128", 1.0);
+	render_path_add_target("texpaint_posnortex_picker1", 1, 1, "RGBA128", 1.0);
 
 	render_path_load_shader("Scene/copy_mrt3_pass/copy_mrt3_pass");
 	render_path_load_shader("Scene/copy_mrt3_pass/copy_mrt3RGBA64_pass");
@@ -293,12 +223,7 @@ static void render_path_paint_ref_target(char *name, char *format) {
 		rt = NULL;
 	}
 	if (rt == NULL) {
-		render_target_t *t = render_target_create();
-		t->name            = name;
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = format;
-		render_path_create_render_target(t);
+		render_path_add_target(name, config_get_texture_res_x(), config_get_texture_res_y(), format, 1.0);
 	}
 }
 
@@ -859,12 +784,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 
 		if (g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_CURVATURE && g_context->bake_curv_smooth > 0) {
 			if (any_map_get(render_path_render_targets, "texpaint_blur") == NULL) {
-				render_target_t *t = render_target_create();
-				t->name            = "texpaint_blur";
-				t->width           = math_floor(config_get_texture_res_x() * 0.95);
-				t->height          = math_floor(config_get_texture_res_y() * 0.95);
-				t->format          = "RGBA32";
-				render_path_create_render_target(t);
+				render_path_add_target("texpaint_blur", math_floor(config_get_texture_res_x() * 0.95), math_floor(config_get_texture_res_y() * 0.95), "RGBA32", 1.0);
 			}
 			i32 blurs = math_round(g_context->bake_curv_smooth);
 			for (i32 i = 0; i < blurs; ++i) {

@@ -3,67 +3,21 @@
 
 void render_path_preview_init() {
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpreview";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA64";
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "texpreview_icon";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA64";
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("texpreview", 1, 1, "RGBA64", 1.0);
+	render_path_add_target("texpreview_icon", 1, 1, "RGBA64", 1.0);
 
 	i32 size = math_floor(util_render_material_preview_size * 2.0);
 	if (size < util_render_decal_preview_size) {
 		size = util_render_decal_preview_size;
 	}
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "mmain";
-		t->width           = size;
-		t->height          = size;
-		t->format          = "D32";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("mmain", size, size, "D32", render_path_base_get_super_sampling());
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "mtex";
-		t->width           = size;
-		t->height          = size;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("mtex", size, size, "RGBA64", render_path_base_get_super_sampling());
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "mgbuffer0";
-		t->width           = size;
-		t->height          = size;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("mgbuffer0", size, size, "RGBA64", render_path_base_get_super_sampling());
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "mgbuffer1";
-		t->width           = size;
-		t->height          = size;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("mgbuffer1", size, size, "RGBA64", render_path_base_get_super_sampling());
 }
 
 void render_path_preview_commands_preview() {

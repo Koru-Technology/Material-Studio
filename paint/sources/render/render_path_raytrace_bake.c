@@ -39,30 +39,9 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 			gpu_delete_texture(baketex2->_image);
 		}
 
-		{
-			render_target_t *t = render_target_create();
-			t->name            = "baketex0";
-			t->width           = config_get_texture_res_x();
-			t->height          = config_get_texture_res_y();
-			t->format          = "RGBA64";
-			render_path_create_render_target(t);
-		}
-		{
-			render_target_t *t = render_target_create();
-			t->name            = "baketex1";
-			t->width           = config_get_texture_res_x();
-			t->height          = config_get_texture_res_y();
-			t->format          = "RGBA64";
-			render_path_create_render_target(t);
-		}
-		{
-			render_target_t *t = render_target_create();
-			t->name            = "baketex2";
-			t->width           = config_get_texture_res_x();
-			t->height          = config_get_texture_res_y();
-			t->format          = "RGBA64"; // Match raytrace_target format
-			render_path_create_render_target(t);
-		}
+		render_path_add_target("baketex0", config_get_texture_res_x(), config_get_texture_res_y(), "RGBA64", 1.0);
+		render_path_add_target("baketex1", config_get_texture_res_x(), config_get_texture_res_y(), "RGBA64", 1.0);
+		render_path_add_target("baketex2", config_get_texture_res_x(), config_get_texture_res_y(), "RGBA64", 1.0); // Match raytrace_target format
 
 		bake_type_t _bake_type = g_context->bake_type;
 		g_context->bake_type   = BAKE_TYPE_INIT;

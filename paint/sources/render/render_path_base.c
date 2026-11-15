@@ -4,66 +4,29 @@
 f32                      render_path_base_super_sample = 1.0;
 render_target_t_array_t *render_path_base_bloom_mipmaps;
 
+// Creates a render target, w and h 0 for the size of the view times scale
+render_target_t *render_path_add_target(char *name, i32 w, i32 h, char *format, f32 scale) {
+	render_target_t *t = render_target_create();
+	t->name            = name;
+	t->width           = w;
+	t->height          = h;
+	t->format          = format;
+	t->scale           = scale;
+	return render_path_create_render_target(t);
+}
+
 void render_path_base_init() {
 	pipes_init();
 	const_data_create_screen_aligned_data();
 	const_data_create_skydome_data();
 	render_path_base_super_sample = g_config->rp_supersample;
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "main";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "D32";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "gbuffer0";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "gbuffer1";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "gbuffer2";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "buf";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "last";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "RGBA64";
-		t->scale           = render_path_base_get_super_sampling();
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("main", 0, 0, "D32", render_path_base_get_super_sampling());
+	render_path_add_target("gbuffer0", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("gbuffer1", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("gbuffer2", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("buf", 0, 0, "RGBA64", render_path_base_get_super_sampling());
+	render_path_add_target("last", 0, 0, "RGBA64", render_path_base_get_super_sampling());
 	{
 		render_target_t *t = render_target_create();
 		t->name            = "empty_white";
@@ -401,35 +364,9 @@ void render_path_base_draw_bloom(char *source, char *target) {
 #define RENDER_PATH_BASE_SSAO_SCALE 0.5
 
 void render_path_base_init_ssao() {
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "singlea";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
-		render_path_create_render_target(t);
-	}
-
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "singleb";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
-		render_path_create_render_target(t);
-	}
-
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "singlec";
-		t->width           = 0;
-		t->height          = 0;
-		t->format          = "R8";
-		t->scale           = render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE;
-		render_path_create_render_target(t);
-	}
+	render_path_add_target("singlea", 0, 0, "R8", render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE);
+	render_path_add_target("singleb", 0, 0, "R8", render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE);
+	render_path_add_target("singlec", 0, 0, "R8", render_path_base_get_super_sampling() * RENDER_PATH_BASE_SSAO_SCALE);
 
 	render_path_load_shader("Scene/ssao_pass/ssao_pass");
 	render_path_load_shader("Scene/ssao_blur_pass/ssao_blur_pass_x");
@@ -438,13 +375,7 @@ void render_path_base_init_ssao() {
 
 // Depth with translucent surfaces included, read by painting - created once translucency gets enabled and kept
 void render_path_base_init_paint_depth() {
-	render_target_t *t = render_target_create();
-	t->name            = "main_paint";
-	t->width           = 0;
-	t->height          = 0;
-	t->format          = "D32";
-	t->scale           = render_path_base_get_super_sampling();
-	render_path_create_render_target(t);
+	render_path_add_target("main_paint", 0, 0, "D32", render_path_base_get_super_sampling());
 }
 
 bool render_path_base_has_paint_depth() {
