@@ -50,6 +50,11 @@ struct ValueBubble: View {
 	}
 }
 
+// The brush radius as the old header showed it (0.01 to 2)
+nonisolated func radiusText(_ v: Float) -> String {
+	String(format: "%.2f", v)
+}
+
 nonisolated func percent(_ v: Float) -> String {
 	"\(Int((v * 100).rounded()))%"
 }

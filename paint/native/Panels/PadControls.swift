@@ -283,11 +283,6 @@ struct PadHistoryControls: View {
 	}
 }
 
-// The brush radius as the old header showed it (0.01 to 2)
-nonisolated func radiusText(_ v: Float) -> String {
-	String(format: "%.2f", v)
-}
-
 // A slider standing up, dragged anywhere on its track; the brush size and opacity
 struct VerticalSlider: View {
 	let value: Float
