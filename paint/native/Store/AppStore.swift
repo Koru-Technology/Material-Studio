@@ -16,6 +16,13 @@ final class AppStore {
 	private(set) var canUndo       = false
 	private(set) var canRedo       = false
 	private(set) var undoName      = ""
+	private(set) var viewMode: Int32     = 0
+	private(set) var viewportMode: Int32 = 0
+	private(set) var brushAngle          = Float(0)
+	private(set) var symmetry            = [false, false, false]
+	private(set) var projectModified     = false
+	private(set) var engineModal         = false
+	private(set) var cameraRotation      = SIMD4<Float>(0, 0, 0, 1)
 
 
 	func refresh() {
@@ -32,6 +39,13 @@ final class AppStore {
 		set(&canUndo, s.undos > 0)
 		set(&canRedo, s.redos > 0)
 		set(&undoName, String(cString: app_undo_name()))
+		set(&viewMode, s.view_mode)
+		set(&viewportMode, s.viewport_mode)
+		set(&brushAngle, s.brush_angle)
+		set(&symmetry, [s.sym_x, s.sym_y, s.sym_z])
+		set(&projectModified, s.project_modified)
+		set(&engineModal, s.engine_modal)
+		set(&cameraRotation, SIMD4(s.camera_rot.0, s.camera_rot.1, s.camera_rot.2, s.camera_rot.3))
 		LayersStore.shared.refresh(s)
 		MaterialsStore.shared.refresh()
 		BrushesStore.shared.refresh()

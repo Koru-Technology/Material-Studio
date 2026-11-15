@@ -89,8 +89,14 @@ struct PadRootView: View {
 	@Environment(\.scenePhase) private var scenePhase
 
 	var body: some View {
-		EngineCanvas()
-			.ignoresSafeArea()
+		ZStack {
+			EngineCanvas()
+				.ignoresSafeArea()
+			if AppStore.shared.ready && !AppStore.shared.engineModal {
+				PadControls()
+					.transition(.opacity)
+			}
+		}
 			.statusBarHidden()
 			.persistentSystemOverlays(.hidden)
 			.defersSystemGestures(on: .all)

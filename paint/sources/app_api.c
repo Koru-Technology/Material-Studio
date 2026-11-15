@@ -71,6 +71,21 @@ void app_get_state(app_state_t *out) {
 	out->selected_layer_id = g_context->layer != NULL ? g_context->layer->id : -1;
 	out->layers_signature  = app_layers_signature();
 	out->previews_version  = app_previews_counter;
+	out->view_mode         = ui_base_view_mode();
+	out->viewport_mode     = g_context->viewport_mode;
+	out->brush_angle       = g_context->brush_angle;
+	out->sym_x             = g_context->sym_x;
+	out->sym_y             = g_context->sym_y;
+	out->sym_z             = g_context->sym_z;
+	out->project_modified  = project_modified;
+	out->engine_modal      = ui_box_show || ui_menu_show || ui_brush_creator_shown() || material_studio_show || ui_id_mask_active;
+	if (scene_camera != NULL) {
+		quat_t rot         = scene_camera->base->transform->rot;
+		out->camera_rot[0] = rot.x;
+		out->camera_rot[1] = rot.y;
+		out->camera_rot[2] = rot.z;
+		out->camera_rot[3] = rot.w;
+	}
 }
 
 bool app_native_chrome = false;
@@ -109,6 +124,137 @@ void app_set_brush_opacity(float value) {
 void app_set_brush_hardness(float value) {
 	g_context->brush_hardness = math_max(0.0, math_min(1.0, value));
 	app_brush_changed();
+}
+
+void app_set_brush_angle(float degrees) {
+	g_context->brush_angle = math_max(0.0, math_min(360.0, degrees));
+	make_material_parse_paint_material(true);
+	app_brush_changed();
+}
+
+void app_set_symmetry(bool x, bool y, bool z) {
+	g_context->sym_x = x;
+	g_context->sym_y = y;
+	g_context->sym_z = z;
+	app_brush_changed();
+}
+
+// Views and camera
+
+void app_cycle_view_mode(void) {
+	ui_base_cycle_view_mode();
+	iron_delay_idle_sleep();
+}
+
+void app_set_viewport_mode(int32_t mode) {
+	if (mode < VIEWPORT_MODE_LIT || mode > VIEWPORT_MODE_PATH_TRACE) {
+		return;
+	}
+	context_set_viewport_mode(mode);
+	iron_delay_idle_sleep();
+}
+
+void app_view_face(int32_t face) {
+	ui_view_cube_set_view(face); // ui_panels.c
+	iron_delay_idle_sleep();
+}
+
+void app_view_orbit(float x, float y) {
+	viewport_orbit(x, y);
+	iron_delay_idle_sleep();
+}
+
+static void app_capture_screenshot(void *_) {
+	viewport_capture_screenshot();
+}
+
+void app_command(int32_t command) {
+	switch (command) {
+	case APP_COMMAND_NEW_PROJECT:
+		project_new_box();
+		break;
+	case APP_COMMAND_OPEN:
+		project_open();
+		break;
+	case APP_COMMAND_OPEN_RECENT:
+		box_projects_show();
+		break;
+	case APP_COMMAND_SAVE:
+		project_save(false);
+		break;
+	case APP_COMMAND_SAVE_AS:
+		project_save_as(false);
+		break;
+	case APP_COMMAND_IMPORT_TEXTURE:
+		project_import_asset(string_array_join(path_texture_formats(), ","), false);
+		break;
+	case APP_COMMAND_IMPORT_FONT:
+		project_import_asset("ttf,ttc,otf", true);
+		break;
+	case APP_COMMAND_IMPORT_MATERIAL:
+		project_import_material();
+		break;
+	case APP_COMMAND_IMPORT_BRUSH:
+		project_import_brush();
+		break;
+	case APP_COMMAND_IMPORT_SWATCHES:
+		project_import_swatches(false);
+		break;
+	case APP_COMMAND_IMPORT_MESH:
+		project_import_mesh(true, NULL);
+		break;
+	case APP_COMMAND_REIMPORT_MESH:
+		project_reimport_mesh();
+		break;
+	case APP_COMMAND_REIMPORT_TEXTURES:
+		project_reimport_textures();
+		break;
+	case APP_COMMAND_EXPORT_TEXTURES:
+		g_context->layers_export = EXPORT_MODE_VISIBLE;
+		box_export_tab           = 0;
+		box_export_show_textures();
+		break;
+	case APP_COMMAND_EXPORT_MESH:
+		g_context->export_mesh_index = 0; // All
+		box_export_show_mesh();
+		break;
+	case APP_COMMAND_EXPORT_SWATCHES:
+		project_export_swatches();
+		break;
+	case APP_COMMAND_BAKE_MATERIAL:
+		box_export_show_bake_material();
+		break;
+	case APP_COMMAND_BAKE_MESH_MAPS:
+		box_bake_maps_show();
+		break;
+	case APP_COMMAND_PREFERENCES:
+		box_preferences_show();
+		break;
+	case APP_COMMAND_VIEW_RESET:
+		viewport_reset();
+		break;
+	case APP_COMMAND_VIEW_FRAME:
+		viewport_frame();
+		break;
+	case APP_COMMAND_ZOOM_IN:
+		viewport_zoom(0.2);
+		break;
+	case APP_COMMAND_ZOOM_OUT:
+		viewport_zoom(-0.2);
+		break;
+	case APP_COMMAND_ORBIT_OPPOSITE:
+		viewport_orbit_opposite();
+		break;
+	case APP_COMMAND_SCREENSHOT:
+		sys_notify_on_next_frame(app_capture_screenshot, NULL); // After the frame, with the ui hidden
+		break;
+	case APP_COMMAND_DELETE_UNUSED:
+		tab_materials_delete_unused();
+		tab_textures_delete_unused();
+		break;
+	}
+	g_context->ddirty = 2;
+	iron_delay_idle_sleep();
 }
 
 // History

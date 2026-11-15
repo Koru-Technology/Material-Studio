@@ -53,8 +53,8 @@ final class FrameDriver: NSObject {
 		}
 		isStarted = true
 		iron_apple_start()
+		app_set_native_chrome(true) // The panels and menus are native, the engine draws its views only
 #if os(macOS)
-		app_set_native_chrome(true) // Sidebar, inspector and menus are native, the engine draws the views only
 		let link = view.displayLink(target: self, selector: #selector(displayTick))
 #else
 		let link                     = CADisplayLink(target: self, selector: #selector(displayTick))

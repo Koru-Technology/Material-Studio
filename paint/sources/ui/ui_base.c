@@ -191,7 +191,7 @@ void ui_base_update(void *_) {
 
 	util_cursor_render(_);
 
-	if (!ui_base_show && g_config->touch_ui) {
+	if (!ui_base_show && g_config->touch_ui && !app_native_chrome) {
 		// Distract free: a button where the top left bar was takes the ui back, the inverse of the one that hid it
 		g_ui->input_enabled       = true;
 		ui_begin(g_ui);

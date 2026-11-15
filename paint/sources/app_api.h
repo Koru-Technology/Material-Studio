@@ -25,6 +25,15 @@ typedef struct {
 	int32_t  selected_layer_id;
 	uint32_t layers_signature; // Layer ids, order, names, visibility, opacity, selection
 	uint32_t previews_version; // Layer thumbnails were redrawn
+	int32_t  view_mode;        // 0 3D, 1 3D and 2D, 2 2D (ui_base_view_mode)
+	int32_t  viewport_mode;    // viewport_mode_t
+	float    brush_angle;
+	bool     sym_x;
+	bool     sym_y;
+	bool     sym_z;
+	bool     project_modified;
+	float    camera_rot[4]; // Quaternion x, y, z, w: the view cube turns with it
+	bool     engine_modal;  // An engine drawn dialog, menu or full screen editor is up: the native controls step aside
 } app_state_t;
 
 void app_get_state(app_state_t *out);
@@ -37,6 +46,47 @@ void app_set_tool(int32_t tool);
 void app_set_brush_radius(float value);
 void app_set_brush_opacity(float value);
 void app_set_brush_hardness(float value);
+
+void app_set_brush_angle(float degrees);
+void app_set_symmetry(bool x, bool y, bool z);
+
+// Views and camera
+void app_cycle_view_mode(void);       // 3D, 3D and 2D, 2D
+void app_set_viewport_mode(int32_t mode); // viewport_mode_t
+void app_view_face(int32_t face);     // 0 right, 1 left, 2 back, 3 front, 4 top, 5 bottom
+void app_view_orbit(float x, float y); // Turns the camera by these angles (radians), the view cube drag
+
+// Menu commands, run like the old menus run them (some open the engine's dialogs)
+typedef enum {
+	APP_COMMAND_NEW_PROJECT,
+	APP_COMMAND_OPEN,
+	APP_COMMAND_OPEN_RECENT,
+	APP_COMMAND_SAVE,
+	APP_COMMAND_SAVE_AS,
+	APP_COMMAND_IMPORT_TEXTURE,
+	APP_COMMAND_IMPORT_FONT,
+	APP_COMMAND_IMPORT_MATERIAL,
+	APP_COMMAND_IMPORT_BRUSH,
+	APP_COMMAND_IMPORT_SWATCHES,
+	APP_COMMAND_IMPORT_MESH,
+	APP_COMMAND_REIMPORT_MESH,
+	APP_COMMAND_REIMPORT_TEXTURES,
+	APP_COMMAND_EXPORT_TEXTURES,
+	APP_COMMAND_EXPORT_MESH,
+	APP_COMMAND_EXPORT_SWATCHES,
+	APP_COMMAND_BAKE_MATERIAL,
+	APP_COMMAND_BAKE_MESH_MAPS,
+	APP_COMMAND_PREFERENCES,
+	APP_COMMAND_VIEW_RESET,
+	APP_COMMAND_VIEW_FRAME,
+	APP_COMMAND_ZOOM_IN,
+	APP_COMMAND_ZOOM_OUT,
+	APP_COMMAND_ORBIT_OPPOSITE,
+	APP_COMMAND_SCREENSHOT,
+	APP_COMMAND_DELETE_UNUSED,
+} app_command_t;
+
+void app_command(int32_t command);
 
 // History
 const char *app_undo_name(void); // Name of the step undo would revert, "" when none
