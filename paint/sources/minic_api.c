@@ -347,6 +347,21 @@ MINIC_MATH_API
 #undef X
 
 // All array types share the buffer/length/capacity layout
+// The field registration macros with the field's size checked: an int read or written over a bool would reach the next fields
+#define MINIC_FIELD_SIZE(f, n) _Static_assert(sizeof(((minic_st_t *)0)->f) == (n), #f " has another size than registered")
+#undef MINIC_I
+#undef MINIC_F
+#undef MINIC_B
+#define MINIC_I(f)                    \
+	MINIC_FIELD_SIZE(f, sizeof(int)); \
+	MINIC_FIELD(f, MINIC_T_INT, MINIC_T_INT, NULL)
+#define MINIC_F(f)                      \
+	MINIC_FIELD_SIZE(f, sizeof(float)); \
+	MINIC_FIELD(f, MINIC_T_FLOAT, MINIC_T_FLOAT, NULL)
+#define MINIC_B(f)                     \
+	MINIC_FIELD_SIZE(f, sizeof(bool)); \
+	MINIC_FIELD(f, MINIC_T_BOOL, MINIC_T_BOOL, NULL)
+
 static void minic_register_array_struct(const char *name, int size, minic_type_t buffer_deref) {
 	minic_struct_begin(name, size, MINIC_ALIGNOF(u8_array_t));
 	minic_struct_field("buffer", (int)offsetof(u8_array_t, buffer), MINIC_T_PTR, buffer_deref, NULL);
@@ -736,8 +751,8 @@ void minic_register_builtins() {
 	MINIC_S(data_ref);
 	MINIC_O(transform, f32_array_t);
 	MINIC_O(dimensions, f32_array_t);
-	MINIC_I(visible);
-	MINIC_I(spawn);
+	MINIC_B(visible);
+	MINIC_B(spawn);
 	MINIC_P(anim);
 	MINIC_S(material_ref);
 	MINIC_O(children, object_desc_t_array_t);
@@ -812,12 +827,12 @@ void minic_register_builtins() {
 
 	MINIC_STRUCT(shader_context_t);
 	MINIC_S(name);
-	MINIC_I(depth_write);
+	MINIC_B(depth_write);
 	MINIC_S(compare_mode);
 	MINIC_S(cull_mode);
 	MINIC_S(vertex_shader);
 	MINIC_S(fragment_shader);
-	MINIC_I(shader_from_source);
+	MINIC_B(shader_from_source);
 	MINIC_S(blend_source);
 	MINIC_S(blend_destination);
 	MINIC_S(alpha_blend_source);
@@ -883,7 +898,7 @@ void minic_register_builtins() {
 	MINIC_E(rot, quat_t);
 	MINIC_E(scale, vec4_t);
 	MINIC_F(scale_world);
-	MINIC_I(dirty);
+	MINIC_B(dirty);
 	MINIC_O(object, object_t);
 	MINIC_E(dim, vec4_t);
 	MINIC_E(extent, vec4_t);
@@ -922,11 +937,11 @@ void minic_register_builtins() {
 	MINIC_I(undo_steps);
 	MINIC_F(camera_fov);
 	MINIC_I(layer_res);
-	MINIC_I(brush_live);
-	MINIC_I(node_previews);
-	MINIC_I(material_live);
+	MINIC_B(brush_live);
+	MINIC_B(node_previews);
+	MINIC_B(material_live);
 	MINIC_I(rp_view_transform);
-	MINIC_I(autosave);
+	MINIC_B(autosave);
 	MINIC_I(autosave_interval);
 	MINIC_F(pressure_sensitivity);
 	MINIC_F(pressure_curve);
@@ -965,7 +980,7 @@ void minic_register_builtins() {
 	MINIC_I(brush_blending);
 	MINIC_I(brush_paint);
 	MINIC_I(viewport_mode);
-	MINIC_I(xray);
+	MINIC_B(xray);
 	MINIC_B(sym_x);
 	MINIC_B(sym_y);
 	MINIC_B(sym_z);
@@ -981,7 +996,7 @@ void minic_register_builtins() {
 	MINIC_STRUCT(project_t);
 	MINIC_S(version);
 	MINIC_O(assets, string_array_t);
-	MINIC_I(is_bgra);
+	MINIC_B(is_bgra);
 	MINIC_S(envmap);
 	MINIC_F(camera_fov);
 	MINIC_F(camera_near);
