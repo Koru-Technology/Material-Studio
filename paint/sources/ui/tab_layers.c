@@ -497,6 +497,10 @@ bool tab_layers_can_merge_down(slot_layer_t *l) {
 	if (l->parent != NULL && !slot_layer_is_descendant(g_project->_->layers->buffer[below], l->parent)) {
 		return false;
 	}
+	// A hidden layer is not merged away
+	if (!slot_layer_shows(l) || !slot_layer_shows(g_project->_->layers->buffer[below])) {
+		return false;
+	}
 	// Masks must be merged down to masks
 	if (slot_layer_is_mask(l) && !slot_layer_is_mask(g_project->_->layers->buffer[index - 1])) {
 		return false;

@@ -1019,12 +1019,7 @@ void layers_merge_down() {
 	slot_layer_t *l0 = g_project->_->layers->buffer[array_index_of(g_project->_->layers, l1) - slot_layer_count_descendants(l1) - 1];
 
 	if (!slot_layer_shows(l1) || !slot_layer_shows(l0)) {
-		slot_layer_t *discard = slot_layer_shows(l1) ? l0 : l1;
-		slot_layer_t *keep    = discard == l1 ? l0 : l1;
-		slot_layer_delete(discard);
-		context_set_layer(keep);
-		g_context->layer_preview_dirty = true;
-		return;
+		return; // Refused, tab_layers_can_merge_down
 	}
 
 	if (slot_layer_is_group(l1)) {

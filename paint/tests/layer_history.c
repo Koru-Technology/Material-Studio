@@ -106,6 +106,14 @@ void next() {
 	}
 	else if (step == 12) {
 		check(a->fill_material == mat_red, "undo of to paint gives the layer its own material back");
+		int count  = script_layer_count();
+		b->visible = 0;
+		check(script_layer_merge_down(b) == NULL && script_layer_count() == count, "a hidden layer is not merged down");
+		b->visible = 1;
+		a->visible = 0;
+		check(script_layer_merge_down(b) == NULL && script_layer_count() == count, "nothing merges down into a hidden layer");
+		a->visible = 1;
+		check(script_layer_get(b->name) == b && script_layer_get(a->name) == a, "both layers kept");
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
