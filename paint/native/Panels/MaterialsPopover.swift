@@ -17,30 +17,20 @@ struct MaterialsPopover: View {
 		}
 	}
 
-	// Plain state and buttons: a segmented Picker bound to @AppStorage did not switch tabs in the iPad popover
 	@State private var segment = Segment(rawValue: UserDefaults.standard.string(forKey: "materials.segment") ?? "") ?? .project
 
 	var body: some View {
 		VStack(spacing: 0) {
-			HStack(spacing: 4) {
+			Picker("Materials", selection: Binding(get: { segment }, set: { s in
+				segment = s
+				UserDefaults.standard.set(s.rawValue, forKey: "materials.segment")
+			})) {
 				ForEach(Segment.allCases) { s in
-					Button {
-						segment = s
-						UserDefaults.standard.set(s.rawValue, forKey: "materials.segment")
-					} label: {
-						Text(s.title)
-							.font(.subheadline.weight(segment == s ? .semibold : .regular))
-							.frame(maxWidth: .infinity)
-							.padding(.vertical, 7)
-							.background(segment == s ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .capsule)
-							.contentShape(.capsule)
-					}
-					.buttonStyle(.plain)
-					.accessibilityAddTraits(segment == s ? [.isSelected] : [])
+					Text(s.title).tag(s)
 				}
 			}
-			.padding(3)
-			.background(.fill.quaternary, in: .capsule)
+			.pickerStyle(.segmented)
+			.labelsHidden()
 			.padding(.horizontal, 12)
 			.padding(.top, 12)
 			.padding(.bottom, 8)

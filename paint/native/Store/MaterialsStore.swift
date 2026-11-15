@@ -63,7 +63,7 @@ struct SmartRow: Identifiable, Equatable {
 // The Library and smart materials are only read while they show (libraryShown, smartShown): opening Material Maker's
 // library or the cloud catalog costs.
 @Observable
-final class MaterialsStore {
+final class MaterialsStore: ChangeOnly {
 	static let shared = MaterialsStore()
 
 	// Project
@@ -140,15 +140,15 @@ final class MaterialsStore {
 		guard s.ready else {
 			return
 		}
-		set(&ready, true)
-		set(&selectedID, s.selected_id)
-		set(&smartCanSave, s.smart_can_save)
-		set(&canApplyToFill, s.can_apply_to_fill)
-		set(&studioOpen, s.studio_open)
+		update(\.ready, true)
+		update(\.selectedID, s.selected_id)
+		update(\.smartCanSave, s.smart_can_save)
+		update(\.canApplyToFill, s.can_apply_to_fill)
+		update(\.studioOpen, s.studio_open)
 		if s.materials_signature != materialsSignature || s.previews_version != previewsVersion {
 			materialsSignature = s.materials_signature
 			previewsVersion    = s.previews_version
-			set(&materials, readMaterials())
+			update(\.materials, readMaterials())
 		}
 		if libraryShown {
 			refreshLibrary()
@@ -199,9 +199,9 @@ final class MaterialsStore {
 
 	private func refreshLibrary() {
 		let sig = app_library_signature()
-		set(&libraryCloud, app_library_cloud())
-		set(&libraryStatus, String(cString: app_library_status()))
-		set(&libraryHasFolder, app_library_has_folder())
+		update(\.libraryCloud, app_library_cloud())
+		update(\.libraryStatus, String(cString: app_library_status()))
+		update(\.libraryHasFolder, app_library_has_folder())
 		if sig != librarySignature {
 			librarySignature = sig
 			readLibrary()
@@ -224,13 +224,13 @@ final class MaterialsStore {
 			                       name: String(cString: item.name), detail: String(cString: item.detail)))
 		}
 		libraryIndex = Dictionary(rows.map { ($0.key, $0.index) }, uniquingKeysWith: { a, _ in a })
-		set(&library, rows)
+		update(\.library, rows)
 		updateSections()
 	}
 
 	private func readProgress() {
 		guard library.contains(where: \.busy) else {
-			set(&libraryProgress, [:])
+			update(\.libraryProgress, [:])
 			return
 		}
 		var progress: [UInt32: Float] = [:]
@@ -238,7 +238,7 @@ final class MaterialsStore {
 		for row in library where row.busy && app_library_item(row.index, &item) {
 			progress[row.key] = item.progress
 		}
-		set(&libraryProgress, progress)
+		update(\.libraryProgress, progress)
 	}
 
 	// Sections of the items matching the search and the type picked, and the type menu with its counts
@@ -271,7 +271,7 @@ final class MaterialsStore {
 			}
 			options.append(group)
 		}
-		set(&libraryFilterOptions, options)
+		update(\.libraryFilterOptions, options)
 
 		// The type picked shows nothing now: all of them
 		let filter = libraryFilter
@@ -311,7 +311,7 @@ final class MaterialsStore {
 			current.append(row)
 		}
 		flush()
-		set(&librarySections, sections)
+		update(\.librarySections, sections)
 	}
 
 	func filterTitle(_ filter: LibraryFilter) -> String {
@@ -357,7 +357,7 @@ final class MaterialsStore {
 			rows.append(SmartRow(index: i, key: info.key, name: String(cString: info.name)))
 		}
 		smartIndex = Dictionary(rows.map { ($0.key, $0.index) }, uniquingKeysWith: { a, _ in a })
-		set(&smart, rows)
+		update(\.smart, rows)
 	}
 
 	func applySmart(_ row: SmartRow) {

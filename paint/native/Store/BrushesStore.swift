@@ -21,7 +21,7 @@ struct BrushRow: Identifiable, Equatable {
 
 // The brush library (app_api_brushes.h), refreshed by AppStore after every frame. Refreshes ColorStore too.
 @Observable
-final class BrushesStore {
+final class BrushesStore: ChangeOnly {
 	static let shared = BrushesStore()
 
 	private(set) var groups: [BrushGroupRow] = []
@@ -37,7 +37,7 @@ final class BrushesStore {
 	func refresh() {
 		var s = app_brushes_state_t()
 		app_brushes_get_state(&s)
-		set(&selectedBrushID, s.selected_brush_id)
+		update(\.selectedBrushID, s.selected_brush_id)
 		if s.library_signature != librarySignature || s.previews_signature != previewsSignature {
 			librarySignature = s.library_signature
 			previewsSignature = s.previews_signature
@@ -58,9 +58,9 @@ final class BrushesStore {
 			brushRows.append(BrushRow(id: b.id, groupID: b.group_id, name: String(cString: b.name), builtin: b.builtin,
 			                          selected: b.selected, previewReady: b.preview_ready, previewKey: b.preview_key))
 		}
-		set(&groups, groupRows)
-		set(&brushes, brushRows)
-		set(&recentIDs, (0..<3).map { app_brush_recent($0) }.filter { $0 >= 0 })
+		update(\.groups, groupRows)
+		update(\.brushes, brushRows)
+		update(\.recentIDs, (0..<3).map { app_brush_recent($0) }.filter { $0 >= 0 })
 		let ids = Set(brushRows.map(\.id))
 		previews = previews.filter { ids.contains($0.key) }
 	}

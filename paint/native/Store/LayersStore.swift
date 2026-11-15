@@ -101,7 +101,7 @@ struct LayerRow: Identifiable, Equatable {
 
 // The project's layers (app_api.h, app_api_layers.h), refreshed by AppStore after every frame
 @Observable
-final class LayersStore {
+final class LayersStore: ChangeOnly {
 	static let shared = LayersStore()
 
 	private(set) var selectedLayerID: Int32 = -1
@@ -119,16 +119,16 @@ final class LayersStore {
 	static let blendingNames: [String] = (0..<app_layer_blending_count()).map { String(cString: app_layer_blending_name($0)) }
 
 	func refresh(_ s: app_state_t) {
-		set(&selectedLayerID, s.selected_layer_id)
+		update(\.selectedLayerID, s.selected_layer_id)
 		let props = app_layers_props_signature()
 		if s.layers_signature != layersSignature || props != propsSignature {
 			layersSignature = s.layers_signature
 			propsSignature = props
 			let rows = readLayers()
-			set(&layers, rows)
-			set(&visibleLayers, Self.visible(rows))
-			set(&materialNames, (0..<app_layer_material_count()).map { String(cString: app_layer_material_name($0)) })
-			set(&canNew, Set((APP_LAYER_NEW_PAINT.rawValue...APP_LAYER_NEW_ID_MASK.rawValue).filter { app_layer_can_new(Int32($0)) }.map { Int32($0) }))
+			update(\.layers, rows)
+			update(\.visibleLayers, Self.visible(rows))
+			update(\.materialNames, (0..<app_layer_material_count()).map { String(cString: app_layer_material_name($0)) })
+			update(\.canNew, Set((APP_LAYER_NEW_PAINT.rawValue...APP_LAYER_NEW_ID_MASK.rawValue).filter { app_layer_can_new(Int32($0)) }.map { Int32($0) }))
 		}
 		if s.previews_version != thumbnailsVersion {
 			thumbnails.removeAll()

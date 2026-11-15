@@ -42,7 +42,7 @@ struct SwatchRow: Identifiable, Equatable {
 
 // The picked color and the swatches (app_api_brushes.h), refreshed by BrushesStore after every frame
 @Observable
-final class ColorStore {
+final class ColorStore: ChangeOnly {
 	static let shared = ColorStore()
 
 	private(set) var picked = PaintColor()
@@ -59,14 +59,14 @@ final class ColorStore {
 		signature = colorSignature
 		var c = app_color_t()
 		if app_color_get(&c) {
-			set(&picked, PaintColor(c))
+			update(\.picked, PaintColor(c))
 		}
 		var rows: [SwatchRow] = []
 		for i in 0..<app_swatch_count() where app_swatch_info(i, &c) {
 			rows.append(SwatchRow(id: Int(i), color: PaintColor(c)))
 		}
-		set(&swatches, rows)
-		set(&selectedSwatch, Int(app_swatch_selected()))
-		set(&canApply, app_color_can_apply())
+		update(\.swatches, rows)
+		update(\.selectedSwatch, Int(app_swatch_selected()))
+		update(\.canApply, app_color_can_apply())
 	}
 }

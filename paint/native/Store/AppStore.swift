@@ -5,7 +5,7 @@ import Observation
 // The app state the native UI shows, read from the engine after every frame (app_api.h).
 // Fields are assigned only when they changed, so SwiftUI redraws only what changed.
 @Observable
-final class AppStore {
+final class AppStore: ChangeOnly {
 	static let shared = AppStore()
 
 	private(set) var ready         = false
@@ -31,21 +31,21 @@ final class AppStore {
 		guard s.ready else {
 			return
 		}
-		set(&ready, true)
-		set(&tool, s.tool)
-		set(&brushRadius, s.brush_radius)
-		set(&brushOpacity, s.brush_opacity)
-		set(&brushHardness, s.brush_hardness)
-		set(&canUndo, s.undos > 0)
-		set(&canRedo, s.redos > 0)
-		set(&undoName, String(cString: app_undo_name()))
-		set(&viewMode, s.view_mode)
-		set(&viewportMode, s.viewport_mode)
-		set(&brushAngle, s.brush_angle)
-		set(&symmetry, [s.sym_x, s.sym_y, s.sym_z])
-		set(&projectModified, s.project_modified)
-		set(&engineModal, s.engine_modal)
-		set(&cameraRotation, SIMD4(s.camera_rot.0, s.camera_rot.1, s.camera_rot.2, s.camera_rot.3))
+		update(\.ready, true)
+		update(\.tool, s.tool)
+		update(\.brushRadius, s.brush_radius)
+		update(\.brushOpacity, s.brush_opacity)
+		update(\.brushHardness, s.brush_hardness)
+		update(\.canUndo, s.undos > 0)
+		update(\.canRedo, s.redos > 0)
+		update(\.undoName, String(cString: app_undo_name()))
+		update(\.viewMode, s.view_mode)
+		update(\.viewportMode, s.viewport_mode)
+		update(\.brushAngle, s.brush_angle)
+		update(\.symmetry, [s.sym_x, s.sym_y, s.sym_z])
+		update(\.projectModified, s.project_modified)
+		update(\.engineModal, s.engine_modal)
+		update(\.cameraRotation, SIMD4(s.camera_rot.0, s.camera_rot.1, s.camera_rot.2, s.camera_rot.3))
 		LayersStore.shared.refresh(s)
 		MaterialsStore.shared.refresh()
 		BrushesStore.shared.refresh()
@@ -59,9 +59,14 @@ final class AppStore {
 	}
 }
 
-// Assigns only a changed value: an @Observable property set to the same value still redraws its views
-func set<T: Equatable>(_ field: inout T, _ value: T) {
-	if field != value {
-		field = value
+// Assigns only a changed value. Not through inout: passing an @Observable property inout counts as a write even when
+// the value stays, every view reading it redrew on every frame (and a segmented picker reset under the finger).
+protocol ChangeOnly: AnyObject {}
+
+extension ChangeOnly {
+	func update<T: Equatable>(_ path: ReferenceWritableKeyPath<Self, T>, _ value: T) {
+		if self[keyPath: path] != value {
+			self[keyPath: path] = value
+		}
 	}
 }
