@@ -562,7 +562,7 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 	else if (cons != NULL && cons->type == MM_JSON_OBJECT) {
 		for (i32 i = 0; i < cons->count; ++i) {
 			mm_json_t *ports = cons->items[i];
-			for (i32 k = 0; ports != NULL && k < ports->count; ++k) {
+			for (i32 k = 0; ports != NULL && ports->type == MM_JSON_OBJECT && k < ports->count; ++k) {
 				mm_json_t *c = mm_json_new(MM_JSON_OBJECT);
 				mm_json_set(c, "from", mm_json_get(ports->items[k], "node"));
 				mm_json_set(c, "from_port", mm_json_get(ports->items[k], "port"));

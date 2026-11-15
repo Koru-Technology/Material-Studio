@@ -26,6 +26,9 @@ static ui_node_t *mm_controls_node(ui_node_canvas_t *canvas, char *type, f32 x, 
 }
 
 static void mm_controls_link(ui_node_canvas_t *canvas, ui_node_t *from, i32 out, ui_node_t *to, i32 in) {
+	if (from == NULL || to == NULL) {
+		return;
+	}
 	any_array_push(canvas->links, project_create_node_link(canvas->links, from->id, out, to->id, in));
 }
 
@@ -138,9 +141,9 @@ static bool mm_controls_add(ui_node_canvas_t *canvas, mm_json_t *c, i32 order, f
 			for (i32 i = 0; i < nmids && from == v; ++i) {
 				from = string_equals(mid_keys[i], mid_key) ? mids[i] : from;
 			}
-			if (from == v) {
-				ui_node_t *m = mm_controls_node(canvas, "MAPRANGE", x - MM_CONTROLS_MID_W, mid_y);
-				f32        vals[5] = {0, min, max, a, b};
+			ui_node_t *m = from == v ? mm_controls_node(canvas, "MAPRANGE", x - MM_CONTROLS_MID_W, mid_y) : NULL;
+			if (m != NULL) {
+				f32 vals[5] = {0, min, max, a, b};
 				for (i32 i = 1; i < 5; ++i) {
 					m->inputs->buffer[i]->default_value->buffer[0] = vals[i];
 				}
@@ -185,8 +188,8 @@ static bool mm_controls_add(ui_node_canvas_t *canvas, mm_json_t *c, i32 order, f
 			for (i32 i = 0; i < nmids && from == v; ++i) {
 				from = string_equals(mid_keys[i], mid_key) ? mids[i] : from;
 			}
-			if (from == v) {
-				ui_node_t *s = mm_controls_node(canvas, "SELECT_VALUE", x - MM_CONTROLS_MID_W, mid_y);
+			ui_node_t *s = from == v ? mm_controls_node(canvas, "SELECT_VALUE", x - MM_CONTROLS_MID_W, mid_y) : NULL;
+			if (s != NULL) {
 				s->buttons->buffer[0]->data = u8_array_create_from_string(mm_controls_list(sel, nsel));
 				mm_controls_link(canvas, v, 0, s, 0);
 				mid_y += 160;
@@ -341,10 +344,12 @@ void mm_controls_common(slot_material_t *m) {
 		ui_node_t *hue = mm_controls_common_var(canvas, "Hue", "hue", "color", "degrees", 0, -180, 180, 0, vx, vy);
 		ui_node_t *map = mm_controls_node(canvas, "MAPRANGE", ax, y);
 		f32        r[5] = {0, -180, 180, 0, 1};
-		for (i32 i = 1; i < 5; ++i) {
+		for (i32 i = 1; i < 5 && map != NULL; ++i) {
 			map->inputs->buffer[i]->default_value->buffer[0] = r[i];
 		}
-		map->buttons->buffer[0]->default_value->buffer[0] = 0;
+		if (map != NULL) {
+			map->buttons->buffer[0]->default_value->buffer[0] = 0;
+		}
 		mm_controls_link(canvas, hue, 0, map, 0);
 		mm_controls_link(canvas, map, 0, hsv, 0);
 		ui_node_t *sat = mm_controls_common_var(canvas, "Saturation", "saturation", "color", "percent", 1, 0, 2, 1, vx, vy + 240);
@@ -486,6 +491,9 @@ ui_node_t *mm_node_export_param(ui_node_canvas_t *canvas, ui_node_t *node, char 
 		return NULL;
 	}
 	ui_node_t *v = mm_controls_node(canvas, "VARIABLE", node->x - 400, node->y);
+	if (v == NULL) {
+		return NULL;
+	}
 	char      *id = string_tmp("%s_%s%s", mm_node_name(node) != NULL ? mm_node_name(node) : "node", param, stop >= 0 ? string_tmp("_%d", stop) : "");
 	variable_setup(v, kind, label, id, kind >= 4 ? "color" : "pattern", "", variable_count(canvas));
 	if (kind == 0) {
