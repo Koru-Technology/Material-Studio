@@ -30,7 +30,7 @@ struct PadToolColumn: View {
 						.accessibilityLabel(tool.name)
 						.padPopover("Tool \(tool.id)", arrowEdge: .leading) {
 							ToolPropertiesView()
-								.frame(width: 320)
+								.frame(width: 320, height: 460)
 						}
 					}
 				}

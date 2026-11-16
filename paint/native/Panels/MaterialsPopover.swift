@@ -71,11 +71,11 @@ struct MaterialsPopover: View {
 	}
 }
 
-// After an action that opens an editor over the canvas: the iPad popover closes. Not on the Mac, where dismiss would
-// close the window the panel is in.
+// After an action that opens an editor over the canvas: the iPad panel closes (PadPopovers). Not on the Mac, where dismiss
+// would close the window the panel is in.
 func closePopover(_ dismiss: DismissAction) {
 #if os(iOS)
-	dismiss()
+	PadPopovers.shared.close()
 #endif
 }
 

@@ -31,8 +31,9 @@ struct PadControls: View {
 			}
 		}
 		.padding(16)
+		.padPanelHost()
 		.background {
-			// While a popover is open, a touch on the canvas only closes it (it does not paint)
+			// While a panel is open, a touch on the canvas only closes it (it does not paint)
 			if PadPopovers.shared.shown != nil {
 				Color.clear
 					.contentShape(.rect)
@@ -43,97 +44,150 @@ struct PadControls: View {
 			}
 		}
 		.onDisappear {
-			PadPopovers.shared.close() // An editor over the canvas took the screen: its popover went with the controls
+			PadPopovers.shared.close() // An editor over the canvas took the screen: its panel went with the controls
 		}
 	}
 }
 
-// One popover of the controls at a time, by name. A tap on another control's button switches in one tap: the open
-// popover lets the controls behind it take taps (padPopover), so the tap reaches the button, and the same tap closes
-// the popover. Presenting while one is still closing does nothing, so the next one opens once the closing one has gone.
-// A tap on the open popover's own button only closes it. PadControls catches taps on the canvas.
+// One panel of the controls at a time, by name: the libraries, the camera, the viewport modes, a tool's properties.
+// They are drawn here over the controls rather than presented as system popovers: a system popover takes the first tap
+// outside it to close, and a popover asked to open while another one closes is dropped. Here a tap on another button
+// switches at once (no animation), only opening from none and closing to none animate. A tap on the canvas closes.
 @Observable
 final class PadPopovers {
 	static let shared = PadPopovers()
 
-	// Launch argument "-NativeShow Layers" opens that popover (screenshots from scripted runs)
+	// Launch argument "-NativeShow Layers" opens that panel (screenshots from scripted runs)
 	private(set) var shown: String? = UserDefaults.standard.string(forKey: "NativeShow")
-	@ObservationIgnored private var closing: String? // Going away, until UIKit presents nothing any more
-	@ObservationIgnored private var pending: String? // Opens once the closing one has gone
 
-	// The button's tap: the outside tap may have closed its popover just before (closing), or closes it just after
 	func toggle(_ name: String) {
 		if shown == name {
 			close()
 		}
-		else if let c = closing {
-			pending = c == name ? nil : name // Its own button: it stays closed
-		}
 		else if shown != nil {
-			pending = name
-			startClosing()
+			var t                = Transaction()
+			t.disablesAnimations = true
+			withTransaction(t) {
+				shown = name
+			}
 		}
 		else {
-			shown = name
+			withAnimation(.snappy(duration: 0.22)) {
+				shown = name
+			}
 		}
 	}
 
 	func close() {
-		pending = nil
-		startClosing()
-	}
-
-	func isPresented(_ name: String) -> Binding<Bool> {
-		Binding(get: { self.shown == name }, set: { if !$0 && self.shown == name { self.startClosing() } })
-	}
-
-	private func startClosing() {
-		guard let name = shown else {
+		guard shown != nil else {
 			return
 		}
-		closing = name
-		shown   = nil
-		waitUntilGone(name, polls: 0)
-	}
-
-	// The closing popover is gone once UIKit presents nothing any more (SwiftUI's onDisappear comes before its
-	// dismissal ends, a popover opened then is dropped): the one asked for meanwhile opens then
-	private func waitUntilGone(_ name: String, polls: Int) {
-		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0) { [weak self] in
-			guard let self, self.closing == name else {
-				return
-			}
-			if Self.presenting() && polls < 90 { // 1.5 s at most
-				self.waitUntilGone(name, polls: polls + 1)
-				return
-			}
-			self.closing = nil
-			if self.shown == nil, let p = self.pending {
-				self.pending = nil
-				self.shown   = p
-			}
+		withAnimation(.easeOut(duration: 0.16)) {
+			shown = nil
 		}
 	}
+}
 
-	// A popover (or another presentation) is up or still going away
-	private static func presenting() -> Bool {
-		for scene in UIApplication.shared.connectedScenes {
-			for window in (scene as? UIWindowScene)?.windows ?? [] where window.rootViewController?.presentedViewController != nil {
-				return true
-			}
-		}
-		return false
+// A button's panel: where the button is, the side it opens to, what it shows
+struct PadPanel {
+	let anchor: Anchor<CGRect>
+	let edge: Edge? // .leading: right of the button, nil: below it, or above it in the lower half of the screen
+	let content: AnyView
+}
+
+struct PadPanelKey: PreferenceKey {
+	static var defaultValue: [String: PadPanel] = [:]
+
+	static func reduce(value: inout [String: PadPanel], nextValue: () -> [String: PadPanel]) {
+		value.merge(nextValue()) { _, new in new }
 	}
 }
 
 extension View {
-	// A popover of the controls (PadPopovers): the controls behind it stay usable
+	// The button opens the panel named name (PadPopovers.toggle), PadPanelHost draws it
 	func padPopover<Content: View>(_ name: String, arrowEdge: Edge? = nil, @ViewBuilder content: @escaping () -> Content) -> some View {
-		popover(isPresented: PadPopovers.shared.isPresented(name), arrowEdge: arrowEdge) {
-			content()
-				.presentationCompactAdaptation(.popover)
-				.presentationBackgroundInteraction(.enabled)
+		anchorPreference(key: PadPanelKey.self, value: .bounds) { anchor in
+			[name: PadPanel(anchor: anchor, edge: arrowEdge, content: AnyView(content()))]
 		}
+	}
+
+	// Draws the open panel next to its button
+	func padPanelHost() -> some View {
+		overlayPreferenceValue(PadPanelKey.self) { panels in
+			PadPanelHost(panels: panels)
+		}
+	}
+}
+
+struct PadPanelHost: View {
+	let panels: [String: PadPanel]
+	private var popovers = PadPopovers.shared
+
+	init(panels: [String: PadPanel]) {
+		self.panels = panels
+	}
+
+	private let gap: CGFloat    = 10
+	private let margin: CGFloat = 8
+
+	var body: some View {
+		GeometryReader { geo in
+			ZStack(alignment: .topLeading) {
+				Color.clear
+					.allowsHitTesting(false)
+				if let name = popovers.shown, let panel = panels[name] {
+					let button = geo[panel.anchor]
+					let below  = button.midY < geo.size.height / 2
+					PadPanelContent(content: panel.content)
+						.background(Color(uiColor: PadPanelContent.background))
+						.clipShape(.rect(cornerRadius: 24, style: .continuous))
+						.overlay {
+							RoundedRectangle(cornerRadius: 24, style: .continuous)
+								.strokeBorder(.white.opacity(0.12), lineWidth: 1)
+								.allowsHitTesting(false)
+						}
+						.shadow(color: .black.opacity(0.3), radius: 24, y: 8)
+						.alignmentGuide(.leading) { d in
+							let x = panel.edge == .leading ? button.maxX + gap : button.midX - d.width / 2
+							return -min(max(x, margin), geo.size.width - d.width - margin)
+						}
+						.alignmentGuide(.top) { d in
+							let y = panel.edge == .leading ? button.midY - d.height / 2
+							      : below ? button.maxY + gap : button.minY - gap - d.height
+							return -min(max(y, margin), geo.size.height - d.height - margin)
+						}
+						.transition(.opacity.combined(with: .scale(scale: 0.96, anchor: panel.edge == .leading ? .leading : below ? .top : .bottom)))
+						.id(name)
+				}
+			}
+		}
+		.ignoresSafeArea(.keyboard) // The panel stays where it is when the keyboard comes up
+	}
+}
+
+// A panel's content with the colors of a popover: in the elevated interface level the system backgrounds are gray, not
+// black (lists, forms and navigation bars use them)
+struct PadPanelContent: UIViewControllerRepresentable {
+	let content: AnyView
+
+	static let background = UIColor.systemBackground.resolvedColor(with: UITraitCollection(traitsFrom: [
+		UITraitCollection(userInterfaceStyle: .dark), UITraitCollection(userInterfaceLevel: .elevated),
+	]))
+
+	func makeUIViewController(context: Context) -> UIHostingController<AnyView> {
+		let host                                = UIHostingController(rootView: content)
+		host.sizingOptions                      = [.intrinsicContentSize]
+		host.traitOverrides.userInterfaceLevel  = .elevated
+		host.view.backgroundColor               = .clear
+		return host
+	}
+
+	func updateUIViewController(_ host: UIHostingController<AnyView>, context: Context) {
+		host.rootView = content
+	}
+
+	func sizeThatFits(_ proposal: ProposedViewSize, uiViewController host: UIHostingController<AnyView>, context: Context) -> CGSize? {
+		host.sizeThatFits(in: CGSize(width: proposal.width ?? .infinity, height: proposal.height ?? .infinity))
 	}
 }
 
