@@ -1129,3 +1129,12 @@ X1(mm_buffers_test_tex_size, "i(i map)", i, i)
 X0(mm_buffers_export_end, "v()", v)
 X0(mm_buffers_export_largest, "i()", i)
 X2(export_tiled_set_resolution, "v(i w,i h)", v, i, i)
+
+// History v2 (history.c, app_api.c) test hooks
+X0(history_busy, "b()", b)
+X0(history_test_restore_runs, "i()", i)
+X1(history_flush_restores, "v(p:slot_layer_t l)", v, p)
+X0(app_history_busy, "b()", b)
+X0(history_test_undos, "i()", i)
+X0(history_on_memory_warning, "v()", v)
+X1(timeline_tiles_test, "i(p:slot_layer_t l)", i, p)

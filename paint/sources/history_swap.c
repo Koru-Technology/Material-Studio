@@ -19,6 +19,113 @@ slot_layer_t_array_t *history_merge_saved_layers() {
 	return saved;
 }
 
+// Layer records (history_v2): a layer out of the project for a step (deleted, merged) keeps its props in its struct and
+// its pixels as an HSTORE_LAYER_RECORD: u32 uid, u32 timeline, hash128 tile map (NONE for fill layers, they render
+// again), u32 layer_slot_type_t (the kind of a layer is told by its textures, they go). Groups keep no record.
+
+#define HISTORY_RECORD_LEN 28
+
+// hstore children of a record: its tile map
+void history_record_children(const u8 *data, u32 len, hstore_visit_fn visit, void *ud) {
+	if (len >= HISTORY_RECORD_LEN) {
+		hash128_t h;
+		memcpy(&h.lo, data + 8, 8);
+		memcpy(&h.hi, data + 16, 8);
+		visit(h, ud);
+	}
+}
+
+static hash128_t history_record_out(slot_layer_t *l) {
+	if (l->texpaint == NULL) {
+		return HASH128_NONE; // Group, or out already
+	}
+	hash128_t   map = HASH128_NONE;
+	timeline_t *tl  = timeline_of(l);
+	if (tl != NULL) {
+		map = timeline_state(tl, tl->cursor);
+		hstore_ref(map);
+	}
+	if (hash128_is_none(map) && timeline_layer_paints(l)) {
+		paint_target_t t;
+		timeline_target_live(l, &t);
+		map = timeline_tiles_capture(&t, HASH128_NONE, NULL);
+	}
+	u32 kind = slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER;
+	u8  b[HISTORY_RECORD_LEN];
+	memcpy(b, &l->uid, 4);
+	memcpy(b + 4, &l->timeline, 4);
+	memcpy(b + 8, &map.lo, 8);
+	memcpy(b + 16, &map.hi, 8);
+	memcpy(b + 24, &kind, 4);
+	hash128_t h = hstore_put(HSTORE_LAYER_RECORD, b, HISTORY_RECORD_LEN); // Takes its own reference on the map
+	hstore_unref(map);
+	slot_layer_unload(l);
+	l->texpaint         = NULL;
+	l->texpaint_nor     = NULL;
+	l->texpaint_pack    = NULL;
+	l->texpaint_preview = NULL;
+	return h;
+}
+
+static void history_update_fill_layer(slot_layer_t *l);
+
+// The layer comes back: textures again, its pixels from the record
+static void history_record_in(slot_layer_t *l, hash128_t record) {
+	u32       len = 0;
+	u8       *b   = hash128_is_none(record) ? NULL : hstore_get(record, &len);
+	hash128_t map = HASH128_NONE;
+	u32       kind = LAYER_SLOT_TYPE_GROUP;
+	if (b != NULL && len >= HISTORY_RECORD_LEN) {
+		memcpy(&map.lo, b + 8, 8);
+		memcpy(&map.hi, b + 16, 8);
+		memcpy(&kind, b + 24, 4);
+	}
+	free(b);
+	if (l->texpaint != NULL || kind == LAYER_SLOT_TYPE_GROUP) {
+		hstore_unref(record);
+		return;
+	}
+	if (kind == LAYER_SLOT_TYPE_MASK) {
+		l->texpaint = render_path_add_target(string_tmp("texpaint%s", l->ext), config_get_texture_res_x(), config_get_texture_res_y(), "RGBA32", 1.0)->_image;
+	}
+	else {
+		slot_layer_alloc_textures(l);
+	}
+	l->texpaint_preview = gpu_create_render_target(util_render_layer_preview_size, util_render_layer_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
+	paint_target_t t;
+	timeline_target_live(l, &t);
+	if (hash128_is_none(map) || !timeline_tiles_restore(map, &t)) {
+		draw_saved_t saved = draw_suspend();
+		slot_layer_clear(l, slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+		draw_resume(saved);
+		if (l->fill_material != NULL) {
+			sys_notify_on_next_frame(&history_update_fill_layer, l);
+		}
+	}
+	hstore_unref(record);
+	mask_stack_mark_dirty(l);
+}
+
+// history_v2: the layers of a delete or merge step leave the project as records
+void history_records_take(history_step_t *step) {
+	if (!history_v2_active() || step->merge_layers == NULL) {
+		return;
+	}
+	free(step->records);
+	step->records = calloc(step->merge_layers->length > 0 ? step->merge_layers->length : 1, sizeof(hash128_t));
+	for (i32 i = 0; i < step->merge_layers->length; ++i) {
+		step->records[i] = history_record_out(step->merge_layers->buffer[i]);
+	}
+}
+
+void history_records_free(history_step_t *step) {
+	for (i32 i = 0; step->records != NULL && step->merge_layers != NULL && i < step->merge_layers->length; ++i) {
+		hstore_unref(step->records[i]);
+	}
+	free(step->records);
+	step->records = NULL;
+}
+
 void history_swap_merge(history_step_t *step, bool undo) {
 	slot_layer_t_array_t *layers   = g_project->_->layers;
 	slot_layer_t_array_t *saved    = step->merge_layers;
@@ -37,9 +144,16 @@ void history_swap_merge(history_step_t *step, bool undo) {
 	for (i32 i = 0; i < count; ++i) {
 		array_remove(layers, step->merge_layers->buffer[i]);
 	}
+	hash128_t *records = step->records;
+	step->records      = NULL;
+	history_records_take(step); // The layers leaving
 	for (i32 i = 0; i < saved->length; ++i) {
+		if (records != NULL) {
+			history_record_in(saved->buffer[i], records[i]);
+		}
 		array_insert(layers, step->merge_start + i, saved->buffer[i]);
 	}
+	free(records);
 	for (i32 i = 0; i < saved->length; ++i) {
 		saved->buffer[i]->parent = parents->buffer[i] >= 0 ? layers->buffer[parents->buffer[i]] : NULL;
 	}
