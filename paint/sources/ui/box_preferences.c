@@ -889,19 +889,6 @@ char *box_preferences_file_name_from_url(char *url) {
 	return substring(url, string_last_index_of(url, "/") + 1, string_length(url));
 }
 
-char *box_preferences_model_url_from_name(char *name) {
-	if (neural_node_models == NULL) {
-		neural_node_models_init();
-	}
-
-	for (i32 i = 0; i < neural_node_models->length; ++i) {
-		if (string_equals(neural_node_models->buffer[i]->name, name)) {
-			return neural_node_models->buffer[i]->urls->buffer[0];
-		}
-	}
-	return NULL;
-}
-
 void box_preferences_model_panel(neural_node_model_t *m) {
 	if (ui_panel(&m->expanded, m->name, false, true, false)) {
 		if (ui_text(string_tmp("%s: %s (%s)", tr("source"), m->web, m->license), UI_ALIGN_LEFT, 0x00000000) == UI_STATE_RELEASED) {
