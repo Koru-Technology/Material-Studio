@@ -118,6 +118,12 @@ void app_get_state(app_state_t *out) {
 	out->camera_pivot    = g_context->camera_pivot;
 	out->camera_controls = g_context->camera_controls;
 	out->camera_type     = g_context->camera_type;
+	out->projects_shown  = box_projects_native_shown;
+	uint32_t h           = 2166136261u;
+	for (i32 i = 0; i < g_config->recent_projects->length; ++i) {
+		h = app_hash_str(h, g_config->recent_projects->buffer[i]);
+	}
+	out->projects_signature = h;
 	if (scene_camera != NULL) {
 		quat_t rot         = scene_camera->base->transform->rot;
 		out->camera_rot[0] = rot.x;
@@ -384,6 +390,47 @@ void app_set_camera_type(int32_t type) {
 
 static void app_capture_screenshot(void *_) {
 	viewport_capture_screenshot();
+}
+
+// Projects screen
+
+int32_t app_project_count(void) {
+	return app_ready() ? g_config->recent_projects->length : 0;
+}
+
+const char *app_project_path(int32_t index) {
+	if (index < 0 || index >= app_project_count()) {
+		return "";
+	}
+	return app_str(box_projects_recent_path(index));
+}
+
+void app_project_open(int32_t index) {
+	if (index < 0 || index >= app_project_count()) {
+		return;
+	}
+	char *path = box_projects_recent_path(index);
+	if (!iron_file_exists(path)) {
+		return;
+	}
+#ifdef IRON_IOS
+	console_toast(tr("Opening project"));
+#endif
+	box_projects_load(path);
+}
+
+void app_project_delete(int32_t index) {
+	if (index < 0 || index >= app_project_count()) {
+		return;
+	}
+	box_projects_delete(index);
+}
+
+void app_project_new(void) {
+	if (!app_ready()) {
+		return;
+	}
+	box_projects_new();
 }
 
 void app_command(int32_t command) {

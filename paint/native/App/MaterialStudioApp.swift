@@ -101,8 +101,12 @@ struct PadRootView: View {
 		ZStack {
 			EngineCanvas()
 				.ignoresSafeArea()
-			if AppStore.shared.ready && !AppStore.shared.engineModal {
+			if AppStore.shared.ready && !AppStore.shared.engineModal && !ProjectsStore.shared.shown {
 				PadControls()
+					.transition(.opacity)
+			}
+			if ProjectsStore.shared.shown {
+				ProjectsView()
 					.transition(.opacity)
 			}
 		}

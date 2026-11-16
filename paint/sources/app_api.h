@@ -34,6 +34,8 @@ typedef struct {
 	int32_t  camera_pivot;    // 0 cursor, 1 center
 	int32_t  camera_controls; // 0 orbit, 1 rotate, 2 fly
 	int32_t  camera_type;     // 0 perspective, 1 orthographic
+	bool     projects_shown;     // iPad: the projects screen is up, the native UI shows it
+	uint32_t projects_signature; // The recent projects list
 } app_state_t;
 
 void app_get_state(app_state_t *out);
@@ -127,6 +129,14 @@ typedef enum {
 } app_command_t;
 
 void app_command(int32_t command);
+
+// Projects screen (iPad), the recent projects, most recent first
+int32_t     app_project_count(void);
+const char *app_project_path(int32_t index); // Full path of the .arm file, valid until the next app_* call. The preview
+                                             // is next to it: the same path with _icon.png in place of .arm
+void        app_project_open(int32_t index); // Closes the screen, the project loads over the next frames
+void        app_project_delete(int32_t index); // With its files
+void        app_project_new(void);           // Closes the screen
 
 // History
 const char *app_undo_name(void); // Name of the step undo would revert, "" when none

@@ -959,6 +959,8 @@ i32   box_preferences_get_preset_index();
 char *box_projects_recent_path(i32 i);
 void  box_projects_cancel_load();
 void  box_projects_load(char *path);
+void  box_projects_delete(i32 i);
+void  box_projects_new();
 void  box_projects_show();
 void  box_projects_recent_tab();
 

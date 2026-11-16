@@ -109,6 +109,7 @@ i32 box_preferences_tab;
 // ---- ui/box_projects.c ----
 i32   box_projects_tab_index;
 char *box_projects_search = "";
+bool  box_projects_native_shown = false; // iPad: the native projects screen is up (app_api.h)
 
 // ---- ui/tab_browser.c ----
 char *tab_browser_path    = "";

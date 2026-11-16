@@ -55,6 +55,7 @@ final class AppStore: ChangeOnly {
 		LayersStore.shared.refresh(s)
 		MaterialsStore.shared.refresh()
 		BrushesStore.shared.refresh()
+		ProjectsStore.shared.refresh(s)
 	}
 
 
