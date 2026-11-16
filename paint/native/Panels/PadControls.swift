@@ -29,6 +29,86 @@ struct PadControls: View {
 			}
 		}
 		.padding(16)
+		.background {
+			// While a popover is open, a touch on the canvas only closes it (it does not paint)
+			if PadPopovers.shared.shown != nil {
+				Color.clear
+					.contentShape(.rect)
+					.ignoresSafeArea()
+					.gesture(DragGesture(minimumDistance: 0).onChanged { _ in
+						PadPopovers.shared.close()
+					})
+			}
+		}
+		.onDisappear {
+			PadPopovers.shared.close() // An editor over the canvas took the screen: its popover went with the controls
+		}
+	}
+}
+
+// One popover of the controls at a time, by name. A tap on another control's button switches in one tap: the open
+// popover lets the controls behind it take taps (padPopover), it closes, and the next one opens once it has gone
+// (presenting while the other one is still closing does nothing). PadControls catches taps on the canvas.
+@Observable
+final class PadPopovers {
+	static let shared = PadPopovers()
+
+	// Launch argument "-NativeShow Layers" opens that popover (screenshots from scripted runs)
+	private(set) var shown: String? = UserDefaults.standard.string(forKey: "NativeShow")
+	@ObservationIgnored private var pending: String?
+
+	func toggle(_ name: String) {
+		if shown == name {
+			close()
+		}
+		else if shown != nil {
+			pending = name
+			shown   = nil
+			// In case the closed one never reports it has gone (it was not up yet)
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+				self?.openPending()
+			}
+		}
+		else {
+			shown = name
+		}
+	}
+
+	func close() {
+		pending = nil
+		shown   = nil
+	}
+
+	func isPresented(_ name: String) -> Binding<Bool> {
+		Binding(get: { self.shown == name }, set: { if !$0 && self.shown == name { self.shown = nil } })
+	}
+
+	// The popover's content is gone: the one asked for meanwhile opens
+	func disappeared() {
+		DispatchQueue.main.async { [weak self] in
+			self?.openPending()
+		}
+	}
+
+	private func openPending() {
+		if shown == nil, let p = pending {
+			pending = nil
+			shown   = p
+		}
+	}
+}
+
+extension View {
+	// A popover of the controls (PadPopovers): the controls behind it stay usable
+	func padPopover<Content: View>(_ name: String, arrowEdge: Edge? = nil, @ViewBuilder content: @escaping () -> Content) -> some View {
+		popover(isPresented: PadPopovers.shared.isPresented(name), arrowEdge: arrowEdge) {
+			content()
+				.presentationCompactAdaptation(.popover)
+				.presentationBackgroundInteraction(.enabled)
+				.onDisappear {
+					PadPopovers.shared.disappeared()
+				}
+		}
 	}
 }
 
@@ -109,23 +189,21 @@ struct PadMenuBar: View {
 // Lit, path traced or a channel: a popover list, the 17 modes overflow a menu, which does not scroll
 struct ViewportButton: View {
 	private var store = AppStore.shared
-	@State private var shown = false
 
 	var body: some View {
 		Button {
-			shown.toggle()
+			PadPopovers.shared.toggle("Viewport")
 		} label: {
 			Image(systemName: viewportModeSymbol(store.viewportMode))
 				.frame(width: 44, height: 44)
 		}
 		.glassEffect(.regular.interactive(), in: .circle)
 		.accessibilityLabel("Viewport: \(viewportModes.first { $0.0 == store.viewportMode }?.1 ?? "Lit")")
-		.popover(isPresented: $shown) {
+		.padPopover("Viewport") {
 			ViewportModeList {
-				shown = false
+				PadPopovers.shared.close()
 			}
 			.frame(width: 240, height: 520)
-			.presentationCompactAdaptation(.popover)
 		}
 	}
 }
@@ -161,8 +239,7 @@ struct ViewportModeList: View {
 }
 
 struct PadPopoverBar: View {
-	// Launch argument "-NativeShow Layers" opens that popover (screenshots from scripted runs)
-	@State private var shown: String? = UserDefaults.standard.string(forKey: "NativeShow")
+	private var popovers = PadPopovers.shared
 
 	var body: some View {
 		GlassEffectContainer(spacing: 8) {
@@ -181,7 +258,7 @@ struct PadPopoverBar: View {
 	private func item<Content: View>(_ name: String, _ symbol: String, image: CGImage? = nil,
 	                                 @ViewBuilder content: @escaping () -> Content) -> some View {
 		Button {
-			shown = shown == name ? nil : name
+			popovers.toggle(name)
 		} label: {
 			Group {
 				if let image {
@@ -196,13 +273,12 @@ struct PadPopoverBar: View {
 			}
 			.frame(width: 44, height: 44)
 		}
-		.glassEffect(shown == name ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
+		.glassEffect(popovers.shown == name ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
 		.foregroundStyle(.primary)
 		.accessibilityLabel(name)
-		.popover(isPresented: Binding(get: { shown == name }, set: { if !$0, shown == name { shown = nil } })) {
+		.padPopover(name) {
 			content()
 				.frame(width: 380, height: 560)
-				.presentationCompactAdaptation(.popover)
 		}
 	}
 }
