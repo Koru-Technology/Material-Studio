@@ -217,11 +217,9 @@ bool app_layer_set_name(int32_t id, const char *name) {
 	l->name    = string_copy(slot_layer_unique_name(l, (char *)name));
 	history_layer_name(l, prev);
 	if (l->path_text && slot_layer_is_path(l)) { // The name is the painted text
-		gpu_texture_t *current;
-		bool           in_use;
-		script_gpu_begin(&current, &in_use);
+		script_gpu_t gpu = script_gpu_begin();
 		tab_layers_repaint_text_layer(l);
-		script_layer_op_end(current, in_use);
+		script_layer_op_end(gpu);
 	}
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	iron_delay_idle_sleep();
@@ -300,15 +298,13 @@ bool app_layer_new(int32_t kind) {
 		break;
 	}
 	case APP_LAYER_NEW_TEXT: {
-		gpu_texture_t *current;
-		bool           in_use;
-		script_gpu_begin(&current, &in_use);
+		script_gpu_t gpu = script_gpu_begin();
 		base_init_undo_layers();
 		ok = layers_new_text_layer() != NULL;
 		if (ok) {
 			history_new_layer();
 		}
-		script_layer_op_end(current, in_use);
+		script_layer_op_end(gpu);
 		break;
 	}
 	case APP_LAYER_NEW_PATH:
@@ -460,9 +456,7 @@ static bool app_layer_can_reparent(slot_layer_t *l, slot_layer_t *parent) {
 }
 
 static bool app_layer_reparent(slot_layer_t *l, slot_layer_t *parent) {
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
+	script_gpu_t gpu = script_gpu_begin();
 	base_init_undo_layers();
 	slot_layer_t_array_t *pointers   = tab_layers_init_layer_map();
 	slot_layer_t         *old_parent = l->parent;
@@ -474,7 +468,7 @@ static bool app_layer_reparent(slot_layer_t *l, slot_layer_t *parent) {
 	}
 	context_set_layer(l);
 	tab_layers_remap_all_layer_pointers(pointers);
-	script_layer_op_end(current, in_use);
+	script_layer_op_end(gpu);
 	return true;
 }
 
@@ -559,13 +553,11 @@ bool app_layer_set_blending(int32_t id, int32_t blending) {
 	if (l == NULL || blending < 0 || blending >= app_layer_blending_count() || (i32)l->blending == blending) {
 		return false;
 	}
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
+	script_gpu_t gpu = script_gpu_begin();
 	context_set_layer(l);
 	history_layer_blending();
 	l->blending = blending;
-	script_layer_op_end(current, in_use);
+	script_layer_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -576,10 +568,8 @@ bool app_layer_set_channel(int32_t id, int32_t channel, bool on) {
 		return false;
 	}
 	*f = on;
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
-	script_layer_op_end(current, in_use);
+	script_gpu_t gpu = script_gpu_begin();
+	script_layer_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -589,11 +579,9 @@ bool app_layer_set_uv_map(int32_t id, int32_t uv_map) {
 		return false;
 	}
 	l->uv_map = uv_map;
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
+	script_gpu_t gpu = script_gpu_begin();
 	make_material_parse_paint_material(true);
-	script_layer_op_end(current, in_use);
+	script_layer_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -636,12 +624,10 @@ bool app_layer_set_fill_material(int32_t id, int32_t material_index) {
 	if (m == l->fill_material) {
 		return false;
 	}
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
+	script_gpu_t gpu = script_gpu_begin();
 	base_init_undo_layers();
 	slot_layer_set_fill_material(l, m);
-	script_layer_op_end(current, in_use);
+	script_layer_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -649,10 +635,8 @@ static void app_layer_height_blend_changed(slot_layer_t *m) {
 	if (m->height_blend) {
 		make_material_height_used = true; // Track the height of the layers below
 	}
-	gpu_texture_t *current;
-	bool           in_use;
-	script_gpu_begin(&current, &in_use);
-	script_layer_op_end(current, in_use);
+	script_gpu_t gpu = script_gpu_begin();
+	script_layer_op_end(gpu);
 	if (ui_view2d_show) {
 		ui_view2d_hwnd->redraws = 2;
 	}

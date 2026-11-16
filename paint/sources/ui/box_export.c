@@ -30,7 +30,7 @@ void box_export_tab_export_textures_run(void *_) {
 
 void box_export_tab_export_textures_path_picked(char *path) {
 	g_context->texture_export_path = string_copy(path);
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	console_toast(tr("Exporting textures"));
 #endif
 	sys_notify_on_next_frame(&box_export_tab_export_textures_run, NULL);
@@ -62,7 +62,7 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 			layers_on_resized();
 		}
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 		string_array_t *base_bits_combo = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "8bit",
@@ -172,20 +172,7 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 			else {
 				char *filters             = base_bits != TEXTURE_BITS_BITS8 ? "exr" : g_context->format_type == TEXTURE_LDR_FORMAT_PNG ? "png" : "jpg";
 				_box_export_bake_material = bake_material;
-#ifdef IRON_WASM
-				// Browsers pick a folder only, the textures are prefixed with the project name
-				char *name = ui_files_filename != NULL && !string_equals(ui_files_filename, "") ? ui_files_filename : tr("untitled");
-				if (string_index_of(name, ".") > 0) {
-					name = substring(name, 0, string_last_index_of(name, "."));
-				}
-				ui_files_filename = string_copy(name);
-				char *folder      = iron_folder_dialog(ui_files_filename);
-				if (folder != NULL) {
-					box_export_tab_export_textures_path_picked(folder);
-				}
-#else
 				ui_files_show(filters, true, false, &box_export_tab_export_textures_path_picked);
-#endif
 			}
 		}
 		if (g_ui->is_hovered) {
@@ -253,12 +240,8 @@ void box_export_tab_presets_import(char *path) {
 	}
 }
 
-void box_export_new_preset(char *name) {
-	if (!ends_with(name, ".json")) {
-		name = string("%s.json", name);
-	}
-	char *path = string("%s%sexport_presets%s%s", path_data(), PATH_SEP, PATH_SEP, name);
-	iron_file_save_bytes(path, sys_string_to_buffer(box_export_preset_template), 0);
+char *box_export_new_preset(char *name) {
+	return ui_files_save_preset("export_presets", name, box_export_preset_template);
 }
 
 void box_export_tab_presets_new_box() {
@@ -267,10 +250,13 @@ void box_export_tab_presets_new_box() {
 		ui_row2();
 		char *preset_name = ui_text_input(&box_export_new_preset_name, tr("Name"), UI_ALIGN_LEFT, true, false);
 		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-			box_export_new_preset(preset_name);
+			char *file = box_export_new_preset(preset_name);
+			if (file == NULL) {
+				return;
+			}
 			box_export_fetch_presets();
 			box_export_preset       = NULL;
-			box_export_preset_index = string_array_index_of(box_export_files, preset_name);
+			box_export_preset_index = string_array_index_of(box_export_files, substring(file, 0, string_length(file) - 5)); // Without .json
 			ui_box_hide();
 			box_export_tab = 1; // Presets
 			box_export_show_textures();
@@ -410,7 +396,7 @@ void box_export_tab_atlases() {
 }
 
 void box_export_tab_export_mesh_path_picked(char *path) {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	char *f = sys_title();
 #else
 	char *f = ui_files_filename;
@@ -418,7 +404,7 @@ void box_export_tab_export_mesh_path_picked(char *path) {
 	if (string_equals(f, "")) {
 		f = string_copy(tr("untitled"));
 	}
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	console_toast(tr("Exporting mesh"));
 #endif
 
@@ -517,7 +503,7 @@ void box_export_show_textures_box() {
 	box_export_tab_presets();
 
 	box_export_tab_atlases();
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	box_export_tab_export_mesh(&box_export_tab);
 #endif
 }
@@ -584,33 +570,3 @@ void box_export_show_material() {
 	ui_box_show_custom(&box_export_show_material_box, 400, 200, NULL, true, "");
 }
 
-void box_export_show_brush_export_on_next_frame(char *path) {
-	export_arm_run_brush(path);
-}
-
-void box_export_show_brush_export(char *path) {
-	char *f = ui_files_filename;
-	if (string_equals(f, ""))
-		f = string_copy(tr("untitled"));
-	sys_notify_on_next_frame(&box_export_show_brush_export_on_next_frame, string("%s%s%s", path, PATH_SEP, f));
-}
-
-void box_export_show_brush_box() {
-	bool tab_vertical = g_config->touch_ui;
-	if (ui_tab(&_box_export_tab, tr("Export Brush"), tab_vertical, -1, false)) {
-		ui_check(&g_context->pack_assets_on_export, tr("Pack Assets"), "");
-		ui_check(&g_context->write_icon_on_export, tr("Export Icon"), "");
-		ui_row2();
-		if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-			ui_box_hide();
-		}
-		if (ui_icon_button(tr("Export"), ICON_CHECK, UI_ALIGN_CENTER)) {
-			ui_box_hide();
-			ui_files_show("arm", true, false, &box_export_show_brush_export);
-		}
-	}
-}
-
-void box_export_show_brush() {
-	ui_box_show_custom(&box_export_show_brush_box, 400, 200, NULL, true, "");
-}

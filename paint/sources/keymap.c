@@ -4,7 +4,11 @@
 void keymap_load() {
 	g_keymap = keymap_get_default();
 	if (!string_equals(g_config->keymap, "default.json")) {
-		buffer_t       *blob       = data_get_blob(string("keymap_presets/%s", g_config->keymap));
+		buffer_t *blob = data_get_blob(string("keymap_presets/%s", g_config->keymap));
+		if (blob == NULL) { // The preset file is gone, the default keymap stays
+			g_config->keymap = "default.json";
+			return;
+		}
 		any_map_t      *new_keymap = json_parse_to_map(sys_buffer_to_string(blob));
 		string_array_t *keys       = map_keys(new_keymap);
 		for (i32 i = 0; i < keys->length; ++i) {
@@ -109,7 +113,7 @@ any_map_t *keymap_get_default() {
 }
 
 bool keymap_shortcut(char *s, shortcut_type_t type) {
-	if (string_equals(s, "") || base_player) {
+	if (string_equals(s, "")) {
 		return false;
 	}
 	bool shift = string_index_of(s, "shift") >= 0;

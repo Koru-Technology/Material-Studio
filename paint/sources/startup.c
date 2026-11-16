@@ -1,6 +1,7 @@
 #include "engine.h"
 #include "iron_alloc.h"
 #include "iron_array.h"
+#include "iron_string.h"
 #include <stdbool.h>
 #include <string.h>
 
@@ -187,7 +188,7 @@ static void overlay_ring(int color, float *s, float *t, float *n, float radius, 
 static void overlay_begin(mesh_data_t *md, uint32_t verts, uint32_t inds, float scale_pos) {
 	md->scale_pos     = scale_pos;
 	md->scale_tex     = 1.0f;
-	md->vertex_arrays = any_array_create(2);
+	md->vertex_arrays = (vertex_array_t_array_t *)any_array_create(2);
 	_overlay_pos      = i16_array_create(verts * 4);
 	_overlay_col      = i16_array_create(verts * 4);
 	_overlay_ind      = u32_array_create(inds);
@@ -250,7 +251,7 @@ static mesh_data_t *startup_make_sphere(void) {
 	md->name          = ".Sphere";
 	md->scale_pos     = 1.0f;
 	md->scale_tex     = 2.0f; // u spans 2 around the equator, v spans 1 between poles, texels stay square
-	md->vertex_arrays = any_array_create(3);
+	md->vertex_arrays = (vertex_array_t_array_t *)any_array_create(3);
 
 	int          w   = SPHERE_SEGS_U + 1;
 	int          h   = SPHERE_SEGS_V + 1;
@@ -474,1934 +475,387 @@ static int16_t  mesh__Plane_nor[]     = {0, -32767, 0, -32767, 0, -32767, 0, -32
 static int16_t  mesh__Plane_tex[]     = {3, 32763, 32763, 32763, 32763, 3, 3, 3};
 static uint32_t mesh__Plane_indices[] = {3, 0, 1, 3, 1, 2};
 
+#define STARTUP_LEN(a) (sizeof(a) / sizeof(a[0]))
+
+static vertex_array_t *startup_vertex_array(char *attrib, char *data, i16_array_t *values) {
+	vertex_array_t *vat = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
+	vat->attrib         = attrib;
+	vat->data           = data;
+	vat->values         = values;
+	return vat;
+}
+
+// The gizmo parts the picking renders (.RotateX...), and the plane
+static mesh_data_t *startup_raw_mesh(char *name, int16_t *pos, int pos_n, int16_t *nor, int nor_n, int16_t *tex, int tex_n, uint32_t *ind, int ind_n) {
+	mesh_data_t *md              = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
+	md->name                     = name;
+	md->scale_pos                = 1.0f;
+	md->scale_tex                = 1.0f;
+	md->vertex_arrays            = (vertex_array_t_array_t *)any_array_create(tex != NULL ? 3 : 2);
+	md->vertex_arrays->buffer[0] = startup_vertex_array("pos", "short4norm", i16_array_create_from_raw(pos, pos_n));
+	md->vertex_arrays->buffer[1] = startup_vertex_array("nor", "short2norm", i16_array_create_from_raw(nor, nor_n));
+	if (tex != NULL) {
+		md->vertex_arrays->buffer[2] = startup_vertex_array("tex", "short2norm", i16_array_create_from_raw(tex, tex_n));
+	}
+	md->index_array = u32_array_create_from_raw(ind, ind_n);
+	return md;
+}
+
+#define STARTUP_GIZMO_MESH(n)                                                                                                                            \
+	startup_raw_mesh("." #n, mesh__##n##_pos, STARTUP_LEN(mesh__##n##_pos), mesh__##n##_nor, STARTUP_LEN(mesh__##n##_nor), NULL, 0, mesh__##n##_indices, \
+	                 STARTUP_LEN(mesh__##n##_indices))
+
+// A shader context of the scene. Lists are space separated: attachments "RGBA64 R8", elements "name:data", constants
+// "name:type:link", textures "name" or "name:link". Fields left out: no depth write, compare always, cull none, a pos:float2
+// element (full screen passes). The contexts of a shader data follow each other.
+typedef struct {
+	char *data;
+	char *name;
+	char *shader; // <shader>.vert and <shader>.frag
+	bool  depth_write;
+	char *compare;
+	char *cull;
+	char *attachments;
+	char *depth;
+	char *elements;
+	char *constants;
+	char *textures;
+} startup_context_t;
+
+static const startup_context_t startup_contexts[] = {
+    {.data        = "armdefault",
+     .name        = "mesh",
+     .shader      = "mesh_posnor",
+     .depth_write = true,
+     .compare     = "less",
+     .cull        = "clockwise",
+     .attachments = "RGBA64 RGBA64 RGBA64",
+     .depth       = "D32",
+     .elements    = "pos:short4norm nor:short2norm",
+     .constants   = "WVP:float4x4:_world_view_proj_matrix N:float3x3:_normal_matrix"},
+    {.data        = ".Gizmo",
+     .name        = "overlay",
+     .shader      = "mesh_poscol",
+     .cull        = "clockwise",
+     .attachments = "RGBA64",
+     .elements    = "pos:short4norm col:short4norm",
+     .constants   = "WVP:float4x4:_world_view_proj_matrix"},
+    {.data        = "Material",
+     .name        = "mesh",
+     .shader      = "mesh_posnortex",
+     .depth_write = true,
+     .compare     = "less",
+     .cull        = "clockwise",
+     .attachments = "RGBA64 RGBA64 RGBA64",
+     .depth       = "D32",
+     .elements    = "pos:short4norm nor:short2norm tex:short2norm",
+     .constants   = "WVP:float4x4:_world_view_proj_matrix N:float3x3:_normal_matrix tex_unpack:float:_tex_unpack",
+     .textures    = "ImageTexture"},
+    {.data        = "compositor_pass",
+     .name        = "compositor_pass",
+     .shader      = "compositor_pass",
+     .attachments = "RGBA64",
+     .constants   = "vignette_strength:float:_vignette_strength grain_strength:float:_grain_strength tonemap_strength:float:_tonemap_strength "
+                    "lut_size:float:_lut_size contrast_strength:float:_contrast_strength gamma_strength:float:_gamma_strength",
+     .textures    = "tex lut_tex:_lut_tex"},
+    {.data        = "taa_pass",
+     .name        = "taa_pass",
+     .shader      = "taa_pass",
+     .attachments = "RGBA64",
+     .constants   = "inv_vp:float4x4:_taa_inv_vp prev_vp:float4x4:_taa_prev_vp texel:float2:_screen_size_inv taa_blend:float:_taa_blend",
+     .textures    = "tex tex2 gbufferD"},
+    {.data = "copy_pass", .name = "copy_pass", .shader = "copy_pass", .textures = "tex"},
+    {.data = "copy_pass", .name = "copyR8_pass", .shader = "copy_pass", .attachments = "R8", .textures = "tex"},
+    {.data = "copy_pass", .name = "copyR16_pass", .shader = "copy_pass", .attachments = "R16", .textures = "tex"},
+    {.data = "copy_pass", .name = "copyRGBA64_pass", .shader = "copy_pass", .attachments = "RGBA64", .textures = "tex"},
+    {.data = "copy_pass", .name = "copyRGBA128_pass", .shader = "copy_pass", .attachments = "RGBA128", .textures = "tex"},
+    {.data        = "supersample_resolve",
+     .name        = "supersample_resolve",
+     .shader      = "supersample_resolve",
+     .attachments = "RGBA32",
+     .constants   = "screen_size_inv:float2:_screen_size_inv",
+     .textures    = "tex"},
+    {.data        = "supersample_resolve",
+     .name        = "supersample_resolveRGBA64",
+     .shader      = "supersample_resolve",
+     .attachments = "RGBA64",
+     .constants   = "screen_size_inv:float2:_screen_size_inv",
+     .textures    = "tex"},
+    {.data = "depth_to_ao_pass", .name = "depth_to_ao_pass", .shader = "depth_to_ao_pass", .attachments = "RGBA32", .textures = "height_map normal_map"},
+    {.data        = "ssao_pass",
+     .name        = "ssao_pass",
+     .shader      = "ssao_pass",
+     .attachments = "R8",
+     .constants   = "invP:float4x4:_inv_proj_matrix V3:float3x3:_view_matrix3 camera_proj:float2:_camera_plane_proj screen_size_inv:float2:_screen_size_inv "
+                    "frame_offset:float:_ssao_frame ssao_strength:float:_ssao_strength",
+     .textures    = "gbufferD gbuffer0"},
+    {.data        = "ssao_blur_pass",
+     .name        = "ssao_blur_pass_x",
+     .shader      = "ssao_blur_pass",
+     .attachments = "R8",
+     .constants   = "dir_inv:float2:_vec2x_inv",
+     .textures    = "tex gbuffer0"},
+    {.data        = "ssao_blur_pass",
+     .name        = "ssao_blur_pass_y",
+     .shader      = "ssao_blur_pass",
+     .attachments = "R8",
+     .constants   = "dir_inv:float2:_vec2y_inv",
+     .textures    = "tex gbuffer0"},
+    {.data        = "bloom_pass",
+     .name        = "bloom_downsample_pass",
+     .shader      = "bloom_downsample_pass",
+     .attachments = "RGBA64",
+     .constants   = "screen_size_inv:float2:_screen_size_inv current_mip_level:int:_bloom_current_mip",
+     .textures    = "tex"},
+    {.data        = "bloom_pass",
+     .name        = "bloom_upsample_pass",
+     .shader      = "bloom_upsample_pass",
+     .attachments = "RGBA64",
+     .constants   = "screen_size_inv:float2:_screen_size_inv current_mip_level:int:_bloom_current_mip sample_scale:float:_bloom_sample_scale "
+                    "bloom_strength:float:_bloom_strength",
+     .textures    = "tex"},
+    {.data = "copy_mrt3_pass", .name = "copy_mrt3_pass", .shader = "copy_mrt3_pass", .attachments = "RGBA32 RGBA32 RGBA32", .textures = "tex0 tex1 tex2"},
+    {.data = "copy_mrt3_pass", .name = "copy_mrt3RGBA64_pass", .shader = "copy_mrt3_pass", .attachments = "RGBA64 RGBA64 RGBA64", .textures = "tex0 tex1 tex2"},
+    {.data        = "copy_mrt3_pass",
+     .name        = "copy_mrt3RGBA128_pass",
+     .shader      = "copy_mrt3_pass",
+     .attachments = "RGBA128 RGBA128 RGBA128",
+     .textures    = "tex0 tex1 tex2"},
+    {.data      = "dilate_pass",
+     .name      = "dilate_pass",
+     .shader    = "dilate_pass",
+     .constants = "dilate_radius:float:_dilate_radius tex_size:float2:_size(tex)",
+     .textures  = "tex texdilate:_texdilatemap"},
+    {.data        = "dilate_pass",
+     .name        = "dilateRGBA64_pass",
+     .shader      = "dilate_pass",
+     .attachments = "RGBA64",
+     .constants   = "dilate_radius:float:_dilate_radius tex_size:float2:_size(tex)",
+     .textures    = "tex texdilate:_texdilatemap"},
+    {.data        = "dilate_pass",
+     .name        = "dilateRGBA128_pass",
+     .shader      = "dilate_pass",
+     .attachments = "RGBA128",
+     .constants   = "dilate_radius:float:_dilate_radius tex_size:float2:_size(tex)",
+     .textures    = "tex texdilate:_texdilatemap"},
+    {.data        = "deferred_light",
+     .name        = "deferred_light",
+     .shader      = "deferred_light",
+     .compare     = "greater",
+     .attachments = "RGBA64",
+     .depth       = "D32",
+     .constants   = "invVP:float4x4:_inv_view_proj_matrix eye:float3:_camera_pos envmap_data:float4:_envmap_data envmap_num_mipmaps:int:_envmap_num_mipmaps "
+                    "shirr0:float4:_envmap_irradiance0 shirr1:float4:_envmap_irradiance1 shirr2:float4:_envmap_irradiance2 shirr3:float4:_envmap_irradiance3 "
+                    "shirr4:float4:_envmap_irradiance4 shirr5:float4:_envmap_irradiance5 shirr6:float4:_envmap_irradiance6",
+     .textures    = "gbuffer0 gbuffer1 senvmap_radiance:_envmap_radiance senvmap_radiance0:_envmap_radiance0 senvmap_radiance1:_envmap_radiance1 "
+                    "senvmap_radiance2:_envmap_radiance2 senvmap_radiance3:_envmap_radiance3 senvmap_radiance4:_envmap_radiance4 ssaotex"},
+    {.data        = "world_pass",
+     .name        = "world_pass",
+     .shader      = "world_pass",
+     .compare     = "less",
+     .cull        = "clockwise",
+     .attachments = "RGBA64",
+     .depth       = "D32",
+     .elements    = "pos:float3 nor:float3",
+     .constants   = "SMVP:float4x4:_skydome_matrix envmap_data_world:float4:_envmap_data_world",
+     .textures    = "envmap:_envmap"},
+    {.data        = "depth_to_normal_pass",
+     .name        = "depth_to_normal_pass",
+     .shader      = "depth_to_normal_pass",
+     .attachments = "RGBA32",
+     .constants   = "texel_size:float2:_screen_size_inv",
+     .textures    = "height_map"},
+    {.data        = "undo_tiles_pass",
+     .name        = "undo_tiles_pass",
+     .shader      = "undo_tiles_pass",
+     .attachments = "RGBA32",
+     .constants   = "tile_size:float2:_undo_tile_size",
+     .textures    = "tex0 tex1 tex2 tex3 tex4 tex5"},
+};
+
+// The words of a list, each split at ':' into up to 3 parts
+static any_array_t *startup_words(char *list) {
+	return list != NULL ? string_split(list, " ") : any_array_create(0);
+}
+
+static char *startup_part(char *word, int part) {
+	any_array_t *parts = string_split(word, ":");
+	return part < parts->length ? parts->buffer[part] : NULL;
+}
+
+static shader_context_t *startup_shader_context(const startup_context_t *t) {
+	shader_context_t *sc   = (shader_context_t *)calloc(1, sizeof(shader_context_t));
+	sc->name               = t->name;
+	sc->depth_write        = t->depth_write;
+	sc->compare_mode       = t->compare != NULL ? t->compare : "always";
+	sc->cull_mode          = t->cull != NULL ? t->cull : "none";
+	sc->vertex_shader      = string("%s.vert", t->shader);
+	sc->fragment_shader    = string("%s.frag", t->shader);
+	sc->shader_from_source = false;
+	if (t->attachments != NULL) {
+		sc->color_attachments = (string_array_t *)startup_words(t->attachments);
+	}
+	sc->depth_attachment = t->depth;
+
+	any_array_t *elements = startup_words(t->elements != NULL ? t->elements : "pos:float2");
+	sc->vertex_elements   = (vertex_element_t_array_t *)any_array_create(elements->length);
+	for (int i = 0; i < elements->length; ++i) {
+		vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
+		ve->name                       = startup_part(elements->buffer[i], 0);
+		ve->data                       = startup_part(elements->buffer[i], 1);
+		sc->vertex_elements->buffer[i] = ve;
+	}
+
+	any_array_t *constants = startup_words(t->constants);
+	sc->constants          = (shader_const_t_array_t *)any_array_create(constants->length);
+	for (int i = 0; i < constants->length; ++i) {
+		shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
+		c->name                  = startup_part(constants->buffer[i], 0);
+		c->type                  = startup_part(constants->buffer[i], 1);
+		c->link                  = startup_part(constants->buffer[i], 2);
+		sc->constants->buffer[i] = c;
+	}
+
+	any_array_t *textures = startup_words(t->textures);
+	sc->texture_units     = (tex_unit_t_array_t *)any_array_create(textures->length);
+	for (int i = 0; i < textures->length; ++i) {
+		tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
+		tu->name                     = startup_part(textures->buffer[i], 0);
+		tu->link                     = startup_part(textures->buffer[i], 1);
+		sc->texture_units->buffer[i] = tu;
+	}
+	return sc;
+}
+
+static any_array_t *startup_shader_datas(void) {
+	any_array_t *datas = any_array_create(0);
+	for (int i = 0; i < (int)STARTUP_LEN(startup_contexts); ++i) {
+		const startup_context_t *t  = &startup_contexts[i];
+		shader_data_t           *sd = datas->length > 0 ? datas->buffer[datas->length - 1] : NULL;
+		if (sd == NULL || !string_equals(sd->name, t->data)) {
+			sd           = (shader_data_t *)calloc(1, sizeof(shader_data_t));
+			sd->name     = t->data;
+			sd->contexts = any_array_create(0);
+			any_array_push(datas, sd);
+		}
+		shader_context_t *sc = startup_shader_context(t);
+		any_array_push(sd->contexts, sc);
+
+		if (string_equals(sc->name, "bloom_upsample_pass")) { // Adds to the target
+			sc->blend_source            = "blend_one";
+			sc->blend_destination       = "blend_one";
+			sc->alpha_blend_source      = "blend_zero";
+			sc->alpha_blend_destination = "blend_one";
+		}
+		if (string_equals(sd->name, "Material")) {
+			sc->bind_textures            = (bind_tex_t_array_t *)any_array_create(1);
+			bind_tex_t *bt               = (bind_tex_t *)calloc(1, sizeof(bind_tex_t));
+			bt->name                     = string_copy("ImageTexture");
+			bt->file                     = string_copy("");
+			sc->bind_textures->buffer[0] = bt;
+		}
+	}
+	return datas;
+}
+
+static object_desc_t *startup_object(char *name, char *type, char *material, f32 *transform, f32 *dimensions, bool visible) {
+	object_desc_t *o = (object_desc_t *)calloc(1, sizeof(object_desc_t));
+	o->name          = name;
+	o->type          = type;
+	o->data_ref      = name;
+	o->transform     = f32_array_create_from_raw(transform, 16);
+	o->dimensions    = dimensions != NULL ? f32_array_create_from_raw(dimensions, 3) : NULL;
+	o->visible       = visible;
+	o->spawn         = true;
+	o->material_ref  = material;
+	return o;
+}
+
+#define STARTUP_IDENTITY {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}
+
+// The parts of the gizmo, at their offset from its center, and their size
+typedef struct {
+	char *name;
+	f32   x, y, z;
+	f32   w, h, d;
+} startup_gizmo_part_t;
+
+static const startup_gizmo_part_t startup_gizmo_parts[] = {
+    {".RotateX", 0.0f, 0.75f, 0.75f, 0.20000000298023224f, 1.0f, 1.0f},
+    {".RotateY", 0.75f, 0.0f, 0.75f, 1.0f, 0.20000000298023224f, 1.0f},
+    {".RotateZ", 0.75f, 0.75f, 0.0f, 1.0f, 1.0f, 0.20000000298023224f},
+    {".ScaleX", 0.949999988079071f, 0.0f, 0.0f, 0.36000001430511475f, 0.20000000298023224f, 0.20000000298023224f},
+    {".ScaleY", 0.0f, 0.949999988079071f, 0.0f, 0.20000000298023224f, 0.36000001430511475f, 0.20000000298023224f},
+    {".ScaleZ", 0.0f, 0.0f, 0.949999988079071f, 0.20000000298023224f, 0.20000000298023224f, 0.36000001430511475f},
+    {".TranslateX", 1.7000000476837158f, 0.0f, 0.0f, 0.7200000286102295f, 0.20000000298023224f, 0.20000000298023224f},
+    {".TranslateY", 0.0f, 1.7000000476837158f, 0.0f, 0.20000000298023224f, 0.7200000286102295f, 0.20000000298023224f},
+    {".TranslateZ", 0.0f, 0.0f, 1.7000000476837158f, 0.20000000298023224f, 0.20000000298023224f, 0.7200000286102295f},
+};
+
 scene_t *startup_get_scene(void) {
 	scene_t *scene    = (scene_t *)calloc(1, sizeof(scene_t));
 	scene->name       = "Scene";
 	scene->camera_ref = "Camera";
 	scene->world_ref  = "World";
 
-	// mesh_datas
-	scene->mesh_datas            = any_array_create(13);
-	scene->mesh_datas->buffer[0] = startup_make_compass();
-	scene->mesh_datas->buffer[1] = startup_make_gizmo();
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".RotateX";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__RotateX_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__RotateX_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__RotateX_indices, 36);
-		scene->mesh_datas->buffer[2] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".RotateY";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__RotateY_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__RotateY_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__RotateY_indices, 36);
-		scene->mesh_datas->buffer[3] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".RotateZ";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__RotateZ_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__RotateZ_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__RotateZ_indices, 36);
-		scene->mesh_datas->buffer[4] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".ScaleX";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__ScaleX_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__ScaleX_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__ScaleX_indices, 36);
-		scene->mesh_datas->buffer[5] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".ScaleY";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__ScaleY_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__ScaleY_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__ScaleY_indices, 36);
-		scene->mesh_datas->buffer[6] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".ScaleZ";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__ScaleZ_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__ScaleZ_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__ScaleZ_indices, 36);
-		scene->mesh_datas->buffer[7] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".TranslateX";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__TranslateX_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__TranslateX_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__TranslateX_indices, 36);
-		scene->mesh_datas->buffer[8] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".TranslateY";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__TranslateY_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__TranslateY_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array              = u32_array_create_from_raw(mesh__TranslateY_indices, 36);
-		scene->mesh_datas->buffer[9] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".TranslateZ";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(2);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__TranslateZ_pos, 96);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__TranslateZ_nor, 48);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		md->index_array               = u32_array_create_from_raw(mesh__TranslateZ_indices, 36);
-		scene->mesh_datas->buffer[10] = md;
-	}
-	{
-		mesh_data_t *md   = (mesh_data_t *)calloc(1, sizeof(mesh_data_t));
-		md->name          = ".Plane";
-		md->scale_pos     = 1.0f;
-		md->scale_tex     = 1.0f;
-		md->vertex_arrays = any_array_create(3);
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "pos";
-			vat->data                    = "short4norm";
-			vat->values                  = i16_array_create_from_raw(mesh__Plane_pos, 16);
-			md->vertex_arrays->buffer[0] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "nor";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__Plane_nor, 8);
-			md->vertex_arrays->buffer[1] = vat;
-		}
-		{
-			vertex_array_t *vat          = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
-			vat->attrib                  = "tex";
-			vat->data                    = "short2norm";
-			vat->values                  = i16_array_create_from_raw(mesh__Plane_tex, 8);
-			md->vertex_arrays->buffer[2] = vat;
-		}
-		md->index_array               = u32_array_create_from_raw(mesh__Plane_indices, 6);
-		scene->mesh_datas->buffer[11] = md;
-	}
-	scene->mesh_datas->buffer[12] = startup_make_sphere();
+	scene->mesh_datas = any_array_create(0);
+	any_array_push(scene->mesh_datas, startup_make_compass());
+	any_array_push(scene->mesh_datas, startup_make_gizmo());
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(RotateX));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(RotateY));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(RotateZ));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(ScaleX));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(ScaleY));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(ScaleZ));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(TranslateX));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(TranslateY));
+	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(TranslateZ));
+	any_array_push(scene->mesh_datas, startup_raw_mesh(".Plane", mesh__Plane_pos, STARTUP_LEN(mesh__Plane_pos), mesh__Plane_nor, STARTUP_LEN(mesh__Plane_nor),
+	                                                   mesh__Plane_tex, STARTUP_LEN(mesh__Plane_tex), mesh__Plane_indices, STARTUP_LEN(mesh__Plane_indices)));
+	any_array_push(scene->mesh_datas, startup_make_sphere());
 
-	// camera_datas
-	scene->camera_datas = any_array_create(1);
-	{
-		camera_data_t *cd              = (camera_data_t *)calloc(1, sizeof(camera_data_t));
-		cd->name                       = "Camera";
-		cd->near_plane                 = 0.009999999776482582f;
-		cd->far_plane                  = 100.00006103515625f;
-		cd->fov                        = 0.6909999847412109f;
-		cd->aspect                     = 0.0f;
-		cd->frustum_culling            = false;
-		scene->camera_datas->buffer[0] = cd;
-	}
+	scene->camera_datas            = any_array_create(1);
+	camera_data_t *cd              = (camera_data_t *)calloc(1, sizeof(camera_data_t));
+	cd->name                       = "Camera";
+	cd->near_plane                 = 0.009999999776482582f;
+	cd->far_plane                  = 100.00006103515625f;
+	cd->fov                        = 0.6909999847412109f;
+	cd->aspect                     = 0.0f;
+	cd->frustum_culling            = false;
+	scene->camera_datas->buffer[0] = cd;
 
-	// world_datas
-	scene->world_datas = any_array_create(1);
-	{
-		world_data_t *wd              = (world_data_t *)calloc(1, sizeof(world_data_t));
-		wd->name                      = "World";
-		wd->color                     = -15987700;
-		wd->strength                  = 1.0f;
-		wd->irradiance                = NULL; // Generated in util_render_make_default_world()
-		wd->radiance                  = NULL;
-		wd->radiance_mipmaps          = 0;
-		wd->envmap                    = NULL;
-		scene->world_datas->buffer[0] = wd;
-	}
+	scene->world_datas            = any_array_create(1);
+	world_data_t *wd              = (world_data_t *)calloc(1, sizeof(world_data_t));
+	wd->name                      = "World";
+	wd->color                     = -15987700;
+	wd->strength                  = 1.0f;
+	wd->irradiance                = NULL; // Generated in util_render_make_default_world()
+	wd->radiance                  = NULL;
+	wd->radiance_mipmaps          = 0;
+	wd->envmap                    = NULL;
+	scene->world_datas->buffer[0] = wd;
 
-	// shader_datas
-	scene->shader_datas = any_array_create(18);
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "armdefault";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "mesh";
-			sc->depth_write                  = true;
-			sc->compare_mode                 = "less";
-			sc->cull_mode                    = "clockwise";
-			sc->vertex_shader                = "mesh_posnor.vert";
-			sc->fragment_shader              = "mesh_posnor.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(3);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->color_attachments->buffer[1] = "RGBA64";
-			sc->color_attachments->buffer[2] = "RGBA64";
-			sc->depth_attachment             = "D32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(2);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "short4norm";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "nor";
-				ve->data                       = "short2norm";
-				sc->vertex_elements->buffer[1] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(2);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "WVP";
-				c->type                  = "float4x4";
-				c->link                  = "_world_view_proj_matrix";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "N";
-				c->type                  = "float3x3";
-				c->link                  = "_normal_matrix";
-				sc->constants->buffer[1] = c;
-			}
-			sc->texture_units       = (tex_unit_t_array_t *)any_array_create(0);
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[0] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = ".Gizmo";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "overlay";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "clockwise";
-			sc->vertex_shader                = "mesh_poscol.vert";
-			sc->fragment_shader              = "mesh_poscol.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(2);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "short4norm";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "col";
-				ve->data                       = "short4norm";
-				sc->vertex_elements->buffer[1] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "WVP";
-				c->type                  = "float4x4";
-				c->link                  = "_world_view_proj_matrix";
-				sc->constants->buffer[0] = c;
-			}
-			sc->texture_units       = (tex_unit_t_array_t *)any_array_create(0);
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[1] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "Material";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "mesh";
-			sc->depth_write                  = true;
-			sc->compare_mode                 = "less";
-			sc->cull_mode                    = "clockwise";
-			sc->vertex_shader                = "mesh_posnortex.vert";
-			sc->fragment_shader              = "mesh_posnortex.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(3);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->color_attachments->buffer[1] = "RGBA64";
-			sc->color_attachments->buffer[2] = "RGBA64";
-			sc->depth_attachment             = "D32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(3);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "short4norm";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "nor";
-				ve->data                       = "short2norm";
-				sc->vertex_elements->buffer[1] = ve;
-			}
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "tex";
-				ve->data                       = "short2norm";
-				sc->vertex_elements->buffer[2] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(3);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "WVP";
-				c->type                  = "float4x4";
-				c->link                  = "_world_view_proj_matrix";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "N";
-				c->type                  = "float3x3";
-				c->link                  = "_normal_matrix";
-				sc->constants->buffer[1] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "tex_unpack";
-				c->type                  = "float";
-				c->link                  = "_tex_unpack";
-				sc->constants->buffer[2] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "ImageTexture";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sc->bind_textures = (bind_tex_t_array_t *)any_array_create(1);
-			{
-				bind_tex_t *bt               = (bind_tex_t *)calloc(1, sizeof(bind_tex_t));
-				bt->name                     = string_copy("ImageTexture");
-				bt->file                     = string_copy("");
-				sc->bind_textures->buffer[0] = bt;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[2] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "compositor_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "compositor_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "compositor_pass.vert";
-			sc->fragment_shader              = "compositor_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(6);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "vignette_strength";
-				c->type                  = "float";
-				c->link                  = "_vignette_strength";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "grain_strength";
-				c->type                  = "float";
-				c->link                  = "_grain_strength";
-				sc->constants->buffer[1] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "tonemap_strength";
-				c->type                  = "float";
-				c->link                  = "_tonemap_strength";
-				sc->constants->buffer[2] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "lut_size";
-				c->type                  = "float";
-				c->link                  = "_lut_size";
-				sc->constants->buffer[3] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "contrast_strength";
-				c->type                  = "float";
-				c->link                  = "_contrast_strength";
-				sc->constants->buffer[4] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "gamma_strength";
-				c->type                  = "float";
-				c->link                  = "_gamma_strength";
-				sc->constants->buffer[5] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "lut_tex";
-				tu->link                     = "_lut_tex";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[3] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "taa_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "taa_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "taa_pass.vert";
-			sc->fragment_shader              = "taa_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(4);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "inv_vp";
-				c->type                  = "float4x4";
-				c->link                  = "_taa_inv_vp";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "prev_vp";
-				c->type                  = "float4x4";
-				c->link                  = "_taa_prev_vp";
-				sc->constants->buffer[1] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "texel";
-				c->type                  = "float2";
-				c->link                  = "_screen_size_inv";
-				sc->constants->buffer[2] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "taa_blend";
-				c->type                  = "float";
-				c->link                  = "_taa_blend";
-				sc->constants->buffer[3] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(3);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex2";
-				sc->texture_units->buffer[1] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "gbufferD";
-				sc->texture_units->buffer[2] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[4] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "copy_pass";
-		sd->contexts      = any_array_create(5);
-		{
-			shader_context_t *sc   = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name               = "copy_pass";
-			sc->depth_write        = false;
-			sc->compare_mode       = "always";
-			sc->cull_mode          = "none";
-			sc->vertex_shader      = "copy_pass.vert";
-			sc->fragment_shader    = "copy_pass.frag";
-			sc->shader_from_source = false;
-			sc->vertex_elements    = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copyR8_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "copy_pass.vert";
-			sc->fragment_shader              = "copy_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "R8";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[1] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copyR16_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "copy_pass.vert";
-			sc->fragment_shader              = "copy_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "R16";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[2] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copyRGBA64_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "copy_pass.vert";
-			sc->fragment_shader              = "copy_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[3] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copyRGBA128_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "copy_pass.vert";
-			sc->fragment_shader              = "copy_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA128";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[4] = sc;
-		}
-		scene->shader_datas->buffer[5] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "supersample_resolve";
-		sd->contexts      = any_array_create(2);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "supersample_resolve";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "supersample_resolve.vert";
-			sc->fragment_shader              = "supersample_resolve.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "screen_size_inv";
-				c->type                  = "float2";
-				c->link                  = "_screen_size_inv";
-				sc->constants->buffer[0] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "supersample_resolveRGBA64";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "supersample_resolve.vert";
-			sc->fragment_shader              = "supersample_resolve.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "screen_size_inv";
-				c->type                  = "float2";
-				c->link                  = "_screen_size_inv";
-				sc->constants->buffer[0] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[1] = sc;
-		}
-		scene->shader_datas->buffer[6] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "depth_to_ao_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "depth_to_ao_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "depth_to_ao_pass.vert";
-			sc->fragment_shader              = "depth_to_ao_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "height_map";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "normal_map";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[7] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "ssao_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "ssao_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "ssao_pass.vert";
-			sc->fragment_shader              = "ssao_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "R8";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(6);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "invP";
-				c->type                  = "float4x4";
-				c->link                  = "_inv_proj_matrix";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "V3";
-				c->type                  = "float3x3";
-				c->link                  = "_view_matrix3";
-				sc->constants->buffer[1] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "camera_proj";
-				c->type                  = "float2";
-				c->link                  = "_camera_plane_proj";
-				sc->constants->buffer[2] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "screen_size_inv";
-				c->type                  = "float2";
-				c->link                  = "_screen_size_inv";
-				sc->constants->buffer[3] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "frame_offset";
-				c->type                  = "float";
-				c->link                  = "_ssao_frame";
-				sc->constants->buffer[4] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "ssao_strength";
-				c->type                  = "float";
-				c->link                  = "_ssao_strength";
-				sc->constants->buffer[5] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "gbufferD";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "gbuffer0";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[8] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "ssao_blur_pass";
-		sd->contexts      = any_array_create(2);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "ssao_blur_pass_x";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "ssao_blur_pass.vert";
-			sc->fragment_shader              = "ssao_blur_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "R8";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "dir_inv";
-				c->type                  = "float2";
-				c->link                  = "_vec2x_inv";
-				sc->constants->buffer[0] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "gbuffer0";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "ssao_blur_pass_y";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "ssao_blur_pass.vert";
-			sc->fragment_shader              = "ssao_blur_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "R8";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "dir_inv";
-				c->type                  = "float2";
-				c->link                  = "_vec2y_inv";
-				sc->constants->buffer[0] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "gbuffer0";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[1] = sc;
-		}
-		scene->shader_datas->buffer[9] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "bloom_pass";
-		sd->contexts      = any_array_create(2);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "bloom_downsample_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "bloom_downsample_pass.vert";
-			sc->fragment_shader              = "bloom_downsample_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(2);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "screen_size_inv";
-				c->type                  = "float2";
-				c->link                  = "_screen_size_inv";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "current_mip_level";
-				c->type                  = "int";
-				c->link                  = "_bloom_current_mip";
-				sc->constants->buffer[1] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "bloom_upsample_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "bloom_upsample_pass.vert";
-			sc->fragment_shader              = "bloom_upsample_pass.frag";
-			sc->shader_from_source           = false;
-			sc->blend_source                 = "blend_one";
-			sc->blend_destination            = "blend_one";
-			sc->alpha_blend_source           = "blend_zero";
-			sc->alpha_blend_destination      = "blend_one";
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(4);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "screen_size_inv";
-				c->type                  = "float2";
-				c->link                  = "_screen_size_inv";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "current_mip_level";
-				c->type                  = "int";
-				c->link                  = "_bloom_current_mip";
-				sc->constants->buffer[1] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "sample_scale";
-				c->type                  = "float";
-				c->link                  = "_bloom_sample_scale";
-				sc->constants->buffer[2] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "bloom_strength";
-				c->type                  = "float";
-				c->link                  = "_bloom_strength";
-				sc->constants->buffer[3] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[1] = sc;
-		}
-		scene->shader_datas->buffer[10] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "copy_mrt3_pass";
-		sd->contexts      = any_array_create(3);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copy_mrt3_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "copy_mrt3_pass.vert";
-			sc->fragment_shader              = "copy_mrt3_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(3);
-			sc->color_attachments->buffer[0] = "RGBA32";
-			sc->color_attachments->buffer[1] = "RGBA32";
-			sc->color_attachments->buffer[2] = "RGBA32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(3);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex0";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex1";
-				sc->texture_units->buffer[1] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex2";
-				sc->texture_units->buffer[2] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copy_mrt3RGBA64_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "copy_mrt3_pass.vert";
-			sc->fragment_shader              = "copy_mrt3_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(3);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->color_attachments->buffer[1] = "RGBA64";
-			sc->color_attachments->buffer[2] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(3);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex0";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex1";
-				sc->texture_units->buffer[1] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex2";
-				sc->texture_units->buffer[2] = tu;
-			}
-			sd->contexts->buffer[1] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "copy_mrt3RGBA128_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "copy_mrt3_pass.vert";
-			sc->fragment_shader              = "copy_mrt3_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(3);
-			sc->color_attachments->buffer[0] = "RGBA128";
-			sc->color_attachments->buffer[1] = "RGBA128";
-			sc->color_attachments->buffer[2] = "RGBA128";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(3);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex0";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex1";
-				sc->texture_units->buffer[1] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex2";
-				sc->texture_units->buffer[2] = tu;
-			}
-			sd->contexts->buffer[2] = sc;
-		}
-		scene->shader_datas->buffer[11] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "dilate_pass";
-		sd->contexts      = any_array_create(3);
-		{
-			shader_context_t *sc   = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name               = "dilate_pass";
-			sc->depth_write        = false;
-			sc->compare_mode       = "always";
-			sc->cull_mode          = "none";
-			sc->vertex_shader      = "dilate_pass.vert";
-			sc->fragment_shader    = "dilate_pass.frag";
-			sc->shader_from_source = false;
-			sc->vertex_elements    = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(2);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "dilate_radius";
-				c->type                  = "float";
-				c->link                  = "_dilate_radius";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "tex_size";
-				c->type                  = "float2";
-				c->link                  = "_size(tex)";
-				sc->constants->buffer[1] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "texdilate";
-				tu->link                     = "_texdilatemap";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "dilateRGBA64_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "dilate_pass.vert";
-			sc->fragment_shader              = "dilate_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(2);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "dilate_radius";
-				c->type                  = "float";
-				c->link                  = "_dilate_radius";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "tex_size";
-				c->type                  = "float2";
-				c->link                  = "_size(tex)";
-				sc->constants->buffer[1] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "texdilate";
-				tu->link                     = "_texdilatemap";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[1] = sc;
-		}
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "dilateRGBA128_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "dilate_pass.vert";
-			sc->fragment_shader              = "dilate_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA128";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(2);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "dilate_radius";
-				c->type                  = "float";
-				c->link                  = "_dilate_radius";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "tex_size";
-				c->type                  = "float2";
-				c->link                  = "_size(tex)";
-				sc->constants->buffer[1] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(2);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "texdilate";
-				tu->link                     = "_texdilatemap";
-				sc->texture_units->buffer[1] = tu;
-			}
-			sd->contexts->buffer[2] = sc;
-		}
-		scene->shader_datas->buffer[12] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "histogram_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "histogram_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "histogram_pass.vert";
-			sc->fragment_shader              = "histogram_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants     = (shader_const_t_array_t *)any_array_create(0);
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[13] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "deferred_light";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "deferred_light";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "greater";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "deferred_light.vert";
-			sc->fragment_shader              = "deferred_light.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->depth_attachment             = "D32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(11);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "invVP";
-				c->type                  = "float4x4";
-				c->link                  = "_inv_view_proj_matrix";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "eye";
-				c->type                  = "float3";
-				c->link                  = "_camera_pos";
-				sc->constants->buffer[1] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "envmap_data";
-				c->type                  = "float4";
-				c->link                  = "_envmap_data";
-				sc->constants->buffer[2] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "envmap_num_mipmaps";
-				c->type                  = "int";
-				c->link                  = "_envmap_num_mipmaps";
-				sc->constants->buffer[3] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "shirr0";
-				c->type                  = "float4";
-				c->link                  = "_envmap_irradiance0";
-				sc->constants->buffer[4] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "shirr1";
-				c->type                  = "float4";
-				c->link                  = "_envmap_irradiance1";
-				sc->constants->buffer[5] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "shirr2";
-				c->type                  = "float4";
-				c->link                  = "_envmap_irradiance2";
-				sc->constants->buffer[6] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "shirr3";
-				c->type                  = "float4";
-				c->link                  = "_envmap_irradiance3";
-				sc->constants->buffer[7] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "shirr4";
-				c->type                  = "float4";
-				c->link                  = "_envmap_irradiance4";
-				sc->constants->buffer[8] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "shirr5";
-				c->type                  = "float4";
-				c->link                  = "_envmap_irradiance5";
-				sc->constants->buffer[9] = c;
-			}
-			{
-				shader_const_t *c         = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                   = "shirr6";
-				c->type                   = "float4";
-				c->link                   = "_envmap_irradiance6";
-				sc->constants->buffer[10] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(9);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "gbuffer0";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "gbuffer1";
-				sc->texture_units->buffer[1] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "senvmap_radiance";
-				tu->link                     = "_envmap_radiance";
-				sc->texture_units->buffer[2] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "senvmap_radiance0";
-				tu->link                     = "_envmap_radiance0";
-				sc->texture_units->buffer[3] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "senvmap_radiance1";
-				tu->link                     = "_envmap_radiance1";
-				sc->texture_units->buffer[4] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "senvmap_radiance2";
-				tu->link                     = "_envmap_radiance2";
-				sc->texture_units->buffer[5] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "senvmap_radiance3";
-				tu->link                     = "_envmap_radiance3";
-				sc->texture_units->buffer[6] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "senvmap_radiance4";
-				tu->link                     = "_envmap_radiance4";
-				sc->texture_units->buffer[7] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "ssaotex";
-				sc->texture_units->buffer[8] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[14] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "world_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "world_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "less";
-			sc->cull_mode                    = "clockwise";
-			sc->vertex_shader                = "world_pass.vert";
-			sc->fragment_shader              = "world_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA64";
-			sc->depth_attachment             = "D32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(2);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float3";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "nor";
-				ve->data                       = "float3";
-				sc->vertex_elements->buffer[1] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(2);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "SMVP";
-				c->type                  = "float4x4";
-				c->link                  = "_skydome_matrix";
-				sc->constants->buffer[0] = c;
-			}
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "envmap_data_world";
-				c->type                  = "float4";
-				c->link                  = "_envmap_data_world";
-				sc->constants->buffer[1] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "envmap";
-				tu->link                     = "_envmap";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[15] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "depth_to_normal_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "depth_to_normal_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "depth_to_normal_pass.vert";
-			sc->fragment_shader              = "depth_to_normal_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "texel_size";
-				c->type                  = "float2";
-				c->link                  = "_screen_size_inv";
-				sc->constants->buffer[0] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(1);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "height_map";
-				sc->texture_units->buffer[0] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[16] = sd;
-	}
-	{
-		shader_data_t *sd = (shader_data_t *)calloc(1, sizeof(shader_data_t));
-		sd->name          = "undo_tiles_pass";
-		sd->contexts      = any_array_create(1);
-		{
-			shader_context_t *sc             = (shader_context_t *)calloc(1, sizeof(shader_context_t));
-			sc->name                         = "undo_tiles_pass";
-			sc->depth_write                  = false;
-			sc->compare_mode                 = "always";
-			sc->cull_mode                    = "none";
-			sc->vertex_shader                = "undo_tiles_pass.vert";
-			sc->fragment_shader              = "undo_tiles_pass.frag";
-			sc->shader_from_source           = false;
-			sc->color_attachments            = string_array_create(1);
-			sc->color_attachments->buffer[0] = "RGBA32";
-			sc->vertex_elements              = (vertex_element_t_array_t *)any_array_create(1);
-			{
-				vertex_element_t *ve           = (vertex_element_t *)calloc(1, sizeof(vertex_element_t));
-				ve->name                       = "pos";
-				ve->data                       = "float2";
-				sc->vertex_elements->buffer[0] = ve;
-			}
-			sc->constants = (shader_const_t_array_t *)any_array_create(1);
-			{
-				shader_const_t *c        = (shader_const_t *)calloc(1, sizeof(shader_const_t));
-				c->name                  = "tile_size";
-				c->type                  = "float2";
-				c->link                  = "_undo_tile_size";
-				sc->constants->buffer[0] = c;
-			}
-			sc->texture_units = (tex_unit_t_array_t *)any_array_create(6);
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex0";
-				sc->texture_units->buffer[0] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex1";
-				sc->texture_units->buffer[1] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex2";
-				sc->texture_units->buffer[2] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex3";
-				sc->texture_units->buffer[3] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex4";
-				sc->texture_units->buffer[4] = tu;
-			}
-			{
-				tex_unit_t *tu               = (tex_unit_t *)calloc(1, sizeof(tex_unit_t));
-				tu->name                     = "tex5";
-				sc->texture_units->buffer[5] = tu;
-			}
-			sd->contexts->buffer[0] = sc;
-		}
-		scene->shader_datas->buffer[17] = sd;
-	}
+	scene->shader_datas = startup_shader_datas();
 
-	// objects
-	scene->objects = any_array_create(5);
-	{
-		object_desc_t *obj0 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-		obj0->name          = ".Compass";
-		obj0->type          = "mesh_object";
-		obj0->data_ref      = ".Compass";
-		obj0->transform =
-		    f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}, 16);
-		obj0->dimensions          = f32_array_create_from_raw((float[]){2.0f, 2.0f, 2.0f}, 3);
-		obj0->visible             = false;
-		obj0->spawn               = true;
-		obj0->material_ref        = ".Gizmo";
-		scene->objects->buffer[0] = obj0;
+	scene->objects = any_array_create(0);
+	any_array_push(scene->objects, startup_object(".Compass", "mesh_object", ".Gizmo", (f32[])STARTUP_IDENTITY, (f32[]){2.0f, 2.0f, 2.0f}, false));
+	object_desc_t *gizmo = startup_object(".Gizmo", "mesh_object", ".Gizmo", (f32[])STARTUP_IDENTITY,
+	                                      (f32[]){2.1500000953674316f, 2.1500000953674316f, 2.1500000953674316f}, false);
+	gizmo->children      = (object_desc_t_array_t *)any_array_create(0);
+	for (int i = 0; i < (int)STARTUP_LEN(startup_gizmo_parts); ++i) {
+		const startup_gizmo_part_t *p             = &startup_gizmo_parts[i];
+		f32                         transform[16] = STARTUP_IDENTITY;
+		transform[12]                             = p->x;
+		transform[13]                             = p->y;
+		transform[14]                             = p->z;
+		any_array_push((any_array_t *)gizmo->children, startup_object(p->name, "mesh_object", "armdefault", transform, (f32[]){p->w, p->h, p->d}, false));
 	}
-	{
-		object_desc_t *obj1 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-		obj1->name          = ".Gizmo";
-		obj1->type          = "mesh_object";
-		obj1->data_ref      = ".Gizmo";
-		obj1->transform =
-		    f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}, 16);
-		obj1->dimensions              = f32_array_create_from_raw((float[]){2.1500000953674316f, 2.1500000953674316f, 2.1500000953674316f}, 3);
-		obj1->visible                 = false;
-		obj1->spawn                   = true;
-		obj1->material_ref            = ".Gizmo";
-		object_desc_t_array_t *obj1ch = (object_desc_t_array_t *)any_array_create(9);
-		obj1->children                = obj1ch;
-		{
-			object_desc_t *obj2 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj2->name          = ".RotateX";
-			obj2->type          = "mesh_object";
-			obj2->data_ref      = ".RotateX";
-			obj2->transform =
-			    f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.75f, 0.75f, 1.0f}, 16);
-			obj2->dimensions   = f32_array_create_from_raw((float[]){0.20000000298023224f, 1.0f, 1.0f}, 3);
-			obj2->visible      = false;
-			obj2->spawn        = true;
-			obj2->material_ref = "armdefault";
-			obj1ch->buffer[0]  = obj2;
-		}
-		{
-			object_desc_t *obj3 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj3->name          = ".RotateY";
-			obj3->type          = "mesh_object";
-			obj3->data_ref      = ".RotateY";
-			obj3->transform =
-			    f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.75f, 0.0f, 0.75f, 1.0f}, 16);
-			obj3->dimensions   = f32_array_create_from_raw((float[]){1.0f, 0.20000000298023224f, 1.0f}, 3);
-			obj3->visible      = false;
-			obj3->spawn        = true;
-			obj3->material_ref = "armdefault";
-			obj1ch->buffer[1]  = obj3;
-		}
-		{
-			object_desc_t *obj4 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj4->name          = ".RotateZ";
-			obj4->type          = "mesh_object";
-			obj4->data_ref      = ".RotateZ";
-			obj4->transform =
-			    f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.75f, 0.75f, 0.0f, 1.0f}, 16);
-			obj4->dimensions   = f32_array_create_from_raw((float[]){1.0f, 1.0f, 0.20000000298023224f}, 3);
-			obj4->visible      = false;
-			obj4->spawn        = true;
-			obj4->material_ref = "armdefault";
-			obj1ch->buffer[2]  = obj4;
-		}
-		{
-			object_desc_t *obj5 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj5->name          = ".ScaleX";
-			obj5->type          = "mesh_object";
-			obj5->data_ref      = ".ScaleX";
-			obj5->transform    = f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.949999988079071f,
-			                                                         0.0f, 0.0f, 1.0f},
-			                                               16);
-			obj5->dimensions   = f32_array_create_from_raw((float[]){0.36000001430511475f, 0.20000000298023224f, 0.20000000298023224f}, 3);
-			obj5->visible      = false;
-			obj5->spawn        = true;
-			obj5->material_ref = "armdefault";
-			obj1ch->buffer[3]  = obj5;
-		}
-		{
-			object_desc_t *obj6 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj6->name          = ".ScaleY";
-			obj6->type          = "mesh_object";
-			obj6->data_ref      = ".ScaleY";
-			obj6->transform     = f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-			                                                          0.949999988079071f, 0.0f, 1.0f},
-			                                                16);
-			obj6->dimensions    = f32_array_create_from_raw((float[]){0.20000000298023224f, 0.36000001430511475f, 0.20000000298023224f}, 3);
-			obj6->visible       = false;
-			obj6->spawn         = true;
-			obj6->material_ref  = "armdefault";
-			obj1ch->buffer[4]   = obj6;
-		}
-		{
-			object_desc_t *obj7 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj7->name          = ".ScaleZ";
-			obj7->type          = "mesh_object";
-			obj7->data_ref      = ".ScaleZ";
-			obj7->transform     = f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-			                                                          0.949999988079071f, 1.0f},
-			                                                16);
-			obj7->dimensions    = f32_array_create_from_raw((float[]){0.20000000298023224f, 0.20000000298023224f, 0.36000001430511475f}, 3);
-			obj7->visible       = false;
-			obj7->spawn         = true;
-			obj7->material_ref  = "armdefault";
-			obj1ch->buffer[5]   = obj7;
-		}
-		{
-			object_desc_t *obj8 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj8->name          = ".TranslateX";
-			obj8->type          = "mesh_object";
-			obj8->data_ref      = ".TranslateX";
-			obj8->transform  = f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.7000000476837158f,
-			                                                       0.0f, 0.0f, 1.0f},
-			                                             16);
-			obj8->dimensions = f32_array_create_from_raw((float[]){0.7200000286102295f, 0.20000000298023224f, 0.20000000298023224f}, 3);
-			obj8->visible    = false;
-			obj8->spawn      = true;
-			obj8->material_ref = "armdefault";
-			obj1ch->buffer[6]  = obj8;
-		}
-		{
-			object_desc_t *obj9 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj9->name          = ".TranslateY";
-			obj9->type          = "mesh_object";
-			obj9->data_ref      = ".TranslateY";
-			obj9->transform     = f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-			                                                          1.7000000476837158f, 0.0f, 1.0f},
-			                                                16);
-			obj9->dimensions    = f32_array_create_from_raw((float[]){0.20000000298023224f, 0.7200000286102295f, 0.20000000298023224f}, 3);
-			obj9->visible       = false;
-			obj9->spawn         = true;
-			obj9->material_ref  = "armdefault";
-			obj1ch->buffer[7]   = obj9;
-		}
-		{
-			object_desc_t *obj10 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-			obj10->name          = ".TranslateZ";
-			obj10->type          = "mesh_object";
-			obj10->data_ref      = ".TranslateZ";
-			obj10->transform     = f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-			                                                           1.7000000476837158f, 1.0f},
-			                                                 16);
-			obj10->dimensions    = f32_array_create_from_raw((float[]){0.20000000298023224f, 0.20000000298023224f, 0.7200000286102295f}, 3);
-			obj10->visible       = false;
-			obj10->spawn         = true;
-			obj10->material_ref  = "armdefault";
-			obj1ch->buffer[8]    = obj10;
-		}
-		scene->objects->buffer[1] = obj1;
-	}
-	{
-		object_desc_t *obj11 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-		obj11->name          = "Camera";
-		obj11->type          = "camera_object";
-		obj11->data_ref      = "Camera";
-		obj11->transform     = f32_array_create_from_raw((float[]){0.8660249710083008f, 0.5f, -0.0f, 0.0f, 0.0f, -0.0f, 1.0f, 0.0f, 0.5f, -0.8660249710083008f,
-		                                                           -0.0f, 0.0f, 1.649999976158142f, -2.8628199100494385f, -0.0f, 1.0f},
-		                                                 16);
-		obj11->visible       = true;
-		obj11->spawn         = true;
-		scene->objects->buffer[2] = obj11;
-	}
-	{
-		object_desc_t *obj12 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-		obj12->name          = ".Plane";
-		obj12->type          = "mesh_object";
-		obj12->data_ref      = ".Plane";
-		obj12->transform =
-		    f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}, 16);
-		obj12->dimensions         = f32_array_create_from_raw((float[]){1.0f, 0.0f, 1.0f}, 3);
-		obj12->visible            = false;
-		obj12->spawn              = true;
-		obj12->material_ref       = "Material";
-		scene->objects->buffer[3] = obj12;
-	}
-	{
-		object_desc_t *obj13 = (object_desc_t *)calloc(1, sizeof(object_desc_t));
-		obj13->name          = ".Sphere";
-		obj13->type          = "mesh_object";
-		obj13->data_ref      = ".Sphere";
-		obj13->transform =
-		    f32_array_create_from_raw((float[]){1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}, 16);
-		obj13->dimensions         = f32_array_create_from_raw((float[]){1.0f, 1.0f, 1.0f}, 3);
-		obj13->visible            = false;
-		obj13->spawn              = true;
-		obj13->material_ref       = "Material";
-		scene->objects->buffer[4] = obj13;
-	}
+	any_array_push(scene->objects, gizmo);
+	any_array_push(scene->objects, startup_object("Camera", "camera_object", NULL,
+	                                              (f32[]){0.8660249710083008f, 0.5f, -0.0f, 0.0f, 0.0f, -0.0f, 1.0f, 0.0f, 0.5f, -0.8660249710083008f, -0.0f,
+	                                                      0.0f, 1.649999976158142f, -2.8628199100494385f, -0.0f, 1.0f},
+	                                              NULL, true));
+	any_array_push(scene->objects, startup_object(".Plane", "mesh_object", "Material", (f32[])STARTUP_IDENTITY, (f32[]){1.0f, 0.0f, 1.0f}, false));
+	any_array_push(scene->objects, startup_object(".Sphere", "mesh_object", "Material", (f32[])STARTUP_IDENTITY, (f32[]){1.0f, 1.0f, 1.0f}, false));
 	return scene;
 }

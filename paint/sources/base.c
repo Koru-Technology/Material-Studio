@@ -1,9 +1,6 @@
 
 #include "global.h"
 
-#ifdef IRON_ANDROID
-#include "backends/android_system.h"
-#endif
 
 i32     base_drag_tint          = 0xffffffff;
 i32     base_drag_size          = -1;
@@ -18,9 +15,6 @@ i32     base_last_window_height = 0;
 i32     _base_material_count;
 
 void base_on_shutdown() {
-#ifdef IRON_ANDROID
-	project_save_now(); // project_save() would wait for a next frame that does not come
-#endif
 	// iOS saved when the app resigned active, the gpu can not read the layers back from the background
 	config_save();
 }
@@ -36,9 +30,7 @@ void base_on_memory_warning() {
 	mm_buffers_trim(); // Material Maker buffer textures the last render did not use, they render again when needed
 	material_cache_trim(); // Material caches but the current material's
 	mask_gen_trim();       // Mask generator outputs but the selected mask's, texmask keeps the result
-#ifdef IRON_METAL
 	gpu_release_staging_buffers();
-#endif
 	gpu_execute_and_wait(); // Free deleted textures now instead of on the next present
 	gpu_cleanup();
 }
@@ -219,7 +211,7 @@ static void base_handle_open_paths() {
 void base_handle_drop_paths() {
 	if (base_drop_paths->length > 0) {
 		bool wait = false;
-#if defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 		wait = !mouse_moved; // Mouse coords not updated during drag
 #endif
 		if (!wait) {
@@ -458,10 +450,6 @@ void base_update(void *_) {
 	base_handle_drop_paths();
 	base_handle_open_paths();
 
-
-
-
-
 	if (base_workspace_pending) {
 		base_apply_workspace();
 	}
@@ -473,8 +461,6 @@ void base_update(void *_) {
 
 	bool in_3d               = mouse_view_x() >= 0 && mouse_view_x() <= sys_w() && mouse_view_y() >= 0 && mouse_view_y() <= sys_h();
 	iron_mouse_trackpad_drag = base_ui_enabled && (in_3d || context_in_2d_view(ui_view2d_type) || context_in_nodes());
-
-
 
 	if (g_context->frame == 2) {
 		util_render_make_material_preview();
@@ -535,7 +521,7 @@ void base_update(void *_) {
 
 	base_draw_startup_cover();
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	// No mouse move events for touch, re-init last paint position on touch start
 	if (!mouse_down("left")) {
 		g_context->last_paint_x = -1;
@@ -594,7 +580,7 @@ void base_init() {
 	translator_load_translations(g_config->locale);
 
 	ui_files_filename = string_copy(tr("untitled"));
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	sys_title_set(tr("untitled"));
 #endif
 
@@ -938,15 +924,6 @@ any_array_t *base_combo_enum_textures(char *node_type) {
 i32 base_get_asset_index_by_file(char *file) {
 	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
 		if (string_equals(g_project->_->assets->buffer[i]->file, file)) {
-			return i;
-		}
-	}
-	return 0;
-}
-
-i32 base_get_asset_index(char *file_name) {
-	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
-		if (string_equals(g_project->_->assets->buffer[i]->name, file_name)) {
 			return i;
 		}
 	}

@@ -1566,7 +1566,7 @@ void tab_layers_draw_edit() {
 		}
 	}
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 // let bits_items: string[] = ["8"];
 // ui_inline_radio(base_bits_handle, bits_items, ui_align_t.LEFT);
 #else

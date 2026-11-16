@@ -70,201 +70,7 @@ void box_projects_tab_on_next_frame(char *path) {
 	box_projects_load(path);
 }
 
-void box_projects_draw_badge() {
-	gpu_texture_t *img = data_get_texture("badge.k");
-	ui_image(img, 0xffffffff, -1.0);
-	ui_end_element();
-}
-
-#ifdef IRON_WASM
-// Projects stored in the cloud
-// Paths look like /api/projects/<slot>/<name>.arm
-#define BOX_PROJECTS_CLOUD_SLOTS 3
-static string_array_t *box_projects_cloud      = NULL; // One path per slot, "" for a free slot, NULL when signed out
-static char           *box_projects_cloud_name = "";
-static bool            _box_projects_cloud_save_and_quit;
-static i32             _box_projects_cloud_save_tab = 0;
-
-bool box_projects_is_cloud_path(char *path) {
-	return starts_with(path, "/api/projects/");
-}
-
-i32 box_projects_cloud_slot(char *path) {
-	return parse_int(substring(path, string_length("/api/projects/"), string_last_index_of(path, "/")));
-}
-
-static void box_projects_cloud_fetch() {
-	box_projects_cloud = NULL;
-	buffer_t *b        = iron_load_blob("/api/projects"); // Fails when not signed in
-	if (b == NULL) {
-		return;
-	}
-	box_projects_cloud = string_split(sys_buffer_to_string(b), "\n");
-	while (box_projects_cloud->length < BOX_PROJECTS_CLOUD_SLOTS) {
-		any_array_push(box_projects_cloud, "");
-	}
-}
-
-static char *box_projects_cloud_project_name(char *path) {
-	return substring(path, string_last_index_of(path, "/") + 1, string_last_index_of(path, "."));
-}
-
-static void box_projects_cloud_delete_on_next_frame(void *_) {
-	iron_delete_file(_box_projects_path); // Removes the icon too
-	box_projects_cloud->buffer[_box_projects_i] = "";
-	string_array_remove(g_config->recent_projects, _box_projects_path);
-	if (string_equals(g_project->_->filepath, _box_projects_path)) {
-		g_project->_->filepath = ""; // Next save asks for a slot
-	}
-}
-
-static void box_projects_cloud_menu() {
-	if (ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
-		sys_notify_on_next_frame(&box_projects_cloud_delete_on_next_frame, NULL);
-	}
-	if (g_config->experimental && ui_menu_button(tr("Stop Sharing"), "", ICON_LINK)) {
-		iron_delete_file(string("/api/projects/%d/share", box_projects_cloud_slot(_box_projects_path)));
-	}
-}
-
-void box_projects_cloud_tab() {
-	if (ui_tab(&box_projects_tab_index, tr("Cloud"), true, -1, false)) {
-
-		if (box_projects_cloud == NULL) {
-			ui_text(tr("Sign in to store projects in the cloud."), UI_ALIGN_LEFT, 0x00000000);
-		}
-		else {
-			i32 used = 0;
-			for (i32 i = 0; i < BOX_PROJECTS_CLOUD_SLOTS; ++i) {
-				used += string_equals(box_projects_cloud->buffer[i], "") ? 0 : 1;
-			}
-			ui_text(string("%s: %d / %d", tr("Cloud projects"), used, BOX_PROJECTS_CLOUD_SLOTS), UI_ALIGN_LEFT, 0x00000000);
-
-			f32_array_t *ar = f32_array_create_from_raw((f32[]){}, 0);
-			for (i32 i = 0; i < BOX_PROJECTS_CLOUD_SLOTS; ++i) {
-				f32_array_push(ar, 1 / (float)BOX_PROJECTS_CLOUD_SLOTS);
-			}
-
-			// Icons
-			i32 imgh = math_floor(128 * UI_SCALE());
-			ui_row(ar);
-			for (i32 i = 0; i < BOX_PROJECTS_CLOUD_SLOTS; ++i) {
-				char          *path = box_projects_cloud->buffer[i];
-				gpu_texture_t *icon = NULL;
-				if (!string_equals(path, "")) {
-					char *icon_path = string_tmp("%s_icon.png", substring(path, 0, string_length(path) - 4));
-					if (box_projects_icon_map == NULL) {
-						box_projects_icon_map = any_map_create();
-					}
-					icon = any_map_get(box_projects_icon_map, icon_path);
-					if (icon == NULL) {
-						icon = data_get_texture(icon_path);
-						if (icon != NULL) {
-							any_map_set(box_projects_icon_map, string_copy(icon_path), icon); // The map holds the key
-						}
-					}
-				}
-				if (icon == NULL) {
-					ui_fill(0, 0, 128, 128, g_theme->SEPARATOR_COL);
-					ui_end_element_of_size(imgh);
-					continue;
-				}
-				if (ui_image(icon, 0xffffffff, imgh) == UI_STATE_RELEASED) {
-					sys_notify_on_next_frame(&box_projects_tab_on_next_frame, path);
-				}
-				if (g_ui->is_hovered && g_ui->input_released_r) {
-					_box_projects_path = string_copy(path);
-					_box_projects_i    = i;
-					ui_menu_draw(&box_projects_cloud_menu, -1, -1);
-				}
-			}
-
-			// Names
-			ui_row(ar);
-			for (i32 i = 0; i < BOX_PROJECTS_CLOUD_SLOTS; ++i) {
-				char *path = box_projects_cloud->buffer[i];
-				if (string_equals(path, "")) {
-					ui_text(tr("Empty"), UI_ALIGN_CENTER, 0x00000000);
-					continue;
-				}
-				if (ui_button(box_projects_cloud_project_name(path), UI_ALIGN_CENTER, "")) {
-					sys_notify_on_next_frame(&box_projects_tab_on_next_frame, path);
-				}
-				if (g_ui->is_hovered && g_ui->input_released_r) {
-					_box_projects_path = string_copy(path);
-					_box_projects_i    = i;
-					ui_menu_draw(&box_projects_cloud_menu, -1, -1);
-				}
-			}
-		}
-
-		ui_end_element();
-		if (ui_icon_button(tr("New Project..."), ICON_FILE_NEW, UI_ALIGN_LEFT)) {
-			project_new_box();
-		}
-		if (ui_icon_button(tr("Open..."), ICON_FOLDER_OPEN, UI_ALIGN_LEFT)) {
-			project_open();
-			ui_box_hide();
-		}
-	}
-}
-
-static void box_projects_cloud_save_to_slot(i32 slot) {
-	char *name = string_copy(trim_end(box_projects_cloud_name));
-	if (string_equals(name, "")) {
-		name = string_copy(tr("untitled"));
-	}
-	// The name becomes part of the url path
-	char *invalid[] = {"/", "\\", "?", "#", "%"};
-	for (i32 i = 0; i < 5; ++i) {
-		name = string_copy(string_replace_all(name, invalid[i], "_"));
-	}
-
-	char *path                       = string("/api/projects/%d/%s.arm", slot + 1, name);
-	box_projects_cloud->buffer[slot] = path;
-	g_project->_->filepath           = path;
-	ui_files_filename                = name;
-	ui_box_hide();
-	project_save(_box_projects_cloud_save_and_quit);
-}
-
-static void box_projects_cloud_save_draw() {
-	if (ui_tab(&_box_projects_cloud_save_tab, tr("Save to Cloud"), false, -1, false)) {
-		if (box_projects_cloud == NULL) {
-			ui_text(tr("Sign in to store projects in the cloud."), UI_ALIGN_LEFT, 0x00000000);
-		}
-		else {
-			box_projects_cloud_name = string_copy(ui_text_input(&box_projects_cloud_name, tr("Name"), UI_ALIGN_LEFT, true, false));
-			for (i32 i = 0; i < BOX_PROJECTS_CLOUD_SLOTS; ++i) {
-				char *path  = box_projects_cloud->buffer[i];
-				char *label = string_equals(path, "") ? string("%s %d: %s", tr("Slot"), i + 1, tr("Empty"))
-				                                      : string("%s %d: %s %s", tr("Slot"), i + 1, tr("Replace"), box_projects_cloud_project_name(path));
-				if (ui_icon_button(label, ICON_SAVE, UI_ALIGN_LEFT)) {
-					box_projects_cloud_save_to_slot(i);
-					return;
-				}
-			}
-		}
-		ui_end_element();
-		ui_row2();
-		if (ui_icon_button(tr("Save to Disk..."), ICON_SAVE_AS, UI_ALIGN_CENTER)) {
-			ui_box_hide();
-			project_save_as(_box_projects_cloud_save_and_quit);
-		}
-		if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-			ui_box_hide();
-		}
-	}
-}
-
-void box_projects_cloud_save_show(bool save_and_quit) {
-	_box_projects_cloud_save_and_quit = save_and_quit;
-	box_projects_cloud_fetch();
-	box_projects_cloud_name = string_copy(ui_files_filename != NULL && !string_equals(ui_files_filename, "") ? ui_files_filename : tr("untitled"));
-	ui_box_show_custom(&box_projects_cloud_save_draw, 400, 320, NULL, true, "");
-}
-#endif
-
+#ifdef IRON_IOS // The Mac lists the recent projects instead (box_projects_recent_tab)
 // Recent projects grid
 static void box_projects_draw() {
 	ui_begin_sticky();
@@ -349,7 +155,7 @@ static void box_projects_draw() {
 					g_ui->_x = uix;
 					ui_fill(0, 0, 128, 128, 0x66000000);
 					g_ui->_x = _uix;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 					console_toast(tr("Opening project"));
 #endif
 					sys_notify_on_next_frame(&box_projects_tab_on_next_frame, path);
@@ -388,29 +194,7 @@ static void box_projects_draw() {
 		g_ui->_y += 150;
 	}
 }
-
-void box_projects_tab() {
-	if (ui_tab(&box_projects_tab_index, tr("Projects"), true, -1, false)) {
-		box_projects_draw();
-	}
-}
-
-void box_projects_get_started_tab() {
-	if (ui_tab(&box_projects_tab_index, tr("Get Started"), true, -1, false)) {
-
-		ui_separator(UI_ELEMENT_H(), false);
-
-		if (ui_icon_button(tr("Manual"), ICON_HELP, UI_ALIGN_CENTER)) {
-			iron_load_url("https://armorpaint.org/manual");
-		}
-		if (ui_icon_button(tr("How To"), ICON_HELP, UI_ALIGN_CENTER)) {
-			iron_load_url("https://forums.armorpaint.org/c/how-to");
-		}
-		if (ui_icon_button(tr("What's New"), ICON_LINK, UI_ALIGN_CENTER)) {
-			iron_load_url("https://forums.armorpaint.org/c/news");
-		}
-	}
-}
+#endif
 
 void box_projects_align_to_fullscreen() {
 	ui_box_modalw       = math_floor(iron_window_width() / (float)UI_SCALE());
@@ -424,15 +208,9 @@ void box_projects_align_to_fullscreen() {
 }
 
 void box_projects_show_box() {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	box_projects_align_to_fullscreen();
-#endif
-
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
 	box_projects_draw(); // Projects only, no tabs
-#elif defined(IRON_WASM)
-	box_projects_cloud_tab();
-	box_projects_get_started_tab();
 #else
 	box_projects_recent_tab();
 #endif
@@ -452,21 +230,15 @@ void box_projects_show() {
 		box_projects_icon_map = NULL;
 	}
 
-#ifdef IRON_WASM
-	box_projects_cloud_fetch();
-#endif
 
 	bool draggable;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	draggable = false;
 #else
 	draggable = true;
 #endif
 
 	i32 box_h = 400;
-#ifdef IRON_WASM
-	box_h = 500;
-#endif
 	ui_box_show_custom(&box_projects_show_box, 600, box_h, NULL, draggable, "");
 }
 
@@ -488,11 +260,7 @@ void box_projects_recent_tab() {
 		char *first_path    = NULL; // Most recent project that passes the search filter
 		for (i32 i = 0; i < g_config->recent_projects->length; ++i) {
 			char *path = g_config->recent_projects->buffer[i];
-#ifdef IRON_WINDOWS
-			path = string_copy(string_replace_all(path, "/", "\\"));
-#else
 			path = string_copy(string_replace_all(path, "\\", "/"));
-#endif
 			char *file = substring(path, string_last_index_of(path, PATH_SEP) + 1, string_length(path));
 
 			if (string_index_of(to_lower_case(file), to_lower_case(box_projects_search)) < 0) {

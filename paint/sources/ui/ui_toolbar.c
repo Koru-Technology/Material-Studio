@@ -85,12 +85,12 @@ static u32 ui_toolbar_item_color(i32 tool) {
 	f32 t = v * (1 - s * (1 - f));
 	f32 r, g, b;
 	switch (k % 6) {
-	case 0: r = v, g = t, b = p; break;
-	case 1: r = q, g = v, b = p; break;
-	case 2: r = p, g = v, b = t; break;
-	case 3: r = p, g = q, b = v; break;
-	case 4: r = t, g = p, b = v; break;
-	default: r = v, g = p, b = q; break;
+	case 0: r = v; g = t; b = p; break;
+	case 1: r = q; g = v; b = p; break;
+	case 2: r = p; g = v; b = t; break;
+	case 3: r = p; g = q; b = v; break;
+	case 4: r = t; g = p; b = v; break;
+	default: r = v; g = p; b = q; break;
 	}
 	return 0xff000000 | ((u32)(r * 255) << 16) | ((u32)(g * 255) << 8) | (u32)(b * 255);
 }
@@ -157,7 +157,7 @@ static bool _ui_toolbar_right_click = false;
 
 void ui_toolbar_update() {
 	if (mouse_started("right")) {
-		_ui_toolbar_right_click = context_is_floating_toolbar() && context_in_paint_area() && !g_config->touch_ui && !base_player && !ui_menu_show &&
+		_ui_toolbar_right_click = context_is_floating_toolbar() && context_in_paint_area() && !g_config->touch_ui && !ui_menu_show &&
 		                          !ui_box_show && !g_ui->is_typing;
 	}
 	else if (mouse_down("right") && mouse_moved) {

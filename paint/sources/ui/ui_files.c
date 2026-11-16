@@ -27,11 +27,7 @@ void ui_files_release_keys() {
 
 void ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files_done)(char *)) {
 	if (is_save) {
-#ifdef IRON_WASM
-		char *default_path = ui_files_filename != NULL ? ui_files_filename : ""; // Suggested file name
-#else
 		char *default_path = "";
-#endif
 		ui_files_path = string_copy(iron_save_dialog(filters, default_path));
 		if (ui_files_path != NULL) {
 			char *sep2 = string("%s%s", PATH_SEP, PATH_SEP);
@@ -62,6 +58,29 @@ void ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files
 	}
 
 	ui_files_release_keys();
+}
+
+// Saves a preset (theme, keymap, export preset) typed in by name into data/<folder>, the file name it got, NULL for an
+// empty name. Path separators in the name become '_', so the file stays in the folder.
+char *ui_files_save_preset(char *folder, char *name, char *json) {
+	char *file = string_copy(name);
+	for (char *c = file; *c != '\0'; ++c) {
+		if (*c == '/' || *c == '\\' || *c == ':') {
+			*c = '_';
+		}
+	}
+	while (file[0] == '.') {
+		file++; // No hidden files, no ".."
+	}
+	if (file[0] == '\0') {
+		return NULL;
+	}
+	if (!ends_with(file, ".json")) {
+		file = string("%s.json", file);
+	}
+	char *path = string("%s%s%s%s%s", path_data(), PATH_SEP, folder, PATH_SEP, file);
+	iron_file_save_bytes(path, sys_string_to_buffer(json), 0);
+	return file;
 }
 
 static void ui_files_clear_icon_map(void) {
@@ -262,23 +281,28 @@ char *ui_files_file_browser(char **path, bool drag_files, char *search, bool ref
 						is_blob = true;
 					}
 
-					if (raw != NULL && raw->material_icons != NULL) {
-						buffer_t *bytes_icon = raw->material_icons->buffer[0];
+					// A corrupt icon decodes to NULL, the file shows the empty icon then
+					if (raw != NULL && raw->material_icons != NULL && raw->material_icons->length > 0) {
+						buffer_t *buf = lz4_decode(raw->material_icons->buffer[0], 256 * 256 * 8);
 #ifdef IRON_BGRA
-						buffer_t *buf = buffer_bgra64_swap(lz4_decode(bytes_icon, 256 * 256 * 8));
-#else
-						buffer_t *buf = lz4_decode(bytes_icon, 256 * 256 * 8);
+						if (buf != NULL) {
+							buffer_bgra64_swap(buf);
+						}
 #endif
-						icon = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA64);
-						array_free(buf);
-						free(buf);
+						if (buf != NULL) {
+							icon = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA64);
+							array_free(buf);
+							free(buf);
+						}
 					}
 					else if (raw != NULL && (raw->mesh_icons != NULL || raw->brush_icons != NULL)) {
-						buffer_t *bytes_icon = raw->mesh_icons != NULL ? raw->mesh_icons->buffer[0] : raw->brush_icons->buffer[0];
-						buffer_t *buf        = lz4_decode(bytes_icon, 256 * 256 * 4);
-						icon                 = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA32);
-						array_free(buf);
-						free(buf);
+						buffer_t_array_t *icons = raw->mesh_icons != NULL ? raw->mesh_icons : raw->brush_icons;
+						buffer_t         *buf   = icons->length > 0 ? lz4_decode(icons->buffer[0], 256 * 256 * 4) : NULL;
+						if (buf != NULL) {
+							icon = gpu_create_texture_from_bytes(buf, 256, 256, GPU_TEXTURE_FORMAT_RGBA32);
+							array_free(buf);
+							free(buf);
+						}
 					}
 
 					if (is_blob) {

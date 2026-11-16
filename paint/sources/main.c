@@ -406,7 +406,7 @@ void _kickstart() {
 
 	nodes_material_categories = nodes_material_category_names(); // In the order of nodes_material_list
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	ui_sidebar_default_w = ui_sidebar_default_w_mini;
 #else
 	ui_sidebar_default_w = ui_sidebar_default_w_full;

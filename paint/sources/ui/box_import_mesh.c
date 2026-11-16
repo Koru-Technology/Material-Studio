@@ -18,9 +18,6 @@ void project_import_mesh_box_menu() {
 			import_mesh_finish_import(NULL);
 		}
 	}
-	if (ui_menu_button(tr("Help"), "", ICON_HELP)) {
-		iron_load_url("https://github.com/armory3d/armorpaint_web/blob/main/manual.md#faq");
-	}
 }
 
 void project_import_mesh_box_draw() {
@@ -66,7 +63,7 @@ void project_import_mesh_box_draw() {
 	if ((ui_icon_button(tr("Import"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) && !ui_menu_show) {
 		ui_box_hide();
 
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 		console_toast(tr("Importing mesh"));
 #endif
 

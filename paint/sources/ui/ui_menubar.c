@@ -12,11 +12,6 @@ typedef enum {
 	MENUBAR_CATEGORY_IMPORT_EXPORT = 7, // File button in the touch top bar
 } menubar_category_t;
 
-typedef struct update_info {
-	i32   version;
-	char *version_name;
-} update_info_t;
-
 i32 ui_menubar_category                 = 0;
 int ui_menubar_capture_screenshot_frame = 0;
 i32 ui_menubar_about_line               = 0;
@@ -109,9 +104,9 @@ void ui_menubar_draw_category_items_about_box() {
 
 	ui_text_area(&_ui_menu_render_msg, &ui_menubar_about_line, UI_ALIGN_LEFT, false, "", false);
 
-	ui_row3();
+	ui_row2();
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 	if (ui_icon_button(tr("Copy"), ICON_COPY, UI_ALIGN_CENTER)) {
 		iron_copy_to_clipboard(_ui_menu_render_msg);
 	}
@@ -119,39 +114,8 @@ void ui_menubar_draw_category_items_about_box() {
 	ui_end_element();
 #endif
 
-	if (ui_icon_button(tr("Contributors"), ICON_LINK, UI_ALIGN_CENTER)) {
-		iron_load_url("https://github.com/armory3d/armorpaint/graphs/contributors");
-	}
 	if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER)) {
 		ui_box_hide();
-	}
-}
-
-void ui_menubar_draw_category_items_on_check_for_updates_downloaded(char *url, buffer_t *buffer) {
-	if (buffer != NULL) {
-		// Compare versions
-		update_info_t *update         = json_parse(sys_buffer_to_string(buffer));
-		i32            update_version = math_floor(update->version);
-		if (update_version > 0) {
-			char *date   = config_get_date(); // 2019 -> 19
-			date         = string_copy(substring(date, 2, string_length(date)));
-			i32 date_int = parse_int(string_replace_all(date, "-", ""));
-			if (update_version > date_int) {
-				any_map_t *vars = any_map_create();
-				any_map_set(vars, "url", manifest_url);
-				ui_box_show_message(tr("Update"), vtr("Update is available!\nPlease visit {url}.", vars), false);
-				map_free(vars);
-			}
-			else {
-				ui_box_show_message(tr("Update"), tr("You are up to date!"), false);
-			}
-		}
-	}
-	else {
-		any_map_t *vars = any_map_create();
-		any_map_set(vars, "url", manifest_url);
-		ui_box_show_message(tr("Update"), vtr("Unable to check for updates.\nPlease visit {url}.", vars), false);
-		map_free(vars);
 	}
 }
 
@@ -332,11 +296,7 @@ void ui_menubar_draw_category_items() {
 		if (ui_menu_button(tr("Open..."), any_map_get(g_keymap, "file_open"), ICON_FOLDER_OPEN)) {
 			project_open();
 		}
-#ifdef IRON_WASM
-		char *open_recent = tr("Cloud Projects...");
-#else
 		char *open_recent = tr("Open Recent...");
-#endif
 		if (ui_menu_button(open_recent, any_map_get(g_keymap, "file_open_recent"), ICON_REPLAY)) {
 			box_projects_show();
 		}
@@ -346,11 +306,6 @@ void ui_menubar_draw_category_items() {
 		if (ui_menu_button(tr("Save As..."), any_map_get(g_keymap, "file_save_as"), ICON_SAVE_AS)) {
 			project_save_as(false);
 		}
-#ifdef IRON_WASM
-		if (ui_menu_button(tr("Save to Cloud..."), "", ICON_CLOUD)) {
-			box_projects_cloud_save_show(false);
-		}
-#endif
 
 		if (ui_menu_sub_button(tr("Assets"))) {
 			ui_menu_sub_begin(2);
@@ -775,52 +730,6 @@ void ui_menubar_draw_category_items() {
 		}
 	}
 	else if (ui_menubar_category == MENUBAR_CATEGORY_HELP) {
-		if (ui_menu_button(tr("Manual"), "", ICON_HELP)) {
-			iron_load_url("https://armorpaint.org/manual");
-		}
-		if (ui_menu_button(tr("How To"), "", ICON_HELP)) {
-			iron_load_url("https://forums.armorpaint.org/c/how-to");
-		}
-		if (ui_menu_button(tr("What's New"), "", ICON_LINK)) {
-			iron_load_url("https://forums.armorpaint.org/c/news");
-		}
-		if (ui_menu_button(tr("Issue Tracker"), "", ICON_LINK)) {
-			iron_load_url("https://github.com/armory3d/armorpaint/issues");
-		}
-		if (ui_menu_button(tr("Report Bug"), "", ICON_LINK)) {
-#if defined(IRON_MACOS) || defined(IRON_IOS) // Limited url length
-			iron_load_url(string("https://github.com/armory3d/armorpaint/issues/new?labels=bug&template=bug_report.md&body=*%s%%20%s-%s,%%20%s", manifest_title,
-			                     manifest_version, config_get_sha(), iron_system_id()));
-#else
-			iron_load_url(string("https://github.com/armory3d/armorpaint/issues/new?labels=bug&template=bug_report.md&body=*%s%%20%s-%s,%%20%s*%%0A%%0A**Issue "
-			                     "description:**%%0A%%0A**Steps to reproduce:**%%0A%%0A",
-			                     manifest_title, manifest_version, config_get_sha(), iron_system_id()));
-#endif
-		}
-		if (ui_menu_button(tr("Request Feature"), "", ICON_LINK)) {
-#if defined(IRON_MACOS) || defined(IRON_IOS) // Limited url length
-			iron_load_url(
-			    string("https://github.com/armory3d/armorpaint/issues/new?labels=feature%%20request&template=feature_request.md&body=*%s%%20%s-%s,%%20%s",
-			           manifest_title, manifest_version, config_get_sha(), iron_system_id()));
-#else
-			iron_load_url(string("https://github.com/armory3d/armorpaint/issues/"
-			                     "new?labels=feature%%20request&template=feature_request.md&body=*%s%%20%s-%s,%%20%s*%%0A%%0A**Feature description:**%%0A%%0A",
-			                     manifest_title, manifest_version, config_get_sha(), iron_system_id()));
-#endif
-		}
-		ui_menu_separator();
-
-		if (ui_menu_button(tr("Check for Updates..."), "", ICON_NONE)) {
-#ifdef IRON_ANDROID
-			iron_load_url(manifest_url_android);
-#elif defined(IRON_IOS)
-			iron_load_url(manifest_url_ios);
-#else
-			// Retrieve latest version number
-			iron_file_download("https://check-for-updates.armory3d.workers.dev", &ui_menubar_draw_category_items_on_check_for_updates_downloaded, 0, NULL);
-#endif
-		}
-
 		if (ui_menu_button(tr("About..."), "", ICON_INFO)) {
 
 			char *msg = string("%s - v%s (%s) - %s\n", manifest_title, manifest_version, config_get_date(), config_get_sha());
@@ -834,7 +743,7 @@ void ui_menubar_draw_category_items() {
 		}
 	}
 	else if (ui_menubar_category == MENUBAR_CATEGORY_WINDOW) {
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS) || defined(IRON_WASM)
+#if defined(IRON_MACOS)
 		if (ui_menu_button(tr("Toggle Fullscreen"), "alt+enter", ICON_FULLSCREEN)) {
 			base_toggle_fullscreen();
 		}

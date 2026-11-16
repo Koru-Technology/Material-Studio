@@ -25,7 +25,7 @@ void tab_console_draw(i32 *htab) {
 	if (ui_tab(htab, title, false, color, false) && g_ui->_window_h > ui_statusbar_default_h * UI_SCALE()) {
 
 		ui_begin_sticky();
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS) // Copy
+#if defined(IRON_MACOS) // Copy
 		f32_array_t *row = f32_array_create_from_raw_tmp(
 		    (f32[]){
 		        -100,
@@ -49,7 +49,7 @@ void tab_console_draw(i32 *htab) {
 		if (ui_icon_button(tr("Export"), ICON_EXPORT, UI_ALIGN_CENTER)) {
 			ui_files_show("txt", true, false, &tab_console_draw_export_on_file_picked);
 		}
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 		if (ui_icon_button(tr("Copy"), ICON_COPY, UI_ALIGN_CENTER)) {
 			char *str = string_array_join(console_last_traces, "\n");
 			iron_copy_to_clipboard(str);

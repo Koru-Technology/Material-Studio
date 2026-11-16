@@ -78,7 +78,7 @@ void ui_base_init() {
 
 	g_ui = ui_create(ops);
 
-#if !defined(IRON_IOS) && !defined(IRON_ANDROID)
+#if !defined(IRON_IOS)
 	ui_on_tab_drop = ui_dock_on_tab_drop;
 #endif
 	ui_on_tab_dock         = ui_dock_on_tab_dock;
@@ -134,11 +134,6 @@ void ui_base_menu_draw_viewport_mode() {
 
 void ui_base_update_next_frame(void *_) {
 	export_texture_run(g_context->texture_export_path, false);
-}
-
-void ui_base_update_ui_on_next_frame(void *_) {
-	layers_update_fill_layer(true);
-	make_material_parse_paint_material(false);
 }
 
 // Nothing docked is visible
@@ -288,15 +283,11 @@ void ui_base_init_tabs() {
 }
 
 void ui_base_toggle_distract_free() {
-	if (base_player_lock || app_native_chrome) {
+	if (app_native_chrome) {
 		return;
 	}
 
 	ui_base_show = !ui_base_show;
-	if (ui_base_show && base_player) {
-		base_player = false;
-		base_set_workspace(WORKSPACE_PRESET_NONE);
-	}
 	base_resize();
 }
 
@@ -331,7 +322,6 @@ static void ui_base_show_nodes(canvas_type_t type) {
 void ui_base_show_material_nodes() {
 	ui_base_show_nodes(CANVAS_TYPE_MATERIAL);
 }
-
 
 void ui_base_show_2d_view(view_2d_type_t type) {
 	// Clear input state as ui receives input events even when not drawn

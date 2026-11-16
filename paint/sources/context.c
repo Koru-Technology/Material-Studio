@@ -206,7 +206,7 @@ bool context_use_lit() {
 }
 
 void context_select_material(i32 i) {
-	if (g_project->_->materials->length <= i) {
+	if (i < 0 || i >= g_project->_->materials->length) {
 		return;
 	}
 	context_set_material(g_project->_->materials->buffer[i]);
@@ -234,7 +234,7 @@ void context_set_material(slot_material_t *m) {
 }
 
 void context_select_brush(i32 i) {
-	if (g_project->_->brushes->length <= i) {
+	if (i < 0 || i >= g_project->_->brushes->length) {
 		return;
 	}
 	context_set_brush(g_project->_->brushes->buffer[i]);
@@ -264,14 +264,14 @@ void context_set_font(slot_font_t *f) {
 }
 
 void context_select_font(i32 i) {
-	if (g_project->_->fonts->length <= i) {
+	if (i < 0 || i >= g_project->_->fonts->length) {
 		return;
 	}
 	context_set_font(g_project->_->fonts->buffer[i]);
 }
 
 void context_select_layer(i32 i) {
-	if (g_project->_->layers->length <= i) {
+	if (i < 0 || i >= g_project->_->layers->length) {
 		return;
 	}
 	context_set_layer(g_project->_->layers->buffer[i]);
@@ -302,6 +302,9 @@ void context_set_layer(slot_layer_t *l) {
 }
 
 void context_select_tool(i32 i) {
+	if (!(i >= 0 && i <= TOOL_TYPE_INPAINT)) {
+		return;
+	}
 	g_context->tool = i;
 	make_material_parse_paint_material(true);
 	g_context->ddirty              = 3; // The mesh material is parsed by context_set_viewport_mode below

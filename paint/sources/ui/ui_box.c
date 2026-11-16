@@ -53,7 +53,7 @@ void ui_box_render() {
 
 	if (g_config->touch_ui) { // Darken bg
 		draw_begin(NULL, false, 0);
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 		draw_set_color(color_from_floats(0, 0, 0, ui_box_tween_alpha));
 #else
 		draw_set_color(color_from_floats(0, 0, 0, 0.5));
@@ -95,7 +95,7 @@ void ui_box_render() {
 			}
 			ui_end_element();
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 			if (ui_box_copyable) {
 				ui_row3();
 			}
@@ -120,7 +120,7 @@ void ui_box_render() {
 
 			ui_end_element();
 
-#if defined(IRON_WINDOWS) || defined(IRON_LINUX) || defined(IRON_MACOS)
+#if defined(IRON_MACOS)
 			if (ui_box_copyable && ui_icon_button(tr("Copy"), ICON_COPY, UI_ALIGN_CENTER)) {
 				iron_copy_to_clipboard(ui_box_text);
 			}
@@ -185,7 +185,7 @@ void ui_box_show_message(char *title, char *text, bool copyable) {
 	ui_box_commands  = NULL;
 	ui_box_copyable  = copyable;
 	ui_box_draggable = true;
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	ui_box_tween_in();
 #endif
 }
@@ -198,13 +198,13 @@ void ui_box_show_custom(void (*commands)(void), i32 mw, i32 mh, void (*on_hide)(
 	ui_box_commands      = commands;
 	ui_box_draggable     = draggable;
 	ui_box_title         = string_copy(title);
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	ui_box_tween_in();
 #endif
 }
 
 void ui_box_hide() {
-#if defined(IRON_ANDROID) || defined(IRON_IOS)
+#if defined(IRON_IOS)
 	ui_box_tween_out();
 #else
 	ui_box_hide_internal();

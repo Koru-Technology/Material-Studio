@@ -279,22 +279,30 @@ void box_preferences_theme_tab_import(char *path) {
 	import_theme_run(path);
 }
 
-void box_preferences_theme_tab_new_box() {
+// The New box of the theme and keymap tabs: the preset is saved under the typed name and picked
+static void box_preferences_new_preset_box(char **name, char *folder, char *(*to_json)(), char **picked, i32 tab, void (*fetch)()) {
 	ui_row2();
-	char *theme_name = ui_text_input(&box_preferences_new_theme, tr("Name"), UI_ALIGN_LEFT, true, false);
+	char *typed = ui_text_input(name, tr("Name"), UI_ALIGN_LEFT, true, false);
 	if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-		char *template = box_preferences_theme_to_json(g_theme);
-		if (!ends_with(theme_name, ".json")) {
-			theme_name = string("%s.json", theme_name);
+		char *file = ui_files_save_preset(folder, typed, to_json());
+		if (file == NULL) {
+			return;
 		}
-		char *path = string("%s%sthemes%s%s", path_data(), PATH_SEP, PATH_SEP, theme_name);
-		iron_file_save_bytes(path, sys_string_to_buffer(template), 0);
-		box_preferences_fetch_themes(); // Refresh file list
-		g_config->theme = string_copy(theme_name);
+		fetch(); // Refresh file list
+		*picked = string_copy(file);
 		ui_box_hide();
-		box_preferences_tab = PREFERENCES_TAB_THEME;
+		box_preferences_tab = tab;
 		box_preferences_show();
 	}
+}
+
+static char *box_preferences_current_theme_json() {
+	return box_preferences_theme_to_json(g_theme);
+}
+
+void box_preferences_theme_tab_new_box() {
+	box_preferences_new_preset_box(&box_preferences_new_theme, "themes", box_preferences_current_theme_json, &g_config->theme, PREFERENCES_TAB_THEME,
+	                               box_preferences_fetch_themes);
 }
 
 void box_preferences_theme_tab() {
@@ -680,15 +688,6 @@ void box_preferences_pen_tab() {
 	if (g_ui->is_hovered) {
 		ui_tooltip(tr("Auto: fingers paint until the pencil is used, then they only move the view"));
 	}
-	f32_array_t *row = f32_array_create_from_raw_tmp(
-	    (f32[]){
-	        1 / 4.0,
-	    },
-	    1);
-	ui_row(row);
-	if (ui_icon_button(tr("Help"), ICON_LINK, UI_ALIGN_CENTER)) {
-		iron_load_url("https://armorpaint.org/manual#pen");
-	}
 }
 
 void box_preferences_lut_picked(char *path) {
@@ -866,22 +865,13 @@ void box_preferences_keymap_tab_import(char *path) {
 	import_keymap_run(path);
 }
 
+static char *box_preferences_default_keymap_json() {
+	return keymap_to_json(keymap_get_default());
+}
+
 void box_preferences_keymap_tab_new_box() {
-	ui_row2();
-	char *keymap_name = ui_text_input(&box_preferences_new_keymap, tr("Name"), UI_ALIGN_LEFT, true, false);
-	if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-		char *template = keymap_to_json(keymap_get_default());
-		if (!ends_with(keymap_name, ".json")) {
-			keymap_name = string("%s.json", keymap_name);
-		}
-		char *path = string("%s%skeymap_presets%s%s", path_data(), PATH_SEP, PATH_SEP, keymap_name);
-		iron_file_save_bytes(path, sys_string_to_buffer(template), 0);
-		box_preferences_fetch_keymaps(); // Refresh file list
-		g_config->keymap = string_copy(keymap_name);
-		ui_box_hide();
-		box_preferences_tab = PREFERENCES_TAB_KEYMAP;
-		box_preferences_show();
-	}
+	box_preferences_new_preset_box(&box_preferences_new_keymap, "keymap_presets", box_preferences_default_keymap_json, &g_config->keymap,
+	                               PREFERENCES_TAB_KEYMAP, box_preferences_fetch_keymaps);
 }
 
 #ifdef WITH_NEURAL
@@ -900,7 +890,7 @@ char *box_preferences_file_name_from_url(char *url) {
 	return substring(url, string_last_index_of(url, "/") + 1, string_length(url));
 }
 
-char *box_preferneces_model_url_from_name(char *name) {
+char *box_preferences_model_url_from_name(char *name) {
 	if (neural_node_models == NULL) {
 		neural_node_models_init();
 	}

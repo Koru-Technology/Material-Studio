@@ -125,14 +125,6 @@ static i32 dock_leaf_open_index(dock_node_t *l, i32 id) {
 }
 
 static i32 dock_leaf_active_tab(dock_node_t *l) {
-	if (base_player) {
-		for (i32 i = 0; i < l->tab_count; ++i) {
-			if (l->tabs[i] == TAB_VIEW3D) {
-				return TAB_VIEW3D;
-			}
-		}
-		return -1;
-	}
 	return dock_leaf_open_tab(l, l->active);
 }
 
@@ -354,7 +346,7 @@ void ui_dock_reset() {
 	i32 status_h  = math_floor(ui_statusbar_default_h * scale);
 	// Views take the space next to the sidebar and the toolbar
 	i32 views_w = iron_window_width() - sidebar_w - math_floor(ui_toolbar_default_w * scale);
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#if defined(IRON_IOS)
 	i32 nodes_w = math_floor(views_w * 0.473);
 #else
 	i32 nodes_w = math_floor(views_w * 0.515); // Align with ui header controls
@@ -411,9 +403,9 @@ static void dock_save_node(i32_array_t *a, dock_node_t *n) {
 	dock_save_node(a, n->b);
 }
 
-// Not stored while a workspace preset is being set up or the player runs
+// Not stored while a workspace preset is being set up
 void ui_dock_save() {
-	if (ui_dock_root == NULL || base_player || ui_dock_preset || base_workspace_pending) {
+	if (ui_dock_root == NULL || ui_dock_preset || base_workspace_pending) {
 		return;
 	}
 	if (g_config->layout_tabs == NULL) {

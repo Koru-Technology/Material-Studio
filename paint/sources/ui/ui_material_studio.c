@@ -902,7 +902,7 @@ f32 material_studio_get_value(i32 k, i32 value) {
 void material_studio_set_input(i32 k, i32 role, i32 i, f32 v) {
 	ui_node_canvas_t *c = studio_script_canvas();
 	ui_node_t        *n = c != NULL ? studio_graph_node(c, k, role) : NULL;
-	if (n != NULL && i < n->inputs->length) {
+	if (n != NULL && i >= 0 && i < n->inputs->length) {
 		n->inputs->buffer[i]->default_value->buffer[0] = v;
 	}
 }
@@ -910,13 +910,13 @@ void material_studio_set_input(i32 k, i32 role, i32 i, f32 v) {
 f32 material_studio_get_input(i32 k, i32 role, i32 i) {
 	ui_node_canvas_t *c = g_context->material != NULL ? g_context->material->canvas : NULL;
 	ui_node_t        *n = studio_graph_is(c) ? studio_graph_node(c, k, role) : NULL;
-	return n != NULL && i < n->inputs->length ? n->inputs->buffer[i]->default_value->buffer[0] : -1.0;
+	return n != NULL && i >= 0 && i < n->inputs->length ? n->inputs->buffer[i]->default_value->buffer[0] : -1.0;
 }
 
 void material_studio_set_button(i32 k, i32 role, i32 i, f32 v) {
 	ui_node_canvas_t *c = studio_script_canvas();
 	ui_node_t        *n = c != NULL ? studio_graph_node(c, k, role) : NULL;
-	if (n != NULL && i < n->buttons->length) {
+	if (n != NULL && i >= 0 && i < n->buttons->length) {
 		n->buttons->buffer[i]->default_value->buffer[0] = v;
 	}
 }
@@ -931,7 +931,7 @@ void material_studio_set_color(i32 k, i32 i, f32 r, f32 g, f32 b) {
 	ui_node_canvas_t *c    = studio_script_canvas();
 	ui_node_t        *ramp = c != NULL ? studio_graph_node(c, k, STUDIO_ROLE_RAMP) : NULL;
 	f32_array_t      *v    = ramp != NULL ? ramp->buttons->buffer[0]->default_value : NULL;
-	if (v != NULL && i * 5 + 2 < (i32)v->length) {
+	if (v != NULL && i >= 0 && i * 5 + 2 < (i32)v->length) {
 		v->buffer[i * 5 + 0] = r;
 		v->buffer[i * 5 + 1] = g;
 		v->buffer[i * 5 + 2] = b;

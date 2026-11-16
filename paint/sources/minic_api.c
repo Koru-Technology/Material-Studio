@@ -349,6 +349,21 @@ MINIC_MATH_API
 #undef X
 
 // All array types share the buffer/length/capacity layout
+// The field registration macros with the field's size checked: an int read or written over a bool would reach the next fields
+#define MINIC_FIELD_SIZE(f, n) _Static_assert(sizeof(((minic_st_t *)0)->f) == (n), #f " has another size than registered")
+#undef MINIC_I
+#undef MINIC_F
+#undef MINIC_B
+#define MINIC_I(f)                    \
+	MINIC_FIELD_SIZE(f, sizeof(int)); \
+	MINIC_FIELD(f, MINIC_T_INT, MINIC_T_INT, NULL)
+#define MINIC_F(f)                      \
+	MINIC_FIELD_SIZE(f, sizeof(float)); \
+	MINIC_FIELD(f, MINIC_T_FLOAT, MINIC_T_FLOAT, NULL)
+#define MINIC_B(f)                     \
+	MINIC_FIELD_SIZE(f, sizeof(bool)); \
+	MINIC_FIELD(f, MINIC_T_BOOL, MINIC_T_BOOL, NULL)
+
 static void minic_register_array_struct(const char *name, int size, minic_type_t buffer_deref) {
 	minic_struct_begin(name, size, MINIC_ALIGNOF(u8_array_t));
 	minic_struct_field("buffer", (int)offsetof(u8_array_t, buffer), MINIC_T_PTR, buffer_deref, NULL);
@@ -356,7 +371,7 @@ static void minic_register_array_struct(const char *name, int size, minic_type_t
 	minic_struct_field("capacity", (int)offsetof(u8_array_t, capacity), MINIC_T_INT, MINIC_T_INT, NULL);
 }
 
-#define MINIC_API_MAX_SIGS 1024
+#define MINIC_API_MAX_SIGS MINIC_MAX_EXTFUNS // One per native function
 
 static const char *minic_api_sig_names[MINIC_API_MAX_SIGS];
 static const char *minic_api_sig_hints[MINIC_API_MAX_SIGS];
@@ -367,6 +382,9 @@ static void minic_api_sig_add(const char *name, const char *sig) {
 		minic_api_sig_names[minic_api_sig_count] = name;
 		minic_api_sig_hints[minic_api_sig_count] = sig;
 		minic_api_sig_count++;
+	}
+	else { // The API header would list it without its argument names and types
+		fprintf(stderr, "minic: more than %d signatures, %s has none\n", MINIC_API_MAX_SIGS, name);
 	}
 }
 
@@ -414,7 +432,7 @@ static const char *minic_api_sig_hint(const char *name) {
 #define MINIC_RET_i(call) return minic_val_int((int)(call))
 #define MINIC_RET_f(call) return minic_val_float(call)
 #define MINIC_RET_d(call) return minic_val_double(call)
-#define MINIC_RET_p(call) return minic_val_ptr(call)
+#define MINIC_RET_p(call) return minic_val_ptr((void *)(call)) // Strings returned as const char * too
 #define MINIC_RET_b(call) return minic_val_int((call) ? 1 : 0)
 #define MINIC_RET_c(call) return minic_val_int((int)(call))
 #define MINIC_RET_v(call)        \
@@ -423,57 +441,36 @@ static const char *minic_api_sig_hint(const char *name) {
 		return minic_val_int(0); \
 	} while (0)
 
+// The argument list of a call, minic_val_t a[] converted by the sig types (minic_api_list.h): MINIC_ARGS<n>(t0, t1, ...)
+#define MINIC_ARGS1(t0)                                      MINIC_ARG_##t0(0)
+#define MINIC_ARGS2(t0, t1)                                  MINIC_ARGS1(t0), MINIC_ARG_##t1(1)
+#define MINIC_ARGS3(t0, t1, t2)                              MINIC_ARGS2(t0, t1), MINIC_ARG_##t2(2)
+#define MINIC_ARGS4(t0, t1, t2, t3)                          MINIC_ARGS3(t0, t1, t2), MINIC_ARG_##t3(3)
+#define MINIC_ARGS5(t0, t1, t2, t3, t4)                      MINIC_ARGS4(t0, t1, t2, t3), MINIC_ARG_##t4(4)
+#define MINIC_ARGS6(t0, t1, t2, t3, t4, t5)                  MINIC_ARGS5(t0, t1, t2, t3, t4), MINIC_ARG_##t5(5)
+#define MINIC_ARGS7(t0, t1, t2, t3, t4, t5, t6)              MINIC_ARGS6(t0, t1, t2, t3, t4, t5), MINIC_ARG_##t6(6)
+#define MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7)          MINIC_ARGS7(t0, t1, t2, t3, t4, t5, t6), MINIC_ARG_##t7(7)
+#define MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8)      MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7), MINIC_ARG_##t8(8)
+#define MINIC_ARGS10(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8), MINIC_ARG_##t9(9)
+
 // Pass 1: one thunk per exported function
-#define X0(name, sig, r)                                  \
+#define MINIC_THUNK(name, r, args)                        \
 	static minic_val_t mw_##name(minic_val_t *a, int n) { \
 		(void)a;                                          \
 		(void)n;                                          \
-		MINIC_RET_##r(name());                            \
+		MINIC_RET_##r(name(args));                        \
 	}
-#define X1(name, sig, r, t0)                              \
-	static minic_val_t mw_##name(minic_val_t *a, int n) { \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0)));           \
-	}
-#define X2(name, sig, r, t0, t1)                                   \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {          \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1))); \
-	}
-#define X3(name, sig, r, t0, t1, t2)                                                  \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                             \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2))); \
-	}
-#define X4(name, sig, r, t0, t1, t2, t3)                                                                 \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                                                \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2), MINIC_ARG_##t3(3))); \
-	}
-#define X5(name, sig, r, t0, t1, t2, t3, t4)                                                                                \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                                                                   \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2), MINIC_ARG_##t3(3), MINIC_ARG_##t4(4))); \
-	}
-#define X6(name, sig, r, t0, t1, t2, t3, t4, t5)                                                                                               \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                                                                                      \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2), MINIC_ARG_##t3(3), MINIC_ARG_##t4(4), MINIC_ARG_##t5(5))); \
-	}
-#define X7(name, sig, r, t0, t1, t2, t3, t4, t5, t6)                                                                                                    \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                                                                                               \
-		MINIC_RET_##r(                                                                                                                                  \
-		    name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2), MINIC_ARG_##t3(3), MINIC_ARG_##t4(4), MINIC_ARG_##t5(5), MINIC_ARG_##t6(6))); \
-	}
-#define X8(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7)                                                                                     \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                                                                                    \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2), MINIC_ARG_##t3(3), MINIC_ARG_##t4(4), MINIC_ARG_##t5(5), \
-		                   MINIC_ARG_##t6(6), MINIC_ARG_##t7(7)));                                                                           \
-	}
-#define X9(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8)                                                                                 \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                                                                                    \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2), MINIC_ARG_##t3(3), MINIC_ARG_##t4(4), MINIC_ARG_##t5(5), \
-		                   MINIC_ARG_##t6(6), MINIC_ARG_##t7(7), MINIC_ARG_##t8(8)));                                                        \
-	}
-#define X10(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8, t9)                                                                            \
-	static minic_val_t mw_##name(minic_val_t *a, int n) {                                                                                    \
-		MINIC_RET_##r(name(MINIC_ARG_##t0(0), MINIC_ARG_##t1(1), MINIC_ARG_##t2(2), MINIC_ARG_##t3(3), MINIC_ARG_##t4(4), MINIC_ARG_##t5(5), \
-		                   MINIC_ARG_##t6(6), MINIC_ARG_##t7(7), MINIC_ARG_##t8(8), MINIC_ARG_##t9(9)));                                     \
-	}
+#define X0(name, sig, r)       MINIC_THUNK(name, r, )
+#define X1(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS1(__VA_ARGS__))
+#define X2(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS2(__VA_ARGS__))
+#define X3(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS3(__VA_ARGS__))
+#define X4(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS4(__VA_ARGS__))
+#define X5(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS5(__VA_ARGS__))
+#define X6(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS6(__VA_ARGS__))
+#define X7(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS7(__VA_ARGS__))
+#define X8(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS8(__VA_ARGS__))
+#define X9(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS9(__VA_ARGS__))
+#define X10(name, sig, r, ...) MINIC_THUNK(name, r, MINIC_ARGS10(__VA_ARGS__))
 #include "minic_api_list.h"
 #undef X0
 #undef X1
@@ -494,18 +491,19 @@ typedef struct {
 	minic_native_fn_t fn;
 } minic_api_entry_t;
 
-#define X0(name, sig, r)                                     {#name, sig, mw_##name},
-#define X1(name, sig, r, t0)                                 {#name, sig, mw_##name},
-#define X2(name, sig, r, t0, t1)                             {#name, sig, mw_##name},
-#define X3(name, sig, r, t0, t1, t2)                         {#name, sig, mw_##name},
-#define X4(name, sig, r, t0, t1, t2, t3)                     {#name, sig, mw_##name},
-#define X5(name, sig, r, t0, t1, t2, t3, t4)                 {#name, sig, mw_##name},
-#define X6(name, sig, r, t0, t1, t2, t3, t4, t5)             {#name, sig, mw_##name},
-#define X7(name, sig, r, t0, t1, t2, t3, t4, t5, t6)         {#name, sig, mw_##name},
-#define X8(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7)     {#name, sig, mw_##name},
-#define X9(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8) {#name, sig, mw_##name},
+#define MINIC_ENTRY(name, sig, ...) {#name, sig, mw_##name},
+#define X0                          MINIC_ENTRY
+#define X1                          MINIC_ENTRY
+#define X2                          MINIC_ENTRY
+#define X3                          MINIC_ENTRY
+#define X4                          MINIC_ENTRY
+#define X5                          MINIC_ENTRY
+#define X6                          MINIC_ENTRY
+#define X7                          MINIC_ENTRY
+#define X8                          MINIC_ENTRY
+#define X9                          MINIC_ENTRY
+#define X10                         MINIC_ENTRY
 static const minic_api_entry_t minic_api_entries[] = {
-#define X10(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) {#name, sig, mw_##name},
 #include "minic_api_list.h"
 };
 #undef X0
@@ -738,8 +736,8 @@ void minic_register_builtins() {
 	MINIC_S(data_ref);
 	MINIC_O(transform, f32_array_t);
 	MINIC_O(dimensions, f32_array_t);
-	MINIC_I(visible);
-	MINIC_I(spawn);
+	MINIC_B(visible);
+	MINIC_B(spawn);
 	MINIC_P(anim);
 	MINIC_S(material_ref);
 	MINIC_O(children, object_desc_t_array_t);
@@ -814,12 +812,12 @@ void minic_register_builtins() {
 
 	MINIC_STRUCT(shader_context_t);
 	MINIC_S(name);
-	MINIC_I(depth_write);
+	MINIC_B(depth_write);
 	MINIC_S(compare_mode);
 	MINIC_S(cull_mode);
 	MINIC_S(vertex_shader);
 	MINIC_S(fragment_shader);
-	MINIC_I(shader_from_source);
+	MINIC_B(shader_from_source);
 	MINIC_S(blend_source);
 	MINIC_S(blend_destination);
 	MINIC_S(alpha_blend_source);
@@ -885,7 +883,7 @@ void minic_register_builtins() {
 	MINIC_E(rot, quat_t);
 	MINIC_E(scale, vec4_t);
 	MINIC_F(scale_world);
-	MINIC_I(dirty);
+	MINIC_B(dirty);
 	MINIC_O(object, object_t);
 	MINIC_E(dim, vec4_t);
 	MINIC_E(extent, vec4_t);
@@ -924,11 +922,11 @@ void minic_register_builtins() {
 	MINIC_I(undo_steps);
 	MINIC_F(camera_fov);
 	MINIC_I(layer_res);
-	MINIC_I(brush_live);
-	MINIC_I(node_previews);
-	MINIC_I(material_live);
+	MINIC_B(brush_live);
+	MINIC_B(node_previews);
+	MINIC_B(material_live);
 	MINIC_I(rp_view_transform);
-	MINIC_I(autosave);
+	MINIC_B(autosave);
 	MINIC_I(autosave_interval);
 	MINIC_F(pressure_sensitivity);
 	MINIC_F(pressure_curve);
@@ -967,7 +965,7 @@ void minic_register_builtins() {
 	MINIC_I(brush_blending);
 	MINIC_I(brush_paint);
 	MINIC_I(viewport_mode);
-	MINIC_I(xray);
+	MINIC_B(xray);
 	MINIC_B(sym_x);
 	MINIC_B(sym_y);
 	MINIC_B(sym_z);
@@ -983,7 +981,7 @@ void minic_register_builtins() {
 	MINIC_STRUCT(project_t);
 	MINIC_S(version);
 	MINIC_O(assets, string_array_t);
-	MINIC_I(is_bgra);
+	MINIC_B(is_bgra);
 	MINIC_S(envmap);
 	MINIC_F(camera_fov);
 	MINIC_F(camera_near);
@@ -1211,121 +1209,3 @@ char *minic_api_header_generate(void) {
 	string_buffer_free(&sb);
 	return result;
 }
-
-#ifdef WITH_TCC
-
-#include "minic_tcc.h"
-
-#define TCC_TY_i        int
-#define TCC_TY_f        float
-#define TCC_TY_d        double
-#define TCC_TY_p        void *
-#define TCC_TY_b        bool
-#define TCC_TY_v        void
-#define TCC_RET_i(call) return (int)(call)
-#define TCC_RET_f(call) return call
-#define TCC_RET_d(call) return call
-#define TCC_RET_p(call) return (void *)(call)
-#define TCC_RET_b(call) return (call) ? true : false
-#define TCC_RET_v(call) call
-
-// The thunks take and return the sig types, the calls convert to the real C types (int64_t, double math, ...)
-#define X0(name, sig, r)                \
-	static TCC_TY_##r tw_##name(void) { \
-		TCC_RET_##r(name());            \
-	}
-#define X1(name, sig, r, t0)                      \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0) { \
-		TCC_RET_##r(name(a0));                    \
-	}
-#define X2(name, sig, r, t0, t1)                                  \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1) { \
-		TCC_RET_##r(name(a0, a1));                                \
-	}
-#define X3(name, sig, r, t0, t1, t2)                                              \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2) { \
-		TCC_RET_##r(name(a0, a1, a2));                                            \
-	}
-#define X4(name, sig, r, t0, t1, t2, t3)                                                          \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2, TCC_TY_##t3 a3) { \
-		TCC_RET_##r(name(a0, a1, a2, a3));                                                        \
-	}
-#define X5(name, sig, r, t0, t1, t2, t3, t4)                                                                      \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2, TCC_TY_##t3 a3, TCC_TY_##t4 a4) { \
-		TCC_RET_##r(name(a0, a1, a2, a3, a4));                                                                    \
-	}
-#define X6(name, sig, r, t0, t1, t2, t3, t4, t5)                                                                                  \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2, TCC_TY_##t3 a3, TCC_TY_##t4 a4, TCC_TY_##t5 a5) { \
-		TCC_RET_##r(name(a0, a1, a2, a3, a4, a5));                                                                                \
-	}
-#define X7(name, sig, r, t0, t1, t2, t3, t4, t5, t6)                                                                                              \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2, TCC_TY_##t3 a3, TCC_TY_##t4 a4, TCC_TY_##t5 a5, TCC_TY_##t6 a6) { \
-		TCC_RET_##r(name(a0, a1, a2, a3, a4, a5, a6));                                                                                            \
-	}
-#define X8(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7)                                                                                        \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2, TCC_TY_##t3 a3, TCC_TY_##t4 a4, TCC_TY_##t5 a5, TCC_TY_##t6 a6, \
-	                            TCC_TY_##t7 a7) {                                                                                               \
-		TCC_RET_##r(name(a0, a1, a2, a3, a4, a5, a6, a7));                                                                                      \
-	}
-#define X9(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8)                                                                                    \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2, TCC_TY_##t3 a3, TCC_TY_##t4 a4, TCC_TY_##t5 a5, TCC_TY_##t6 a6, \
-	                            TCC_TY_##t7 a7, TCC_TY_##t8 a8) {                                                                               \
-		TCC_RET_##r(name(a0, a1, a2, a3, a4, a5, a6, a7, a8));                                                                                  \
-	}
-#define X10(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8, t9)                                                                               \
-	static TCC_TY_##r tw_##name(TCC_TY_##t0 a0, TCC_TY_##t1 a1, TCC_TY_##t2 a2, TCC_TY_##t3 a3, TCC_TY_##t4 a4, TCC_TY_##t5 a5, TCC_TY_##t6 a6, \
-	                            TCC_TY_##t7 a7, TCC_TY_##t8 a8, TCC_TY_##t9 a9) {                                                               \
-		TCC_RET_##r(name(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9));                                                                              \
-	}
-#include "minic_api_list.h"
-#undef X0
-#undef X1
-#undef X2
-#undef X3
-#undef X4
-#undef X5
-#undef X6
-#undef X7
-#undef X8
-#undef X9
-#undef X10
-
-// Same order as minic_api_entries
-static void *minic_tcc_thunks[] = {
-#define X0(name, sig, r)                                          (void *)tw_##name,
-#define X1(name, sig, r, t0)                                      (void *)tw_##name,
-#define X2(name, sig, r, t0, t1)                                  (void *)tw_##name,
-#define X3(name, sig, r, t0, t1, t2)                              (void *)tw_##name,
-#define X4(name, sig, r, t0, t1, t2, t3)                          (void *)tw_##name,
-#define X5(name, sig, r, t0, t1, t2, t3, t4)                      (void *)tw_##name,
-#define X6(name, sig, r, t0, t1, t2, t3, t4, t5)                  (void *)tw_##name,
-#define X7(name, sig, r, t0, t1, t2, t3, t4, t5, t6)              (void *)tw_##name,
-#define X8(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7)          (void *)tw_##name,
-#define X9(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8)      (void *)tw_##name,
-#define X10(name, sig, r, t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) (void *)tw_##name,
-#include "minic_api_list.h"
-};
-#undef X0
-#undef X1
-#undef X2
-#undef X3
-#undef X4
-#undef X5
-#undef X6
-#undef X7
-#undef X8
-#undef X9
-#undef X10
-
-void minic_tcc_register_builtins(void) {
-	minic_tcc_register("string", "p:char(p:char fmt,...)", (void *)string);
-	// Math functions take and return the structs by value, as in C
-#define X(kind, n, sig, e) minic_tcc_register(#n, sig, (void *)n);
-	MINIC_MATH_API
-#undef X
-	for (int i = 0; i < (int)(sizeof(minic_api_entries) / sizeof(minic_api_entries[0])); ++i) {
-		minic_tcc_register(minic_api_entries[i].name, minic_api_entries[i].sig, minic_tcc_thunks[i]);
-	}
-}
-
-#endif
