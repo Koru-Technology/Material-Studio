@@ -1500,6 +1500,7 @@ static void export_tiled_finish(bool cancelled) {
 	export_tiled_release_targets();
 	export_tiled_release_pool();
 	export_tiled_blurs_end();
+	material_cache_replay_release(); // Its tiles' material caches (composite-fast replays)
 	iron_log("[export] predicted peak %d MB; measured: tile targets %d MB, Material Maker %d MB, layers %s %d MB", (i32)(et_predicted_bytes >> 20),
 	         (i32)(tiles_peak >> 20), mm_buffers_stat(6) >> 10, et_nevicted > 0 ? "evicted" : "kept",
 	         (i32)((et_nevicted > 0 ? et_evicted_bytes : export_tiled_layers_bytes()) >> 20));

@@ -258,12 +258,8 @@ i32   util_render_default_envmap_w      = 512;
 // ---- util/util_uv.c ----
 gpu_texture_t *util_uv_uvmap              = NULL;
 bool           util_uv_uvmap_cached       = false;
-gpu_texture_t *util_uv_trianglemap        = NULL;
-bool           util_uv_trianglemap_cached = false;
 gpu_texture_t *util_uv_dilatemap          = NULL;
 bool           util_uv_dilatemap_cached   = false;
-gpu_texture_t *util_uv_uvislandmap        = NULL;
-bool           util_uv_uvislandmap_cached = false;
 bool           util_uv_seammap_cached     = false;
 
 // ---- util/util_uv_unwrap.c ----
@@ -502,4 +498,5 @@ bool   make_paint_resolved = false;                // The paint shader being gen
 bool   paint_exec_replay   = false;                // The executor flushes recorded dabs and ops (paint_replay.c)
 bool   paint_replay_uncached = false; // Paint shaders parsed without the material cache (a replay at another size)
 char  *paint_replay_depth    = NULL;  // Depth target replay draws read, from the recorded camera
+char  *paint_replay_uv       = NULL;  // and its uv map
 gpu_texture_t *paint_replay_dilatemap = NULL; // UV islands of the replay's target

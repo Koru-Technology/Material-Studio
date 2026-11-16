@@ -369,10 +369,7 @@ void util_brush_update() {
 						g_context->clone_delta_y = (g_context->clone_start_y - my) / (float)wh;
 						g_context->clone_start_x = -1;
 					}
-					else if (g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_UV_ISLAND) {
-						util_uv_uvislandmap_cached = false;
-					}
-					else if (g_context->tool == TOOL_TYPE_FILL && (g_context->fill_type == FILL_TYPE_MESH || g_context->fill_type == FILL_TYPE_SUBMESH)) {
+					else if (render_path_paint_fill_picks()) { // Its object and triangle at the first draw
 						render_path_paint_fill_pick = true;
 					}
 				}

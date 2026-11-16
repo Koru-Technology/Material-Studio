@@ -69,6 +69,17 @@ static void paint_replay_state_apply(paint_state_t *s) {
 	g_context->brush_stencil_y             = s->stencil_transform[1];
 	g_context->brush_stencil_scale         = s->stencil_transform[2];
 	g_context->brush_stencil_angle         = s->stencil_transform[3];
+	g_context->fill_type                   = s->fill_type;
+	g_context->brush_scale_x               = s->brush_scale_x;
+	g_context->blur_type                   = s->blur_type;
+	g_context->clone_delta_x               = s->clone_delta[0];
+	g_context->clone_delta_y               = s->clone_delta[1];
+	if (!hash128_is_none(s->text)) {
+		g_context->text_tool_image = paint_asset_texture(s->text);
+	}
+	mesh_object_t_array_t *objects         = g_project->_->paint_objects;
+	render_path_paint_fill_object          = s->fill_object >= 0 && s->fill_object < objects->length ? objects->buffer[s->fill_object] : NULL;
+	render_path_paint_fill_tri             = s->fill_tri;
 }
 
 // A kept shader's images are still the textures loaded under their files: reloaded (an asset imported again), or false
@@ -88,11 +99,14 @@ static bool paint_replay_scon_textures(shader_context_t *scon) {
 }
 
 // The paint shader of a state, NULL when it does not hash as recorded. A stroke that read the material from its cache
-// (addressed by texel of the live layer) replays at another size with the material evaluated: that shader is not the
-// recorded one, the hash is not checked. Kept by GLSL and material snapshot: the same GLSL can read other images.
+// (addressed by texel of the live layer) replays at another size with the material evaluated, a stroke replayed
+// composite-fast reads a replay cache: when that is not the recorded kind of shader, the hash is not checked. Kept by
+// GLSL, material snapshot and cache use: the same GLSL can read other images.
 static shader_context_t *paint_replay_shader(paint_state_t *s) {
-	bool verify = !(paint_replay_uncached && s->matcache);
+	bool cached = material_cache_replay_is_bound(); // Reads a replay cache: the recorded GLSL when it read the live one
+	bool verify = cached ? s->matcache != 0 : !(paint_replay_uncached && s->matcache);
 	u64  key    = (verify ? s->glsl : s->glsl ^ 0x9e3779b97f4a7c15ull) ^ s->material.lo ^ (s->material.hi * 0xff51afd7ed558ccdull);
+	key ^= cached ? 0xc2b2ae3d27d4eb4full : 0;
 	for (i32 i = 0; i < PAINT_REPLAY_SCONS; ++i) {
 		if (paint_replay_scons[i] != NULL && paint_replay_scon_hashes[i] == key) {
 			if (paint_replay_scon_textures(paint_replay_scons[i])) {
@@ -125,7 +139,8 @@ static shader_context_t *paint_replay_shader(paint_state_t *s) {
 }
 
 // The camera of a draw, and the geometry-only depth from it at the viewport's size then (depth reject reads it at the
-// fragment's screen point): main_paint when it has that size, else a target of the replay's own
+// fragment's screen point) with its uv map (clone and smudge): main_paint when it has that size, else targets of the
+// replay's own
 static void paint_replay_camera(paint_rec_cam_t *c) {
 	scene_camera->v     = c->v;
 	scene_camera->p     = c->p;
@@ -135,12 +150,14 @@ static void paint_replay_camera(paint_rec_cam_t *c) {
 	render_target_t *main = any_map_get(render_path_render_targets, "main_paint");
 	if (main != NULL && main->_image != NULL && main->_image->width == c->w && main->_image->height == c->h) {
 		paint_replay_depth = "main_paint";
-		render_path_base_draw_paint_depth_into("gbuffer0", "main_paint");
+		paint_replay_uv    = "paint_uv";
+		render_path_base_draw_paint_depth_into("paint_uv", "main_paint");
 		return;
 	}
 	render_path_ensure_target("replay_depth", c->w, c->h, "D32");
 	render_path_ensure_target("replay_depth_color", c->w, c->h, "RGBA64"); // The depth pipeline's attachment
 	paint_replay_depth = "replay_depth";
+	paint_replay_uv    = "replay_depth_color";
 	render_path_base_draw_paint_depth_into("replay_depth_color", "replay_depth");
 }
 
@@ -233,8 +250,25 @@ static void paint_replay_s0_make(paint_target_t *t) {
 	gpu_copy_regions_end();
 }
 
+// The replay cache of the state applied for target t (composite-fast), NULL when it reads none: the material is
+// evaluated by its draws. sync: rendered now, else a step of it (*pending set while it is not ready).
+static bool paint_replay_cache_pending = false;
+static f32  paint_replay_cache_uv[4]; // What the stroke writes, the uv bounds of its entry
+
+static material_cache_replay_t *paint_replay_cache(paint_rec_t *r, paint_target_t *t, bool sync) {
+	material_cache_replay_t *e = material_cache_replay_get(r->states[0].material, t->w, t->h, t->uv_rect);
+	if (e == NULL) {
+		return NULL;
+	}
+	i32 built = material_cache_replay_build(e, paint_replay_cache_uv, sync);
+	if (built == 0) {
+		paint_replay_cache_pending = true;
+	}
+	return built == 1 ? e : NULL;
+}
+
 // The record's ops in runs the executor flushes together: the same state and camera, room for their dabs
-static bool paint_replay_ops(paint_rec_t *r) {
+static bool paint_replay_ops(paint_rec_t *r, paint_target_t *t, bool fast) {
 	i32 state = -1;
 	i32 cam   = -1;
 	i32 i     = 0;
@@ -242,6 +276,7 @@ static bool paint_replay_ops(paint_rec_t *r) {
 		paint_rec_op_t *o = &r->ops[i];
 		if (o->kind == PAINT_OP_DRAW && o->state != state) {
 			paint_replay_state_apply(&r->states[o->state]);
+			material_cache_replay_bind(fast ? paint_replay_cache(r, t, true) : NULL);
 			shader_context_t *scon = paint_replay_shader(&r->states[o->state]);
 			if (scon == NULL) {
 				paint_replay_fail("its paint shader is not the one recorded");
@@ -272,6 +307,7 @@ static bool paint_replay_ops(paint_rec_t *r) {
 			op.base       = (p->flags & 2) != 0;
 			op.nor_pack   = (p->flags & 4) != 0;
 			op.batched    = (p->flags & 8) != 0;
+			op.ref_snapshot = (p->flags & 16) != 0;
 			op.brush_time = p->brush_time;
 			if (p->kind == PAINT_OP_DRAW) {
 				paint_rec_xform_t *x = &r->xforms[p->xform];
@@ -280,6 +316,7 @@ static bool paint_replay_ops(paint_rec_t *r) {
 				op.down              = p->down;
 				op.direction         = p->direction;
 				op.pixel_snap_uv     = p->pixel_snap_uv;
+				op.decal_mask        = p->decal_mask;
 				op.loc               = x->loc;
 				op.rot               = x->rot;
 				op.scale             = x->scale;
@@ -295,14 +332,16 @@ static bool paint_replay_ops(paint_rec_t *r) {
 	return true;
 }
 
-bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const paint_replay_opts_t *o) {
+// Replays entry index into t; prepare: only a step of the replay caches it reads (composite-fast), 1 when they are
+// ready (or it reads none), 0 when there is more to render, -1 when it does not replay
+static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const paint_replay_opts_t *o, bool prepare) {
 	if (tl == NULL || index < 0 || index >= tl->count || tl->entries[index].kind != TL_STROKE) {
-		return false;
+		return -1;
 	}
 	slot_layer_t *l = slot_layer_find_uid(tl->layer_uid);
 	if (l == NULL) {
 		paint_replay_fail("its layer is gone");
-		return false;
+		return -1;
 	}
 	u32 len  = 0;
 	u8 *blob = hstore_get(tl->entries[index].payload, &len);
@@ -311,18 +350,25 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	free(blob);
 	if (!ok) {
 		paint_replay_fail("its record is missing or of another version");
-		return false;
+		return -1;
 	}
 	if (r.n_states == 0 || hash128_is_none(r.states[0].material)) {
 		paint_rec_free(&r);
 		paint_replay_fail("no material");
-		return false;
+		return -1;
 	}
 	slot_material_t *m = paint_mat_snapshot_instantiate(r.states[0].material);
 	if (m == NULL) {
 		paint_rec_free(&r);
 		paint_replay_fail("its material snapshot is missing");
-		return false;
+		return -1;
+	}
+	bool fast = o != NULL && o->composite_fast;
+	if (fast) {
+		tl_entry_t *e = &tl->entries[index];
+		for (i32 k = 0; k < 4; ++k) {
+			paint_replay_cache_uv[k] = e->uv_bounds[k] + (k < 2 ? -e->halo_uv : e->halo_uv);
+		}
 	}
 
 	// Everything the replay changes, restored after
@@ -337,6 +383,8 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	i32              saved_frame = scene_camera->frame;
 	vec4_t           saved_tile  = paint_exec_uv_tile;
 	vec2_t           saved_res0  = paint_exec_res0;
+	mesh_object_t   *saved_fill_object = render_path_paint_fill_object;
+	i32              saved_fill_tri    = render_path_paint_fill_tri;
 	draw_saved_t     saved_draw  = draw_suspend();
 	render_target_t *blend0      = any_map_get(render_path_render_targets, "texpaint_blend0");
 	i32              live_w = blend0->width, live_h = blend0->height;
@@ -354,36 +402,51 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	f32 du               = t->uv_rect[2] - t->uv_rect[0];
 	f32 dv               = t->uv_rect[3] - t->uv_rect[1];
 	paint_exec_uv_tile   = (vec4_t){t->uv_rect[0], t->uv_rect[1], du > 0.0 ? 1.0 / du : 1.0, dv > 0.0 ? 1.0 / dv : 1.0};
-
-	paint_replay_swap_t swaps[4];
-	i32                 nswaps = 0;
-	// The map keeps its keys: the names render_path_paint.c keeps (render_path_paint_key), same translation unit
-	paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint%d", l->id), t->out[0]);
-	if (t->channels == 3) {
-		paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint_nor%d", l->id), t->out[1]);
-		paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint_pack%d", l->id), t->out[2]);
-	}
-	paint_replay_s0_make(t);
-	render_path_paint_scratch_resize(t->w, t->h);
-	bool exact = t->w == r.res_w && t->h == r.res_h && t->uv_rect[0] == 0.0 && t->uv_rect[1] == 0.0 && t->uv_rect[2] == 1.0 && t->uv_rect[3] == 1.0;
-	paint_replay_uncached  = !exact;
-	paint_replay_dilatemap = paint_replay_dilate_map(t->w, t->h, t->uv_rect);
-	static gpu_texture_t *temp = NULL; // The dilation's copy, the target's size and format
-	util_texture_ensure_target(&temp, t->w, t->h, t->out[0]->format);
-	paint_replay_swap(&swaps[nswaps++], "temptex0", temp);
 	if (o != NULL && o->mm_cap > 0) {
 		mm_buffers_set_export_cap(o->mm_cap);
 	}
-	g_context->brush_blend_dirty = true;
-	render_path_paint_clear_blend_now(); // The stroke's coverage starts empty
 
-	paint_exec_replay = true;
+	paint_replay_swap_t swaps[4];
+	i32                 nswaps = 0;
+	i32                 result = 1;
 	paint_mat_snapshot_replay_begin(m);
-	i32 need          = mm_buffers_require(MM_BUFFERS_FULL);
-	ok                = paint_replay_ops(&r);
-	mm_buffers_require(need);
+	if (prepare) { // Each state's cache a step on, the first not ready stops it
+		paint_replay_cache_pending = false;
+		for (i32 k = 0; k < r.n_ops && fast && !paint_replay_cache_pending; ++k) {
+			if (r.ops[k].kind == PAINT_OP_DRAW && (k == 0 || r.ops[k].state != r.ops[k - 1].state)) {
+				paint_replay_state_apply(&r.states[r.ops[k].state]);
+				paint_replay_cache(&r, t, false);
+			}
+		}
+		result = paint_replay_cache_pending ? 0 : 1;
+		paint_replay_cache_pending = false;
+	}
+	else {
+		// The map keeps its keys: the names render_path_paint.c keeps (render_path_paint_key), same translation unit
+		paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint%d", l->id), t->out[0]);
+		if (t->channels == 3) {
+			paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint_nor%d", l->id), t->out[1]);
+			paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint_pack%d", l->id), t->out[2]);
+		}
+		paint_replay_s0_make(t);
+		render_path_paint_scratch_resize(t->w, t->h);
+		bool exact = t->w == r.res_w && t->h == r.res_h && t->uv_rect[0] == 0.0 && t->uv_rect[1] == 0.0 && t->uv_rect[2] == 1.0 && t->uv_rect[3] == 1.0;
+		paint_replay_uncached  = !exact;
+		paint_replay_dilatemap = paint_replay_dilate_map(t->w, t->h, t->uv_rect);
+		static gpu_texture_t *temp = NULL; // The dilation's copy, the target's size and format
+		util_texture_ensure_target(&temp, t->w, t->h, t->out[0]->format);
+		paint_replay_swap(&swaps[nswaps++], "temptex0", temp);
+		g_context->brush_blend_dirty = true;
+		render_path_paint_clear_blend_now(); // The stroke's coverage starts empty
+
+		paint_exec_replay = true;
+		i32 need          = mm_buffers_require(MM_BUFFERS_FULL);
+		result            = paint_replay_ops(&r, t, fast) ? 1 : -1;
+		mm_buffers_require(need);
+		material_cache_replay_bind(NULL);
+		paint_exec_replay = false;
+	}
 	paint_mat_snapshot_replay_end();
-	paint_exec_replay = false;
 	paint_exec_isolate_end();
 	if (_render_path_current_image != NULL) {
 		render_path_end();
@@ -402,8 +465,11 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	}
 	paint_replay_uncached  = false;
 	paint_replay_depth     = NULL;
+	paint_replay_uv        = NULL;
 	paint_replay_dilatemap = NULL;
-	render_path_paint_scratch_resize(live_w, live_h);
+	if (!prepare) {
+		render_path_paint_scratch_resize(live_w, live_h);
+	}
 	*g_context                     = saved_ctx;
 	*g_config                      = saved_cfg;
 	g_project->linear_blending     = saved_linear;
@@ -421,14 +487,29 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	scene_camera->frame            = saved_frame;
 	paint_exec_uv_tile             = saved_tile;
 	paint_exec_res0                = saved_res0;
-	g_context->brush_blend_dirty   = true; // The live coverage was the replay's
-	g_context->ddirty              = 2;
+	render_path_paint_fill_object  = saved_fill_object;
+	render_path_paint_fill_tri     = saved_fill_tri;
+	if (!prepare) {
+		g_context->brush_blend_dirty = true; // The live coverage was the replay's
+		g_context->ddirty            = 2;
+	}
 	draw_resume(saved_draw);
 	paint_rec_free(&r);
-	if (ok) {
+	if (!prepare && result == 1) {
 		paint_replay_count++;
 	}
-	return ok;
+	return result;
+}
+
+bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const paint_replay_opts_t *o) {
+	return paint_replay_run(tl, index, t, o, false) == 1;
+}
+
+// Before a composite-fast replay of entry index into t a frame at a time (stroke refine): a step of rendering the replay
+// caches it reads. 1 ready (or none read), 0 more steps to go, -1 the entry does not replay.
+i32 paint_replay_prepare(timeline_t *tl, i32 index, paint_target_t *t) {
+	paint_replay_opts_t o = {.composite_fast = true};
+	return paint_replay_run(tl, index, t, &o, true);
 }
 
 i32 paint_replay_halo_px(const tl_entry_t *e, i32 res_w) {
@@ -455,11 +536,19 @@ bool paint_replay_test_entry(slot_layer_t *l, i32 index) {
 	return paint_replay_entry(tl, index, &t, NULL);
 }
 
+static bool paint_replay_test_fast = false;
+
+// Scripts: replays of paint_replay_test_into and _tiles read replay caches (composite-fast), or evaluate the material
+void paint_replay_test_set_fast(bool on) {
+	paint_replay_test_fast = on;
+}
+
 // Scripts: entry index of the timeline of src replayed into dst as it is (any size)
 bool paint_replay_test_into(slot_layer_t *src, i32 index, slot_layer_t *dst) {
 	paint_target_t t;
 	timeline_target_live(dst, &t);
-	return paint_replay_entry(timeline_of(src), index, &t, NULL);
+	paint_replay_opts_t o = {.composite_fast = paint_replay_test_fast};
+	return paint_replay_entry(timeline_of(src), index, &t, &o);
 }
 
 // Scripts: the same into dst in n x n tiles, each replayed with halo texels around it, its middle copied into dst
@@ -502,7 +591,8 @@ bool paint_replay_test_tiles(slot_layer_t *src, i32 index, slot_layer_t *dst, i3
 		for (i32 c = 0; c < live.channels; ++c) {
 			t.out[c] = tex[k * 3 + c];
 		}
-		ok = paint_replay_entry(timeline_of(src), index, &t, NULL);
+		paint_replay_opts_t o = {.composite_fast = paint_replay_test_fast};
+		ok                    = paint_replay_entry(timeline_of(src), index, &t, &o);
 	}
 	for (i32 k = 0; k < n * n && ok; ++k) { // The middles into dst
 		i32 *r = &rect[k * 4];

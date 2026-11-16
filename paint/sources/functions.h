@@ -672,8 +672,6 @@ void make_curvature_bake_mesh(char *id, mesh_object_t_array_t *objs, i32 res_x, 
 node_shader_context_t *make_depth_run(material_t *data);
 
 // ---- render/make_discard.c ----
-void make_discard_face(node_shader_t *shader);
-void make_discard_uv_island(node_shader_t *shader);
 void make_discard_material_id(node_shader_t *shader, char *tex_coord);
 void make_discard_picked_color(node_shader_t *shader, char *tex_src, char *tex_src_link);
 
@@ -823,7 +821,23 @@ void                  render_path_paint_dilate(bool base, bool nor_pack);
 void                  render_path_paint_dilate_stroke(bool base, bool nor_pack);
 
 // ---- render/render_path_paint_picker.c ----
-mesh_object_t *render_path_paint_pick_object();
+void           context_set_fill_type(i32 type);
+void           script_camera_turn(f32 x, f32 y);
+void           script_set_stencil(gpu_texture_t *t);
+void           script_set_text(char *text);
+void           script_set_blur_type(i32 type);
+void           script_camera_save();
+bool           paint_asset_test_roundtrip(gpu_texture_t *t);
+void           script_camera_restore();
+void           script_set_clone_delta(f32 x, f32 y);
+vec4_t         uniforms_decal_mask();
+char          *render_path_paint_uv_target();
+void           render_path_paint_ref_invalidate();
+extern bool    render_path_paint_ref_taken;
+bool           render_path_paint_fill_picks();
+void           render_path_paint_fill_pick_now();
+extern mesh_object_t *render_path_paint_fill_object;
+extern i32            render_path_paint_fill_tri;
 void           render_path_paint_picker_poll();
 void           render_path_paint_picker_read(bool is_mask);
 
@@ -1498,6 +1512,9 @@ void                   util_mesh_uv_unwrap(mesh_object_t_array_t *objects);
 void                   util_mesh_sort_hierarchy();
 u32_array_t           *util_mesh_connected_indices(mesh_data_t *g, i32 tri);
 i32                    util_mesh_raycast_triangle(mesh_object_t *o, ray_t *ray);
+u32_array_t           *util_mesh_uv_island_indices(mesh_data_t *g, i32 tri, i32 uv_map);
+vec4_t                 util_mesh_triangle_normal(mesh_object_t *o, i32 tri);
+f32                    util_mesh_raycast_triangle_dist(mesh_object_t *o, ray_t *ray, i32 tri);
 
 // ---- util/util_mesh_maps.c ----
 char          *mesh_map_name(i32 type);
@@ -1634,6 +1651,14 @@ void           material_cache_set_enabled(i32 on);
 void           material_cache_test_budget(i32 mb);
 void           material_cache_test_min_ms(f32 ms);
 i32            material_cache_stat(i32 what);
+typedef struct material_cache_replay material_cache_replay_t;
+material_cache_replay_t *material_cache_replay_get(hash128_t snap, i32 w, i32 h, const f32 *uv_rect);
+i32                      material_cache_replay_build(material_cache_replay_t *e, const f32 *uv, bool sync);
+void                     material_cache_replay_bind(material_cache_replay_t *e);
+bool                     material_cache_replay_is_bound(void);
+void                     material_cache_replay_release(void);
+void                     material_cache_replay_set_enabled(i32 on);
+i32                      material_cache_replay_stat(i32 what);
 
 // ---- util/util_texture.c ----
 char *util_texture_packed_name(char *basename);
@@ -1668,9 +1693,7 @@ void    ui_base_set_viewport_col(i32 col);
 
 // ---- util/util_uv.c ----
 void util_uv_cache_uv_map();
-void util_uv_cache_triangle_map();
 void util_uv_cache_dilate_map();
-void util_uv_cache_uv_island_map();
 void util_uv_cache_seam_map(i32 res_x, i32 res_y);
 void util_uv_blur_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t *src, i32 passes);
 
@@ -1959,7 +1982,7 @@ struct tl_entry *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, c
 void        timeline_stroke_begin(history_step_t *step, slot_layer_t *l);
 void        timeline_stroke_dirty(history_step_t *step, i32_array_t *tiles);
 void        timeline_finalize();
-bool        timeline_entry_replay(struct timeline *tl, i32 i, struct paint_target *t);
+bool        timeline_entry_replay(struct timeline *tl, i32 i, struct paint_target *t, bool fast);
 void        timeline_step_apply(history_step_t *step, bool undo);
 void        timeline_fork(slot_layer_t *src, slot_layer_t *dst);
 bool        timeline_materialize_live(struct timeline *tl, slot_layer_t *l, i32 pos);
@@ -2602,6 +2625,7 @@ hash128_t timeline_state(struct timeline *tl, i32 pos);
 u64  make_paint_glsl_hash(shader_context_t *scon);
 bool make_paint_scon_uses_matcache(shader_context_t *scon);
 gpu_texture_t *paint_replay_dilate_map(i32 w, i32 h, const f32 *uv_rect);
+i32            paint_replay_prepare(struct timeline *tl, i32 index, struct paint_target *t);
 void paint_mat_snapshot_reset();
 void paint_mat_snapshot_init();
 void paint_mat_snapshot_parse_begin(slot_material_t *m);
@@ -2629,6 +2653,7 @@ i32                   paint_replay_test_fallbacks();
 i32                   paint_replay_test_count();
 bool                  paint_replay_test_entry(slot_layer_t *l, i32 index);
 bool                  paint_replay_test_into(slot_layer_t *src, i32 index, slot_layer_t *dst);
+void                  paint_replay_test_set_fast(bool on);
 bool                  paint_replay_test_tiles(slot_layer_t *src, i32 index, slot_layer_t *dst, i32 n, i32 halo);
 void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
 i32                   paint_exec_pending_ops();

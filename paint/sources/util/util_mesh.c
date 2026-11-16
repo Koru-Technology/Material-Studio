@@ -511,7 +511,6 @@ void util_mesh_visibility_changed() {
 	util_mesh_merge(visibles);
 	array_delete(visibles);
 	util_uv_uvmap_cached       = false;
-	util_uv_trianglemap_cached = false;
 	util_uv_seammap_cached     = false;
 	util_uv_dilatemap_cached   = false;
 	g_context->ddirty          = 2;
@@ -759,6 +758,83 @@ u32_array_t *util_mesh_connected_indices(mesh_data_t *g, i32 tri) {
 	}
 	free(uf);
 	return out;
+}
+
+static int util_mesh_uv_corner_compare(const void *a, const void *b) {
+	i64 x = *(const i64 *)a, y = *(const i64 *)b;
+	return x < y ? -1 : x > y ? 1 : 0;
+}
+
+// The uv island of triangle tri: the triangles joined to it by corners with the same coordinates in uv map uv_map (0
+// tex, 1 tex1), the topology of the mesh's uv layout. What a uv island fill paints, at any resolution.
+u32_array_t *util_mesh_uv_island_indices(mesh_data_t *g, i32 tri, i32 uv_map) {
+	u32_array_t     *inda     = g->index_array;
+	i32              num_tris = (i32)(inda->length / 3);
+	vertex_array_t  *va       = mesh_data_get_vertex_array(g, uv_map == 1 ? "tex1" : "tex");
+	if (tri < 0 || tri >= num_tris || va == NULL) {
+		return NULL;
+	}
+	i16_array_t *tex = va->values;
+	i64         *c   = malloc(sizeof(i64) * num_tris * 3); // uv key << 32 | triangle
+	for (i32 i = 0; i < num_tris * 3; ++i) {
+		u32 v   = inda->buffer[i];
+		u32 key = ((u32)(u16)tex->buffer[v * 2] << 16) | (u16)tex->buffer[v * 2 + 1];
+		c[i]    = ((i64)key << 32) | (i64)(i / 3);
+	}
+	qsort(c, num_tris * 3, sizeof(i64), util_mesh_uv_corner_compare);
+	i32 *uf = malloc(sizeof(i32) * num_tris);
+	for (i32 i = 0; i < num_tris; ++i) {
+		uf[i] = i;
+	}
+	for (i32 i = 1; i < num_tris * 3; ++i) {
+		if ((c[i] >> 32) == (c[i - 1] >> 32)) {
+			_util_mesh_bevel_union(uf, (i32)(c[i] & 0xffffffff), (i32)(c[i - 1] & 0xffffffff));
+		}
+	}
+	free(c);
+	i32          root = _util_mesh_bevel_find(uf, tri);
+	u32_array_t *out  = u32_array_create(0);
+	for (i32 i = 0; i < num_tris; ++i) {
+		if (_util_mesh_bevel_find(uf, i) == root) {
+			u32_array_push(out, inda->buffer[i * 3]);
+			u32_array_push(out, inda->buffer[i * 3 + 1]);
+			u32_array_push(out, inda->buffer[i * 3 + 2]);
+		}
+	}
+	free(uf);
+	return out;
+}
+
+// The world normal of triangle tri of o (its winding), zero when it is degenerate
+vec4_t util_mesh_triangle_normal(mesh_object_t *o, i32 tri) {
+	i16_array_t *va0  = o->data->vertex_arrays->buffer[0]->values;
+	u32_array_t *inda = o->data->index_array;
+	if (tri < 0 || (tri + 1) * 3 > (i32)inda->length) {
+		return (vec4_t){0.0, 0.0, 0.0, 0.0};
+	}
+	mat4_t m = o->base->transform->world_unpack;
+	vec4_t p[3];
+	for (i32 k = 0; k < 3; ++k) {
+		i32 v = inda->buffer[tri * 3 + k] * 4;
+		p[k]  = vec4_apply_mat4((vec4_t){va0->buffer[v] / 32767.0, va0->buffer[v + 1] / 32767.0, va0->buffer[v + 2] / 32767.0, 1.0}, m);
+	}
+	vec4_t n = vec4_cross(vec4_sub(p[1], p[0]), vec4_sub(p[2], p[0]));
+	n.w      = 0.0;
+	return vec4_len(n) > 0.0 ? vec4_norm(n) : n;
+}
+
+// Distance from the ray's origin to where it hits triangle tri of o (util_mesh_raycast_triangle)
+f32 util_mesh_raycast_triangle_dist(mesh_object_t *o, ray_t *ray, i32 tri) {
+	i16_array_t *va0 = o->data->vertex_arrays->buffer[0]->values;
+	u32_array_t *inda = o->data->index_array;
+	mat4_t       m    = o->base->transform->world_unpack;
+	vec4_t       p[3];
+	for (i32 k = 0; k < 3; ++k) {
+		i32 v = inda->buffer[tri * 3 + k] * 4;
+		p[k]  = vec4_apply_mat4((vec4_t){va0->buffer[v] / 32767.0, va0->buffer[v + 1] / 32767.0, va0->buffer[v + 2] / 32767.0, 1.0}, m);
+	}
+	vec4_t hit = ray_intersect_triangle(ray, p[0], p[1], p[2], false);
+	return isnan(hit.x) ? INFINITY : vec4_dist(hit, ray->origin);
 }
 
 // Triangle of o hit by the ray, closest to its origin, -1 on a miss

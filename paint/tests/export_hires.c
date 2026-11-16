@@ -4,7 +4,8 @@
 // their timelines at 4096 (strokes replay there): the export is close to the same stroke painted live at 4096. Fill
 // layers and mask generators render at 4096: as the project changed to 4096 (layers_resolution_apply) exports them.
 // Nothing is listed as not upscaled. Tiles larger than the working resolution (3072 px, where the platform allows them)
-// give what 1024 px tiles give.
+// give what 1024 px tiles give. The first export runs in export mode (the live layers evicted), as large exports do on
+// the iPad.
 
 char *root = "";
 
@@ -111,7 +112,9 @@ void next() {
 		export_texture_test_options("generic", 0, 0, 8, 0);
 		export_tiled_test_tile(1024);
 		export_tiled_set_resolution(4096, 4096);
+		export_tiled_set_mode(1); // Export mode on the Mac too: what does not materialize resamples the evicted state
 		export_texture_run(fresh_dir("t"), 0);
+		export_tiled_set_mode(2);
 		check(export_tiled_stat(4) == 5 && export_tiled_stat(11) > 0, string("4096: %d files, %d fill tiles rendered", export_tiled_stat(4), export_tiled_stat(11)));
 		check(export_tiled_stat(9) > 0 && export_tiled_stat(10) == 0, string("paint layer tiles materialized at 4096 (%d, %d fell back)", export_tiled_stat(9), export_tiled_stat(10)));
 		// Tiles larger than the working resolution where the platform allows them (the Mac: 4096 tiles exceed the

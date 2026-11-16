@@ -529,9 +529,13 @@ bool timeline_upscalable(timeline_t *tl, i32 pos) {
 }
 
 // Entry i applied to t: a stroke replayed (paint_replay.c), an op re-rendered (timeline_ops.c). False when it can not be.
-bool timeline_entry_replay(timeline_t *tl, i32 i, paint_target_t *t) {
+// Strokes replay composite-fast (their material from a replay cache) at another resolution or part of the layer, and
+// when fast (stroke refine): at the layer's own, as recorded.
+bool timeline_entry_replay(timeline_t *tl, i32 i, paint_target_t *t, bool fast) {
 	if (tl->entries[i].kind == TL_STROKE) {
+		bool whole            = t->uv_rect[0] == 0.0 && t->uv_rect[1] == 0.0 && t->uv_rect[2] == 1.0 && t->uv_rect[3] == 1.0;
 		paint_replay_opts_t o = {.exact = t->res_w == tl->entries[i].res_w && t->res_h == tl->entries[i].res_h};
+		o.composite_fast      = fast || !o.exact || !whole;
 		return paint_replay_entry(tl, i, t, &o);
 	}
 	return timeline_ops_replay(tl, i, t);
@@ -640,7 +644,7 @@ static bool timeline_materialize_into(timeline_t *tl, i32 pos, paint_target_t *t
 		}
 		bool again = false;
 		for (i32 i = from; i < pos; ++i) {
-			if (!timeline_entry_replay(tl, i, t)) {
+			if (!timeline_entry_replay(tl, i, t, false)) {
 				timeline_entry_fail(tl, i);
 				again = true;
 				break;
@@ -965,7 +969,7 @@ bool timeline_test_replay_entry(slot_layer_t *l, i32 i) {
 		return false;
 	}
 	hash128_t h = timeline_state_at(tl, i, t.res_w, t.res_h);
-	return !hash128_is_none(h) && timeline_tiles_restore(h, &t) && timeline_entry_replay(tl, i, &t);
+	return !hash128_is_none(h) && timeline_tiles_restore(h, &t) && timeline_entry_replay(tl, i, &t, false);
 }
 
 // The live textures of l scaled (bilinear) to res_w x res_h, what a resolution change did before timelines

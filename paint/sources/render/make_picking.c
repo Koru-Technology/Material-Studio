@@ -65,13 +65,4 @@ void make_picking_run(node_shader_t *shader) {
 			node_shader_write_frag(shader, "output[3].rg = tex_coord_inp.xy;");
 		}
 	}
-	else if (g_context->tool == TOOL_TYPE_CURSOR) {
-		shader->frag_out = "vec4";
-		node_shader_add_texture(shader, "gbuffer1", NULL);
-		node_shader_add_constant(shader, "vec2 gbuffer_size", "_gbuffer_size");
-		node_shader_add_constant(shader, "vec4 inp", "_input_brush");
-		node_shader_write_frag(shader,
-		                       "uvec2 inp_co = uvec2(uint(constants.inp.x * constants.gbuffer_size.x), uint(constants.inp.y * constants.gbuffer_size.y));");
-		node_shader_write_frag(shader, "output = gbuffer1[inp_co];");
-	}
 }

@@ -204,6 +204,9 @@ static void script_paint_begin_stroke(void) {
 
 	history_push_undo = true;
 	history_paint();
+	if (render_path_paint_fill_picks()) { // At its first draw, as util_brush.c
+		render_path_paint_fill_pick = true;
+	}
 
 	script_paint_active         = true;
 	script_paint_first          = true;
@@ -1568,4 +1571,50 @@ void script_screenshot(char *path) {
 	if (path != NULL) {
 		script_screenshot_queue(path, 1, NULL);
 	}
+}
+
+// Scripts: the camera turned around the origin (as a drag of x, y)
+void script_camera_turn(f32 x, f32 y) {
+	camera_turn(x, y, (vec4_t){0.0, 0.0, 0.0, 1.0});
+}
+
+// Scripts: the brush's stencil (NULL: none), as the brush's output node sets it
+void script_set_stencil(gpu_texture_t *t) {
+	g_context->brush_stencil_image = t;
+	g_context->brush_stencil_x     = 0.25;
+	g_context->brush_stencil_y     = 0.25;
+	g_context->brush_stencil_scale = 0.5;
+	make_material_parse_paint_material(false);
+}
+
+// Scripts: the text tool's text, its image made
+void script_set_text(char *text) {
+	g_context->text_tool_text = string_copy(text);
+	util_render_make_text_preview();
+}
+
+// Scripts: the blur tool blurs (0) or smudges (1), the paint shader parsed for it
+void script_set_blur_type(i32 type) {
+	g_context->blur_type = type;
+	make_material_parse_paint_material(false);
+}
+
+// Scripts: the clone tool's source offset on screen
+void script_set_clone_delta(f32 x, f32 y) {
+	g_context->clone_delta_x = x;
+	g_context->clone_delta_y = y;
+}
+
+static mat4_t script_camera_saved;
+
+// Scripts: the camera's transform kept, and set back exactly
+void script_camera_save() {
+	script_camera_saved = scene_camera->base->transform->local;
+}
+
+void script_camera_restore() {
+	transform_t *t = scene_camera->base->transform;
+	t->local       = script_camera_saved;
+	transform_decompose(t);
+	camera_object_build_mat(scene_camera);
 }

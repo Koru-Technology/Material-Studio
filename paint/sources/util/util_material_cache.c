@@ -1,6 +1,7 @@
 
 #include "../global.h"
 #include <stdatomic.h>
+#include <unistd.h>
 #include "util_hash.h"
 
 // Material caches: a material's outputs rendered once into textures of the layers' size and format (base color and
@@ -76,6 +77,37 @@ typedef struct {
 	f32               gpu_ms; // GPU time of its bands
 } material_cache_t;
 
+// Replay caches, see below
+struct material_cache_replay {
+	hash128_t         snap;   // Material snapshot
+	i32               uv_map; // The layer's uv map
+	u64               mesh;   // The mesh painted
+	i32               w;      // The replay's target, texels and part of the layer
+	i32               h;
+	f32               rect[4];
+	i32               state;
+	gpu_texture_t    *tex[3];
+	shader_context_t *bake;
+	bool              emis_used;
+	bool              subs_used;
+	bool              height_used;
+	u64              *done; // Blocks of MATERIAL_CACHE_REPLAY_BLOCK^2 texels rendered, bw x bh of them
+	i32               bw;
+	i32               bh;
+	i32               ndone;
+	bool              cleared;
+	i64               band_px; // Texels of the next band
+	f32               px_peak; // Highest ms a texel so far
+	f32               gpu_ms;
+	double            used;
+};
+
+#define MATERIAL_CACHE_REPLAY_MAX   8 // Entries, the unfit ones among them (no textures)
+#define MATERIAL_CACHE_REPLAY_BLOCK 64
+
+static material_cache_replay_t *material_cache_replays[MATERIAL_CACHE_REPLAY_MAX];
+static i32                      material_cache_replay_count = 0;
+static material_cache_replay_t *material_cache_replay_bound = NULL;
 static material_cache_t *material_cache_entries[MATERIAL_CACHE_MAX];
 static i32               material_cache_count      = 0;
 static bool              material_cache_registered = false;
@@ -98,6 +130,7 @@ static i32         material_cache_rows        = 0; // Rows of the next band
 static f32         material_cache_row_peak    = 0.0; // Highest ms a row of the build so far
 
 static void material_cache_update(void *_);
+static void material_cache_replay_remove(i32 i);
 
 static bool material_cache_timing(void) {
 	static int timing = -1;
@@ -191,11 +224,8 @@ static u64 material_cache_signature(slot_material_t *m) {
 	return h;
 }
 
-// The context paints the material at its uv coordinates on a paint layer the size of the project's textures, scale 1
-static bool material_cache_context_ok(void) {
-	if (!material_cache_on()) {
-		return false;
-	}
+// The context paints the material at its uv coordinates on a paint layer, scale 1, no decal, triplanar, udim or 2D view
+static bool material_cache_context_fits(void) {
 	tool_type_t tool = g_context->tool;
 	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_FILL) {
 		return false;
@@ -211,10 +241,16 @@ static bool material_cache_context_ok(void) {
 	if (m == NULL || m->canvas == NULL || m->uv_scale * g_context->brush_nodes_scale != 1.0f) {
 		return false; // Other scales paint live (not cached for now)
 	}
-	if ((i32)l->texpaint->width != config_get_texture_res_x() || (i32)l->texpaint->height != config_get_texture_res_y()) {
+	return g_context->paint_object != NULL && render_path_paint_target() != NULL;
+}
+
+// And the layer is the size of the project's textures
+static bool material_cache_context_ok(void) {
+	if (!material_cache_on() || !material_cache_context_fits()) {
 		return false;
 	}
-	return g_context->paint_object != NULL && render_path_paint_target() != NULL;
+	slot_layer_t *l = g_context->layer;
+	return (i32)l->texpaint->width == config_get_texture_res_x() && (i32)l->texpaint->height == config_get_texture_res_y();
 }
 
 // Entries
@@ -394,9 +430,21 @@ static bool material_cache_scon_reads(shader_context_t *scon) {
 	return false;
 }
 
-// Paint shaders (make_paint.c): whether the material's outputs come from its cache, and the flags its parse would set
+
+// Paint shaders (make_paint.c): whether the material's outputs come from its cache, and the flags its parse would set.
+// Replaying, a replay cache bound answers; a replay at another size without one parses the material.
 bool material_cache_paint_info(bool is_atlas, bool *emis_used, bool *subs_used, bool *height_used) {
-	if (is_atlas || !material_cache_context_ok()) {
+	if (is_atlas) {
+		return false;
+	}
+	material_cache_replay_t *r = material_cache_replay_bound;
+	if (r != NULL) {
+		*emis_used   = r->emis_used;
+		*subs_used   = r->subs_used;
+		*height_used = r->height_used;
+		return true;
+	}
+	if (paint_replay_uncached || !material_cache_context_ok()) {
 		return false;
 	}
 	material_cache_t *e = material_cache_find(g_context->material);
@@ -411,6 +459,10 @@ bool material_cache_paint_info(bool is_atlas, bool *emis_used, bool *subs_used, 
 }
 
 gpu_texture_t *material_cache_texture(i32 i) {
+	material_cache_replay_t *r = material_cache_replay_bound;
+	if (r != NULL) {
+		return i >= 0 && i < 3 && r->tex[i] != NULL ? r->tex[i] : render_path_empty_black();
+	}
 	material_cache_t *e = material_cache_find(g_context->material);
 	if (e != NULL && e->state == MATERIAL_CACHE_READY && i >= 0 && i < 3 && e->tex[i] != NULL) {
 		return e->tex[i];
@@ -750,6 +802,10 @@ void material_cache_reset(void) {
 	while (material_cache_count > 0) {
 		material_cache_remove(material_cache_count - 1);
 	}
+	material_cache_replay_bound = NULL;
+	while (material_cache_replay_count > 0) {
+		material_cache_replay_remove(material_cache_replay_count - 1);
+	}
 	material_cache_settle_sig = 0;
 }
 
@@ -766,6 +822,482 @@ void material_cache_trim(void) {
 			material_cache_remove(i);
 		}
 	}
+}
+
+// Replay caches (paint_replay.c, composite-fast): a material snapshot's outputs for the target of a replay, its strokes
+// read a texel instead of evaluating the material for every dab (stroke refine, replays at another size, export tiles).
+// One per snapshot, target size and uv_rect, rendered from the snapshot's material at the full tier into RGBA128 with
+// the paint draws' vertex transform (_paint_uv_tile): the floats a draw evaluating the material computes, the strokes
+// paint the same bits. Rendered where the strokes replayed write (their uv bounds, in blocks), in bands sized by their GPU
+// time (MATERIAL_CACHE_BAND_MS): a band a frame (paint_refine.c), or all of them at once with a commit between bands
+// (export). Fit: as material_cache_context_ok
+// at any size, and the bake's own reasons (make_paint_cache_bake_run), remembered for the snapshot. Transient: at most
+// MATERIAL_CACHE_REPLAY_MB, the least recently used go, all of them after MATERIAL_CACHE_REPLAY_IDLE seconds unused.
+
+#define MATERIAL_CACHE_REPLAY_IDLE 2.0
+#ifdef IRON_IOS
+#define MATERIAL_CACHE_REPLAY_MB 256
+#else
+#define MATERIAL_CACHE_REPLAY_MB 1024
+#endif
+
+static i32                      material_cache_replay_on    = -1; // material_cache_replay_set_enabled, env MATERIAL_CACHE_REPLAY=0
+static bool                     material_cache_replay_hooked = false;
+static i32                      material_cache_replay_stats[8];
+
+// Its bands: one in flight at a time
+static atomic_int               material_cache_replay_us     = -1;
+static atomic_bool              material_cache_replay_flight = false;
+static i32                      material_cache_replay_band   = 0; // Rows of the band in flight
+static material_cache_replay_t *material_cache_replay_owner  = NULL; // Whose band it is
+static i32                      material_cache_replay_wait   = 0;
+
+static i64 material_cache_replay_bytes(material_cache_replay_t *e) {
+	return e->tex[0] != NULL ? (i64)e->w * e->h * 16 * 3 : 0;
+}
+
+static i64 material_cache_replay_total(void) {
+	i64 t = 0;
+	for (i32 i = 0; i < material_cache_replay_count; ++i) {
+		t += material_cache_replay_bytes(material_cache_replays[i]);
+	}
+	return t;
+}
+
+static void material_cache_replay_free_bake(material_cache_replay_t *e) {
+	if (e->bake != NULL) {
+		make_material_delete_context(e->bake); // Next frame: its band may be in flight
+		e->bake = NULL;
+	}
+}
+
+static void material_cache_replay_remove(i32 i) {
+	material_cache_replay_t *e = material_cache_replays[i];
+	if (material_cache_replay_bound == e) {
+		material_cache_replay_bound = NULL;
+	}
+	if (material_cache_replay_owner == e) {
+		material_cache_replay_owner = NULL;
+	}
+	material_cache_replay_free_bake(e);
+	for (i32 k = 0; k < 3; ++k) {
+		if (e->tex[k] != NULL) {
+			gpu_delete_texture(e->tex[k]);
+		}
+	}
+	free(e->done);
+	free(e);
+	material_cache_replays[i] = material_cache_replays[--material_cache_replay_count];
+}
+
+// Every replay cache goes (an export or a refine job over, a new project); the unfit ones stay known
+void material_cache_replay_release(void) {
+	for (i32 i = material_cache_replay_count - 1; i >= 0; --i) {
+		if (material_cache_replays[i]->state != MATERIAL_CACHE_UNFIT && material_cache_replays[i] != material_cache_replay_bound) {
+			material_cache_replay_remove(i);
+		}
+	}
+}
+
+static void material_cache_replay_idle(void *_) {
+	double now = iron_time();
+	for (i32 i = material_cache_replay_count - 1; i >= 0; --i) {
+		material_cache_replay_t *e = material_cache_replays[i];
+		if (e->state != MATERIAL_CACHE_UNFIT && e != material_cache_replay_bound && now - e->used > MATERIAL_CACHE_REPLAY_IDLE) {
+			material_cache_replay_remove(i);
+		}
+	}
+}
+
+static bool material_cache_replay_enabled(void) {
+	if (material_cache_replay_on < 0) {
+		char *e                  = getenv("MATERIAL_CACHE_REPLAY");
+		material_cache_replay_on = e != NULL && e[0] == '0' ? 0 : 1;
+	}
+	return material_cache_replay_on == 1;
+}
+
+static u64 material_cache_replay_mesh(void) {
+	mesh_object_t *o    = render_path_paint_target();
+	void          *p[2] = {o, o != NULL ? o->data : NULL};
+	return hash_fnv1a(hash_fnv1a(1469598103934665603ull, p, sizeof(p)), &material_cache_mesh_gen, sizeof(u64));
+}
+
+// The replay cache of snapshot snap for target t, made when there is none (not rendered yet). NULL when the context
+// replayed (g_context, a state of the stroke applied) does not read its material from a cache, when the snapshot's
+// material is unfit, or when its textures do not fit the budget.
+material_cache_replay_t *material_cache_replay_get(hash128_t snap, i32 w, i32 h, const f32 *uv_rect) {
+	if (!material_cache_replay_enabled() || !material_cache_context_fits()) {
+		return NULL;
+	}
+	if (!material_cache_replay_hooked) {
+		material_cache_replay_hooked = true;
+		sys_notify_on_update(material_cache_replay_idle, NULL);
+	}
+	i32 uv_map = g_context->layer->uv_map;
+	u64 mesh   = material_cache_replay_mesh();
+	for (i32 i = 0; i < material_cache_replay_count; ++i) {
+		material_cache_replay_t *e = material_cache_replays[i];
+		if (!hash128_eq(e->snap, snap) || e->uv_map != uv_map || e->mesh != mesh) {
+			continue;
+		}
+		if (e->state == MATERIAL_CACHE_UNFIT) {
+			return NULL;
+		}
+		if (e->w == w && e->h == h && memcmp(e->rect, uv_rect, sizeof(e->rect)) == 0) {
+			e->used = iron_time();
+			return e;
+		}
+	}
+	i64 need   = (i64)w * h * 16 * 3;
+	i64 budget = (i64)MATERIAL_CACHE_REPLAY_MB * 1024 * 1024;
+#ifdef IRON_IOS
+	if (__builtin_available(iOS 13.0, *)) {
+		i64 avail = (i64)os_proc_available_memory();
+		if (avail > 0 && budget > avail / 4) {
+			budget = avail / 4;
+		}
+	}
+#endif
+	if (need > budget) {
+		material_cache_replay_stats[3]++;
+		return NULL;
+	}
+	while (material_cache_replay_total() + need > budget || material_cache_replay_count == MATERIAL_CACHE_REPLAY_MAX) {
+		i32 lru = -1;
+		for (i32 i = 0; i < material_cache_replay_count; ++i) {
+			material_cache_replay_t *e = material_cache_replays[i];
+			if (e != material_cache_replay_bound && (material_cache_replay_count == MATERIAL_CACHE_REPLAY_MAX || e->tex[0] != NULL) &&
+			    (lru < 0 || e->used < material_cache_replays[lru]->used)) {
+				lru = i;
+			}
+		}
+		if (lru < 0) {
+			return NULL;
+		}
+		material_cache_replay_remove(lru);
+	}
+	material_cache_replay_t *e = calloc(1, sizeof(material_cache_replay_t));
+	e->snap                    = snap;
+	e->uv_map                  = uv_map;
+	e->mesh                    = mesh;
+	e->w                       = w;
+	e->h                       = h;
+	memcpy(e->rect, uv_rect, sizeof(e->rect));
+	e->state                                             = MATERIAL_CACHE_NEW;
+	e->used                                              = iron_time();
+	material_cache_replays[material_cache_replay_count++] = e;
+	return e;
+}
+
+static void material_cache_replay_unfit(material_cache_replay_t *e, char *why) {
+	iron_log("[matcache] replays of material snapshot %016llx evaluate it: %s", (unsigned long long)e->snap.lo, why);
+	material_cache_replay_free_bake(e);
+	for (i32 k = 0; k < 3; ++k) {
+		if (e->tex[k] != NULL) {
+			gpu_delete_texture(e->tex[k]);
+			e->tex[k] = NULL;
+		}
+	}
+	e->state = MATERIAL_CACHE_UNFIT;
+	material_cache_replay_stats[2]++;
+}
+
+static void material_cache_replay_start(material_cache_replay_t *e) {
+	for (i32 k = 0; k < 3; ++k) {
+		e->tex[k] = gpu_create_render_target(e->w, e->h, GPU_TEXTURE_FORMAT_RGBA128);
+	}
+	e->state   = MATERIAL_CACHE_BUILD;
+	e->bw      = (e->w + MATERIAL_CACHE_REPLAY_BLOCK - 1) / MATERIAL_CACHE_REPLAY_BLOCK;
+	e->bh      = (e->h + MATERIAL_CACHE_REPLAY_BLOCK - 1) / MATERIAL_CACHE_REPLAY_BLOCK;
+	e->done    = calloc((e->bw * e->bh + 63) / 64, sizeof(u64));
+	e->ndone   = 0;
+	e->cleared = false;
+	e->band_px = (i64)e->w * (e->h / 32 < 64 ? 64 : e->h / 32);
+	e->px_peak = 0.0f;
+	e->gpu_ms  = 0.0f;
+	material_cache_replay_stats[1]++;
+}
+
+// Its shader parsed from the material replayed (g_context's, the snapshot's lists swapped in), translated and compiled;
+// or taken from a cache of the same material for another target (the tiles of an export)
+static bool material_cache_replay_parse(material_cache_replay_t *e) {
+	for (i32 i = 0; i < material_cache_replay_count; ++i) {
+		material_cache_replay_t *o = material_cache_replays[i];
+		if (o != e && o->bake != NULL && hash128_eq(o->snap, e->snap) && o->uv_map == e->uv_map && o->mesh == e->mesh) {
+			e->bake        = o->bake;
+			e->emis_used   = o->emis_used;
+			e->subs_used   = o->subs_used;
+			e->height_used = o->height_used;
+			o->bake        = NULL;
+			return true;
+		}
+	}
+	double      t0    = iron_time();
+	material_t *sdata = ALLOC_INIT(material_t, {.name = "Material", .canvas = g_context->material->canvas});
+	char       *glsl  = NULL;
+	char       *why   = NULL;
+	paint_mat_snapshot_parse_begin(g_context->material);
+	node_shader_context_t *con =
+	    make_paint_cache_bake_run(sdata, gpu_texture_format_name(GPU_TEXTURE_FORMAT_RGBA128), &e->emis_used, &e->subs_used, &e->height_used, &glsl, &why);
+	paint_mat_snapshot_parse_end();
+	shader_context_t *s = con->data;
+	node_shader_context_free(con);
+	free(sdata);
+	char *vs = NULL;
+	char *fs = NULL;
+	if (why == NULL && !iron_glsl_translate(glsl, &vs, &fs)) {
+		why = "its shader did not translate";
+	}
+	free(glsl);
+	if (why != NULL) {
+		s->shader_from_source = true;
+		make_material_free_context(s);
+		free(vs);
+		free(fs);
+		material_cache_replay_unfit(e, why);
+		return false;
+	}
+	s->shader_from_source      = true;
+	s->vertex_shader           = vs;
+	s->fragment_shader         = fs;
+	s->_->vertex_shader_size   = 0;
+	s->_->fragment_shader_size = 0;
+	shader_context_load(s);
+	free(vs);
+	free(fs);
+	s->vertex_shader   = NULL;
+	s->fragment_shader = NULL;
+	e->bake            = s;
+	if (s->_->pipe == NULL || s->_->pipe->impl.pipeline == NULL) {
+		material_cache_replay_unfit(e, "its shader did not compile");
+		return false;
+	}
+	material_cache_replay_stats[6] = (i32)((iron_time() - t0) * 1000000.0);
+	if (material_cache_timing()) {
+		iron_log("[matcache] replay cache shader of snapshot %016llx: parsed, translated and compiled in %.1f ms", (unsigned long long)e->snap.lo,
+		         (iron_time() - t0) * 1000.0);
+	}
+	return true;
+}
+
+static void material_cache_replay_done(void *data, double gpu_ms) {
+	atomic_store(&material_cache_replay_us, gpu_ms < 0.0 ? 0 : (i32)(gpu_ms * 1000.0));
+	atomic_store(&material_cache_replay_flight, false);
+}
+
+// The last band's GPU time in: the texels of the next band. False while it is in flight.
+static bool material_cache_replay_poll(void) {
+	if (atomic_load(&material_cache_replay_flight)) {
+		if (++material_cache_replay_wait > 60) { // Its time is not coming: on with the size it had
+			atomic_store(&material_cache_replay_flight, false);
+			material_cache_replay_band = 0;
+		}
+		return false;
+	}
+	i32                      us = atomic_exchange(&material_cache_replay_us, -1);
+	material_cache_replay_t *e  = material_cache_replay_owner;
+	if (us >= 0 && e != NULL && material_cache_replay_band > 0) {
+		f32 ms      = us / 1000.0f;
+		f32 per_px  = ms / material_cache_replay_band;
+		e->px_peak  = per_px > e->px_peak ? per_px : e->px_peak;
+		f32 est     = per_px > e->px_peak * 0.75f ? per_px : e->px_peak * 0.75f; // Dense parts may come next
+		f64 px      = est > 0.0f ? MATERIAL_CACHE_BAND_MS / est : material_cache_replay_band * 2.0;
+		px          = px > material_cache_replay_band * 2.0 ? material_cache_replay_band * 2.0 : px;
+		e->band_px  = px < MATERIAL_CACHE_REPLAY_BLOCK * MATERIAL_CACHE_REPLAY_BLOCK ? MATERIAL_CACHE_REPLAY_BLOCK * MATERIAL_CACHE_REPLAY_BLOCK : (i64)px;
+		e->gpu_ms += ms;
+		material_cache_replay_stats[5] = us > material_cache_replay_stats[5] ? us : material_cache_replay_stats[5];
+	}
+	material_cache_replay_band = 0;
+	return true;
+}
+
+static bool material_cache_replay_block_done(material_cache_replay_t *e, i32 bx, i32 by) {
+	i32 i = by * e->bw + bx;
+	return (e->done[i >> 6] >> (i & 63)) & 1;
+}
+
+// The blocks of e a replay reads, from uv bounds of the layer (NULL: all of them): [b[0], b[2]) x [b[1], b[3])
+static void material_cache_replay_need(material_cache_replay_t *e, const f32 *uv, i32 *b) {
+	b[0] = 0, b[1] = 0, b[2] = e->bw, b[3] = e->bh;
+	if (uv == NULL) {
+		return;
+	}
+	f32 sx = e->w / (e->rect[2] - e->rect[0]);
+	f32 sy = e->h / (e->rect[3] - e->rect[1]);
+	i32 x0 = (i32)floorf((uv[0] - e->rect[0]) * sx) - MATERIAL_CACHE_REPLAY_BLOCK; // A block around: rasterization at
+	i32 y0 = (i32)floorf((uv[1] - e->rect[1]) * sy) - MATERIAL_CACHE_REPLAY_BLOCK; // this size, the bounds' tile grid
+	i32 x1 = (i32)ceilf((uv[2] - e->rect[0]) * sx) + MATERIAL_CACHE_REPLAY_BLOCK;
+	i32 y1 = (i32)ceilf((uv[3] - e->rect[1]) * sy) + MATERIAL_CACHE_REPLAY_BLOCK;
+	b[0]   = x0 < 0 ? 0 : x0 / MATERIAL_CACHE_REPLAY_BLOCK;
+	b[1]   = y0 < 0 ? 0 : y0 / MATERIAL_CACHE_REPLAY_BLOCK;
+	b[2]   = x1 <= 0 ? 0 : (x1 + MATERIAL_CACHE_REPLAY_BLOCK - 1) / MATERIAL_CACHE_REPLAY_BLOCK;
+	b[3]   = y1 <= 0 ? 0 : (y1 + MATERIAL_CACHE_REPLAY_BLOCK - 1) / MATERIAL_CACHE_REPLAY_BLOCK;
+	b[2]   = b[2] > e->bw ? e->bw : b[2];
+	b[3]   = b[3] > e->bh ? e->bh : b[3];
+	b[0]   = b[0] > b[2] ? b[2] : b[0];
+	b[1]   = b[1] > b[3] ? b[3] : b[1];
+}
+
+// A band of the blocks needed b not rendered yet: rows of blocks from the first one with some, each as wide as the
+// blocks missing in them, about e->band_px texels. The mesh drawn at its uv coordinates in the replay's part of the
+// layer, scissored. False when every block of b is rendered.
+static bool material_cache_replay_draw_band(material_cache_replay_t *e, const i32 *b) {
+	i32 r0 = -1, xa = 0, xb = 0, r1 = 0;
+	for (i32 by = b[1]; by < b[3]; ++by) {
+		i32 lo = -1, hi = -1;
+		for (i32 bx = b[0]; bx < b[2]; ++bx) {
+			if (!material_cache_replay_block_done(e, bx, by)) {
+				lo = lo < 0 ? bx : lo;
+				hi = bx + 1;
+			}
+		}
+		if (lo < 0) {
+			if (r0 >= 0) {
+				break; // The band ends at a row without missing blocks
+			}
+			continue;
+		}
+		i32 nxa = r0 < 0 || lo < xa ? lo : xa;
+		i32 nxb = r0 < 0 || hi > xb ? hi : xb;
+		if (r0 >= 0 && (i64)(nxb - nxa) * (by + 1 - r0) * MATERIAL_CACHE_REPLAY_BLOCK * MATERIAL_CACHE_REPLAY_BLOCK > e->band_px) {
+			break;
+		}
+		r0 = r0 < 0 ? by : r0;
+		xa = nxa, xb = nxb, r1 = by + 1;
+	}
+	if (r0 < 0) {
+		return false;
+	}
+	i32 x = xa * MATERIAL_CACHE_REPLAY_BLOCK, y = r0 * MATERIAL_CACHE_REPLAY_BLOCK;
+	i32 w = xb * MATERIAL_CACHE_REPLAY_BLOCK > e->w ? e->w - x : (xb - xa) * MATERIAL_CACHE_REPLAY_BLOCK;
+	i32 h = r1 * MATERIAL_CACHE_REPLAY_BLOCK > e->h ? e->h - y : (r1 - r0) * MATERIAL_CACHE_REPLAY_BLOCK;
+	if (_render_path_current_image != NULL) {
+		render_path_end();
+	}
+	draw_saved_t saved_draw = draw_suspend();
+	gpu_commit(NULL, NULL); // The work so far apart: the band's GPU time is its own
+	gpu_begin(e->tex, 3, NULL, e->cleared ? GPU_CLEAR_NONE : GPU_CLEAR_COLOR, 0x00000000, 0.0f); // Never rendered: zeros, read as nothing
+	e->cleared = true;
+	gpu_scissor(x, y, w, h);
+	_mesh_object_last_pipeline = NULL;
+	i32 need                   = mm_buffers_require(MM_BUFFERS_FULL);
+	mesh_object_draw(render_path_paint_target(), e->bake, NULL);
+	mm_buffers_require(need);
+	gpu_disable_scissor();
+	gpu_end();
+	_mesh_object_last_pipeline  = NULL;
+	material_cache_replay_band  = w * h;
+	material_cache_replay_owner = e;
+	material_cache_replay_wait  = 0;
+	atomic_store(&material_cache_replay_us, -1);
+	atomic_store(&material_cache_replay_flight, true);
+	gpu_commit(material_cache_replay_done, NULL);
+	draw_resume(saved_draw);
+	for (i32 by = r0; by < r1; ++by) {
+		for (i32 bx = xa; bx < xb; ++bx) {
+			i32 i = by * e->bw + bx;
+			if (!((e->done[i >> 6] >> (i & 63)) & 1)) {
+				e->done[i >> 6] |= 1ULL << (i & 63);
+				e->ndone++;
+			}
+		}
+	}
+	material_cache_replay_stats[4]++;
+	return true;
+}
+
+// Moves e's rendering on, in the context replayed (its material, a state of the stroke and the target's _paint_uv_tile),
+// for what a replay writes: uv bounds of the layer (NULL: all of it). sync: to the end, each band waited for. Else a
+// step: the shader, or a band once the last one's time is in. 1 ready there, 0 not yet, -1 unfit.
+i32 material_cache_replay_build(material_cache_replay_t *e, const f32 *uv, bool sync) {
+	while (true) {
+		e->used = iron_time();
+		if (e->state == MATERIAL_CACHE_UNFIT) {
+			return -1;
+		}
+		if (e->state == MATERIAL_CACHE_READY) {
+			return 1;
+		}
+		if (e->bake == NULL) { // New, or its shader went on to another target of the material
+			bool shared = e->state != MATERIAL_CACHE_NEW;
+			for (i32 i = 0; i < material_cache_replay_count && !shared; ++i) {
+				material_cache_replay_t *o = material_cache_replays[i];
+				shared = o != e && o->bake != NULL && hash128_eq(o->snap, e->snap) && o->uv_map == e->uv_map && o->mesh == e->mesh;
+			}
+			if (!material_cache_replay_parse(e)) {
+				return -1;
+			}
+			if (e->state == MATERIAL_CACHE_NEW) {
+				material_cache_replay_start(e);
+			}
+			if (!sync && !shared) { // A frame of its own for a parse
+				return 0;
+			}
+			continue;
+		}
+		i32 b[4];
+		material_cache_replay_need(e, uv, b);
+		bool all = e->ndone == e->bw * e->bh;
+		bool any = false; // A block of b missing
+		for (i32 by = b[1]; by < b[3] && !any && !all; ++by) {
+			for (i32 bx = b[0]; bx < b[2] && !any; ++bx) {
+				any = !material_cache_replay_block_done(e, bx, by);
+			}
+		}
+		if (!any || all) {
+			if (all) {
+				e->state = MATERIAL_CACHE_READY; // Its shader kept for the next target of the material
+			}
+			if (material_cache_timing()) {
+				iron_log("[matcache] replay cache %dx%d of snapshot %016llx: %d of %d blocks, %.1f ms of GPU, %.0f MB", e->w, e->h,
+				         (unsigned long long)e->snap.lo, e->ndone, e->bw * e->bh, e->gpu_ms, material_cache_replay_total() / (1024.0 * 1024.0));
+			}
+			material_cache_replay_stats[7] = (i32)(e->gpu_ms * 1000.0f);
+			return 1;
+		}
+		if (!material_cache_replay_poll()) { // A band in flight, this one's or another's
+			if (!sync) {
+				return 0;
+			}
+			usleep(200);
+			continue;
+		}
+		material_cache_replay_draw_band(e, b);
+		if (!sync) {
+			return 0;
+		}
+	}
+}
+
+// Paint shaders parsed and drawn while it is bound read e (NULL: none)
+void material_cache_replay_bind(material_cache_replay_t *e) {
+	material_cache_replay_bound = e;
+}
+
+bool material_cache_replay_is_bound(void) {
+	return material_cache_replay_bound != NULL;
+}
+
+// Tests: replay caches off (strokes evaluate their material), on again
+void material_cache_replay_set_enabled(i32 on) {
+	material_cache_replay_on = on ? 1 : 0;
+	if (!on) {
+		material_cache_replay_release();
+	}
+}
+
+// Tests: 0 replay caches, 1 rendered, 2 unfit, 3 over the budget, 4 bands, 5 the longest band in microseconds of GPU
+// time, 6 the last shader's parse and compile in microseconds, 7 the GPU time of the last one rendered in microseconds,
+// 8 their texture memory in KB
+i32 material_cache_replay_stat(i32 what) {
+	if (what == 0) {
+		return material_cache_replay_count;
+	}
+	if (what == 8) {
+		return (i32)(material_cache_replay_total() / 1024);
+	}
+	return what > 0 && what < 8 ? material_cache_replay_stats[what] : 0;
 }
 
 // Tests: off, paint shaders evaluate materials live (reading a cache, the next paint draw makes the shader again)

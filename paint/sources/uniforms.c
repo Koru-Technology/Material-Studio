@@ -120,6 +120,9 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	if (string_equals(link, "_mm_zero")) { // Added to Material Maker parameters, so the compiler does not fold them (see
 		return 0.0;                        // mm_uniform_runtime_declaration)
 	}
+	if (string_equals(link, "_paint_aspect")) { // The window's aspect, replaying the recorded camera's (paint_rec_cam_t)
+		return paint_exec_replay ? paint_replay_cam.aspect : sys_aspect();
+	}
 	if (starts_with(link, "_layer_opacity")) { // _layer_opacity<layer id>, see make_mesh_opacity
 		i32 id = atoi(link + 14);
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
@@ -260,9 +263,9 @@ static f32 uniforms_material_uv_angle() {
 }
 
 vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) {
-	if (string_equals(link, "_gbuffer_size")) {
-		gpu_texture_t *gbuffer2 = render_path_target_image("gbuffer2");
-		return (vec2_t){gbuffer2->width, gbuffer2->height};
+	if (string_equals(link, "_gbuffer_size")) { // Of the uv map clone and smudge read
+		gpu_texture_t *uv = render_path_target_image(render_path_paint_uv_target());
+		return (vec2_t){uv->width, uv->height};
 	}
 	else if (string_equals(link, "_clone_delta")) {
 		return (vec2_t){g_context->clone_delta_x, g_context->clone_delta_y};
@@ -386,6 +389,15 @@ vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) 
 	return v;
 }
 
+// Decals: the anchor on screen (decal_x, y), 1 in the mask pass, the mask's radius
+vec4_t uniforms_decal_mask() {
+	bool decal_mask = context_is_decal_mask_paint_pass();
+	f32  val        = (g_context->brush_radius * g_context->brush_nodes_radius) / 15.0;
+	f32  scale2d    = base_scale2d(base_h());
+	val *= scale2d * 2.0;
+	return (vec4_t){g_context->decal_x, g_context->decal_y, decal_mask ? 1 : 0, val};
+}
+
 vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) {
 	if (string_equals(link, "_pixel_snap_uv")) {
 		paint_exec_op_t *op = paint_exec_current();
@@ -393,6 +405,10 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 	}
 	if (string_equals(link, "_paint_uv_tile")) {
 		return paint_exec_uv_tile;
+	}
+	if (string_equals(link, "_fill_normal")) { // Angle fill: the picked triangle's (render_path_paint.c)
+		mesh_object_t *o = render_path_paint_fill_object;
+		return o != NULL ? util_mesh_triangle_normal(o, render_path_paint_fill_tri) : (vec4_t){0.0, 0.0, 0.0, 0.0};
 	}
 	if (string_equals(link, "_paint_dab_aabb_min") || string_equals(link, "_paint_dab_aabb_size")) {
 		mat4_t obj, obj_inv;
@@ -424,12 +440,8 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 		return v;
 	}
 	else if (string_equals(link, "_decal_mask")) {
-		bool decal_mask = context_is_decal_mask_paint_pass();
-		f32  val        = (g_context->brush_radius * g_context->brush_nodes_radius) / 15.0;
-		f32  scale2d    = base_scale2d(base_h());
-		val *= scale2d * 2.0;
-		vec4_t v = (vec4_t){g_context->decal_x, g_context->decal_y, decal_mask ? 1 : 0, val};
-		return v;
+		paint_exec_op_t *op = paint_exec_current();
+		return op != NULL ? op->decal_mask : uniforms_decal_mask();
 	}
 
 	return render_pass_get_vec4(link);
@@ -460,16 +472,8 @@ mat4_t uniforms_ext_mat4_link(object_t *object, shader_data_t *mat, char *link) 
 	return mat4_nan();
 }
 
-void uniforms_ext_cache_uv_island_map(void *_) {
-	util_uv_cache_uv_island_map();
-}
-
 void uniforms_ext_cache_dilate_map(void *_) {
 	util_uv_cache_dilate_map();
-}
-
-void uniforms_ext_cache_triangle_map(void *_) {
-	util_uv_cache_triangle_map();
 }
 
 void uniforms_ext_cache_uv_map(void *_) {
@@ -555,12 +559,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		}
 		return util_uv_uvmap;
 	}
-	else if (string_equals(link, "_textrianglemap")) {
-		if (!util_uv_trianglemap_cached) {
-			sys_notify_on_next_frame(&uniforms_ext_cache_triangle_map, NULL);
-		}
-		return util_uv_trianglemap;
-	}
 	else if (string_equals(link, "_texdilatemap") && paint_exec_replay && paint_replay_dilatemap != NULL) {
 		return paint_replay_dilatemap;
 	}
@@ -570,15 +568,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		}
 		sys_notify_on_next_frame(&uniforms_ext_cache_dilate_map, NULL);
 		return render_path_empty_white();
-	}
-	else if (string_equals(link, "_texuvislandmap")) {
-		sys_notify_on_next_frame(&uniforms_ext_cache_uv_island_map, NULL);
-		if (util_uv_uvislandmap_cached) {
-			return util_uv_uvislandmap;
-		}
-		else {
-			return render_path_empty_black();
-		}
 	}
 	else if (string_equals(link, "_texdilatemap")) {
 		return util_uv_dilatemap;
