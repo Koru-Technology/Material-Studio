@@ -270,7 +270,7 @@ static char *bake_texture_node_vector(ui_node_t *node, ui_node_socket_t *socket)
 	if (rt == NULL || bake_texture_node_baking) {
 		return "vec3(0.0, 0.0, 0.0)";
 	}
-	any_map_set(data_cached_textures, rt_name, rt->_image);
+	any_map_set(data_cached_textures, string_copy(rt_name), rt->_image); // The map keeps the key pointer
 	bind_tex_t *tex      = parser_material_make_bind_tex(rt_name, rt_name);
 	char       *texstore = parser_material_texture_store(node, tex, rt_name, COLOR_SPACE_AUTO);
 	return string_tmp("%s.rgb", texstore);
