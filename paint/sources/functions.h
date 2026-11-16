@@ -2494,4 +2494,6 @@ vec4_t           uniforms_pixel_snap_uv();
 
 // ---- render/make_dab_resolve.c ----
 void make_dab_resolve_run(i32 count);
+void make_dab_resolve_prewarm();
+void make_dab_resolve_prewarm_on_next_frame(void *_);
 char *make_brush_dab(char *k, i32 t);

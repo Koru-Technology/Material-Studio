@@ -62,13 +62,42 @@ void main() {\n\
 }\n\
 #endif\n";
 
-static shader_context_t *make_dab_resolve_scon = NULL;
+// The pass compiles on a thread (make_dab_resolve_prewarm) once a paint shader reading resolved dabs is made: compiled
+// at the first stroke it held that frame for 300 ms on the iPad
+static shader_context_t *make_dab_resolve_scon    = NULL;
+static char             *make_dab_resolve_glsl    = NULL;
+static char             *make_dab_resolve_vs      = NULL;
+static char             *make_dab_resolve_fs      = NULL;
+static iron_thread_t     make_dab_resolve_thread;
+static atomic_bool       make_dab_resolve_done;
+static bool              make_dab_resolve_compiling = false;
+static bool              make_dab_resolve_ready     = false;
 
 static void make_dab_resolve_const(shader_context_t *scon, char *name, char *type, char *link) {
 	any_array_push(scon->constants, ALLOC_INIT(shader_const_t, {.name = name, .type = type, .link = link}));
 }
 
-static void make_dab_resolve_init() {
+static void make_dab_resolve_worker(void *param) {
+	pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+	if (iron_glsl_translate(make_dab_resolve_glsl, &make_dab_resolve_vs, &make_dab_resolve_fs)) {
+		shader_context_set_sources(make_dab_resolve_scon, make_dab_resolve_vs, make_dab_resolve_fs);
+	}
+	gpu_pipeline_compile(make_dab_resolve_scon->_->pipe);
+	atomic_store(&make_dab_resolve_done, true);
+}
+
+static void make_dab_resolve_join() { // At exit too: glslang's tables go with the static destructors
+	if (make_dab_resolve_compiling) {
+		iron_thread_wait_and_destroy(&make_dab_resolve_thread);
+		make_dab_resolve_compiling = false;
+	}
+}
+
+// Starts compiling the pass on a thread, the context loaded with empty shaders until then
+void make_dab_resolve_prewarm() {
+	if (make_dab_resolve_scon != NULL) {
+		return;
+	}
 	shader_context_t *scon = ALLOC_INIT(shader_context_t, {
 	                                                          .name               = "dab_resolve",
 	                                                          .depth_write        = false,
@@ -124,22 +153,62 @@ void main() {\n\
 %s",
 	                    consts, make_dab_resolve_frag);
 
-	scon->_ = calloc(1, sizeof(shader_context_runtime_t));
-	gpu_create_shaders_from_glsl(glsl, &scon->vertex_shader, &scon->fragment_shader, &scon->_->vertex_shader_size, &scon->_->fragment_shader_size);
+	scon->_                       = calloc(1, sizeof(shader_context_runtime_t));
+	scon->vertex_shader           = calloc(1, 1);
+	scon->fragment_shader         = calloc(1, 1);
+	scon->_->vertex_shader_size   = 0;
+	scon->_->fragment_shader_size = 0;
+	shader_compile_batch_begin(); // Loaded without compiling, the thread compiles
 	shader_context_load(scon);
+	i32 count = 0;
+	shader_compile_batch_take(&count);
 	make_dab_resolve_scon = scon;
+	make_dab_resolve_glsl = glsl;
 	if (_render_path_cached_shader_contexts == NULL) {
 		_render_path_cached_shader_contexts = any_map_create();
 	}
 	any_map_set(_render_path_cached_shader_contexts, "_dab_resolve", ALLOC_INIT(cached_shader_context_t, {.context = scon}));
 	render_path_add_target("texpaint_dabs_resolved", PAINT_DAB_ROW * PAINT_DAB_TEXELS, PAINT_DAB_MAX / PAINT_DAB_ROW, "RGBA128", 1.0);
+	atomic_init(&make_dab_resolve_done, false);
+	static bool at_exit = false;
+	if (!at_exit) {
+		at_exit = true;
+		atexit(make_dab_resolve_join);
+	}
+	make_dab_resolve_compiling = true;
+	iron_thread_init(&make_dab_resolve_thread, make_dab_resolve_worker, NULL);
+}
+
+// Before the first stroke with resolved dabs: the pass on a thread, the geometry-only depth it reads
+void make_dab_resolve_prewarm_on_next_frame(void *_) {
+	make_dab_resolve_prewarm();
+	if (make_material_depth_scon == NULL) { // render_path_base_draw_gbuffer
+		make_material_parse_depth_material();
+	}
+}
+
+// The pass is ready to draw, waits for its thread when wait
+static bool make_dab_resolve_is_ready(bool wait) {
+	if (make_dab_resolve_ready) {
+		return true;
+	}
+	make_dab_resolve_prewarm();
+	if (!wait && !atomic_load(&make_dab_resolve_done)) {
+		return false;
+	}
+	make_dab_resolve_join();
+	shader_context_bind(make_dab_resolve_scon);
+	free(make_dab_resolve_vs);
+	free(make_dab_resolve_fs);
+	make_dab_resolve_vs    = NULL;
+	make_dab_resolve_fs    = NULL;
+	make_dab_resolve_ready = true;
+	return true;
 }
 
 // Resolves count dabs of the executor's input (paint_exec_dabs_in) into texpaint_dabs_resolved
 void make_dab_resolve_run(i32 count) {
-	if (make_dab_resolve_scon == NULL) {
-		make_dab_resolve_init();
-	}
+	make_dab_resolve_is_ready(true);
 	i32 rows = (count + PAINT_DAB_ROW - 1) / PAINT_DAB_ROW;
 	render_path_set_target("texpaint_dabs_resolved", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_scissor(0, 0, PAINT_DAB_ROW * PAINT_DAB_TEXELS, rows);

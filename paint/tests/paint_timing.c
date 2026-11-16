@@ -54,7 +54,7 @@ void next() {
 		}
 	}
 	else if (phase == 1) {
-		if (frame > 5) {
+		if (frame > 40) { // The shaders parsed for the case compile on threads meanwhile
 			printf("[paint_timing] begin %s batched %d", case_name(kase), make_paint_is_batched());
 			script_mouse_press(cx - 360, y, 0);
 			phase = 2;
