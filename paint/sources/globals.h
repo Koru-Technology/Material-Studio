@@ -319,7 +319,8 @@ string_array_t *console_last_traces;
 char           *console_capture = NULL;
 
 // ---- project.c ----
-u32 project_uid_next = 1; // Stable uids of layers and materials, saved with the project, never reused in it
+u32   project_uid_next = 1;    // Stable uids of layers and materials, saved with the project, never reused in it
+char *project_uuid     = NULL; // 32 hex digits, project_uuid_get
 
 // ---- history.c ----
 history_step_t_array_t *history_steps;

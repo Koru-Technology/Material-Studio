@@ -916,6 +916,8 @@ char            *slot_material_unique_name(ui_node_canvas_t *self, char *name);
 slot_material_t *slot_material_create(shader_data_t *m, ui_node_canvas_t *c);
 slot_material_t *slot_material_find_uid(u32 uid);
 u32              project_uid_take(); // Next stable uid of a layer or material (slot_layer_t.uid, slot_material_t.uid)
+char            *project_uuid_get(); // Random 128-bit id of the project in hex, names its history journal
+void             project_uuid_new();
 void             slot_material_unload(slot_material_t *raw);
 void             slot_material_delete(slot_material_t *raw);
 
@@ -1343,6 +1345,7 @@ slot_layer_t *layers_new_text_layer();
 void          layers_create_filter();
 void          layers_create_image_mask(asset_t *asset);
 void          layers_create_image_layer(asset_t *asset);
+void          layers_create_image_at(i32 i, bool mask);
 void          layers_create_color_layer(i32 base_color, f32 occlusion, f32 roughness, f32 metallic, i32 position);
 void          layers_duplicate_layer(slot_layer_t *l);
 
@@ -1390,6 +1393,8 @@ bool layers_fill_paint_needs_new_layer();
 bool layers_fill_paint_to_new_layer();
 void layers_fill_paint_confirm_new_layer();
 bool layers_fill_paint_to_mask();
+bool layers_fill_paint_needs_mask();
+void layers_fill_paint_confirm_mask();
 bool layers_fill_paint_tool(i32 tool);
 void layers_create_fill_layer(uv_type_t uv_type, mat4_t decal_mat, i32 position);
 
@@ -1871,6 +1876,8 @@ extern bool    context_script_touch;
 bool           context_finger_paint_blocked();
 
 // ---- history.c ----
+i32             history_ring_size();
+void            history_ring_set_size(i32 n);
 i32             history_ring_prev();
 i32             history_ring_next();
 void            history_drop_oldest();
@@ -1901,6 +1908,7 @@ void                  history_swap_canvas(history_step_t *step);
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
 void            history_paint();
 void            history_new_layer();
+void            history_new_image_layer(asset_t *asset);
 void            history_new_black_mask();
 void            history_new_white_mask();
 void            history_new_fill_mask();
@@ -2292,6 +2300,31 @@ void           bake_maps_inpaint_clear(void);
 bool           bake_maps_inpaint_apply(char *path, i32 mode, bool vector);
 void           bake_maps_inpaint_end(void);
 #endif
+
+// ---- history_store.c ----
+void  hstore_chunk_header_write(u8 *p, u8 kind, u8 codec, u16 flags, hash128_t h, u32 raw_len, u32 comp_len);
+bool  hstore_chunk_header_read(const u8 *p, hstore_chunk_t *c);
+u8   *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify);
+char *hstore_journal_path(char *uuid);
+void  hstore_journal_mark_saved();
+bool  hstore_journal_pending(char *uuid);
+i32   hstore_recover();
+void  hstore_recover_end();
+void  hstore_journal_delete(char *uuid);
+void  hstore_journal_rebind(char *old_uuid);
+i32   hstore_test_put(i32 kind, i32 seed, i32 len, bool noise);
+i32   hstore_test_get(i32 id, i32 seed, i32 len, bool noise);
+bool  hstore_test_has(i32 id);
+void  hstore_test_ref(i32 id);
+void  hstore_test_unref(i32 id);
+f32   hstore_test_stat(i32 field);
+void  hstore_drop_tier(i32 tier);
+void  hstore_test_flush();
+void  hstore_test_trim(bool memory_warning);
+void  hstore_test_reset();
+void  hstore_test_crash();
+void  hstore_test_tear(i32 bytes);
+char *hstore_test_journal_path();
 
 // ---- util/util_test.c ----
 i32   script_diff_images(char *path_a, char *path_b, f32 tol);

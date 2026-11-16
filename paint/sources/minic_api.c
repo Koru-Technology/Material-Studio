@@ -727,6 +727,7 @@ void minic_register_builtins() {
 	MINIC_P(texmask);
 	MINIC_B(mask_stack_dirty);
 	MINIC_I(revision);
+	MINIC_I(uid);
 	MINIC_END();
 
 	MINIC_STRUCT(ui_nodes_t);
@@ -960,6 +961,8 @@ void minic_register_builtins() {
 	MINIC_B(timeline_shadow);
 	MINIC_B(history_v2);
 	MINIC_B(export_tiled);
+	MINIC_I(history_ram_mb);
+	MINIC_I(history_disk_mb);
 	MINIC_END();
 
 	MINIC_STRUCT(context_t);

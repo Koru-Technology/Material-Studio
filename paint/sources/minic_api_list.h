@@ -1039,11 +1039,41 @@ X0(armpack_size_f32, "i()", i)
 X0(armpack_size_bool, "i()", i)
 X2(armpack_map_get_f32, "f(p:any_map_t map,p:char key)", f, p, p)
 X2(armpack_map_get_i32, "i(p:any_map_t map,p:char key)", i, p, p)
+
+// history_store.c test hooks. hstore_test_stat fields, KB unless noted: 0 blobs (count), 1 ram, 2 disk (journal),
+// 3 dirty, 4 dead, 5 ram budget, 6 disk budget, 7 last flush (ms), 8 chunks read from the journal (count)
+X4(hstore_test_put, "i(i kind,i seed,i len,i noise)", i, i, i, i, b)
+X4(hstore_test_get, "i(i id,i seed,i len,i noise)", i, i, i, i, b)
+X1(hstore_test_has, "i(i id)", b, i)
+X1(hstore_test_ref, "v(i id)", v, i)
+X1(hstore_test_unref, "v(i id)", v, i)
+X1(hstore_test_stat, "f(i field)", f, i)
+X1(hstore_drop_tier, "v(i tier)", v, i)
+X0(hstore_test_flush, "v()", v)
+X1(hstore_test_trim, "v(i memory_warning)", v, b)
+X0(hstore_test_reset, "v()", v)
+X0(hstore_test_crash, "v()", v)
+X1(hstore_test_tear, "v(i bytes)", v, i)
+X0(hstore_test_journal_path, "p:char()", p)
+X0(hstore_recover, "i()", i)
+X0(hstore_recover_end, "v()", v)
+X0(hstore_journal_mark_saved, "v()", v)
+X1(hstore_journal_pending, "i(p:char uuid)", b, p)
+X0(project_uuid_get, "p:char()", p)
+
+// util/util_test.c: fast pixel comparisons for tests, tol and results in 1/255
 X3(script_diff_images, "i(p:char path_a,p:char path_b,f tol)", i, p, p, f)
 X3(script_diff_textures, "i(p:gpu_texture_t a,p:gpu_texture_t b,f tol)", i, p, p, f)
 X0(script_diff_max, "f()", f)
 X0(script_diff_mean, "f()", f)
 X2(script_diff_mask, "v(p:gpu_texture_t mask,i mode)", v, p, i)
 X1(script_texture_hash, "p:char(p:gpu_texture_t t)", p, p)
+
+// History (history.c, util/util_layer_create.c) test hooks
+X2(layers_create_image_at, "v(i asset,i mask)", v, i, i)
+X0(history_ring_size, "i()", i)
+X1(history_ring_set_size, "v(i n)", v, i)
+
+// Texture export (io/export_texture.c, ui/box_export.c) test hooks
 X5(export_texture_test_options, "v(p:char preset,i layers_export,b padding,i bits,i format)", v, p, i, b, i, i)
 X2(box_export_textures_run, "v(p:char path,b bake_material)", v, p, b)

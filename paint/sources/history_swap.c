@@ -175,10 +175,12 @@ void history_swap_layer_props(history_step_t *step) {
 	else if (step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL) {
 		slot_material_t_array_t *materials = g_project->_->materials;
 		i32                      t         = array_index_of(materials, l->fill_material);
+		u32                      t_uid     = l->fill_material != NULL ? l->fill_material->uid : 0;
 		if (step->material >= 0 && step->material < materials->length) {
 			l->fill_material = materials->buffer[step->material];
 		}
-		step->material = t;
+		step->material     = t;
+		step->material_uid = t_uid;
 		sys_notify_on_next_frame(&history_update_fill_layer, l);
 	}
 	else if (step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {

@@ -1,6 +1,8 @@
 import SwiftUI
 
 #if os(iOS)
+import UIKit
+
 // iPad: the canvas fills the screen, the controls float over it on Liquid Glass.
 // Top left: actions and viewport menus. Top right: library popovers. Left: tools, size, opacity.
 // Bottom left: undo, redo. Bottom right: frame, views, view cube.
@@ -29,6 +31,163 @@ struct PadControls: View {
 			}
 		}
 		.padding(16)
+		.padPanelHost()
+		.background {
+			// While a panel is open, a touch on the canvas only closes it (it does not paint)
+			if PadPopovers.shared.shown != nil {
+				Color.clear
+					.contentShape(.rect)
+					.ignoresSafeArea()
+					.gesture(DragGesture(minimumDistance: 0).onChanged { _ in
+						PadPopovers.shared.close()
+					})
+			}
+		}
+		.onDisappear {
+			PadPopovers.shared.close() // An editor over the canvas took the screen: its panel went with the controls
+		}
+	}
+}
+
+// One panel of the controls at a time, by name: the libraries, the camera, the viewport modes, a tool's properties.
+// They are drawn here over the controls rather than presented as system popovers: a system popover takes the first tap
+// outside it to close, and a popover asked to open while another one closes is dropped. Here a tap on another button
+// switches at once (no animation), only opening from none and closing to none animate. A tap on the canvas closes.
+@Observable
+final class PadPopovers {
+	static let shared = PadPopovers()
+
+	// Launch argument "-NativeShow Layers" opens that panel (screenshots from scripted runs)
+	private(set) var shown: String? = UserDefaults.standard.string(forKey: "NativeShow")
+
+	func toggle(_ name: String) {
+		if shown == name {
+			close()
+		}
+		else if shown != nil {
+			var t                = Transaction()
+			t.disablesAnimations = true
+			withTransaction(t) {
+				shown = name
+			}
+		}
+		else {
+			withAnimation(.snappy(duration: 0.22)) {
+				shown = name
+			}
+		}
+	}
+
+	func close() {
+		guard shown != nil else {
+			return
+		}
+		withAnimation(.easeOut(duration: 0.16)) {
+			shown = nil
+		}
+	}
+}
+
+// A button's panel: where the button is, the side it opens to, what it shows
+struct PadPanel {
+	let anchor: Anchor<CGRect>
+	let edge: Edge? // .leading: right of the button, nil: below it, or above it in the lower half of the screen
+	let content: AnyView
+}
+
+struct PadPanelKey: PreferenceKey {
+	static var defaultValue: [String: PadPanel] = [:]
+
+	static func reduce(value: inout [String: PadPanel], nextValue: () -> [String: PadPanel]) {
+		value.merge(nextValue()) { _, new in new }
+	}
+}
+
+extension View {
+	// The button opens the panel named name (PadPopovers.toggle), PadPanelHost draws it
+	func padPopover<Content: View>(_ name: String, arrowEdge: Edge? = nil, @ViewBuilder content: @escaping () -> Content) -> some View {
+		anchorPreference(key: PadPanelKey.self, value: .bounds) { anchor in
+			[name: PadPanel(anchor: anchor, edge: arrowEdge, content: AnyView(content()))]
+		}
+	}
+
+	// Draws the open panel next to its button
+	func padPanelHost() -> some View {
+		overlayPreferenceValue(PadPanelKey.self) { panels in
+			PadPanelHost(panels: panels)
+		}
+	}
+}
+
+struct PadPanelHost: View {
+	let panels: [String: PadPanel]
+	private var popovers = PadPopovers.shared
+
+	init(panels: [String: PadPanel]) {
+		self.panels = panels
+	}
+
+	private let gap: CGFloat    = 10
+	private let margin: CGFloat = 8
+
+	var body: some View {
+		GeometryReader { geo in
+			ZStack(alignment: .topLeading) {
+				Color.clear
+					.allowsHitTesting(false)
+				if let name = popovers.shown, let panel = panels[name] {
+					let button = geo[panel.anchor]
+					let below  = button.midY < geo.size.height / 2
+					PadPanelContent(content: panel.content)
+						.background(Color(uiColor: PadPanelContent.background))
+						.clipShape(.rect(cornerRadius: 24, style: .continuous))
+						.overlay {
+							RoundedRectangle(cornerRadius: 24, style: .continuous)
+								.strokeBorder(.white.opacity(0.12), lineWidth: 1)
+								.allowsHitTesting(false)
+						}
+						.shadow(color: .black.opacity(0.3), radius: 24, y: 8)
+						.alignmentGuide(.leading) { d in
+							let x = panel.edge == .leading ? button.maxX + gap : button.midX - d.width / 2
+							return -min(max(x, margin), geo.size.width - d.width - margin)
+						}
+						.alignmentGuide(.top) { d in
+							let y = panel.edge == .leading ? button.midY - d.height / 2
+							      : below ? button.maxY + gap : button.minY - gap - d.height
+							return -min(max(y, margin), geo.size.height - d.height - margin)
+						}
+						.transition(.opacity.combined(with: .scale(scale: 0.96, anchor: panel.edge == .leading ? .leading : below ? .top : .bottom)))
+						.id(name)
+				}
+			}
+		}
+		.ignoresSafeArea(.keyboard) // The panel stays where it is when the keyboard comes up
+	}
+}
+
+// A panel's content with the colors of a popover: in the elevated interface level the system backgrounds are gray, not
+// black (lists, forms and navigation bars use them)
+struct PadPanelContent: UIViewControllerRepresentable {
+	let content: AnyView
+
+	static let background = UIColor.systemBackground.resolvedColor(with: UITraitCollection(traitsFrom: [
+		UITraitCollection(userInterfaceStyle: .dark), UITraitCollection(userInterfaceLevel: .elevated),
+	]))
+
+	func makeUIViewController(context: Context) -> UIHostingController<AnyView> {
+		let host                                = UIHostingController(rootView: content)
+		host.sizingOptions                      = [.intrinsicContentSize]
+		host.traitOverrides.userInterfaceLevel  = .elevated
+		host.view.backgroundColor               = .clear
+		return host
+	}
+
+	func updateUIViewController(_ host: UIHostingController<AnyView>, context: Context) {
+		host.rootView = content
+	}
+
+	func sizeThatFits(_ proposal: ProposedViewSize, uiViewController host: UIHostingController<AnyView>, context: Context) -> CGSize? {
+		host.sizeThatFits(in: CGSize(width: proposal.width ?? .infinity, height: proposal.height ?? .infinity))
 	}
 }
 
@@ -109,23 +268,21 @@ struct PadMenuBar: View {
 // Lit, path traced or a channel: a popover list, the 17 modes overflow a menu, which does not scroll
 struct ViewportButton: View {
 	private var store = AppStore.shared
-	@State private var shown = false
 
 	var body: some View {
 		Button {
-			shown.toggle()
+			PadPopovers.shared.toggle("Viewport")
 		} label: {
 			Image(systemName: viewportModeSymbol(store.viewportMode))
 				.frame(width: 44, height: 44)
 		}
 		.glassEffect(.regular.interactive(), in: .circle)
 		.accessibilityLabel("Viewport: \(viewportModes.first { $0.0 == store.viewportMode }?.1 ?? "Lit")")
-		.popover(isPresented: $shown) {
+		.padPopover("Viewport") {
 			ViewportModeList {
-				shown = false
+				PadPopovers.shared.close()
 			}
 			.frame(width: 240, height: 520)
-			.presentationCompactAdaptation(.popover)
 		}
 	}
 }
@@ -161,8 +318,7 @@ struct ViewportModeList: View {
 }
 
 struct PadPopoverBar: View {
-	// Launch argument "-NativeShow Layers" opens that popover (screenshots from scripted runs)
-	@State private var shown: String? = UserDefaults.standard.string(forKey: "NativeShow")
+	private var popovers = PadPopovers.shared
 
 	var body: some View {
 		GlassEffectContainer(spacing: 8) {
@@ -181,7 +337,7 @@ struct PadPopoverBar: View {
 	private func item<Content: View>(_ name: String, _ symbol: String, image: CGImage? = nil,
 	                                 @ViewBuilder content: @escaping () -> Content) -> some View {
 		Button {
-			shown = shown == name ? nil : name
+			popovers.toggle(name)
 		} label: {
 			Group {
 				if let image {
@@ -196,13 +352,12 @@ struct PadPopoverBar: View {
 			}
 			.frame(width: 44, height: 44)
 		}
-		.glassEffect(shown == name ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
+		.glassEffect(popovers.shown == name ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
 		.foregroundStyle(.primary)
 		.accessibilityLabel(name)
-		.popover(isPresented: Binding(get: { shown == name }, set: { if !$0, shown == name { shown = nil } })) {
+		.padPopover(name) {
 			content()
 				.frame(width: 380, height: 560)
-				.presentationCompactAdaptation(.popover)
 		}
 	}
 }

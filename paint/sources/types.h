@@ -373,6 +373,8 @@ typedef struct config {
 	bool                 timeline_shadow;   // Stroke recording runs beside the old undo, nothing reads it (stroke_rec.h)
 	bool                 history_v2;        // Undo from timelines and checkpoints, the undo ring retired
 	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
+	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
+	i32                  history_disk_mb;   // History journal size above which it is compacted
 } config_t;
 
 // ---- Materials ----
@@ -818,6 +820,11 @@ typedef struct history_step {
 	bool                         undo_tiled;     // Paint step undone from its tiles, see history_tiles.c
 	i32_array_t                 *undo_tiles;     // Tile and pool slot pairs, NULL until the stroke is over
 	i32                          undo_tiles_gen;
+	u32                          serial;       // Unique in the session, timeline entries point back at it
+	u32                          layer_uid;    // Layer, its parent and material of the step, found by uid first (history_step_valid)
+	u32                          parent_uid;   // 0 when none
+	u32                          material_uid;
+	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
 } history_step_t;
 
 // ---- Logic nodes and node groups ----
@@ -1249,3 +1256,21 @@ struct studio_graph {
 	i32            count;
 	studio_layer_t layers[STUDIO_LAYERS];
 };
+
+// ---- Blob store chunks (history_store.c, io/project_container.c) ----
+#include "util/util_hash.h"
+
+#define HSTORE_CHUNK_HEADER   32 // "CHNK" u8 kind, u8 codec, u16 flags, u64 hash.lo, u64 hash.hi, u32 raw_len, u32 comp_len
+#define HSTORE_JOURNAL_HEADER 16 // "MSJN" u32 version, 8 bytes 0
+#define HSTORE_CODEC_RAW      0
+#define HSTORE_CODEC_LZ4      1  // iron_lz4 block
+#define HSTORE_CHUNK_MARK     1  // Flag of a kind 0 chunk: the project was saved here (journal only)
+
+typedef struct hstore_chunk {
+	u8        kind; // hstore_kind_t, 0 for marks
+	u8        codec;
+	u16       flags;
+	hash128_t h;
+	u32       raw_len;
+	u32       comp_len;
+} hstore_chunk_t;

@@ -3,11 +3,9 @@ import SwiftUI
 #if os(iOS)
 // The camera button over the canvas, its popover the old Camera menu
 struct CameraButton: View {
-	@State private var shown = false
-
 	var body: some View {
 		Button {
-			shown.toggle()
+			PadPopovers.shared.toggle("Camera")
 		} label: {
 			Image(systemName: "camera")
 				.frame(width: 44, height: 44)
@@ -15,10 +13,9 @@ struct CameraButton: View {
 		.glassEffect(.regular.interactive(), in: .circle)
 		.foregroundStyle(.primary)
 		.accessibilityLabel("Camera")
-		.popover(isPresented: $shown) {
+		.padPopover("Camera") {
 			CameraPopover()
 				.frame(width: 320, height: 560)
-				.presentationCompactAdaptation(.popover)
 		}
 	}
 }

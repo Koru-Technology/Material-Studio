@@ -229,6 +229,23 @@ u32 project_uid_take() {
 	return project_uid_next++;
 }
 
+void project_uuid_new() {
+	u8 b[16];
+	arc4random_buf(b, sizeof(b));
+	char *s = malloc(33);
+	for (i32 i = 0; i < 16; ++i) {
+		snprintf(s + i * 2, 3, "%02x", b[i]);
+	}
+	project_uuid = s;
+}
+
+char *project_uuid_get() {
+	if (project_uuid == NULL) {
+		project_uuid_new();
+	}
+	return project_uuid;
+}
+
 void project_new(bool reset_layers) {
 	if (g_context->paint_object != NULL) {
 		project_cleanup();
@@ -316,6 +333,8 @@ void project_new(bool reset_layers) {
 	g_context->picked_color          = project_make_swatch(0xffffffff);
 	g_context->color_picker_callback = NULL;
 	history_reset();
+	hstore_reset(); // Deletes the closed project's journal
+	project_uuid = NULL;
 
 	make_material_parse_paint_material(true);
 	make_material_parse_brush();

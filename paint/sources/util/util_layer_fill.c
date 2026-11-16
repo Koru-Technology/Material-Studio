@@ -299,15 +299,24 @@ bool layers_fill_paint_to_mask() {
 	return layers_fill_paint_to_mask_of(l, false);
 }
 
-// Selects the first paintable mask of fill layer l, or a new black one. created: l was just made, its mask's history
-// step goes with it.
-static bool layers_fill_paint_to_mask_of(slot_layer_t *l, bool created) {
+// The first paintable mask of fill layer l (not a fill mask), NULL when it has none
+static slot_layer_t *layers_fill_paint_mask(slot_layer_t *l) {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *m = g_project->_->layers->buffer[i];
 		if (m->parent == l && slot_layer_is_mask(m) && m->fill_material == NULL) {
-			context_set_layer(m);
-			return true;
+			return m;
 		}
+	}
+	return NULL;
+}
+
+// Selects the first paintable mask of fill layer l, or a new black one. created: l was just made, its mask's history
+// step goes with it.
+static bool layers_fill_paint_to_mask_of(slot_layer_t *l, bool created) {
+	slot_layer_t *mask = layers_fill_paint_mask(l);
+	if (mask != NULL) {
+		context_set_layer(mask);
+		return true;
 	}
 	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
 	slot_layer_t         *m        = layers_new_mask(false, l, -1);
@@ -325,6 +334,53 @@ static bool layers_fill_paint_to_mask_of(slot_layer_t *l, bool created) {
 	}
 	sys_notify_on_next_frame(&layers_fill_paint_update, NULL);
 	return true;
+}
+
+// A stroke on a fill layer that has no mask to paint: the user picks a black or a white mask first (asked with
+// layers_fill_paint_confirm_mask), the stroke is dropped
+bool layers_fill_paint_needs_mask() {
+	slot_layer_t *l = layers_fill_paint_target();
+	return l != NULL && g_context->layer == l && !layers_fill_paint_needs_new_layer() && layers_fill_paint_mask(l) == NULL;
+}
+
+static slot_layer_t *layers_fill_mask_layer = NULL; // The fill layer the box asks about
+static i32           layers_fill_mask_type  = 0;    // layers_op_new_mask: 0 black, 1 white
+
+static void layers_fill_paint_new_mask_on_next_frame(void *_) {
+	slot_layer_t *l        = layers_fill_mask_layer;
+	layers_fill_mask_layer = NULL;
+	if (slot_layer_alive(l)) {
+		layers_op_new_mask(l, layers_fill_mask_type); // Selected, the next stroke paints it
+		ui_dock_redraw(-1);
+	}
+}
+
+static void layers_fill_paint_new_mask(i32 type) {
+	ui_box_hide();
+	layers_fill_mask_type = type;
+	sys_notify_on_next_frame(&layers_fill_paint_new_mask_on_next_frame, NULL); // Not in the middle of drawing the box
+}
+
+static void layers_fill_paint_mask_box() {
+	ui_text(tr("A fill layer is painted through a mask."), UI_ALIGN_LEFT, 0x00000000);
+	ui_text(tr("Black hides the fill until painted, white shows all of it."), UI_ALIGN_LEFT, 0x00000000);
+	ui_row3();
+	if (ui_icon_button(tr("Create Black Mask"), ICON_CHECK, UI_ALIGN_CENTER)) {
+		layers_fill_paint_new_mask(0);
+	}
+	if (ui_icon_button(tr("Create White Mask"), ICON_CHECK, UI_ALIGN_CENTER)) {
+		layers_fill_paint_new_mask(1);
+	}
+	if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
+		layers_fill_mask_layer = NULL;
+		ui_box_hide();
+	}
+}
+
+// Asks for a mask to paint the current fill layer through
+void layers_fill_paint_confirm_mask() {
+	layers_fill_mask_layer = layers_fill_paint_target();
+	ui_box_show_custom(&layers_fill_paint_mask_box, 640, 230, NULL, true, tr("Fill Layer"));
 }
 
 // Tools that paint a fill layer through its mask

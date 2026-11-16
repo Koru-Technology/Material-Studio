@@ -240,12 +240,20 @@ struct BrushesPopover: View {
 	private func newBrush(in group: Int32? = nil) {
 		let target = group ?? brushes.selectedBrush?.groupID ?? -1
 		store.perform { app_brush_new(target) }
+#if os(iOS)
+		PadPopovers.shared.close() // The iPad panel
+#else
 		dismiss()
+#endif
 	}
 
 	private func edit(_ brush: BrushRow) {
 		store.perform { _ = app_brush_edit(brush.id) }
+#if os(iOS)
+		PadPopovers.shared.close() // The iPad panel
+#else
 		dismiss()
+#endif
 	}
 }
 
