@@ -1151,6 +1151,8 @@ bool            history_tiles_supported(slot_layer_t *l);
 i64             history_tiles_memory();
 void            history_tiles_reset();
 void            history_tiles_release(history_step_t *step);
+bool            history_tiles_valid(history_step_t *step, slot_layer_t *l);
+void            history_tiles_keep_newest(i32 steps);
 void            history_tiles_finalize();
 void            history_tiles_begin(history_step_t *step, slot_layer_t *l);
 history_step_t *history_tiles_pending_step(slot_layer_t **layer);
@@ -1876,6 +1878,10 @@ bool           context_finger_paint_blocked();
 
 // ---- history.c ----
 bool            history_v2_active(); // history_v2 as it was at the last history_reset
+void            history_flush_restores(slot_layer_t *l);
+bool            history_busy();
+i32             history_test_restore_runs();
+void            history_on_memory_warning();
 i32             history_ring_size();
 void            history_ring_set_size(i32 n);
 i32             history_ring_prev();
@@ -1893,6 +1899,9 @@ history_step_t *history_push(history_action_t action);
 // ---- history_swap.c ----
 slot_layer_t_array_t *history_merge_saved_layers();
 void                  history_swap_merge(history_step_t *step, bool undo);
+void                  history_records_take(history_step_t *step);
+void                  history_record_children(const u8 *data, u32 len, void (*visit)(hash128_t child, void *ud), void *ud);
+void                  history_records_free(history_step_t *step);
 void                  history_swap_order(history_step_t *step);
 void                  history_get_height_blend(slot_layer_t *l, f32 *out);
 void                  history_restore_applied_mask(history_step_t *step, slot_layer_t *m);

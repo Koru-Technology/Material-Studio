@@ -51,6 +51,7 @@ static void tl_tiles_register() {
 	static bool registered = false;
 	if (!registered) {
 		hstore_set_children(HSTORE_TILEMAP, timeline_tiles_children);
+		hstore_set_children(HSTORE_LAYER_RECORD, history_record_children);
 		registered = true;
 	}
 }

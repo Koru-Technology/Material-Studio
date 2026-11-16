@@ -136,8 +136,12 @@ static void history_undo_invert_mask(history_step_t *step) {
 }
 
 static void history_step_free(history_step_t *step) {
+	history_records_free(step);
 	for (i32 i = 0; step->merge_layers != NULL && i < step->merge_layers->length; ++i) {
-		slot_layer_unload(step->merge_layers->buffer[i]);
+		slot_layer_t *l = step->merge_layers->buffer[i];
+		if (l->texpaint != NULL || slot_layer_is_group(l)) { // Records freed their textures already
+			slot_layer_unload(l);
+		}
 	}
 	history_tiles_release(step);
 	array_delete(step->mask_effects);
@@ -158,7 +162,7 @@ bool history_v2_active() {
 
 // Steps kept at most, paint steps keep their tiles and can go much further back than whole layer copies
 static i32 history_max_steps() {
-	return 64;
+	return history_v2_on ? g_config->history_max_steps : 64;
 }
 
 // Whole layer copies held by the steps that can still be undone or redone
@@ -299,6 +303,245 @@ static bool history_step_valid_check(history_step_t *step, bool undo) {
 	}
 }
 
+// ---- history_v2: layer pixels from timelines ----
+// Undo and redo of a raster step swap its tiles while they are valid. Otherwise the layer goes to the state of its
+// timeline at the cursor the step moved it to. Those restores are deferred and coalesced: rapid undos restore each layer
+// once, on the next frame or as soon as the layer is needed (painted, another kind of step runs). history_busy() while
+// some are pending.
+
+typedef struct history_restore {
+	u32 tl;   // Timeline uid
+	i32 live; // Position the layer holds now, -1 unknown
+	i32 pos;  // Position to restore
+} history_restore_t;
+
+static history_restore_t *history_restores          = NULL;
+static i32                history_restore_count     = 0;
+static i32                history_restore_cap       = 0;
+static bool               history_restore_scheduled = false;
+static i32                history_restore_runs      = 0; // Restores run so far, for tests
+
+static history_restore_t *history_restore_find(u32 tl) {
+	for (i32 i = 0; i < history_restore_count; ++i) {
+		if (history_restores[i].tl == tl) {
+			return &history_restores[i];
+		}
+	}
+	return NULL;
+}
+
+static slot_layer_t *history_layer_of_timeline(u32 tl) {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		if (g_project->_->layers->buffer[i]->timeline == tl) {
+			return g_project->_->layers->buffer[i];
+		}
+	}
+	return NULL;
+}
+
+static void history_restore_run(history_restore_t *r) {
+	timeline_t   *tl = timeline_find(r->tl);
+	slot_layer_t *l  = history_layer_of_timeline(r->tl);
+	if (tl == NULL || l == NULL || !timeline_layer_paints(l)) {
+		return;
+	}
+	paint_target_t t;
+	timeline_target_live(l, &t);
+	hash128_t to   = timeline_state(tl, r->pos);
+	hash128_t from = r->live >= 0 ? timeline_state(tl, r->live) : HASH128_NONE;
+	bool      ok   = !hash128_is_none(to) ? timeline_tiles_restore_from(to, from, &t) : timeline_materialize(tl, r->pos, &t);
+	if (!ok) {
+		iron_log("Undo could not restore the pixels of %s", l->name);
+	}
+	history_restore_runs++;
+	mask_stack_layer_changed(l);
+	mask_stack_mark_dirty(l);
+	g_context->layer_preview_dirty = true;
+	g_context->ddirty              = 2;
+	g_context->rtdirty             = 1;
+}
+
+// Pending restores run now: of l, every one when l is NULL
+void history_flush_restores(slot_layer_t *l) {
+	for (i32 i = 0; i < history_restore_count; ++i) {
+		if (l != NULL && (l->timeline == 0 || history_restores[i].tl != l->timeline)) {
+			continue;
+		}
+		history_restore_t r   = history_restores[i];
+		history_restores[i--] = history_restores[--history_restore_count];
+		history_restore_run(&r);
+	}
+}
+
+static void history_restore_job(void *_) {
+	history_restore_scheduled = false;
+	history_flush_restores(NULL);
+	if (g_config->touch_ui) {
+		ui_menubar_menu_handle->redraws = 2; // Undo and redo buttons leave their busy state
+	}
+}
+
+// Layers still to be restored after undo or redo
+bool history_busy() {
+	return history_restore_count > 0;
+}
+
+i32 history_test_restore_runs() {
+	return history_restore_runs;
+}
+
+// The cursors step moved go back (undo) or forth, the layers follow at the next flush. full: what the layers hold now is
+// no state of their timeline.
+static void history_defer_moves(history_step_t *step, bool undo, bool full) {
+	for (i32 i = 0; step->tl_moves != NULL && i < step->tl_moves->length; i += 3) {
+		u32         uid = (u32)step->tl_moves->buffer[i];
+		timeline_t *tl  = timeline_find(uid);
+		if (tl == NULL) {
+			continue;
+		}
+		history_restore_t *r = history_restore_find(uid);
+		if (r == NULL) {
+			if (history_restore_count == history_restore_cap) {
+				history_restore_cap = history_restore_cap == 0 ? 8 : history_restore_cap * 2;
+				history_restores    = realloc(history_restores, sizeof(history_restore_t) * history_restore_cap);
+			}
+			r       = &history_restores[history_restore_count++];
+			r->tl   = uid;
+			r->live = full ? -1 : tl->cursor;
+		}
+		else if (full) {
+			r->live = -1;
+		}
+		r->pos = step->tl_moves->buffer[i + (undo ? 1 : 2)];
+	}
+	if (history_restore_count > 0 && !history_restore_scheduled) {
+		history_restore_scheduled = true;
+		sys_notify_on_next_frame(&history_restore_job, NULL);
+	}
+}
+
+// Stroke, clear, invert: tiles swapped, or the layer restored from its timeline
+static void history_v2_raster(history_step_t *step, bool undo) {
+	slot_layer_t *l = g_project->_->layers->buffer[step->layer];
+	if (step->action == HISTORY_ACTION_PAINT) {
+		context_select_paint_object(g_project->_->paint_objects->buffer[step->object]);
+	}
+	context_set_layer(l);
+	timeline_t *tl = timeline_of(l);
+	if (step->undo_tiled && history_tiles_valid(step, l) && (tl == NULL || history_restore_find(tl->uid) == NULL)) {
+		history_tiles_swap(step, l);
+		mask_stack_mark_dirty(l);
+		g_context->layer_preview_dirty = true;
+	}
+	else {
+		history_tiles_release(step); // Its tiles no longer hold the other side of the layer
+		history_defer_moves(step, undo, false);
+	}
+}
+
+static void history_v2_refresh_fill(slot_layer_t *l) {
+	if (slot_layer_alive(l)) {
+		layers_refresh_fill_layer(l);
+	}
+}
+
+// Apply mask undo: the layers it was applied to come back from their timelines, the mask from its own
+static void history_v2_unapply_mask(history_step_t *step) {
+	slot_layer_t_array_t *layers   = g_project->_->layers;
+	i32                   mask_pos = step->layer;
+	slot_layer_t         *current  = slot_layer_is_mask(layers->buffer[mask_pos]) ? layers->buffer[mask_pos]->parent : layers->buffer[mask_pos];
+	timeline_t           *src      = NULL;
+	i32                   src_pos  = 0;
+	for (i32 i = 0; step->tl_moves != NULL && i < step->tl_moves->length && src == NULL; i += 3) {
+		timeline_t *tl     = timeline_find((u32)step->tl_moves->buffer[i]);
+		i32         before = step->tl_moves->buffer[i + 1];
+		if (tl != NULL && before < tl->count && tl->entries[before].kind == TL_APPLY_MASK) {
+			src     = timeline_find(tl->entries[before].src_tl);
+			src_pos = tl->entries[before].src_pos;
+		}
+	}
+	history_defer_moves(step, true, false);
+	history_flush_restores(NULL);
+
+	layers_new_mask(false, current, mask_pos);
+	slot_layer_t *m = g_context->layer;
+	history_restore_uid(m, step->layer_uid);
+	paint_target_t t;
+	timeline_target_live(m, &t);
+	if (src == NULL || !timeline_materialize(src, src_pos, &t)) {
+		draw_saved_t saved = draw_suspend();
+		slot_layer_clear(m, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
+		draw_resume(saved);
+	}
+	if (src != NULL) {
+		m->timeline = src->uid;
+		src->cursor = src_pos;
+	}
+	history_restore_applied_mask(step, m);
+	g_context->layers_preview_dirty = true;
+	context_set_layer(m);
+}
+
+static void history_v2_apply_mask(history_step_t *step) {
+	slot_layer_t *m      = g_project->_->layers->buffer[step->layer];
+	slot_layer_t *parent = m->parent;
+	history_defer_moves(step, false, false);
+	history_flush_restores(NULL);
+	slot_layer_delete(m);
+	context_set_layer(parent);
+	g_context->layers_preview_dirty = true;
+	make_material_parse_mesh_material();
+}
+
+// The steps history_v2 undoes and redoes otherwise than the ring, false for the rest (pending restores run first)
+static bool history_v2_step(history_step_t *step, bool undo) {
+	slot_layer_t *l = history_in(step->layer, g_project->_->layers->length) ? g_project->_->layers->buffer[step->layer] : NULL;
+	switch (step->action) {
+	case HISTORY_ACTION_PAINT:
+	case HISTORY_ACTION_CLEAR_LAYER:
+	case HISTORY_ACTION_INVERT_MASK:
+		history_v2_raster(step, undo);
+		return true;
+	case HISTORY_ACTION_APPLY_MASK:
+		history_flush_restores(NULL);
+		undo ? history_v2_unapply_mask(step) : history_v2_apply_mask(step);
+		return true;
+	case HISTORY_ACTION_TO_FILL_LAYER:
+	case HISTORY_ACTION_TO_FILL_MASK:
+		history_flush_restores(NULL);
+		context_set_layer(l);
+		if (undo) {
+			slot_layer_to_paint_layer(l);
+			history_defer_moves(step, true, true); // The layer holds the fill
+			history_flush_restores(l);
+		}
+		else {
+			l->fill_material = g_project->_->materials->buffer[step->material];
+			sys_notify_on_next_frame(&history_v2_refresh_fill, l);
+		}
+		mask_stack_mark_dirty(l);
+		return true;
+	case HISTORY_ACTION_TO_PAINT_LAYER:
+	case HISTORY_ACTION_TO_PAINT_MASK:
+		history_flush_restores(NULL);
+		context_set_layer(l);
+		if (undo) {
+			l->fill_material = step->material >= 0 && step->material < g_project->_->materials->length ? g_project->_->materials->buffer[step->material] : NULL;
+			sys_notify_on_next_frame(&history_v2_refresh_fill, l); // The fill renders again
+		}
+		else {
+			slot_layer_to_paint_layer(l);
+			history_defer_moves(step, false, true);
+			history_flush_restores(l);
+		}
+		mask_stack_mark_dirty(l);
+		return true;
+	default:
+		history_flush_restores(NULL);
+		return false;
+	}
+}
+
 void history_undo() {
 	history_tiles_finalize();
 	timeline_finalize();
@@ -313,6 +556,8 @@ void history_undo() {
 		if (!history_step_valid(step, true)) {
 			iron_log("Undo skipped, its layer is gone: %s", step->name);
 			history_undo_i = ((history_undo_i - step->undo_ring) % history_ring_size() + history_ring_size()) % history_ring_size(); // Its copies
+		}
+		else if (history_v2_on && history_v2_step(step, true)) {
 		}
 		else if (step->action == HISTORY_ACTION_EDIT_NODES) {
 			history_swap_canvas(step);
@@ -619,6 +864,8 @@ void history_redo() {
 			iron_log("Redo skipped, its layer is gone: %s", step->name);
 			history_undo_i = (history_undo_i + step->undo_ring) % history_ring_size();
 		}
+		else if (history_v2_on && history_v2_step(step, false)) {
+		}
 		else if (step->action == HISTORY_ACTION_EDIT_NODES) {
 			history_swap_canvas(step);
 		}
@@ -793,6 +1040,16 @@ void history_redo() {
 	base_redraw_status();
 }
 
+// Low memory, not in a stroke: snapshots go. history_v2 keeps the tiles of the last 4 steps only, older ones undo from
+// their timelines, and the blob store drops what it can without reading anything back.
+void history_on_memory_warning() {
+	history_tiles_trim();
+	if (history_v2_on) {
+		history_tiles_keep_newest(4);
+		hstore_trim(true);
+	}
+}
+
 void history_reset() {
 	project_modified = false;
 	if (history_steps != NULL) {
@@ -812,7 +1069,13 @@ void history_reset() {
 	history_redos  = 0;
 	history_undo_i = 0;
 	history_ring_pending = 0;
-	history_v2_on        = g_config->history_v2; // Steps of both kinds never mix
+#ifdef IRON_METAL
+	history_v2_on = g_config->history_v2; // Steps of both kinds never mix
+#else
+	history_v2_on = false; // Tile transfers are Metal only
+#endif
+	history_restore_count     = 0;
+	history_restore_scheduled = false; // A job still queued finds nothing
 	history_tiles_reset();
 	timeline_reset_all();
 	stroke_refine_reset();
@@ -846,6 +1109,9 @@ void history_ring_set_size(i32 n) {
 }
 
 history_step_t *history_push(history_action_t action) {
+	if (history_v2_on) { // A stroke waits only for its own layer
+		history_flush_restores(action == HISTORY_ACTION_PAINT ? g_context->layer : NULL);
+	}
 	history_tiles_finalize(); // The last stroke is over
 	timeline_finalize();
 	project_modified = true;

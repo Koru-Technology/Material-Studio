@@ -24,7 +24,7 @@ void gpu_release_staging_buffers(void);
 // Low memory: drop what is created again when needed
 void base_on_memory_warning() {
 	if (g_context->brush_time == 0) {
-		history_tiles_trim(); // Not in the middle of a stroke
+		history_on_memory_warning(); // Not in the middle of a stroke
 		render_path_paint_release_scratch();
 	}
 	mm_buffers_trim(); // Material Maker buffer textures the last render did not use, they render again when needed

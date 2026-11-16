@@ -150,7 +150,8 @@ void config_brush_save_update() {
 	X(BOOL, export_tiled, CONFIG_ANY)                                                            \
 	X(I32, history_ram_mb, 16, 1048576)                                                          \
 	X(I32, history_disk_mb, 64, 1048576)                                                         \
-	X(BOOL, project_v31, CONFIG_ANY)
+	X(BOOL, project_v31, CONFIG_ANY)                                                             \
+	X(I32, history_max_steps, 2, 100000)
 
 #define CONFIG_ANY -FLT_MAX, FLT_MAX
 
@@ -388,6 +389,7 @@ config_t *config_create_default() {
 #else
 	c->undo_memory_mb = 1024;
 #endif
+	c->history_max_steps = 2000;
 #if defined(IRON_IOS)
 	c->history_ram_mb  = 192; // And at most 1/10 of the available memory (history_store.c)
 	c->history_disk_mb = 1024;
