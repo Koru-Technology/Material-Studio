@@ -1060,6 +1060,12 @@ X0(hstore_recover_end, "v()", v)
 X0(hstore_journal_mark_saved, "v()", v)
 X1(hstore_journal_pending, "i(p:char uuid)", b, p)
 X0(project_uuid_get, "p:char()", p)
+X2(hstore_test_children, "v(i kind,i on)", v, i, b)
+X0(hstore_test_list_clear, "v()", v)
+X1(hstore_test_list_add, "v(i id)", v, i)
+X1(hstore_test_put_list, "i(i kind)", i, i)
+X0(hstore_test_rebuild, "v()", v)
+X1(hstore_test_refs, "i(i id)", i, i)
 
 // io/project_container.c, io/export_arm.c
 X1(export_arm_run_project_v30, "v(p:char path)", v, p)
