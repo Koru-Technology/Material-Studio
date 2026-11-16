@@ -33,7 +33,7 @@
 #include "app_api_layers.h"
 #include "app_api_masks.h"
 #include "app_api_materials.h"
-#include "app_api_scripts.h"
+#include "app_api_test.h"
 
 gpu_texture_t *gpu_create_render_target(i32 width, i32 height, i32 format);
 void           iron_delay_idle_sleep();
@@ -195,23 +195,33 @@ static mat4_t minic_get_mat4(void *p) {
 	return value;
 }
 
-// A call may pass too few arguments or the wrong kind
-static void *minic_arg_ptr(minic_val_t *a, int c, int i) {
-	return (i < c && a[i].type == MINIC_T_PTR) ? a[i].p : NULL;
-}
+// Argument and return conversions of the wrappers (minic_val_t *a, int n): MINIC_ARG_<sig type>(k), MINIC_RET_<sig type>(call)
+#define MINIC_ARG_i(k) minic_arg_i(a, n, k)
+#define MINIC_ARG_f(k) minic_arg_f(a, n, k)
+#define MINIC_ARG_p(k) minic_arg_p(a, n, k)
+#define MINIC_ARG_b(k) minic_arg_i(a, n, k)
+#define MINIC_ARG_c(k) minic_arg_i(a, n, k)
 
-static float minic_arg_float(minic_val_t *a, int c, int i) {
-	return i < c ? (float)minic_val_to_d(a[i]) : 0.0f;
-}
+#define MINIC_RET_i(call) return minic_val_int((int)(call))
+#define MINIC_RET_f(call) return minic_val_float(call)
+#define MINIC_RET_d(call) return minic_val_double(call)
+#define MINIC_RET_p(call) return minic_val_ptr((void *)(call)) // Strings returned as const char * too
+#define MINIC_RET_b(call) return minic_val_int((call) ? 1 : 0)
+#define MINIC_RET_c(call) return minic_val_int((int)(call))
+#define MINIC_RET_v(call)        \
+	do {                         \
+		call;                    \
+		return minic_val_int(0); \
+	} while (0)
 
-// Argument accessors for the wrapper table
-#define V2(i) minic_get_vec2(minic_arg_ptr(_a, _c, i))
-#define V4(i) minic_get_vec4(minic_arg_ptr(_a, _c, i))
-#define QT(i) minic_get_quat(minic_arg_ptr(_a, _c, i))
-#define M3(i) minic_get_mat3(minic_arg_ptr(_a, _c, i))
-#define M4(i) minic_get_mat4(minic_arg_ptr(_a, _c, i))
-#define AF(i) minic_arg_float(_a, _c, i)
-#define AP(i) minic_arg_ptr(_a, _c, i)
+// Argument accessors for the math wrapper table
+#define V2(i) minic_get_vec2(MINIC_ARG_p(i))
+#define V4(i) minic_get_vec4(MINIC_ARG_p(i))
+#define QT(i) minic_get_quat(MINIC_ARG_p(i))
+#define M3(i) minic_get_mat3(MINIC_ARG_p(i))
+#define M4(i) minic_get_mat4(MINIC_ARG_p(i))
+#define AF(i) MINIC_ARG_f(i)
+#define AP(i) MINIC_ARG_p(i)
 
 // One X(return-kind, name, sig, call) line per math function; expanded twice:
 // once to define the mn_* wrappers, once to register them
@@ -307,30 +317,29 @@ static float minic_arg_float(minic_val_t *a, int c, int i) {
 	X(VOID, draw_set_transform, "v(s:mat3_t matrix)", draw_set_transform(M3(0)))
 
 // Wrapper generators per return kind
-#define MN_HEAD(n)                                       \
-	static minic_val_t mn_##n(minic_val_t *_a, int _c) { \
-		(void)_a;                                        \
-		(void)_c;
-#define MN_F(n, e)             \
-	MN_HEAD(n)                 \
-	return minic_val_float(e); \
+#define MN_HEAD(name)                                     \
+	static minic_val_t mn_##name(minic_val_t *a, int n) { \
+		(void)a;                                          \
+		(void)n;
+#define MN_F(name, e) \
+	MN_HEAD(name)     \
+	MINIC_RET_f(e);   \
 	}
-#define MN_I(n, e)           \
-	MN_HEAD(n)               \
-	return minic_val_int(e); \
+#define MN_I(name, e) \
+	MN_HEAD(name)     \
+	MINIC_RET_i(e);   \
 	}
-#define MN_P(n, e)           \
-	MN_HEAD(n)               \
-	return minic_val_ptr(e); \
+#define MN_P(name, e) \
+	MN_HEAD(name)     \
+	MINIC_RET_p(e);   \
 	}
-#define MN_VOID(n, e)        \
-	MN_HEAD(n)               \
-	e;                       \
-	return minic_val_void(); \
+#define MN_VOID(name, e) \
+	MN_HEAD(name)        \
+	MINIC_RET_v(e);      \
 	}
 // Return a native-layout value owned by the script arena.
-#define MN_VALUE(n, e, type)                               \
-	MN_HEAD(n)                                             \
+#define MN_VALUE(name, e, type)                            \
+	MN_HEAD(name)                                          \
 	type *result = (type *)minic_alloc((int)sizeof(type)); \
 	if (result == NULL) {                                  \
 		return minic_val_ptr(NULL);                        \
@@ -423,24 +432,6 @@ static const char *minic_api_sig_hint(const char *name) {
 	return NULL;
 }
 
-#define MINIC_ARG_i(k) minic_arg_i(a, n, k)
-#define MINIC_ARG_f(k) minic_arg_f(a, n, k)
-#define MINIC_ARG_p(k) minic_arg_p(a, n, k)
-#define MINIC_ARG_b(k) minic_arg_i(a, n, k)
-#define MINIC_ARG_c(k) minic_arg_i(a, n, k)
-
-#define MINIC_RET_i(call) return minic_val_int((int)(call))
-#define MINIC_RET_f(call) return minic_val_float(call)
-#define MINIC_RET_d(call) return minic_val_double(call)
-#define MINIC_RET_p(call) return minic_val_ptr((void *)(call)) // Strings returned as const char * too
-#define MINIC_RET_b(call) return minic_val_int((call) ? 1 : 0)
-#define MINIC_RET_c(call) return minic_val_int((int)(call))
-#define MINIC_RET_v(call)        \
-	do {                         \
-		call;                    \
-		return minic_val_int(0); \
-	} while (0)
-
 // The argument list of a call, minic_val_t a[] converted by the sig types (minic_api_list.h): MINIC_ARGS<n>(t0, t1, ...)
 #define MINIC_ARGS1(t0)                                      MINIC_ARG_##t0(0)
 #define MINIC_ARGS2(t0, t1)                                  MINIC_ARGS1(t0), MINIC_ARG_##t1(1)
@@ -453,24 +444,55 @@ static const char *minic_api_sig_hint(const char *name) {
 #define MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8)      MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7), MINIC_ARG_##t8(8)
 #define MINIC_ARGS10(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8), MINIC_ARG_##t9(9)
 
+// Script names of functions named otherwise in C (the layer operations, util/util_layer_ops.c): the list keeps the script
+// name, the thunk calls the C function. X* expand the name once for the call, # and ## keep it for the thunk and the entry
+#define script_layer_add_path_point layers_op_add_path_point
+#define script_layer_apply_mask     layers_op_apply_mask
+#define script_layer_at             layers_op_at
+#define script_layer_clear          layers_op_clear
+#define script_layer_count          layers_op_count
+#define script_layer_delete         layers_op_delete
+#define script_layer_duplicate      layers_op_duplicate
+#define script_layer_get            layers_op_get
+#define script_layer_index          layers_op_index
+#define script_layer_invert_mask    layers_op_invert_mask
+#define script_layer_merge_down     layers_op_merge_down
+#define script_layer_merge_group    layers_op_merge_group
+#define script_layer_move           layers_op_move
+#define script_layer_new            layers_op_new
+#define script_layer_new_color      layers_op_new_color
+#define script_layer_new_fill       layers_op_new_fill
+#define script_layer_new_group      layers_op_new_group
+#define script_layer_new_mask       layers_op_new_mask
+#define script_layer_new_path       layers_op_new_path
+#define script_layer_new_text       layers_op_new_text
+#define script_layer_repaint_path   layers_op_repaint_path
+#define script_layer_set            layers_op_set
+#define script_layer_set_group      layers_op_set_group
+#define script_layer_set_name       layers_op_set_name
+#define script_layer_set_object     layers_op_set_object
+#define script_layer_to_fill        layers_op_to_fill
+#define script_layer_to_paint       layers_op_to_paint
+#define script_layer_update         layers_op_update
+
 // Pass 1: one thunk per exported function
-#define MINIC_THUNK(name, r, args)                        \
-	static minic_val_t mw_##name(minic_val_t *a, int n) { \
-		(void)a;                                          \
-		(void)n;                                          \
-		MINIC_RET_##r(name(args));                        \
+#define MINIC_THUNK(thunk, fn, r, args)                 \
+	static minic_val_t thunk(minic_val_t *a, int n) { \
+		(void)a;                                      \
+		(void)n;                                      \
+		MINIC_RET_##r(fn(args));                      \
 	}
-#define X0(name, sig, r)       MINIC_THUNK(name, r, )
-#define X1(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS1(__VA_ARGS__))
-#define X2(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS2(__VA_ARGS__))
-#define X3(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS3(__VA_ARGS__))
-#define X4(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS4(__VA_ARGS__))
-#define X5(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS5(__VA_ARGS__))
-#define X6(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS6(__VA_ARGS__))
-#define X7(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS7(__VA_ARGS__))
-#define X8(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS8(__VA_ARGS__))
-#define X9(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS9(__VA_ARGS__))
-#define X10(name, sig, r, ...) MINIC_THUNK(name, r, MINIC_ARGS10(__VA_ARGS__))
+#define X0(name, sig, r)       MINIC_THUNK(mw_##name, name, r, )
+#define X1(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS1(__VA_ARGS__))
+#define X2(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS2(__VA_ARGS__))
+#define X3(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS3(__VA_ARGS__))
+#define X4(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS4(__VA_ARGS__))
+#define X5(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS5(__VA_ARGS__))
+#define X6(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS6(__VA_ARGS__))
+#define X7(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS7(__VA_ARGS__))
+#define X8(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS8(__VA_ARGS__))
+#define X9(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS9(__VA_ARGS__))
+#define X10(name, sig, r, ...) MINIC_THUNK(mw_##name, name, r, MINIC_ARGS10(__VA_ARGS__))
 #include "minic_api_list.h"
 #undef X0
 #undef X1

@@ -150,6 +150,7 @@ typedef enum {
 	BLEND_TYPE_SATURATION   = 15,
 	BLEND_TYPE_COLOR        = 16,
 	BLEND_TYPE_VALUE        = 17,
+	BLEND_TYPE_COUNT,
 } blend_type_t;
 
 typedef enum {

@@ -31,8 +31,22 @@ void neural_node_button_on_next_frame(void *_) {
 	box_preferences_show();
 }
 
+// Download url of a model by its name, NULL when unknown
+char *neural_node_model_url(char *name) {
+	if (neural_node_models == NULL) {
+		neural_node_models_init();
+	}
+
+	for (i32 i = 0; i < neural_node_models->length; ++i) {
+		if (string_equals(neural_node_models->buffer[i]->name, name)) {
+			return neural_node_models->buffer[i]->urls->buffer[0];
+		}
+	}
+	return NULL;
+}
+
 bool neural_node_button(ui_node_t *node, char *model) {
-	char *url       = box_preferences_model_url_from_name(model);
+	char *url       = neural_node_model_url(model);
 	char *file_name = box_preferences_file_name_from_url(url);
 	bool  found     = box_preferences_model_exists(file_name);
 	if (iron_exec_async_done == 0) {
@@ -81,15 +95,6 @@ void neural_node_check_result(ui_node_t *node) {
 		neural_node_load_result(node);
 		sys_remove_update(neural_node_check_result);
 	}
-}
-
-// Lines of a prompt, without allocating (drawn every frame)
-i32 neural_node_prompt_lines(char *prompt) {
-	i32 lines = 1;
-	for (char *c = prompt; *c != 0; ++c) {
-		lines += *c == '\n';
-	}
-	return lines;
 }
 
 char *neural_node_iris_bin() {

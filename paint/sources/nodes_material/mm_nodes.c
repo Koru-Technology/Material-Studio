@@ -150,38 +150,6 @@ static char *mm_nodes_socket_type(const char *mm) {
 	return NULL;
 }
 
-static u32 mm_nodes_socket_color(char *type) {
-	if (string_equals(type, "VALUE")) {
-		return 0xffa1a1a1;
-	}
-	if (string_equals(type, "RGB") || string_equals(type, "RGBA")) {
-		return 0xffc7c729;
-	}
-	// Material Maker's colors of its types (nodes/io_types.mmt)
-	if (string_equals(type, "MM_SDF2D")) {
-		return 0xffe8a31d;
-	}
-	if (string_equals(type, "MM_SDF3D")) {
-		return 0xffeb6135;
-	}
-	if (string_equals(type, "MM_SDF3DC")) {
-		return 0xffdf2626;
-	}
-	if (string_equals(type, "MM_TEX3D_GS")) {
-		return 0xffa734dd;
-	}
-	if (string_equals(type, "MM_TEX3D")) {
-		return 0xffe739d5;
-	}
-	if (string_equals(type, "MM_V4V4")) {
-		return 0xffb79074;
-	}
-	if (string_equals(type, "MM_ANY")) {
-		return 0xffdedede;
-	}
-	return 0xff2db76c; // MM_FILL
-}
-
 // Components of the socket type's value: float 1, vec2 2, vec3 3, vec4 4
 static i32 mm_nodes_socket_size(char *type) {
 	if (string_equals(type, "RGBA") || string_equals(type, "MM_V4V4") || string_equals(type, "MM_FILL")) {
@@ -303,7 +271,7 @@ static ui_node_socket_t *mm_nodes_socket(ui_node_socket_array_t *sockets, char *
 	for (i32 i = 0; i < size; ++i) {
 		dv->buffer[i] = i < n ? v[i] : (n == 1 && i < 3 ? v[0] : (i == 3 && string_equals(type, "RGBA") ? 1.0 : 0.0));
 	}
-	return nodes_material_socket_ex(mm_nodes_unique(sockets, name), type, mm_nodes_socket_color(type), dv, 0.0, 1.0, 100, 0);
+	return nodes_material_socket_ex(mm_nodes_unique(sockets, name), type, nodes_material_get_socket_color(type), dv, 0.0, 1.0, 100, 0);
 }
 
 // Generic expansion (gen_shader.gd set_shader_model): the run of items whose field holds "#" repeats gs times with # as

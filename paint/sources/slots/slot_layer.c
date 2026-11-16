@@ -3,6 +3,16 @@
 
 bool slot_layer_defer_alloc = false;
 
+// English name of a layer / brush blending, tr() it to show it
+char *blend_type_name(blend_type_t type) {
+	static char *names[] = {
+	    "Mix",     "Darken",       "Multiply",   "Burn",     "Lighten", "Screen", "Dodge",      "Add",   "Overlay",
+	    "Soft Light", "Linear Light", "Difference", "Subtract", "Divide",  "Hue",    "Saturation", "Color", "Value",
+	};
+	_Static_assert(ARRAY_LENGTH(names) == BLEND_TYPE_COUNT, "a name per blend_type_t");
+	return type >= 0 && type < BLEND_TYPE_COUNT ? names[type] : "";
+}
+
 void slot_layer_alloc_textures(slot_layer_t *raw) {
 	if (raw->texpaint != NULL) {
 		return;

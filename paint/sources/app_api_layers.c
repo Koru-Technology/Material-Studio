@@ -164,22 +164,12 @@ uint32_t app_layers_props_signature(void) {
 	return h;
 }
 
-static char *app_blending_names[] = {
-    "Mix",     "Darken",  "Multiply",     "Burn",       "Lighten",  "Screen", "Dodge",      "Add",   "Overlay",
-    "Soft Light", "Linear Light", "Difference", "Subtract", "Divide", "Hue", "Saturation", "Color", "Value",
-};
-
-_Static_assert(ARRAY_LENGTH(app_blending_names) == BLEND_TYPE_VALUE + 1, "a name per blend_type_t");
-
 int32_t app_layer_blending_count(void) {
-	return (int32_t)ARRAY_LENGTH(app_blending_names);
+	return BLEND_TYPE_COUNT;
 }
 
 const char *app_layer_blending_name(int32_t blending) {
-	if (blending < 0 || blending >= app_layer_blending_count()) {
-		return NULL;
-	}
-	return tr(app_blending_names[blending]);
+	return blending >= 0 && blending < BLEND_TYPE_COUNT ? tr(blend_type_name(blending)) : "";
 }
 
 bool app_layer_pick(int32_t id) {
@@ -187,7 +177,7 @@ bool app_layer_pick(int32_t id) {
 	if (l == NULL) {
 		return false;
 	}
-	script_layer_set(l);
+	layers_op_set(l);
 	if (l->fill_material != NULL) {
 		context_set_material(l->fill_material);
 	}
@@ -219,7 +209,7 @@ bool app_layer_set_name(int32_t id, const char *name) {
 	if (l->path_text && slot_layer_is_path(l)) { // The name is the painted text
 		draw_saved_t gpu = draw_suspend();
 		tab_layers_repaint_text_layer(l);
-		script_layer_op_end(gpu);
+		layers_op_end(gpu);
 	}
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	iron_delay_idle_sleep();
@@ -258,13 +248,13 @@ bool app_layer_can_new(int32_t kind) {
 static slot_layer_t *app_layer_new_mask(slot_layer_t *l, i32 kind) {
 	switch (kind) {
 	case APP_LAYER_NEW_BLACK_MASK:
-		return script_layer_new_mask(l, 0);
+		return layers_op_new_mask(l, 0);
 	case APP_LAYER_NEW_WHITE_MASK:
-		return script_layer_new_mask(l, 1);
+		return layers_op_new_mask(l, 1);
 	case APP_LAYER_NEW_FILL_MASK:
-		return script_layer_new_mask(l, 2);
+		return layers_op_new_mask(l, 2);
 	case APP_LAYER_NEW_HEIGHT_MASK: { // Paint black where the layer should go, tall details reach past the edge
-		slot_layer_t *m = script_layer_new_mask(l, 1);
+		slot_layer_t *m = layers_op_new_mask(l, 1);
 		if (m != NULL) {
 			m->height_blend           = true;
 			make_material_height_used = true;
@@ -284,7 +274,7 @@ bool app_layer_new(int32_t kind) {
 	bool          ok = true;
 	switch (kind) {
 	case APP_LAYER_NEW_PAINT:
-		ok = script_layer_new() != NULL;
+		ok = layers_op_new() != NULL;
 		break;
 	case APP_LAYER_NEW_FILL:
 		layers_create_fill_layer(UV_TYPE_UVMAP, mat4_nan(), -1);
@@ -304,15 +294,15 @@ bool app_layer_new(int32_t kind) {
 		if (ok) {
 			history_new_layer();
 		}
-		script_layer_op_end(gpu);
+		layers_op_end(gpu);
 		break;
 	}
 	case APP_LAYER_NEW_PATH:
 	case APP_LAYER_NEW_CURVE:
-		ok = script_layer_new_path(kind == APP_LAYER_NEW_CURVE) != NULL;
+		ok = layers_op_new_path(kind == APP_LAYER_NEW_CURVE) != NULL;
 		break;
 	case APP_LAYER_NEW_GROUP:
-		ok = script_layer_new_group(l) != NULL;
+		ok = layers_op_new_group(l) != NULL;
 		break;
 	case APP_LAYER_NEW_FILTER:
 		context_set_layer(app_layer_mask_target(l));
@@ -340,11 +330,11 @@ static bool app_layer_done(bool ok) {
 }
 
 bool app_layer_duplicate(int32_t id) {
-	return app_layer_done(script_layer_duplicate(app_layer_by_id(id)) != NULL);
+	return app_layer_done(layers_op_duplicate(app_layer_by_id(id)) != NULL);
 }
 
 bool app_layer_merge_down(int32_t id) {
-	return app_layer_done(script_layer_merge_down(app_layer_by_id(id)) != NULL);
+	return app_layer_done(layers_op_merge_down(app_layer_by_id(id)) != NULL);
 }
 
 bool app_layer_merge_group(int32_t id) {
@@ -352,7 +342,7 @@ bool app_layer_merge_group(int32_t id) {
 	if (l == NULL || !slot_layer_is_group(l) || slot_layer_get_children(l) == NULL || !(slot_layer_shows(l) || tab_layers_can_delete(l))) {
 		return false;
 	}
-	return app_layer_done(script_layer_merge_group(l) != NULL);
+	return app_layer_done(layers_op_merge_group(l) != NULL);
 }
 
 bool app_layer_clear(int32_t id) {
@@ -360,20 +350,20 @@ bool app_layer_clear(int32_t id) {
 	if (l == NULL || l->fill_material != NULL) {
 		return false;
 	}
-	script_layer_clear(l);
+	layers_op_clear(l);
 	return app_layer_done(true);
 }
 
 bool app_layer_to_fill(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || l->fill_material != NULL || l->path_material != NULL) { // Not a material swap, see script_layer_to_fill
+	if (l == NULL || l->fill_material != NULL || l->path_material != NULL) { // Not a material swap, see layers_op_to_fill
 		return false;
 	}
-	return app_layer_done(script_layer_to_fill(l));
+	return app_layer_done(layers_op_to_fill(l));
 }
 
 bool app_layer_to_paint(int32_t id) {
-	return app_layer_done(script_layer_to_paint(app_layer_by_id(id)));
+	return app_layer_done(layers_op_to_paint(app_layer_by_id(id)));
 }
 
 bool app_layer_invert_mask(int32_t id) {
@@ -381,7 +371,7 @@ bool app_layer_invert_mask(int32_t id) {
 }
 
 bool app_layer_apply_mask(int32_t id) {
-	return app_layer_done(script_layer_apply_mask(app_layer_by_id(id)) != NULL);
+	return app_layer_done(layers_op_apply_mask(app_layer_by_id(id)) != NULL);
 }
 
 bool app_layer_add_mask(int32_t id, int32_t kind) {
@@ -468,11 +458,11 @@ static bool app_layer_reparent(slot_layer_t *l, slot_layer_t *parent) {
 	}
 	context_set_layer(l);
 	tab_layers_remap_all_layer_pointers(pointers);
-	script_layer_op_end(gpu);
+	layers_op_end(gpu);
 	return true;
 }
 
-// The script_layer_move index that puts l directly below upper (NULL: the top), see slot_layer_move_target.
+// The layers_op_move index that puts l directly below upper (NULL: the top), see slot_layer_move_target.
 // *in_place: l is there already, only its group changes.
 static bool app_layer_move_index(slot_layer_t *l, slot_layer_t *upper, i32 *to, bool *in_place) {
 	i32 n     = g_project->_->layers->length;
@@ -511,7 +501,7 @@ bool app_layer_move_below(int32_t id, int32_t upper_id) {
 	if (l == NULL || (upper_id >= 0 && upper == NULL) || !app_layer_move_index(l, upper, &to, &in_place)) {
 		return false;
 	}
-	return app_layer_done(in_place ? app_layer_reparent(l, app_layer_parent_below(upper)) : script_layer_move(l, to));
+	return app_layer_done(in_place ? app_layer_reparent(l, app_layer_parent_below(upper)) : layers_op_move(l, to));
 }
 
 bool app_layer_set_group(int32_t id, int32_t group_id) {
@@ -524,7 +514,7 @@ bool app_layer_set_group(int32_t id, int32_t group_id) {
 		if (group == NULL || !slot_layer_is_group(group) || l->parent == group || l == group || slot_layer_is_descendant(group, l)) {
 			return false;
 		}
-		return app_layer_done(script_layer_set_group(l, group));
+		return app_layer_done(layers_op_set_group(l, group));
 	}
 	// Out of its group, below it
 	slot_layer_t *group = l->parent;
@@ -541,7 +531,7 @@ bool app_layer_set_group(int32_t id, int32_t group_id) {
 	// As if dropped below the group closed
 	bool show_panel   = group->show_panel;
 	group->show_panel = false;
-	bool ok           = script_layer_move(l, gi - 1 != from ? gi - 1 : gstart);
+	bool ok           = layers_op_move(l, gi - 1 != from ? gi - 1 : gstart);
 	group->show_panel = show_panel;
 	return app_layer_done(ok && l->parent != group);
 }
@@ -557,7 +547,7 @@ bool app_layer_set_blending(int32_t id, int32_t blending) {
 	context_set_layer(l);
 	history_layer_blending();
 	l->blending = blending;
-	script_layer_op_end(gpu);
+	layers_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -569,7 +559,7 @@ bool app_layer_set_channel(int32_t id, int32_t channel, bool on) {
 	}
 	*f = on;
 	draw_saved_t gpu = draw_suspend();
-	script_layer_op_end(gpu);
+	layers_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -581,7 +571,7 @@ bool app_layer_set_uv_map(int32_t id, int32_t uv_map) {
 	l->uv_map = uv_map;
 	draw_saved_t gpu = draw_suspend();
 	make_material_parse_paint_material(true);
-	script_layer_op_end(gpu);
+	layers_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -627,7 +617,7 @@ bool app_layer_set_fill_material(int32_t id, int32_t material_index) {
 	draw_saved_t gpu = draw_suspend();
 	base_init_undo_layers();
 	slot_layer_set_fill_material(l, m);
-	script_layer_op_end(gpu);
+	layers_op_end(gpu);
 	return app_layer_done(true);
 }
 
@@ -636,7 +626,7 @@ static void app_layer_height_blend_changed(slot_layer_t *m) {
 		make_material_height_used = true; // Track the height of the layers below
 	}
 	draw_saved_t gpu = draw_suspend();
-	script_layer_op_end(gpu);
+	layers_op_end(gpu);
 	if (ui_view2d_show) {
 		ui_view2d_hwnd->redraws = 2;
 	}

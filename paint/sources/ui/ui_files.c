@@ -61,7 +61,7 @@ void ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files
 }
 
 // Saves a preset (theme, keymap, export preset) typed in by name into data/<folder>, the file name it got, NULL for an
-// empty name. Path separators in the name become '_', so the file stays in the folder.
+// empty name or a failed save. Path separators in the name become '_', so the file stays in the folder.
 char *ui_files_save_preset(char *folder, char *name, char *json) {
 	char *file = string_copy(name);
 	for (char *c = file; *c != '\0'; ++c) {
@@ -79,7 +79,10 @@ char *ui_files_save_preset(char *folder, char *name, char *json) {
 		file = string("%s.json", file);
 	}
 	char *path = string("%s%s%s%s%s", path_data(), PATH_SEP, folder, PATH_SEP, file);
-	iron_file_save_bytes(path, sys_string_to_buffer(json), 0);
+	if (!iron_file_save_bytes(path, sys_string_to_buffer(json), 0)) {
+		console_error(string("Could not save %s.", path));
+		return NULL;
+	}
 	return file;
 }
 

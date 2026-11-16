@@ -117,8 +117,6 @@ slot_layer_t *layers_new_text_layer() {
 	return l;
 }
 
-void tab_materials_button_new_on_next_frame(void *_);
-
 void layers_create_filter_on_next_frame(void *_) {
 	if (slot_layer_get_filters(g_context->layer, true) != NULL) {
 		return;

@@ -1,7 +1,7 @@
 // The native UI's interface to the app, see app_api.h. #included by main.c after minic_impl.c (it reuses the script_* helpers).
 
 #include "app_api.h"
-#include "app_api_scripts.h"
+#include "app_api_test.h"
 
 #define APP_SAME(a, b) ((i32)(a) == (i32)(b))
 _Static_assert(APP_SAME(APP_TOOL_BRUSH, TOOL_TYPE_BRUSH) && APP_SAME(APP_TOOL_ERASER, TOOL_TYPE_ERASER) && APP_SAME(APP_TOOL_FILL, TOOL_TYPE_FILL) &&
@@ -508,7 +508,7 @@ void app_redo(void) {
 // Layers
 
 int32_t app_layer_count(void) {
-	return app_ready() ? script_layer_count() : 0;
+	return app_ready() ? layers_op_count() : 0;
 }
 
 static i32 app_layer_depth(slot_layer_t *l) {
@@ -555,7 +555,7 @@ bool app_layer_delete(int32_t id) {
 	if (l == NULL || !tab_layers_can_delete(l)) {
 		return false;
 	}
-	script_layer_delete(l);
+	layers_op_delete(l);
 	iron_delay_idle_sleep();
 	return true;
 }

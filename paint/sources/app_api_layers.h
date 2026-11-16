@@ -68,7 +68,7 @@ typedef struct {
 
 bool     app_layer_props(int32_t id, app_layer_props_t *out);
 
-const char *app_layer_blending_name(int32_t blending); // "Mix", ..., NULL past the last
+const char *app_layer_blending_name(int32_t blending); // "Mix", ..., "" past the last
 int32_t     app_layer_blending_count(void);
 
 // Selects the layer, a fill or path layer also selects its material (a tap in the layers panel)

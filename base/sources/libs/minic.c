@@ -3769,8 +3769,9 @@ int minic_arg_i(minic_val_t *args, int argc, int i) {
 	return i < argc ? (int)minic_val_to_d(args[i]) : 0;
 }
 
+// NULL when the call passes too few arguments or a number: a script value is never an address unless it is a pointer
 void *minic_arg_p(minic_val_t *args, int argc, int i) {
-	return i < argc ? minic_val_to_ptr(args[i]) : NULL;
+	return (i < argc && args[i].type == MINIC_T_PTR) ? args[i].p : NULL;
 }
 
 minic_val_t minic_dispatch(minic_ext_func_t *ef, minic_val_t *args, int argc) {

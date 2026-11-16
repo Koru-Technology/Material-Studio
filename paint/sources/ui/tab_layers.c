@@ -185,28 +185,10 @@ void tab_layers_draw_layer_slot_full_delete_layer(void *_) {
 }
 
 bool tab_layers_combo_blending(slot_layer_t *l, bool label) {
-	string_array_t *blending_combo = any_array_create_from_raw_tmp(
-	    (void *[]){
-	        tr("Mix"),
-	        tr("Darken"),
-	        tr("Multiply"),
-	        tr("Burn"),
-	        tr("Lighten"),
-	        tr("Screen"),
-	        tr("Dodge"),
-	        tr("Add"),
-	        tr("Overlay"),
-	        tr("Soft Light"),
-	        tr("Linear Light"),
-	        tr("Difference"),
-	        tr("Subtract"),
-	        tr("Divide"),
-	        tr("Hue"),
-	        tr("Saturation"),
-	        tr("Color"),
-	        tr("Value"),
-	    },
-	    18);
+	string_array_t *blending_combo = any_array_create_from_raw_tmp(NULL, BLEND_TYPE_COUNT);
+	for (i32 i = 0; i < BLEND_TYPE_COUNT; ++i) {
+		blending_combo->buffer[i] = tr(blend_type_name(i));
+	}
 	i32 blending = l->blending;
 	ui_set_next_id((ui_id_t)&l->blending);
 	ui_combo(&blending, blending_combo, tr("Blending"), label, UI_ALIGN_LEFT, true);
@@ -773,17 +755,11 @@ static bool tab_layers_mask_effect_is_filter(i32 type) {
 }
 
 static string_array_t *tab_layers_mask_blend_names() {
-	return any_array_create_from_raw_tmp(
-	    (void *[]){
-	        tr("Normal"),
-	        tr("Multiply"),
-	        tr("Add"),
-	        tr("Subtract"),
-	        tr("Max"),
-	        tr("Min"),
-	        tr("Overlay"),
-	    },
-	    MASK_BLEND_COUNT);
+	string_array_t *names = any_array_create_from_raw_tmp(NULL, MASK_BLEND_COUNT);
+	for (i32 i = 0; i < MASK_BLEND_COUNT; ++i) {
+		names->buffer[i] = tr(mask_blend_name(i));
+	}
+	return names;
 }
 
 // New effect of type above the selected one, on top when none is

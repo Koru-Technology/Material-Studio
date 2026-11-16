@@ -49,7 +49,7 @@ void text_to_image_node_button(i32 node_id) {
 	    1);
 	i32   model                      = neural_node_model(node, models);
 	char *prompt                     = neural_node_prompt_area(node);
-	node->buttons->buffer[0]->height = neural_node_prompt_lines(prompt) * UI_TEXT_AREA_LINE_H() / UI_LINE_H() + 2;
+	node->buttons->buffer[0]->height = ui_line_count(prompt) * UI_TEXT_AREA_LINE_H() / UI_LINE_H() + 2;
 
 	if (neural_node_button(node, models->buffer[model])) {
 		text_to_image_node_run(node, neural_node_check_result);

@@ -68,19 +68,16 @@ void history_swap_order(history_step_t *step) {
 	make_material_parse_mesh_material();
 }
 
-// Deferred to the next frame: a later step undone in the same frame may have removed the layer, its textures are gone
-bool history_layer_alive(slot_layer_t *l) {
-	return array_index_of(g_project->_->layers, l) >= 0;
-}
-
-void history_update_fill_layer(slot_layer_t *l) {
-	if (history_layer_alive(l)) {
+// Deferred to the next frame (slot_layer_alive): a later step undone in the same frame may have removed the layer, its
+// textures are gone
+static void history_update_fill_layer(slot_layer_t *l) {
+	if (slot_layer_alive(l)) {
 		layers_refresh_fill_layer(l);
 	}
 }
 
-void history_layer_object_clear(slot_layer_t *l) {
-	if (!history_layer_alive(l)) {
+static void history_layer_object_clear(slot_layer_t *l) {
+	if (!slot_layer_alive(l)) {
 		return;
 	}
 	g_context->material = l->fill_material;
@@ -253,7 +250,7 @@ node_group_t_array_t *history_groups(history_step_t *step) {
 	return g_project->_->material_groups;
 }
 
-ui_node_canvas_t *history_get_canvas(history_step_t *step) {
+static ui_node_canvas_t *history_get_canvas(history_step_t *step) {
 	if (step->canvas_group == -1) {
 		return g_project->_->materials->buffer[step->material]->canvas;
 	}
@@ -262,7 +259,7 @@ ui_node_canvas_t *history_get_canvas(history_step_t *step) {
 	}
 }
 
-void history_set_canvas(history_step_t *step, ui_node_canvas_t *canvas) {
+static void history_set_canvas(history_step_t *step, ui_node_canvas_t *canvas) {
 	if (step->canvas_group == -1) {
 		g_project->_->materials->buffer[step->material]->canvas = canvas;
 	}

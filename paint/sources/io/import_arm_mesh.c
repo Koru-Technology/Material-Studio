@@ -2,7 +2,7 @@
 
 // Meshes from .arm files: a mesh only file, or meshes appended from a project
 
-void import_arm_run_mesh_on_next_frame(void *_) {
+static void import_arm_run_mesh_on_next_frame(void *_) {
 	layers_init();
 }
 

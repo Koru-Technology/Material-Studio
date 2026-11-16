@@ -354,7 +354,7 @@ static mm_nodes_param_t *mm_nodes_find_param(ui_node_t *node, const char *name) 
 }
 
 // Node of the canvas by its name in Material Maker's graph
-static ui_node_t *mm_nodes_named(ui_node_canvas_t *canvas, const char *name) {
+ui_node_t *mm_node_named(ui_node_canvas_t *canvas, char *name) {
 	for (i32 i = 0; canvas != NULL && name != NULL && i < canvas->nodes->length; ++i) {
 		ui_node_t *n  = canvas->nodes->buffer[i];
 		char      *nn = mm_node_is(n) ? mm_node_name(n) : NULL;
@@ -369,10 +369,6 @@ static ui_node_t *mm_nodes_named(ui_node_canvas_t *canvas, const char *name) {
 // while it is linked. Its name is the parameter's ("rows"), or "gradient#2" for the color of stop 2 of a gradient (index
 // in the button's values); display MM_PARAM_SOCKET marks it. variable_propagate writes what the link carries into the
 // parameter's button before the node is used, so shaders, previews and buffers read the button as for any parameter.
-
-ui_node_t *mm_node_named(ui_node_canvas_t *canvas, char *name) {
-	return mm_nodes_named(canvas, name);
-}
 
 bool mm_node_is_param_socket(ui_node_socket_t *s) {
 	return s != NULL && (s->display & MM_PARAM_SOCKET) != 0;
@@ -446,7 +442,7 @@ i32 mm_node_param_socket(ui_node_t *node, char *param, i32 stop, ui_node_canvas_
 	                                                    .node_id       = node->id,
 	                                                    .name          = string_copy(key),
 	                                                    .type          = type,
-	                                                    .color         = string_equals(type, "GRADIENT") ? 0xffd88a3d : mm_nodes_socket_color(type),
+	                                                    .color         = string_equals(type, "GRADIENT") ? 0xffd88a3d : nodes_material_get_socket_color(type),
 	                                                    .default_value = f32_array_create_from_raw(v, string_equals(type, "VALUE") ? 1 : 4),
 	                                                    .min           = 0.0,
 	                                                    .max           = 1.0,
@@ -704,7 +700,7 @@ static void mm_nodes_remote_apply(ui_node_t *remote, const char *name, mm_json_t
 		if (strcmp(type, "linked_control") == 0) {
 			mm_json_t *links = mm_json_get(w, "linked_widgets");
 			for (i32 k = 0; links != NULL && k < links->count; ++k) {
-				mm_nodes_set_param(mm_nodes_named(canvas, mm_nodes_jstr(links->items[k], "node")), mm_json_str(mm_json_get(links->items[k], "widget"), ""), v,
+				mm_nodes_set_param(mm_node_named(canvas, mm_nodes_jstr(links->items[k], "node")), mm_json_str(mm_json_get(links->items[k], "widget"), ""), v,
 				                   canvas, depth);
 			}
 		}
@@ -719,7 +715,7 @@ static void mm_nodes_remote_apply(ui_node_t *remote, const char *name, mm_json_t
 			qsort(keys, cfg->count, sizeof(char *), mm_nodes_key_cmp);
 			mm_json_t *list = mm_json_get(cfg, keys[idx]);
 			for (i32 k = 0; list != NULL && k < list->count; ++k) {
-				mm_nodes_set_param(mm_nodes_named(canvas, mm_nodes_jstr(list->items[k], "node")), mm_json_str(mm_json_get(list->items[k], "widget"), ""),
+				mm_nodes_set_param(mm_node_named(canvas, mm_nodes_jstr(list->items[k], "node")), mm_json_str(mm_json_get(list->items[k], "widget"), ""),
 				                   mm_json_get(list->items[k], "value"), canvas, depth);
 			}
 		}

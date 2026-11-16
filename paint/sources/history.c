@@ -1,11 +1,11 @@
 #include "global.h"
 
 // Undo and redo: the list of steps, whole layer copies in the undo ring (paint steps keep tiles, history_tiles.c),
-// steps checked against the project before they run. history_steps.c pushes them, history_layers.c swaps their state.
+// steps checked against the project before they run. history_steps.c pushes them, history_swap.c swaps their state.
 
 static void history_redo_smart_material(char *name);
 
-char *history_action_to_string(history_action_t action) {
+static char *history_action_to_string(history_action_t action) {
 	switch (action) {
 	case HISTORY_ACTION_PAINT:
 		return tr("Paint");
@@ -108,7 +108,7 @@ static bool history_in(i32 i, i32 length) {
 	return i >= 0 && i < length;
 }
 
-void history_undo_invert_mask(history_step_t *step) {
+static void history_undo_invert_mask(history_step_t *step) {
 	if (!history_in(step->layer, g_project->_->layers->length)) {
 		return;
 	}
@@ -414,7 +414,7 @@ void history_undo() {
 	base_redraw_status();
 }
 
-void history_redo_invert_mask(history_step_t *step) {
+static void history_redo_invert_mask(history_step_t *step) {
 	if (!history_in(step->layer, g_project->_->layers->length)) {
 		return;
 	}
@@ -423,7 +423,7 @@ void history_redo_invert_mask(history_step_t *step) {
 	mask_stack_mark_dirty(g_context->layer);
 }
 
-void history_redo_apply_mask(void *_) {
+static void history_redo_apply_mask(void *_) {
 	slot_layer_apply_mask(g_context->layer);
 	context_set_layer(g_context->layer);
 	g_context->layers_preview_dirty = true;
@@ -476,24 +476,24 @@ void history_copy_merging_layers2(slot_layer_t_array_t *layers) {
 	}
 }
 
-void history_redo_duplicate_layer(void *_) {
+static void history_redo_duplicate_layer(void *_) {
 	layers_duplicate_layer(g_context->layer);
 }
 
-void history_redo_new_fill_mask(slot_layer_t *l) {
-	if (history_layer_alive(l)) {
+static void history_redo_new_fill_mask(slot_layer_t *l) {
+	if (slot_layer_alive(l)) {
 		slot_layer_to_fill_layer(l);
 	}
 }
 
-void history_redo_new_white_mask(slot_layer_t *l) {
-	if (history_layer_alive(l)) {
+static void history_redo_new_white_mask(slot_layer_t *l) {
+	if (slot_layer_alive(l)) {
 		slot_layer_clear(l, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
 	}
 }
 
-void history_redo_new_black_mask(slot_layer_t *l) {
-	if (history_layer_alive(l)) {
+static void history_redo_new_black_mask(slot_layer_t *l) {
+	if (slot_layer_alive(l)) {
 		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	}
 }

@@ -188,6 +188,13 @@ char *mask_effect_name(i32 type) {
 	return "Effect";
 }
 
+// English name of a mask effect blending, tr() it to show it
+char *mask_blend_name(i32 blending) {
+	static char *names[] = {"Normal", "Multiply", "Add", "Subtract", "Max", "Min", "Overlay"};
+	_Static_assert(ARRAY_LENGTH(names) == MASK_BLEND_COUNT, "a name per mask_blend_t");
+	return blending >= 0 && blending < MASK_BLEND_COUNT ? names[blending] : "";
+}
+
 // Filters transform the result below (their blending is ignored), the other effects are sources blended over it
 bool mask_effect_is_filter(i32 type) {
 	return type == MASK_EFFECT_LEVELS || type == MASK_EFFECT_INVERT || type == MASK_EFFECT_HISTOGRAM || type == MASK_EFFECT_BLUR;
@@ -409,6 +416,11 @@ void mask_stack_layer_changed(slot_layer_t *l) {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		g_project->_->layers->buffer[i]->revision++;
 	}
+}
+
+// The layer is still in the project: a deferred step or a held pointer may outlive it
+bool slot_layer_alive(slot_layer_t *l) {
+	return l != NULL && g_project != NULL && g_project->_ != NULL && array_index_of(g_project->_->layers, l) >= 0;
 }
 
 // Layer of the project with runtime id, NULL when gone
