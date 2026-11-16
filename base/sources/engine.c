@@ -6,6 +6,7 @@ i32 _object_uid_counter = 0;
 
 i32 sys_w(void);
 i32 sys_h(void);
+f32 sys_aspect(void);
 i32 sys_x(void);
 i32 sys_y(void);
 f64 sys_time(void);
@@ -1026,7 +1027,7 @@ void camera_object_build_proj(camera_object_t *raw, f32 screen_aspect) {
 	}
 	else {
 		if (screen_aspect < 0) {
-			screen_aspect = (f32)sys_w() / (f32)sys_h();
+			screen_aspect = sys_aspect();
 		}
 		f32 aspect = raw->data->aspect != 0.0 ? raw->data->aspect : screen_aspect;
 		raw->p     = mat4_persp(raw->data->fov, aspect, raw->data->near_plane, raw->data->far_plane);
@@ -1526,7 +1527,7 @@ bool uniforms_set_context_const(i32 location, shader_const_t *c) {
 			f = sys_time();
 		}
 		else if (string_equals(c->link, "_aspect_ratio_window")) {
-			f = (f32)sys_w() / (f32)sys_h();
+			f = sys_aspect();
 		}
 		else {
 			return false;

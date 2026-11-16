@@ -768,6 +768,22 @@ i32 base_paint_view_h() {
 	return base_paint_in_2d() ? ui_view2d_wh - ui_view2d_top() : base_h();
 }
 
+// Width over height of the window, 1 while it has no height
+f32 base_window_aspect() {
+	return sys_aspect();
+}
+
+// Width over height of the view painted in (3D or 2D), 1 while it has no height
+f32 base_paint_view_aspect() {
+	i32 h = base_paint_view_h();
+	return h > 0 ? base_paint_view_w() / (f32)h : 1.0;
+}
+
+// Screen space brush scale of a view h pixels high
+f32 base_scale2d(i32 h) {
+	return (900 / (f32)(h > 0 ? h : 1)) * g_config->window_scale;
+}
+
 f32 base_paint_x(f32 screen_x) {
 	return (screen_x - base_paint_view_x()) / (f32)base_paint_view_w();
 }
