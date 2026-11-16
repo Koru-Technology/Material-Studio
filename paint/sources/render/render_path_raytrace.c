@@ -577,8 +577,7 @@ void render_path_raytrace_setup(char *shader_name, bool build) {
 
 void render_path_raytrace_draw(bool use_live_layer) {
 	bool is_live   = g_config->brush_live && render_path_paint_live_layer_drawn > 0;
-	bool is_player = base_player;
-	if (g_context->ddirty > 1 || g_context->pdirty > 0 || is_live || is_player) {
+	if (g_context->ddirty > 1 || g_context->pdirty > 0 || is_live) {
 		render_path_raytrace_frame = 0;
 	}
 

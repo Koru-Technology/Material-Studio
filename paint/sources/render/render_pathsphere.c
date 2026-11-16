@@ -4,7 +4,7 @@
 static mesh_object_t *render_pathsphere_obj = NULL;
 
 void render_pathsphere() {
-	if (base_player || g_context->capturing_screenshot || g_context->paint2d) {
+	if (g_context->capturing_screenshot || g_context->paint2d) {
 		return;
 	}
 

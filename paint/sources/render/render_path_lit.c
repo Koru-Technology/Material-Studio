@@ -4,7 +4,7 @@
 // Grid, envmap spheres and gizmo over the image, each pass loads and stores the whole target,
 // so they only start when something draws
 void render_path_draw_overlays(char *target) {
-	bool hidden = base_player || g_context->capturing_screenshot;
+	bool hidden = g_context->capturing_screenshot;
 	if (g_context->show_grid && !hidden) {
 		render_path_set_target(target, NULL, "main", GPU_CLEAR_NONE, 0, 0.0);
 		render_grid();

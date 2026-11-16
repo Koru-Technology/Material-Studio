@@ -105,13 +105,7 @@ void util_shortcut_global() {
 		box_preferences_show();
 	}
 	if (keyboard_started(any_map_get(g_keymap, "view_distract_free")) || (keyboard_started("escape") && !ui_base_show && !ui_box_show)) {
-		bool allow = true;
-#ifdef IRON_WASM
-		allow = !base_player;
-#endif
-		if (allow) {
-			ui_base_toggle_distract_free();
-		}
+		ui_base_toggle_distract_free();
 	}
 
 #ifdef IRON_LINUX

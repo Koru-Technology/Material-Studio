@@ -101,7 +101,7 @@ static void _grid_line(vec4_t a, vec4_t b, f32 fade, u32 color, f32 alpha) {
 }
 
 void render_grid() {
-	if (!g_context->show_grid || base_player || g_context->capturing_screenshot) {
+	if (!g_context->show_grid || g_context->capturing_screenshot) {
 		return;
 	}
 
