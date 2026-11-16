@@ -34,9 +34,9 @@ mesh_object_t *render_path_paint_pick_object() {
 	render_path_bind_target("gbuffer2", "gbuffer2");
 	render_path_paint_draw_fullscreen_triangle();
 
-	buffer_t *pixel = gpu_get_texture_pixels(render_path_target_image("texpaint_picker"));
+	buffer_t *pixel = gpu_get_texture_pixels_rgba8(render_path_target_image("texpaint_picker"));
 	if (buffer_get_u8(pixel, 3) > 0) {
-		i32 r_byte = buffer_get_u8(pixel, 2);
+		i32 r_byte = buffer_get_u8(pixel, 0);
 		i32 g_byte = buffer_get_u8(pixel, 1);
 		i32 index  = r_byte + g_byte * 256 - 1;
 		if (index >= 0 && index < g_project->_->paint_objects->length) {

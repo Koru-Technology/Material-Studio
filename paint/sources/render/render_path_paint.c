@@ -484,13 +484,10 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		render_path_set_target("texpaint_colorid", NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
 		render_path_bind_target("gbuffer2", "gbuffer2");
 		render_path_paint_draw_fullscreen_triangle();
-		buffer_t *a = gpu_get_texture_pixels(render_path_target_image("texpaint_colorid"));
-		i32 i0 = 2;
-		i32 i1 = 1;
-		i32 i2 = 0;
+		buffer_t *a = gpu_get_texture_pixels_rgba8(render_path_target_image("texpaint_colorid"));
 		if (ui_id_mask_pick_pending) {
 			ui_id_mask_pick_pending = false;
-			ui_id_mask_toggle(((u32)buffer_get_u8(a, i0) << 16) | ((u32)buffer_get_u8(a, i1) << 8) | (u32)buffer_get_u8(a, i2));
+			ui_id_mask_toggle(((u32)buffer_get_u8(a, 0) << 16) | ((u32)buffer_get_u8(a, 1) << 8) | (u32)buffer_get_u8(a, 2));
 		}
 	}
 	else if (g_context->tool == TOOL_TYPE_PICKER) {

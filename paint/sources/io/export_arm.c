@@ -627,11 +627,7 @@ void export_arm_run_brush(char *path) {
 		packed_assets = export_arm_get_packed_assets(path, texture_files);
 	}
 
-#ifdef IRON_BGRA
-	buffer_t *buf = lz4_encode(buffer_bgra_swap(gpu_get_texture_pixels(b->image)));
-#else
-	buffer_t *buf = lz4_encode(gpu_get_texture_pixels(b->image));
-#endif
+	buffer_t *buf = lz4_encode(gpu_get_texture_pixels_rgba8(b->image));
 	buffer_t_array_t *bicons = any_array_create_from_raw(
 	    (void *[]){
 	        buf,

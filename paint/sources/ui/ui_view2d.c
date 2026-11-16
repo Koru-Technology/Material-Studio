@@ -173,20 +173,10 @@ void ui_view2d_render_color_pick(void *_) {
 	draw_begin(texpaint_picker, false, 0);
 	draw_scaled_image(_ui_view2d_render_tex, -_ui_view2d_render_x, -_ui_view2d_render_y, _ui_view2d_render_tw, _ui_view2d_render_th);
 	draw_end();
-	buffer_t *a = gpu_get_texture_pixels(texpaint_picker);
-#ifdef IRON_BGRA
-	i32 i0 = 2;
-	i32 i1 = 1;
-	i32 i2 = 0;
-#else
-	i32 i0 = 0;
-	i32 i1 = 1;
-	i32 i2 = 2;
-#endif
-
-	g_context->picked_color->base = color_set_rb(g_context->picked_color->base, buffer_get_u8(a, i0));
-	g_context->picked_color->base = color_set_gb(g_context->picked_color->base, buffer_get_u8(a, i1));
-	g_context->picked_color->base = color_set_bb(g_context->picked_color->base, buffer_get_u8(a, i2));
+	buffer_t *a                   = gpu_get_texture_pixels_rgba8(texpaint_picker);
+	g_context->picked_color->base = color_set_rb(g_context->picked_color->base, buffer_get_u8(a, 0));
+	g_context->picked_color->base = color_set_gb(g_context->picked_color->base, buffer_get_u8(a, 1));
+	g_context->picked_color->base = color_set_bb(g_context->picked_color->base, buffer_get_u8(a, 2));
 	ui_header_handle->redraws     = 2;
 
 	if (g_context->color_picker_callback != NULL) {
