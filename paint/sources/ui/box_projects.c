@@ -141,22 +141,22 @@ static void box_projects_new() {
 	sys_title_set(title);
 }
 
-// Title on the left, round "+" button for a new project on the right
-static void box_projects_draw_header(f32 pad) {
+// Title on the left, round "+" button for a new project on the right, both in line with the grid below
+static void box_projects_draw_header(f32 pad, f32 grid_w) { // grid_w: the sticky region is wider by the scroll bar
 	f32 s      = UI_SCALE();
 	f32 x0     = g_ui->_x;
 	f32 y0     = g_ui->_y;
 	f32 w0     = g_ui->_w;
-	f32 head_h = math_floor(64 * s);
+	f32 head_h = math_floor(96 * s);
 
-	i32 title_size = math_floor(g_ui->font_size * 1.8);
+	i32 title_size = math_floor(g_ui->font_size * 3.6);
 	draw_set_font(g_font, title_size);
 	draw_set_color(g_theme->TEXT_COL);
 	draw_string(tr("Material Studio"), x0 + pad, y0 + (head_h - draw_font_height(g_font, title_size)) / 2.0);
 	draw_set_font(g_font, g_ui->font_size);
 
 	f32 bs   = math_floor(44 * s);
-	g_ui->_x = x0 + w0 - pad - bs;
+	g_ui->_x = x0 + grid_w - pad - bs;
 	g_ui->_y = y0 + (head_h - bs) / 2.0;
 	g_ui->_w = bs;
 	bool hover    = ui_get_hover(bs);
@@ -182,32 +182,33 @@ static void box_projects_draw_header(f32 pad) {
 	g_ui->_w = w0;
 }
 
-// Recent projects: previews of the same size run left to right and wrap to the next row
+#define BOX_PROJECTS_COLUMNS 5
+
+// Recent projects: five previews per row, the space left over split equally between them and the edges
 static void box_projects_draw() {
-	f32 s   = UI_SCALE();
-	f32 pad = math_floor(24 * s);
+	f32 s       = UI_SCALE();
+	i32 num     = BOX_PROJECTS_COLUMNS;
+	f32 w0      = g_ui->_w;
+	f32 min_gap = math_floor(24 * s);
+	f32 tile    = math_min(math_floor(160 * s), math_floor((w0 - min_gap * (num + 1)) / num)); // Smaller in a narrow window
+	f32 gap     = math_floor((w0 - tile * num) / (num + 1));
 
 	ui_begin_sticky();
-	box_projects_draw_header(pad);
+	box_projects_draw_header(gap, w0);
 	ui_end_sticky();
 
-	f32 tile    = math_floor(160 * s); // Smallest size, the previews grow to fill each row
-	f32 gap     = math_floor(24 * s);
-	f32 label_h = UI_ELEMENT_H() + math_floor(4 * s);
-	f32 radius  = math_floor(12 * s);
-	f32 x0      = g_ui->_x;
-	f32 y0      = g_ui->_y + math_floor(8 * s);
-	f32 w0      = g_ui->_w;
-	i32 num     = math_floor((w0 - pad * 2 + gap) / (tile + gap));
-	if (num < 1) {
-		num = 1;
-	}
-	tile = math_floor((w0 - pad * 2 - gap * (num - 1)) / num);
+	i32 font_size  = g_ui->font_size;
+	i32 label_size = math_floor(font_size * 1.5);
+	f32 label_h    = math_max(UI_ELEMENT_H(), draw_font_height(g_font, label_size)) + math_floor(8 * s);
+	f32 row_gap    = math_floor(24 * s);
+	f32 radius     = math_floor(12 * s);
+	f32 x0         = g_ui->_x;
+	f32 y0         = g_ui->_y + math_floor(8 * s);
 
 	string_array_t *recent_projects = g_config->recent_projects;
 	for (i32 i = 0; i < recent_projects->length; ++i) {
-		f32 x = x0 + pad + (i % num) * (tile + gap);
-		f32 y = y0 + (i / num) * (tile + label_h + gap);
+		f32 x = x0 + gap + (i % num) * (tile + gap);
+		f32 y = y0 + (i / num) * (tile + label_h + row_gap);
 		g_ui->_x = x;
 		g_ui->_y = y;
 		g_ui->_w = tile;
@@ -257,8 +258,10 @@ static void box_projects_draw() {
 		}
 
 		char *name = substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, "."));
-		g_ui->_y   = y + tile + math_floor(4 * s);
+		g_ui->_y        = y + tile + math_floor(6 * s);
+		g_ui->font_size = label_size;
 		ui_text(name, UI_ALIGN_CENTER, 0x00000000);
+		g_ui->font_size = font_size;
 		if (g_ui->is_hovered) {
 			ui_tooltip(name);
 		}
@@ -267,7 +270,7 @@ static void box_projects_draw() {
 	i32 rows = math_ceil(recent_projects->length / (float)num);
 	g_ui->_x = x0;
 	g_ui->_w = w0;
-	g_ui->_y = y0 + rows * (tile + label_h + gap) + pad;
+	g_ui->_y = y0 + rows * (tile + label_h + row_gap) + gap;
 }
 #endif
 
