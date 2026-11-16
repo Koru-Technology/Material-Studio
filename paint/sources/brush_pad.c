@@ -126,7 +126,7 @@ static void brush_pad_paint_point(brush_pad_stroke_t *s, i32 i, bool stamps) {
 	f32                y     = brush_pad_view[1] + p->y * brush_pad_view[3];
 	f32                lx    = brush_pad_view[0] + q->x * brush_pad_view[2];
 	f32                ly    = brush_pad_view[1] + q->y * brush_pad_view[3];
-	f32                ratio = sys_w() / (f32)sys_h();
+	f32                ratio = base_window_aspect();
 
 	g_context->paint_vec.x      = x;
 	g_context->paint_vec.y      = y;
@@ -319,7 +319,7 @@ void brush_pad_draw(f32 x, f32 y, f32 w, f32 h) {
 		}
 		brush_pad_image = gpu_create_render_target(iw, ih, GPU_TEXTURE_FORMAT_RGBA32);
 		f32 pad_aspect  = w / h;
-		f32 view_aspect = sys_w() / (f32)sys_h();
+		f32 view_aspect = base_window_aspect();
 		if (pad_aspect < view_aspect) {
 			brush_pad_view[2] = pad_aspect / view_aspect;
 			brush_pad_view[3] = 1.0;
