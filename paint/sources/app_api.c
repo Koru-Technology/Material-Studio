@@ -1,7 +1,7 @@
 // The native UI's interface to the app, see app_api.h. #included by main.c after minic_impl.c (it reuses the script_* helpers).
 
 #include "app_api.h"
-#include "app_api_scripts.h"
+#include "app_api_test.h"
 #include "util/util_hash.h"
 
 #define APP_SAME(a, b) ((i32)(a) == (i32)(b))

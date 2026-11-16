@@ -1,6 +1,6 @@
-// app_api_scripts.h, #included by main.c after the other app_api*.c files (it uses their helpers)
+// app_api_test.h, #included by main.c after the other app_api*.c files (it uses their helpers)
 
-#include "app_api_scripts.h"
+#include "app_api_test.h"
 
 // Layers
 
