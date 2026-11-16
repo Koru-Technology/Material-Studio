@@ -219,6 +219,23 @@ void  gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size
 void  gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data);
 void  gpu_read_textures_async(gpu_texture_t **textures, int count); // Up to 8, without waiting for the gpu
 bool  gpu_read_textures_async_poll(uint8_t **data);               // True once they arrived, data[i] is texture i
+
+#ifdef IRON_METAL
+// Rectangles copied between textures of the same format, between passes, in the order of the frame's commands
+void gpu_copy_regions_begin(void);
+void gpu_copy_region(gpu_texture_t *dst, int dx, int dy, gpu_texture_t *src, int sx, int sy, int w, int h);
+void gpu_copy_regions_end(void);
+
+// Transfers between texture rectangles and cpu memory, recorded between gpu_copy_regions_begin and _end, complete after
+// gpu_execute_and_wait(). Raw texture bytes, rows tightly packed (pitch = w * gpu_texture_format_size): a BGRA8 render
+// target stays BGRA8, a round trip is byte exact for every format. Map before recording: growing replaces the memory.
+typedef struct gpu_transfer gpu_transfer_t;
+gpu_transfer_t *gpu_transfer_create(size_t size);
+void            gpu_transfer_destroy(gpu_transfer_t *t);
+void           *gpu_transfer_map(gpu_transfer_t *t, size_t size); // Grows if needed, cpu pointer
+void            gpu_copy_region_to_transfer(gpu_transfer_t *t, gpu_texture_t *src, int sx, int sy, int w, int h, size_t offset);
+void            gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *dst, int dx, int dy, int w, int h, size_t offset);
+#endif
 void  gpu_set_texture(uint32_t unit, gpu_texture_t *texture);
 void  gpu_use_linear_sampling(bool b);
 char *gpu_device_name();

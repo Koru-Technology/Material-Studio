@@ -8,12 +8,6 @@
 // The pool grows a page at a time up to the undo memory budget, past it the oldest steps are dropped.
 // Masks and gpus without region copies keep a whole layer copy per step (history_copy_to_undo).
 
-#ifdef IRON_METAL
-void gpu_copy_regions_begin(void);
-void gpu_copy_region(gpu_texture_t *dst, int dx, int dy, gpu_texture_t *src, int sx, int sy, int w, int h);
-void gpu_copy_regions_end(void);
-#endif
-
 #define HISTORY_TILES_GRID      64 // Tiles per layer side
 #define HISTORY_TILES_PAGE_GRID 16 // Tiles per page side
 #define HISTORY_TILES_PAGE      (HISTORY_TILES_PAGE_GRID * HISTORY_TILES_PAGE_GRID)

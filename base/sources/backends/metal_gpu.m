@@ -1215,6 +1215,66 @@ void gpu_copy_regions_end(void) {
 	region_blit = nil;
 }
 
+struct gpu_transfer {
+	void  *buffer; // id<MTLBuffer>, shared storage, retained
+	size_t size;
+};
+
+gpu_transfer_t *gpu_transfer_create(size_t size) {
+	gpu_transfer_t *t = calloc(1, sizeof(gpu_transfer_t));
+	gpu_transfer_map(t, size);
+	return t;
+}
+
+void gpu_transfer_destroy(gpu_transfer_t *t) {
+	if (t == NULL) {
+		return;
+	}
+	if (t->buffer != NULL) {
+		id<MTLBuffer> b = (__bridge_transfer id<MTLBuffer>)t->buffer;
+		b               = nil; // Command buffers still using it keep it alive
+	}
+	free(t);
+}
+
+void *gpu_transfer_map(gpu_transfer_t *t, size_t size) {
+	if (t->buffer == NULL || t->size < size) {
+		if (t->buffer != NULL) {
+			id<MTLBuffer> old = (__bridge_transfer id<MTLBuffer>)t->buffer;
+			old               = nil;
+		}
+		t->size   = size < 256 * 1024 ? 256 * 1024 : size;
+		t->buffer = (__bridge_retained void *)[get_metal_device() newBufferWithLength:t->size options:MTLResourceStorageModeShared];
+	}
+	return [(__bridge id<MTLBuffer>)t->buffer contents];
+}
+
+void gpu_copy_region_to_transfer(gpu_transfer_t *t, gpu_texture_t *src, int sx, int sy, int w, int h, size_t offset) {
+	int pitch = w * gpu_texture_format_size(src->format);
+	[region_blit copyFromTexture:(__bridge id<MTLTexture>)src->impl._tex
+	                 sourceSlice:0
+	                 sourceLevel:0
+	                sourceOrigin:MTLOriginMake(sx, sy, 0)
+	                  sourceSize:MTLSizeMake(w, h, 1)
+	                    toBuffer:(__bridge id<MTLBuffer>)t->buffer
+	           destinationOffset:offset
+	      destinationBytesPerRow:pitch
+	    destinationBytesPerImage:pitch * h];
+}
+
+void gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *dst, int dx, int dy, int w, int h, size_t offset) {
+	int pitch = w * gpu_texture_format_size(dst->format);
+	[region_blit copyFromBuffer:(__bridge id<MTLBuffer>)t->buffer
+	               sourceOffset:offset
+	          sourceBytesPerRow:pitch
+	        sourceBytesPerImage:pitch * h
+	                 sourceSize:MTLSizeMake(w, h, 1)
+	                  toTexture:(__bridge id<MTLTexture>)dst->impl._tex
+	           destinationSlice:0
+	           destinationLevel:0
+	          destinationOrigin:MTLOriginMake(dx, dy, 0)];
+}
+
 // Small textures read back without waiting: copied into a shared buffer with the frame's commands, the data is there once
 // the gpu finished the frame. One request at a time, a new one replaces the pending one.
 static id<MTLBuffer> async_readback_buffer  = nil;
