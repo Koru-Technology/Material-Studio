@@ -23,10 +23,9 @@ static void layers_bake_opacity(slot_layer_t *l) {
 	if (l->mask_opacity < 1.0 && slot_layer_is_mask(l)) {
 		layers_make_temp_img();
 		util_copy_texture(layers_temp_image, l->texpaint, pipes_copy);
-		render_target_t *white = any_map_get(render_path_render_targets, "empty_white");
 		_gpu_begin(l->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		gpu_set_pipeline(pipes_merge_mask);
-		gpu_set_texture(pipes_tex0_merge_mask, white->_image);
+		gpu_set_texture(pipes_tex0_merge_mask, render_path_empty_white());
 		gpu_set_texture(pipes_texa_merge_mask, layers_temp_image);
 		gpu_set_float(pipes_opac_merge_mask, 1.0 - l->mask_opacity);
 		gpu_set_int(pipes_blending_merge_mask, BLEND_TYPE_MIX);
@@ -37,8 +36,7 @@ static void layers_bake_opacity(slot_layer_t *l) {
 		l->mask_opacity = 1.0;
 	}
 	else if (l->mask_opacity < 1.0) {
-		render_target_t *black = any_map_get(render_path_render_targets, "empty_black");
-		slot_layer_t    *m     = ALLOC_INIT(slot_layer_t, {.texpaint = black->_image, .mask_opacity = 1.0 - l->mask_opacity});
+		slot_layer_t *m = ALLOC_INIT(slot_layer_t, {.texpaint = render_path_empty_black(), .mask_opacity = 1.0 - l->mask_opacity});
 		layers_apply_mask(l, m);
 		free(m);
 		l->mask_opacity = 1.0;
@@ -145,8 +143,7 @@ void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 
 	util_copy_texture(layers_temp_image, l0->texpaint, pipes_copy); // Copy to temp
 
-	render_target_t      *empty_rt = any_map_get(render_path_render_targets, "empty_white");
-	gpu_texture_t        *empty    = empty_rt->_image;
+	gpu_texture_t        *empty    = render_path_empty_white();
 	gpu_texture_t        *mask     = empty;
 	slot_layer_t_array_t *l1masks  = use_mask ? slot_layer_get_masks(l1, true) : NULL;
 	if (l1masks != NULL) {
@@ -271,16 +268,14 @@ void layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer,
 	layers_make_temp_img();
 	util_copy_texture(layers_temp_image, dst, pipes_copy); // Copy to temp
 
-	render_target_t *empty_rt = any_map_get(render_path_render_targets, "empty_white");
 	gpu_texture_t   *mask_tex = slot_layer_mask_texture(m); // Evaluated stack
 	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_height_blend_mask);
 	gpu_set_texture(0, mask_tex);
 	gpu_set_texture(1, layers_temp_image);
 	gpu_set_texture(2, layer->texpaint_pack);
-	gpu_set_texture(3, below != NULL ? below : empty_rt->_image);
-	render_target_t *white_rt = any_map_get(render_path_render_targets, "empty_white");
-	gpu_set_texture(4, util_uv_dilatemap_cached ? util_uv_dilatemap : white_rt->_image); // Uv island coverage
+	gpu_set_texture(3, below != NULL ? below : render_path_empty_white());
+	gpu_set_texture(4, util_uv_dilatemap_cached ? util_uv_dilatemap : render_path_empty_white()); // Uv island coverage
 	gpu_set_float(pipes_opac_height_blend, m->mask_opacity);
 	gpu_set_float(pipes_influence_height_blend, m->height_blend_influence);
 	gpu_set_float(pipes_sharpness_height_blend, m->height_blend_sharpness);
@@ -412,8 +407,7 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 	}
 	layers_make_temp_img();
 	layers_make_export_img();
-	render_target_t *empty_rt = any_map_get(render_path_render_targets, "empty_white");
-	gpu_texture_t   *empty    = empty_rt->_image;
+	gpu_texture_t *empty = render_path_empty_white();
 
 	// Clear export layer
 	_gpu_begin(layers_expa, NULL, NULL, GPU_CLEAR_COLOR, color_from_floats(0.0, 0.0, 0.0, 0.0), 0.0);

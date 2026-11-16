@@ -365,8 +365,7 @@ void mask_stack_mark_dirty(slot_layer_t *m) {
 static gpu_texture_t *mask_stack_scratch = NULL;
 
 static gpu_texture_t *mask_stack_black() {
-	render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-	return rt->_image;
+	return render_path_empty_black();
 }
 
 static void mask_stack_alloc_texture(slot_layer_t *m) {
@@ -536,8 +535,7 @@ static gpu_texture_t *mask_stack_anchor_source(slot_layer_t *m, mask_effect_t *e
 		e->params[1]    = 0.0;
 		slot_layer_t *r = mask_stack_anchor_mask(l);
 		if (r == NULL) { // No mask: all of the layer shows
-			render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
-			return rt->_image;
+			return render_path_empty_white();
 		}
 		if (r == m) { // Itself, texmask is being written
 			return mask_stack_black();

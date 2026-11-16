@@ -415,8 +415,7 @@ gpu_texture_t *material_cache_texture(i32 i) {
 	if (e != NULL && e->state == MATERIAL_CACHE_READY && i >= 0 && i < 3 && e->tex[i] != NULL) {
 		return e->tex[i];
 	}
-	render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-	return rt->_image;
+	return render_path_empty_black();
 }
 
 // Paint draws (render_path_paint_commands_paint): a paint shader reading a cache that no longer fits (scale, rotation,

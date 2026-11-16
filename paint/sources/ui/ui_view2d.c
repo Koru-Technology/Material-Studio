@@ -169,8 +169,7 @@ void ui_view2d_draw_image(gpu_texture_t *image, f32 dx, f32 dy, f32 dw, f32 dh, 
 }
 
 void ui_view2d_render_color_pick(void *_) {
-	render_target_t *rt              = any_map_get(render_path_render_targets, "texpaint_picker");
-	gpu_texture_t   *texpaint_picker = rt->_image;
+	gpu_texture_t *texpaint_picker = render_path_target_image("texpaint_picker");
 	draw_begin(texpaint_picker, false, 0);
 	draw_scaled_image(_ui_view2d_render_tex, -_ui_view2d_render_x, -_ui_view2d_render_y, _ui_view2d_render_tw, _ui_view2d_render_th);
 	draw_end();

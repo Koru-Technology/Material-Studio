@@ -396,8 +396,7 @@ gpu_texture_t *mask_gen_texture(slot_layer_t *m, mask_effect_t e) {
 			return m->mask_gen_textures[k];
 		}
 	}
-	render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-	return rt->_image;
+	return render_path_empty_black();
 }
 
 // Frees the cached outputs of m, they render again on its next evaluation

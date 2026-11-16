@@ -64,7 +64,6 @@ void curvature_mask_preview_begin(slot_material_t *m) {
 	if (m == NULL || m->canvas == NULL || g_context->node_previews == NULL) {
 		return;
 	}
-	render_target_t *empty = any_map_get(render_path_render_targets, "empty_black");
 	for (i32 i = 0; i < m->canvas->nodes->length && curvature_swap_count < CURVATURE_SWAP_MAX; ++i) {
 		ui_node_t *node = m->canvas->nodes->buffer[i];
 		if (!string_equals(node->type, "CURVATURE_MASK")) {
@@ -79,7 +78,7 @@ void curvature_mask_preview_begin(slot_material_t *m) {
 		curvature_swap_keys[curvature_swap_count]  = key;
 		curvature_swap_saved[curvature_swap_count] = tex;
 		curvature_swap_count++;
-		any_map_set(g_context->node_previews, key, empty->_image);
+		any_map_set(g_context->node_previews, key, render_path_empty_black());
 	}
 }
 

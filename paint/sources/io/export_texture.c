@@ -266,8 +266,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 
 	layers_make_temp_img();
 	layers_make_export_img();
-	render_target_t *rt    = any_map_get(render_path_render_targets, "empty_white");
-	gpu_texture_t   *empty = rt->_image;
+	gpu_texture_t *empty = render_path_empty_white();
 
 	// Append object mask name
 	bool export_selected = g_context->layers_export == EXPORT_MODE_SELECTED;
