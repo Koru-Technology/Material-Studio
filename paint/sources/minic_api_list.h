@@ -1060,3 +1060,11 @@ X0(hstore_recover_end, "v()", v)
 X0(hstore_journal_mark_saved, "v()", v)
 X1(hstore_journal_pending, "i(p:char uuid)", b, p)
 X0(project_uuid_get, "p:char()", p)
+
+// util/util_test.c: fast pixel comparisons for tests, tol and results in 1/255
+X3(script_diff_images, "i(p:char path_a,p:char path_b,f tol)", i, p, p, f)
+X3(script_diff_textures, "i(p:gpu_texture_t a,p:gpu_texture_t b,f tol)", i, p, p, f)
+X0(script_diff_max, "f()", f)
+X0(script_diff_mean, "f()", f)
+X2(script_diff_mask, "v(p:gpu_texture_t mask,i mode)", v, p, i)
+X1(script_texture_hash, "p:char(p:gpu_texture_t t)", p, p)
