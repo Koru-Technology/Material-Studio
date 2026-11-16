@@ -548,6 +548,130 @@ static void hstore_free_table() {
 	free(hstore_table);
 }
 
+// ---- Children (blobs owning blobs) ----
+
+#define HSTORE_KINDS 32
+
+static hstore_children_fn hstore_children[HSTORE_KINDS];
+
+typedef struct hstore_list {
+	hash128_t *h;
+	u32        n;
+	u32        cap;
+} hstore_list_t;
+
+static void hstore_list_push(hstore_list_t *l, hash128_t h) {
+	if (l->n == l->cap) {
+		l->cap = l->cap == 0 ? 256 : l->cap * 2;
+		l->h   = realloc(l->h, sizeof(hash128_t) * l->cap);
+	}
+	l->h[l->n++] = h;
+}
+
+static hstore_children_fn hstore_children_of(u8 kind) {
+	return kind < HSTORE_KINDS ? hstore_children[kind] : NULL;
+}
+
+// The raw bytes of a blob (malloc'd), NULL when unreadable or, without io, only in the journal
+static u8 *hstore_entry_bytes(hstore_entry_t *e, bool io) {
+	hstore_chunk_t c = {.kind = e->kind, .codec = e->codec, .h = e->h, .raw_len = e->raw_len, .comp_len = e->comp_len};
+	if (e->ram != NULL) {
+		return hstore_chunk_decode(&c, e->ram, false);
+	}
+	if (!io) {
+		return NULL;
+	}
+	u8 *payload = hstore_journal_read_payload(e);
+	if (payload == NULL) {
+		return NULL;
+	}
+	u8 *out = hstore_chunk_decode(&c, payload, true);
+	free(payload);
+	return out;
+}
+
+static void hstore_visit_ref(hash128_t child, void *ud) {
+	hstore_ref(child);
+}
+
+// Unrefs a child of a removed blob, an orphan joins the worklist
+static void hstore_visit_unref(hash128_t child, void *ud) {
+	hstore_entry_t *e = hstore_find(child);
+	if (e != NULL && e->refs > 0 && --e->refs == 0) {
+		hstore_list_push(ud, child);
+	}
+}
+
+// Refs a reachable blob, the first ref queues its children
+static void hstore_visit_reach(hash128_t child, void *ud) {
+	hstore_entry_t *e = hstore_find(child);
+	if (e != NULL && ++e->refs == 1) {
+		hstore_list_push(ud, child);
+	}
+}
+
+void hstore_set_children(hstore_kind_t kind, hstore_children_fn fn) {
+	if ((u32)kind < HSTORE_KINDS) {
+		hstore_children[kind] = fn;
+	}
+}
+
+// Removes the unreferenced blobs and, cascading, the children only they held. Without io, a blob with children whose
+// bytes are only in the journal waits for a trim with io.
+static void hstore_collect_garbage(bool io) {
+	hstore_list_t    work = {0};
+	u32              n;
+	hstore_entry_t **list = hstore_collect(hstore_is_garbage, NULL, &n);
+	for (u32 i = 0; i < n; ++i) {
+		hstore_list_push(&work, list[i]->h);
+	}
+	free(list);
+	while (work.n > 0) {
+		hash128_t       h = work.h[--work.n];
+		hstore_entry_t *e = hstore_find(h); // By hash: a removal moves entries
+		if (e == NULL || !hstore_is_garbage(e)) {
+			continue;
+		}
+		hstore_children_fn fn = hstore_children_of(e->kind);
+		if (fn != NULL) {
+			if (e->ram == NULL && !io) {
+				continue; // Deferred
+			}
+			u8 *raw = hstore_entry_bytes(e, io);
+			if (raw != NULL) { // Unreadable: its children stay until hstore_rebuild_refs
+				fn(raw, e->raw_len, hstore_visit_unref, &work); // Changes refs only, e stays valid
+				free(raw);
+			}
+		}
+		hstore_remove(e);
+	}
+	free(work.h);
+}
+
+void hstore_rebuild_refs(const hash128_t *roots, i32 n) {
+	for (u32 i = 0; i < hstore_cap; ++i) {
+		hstore_table[i].refs = 0;
+		hstore_table[i].state &= ~HSTORE_E_RECOVERED;
+	}
+	hstore_recovering  = false;
+	hstore_list_t work = {0};
+	for (i32 i = 0; i < n; ++i) {
+		hstore_visit_reach(roots[i], &work);
+	}
+	while (work.n > 0) {
+		hstore_entry_t    *e  = hstore_find(work.h[--work.n]);
+		hstore_children_fn fn = e != NULL ? hstore_children_of(e->kind) : NULL;
+		if (fn != NULL) {
+			u8 *raw = hstore_entry_bytes(e, true);
+			if (raw != NULL) {
+				fn(raw, e->raw_len, hstore_visit_reach, &work);
+				free(raw);
+			}
+		}
+	}
+	free(work.h);
+}
+
 // ---- API (stroke_rec.h) ----
 
 hash128_t hstore_put(hstore_kind_t kind, const void *data, u32 len) {
@@ -569,6 +693,10 @@ hash128_t hstore_put(hstore_kind_t kind, const void *data, u32 len) {
 	e->ram      = hstore_encode(data, len, &e->comp_len, &e->codec);
 	hstore_ram += e->comp_len;
 	hstore_dirty += e->comp_len;
+	hstore_children_fn fn = hstore_children_of((u8)kind);
+	if (fn != NULL) {
+		fn(data, len, hstore_visit_ref, NULL); // Refs only, e stays valid
+	}
 	if (hstore_ram > hstore_budget_ram) {
 		hstore_spill(hstore_budget_ram * 9 / 10); // Moves table entries: e is not used after this
 	}
@@ -624,18 +752,9 @@ void hstore_unref(hash128_t h) {
 	}
 }
 
+// With memory_warning nothing is read from the journal (garbage needing it waits), RAM is journaled and dropped
 void hstore_trim(bool memory_warning) {
-	u32              n;
-	hstore_entry_t **list   = hstore_collect(hstore_is_garbage, NULL, &n);
-	hash128_t       *hashes = malloc(sizeof(hash128_t) * (n > 0 ? n : 1));
-	for (u32 i = 0; i < n; ++i) {
-		hashes[i] = list[i]->h;
-	}
-	free(list);
-	for (u32 i = 0; i < n; ++i) { // By hash: a removal moves entries
-		hstore_remove(hstore_find(hashes[i]));
-	}
-	free(hashes);
+	hstore_collect_garbage(!memory_warning);
 
 	hstore_budget_ram = hstore_ram_budget_now();
 	if (memory_warning) {
@@ -922,6 +1041,50 @@ void hstore_test_trim(bool memory_warning) {
 
 void hstore_test_reset() {
 	hstore_reset();
+}
+
+// Blobs of kind list the hashes of their children, 16 bytes each (lo, hi)
+static void hstore_test_enumerate(const u8 *data, u32 len, hstore_visit_fn visit, void *ud) {
+	for (u32 i = 0; i + 16 <= len; i += 16) {
+		hash128_t h;
+		memcpy(&h.lo, data + i, 8);
+		memcpy(&h.hi, data + i + 8, 8);
+		visit(h, ud);
+	}
+}
+
+void hstore_test_children(i32 kind, bool on) {
+	hstore_set_children((hstore_kind_t)kind, on ? hstore_test_enumerate : NULL);
+}
+
+static hstore_list_t hstore_test_list = {0};
+
+void hstore_test_list_clear() {
+	hstore_test_list.n = 0;
+}
+
+void hstore_test_list_add(i32 id) {
+	hstore_list_push(&hstore_test_list, hstore_test_hashes[id]);
+}
+
+// A blob of the listed hashes, its id
+i32 hstore_test_put_list(i32 kind) {
+	if (hstore_test_count >= HSTORE_TEST_MAX) {
+		return -1;
+	}
+	hstore_test_hashes[hstore_test_count] = hstore_put((hstore_kind_t)kind, hstore_test_list.h, hstore_test_list.n * sizeof(hash128_t));
+	return hstore_test_count++;
+}
+
+// The listed hashes are the roots
+void hstore_test_rebuild() {
+	hstore_rebuild_refs(hstore_test_list.h, (i32)hstore_test_list.n);
+}
+
+// References of id's blob, -1 when not stored
+i32 hstore_test_refs(i32 id) {
+	hstore_entry_t *e = hstore_find(hstore_test_hashes[id]);
+	return e != NULL ? (i32)e->refs : -1;
 }
 
 // A crash: the table is forgotten, the journal stays as it is on disk

@@ -376,6 +376,7 @@ typedef struct config {
 	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
+	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 } config_t;
 
 // ---- Materials ----
@@ -908,6 +909,10 @@ typedef struct project {
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
 	struct string_array                         *mesh_maps;       // Asset name per mesh_map_t, "" for none, NULL when none ever set
+	char                                        *uuid;            // project_uuid, NULL before version 31
+	u32                                          next_uid;        // project_uid_next, 0 before version 31
+	struct u8_array                             *timelines;       // Timelines of the layers (timeline.c), NULL for none
+	struct u8_array                             *history;         // History steps (history*.c), NULL for none
 	project_runtime_t                           *_;
 } project_t;
 
@@ -980,6 +985,10 @@ typedef struct layer_data {
 	f32               height_blend_offset;
 	f32               height_blend_reach;
 	f32_array_t      *mask_effects; // slot_layer_t.mask_effects as is, NULL for the implicit stack
+	u32               uid;          // slot_layer_t.uid, 0 in projects before version 31
+	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
+	i32               res_y;
+	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
 } layer_data_t;
 
 // ---- Shader outputs, export presets, neural models ----
@@ -1205,6 +1214,7 @@ typedef struct material_data2 {
 	bool paint_subs;
 	f32  uv_scale;
 	f32  uv_angle;
+	u32  uid; // slot_material_t.uid, 0 in projects before version 31 and in material files
 } material_data2_t;
 
 typedef struct material_data2_t_array {

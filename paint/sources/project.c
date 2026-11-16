@@ -120,15 +120,27 @@ void project_save(bool save_and_quit) {
 	sys_notify_on_next_frame(&project_save_on_next_frame, NULL);
 }
 
+// Saved as another file: the copy gets its own uuid, the session's history journal follows it
+static void project_saved_as(char *old_path) {
+	if (string_equals(old_path, "") || string_equals(old_path, g_project->_->filepath)) {
+		return;
+	}
+	char *old = project_uuid_get();
+	project_uuid_new();
+	hstore_journal_rebind(old);
+}
+
 void project_save_as_on_file_picked(char *path) {
 	char *f = ui_files_filename;
 	if (string_equals(f, "")) {
 		f = string_copy(tr("untitled"));
 	}
+	char *old_path         = g_project->_->filepath;
 	g_project->_->filepath = string("%s%s%s", path, PATH_SEP, f);
 	if (!ends_with(g_project->_->filepath, ".arm")) {
 		g_project->_->filepath = string("%s.arm", g_project->_->filepath);
 	}
+	project_saved_as(old_path);
 	project_save(_project_save_and_quit);
 }
 
@@ -157,7 +169,9 @@ static void project_save_as_box() {
 	bool save     = ui_icon_button(tr("Save"), ICON_SAVE, UI_ALIGN_CENTER);
 	g_ui->enabled = true;
 	if (ok && (save || g_ui->is_return_down)) {
+		char *old_path         = g_project->_->filepath;
 		g_project->_->filepath = project_documents_path(name);
+		project_saved_as(old_path);
 		sys_title_set(name);
 		ui_box_hide();
 		project_save(_project_save_and_quit);
@@ -247,6 +261,7 @@ char *project_uuid_get() {
 }
 
 void project_new(bool reset_layers) {
+	project_uid_next = 1;
 	if (g_context->paint_object != NULL) {
 		project_cleanup();
 		g_project->_->filepath = "";
@@ -254,6 +269,10 @@ void project_new(bool reset_layers) {
 	g_project->linear_blending = true; // New projects blend colors in linear space
 	g_project->id_map          = NULL;
 	g_project->mesh_maps       = NULL;
+	g_project->uuid            = NULL;
+	g_project->next_uid        = 0;
+	g_project->timelines       = NULL;
+	g_project->history         = NULL;
 	g_project->_->translucency = false;
 
 	if (g_project->_->layers->length == 0) {

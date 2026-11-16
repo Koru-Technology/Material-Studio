@@ -31,6 +31,7 @@
 #include "io/import_text.c"
 #include "io/import_texture.c"
 #include "io/import_theme.c"
+#include "io/project_container.c"
 
 #include "nodes_brush/boolean_node.c"
 #include "nodes_brush/brush_output_node.c"
