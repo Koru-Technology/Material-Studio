@@ -1,7 +1,8 @@
 #include "global.h"
 
 // Layer states as tile maps (stroke_rec.h). Each channel texture of a layer (base, nor, pack; a mask has one) is cut into
-// HISTORY_TILES_GRID^2 tiles, a tile's raw texel bytes are an HSTORE_TILE blob. A tile map lists the tiles of a state.
+// HISTORY_TILES_GRID^2 tiles (sizes differ by a texel at most when 64 does not divide the texture's, tl_tiles_rect), a
+// tile's raw texel bytes are an HSTORE_TILE blob. A tile map lists the tiles of a state.
 //
 // HSTORE_TILEMAP blobs start with a format tag, little endian, packed:
 //   0 full:  u8 tag, u8 channels, u8 texel bytes, u8 depth (0); i32 width, height, format;
@@ -51,6 +52,7 @@ static void tl_tiles_register() {
 	static bool registered = false;
 	if (!registered) {
 		hstore_set_children(HSTORE_TILEMAP, timeline_tiles_children);
+		hstore_set_children(HSTORE_LAYER_RECORD, history_record_children);
 		registered = true;
 	}
 }
@@ -296,6 +298,22 @@ static bool tl_tiles_load(hash128_t h, u8 *p, i32 bytes, i32 bpt) {
 	return true;
 }
 
+// Texel rectangle of tile t in a w x h texture: tiles split the size evenly, they differ by a texel at most when 64 does
+// not divide it
+static void tl_tiles_rect(i32 w, i32 h, i32 t, i32 *x, i32 *y, i32 *tw, i32 *th) {
+	i32 tx = t % HISTORY_TILES_GRID;
+	i32 ty = t / HISTORY_TILES_GRID;
+	*x     = tx * w / HISTORY_TILES_GRID;
+	*y     = ty * h / HISTORY_TILES_GRID;
+	*tw    = (tx + 1) * w / HISTORY_TILES_GRID - *x;
+	*th    = (ty + 1) * h / HISTORY_TILES_GRID - *y;
+}
+
+// Bytes of the largest tile, the stride of tiles in transfers
+static i32 tl_tiles_slot_bytes(i32 w, i32 h, i32 bpt) {
+	return ((w + HISTORY_TILES_GRID - 1) / HISTORY_TILES_GRID) * ((h + HISTORY_TILES_GRID - 1) / HISTORY_TILES_GRID) * bpt;
+}
+
 static bool tl_tiles_target_ok(paint_target_t *t) {
 	if (t == NULL || t->channels < 1 || t->channels > 3) {
 		return false;
@@ -307,7 +325,7 @@ static bool tl_tiles_target_ok(paint_target_t *t) {
 			return false;
 		}
 	}
-	return tex->width % HISTORY_TILES_GRID == 0 && tex->height % HISTORY_TILES_GRID == 0;
+	return tex->width >= HISTORY_TILES_GRID && tex->height >= HISTORY_TILES_GRID;
 }
 
 hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 *dirty) {
@@ -321,9 +339,7 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 	i32            channels = src->channels;
 	i32            total    = channels * per;
 	i32            bpt      = gpu_texture_format_size(tex->format);
-	i32            tw       = tex->width / HISTORY_TILES_GRID;
-	i32            th       = tex->height / HISTORY_TILES_GRID;
-	i32            bytes    = tw * th * bpt;
+	i32            bytes    = tl_tiles_slot_bytes(tex->width, tex->height, bpt);
 
 	tl_tiles_map_t m = {.channels = channels, .bpt = bpt, .width = tex->width, .height = tex->height, .format = tex->format};
 	m.tiles          = malloc(total * sizeof(hash128_t));
@@ -356,10 +372,10 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 		gpu_transfer_map(tl_tiles_transfer, (size_t)bn * channels * bytes);
 		gpu_copy_regions_begin();
 		for (i32 i = 0; i < bn; ++i) {
-			i32 t = list[b0 + i];
+			i32 x, y, tw, th;
+			tl_tiles_rect(tex->width, tex->height, list[b0 + i], &x, &y, &tw, &th);
 			for (i32 c = 0; c < channels; ++c) {
-				gpu_copy_region_to_transfer(tl_tiles_transfer, src->out[c], (t % HISTORY_TILES_GRID) * tw, (t / HISTORY_TILES_GRID) * th, tw, th,
-				                            ((size_t)i * channels + c) * bytes);
+				gpu_copy_region_to_transfer(tl_tiles_transfer, src->out[c], x, y, tw, th, ((size_t)i * channels + c) * bytes);
 			}
 		}
 		gpu_copy_regions_end();
@@ -367,10 +383,12 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 		u8 *mem = gpu_transfer_map(tl_tiles_transfer, 0);
 		for (i32 i = 0; i < bn; ++i) {
 			i32 t = list[b0 + i];
+			i32 x, y, tw, th;
+			tl_tiles_rect(tex->width, tex->height, t, &x, &y, &tw, &th);
 			for (i32 c = 0; c < channels; ++c) {
-				i32 idx       = c * per + t;
-				m.tiles[idx]  = tl_tiles_store(mem + ((size_t)i * channels + c) * bytes, bytes, bpt);
-				read[idx]     = true;
+				i32 idx      = c * per + t;
+				m.tiles[idx] = tl_tiles_store(mem + ((size_t)i * channels + c) * bytes, tw * th * bpt, bpt);
+				read[idx]    = true;
 			}
 		}
 	}
@@ -433,7 +451,9 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 #endif
 }
 
-// Writes the tiles of map into dst, only the ones that differ from prev when dst holds prev now (NONE: every tile)
+// Writes the tiles of map into dst, only the ones that differ from prev when dst holds prev now (NONE: every tile).
+// dst may cover a part of the layer (uv_rect) at the map's resolution, or reach past its edge: tiles go at an offset,
+// texels outside the layer are cleared.
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *dst) {
 #ifdef IRON_METAL
 	if (!tl_tiles_target_ok(dst)) {
@@ -444,28 +464,40 @@ bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *
 	}
 	tl_tiles_map_t *m   = tl_tiles_resolve(map);
 	gpu_texture_t  *tex = dst->out[0];
-	if (m == NULL || m->channels != dst->channels || m->width != tex->width || m->height != tex->height || m->format != (i32)tex->format) {
+	if (m == NULL || m->channels != dst->channels || m->format != (i32)tex->format) {
 		return false;
 	}
-	i32        per   = tl_tiles_per_channel();
-	i32        total = m->channels * per;
-	hash128_t *want  = malloc(total * sizeof(hash128_t));
+	i32  lw    = m->width;
+	i32  lh    = m->height;
+	bool whole = tex->width == lw && tex->height == lh && dst->uv_rect[0] == 0.0 && dst->uv_rect[1] == 0.0 && dst->uv_rect[2] == 1.0 &&
+	             dst->uv_rect[3] == 1.0;
+	if (!whole && (dst->res_w != lw || dst->res_h != lh)) {
+		return false; // Another resolution resamples, not tiles
+	}
+	i32 ox = whole ? 0 : (i32)floorf(dst->uv_rect[0] * lw + 0.5f); // Layer texel at the target's origin
+	i32 oy = whole ? 0 : (i32)floorf(dst->uv_rect[1] * lh + 0.5f);
+	i32 per   = tl_tiles_per_channel();
+	i32 total = m->channels * per;
+	hash128_t *want = malloc(total * sizeof(hash128_t));
 	memcpy(want, m->tiles, total * sizeof(hash128_t));
-	hash128_t      *have = NULL;
-	tl_tiles_map_t *p    = tl_tiles_resolve(prev);
-	if (p != NULL && p->channels == m->channels && p->width == tex->width && p->height == tex->height && p->format == (i32)tex->format) {
-		have = malloc(total * sizeof(hash128_t));
-		memcpy(have, p->tiles, total * sizeof(hash128_t));
+	hash128_t *have = NULL;
+	if (whole) {
+		tl_tiles_map_t *p = tl_tiles_resolve(prev);
+		if (p != NULL && p->channels == m->channels && p->width == lw && p->height == lh && p->format == m->format) {
+			have = malloc(total * sizeof(hash128_t));
+			memcpy(have, p->tiles, total * sizeof(hash128_t));
+		}
 	}
 	i32 bpt   = gpu_texture_format_size(tex->format);
-	i32 tw    = tex->width / HISTORY_TILES_GRID;
-	i32 th    = tex->height / HISTORY_TILES_GRID;
-	i32 bytes = tw * th * bpt;
+	i32 bytes = tl_tiles_slot_bytes(lw, lh, bpt);
 
 	i32 *list = malloc(total * sizeof(i32));
 	i32  n    = 0;
 	for (i32 idx = 0; idx < total; ++idx) {
-		if (have == NULL || !hash128_eq(have[idx], want[idx])) {
+		i32 x, y, tw, th;
+		tl_tiles_rect(lw, lh, idx % per, &x, &y, &tw, &th);
+		bool inside = x < ox + tex->width && x + tw > ox && y < oy + tex->height && y + th > oy;
+		if (inside && (have == NULL || !hash128_eq(have[idx], want[idx]))) {
 			list[n++] = idx;
 		}
 	}
@@ -473,28 +505,50 @@ bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *
 		tl_tiles_transfer = gpu_transfer_create(0);
 	}
 	bool         ok    = true;
+	u8          *tile  = malloc(bytes);
 	draw_saved_t saved = draw_suspend();
+	if (ox < 0 || oy < 0 || ox + tex->width > lw || oy + tex->height > lh) {
+		for (i32 c = 0; c < dst->channels; ++c) { // Past the edge of the layer
+			_gpu_begin(dst->out[c], NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
+			gpu_end();
+		}
+	}
 	for (i32 b0 = 0; b0 < n; b0 += TL_TILES_BATCH) {
 		i32 bn  = n - b0 < TL_TILES_BATCH ? n - b0 : TL_TILES_BATCH;
 		u8 *mem = gpu_transfer_map(tl_tiles_transfer, (size_t)bn * bytes);
+		i32 rects[TL_TILES_BATCH][4]; // Part of each tile written: x, y, w, h in the layer
 		for (i32 i = 0; i < bn; ++i) {
 			i32 idx = list[b0 + i];
-			if (!tl_tiles_load(want[idx], mem + (size_t)i * bytes, bytes, bpt)) {
+			i32 x, y, tw, th;
+			tl_tiles_rect(lw, lh, idx % per, &x, &y, &tw, &th);
+			if (!tl_tiles_load(want[idx], tile, tw * th * bpt, bpt)) {
 				ok = false;
-				memset(mem + (size_t)i * bytes, 0, bytes);
+				memset(tile, 0, tw * th * bpt);
+			}
+			i32 x0 = x > ox ? x : ox;
+			i32 y0 = y > oy ? y : oy;
+			i32 x1 = x + tw < ox + tex->width ? x + tw : ox + tex->width;
+			i32 y1 = y + th < oy + tex->height ? y + th : oy + tex->height;
+			rects[i][0] = x0;
+			rects[i][1] = y0;
+			rects[i][2] = x1 - x0;
+			rects[i][3] = y1 - y0;
+			u8 *out     = mem + (size_t)i * bytes;
+			for (i32 row = 0; row < y1 - y0; ++row) { // Rows of the part, packed
+				memcpy(out + (size_t)row * (x1 - x0) * bpt, tile + ((size_t)(y0 - y + row) * tw + (x0 - x)) * bpt, (size_t)(x1 - x0) * bpt);
 			}
 		}
 		gpu_copy_regions_begin();
 		for (i32 i = 0; i < bn; ++i) {
 			i32 idx = list[b0 + i];
-			i32 t   = idx % per;
-			gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[idx / per], (t % HISTORY_TILES_GRID) * tw, (t / HISTORY_TILES_GRID) * th, tw, th,
+			gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[idx / per], rects[i][0] - ox, rects[i][1] - oy, rects[i][2], rects[i][3],
 			                              (size_t)i * bytes);
 		}
 		gpu_copy_regions_end();
 		gpu_execute_and_wait(); // The memory is filled again by the next batch
 	}
 	draw_resume(saved);
+	free(tile);
 	free(list);
 	free(want);
 	free(have);
@@ -506,4 +560,76 @@ bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *
 
 bool timeline_tiles_restore(hash128_t tilemap, paint_target_t *dst) {
 	return timeline_tiles_restore_from(tilemap, HASH128_NONE, dst);
+}
+
+// Scripts: a capture of a 100 x 80 part of l (partial tiles) restores byte for byte, a capture of l restores into a part
+// of it and past its edge. Mismatches found, -1 when it could not run.
+i32 timeline_tiles_test(slot_layer_t *l) {
+#ifdef IRON_METAL
+	if (l == NULL || l->texpaint == NULL) {
+		return -1;
+	}
+	gpu_texture_t *src  = l->texpaint;
+	i32            w    = src->width;
+	i32            h    = src->height;
+	i32            bpt  = gpu_texture_format_size(src->format);
+	i32            bad  = 0;
+	draw_saved_t   save = draw_suspend();
+
+	// Partial tiles
+	gpu_texture_t *a = gpu_create_render_target(100, 80, src->format);
+	gpu_texture_t *b = gpu_create_render_target(100, 80, src->format);
+	gpu_copy_regions_begin();
+	gpu_copy_region(a, 0, 0, src, w / 2 - 50, h / 2 - 40, 100, 80);
+	gpu_copy_regions_end();
+	paint_target_t ta = {.w = 100, .h = 80, .uv_rect = {0, 0, 1, 1}, .res_w = 100, .res_h = 80, .channels = 1, .out = {a}};
+	paint_target_t tb = ta;
+	tb.out[0]         = b;
+	hash128_t pm      = timeline_tiles_capture(&ta, HASH128_NONE, NULL);
+	bad += !timeline_tiles_restore(pm, &tb);
+	u8 *pa = malloc(100 * 80 * bpt);
+	memcpy(pa, gpu_get_texture_pixels(a)->buffer, 100 * 80 * bpt);
+	bad += memcmp(pa, gpu_get_texture_pixels(b)->buffer, 100 * 80 * bpt) != 0;
+	hstore_unref(pm);
+	free(pa);
+
+	// Parts of l, inside and past the edge
+	u8 *pl = malloc((size_t)w * h * bpt);
+	memcpy(pl, gpu_get_texture_pixels(src)->buffer, (size_t)w * h * bpt);
+	gpu_release_texture_pixels(src);
+	paint_target_t tl  = {.w = w, .h = h, .uv_rect = {0, 0, 1, 1}, .res_w = w, .res_h = h, .channels = 1, .out = {src}};
+	hash128_t      map = timeline_tiles_capture(&tl, HASH128_NONE, NULL);
+	gpu_texture_t *c   = gpu_create_render_target(w / 2, h / 2, src->format);
+	f32            rects[2][4] = {{0.25, 0.25, 0.75, 0.75}, {-0.25, -0.25, 0.25, 0.25}};
+	for (i32 r = 0; r < 2; ++r) {
+		paint_target_t tc = {.w = w / 2, .h = h / 2, .res_w = w, .res_h = h, .channels = 1, .out = {c}};
+		memcpy(tc.uv_rect, rects[r], sizeof(tc.uv_rect));
+		bad += !timeline_tiles_restore(map, &tc);
+		u8 *pc = gpu_get_texture_pixels(c)->buffer;
+		i32 ox = (i32)floorf(rects[r][0] * w + 0.5f);
+		i32 oy = (i32)floorf(rects[r][1] * h + 0.5f);
+		for (i32 y = 0; y < h / 2; ++y) {
+			for (i32 x = 0; x < w / 2; ++x) {
+				i32 lx      = x + ox;
+				i32 ly      = y + oy;
+				u8  zero[16] = {0};
+				u8 *want     = lx >= 0 && ly >= 0 && lx < w && ly < h ? pl + ((size_t)ly * w + lx) * bpt : zero;
+				if (memcmp(pc + ((size_t)y * (w / 2) + x) * bpt, want, bpt) != 0) {
+					bad++;
+					y = h;
+					break;
+				}
+			}
+		}
+	}
+	hstore_unref(map);
+	free(pl);
+	gpu_delete_texture(a);
+	gpu_delete_texture(b);
+	gpu_delete_texture(c);
+	draw_resume(save);
+	return bad;
+#else
+	return -1;
+#endif
 }

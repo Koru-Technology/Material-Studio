@@ -396,10 +396,13 @@ buffer_t *export_arm_encode_project(char *path) {
 	export_arm_progress(0.8);
 	if (container) {
 		project_container_pack_assets(g_project);
+		g_project->timelines = timeline_io_encode(); // Their blobs are written with the store's
 	}
 	buffer_t *buffer = util_encode_project(g_project);
 	if (container) {
 		project_container_unpack_assets(g_project);
+		export_arm_free_buffer(g_project->timelines);
+		g_project->timelines = NULL;
 	}
 
 	for (i32 i = 0; i < ld->length; ++i) {

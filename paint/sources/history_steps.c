@@ -12,7 +12,7 @@ void history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_gr
 void history_paint() {
 	bool is_mask = slot_layer_is_mask(g_context->layer);
 	bool tiled   = history_tiles_supported(g_context->layer);
-	if (!tiled) {
+	if (!tiled && !history_v2_active()) { // history_v2 undoes from the timeline
 		history_copy_to_undo(g_context->layer->id, history_undo_i, is_mask);
 	}
 
@@ -99,13 +99,24 @@ history_step_t *history_delete_layer(slot_layer_t *l) {
 	for (i32 i = 0; i < step->merge_layers->length; ++i) {
 		array_remove(layers, step->merge_layers->buffer[i]);
 	}
+	history_records_take(step);
 	context_set_layer(layers->buffer[start > 0 ? start - 1 : 0]);
 	return step;
 }
 
+// history_v2 ops on one layer are tiled steps as strokes: the tiles they changed are kept and captured
+static void history_op_tiles(history_step_t *step) {
+	if (history_v2_active() && history_tiles_supported(g_context->layer)) {
+		history_tiles_begin(step, g_context->layer);
+	}
+}
+
 void history_clear_layer() {
-	history_swap_active();
-	history_push(HISTORY_ACTION_CLEAR_LAYER);
+	if (!history_v2_active()) {
+		history_swap_active();
+	}
+	history_step_t *step = history_push(HISTORY_ACTION_CLEAR_LAYER);
+	history_op_tiles(step); // Before the entry: it finalizes what is pending
 	timeline_record_op(g_context->layer, TL_CLEAR, NULL, 0, NULL, 0);
 }
 
@@ -130,6 +141,7 @@ static void history_merge_capture(slot_layer_t *top, i32 start) {
 		any_array_push(step->merge_layers, c);
 		i32_array_push(step->merge_parents, l->parent != NULL ? array_index_of(layers, l->parent) : -1);
 	}
+	history_records_take(step); // The copies as they were, textures freed
 }
 
 void history_merge_layers() {
@@ -152,7 +164,8 @@ void history_merge_group(slot_layer_t *l) {
 	history_merge_capture(top, array_index_of(g_project->_->layers, top) - slot_layer_count_descendants(top));
 }
 
-void history_apply_mask() {
+// Whole layer copies of the mask and the layers it applies to (history_v2: their timelines keep them)
+static void history_apply_mask_copies() {
 	if (slot_layer_is_group_mask(g_context->layer)) {
 		slot_layer_t         *group  = g_context->layer->parent;
 		slot_layer_t_array_t *layers = slot_layer_get_children(group);
@@ -167,6 +180,12 @@ void history_apply_mask() {
 		    },
 		    2);
 		history_copy_merging_layers2(layers);
+	}
+}
+
+void history_apply_mask() {
+	if (!history_v2_active()) {
+		history_apply_mask_copies();
 	}
 	// The mask's settings, undo brings it back with them (opacity and blending are kept by history_push)
 	slot_layer_t   *m    = g_context->layer;
@@ -188,26 +207,33 @@ void history_apply_mask() {
 }
 
 void history_invert_mask() {
-	history_push(HISTORY_ACTION_INVERT_MASK);
+	history_step_t *step = history_push(HISTORY_ACTION_INVERT_MASK);
+	history_op_tiles(step);
 	timeline_record_op(g_context->layer, TL_INVERT, NULL, 0, NULL, TL_FLAG_UPSCALABLE | TL_FLAG_INVOLUTION);
 }
 
 // The layer turns procedural: its timeline ends with the conversion and waits for a conversion back
 void history_to_fill_layer() {
-	history_copy_to_undo(g_context->layer->id, history_undo_i, false);
+	if (!history_v2_active()) {
+		history_copy_to_undo(g_context->layer->id, history_undo_i, false);
+	}
 	history_push(HISTORY_ACTION_TO_FILL_LAYER);
 	timeline_record_op(g_context->layer, TL_FILL, NULL, 0, NULL, 0);
 }
 
 void history_to_fill_mask() {
-	history_copy_to_undo(g_context->layer->id, history_undo_i, true);
+	if (!history_v2_active()) {
+		history_copy_to_undo(g_context->layer->id, history_undo_i, true);
+	}
 	history_push(HISTORY_ACTION_TO_FILL_MASK);
 	timeline_record_op(g_context->layer, TL_FILL, NULL, 0, NULL, 0);
 }
 
 // The step keeps the layer's fill material, not the selected one: undo gives it back
 static void history_to_paint(history_action_t action) {
-	history_copy_to_undo(g_context->layer->id, history_undo_i, action == HISTORY_ACTION_TO_PAINT_MASK);
+	if (!history_v2_active()) {
+		history_copy_to_undo(g_context->layer->id, history_undo_i, action == HISTORY_ACTION_TO_PAINT_MASK);
+	}
 	history_step_t *step = history_push(action);
 	step->material       = array_index_of(g_project->_->materials, g_context->layer->fill_material);
 	step->material_uid   = g_context->layer->fill_material != NULL ? g_context->layer->fill_material->uid : 0;

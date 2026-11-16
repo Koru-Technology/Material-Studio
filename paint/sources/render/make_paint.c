@@ -221,6 +221,9 @@ node_shader_context_t *make_paint_run_context(material_t *data, char *context_id
 	bool is_atlas       = string_equals(context_id, "atlas");
 	make_paint_batched  = !is_atlas && make_paint_batch_eligible();
 	make_paint_resolved = make_paint_resolved_eligible(is_atlas);
+	if (make_paint_resolved) { // Not in this parse: it may be loading its shaders in a batch of its own
+		sys_notify_on_next_frame(&make_dab_resolve_prewarm_on_next_frame, NULL);
+	}
 	return make_paint_run_context_internal(data, context_id, is_atlas);
 }
 
