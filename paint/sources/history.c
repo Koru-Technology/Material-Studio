@@ -91,6 +91,8 @@ static char *history_action_to_string(history_action_t action) {
 		return tr("Mask Height Blend");
 	case HISTORY_ACTION_MASK_STACK:
 		return tr("Edit Mask Stack");
+	case HISTORY_ACTION_RESOLUTION:
+		return tr("Resolution");
 	}
 	return tr("Paint");
 }
@@ -261,6 +263,7 @@ static bool history_step_valid_check(history_step_t *step, bool undo) {
 	case HISTORY_ACTION_DUPLICATE_SWATCH:
 	case HISTORY_ACTION_REPLACE_SWATCHES:
 	case HISTORY_ACTION_EDIT_SWATCH:
+	case HISTORY_ACTION_RESOLUTION:
 		return true;
 	case HISTORY_ACTION_NEW_LAYER:
 	case HISTORY_ACTION_NEW_BLACK_MASK:
@@ -690,6 +693,9 @@ void history_undo() {
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
 		}
+		else if (step->action == HISTORY_ACTION_RESOLUTION) {
+			layers_resolution_apply(step->resolution[0], step->resolution[1]);
+		}
 		else if (step->action == HISTORY_ACTION_NEW_SWATCH || step->action == HISTORY_ACTION_DUPLICATE_SWATCH) {
 			history_delete_swatch_slot(step);
 		}
@@ -976,6 +982,9 @@ void history_redo() {
 		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
+		}
+		else if (step->action == HISTORY_ACTION_RESOLUTION) {
+			layers_resolution_apply(step->resolution[2], step->resolution[3]);
 		}
 		else if (step->action == HISTORY_ACTION_NEW_SWATCH || step->action == HISTORY_ACTION_DUPLICATE_SWATCH) {
 			history_new_swatch_slot(step);

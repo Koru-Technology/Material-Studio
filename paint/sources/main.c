@@ -295,6 +295,7 @@
 #include "util/util_test.c"
 #include "io/export_tiled.c"
 #include "app_api_export.c"
+#include "util/util_layer_resolution.c"
 
 #ifdef WITH_PLUGINS
 void plugins_init();

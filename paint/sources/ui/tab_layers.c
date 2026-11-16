@@ -1510,7 +1510,7 @@ void tab_layers_draw_edit() {
 	if (ui_item_changed()) {
 		ui_menu_show_first = true;
 		config_set_texture_res(base_res);
-		layers_on_resized();
+		layers_on_resized_by_user();
 	}
 
 	if (base_res == TEXTURE_RES_CUSTOM) {
@@ -1528,7 +1528,7 @@ void tab_layers_draw_edit() {
 		}
 		if (res_was_changed && !g_ui->input_down) {
 			res_was_changed = false;
-			layers_on_resized();
+			layers_on_resized_by_user();
 		}
 
 		if (res_changed) {

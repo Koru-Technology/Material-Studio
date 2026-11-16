@@ -2017,6 +2017,7 @@ void            history_delete_material();
 void            history_duplicate_material();
 void            history_delete_material_group(node_group_t *group);
 void            history_mask_stack();
+void            history_resolution(i32 w0, i32 h0, i32 w1, i32 h1);
 
 // ---- keymap.c ----
 void       keymap_load();
@@ -2560,3 +2561,10 @@ void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
 i32                   paint_exec_pending_ops();
 void                  render_path_base_draw_paint_depth();
 shader_context_t     *make_material_parse_paint_kept(void);
+
+// ---- util/util_layer_resolution.c ----
+void layers_resolution_apply(i32 w, i32 h);
+void layers_resolution_begin(i32 w, i32 h);
+void layers_on_resized_by_user();
+void layers_resolution_reset();
+i32  layers_resolution_test_restores();
