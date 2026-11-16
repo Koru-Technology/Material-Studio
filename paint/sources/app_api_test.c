@@ -19,12 +19,12 @@ bool app_layer_select(int32_t id) {
 	if (l == NULL) {
 		return false;
 	}
-	script_layer_set(l);
+	layers_op_set(l);
 	return true;
 }
 
 bool app_layer_add(void) {
-	return app_ready() && script_layer_new() != NULL;
+	return app_ready() && layers_op_new() != NULL;
 }
 
 bool app_layer_can_delete(int32_t id) {

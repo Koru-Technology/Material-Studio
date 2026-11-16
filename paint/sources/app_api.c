@@ -521,7 +521,7 @@ void app_redo(void) {
 // Layers
 
 int32_t app_layer_count(void) {
-	return app_ready() ? script_layer_count() : 0;
+	return app_ready() ? layers_op_count() : 0;
 }
 
 static i32 app_layer_depth(slot_layer_t *l) {
@@ -568,7 +568,7 @@ bool app_layer_delete(int32_t id) {
 	if (l == NULL || !tab_layers_can_delete(l)) {
 		return false;
 	}
-	script_layer_delete(l);
+	layers_op_delete(l);
 	iron_delay_idle_sleep();
 	return true;
 }

@@ -444,24 +444,55 @@ static const char *minic_api_sig_hint(const char *name) {
 #define MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8)      MINIC_ARGS8(t0, t1, t2, t3, t4, t5, t6, t7), MINIC_ARG_##t8(8)
 #define MINIC_ARGS10(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) MINIC_ARGS9(t0, t1, t2, t3, t4, t5, t6, t7, t8), MINIC_ARG_##t9(9)
 
+// Script names of functions named otherwise in C (the layer operations, util/util_layer_ops.c): the list keeps the script
+// name, the thunk calls the C function. X* expand the name once for the call, # and ## keep it for the thunk and the entry
+#define script_layer_add_path_point layers_op_add_path_point
+#define script_layer_apply_mask     layers_op_apply_mask
+#define script_layer_at             layers_op_at
+#define script_layer_clear          layers_op_clear
+#define script_layer_count          layers_op_count
+#define script_layer_delete         layers_op_delete
+#define script_layer_duplicate      layers_op_duplicate
+#define script_layer_get            layers_op_get
+#define script_layer_index          layers_op_index
+#define script_layer_invert_mask    layers_op_invert_mask
+#define script_layer_merge_down     layers_op_merge_down
+#define script_layer_merge_group    layers_op_merge_group
+#define script_layer_move           layers_op_move
+#define script_layer_new            layers_op_new
+#define script_layer_new_color      layers_op_new_color
+#define script_layer_new_fill       layers_op_new_fill
+#define script_layer_new_group      layers_op_new_group
+#define script_layer_new_mask       layers_op_new_mask
+#define script_layer_new_path       layers_op_new_path
+#define script_layer_new_text       layers_op_new_text
+#define script_layer_repaint_path   layers_op_repaint_path
+#define script_layer_set            layers_op_set
+#define script_layer_set_group      layers_op_set_group
+#define script_layer_set_name       layers_op_set_name
+#define script_layer_set_object     layers_op_set_object
+#define script_layer_to_fill        layers_op_to_fill
+#define script_layer_to_paint       layers_op_to_paint
+#define script_layer_update         layers_op_update
+
 // Pass 1: one thunk per exported function
-#define MINIC_THUNK(name, r, args)                        \
-	static minic_val_t mw_##name(minic_val_t *a, int n) { \
-		(void)a;                                          \
-		(void)n;                                          \
-		MINIC_RET_##r(name(args));                        \
+#define MINIC_THUNK(thunk, fn, r, args)                 \
+	static minic_val_t thunk(minic_val_t *a, int n) { \
+		(void)a;                                      \
+		(void)n;                                      \
+		MINIC_RET_##r(fn(args));                      \
 	}
-#define X0(name, sig, r)       MINIC_THUNK(name, r, )
-#define X1(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS1(__VA_ARGS__))
-#define X2(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS2(__VA_ARGS__))
-#define X3(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS3(__VA_ARGS__))
-#define X4(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS4(__VA_ARGS__))
-#define X5(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS5(__VA_ARGS__))
-#define X6(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS6(__VA_ARGS__))
-#define X7(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS7(__VA_ARGS__))
-#define X8(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS8(__VA_ARGS__))
-#define X9(name, sig, r, ...)  MINIC_THUNK(name, r, MINIC_ARGS9(__VA_ARGS__))
-#define X10(name, sig, r, ...) MINIC_THUNK(name, r, MINIC_ARGS10(__VA_ARGS__))
+#define X0(name, sig, r)       MINIC_THUNK(mw_##name, name, r, )
+#define X1(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS1(__VA_ARGS__))
+#define X2(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS2(__VA_ARGS__))
+#define X3(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS3(__VA_ARGS__))
+#define X4(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS4(__VA_ARGS__))
+#define X5(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS5(__VA_ARGS__))
+#define X6(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS6(__VA_ARGS__))
+#define X7(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS7(__VA_ARGS__))
+#define X8(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS8(__VA_ARGS__))
+#define X9(name, sig, r, ...)  MINIC_THUNK(mw_##name, name, r, MINIC_ARGS9(__VA_ARGS__))
+#define X10(name, sig, r, ...) MINIC_THUNK(mw_##name, name, r, MINIC_ARGS10(__VA_ARGS__))
 #include "minic_api_list.h"
 #undef X0
 #undef X1

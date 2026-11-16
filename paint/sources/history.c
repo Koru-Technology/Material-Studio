@@ -481,19 +481,19 @@ static void history_redo_duplicate_layer(void *_) {
 }
 
 static void history_redo_new_fill_mask(slot_layer_t *l) {
-	if (history_layer_alive(l)) {
+	if (slot_layer_alive(l)) {
 		slot_layer_to_fill_layer(l);
 	}
 }
 
 static void history_redo_new_white_mask(slot_layer_t *l) {
-	if (history_layer_alive(l)) {
+	if (slot_layer_alive(l)) {
 		slot_layer_clear(l, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
 	}
 }
 
 static void history_redo_new_black_mask(slot_layer_t *l) {
-	if (history_layer_alive(l)) {
+	if (slot_layer_alive(l)) {
 		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	}
 }

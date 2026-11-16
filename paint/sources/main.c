@@ -220,6 +220,7 @@
 #include "util/util_env.c"
 #include "util/util_layer.c"
 #include "util/util_layer_create.c"
+#include "util/util_layer_ops.c"
 #include "util/util_layer_fill.c"
 #include "util/util_layer_merge.c"
 #include "util/util_mask_stack.c"

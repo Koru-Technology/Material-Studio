@@ -345,7 +345,7 @@ void box_bake_maps_update() {
 		slot_material_t *baked = script_get_material(bbm_baked_material_name());
 		if (baked != NULL) {
 			script_material_set(baked);
-			script_layer_new_fill();
+			layers_op_new_fill();
 		}
 	}
 	if (!bbm_running) {

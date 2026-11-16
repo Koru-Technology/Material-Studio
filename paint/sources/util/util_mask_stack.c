@@ -424,6 +424,11 @@ void mask_stack_layer_changed(slot_layer_t *l) {
 	}
 }
 
+// The layer is still in the project: a deferred step or a held pointer may outlive it
+bool slot_layer_alive(slot_layer_t *l) {
+	return l != NULL && g_project != NULL && g_project->_ != NULL && array_index_of(g_project->_->layers, l) >= 0;
+}
+
 // Layer of the project with runtime id, NULL when gone
 slot_layer_t *mask_stack_layer_by_id(i32 id) {
 	for (i32 i = 0; id >= 0 && i < g_project->_->layers->length; ++i) {
