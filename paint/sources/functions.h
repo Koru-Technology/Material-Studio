@@ -28,7 +28,6 @@ ui_node_socket_t *ui_get_socket(ui_node_t_array_t *nodes, i32 id);
 void      export_arm_run_mesh(char *path, mesh_object_t_array_t *paint_objects);
 buffer_t *export_arm_encode_project(char *path);
 void      export_arm_run_project(char *path);
-void      export_arm_run_project_v30(char *path);
 void      export_arm_run_material(char *path);
 buffer_t *export_arm_encode_library_material(slot_material_t *m);
 void      export_arm_pack_assets(project_t *raw, asset_t_array_t *assets);
@@ -52,7 +51,6 @@ void export_texture_test_options(char *preset, i32 layers_export, bool padding, 
 // ---- io/import_arm_assets.c ----
 char           *import_arm_abs(char *file, char *base);
 void            import_arm_make_pink(char *abs);
-void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha);
 bool            import_arm_texture_has_alpha(gpu_texture_t *t);
 void            import_arm_init_nodes(ui_node_t_array_t *nodes);
 packed_asset_t *import_arm_take_packed_asset(project_t *project, char *abs, char *file, bool copy);
@@ -63,7 +61,8 @@ char           *import_arm_load_asset(project_t *project, char *file, char *base
 void import_arm_set_preview_given(slot_material_t *m);
 bool import_arm_take_preview_given(slot_material_t *m);
 void import_arm_run_project(char *path);
-bool import_arm_has_version(buffer_t *b);
+bool       import_arm_has_version(buffer_t *b);
+project_t *import_arm_decode(buffer_t *b);
 
 // ---- io/import_arm_library.c ----
 void import_arm_run_material_from_project_on_next_frame(slot_material_t_array_t *imported);
@@ -71,7 +70,7 @@ void import_arm_material_data(slot_material_t *m, material_data2_t *md);
 void import_arm_import_materials(project_t *project, char *path, i32_array_t *selected, bool delete_blob);
 void import_arm_run_material_from_project(project_t *project, char *path);
 void import_arm_run_swatches_from_project(project_t *project, char *path, bool replace_existing);
-void import_arm_run_material(char *path);
+bool import_arm_run_material(char *path);
 void import_arm_run_brush(char *path);
 void import_arm_run_brush_from_project(project_t *project, char *path);
 void import_arm_run_swatches(char *path, bool replace_existing);
@@ -109,10 +108,6 @@ void import_json_material_run(char *path);
 
 // ---- io/import_keymap.c ----
 void import_keymap_run(char *path);
-
-// ---- io/import_legacy.c ----
-bool       import_arm_is_old(buffer_t *b);
-project_t *import_arm_from_old(buffer_t *b);
 
 // ---- io/import_lut.c ----
 void import_lut_free();
@@ -948,7 +943,6 @@ gpu_texture_t *box_bake_maps_inpaint_overlay();
 i32            box_bake_maps_inpaint_color();
 
 // ---- ui/box_export.c ----
-void box_export_textures_run(char *path, bool bake_material);
 void box_export_tiled_update(void *_);
 void box_export_fetch_presets();
 void box_export_parse_preset();
@@ -1347,7 +1341,6 @@ void layers_enable_translucency();
 void layers_set_object_mask();
 void tab_layers_apply_filter(i32 filter);
 void layers_history_with_prev(void (*push)(void));
-void layers_on_resized();
 bool layers_sync_nodes();
 slot_layer_t_array_t *tab_layers_init_layer_map();
 void                  tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers);
@@ -2456,6 +2449,7 @@ bool        project_session_due();
 bool        project_session_changed();
 void        project_session_update();
 void        project_session_forget();
+void        project_session_loaded();
 bool        project_session_pending(char *path);
 bool        project_session_recovering();
 bool        project_session_recover(char *path);
@@ -2630,6 +2624,5 @@ bool layers_resolution_begin(i32 w, i32 h);
 bool layers_resolution_step();
 bool layers_resolution_running();
 f32  layers_resolution_progress();
-void layers_on_resized_by_user();
 void layers_resolution_reset();
 i32  layers_resolution_test_restores();

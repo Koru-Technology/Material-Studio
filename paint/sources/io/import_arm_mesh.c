@@ -68,10 +68,7 @@ project_t *import_arm_decode_project(buffer_t *b) {
 		scene_t *scene = armpack_decode(b);
 		return ALLOC_INIT(project_t, {.mesh_datas = scene->mesh_datas});
 	}
-	if (import_arm_is_old(b)) {
-		return import_arm_from_old(b);
-	}
-	return armpack_decode(b);
+	return import_arm_decode(b);
 }
 
 bool import_arm_is_selected(i32_array_t *selected, i32 i) {

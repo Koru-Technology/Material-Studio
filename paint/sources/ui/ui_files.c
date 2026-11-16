@@ -271,17 +271,8 @@ char *ui_files_file_browser(char **path, bool drag_files, char *search, bool ref
 					blob_path = string("%s%s", document_directory, blob_path);
 #endif
 
-					buffer_t  *buffer  = iron_load_blob(blob_path);
-					project_t *raw     = NULL;
-					bool       is_blob = false;
-
-					if (import_arm_is_old(buffer)) {
-						raw = import_arm_from_old(buffer);
-					}
-					else if (import_arm_has_version(buffer)) {
-						raw     = armpack_decode(buffer);
-						is_blob = true;
-					}
+					buffer_t  *buffer = iron_load_blob(blob_path);
+					project_t *raw    = import_arm_decode(buffer);
 
 					// A corrupt icon decodes to NULL, the file shows the empty icon then
 					if (raw != NULL && raw->material_icons != NULL && raw->material_icons->length > 0) {
@@ -307,9 +298,7 @@ char *ui_files_file_browser(char **path, bool drag_files, char *search, bool ref
 						}
 					}
 
-					if (is_blob) {
-						free(raw);
-					}
+					free(raw);
 					iron_delete_blob(buffer);
 
 					if (icon == NULL) {

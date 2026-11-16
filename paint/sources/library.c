@@ -993,5 +993,12 @@ void library_use(library_entry_t *e) {
 	}
 	char *path = string("%s/%s.arm", library_dir(e), e->name);
 	console_toast(tr("Loading material"));
-	import_arm_run_material(path);
+	if (!import_arm_run_material(path) && e->done) {
+		// Written by an older build (or damaged): imported again, a new material file replaces it
+		e->done     = false;
+		e->imported = false;
+		library_done--;
+		library_queue_push(e);
+		library_save_index();
+	}
 }

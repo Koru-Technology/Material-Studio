@@ -574,86 +574,6 @@ static char *export_texture_out_path(char *path, char *f, export_preset_texture_
 	return string("%s%s%s%s%s", path, PATH_SEP, f, tex_name, ext);
 }
 
-static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, char *object_name, bool bake_material) {
-	i32   texture_size_x = config_get_texture_res_x();
-	i32   texture_size_y = config_get_texture_res_y();
-	char *ext;
-	char *f    = export_texture_file_base(layers, object_name, &ext);
-	i32   bits = export_texture_bits();
-
-	layers_make_temp_img();
-	layers_make_export_img();
-	gpu_texture_t *empty = render_path_empty_white();
-
-	i32            udim_slot = export_texture_udim_slot(layers, object_name);
-	gpu_texture_t *acc[3]    = {layers_expa, layers_expb, layers_expc};
-	export_texture_clear(acc);
-
-	// Flatten layers
-	for (i32 i = 0; i < layers->length; ++i) {
-		slot_layer_t *l1 = layers->buffer[i];
-		if (!export_texture_layer_used(l1, object_name)) {
-			continue;
-		}
-
-		gpu_texture_t        *mask    = empty;
-		slot_layer_t_array_t *l1masks = slot_layer_get_masks(l1, true);
-		if (l1masks != NULL && !bake_material) {
-			layers_make_temp_mask_img();
-			draw_begin(pipes_temp_mask_image, true, 0xffffffff);
-			draw_end();
-			for (i32 i = 0; i < l1masks->length; ++i) {
-				layers_merge_mask(pipes_temp_mask_image, l1masks->buffer[i], l1, layers_expc);
-			}
-			mask = pipes_temp_mask_image;
-		}
-
-		// Shared layers of udim tiles are cropped out of the atlas, tile layers go into the atlas when exporting it whole
-		if (!bake_material && udim_slot >= 0 && util_mesh_udim_layer(l1)) {
-			l1 = layers_udim_remap(l1, l1masks != NULL ? &mask : NULL, udim_slot, true);
-		}
-		else if (!bake_material && udim_slot < 0 && layers_udim_tile_slot(l1) >= 0) {
-			l1 = layers_udim_remap(l1, l1masks != NULL ? &mask : NULL, layers_udim_tile_slot(l1), false);
-		}
-
-		export_texture_merge_layer(acc, layers_temp_image, l1, mask, i, layers->length);
-	}
-
-	gpu_texture_t *texpaint      = layers_expa;
-	gpu_texture_t *texpaint_nor  = layers_expb;
-	gpu_texture_t *texpaint_pack = layers_expc;
-
-	export_preset_t *preset = box_export_preset;
-	bool             need[3];
-	export_texture_needs(preset, need);
-	buffer_t *pixpaint      = need[0] ? gpu_get_texture_pixels(texpaint) : NULL;
-	buffer_t *pixpaint_nor  = need[1] ? gpu_get_texture_pixels(texpaint_nor) : NULL;
-	buffer_t *pixpaint_pack = need[2] ? gpu_get_texture_pixels(texpaint_pack) : NULL;
-	buffer_t *src[3]        = {pixpaint, pixpaint_nor, pixpaint_pack};
-	buffer_t *pix           = NULL;
-
-	for (i32 i = 0; i < preset->textures->length; ++i) {
-		export_preset_texture_t *t        = preset->textures->buffer[i];
-		char                    *out_path = export_texture_out_path(path, f, t, ext);
-		export_texture_layout_t  layout   = export_texture_layout(t);
-		if (layout.src >= 0) {
-			export_texture_write_texture(out_path, src[layout.src], texture_size_x, texture_size_y, layout.type, layout.off);
-		}
-		else {
-			if (pix == NULL) {
-				pix = buffer_create(texture_size_x * texture_size_y * 4 * math_floor(bits / 8.0));
-			}
-			export_texture_pack(t, pixpaint, pixpaint_nor, pixpaint_pack, pix, bits);
-			export_texture_write_texture(out_path, pix, texture_size_x, texture_size_y, 3, 0);
-		}
-	}
-
-	// Release staging memory allocated in gpu_get_texture_pixels()
-	gpu_release_texture_pixels(texpaint);
-	gpu_release_texture_pixels(texpaint_nor);
-	gpu_release_texture_pixels(texpaint_pack);
-}
-
 static void export_texture_bake_material_add_texture(char *file) {
 	if (export_texture_baked_files != NULL) {
 		any_array_push(export_texture_baked_files, string_copy(file));
@@ -807,16 +727,6 @@ static void export_texture_bake_end(slot_material_t *source) {
 	}
 }
 
-static void export_texture_run_bake_material(char *path) {
-	slot_layer_t_array_t *layers = export_texture_bake_begin();
-	if (layers == NULL) {
-		return;
-	}
-	slot_material_t *source = g_context->material;
-	export_texture_run_layers(path, layers, "", true);
-	export_texture_bake_end(source);
-}
-
 // The preset of the export box, also when exporting without opening it
 static void export_texture_init_preset() {
 	if (box_export_files == NULL) {
@@ -963,23 +873,9 @@ static void export_texture_done() {
 	ui_files_last_path = "";
 }
 
-static void export_texture_run_job(slot_layer_t_array_t *layers, char *object_name, void *path) {
-	export_texture_run_layers(path, layers, object_name, false);
-}
-
+// Exports at once (scripts, command line, the engine's export box): in tiles (io/export_tiled.c)
 void export_texture_run(char *path, bool bake_material) {
-	export_texture_init_preset();
-	if (g_config->export_tiled) {
-		export_tiled_run(path, bake_material);
-		return;
-	}
-	if (bake_material) {
-		export_texture_run_bake_material(path);
-	}
-	else {
-		export_texture_for_each_job(&export_texture_run_job, path);
-	}
-	export_texture_done();
+	export_tiled_run(path, bake_material);
 }
 
 // Tests: the settings of the export box. preset by name ("" keeps it), layers_export_mode_t, padding, bits 8 / 16 / 32,

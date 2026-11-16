@@ -101,8 +101,8 @@ void layers_init() {
 	                 layers_default_rough, 0.0);
 }
 
-// Timelines keep the states of the old size: restores across the change fail and log, they come with the
-// non-destructive resolution change (export track, phase 6)
+// The layers of a new project to the working resolution (project_new). Changes of an open project's resolution keep
+// detail and are undoable: layers_resolution_begin (util/util_layer_resolution.c).
 void layers_resize() {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
@@ -308,35 +308,6 @@ void layers_history_with_prev(void (*push)(void)) {
 	if (history_steps->length > before && history_steps->length > 1) {
 		history_steps->buffer[history_steps->length - 1]->with_prev = true;
 	}
-}
-
-void layers_on_resized_on_next_frame(void *_) {
-	layers_resize();
-	slot_layer_t    *_layer    = g_context->layer;
-	slot_material_t *_material = g_context->material;
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->fill_material != NULL) {
-			g_context->layer    = l;
-			g_context->material = l->fill_material;
-			layers_set_object_mask();
-			layers_update_fill_layer(true);
-		}
-	}
-	g_context->layer    = _layer;
-	g_context->material = _material;
-	layers_set_object_mask();
-	make_material_parse_paint_material(true);
-}
-
-void layers_on_resized() {
-	sys_notify_on_next_frame(&layers_on_resized_on_next_frame, NULL);
-	util_uv_uvmap              = NULL;
-	util_uv_uvmap_cached       = false;
-	util_uv_trianglemap        = NULL;
-	util_uv_trianglemap_cached = false;
-	util_uv_dilatemap_cached   = false;
-	render_path_raytrace_ready = false;
 }
 
 // Layer, Layer Mask and Mesh Displace nodes hold a position in the layer stack. The stack as those positions were last

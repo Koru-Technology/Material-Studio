@@ -1,8 +1,9 @@
 #include "global.h"
 
-// Crash recovery (io/project_container.c session heads, project_v31 on): work after the last save is
-// journaled as a session head; after a crash, opening the file gives the saved state and the journal stays, recovering
-// gives the unsaved layers, pixels and timelines back. Saving ends the pending state.
+// Crash recovery (io/project_container.c session heads): work after the last save is
+// journaled as a session head; after a crash, opening the file gives the saved state and the journal stays (also through
+// another crash with no edits after the open), recovering gives the unsaved layers, pixels and timelines back. Saving
+// ends the pending state.
 
 int   fails      = 0;
 int   checks     = 0;
@@ -10,7 +11,6 @@ int   step       = 0;
 int   frame      = 0;
 char *dir        = NULL;
 char *file       = NULL;
-int   v31_was    = 0;
 int   uid_a      = 0;
 int   uid_b      = 0;
 char *saved_a    = NULL;
@@ -106,10 +106,18 @@ void next() {
 		check(string_equals(layer_hash(find_uid(uid_a)), saved_a) && find_uid(uid_b) == NULL, "opening gives the saved state");
 		check(project_session_pending(file), "and keeps the unsaved work");
 	}
-	else if (step == 7) {
-		check(project_session_recover(file), "recovered");
+	else if (step == 7) { // Frames went by after the open, nothing edited: the opened state is no session head
+		check(!project_session_changed() && !project_session_due(), "opening journals no session head of its own");
+		hstore_test_crash(); // And the app dies again
 	}
 	else if (step == 8) {
+		script_project_open(file);
+		check(project_session_pending(file), "a crash with no edits keeps the unsaved work of the session before");
+	}
+	else if (step == 9) {
+		check(project_session_recover(file), "recovered");
+	}
+	else if (step == 10) {
 		slot_layer_t *a = find_uid(uid_a);
 		slot_layer_t *b = find_uid(uid_b);
 		check(a != NULL && b != NULL && script_layer_count() == layers, string("layers as before the crash (%d of %d)", script_layer_count(), layers));
@@ -153,7 +161,6 @@ void next() {
 		check(!project_session_pending(file), "saving ends the pending state");
 	}
 	else {
-		script_get_config()->project_v31     = v31_was;
 		script_project_new();
 		iron_delete_file(file);
 		printf("[session_recovery] %d checks, %d failures", checks, fails);
@@ -166,8 +173,6 @@ void next() {
 }
 
 void main() {
-	v31_was                              = script_get_config()->project_v31;
-	script_get_config()->project_v31     = 1;
 	dir = script_tmp_dir("materialstudio_session_recovery"); // Per run: suites of several worktrees run at once
 	iron_create_directory(dir);
 	file = string("%s/recover.arm", dir);

@@ -888,8 +888,8 @@ void hstore_attach_project(char *path, const hstore_index_entry_t *entries, i32 
 	}
 	for (i32 i = 0; i < n; ++i) {
 		const hstore_index_entry_t *x = &entries[i];
-		if (x->kind == 0 || x->kind == HSTORE_RASTER || !hstore_is_stored_hash(x->h)) {
-			continue; // Live rasters are read by the project load
+		if (x->kind == 0 || !hstore_is_stored_hash(x->h)) {
+			continue;
 		}
 		hstore_entry_t *e = hstore_find(x->h);
 		if (e == NULL) {
