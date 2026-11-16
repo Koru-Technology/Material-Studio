@@ -10,6 +10,7 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 48) vec4 params2; // params[8..11]
 	layout(offset = 64) vec4 params3; // params[12..15]
 	layout(offset = 80) vec2 src_size; // ID map size for ID Selection, texa size for the downsample
+	layout(offset = 96) vec4 uv_rect;  // ID Selection: the part of the mask drawn (u0, v0, du, dv), 0 0 1 1 the whole (export tiles)
 } constants;
 
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
@@ -125,7 +126,8 @@ void main() {
 		r = 1.0 - a;
 	}
 	else if (constants.type == 8) { // ID Selection, texsrc the ID map (black without one)
-		vec2  texel = min(vin.tex * constants.src_size, constants.src_size - vec2(1.0, 1.0));
+		vec2  uv    = constants.uv_rect.xy + vin.tex * constants.uv_rect.zw;
+		vec2  texel = min(uv * constants.src_size, constants.src_size - vec2(1.0, 1.0));
 		vec3  c     = texelFetch(sampler2D(texsrc, sampler_linear), ivec2(int(texel.x), int(texel.y)), 0).rgb;
 		float v     = constants.src_size.x > 1.0 ? id_selected(c) : 0.0;
 		r           = blend(a, v, constants.blending);

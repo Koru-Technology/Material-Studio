@@ -76,6 +76,12 @@ static struct {
 	gpu_texture_format_t format;
 	bool                 padding;
 	bool                 height_coverage; // Height blended masks read the uv coverage
+	bool                 need_cov;        // The tile's uv coverage: padding, height blended masks, fill dilation
+	slot_layer_t       **blur_masks;      // Blurred results of blur effects (mask_stack_blur_prefix), for the whole export
+	i32                 *blur_index;
+	gpu_texture_t      **blur_tex;
+	i32                  nblurs;
+	string_array_t      *not_upscaled;    // Layers resampled from the working resolution
 	char                *file;
 	char                *ext;
 	i32                  udim_slot;
@@ -112,7 +118,7 @@ static gpu_transfer_t *et_xfer = NULL;
 static i32  et_test_tile   = 0;     // Tests: tile core size, 0 the default
 static bool et_test_raster = false; // Tests: uv coverage rasterized per tile also at the working resolution
 static bool et_test_mm     = false; // Tests: the Material Maker export cap also at the working resolution
-static i64  et_stats[11]; // export_tiled_stat
+static i64  et_stats[12]; // export_tiled_stat
 static bool et_mm_capped = false;
 static i32  et_res_w     = 0; // The export resolution, 0 the working one
 static i32  et_res_h     = 0;
@@ -305,20 +311,134 @@ static void export_tiled_blit(gpu_texture_t *dst, gpu_texture_t *src, export_til
 	draw_end();
 }
 
-static gpu_texture_t *export_tiled_source_target(gpu_texture_t **t, gpu_texture_t *like) {
+static gpu_texture_t *export_tiled_target(gpu_texture_t **t, gpu_texture_format_t f) {
 	i32 n = et.size + 2 * et.halo;
-	util_texture_ensure_target(t, n, n, like->format);
+	util_texture_ensure_target(t, n, n, f);
 	return *t;
 }
 
-// The plug-in point: layer l's pixels for the tile, into t->out. Paint layers from their timeline (stroke_rec.h) at the
-// state they show; otherwise, or when it can not (today: restoring kept states only, at their own size), the live
-// layer's pixels (scaled when the output's resolution differs). Next: fill layers rendered for t->uv_rect
-// (layers_update_fill_layer through the paint track's uv tile transform).
+static gpu_texture_t *export_tiled_source_target(gpu_texture_t **t, gpu_texture_t *like) {
+	return export_tiled_target(t, like->format);
+}
+
+// Tile targets of a level of mask evaluation: anchors evaluate the masks they read inside a mask
+#define EXPORT_TILED_DEPTH 3
+
+typedef struct export_tiled_pool {
+	gpu_texture_t *dst;
+	gpu_texture_t *scratch;
+	gpu_texture_t *gen_out;
+	gpu_texture_t *gen_scratch;
+	gpu_texture_t *eff;
+	gpu_texture_t *blur;
+	gpu_texture_t *lay[3];
+} export_tiled_pool_t;
+
+static export_tiled_pool_t et_pool[EXPORT_TILED_DEPTH];
+static gpu_texture_t      *et_fill[5]; // layers_render_fill_rect: the layer before, a mask's normal and pack outputs
+static gpu_texture_t      *et_fill_temp;
+static gpu_texture_t      *et_low[3]; // A tile's part of a layer at the working resolution
+static bool                et_test_no_fill = false; // Tests: fill layers from their live pixels
+
+static void export_tiled_release_pool() {
+	for (i32 d = 0; d < EXPORT_TILED_DEPTH; ++d) {
+		gpu_texture_t **t = (gpu_texture_t **)&et_pool[d];
+		for (i32 i = 0; i < (i32)(sizeof(export_tiled_pool_t) / sizeof(gpu_texture_t *)); ++i) {
+			util_texture_release_target(&t[i]);
+		}
+	}
+	for (i32 i = 0; i < 5; ++i) {
+		util_texture_release_target(&et_fill[i]);
+	}
+	for (i32 i = 0; i < 3; ++i) {
+		util_texture_release_target(&et_low[i]);
+	}
+	util_texture_release_target(&et_fill_temp);
+}
+
+// The layer whose normal and pack a mask's paint pass also writes (render_path_paint.c)
+static slot_layer_t *export_tiled_mask_parent(slot_layer_t *m) {
+	slot_layer_t *p = m->parent;
+	if (p != NULL && slot_layer_is_group(p)) {
+		slot_layer_t_array_t *children = slot_layer_get_children(p);
+		p                              = children != NULL && children->length > 0 ? children->buffer[0] : NULL;
+	}
+	return p != NULL && p->texpaint_nor != NULL ? p : NULL;
+}
+
+// Fill layers and fill masks render for the tile, unless the paint pass draws an atlas or udim tiles
+static bool export_tiled_fill_ok(slot_layer_t *l, export_tiled_map_t m) {
+	if (l->fill_material == NULL || m.mode != 0 || et_test_no_fill || util_mesh_udim_active() || g_context->merged_object_is_atlas) {
+		return false;
+	}
+	return !slot_layer_is_mask(l) || export_tiled_mask_parent(l) != NULL;
+}
+
+static void export_tiled_dilate_copy(gpu_texture_t *t, i32 radius) {
+	export_tiled_target(&et_fill_temp, t->format);
+	export_tiled_copy(et_fill_temp, t);
+	export_tiled_dilate(t, et_fill_temp, et_cov, radius);
+}
+
+// Layer l's timeline at its cursor for the tile: restored for the tile's rectangle at the working resolution, scaled up
+// (bilinear) when the export is larger, until strokes replay at any resolution
+static bool export_tiled_materialize(slot_layer_t *l, timeline_t *tl, i32 hx, i32 hy, paint_target_t *t) {
+	i32 w0 = l->texpaint->width;
+	i32 h0 = l->texpaint->height;
+	if (w0 == et.w && h0 == et.h) {
+		return timeline_materialize(tl, tl->cursor, t);
+	}
+	f32 kx = w0 / (f32)et.w, ky = h0 / (f32)et.h;
+	i32 x0 = (i32)math_floor(hx * kx) - 1, y0 = (i32)math_floor(hy * ky) - 1; // A texel more around: bilinear reads it
+	i32 x1 = (i32)math_ceil((hx + t->w) * kx) + 1, y1 = (i32)math_ceil((hy + t->h) * ky) + 1;
+	gpu_texture_t *live[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
+	paint_target_t lo      = {.w = x1 - x0, .h = y1 - y0, .res_w = w0, .res_h = h0, .channels = t->channels};
+	lo.uv_rect[0]          = x0 / (f32)w0;
+	lo.uv_rect[1]          = y0 / (f32)h0;
+	lo.uv_rect[2]          = x1 / (f32)w0;
+	lo.uv_rect[3]          = y1 / (f32)h0;
+	for (i32 k = 0; k < t->channels; ++k) {
+		util_texture_ensure_target(&et_low[k], lo.w, lo.h, live[k]->format);
+		lo.out[k] = et_low[k];
+	}
+	if (!timeline_materialize(tl, tl->cursor, &lo)) {
+		return false;
+	}
+	for (i32 k = 0; k < t->channels; ++k) {
+		draw_begin(t->out[k], false, 0);
+		draw_set_pipeline(pipes_copy);
+		draw_scaled_sub_image(et_low[k], hx * kx - x0, hy * ky - y0, t->w * kx, t->h * ky, 0, 0, t->w, t->h);
+		draw_set_pipeline(NULL);
+		draw_end();
+	}
+	return true;
+}
+
+// The plug-in point: layer or mask l's pixels for the tile, into t->out (a mask: out[0]). Fill layers and fill masks
+// render for t->uv_rect at the export resolution (layers_render_fill_rect), dilated as the live ones. Paint layers from
+// their timeline (stroke_rec.h) at the state they show; otherwise, or when it can not (today: restoring kept states only,
+// at their own size), the live layer's pixels, scaled when the export's resolution differs (export_tiled_not_upscaled).
 static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i32 hy, paint_target_t *t) {
+	if (export_tiled_fill_ok(l, m)) {
+		for (i32 k = 0; k < 3; ++k) {
+			export_tiled_target(&et_fill[k], GPU_TEXTURE_FORMAT_RGBA32);
+		}
+		slot_layer_t *p = slot_layer_is_mask(l) ? export_tiled_mask_parent(l) : NULL;
+		if (p != NULL) {
+			export_tiled_target(&et_fill[3], p->texpaint_nor->format);
+			export_tiled_target(&et_fill[4], p->texpaint_pack->format);
+		}
+		if (layers_render_fill_rect(l, t, et_fill)) {
+			for (i32 k = 0; k < t->channels && g_config->dilate_radius > 0; ++k) { // As layers_update_fill_layer dilates
+				export_tiled_dilate_copy(t->out[k], g_config->dilate_radius);
+			}
+			et_stats[11]++;
+			return true;
+		}
+	}
 	timeline_t *tl = m.mode == 0 ? timeline_of(l) : NULL; // Udim maps: the live layer for now
 	if (tl != NULL) {
-		if (timeline_materialize(tl, tl->cursor, t)) {
+		if (export_tiled_materialize(l, tl, hx, hy, t)) {
 			et_stats[9]++;
 			return true;
 		}
@@ -329,6 +449,113 @@ static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i
 		export_tiled_blit(t->out[k], live[k], m, hx, hy);
 	}
 	return true;
+}
+
+// Masks per tile: the stack evaluated for the tile's rectangle at the export resolution (mask_stack_evaluate_tile), its
+// paint effect from export_tiled_source, generators rendered for the rectangle, blurs read from their whole blurred
+// result (one per blur for the export), anchors from the tile of what they read
+
+typedef struct export_tiled_mask_ctx {
+	export_tiled_map_t m;
+	i32                hx;
+	i32                hy;
+	i32                depth;
+} export_tiled_mask_ctx_t;
+
+static gpu_texture_t *export_tiled_mask(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, i32 depth);
+
+// The mask's paint for the tile into eff
+static gpu_texture_t *export_tiled_mask_paint(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, export_tiled_pool_t *p) {
+	i32            n  = et.size + 2 * et.halo;
+	paint_target_t pt = {.w = n, .h = n, .res_w = et.w, .res_h = et.h, .channels = 1};
+	pt.uv_rect[0]     = hx / (f32)et.w;
+	pt.uv_rect[1]     = hy / (f32)et.h;
+	pt.uv_rect[2]     = (hx + n) / (f32)et.w;
+	pt.uv_rect[3]     = (hy + n) / (f32)et.h;
+	pt.out[0]         = export_tiled_source_target(&p->eff, mk->texpaint);
+	export_tiled_source(mk, m, hx, hy, &pt);
+	return p->eff;
+}
+
+static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *e, i32 index, void *data) {
+	export_tiled_mask_ctx_t *c = data;
+	export_tiled_pool_t     *p = &et_pool[c->depth];
+	if (e->type == MASK_EFFECT_PAINT) {
+		return export_tiled_mask_paint(mk, c->m, c->hx, c->hy, p);
+	}
+	if (e->type == MASK_EFFECT_BLUR) {
+		for (i32 i = 0; i < et.nblurs; ++i) {
+			if (et.blur_masks[i] == mk && et.blur_index[i] == index) {
+				gpu_texture_t *b = et.blur_tex[i];
+				export_tiled_target(&p->blur, b->format);
+				f32 kx = b->width / (f32)et.w, ky = b->height / (f32)et.h;
+				draw_begin(p->blur, false, 0);
+				draw_set_pipeline(b->format == GPU_TEXTURE_FORMAT_RGBA64 ? pipes_copy64 : b->format == GPU_TEXTURE_FORMAT_RGBA128 ? pipes_copy128 : pipes_copy);
+				draw_scaled_sub_image(b, c->hx * kx, c->hy * ky, p->blur->width * kx, p->blur->height * ky, 0, 0, p->blur->width, p->blur->height);
+				draw_set_pipeline(NULL);
+				draw_end();
+				return p->blur;
+			}
+		}
+		return NULL;
+	}
+	if (e->type == MASK_EFFECT_ANCHOR) {
+		i32           kind;
+		slot_layer_t *l = mask_stack_anchor_target(mk, e, &kind);
+		if (kind == 1) {
+			return render_path_empty_white();
+		}
+		if (kind == 2) {
+			if (c->depth + 1 < EXPORT_TILED_DEPTH) {
+				return export_tiled_mask(l, c->m, c->hx, c->hy, c->depth + 1);
+			}
+			gpu_texture_t *t = slot_layer_mask_texture(l); // Deeper: the whole evaluated one
+			export_tiled_blit(export_tiled_source_target(&p->eff, t), t, c->m, c->hx, c->hy);
+			return p->eff;
+		}
+		if (kind == 3) {
+			i32            n  = et.size + 2 * et.halo;
+			paint_target_t pt = {.w = n, .h = n, .res_w = et.w, .res_h = et.h, .channels = 3};
+			pt.uv_rect[0]     = c->hx / (f32)et.w;
+			pt.uv_rect[1]     = c->hy / (f32)et.h;
+			pt.uv_rect[2]     = (c->hx + n) / (f32)et.w;
+			pt.uv_rect[3]     = (c->hy + n) / (f32)et.h;
+			pt.out[0]         = export_tiled_source_target(&p->lay[0], l->texpaint);
+			pt.out[1]         = export_tiled_source_target(&p->lay[1], l->texpaint_nor != NULL ? l->texpaint_nor : l->texpaint);
+			pt.out[2]         = export_tiled_source_target(&p->lay[2], l->texpaint_pack != NULL ? l->texpaint_pack : l->texpaint);
+			if (l->texpaint_nor == NULL) { // A mask: its paint only
+				pt.channels = 1;
+			}
+			export_tiled_source(l, c->m, c->hx, c->hy, &pt);
+			return (i32)e->params[1] == 1 ? pt.out[2] : pt.out[0];
+		}
+		return NULL;
+	}
+	return NULL;
+}
+
+// Mask mk for the tile: what slot_layer_mask_texture holds for its rectangle, at the export resolution
+static gpu_texture_t *export_tiled_mask(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, i32 depth) {
+	export_tiled_pool_t *p = &et_pool[depth];
+	if (m.mode != 0) { // Udim maps: the whole evaluated one
+		gpu_texture_t *t = slot_layer_mask_texture(mk);
+		export_tiled_blit(export_tiled_source_target(&p->dst, t), t, m, hx, hy);
+		return p->dst;
+	}
+	if (mask_stack_is_trivial(mk)) {
+		return export_tiled_mask_paint(mk, m, hx, hy, p);
+	}
+	export_tiled_target(&p->dst, GPU_TEXTURE_FORMAT_RGBA32);
+	export_tiled_target(&p->scratch, GPU_TEXTURE_FORMAT_RGBA32);
+	export_tiled_target(&p->gen_out, GPU_TEXTURE_FORMAT_R8);
+	export_tiled_target(&p->gen_scratch, GPU_TEXTURE_FORMAT_RGBA32);
+	i32                     n       = et.size + 2 * et.halo;
+	f32                     rect[4] = {hx / (f32)et.w, hy / (f32)et.h, n / (f32)et.w, n / (f32)et.h};
+	export_tiled_mask_ctx_t ctx     = {.m = m, .hx = hx, .hy = hy, .depth = depth};
+	mk->mask_evaluating             = true; // Anchors back to it read black, as live
+	mask_stack_evaluate_tile(mk, p->dst, p->scratch, p->gen_out, p->gen_scratch, rect, &export_tiled_mask_effect, &ctx);
+	mk->mask_evaluating = false;
+	return p->dst;
 }
 
 // Phase A
@@ -448,7 +675,7 @@ static void export_tiled_render_tile(export_tiled_job_t *job, export_tiled_tile_
 
 	export_tiled_map_t identity = {0, 0};
 	export_tiled_map_t cov_map  = et.udim_slot >= 0 ? (export_tiled_map_t){1, et.udim_slot} : identity;
-	if (et.padding || et.height_coverage) {
+	if (et.need_cov) {
 		export_tiled_coverage(cov_map, hx, hy);
 	}
 	if (et.padding) { // Skipped without uv coverage within the halo
@@ -502,9 +729,8 @@ static void export_tiled_render_tile(export_tiled_job_t *job, export_tiled_tile_
 			draw_end();
 			for (i32 j = 0; j < l1masks->length; ++j) {
 				slot_layer_t  *mk  = l1masks->buffer[j];
-				gpu_texture_t *tex = slot_layer_mask_texture(mk); // Evaluated whole (blur at its own size)
-				export_tiled_blit(export_tiled_source_target(&et_mask_src, tex), tex, m, hx, hy);
-				layers_merge_mask_ex(et_mask, et_mask_temp, mk, et_mask_src, &tl, et_acc[2], et.height_coverage ? et_cov : NULL);
+				gpu_texture_t *tex = export_tiled_mask(mk, m, hx, hy, 0);
+				layers_merge_mask_ex(et_mask, et_mask_temp, mk, tex, &tl, et_acc[2], et.height_coverage ? et_cov : NULL);
 			}
 			mask = et_mask;
 		}
@@ -741,6 +967,17 @@ static void export_tiled_job_end() {
 	}
 }
 
+static bool export_tiled_has_generator(slot_layer_t *m) {
+	i32 n = m->mask_effects != NULL ? mask_stack_count(m) : 0;
+	for (i32 i = 0; i < n; ++i) {
+		mask_effect_t e = mask_stack_get(m, i);
+		if (e.visible && mask_effect_is_generator(e.type)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	et.w         = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
 	et.h         = et_res_h > 0 ? et_res_h : config_get_texture_res_y();
@@ -750,8 +987,24 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	et.padding   = g_context->export_padding;
 	et.file      = export_texture_file_base(job->layers, job->object_name, &et.ext);
 	et.udim_slot = export_texture_udim_slot(job->layers, job->object_name);
-	et.halo      = et.padding ? (i32)math_ceil(1.25 * EXPORT_TILED_NEAR) + 2 : 0;
-	if (et.padding) {
+	// The halo: what the passes on a tile read around its core (the dilate pass reaches 1.25 radius)
+	bool fills = false, gens = false; // Of any layer: anchors read others than the job's
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		fills           = fills || l->fill_material != NULL;
+		gens            = gens || (slot_layer_is_mask(l) && export_tiled_has_generator(l));
+	}
+	for (i32 i = 0; i < job->layers->length; ++i) { // And the bake's live layer
+		fills = fills || job->layers->buffer[i]->fill_material != NULL;
+	}
+	fills       = fills && g_config->dilate_radius > 0 && !et_test_no_fill;
+	et.halo     = et.padding ? (i32)math_ceil(1.25 * EXPORT_TILED_NEAR) + 2 : 0;
+	i32 reach   = fills ? (i32)math_ceil(1.25 * g_config->dilate_radius) + 2 : 0;
+	et.halo     = reach > et.halo ? reach : et.halo;
+	reach       = gens ? (i32)math_ceil(1.25 * 8) + 2 : 0; // Generators dilate up to 8 texels (util_mask_generators.c)
+	et.halo     = reach > et.halo ? reach : et.halo;
+	et.need_cov = et.padding || et.height_coverage || fills;
+	if (et.need_cov) {
 		util_uv_cache_dilate_map();
 	}
 
@@ -843,6 +1096,94 @@ static void export_tiled_mm_begin() {
 	et.units_total += n;
 }
 
+// Blur effects read the stack below them blurred whole (mask_stack_blur_prefix), once for the export
+static void export_tiled_blurs_begin() {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *m = g_project->_->layers->buffer[i];
+		if (!slot_layer_is_mask(m) || mask_stack_is_trivial(m)) {
+			continue;
+		}
+		i32 n = mask_stack_count(m);
+		for (i32 k = 0; k < n; ++k) {
+			mask_effect_t e = mask_stack_get(m, k);
+			if (!e.visible || e.type != MASK_EFFECT_BLUR) {
+				continue;
+			}
+			gpu_texture_t *t = NULL;
+			if (!mask_stack_blur_prefix(m, k, &t)) {
+				continue;
+			}
+			et.blur_masks             = realloc(et.blur_masks, sizeof(slot_layer_t *) * (et.nblurs + 1));
+			et.blur_index             = realloc(et.blur_index, sizeof(i32) * (et.nblurs + 1));
+			et.blur_tex               = realloc(et.blur_tex, sizeof(gpu_texture_t *) * (et.nblurs + 1));
+			et.blur_masks[et.nblurs] = m;
+			et.blur_index[et.nblurs] = k;
+			et.blur_tex[et.nblurs]   = t;
+			et.nblurs++;
+		}
+	}
+}
+
+static void export_tiled_blurs_end() {
+	for (i32 i = 0; i < et.nblurs; ++i) {
+		util_texture_release_target(&et.blur_tex[i]);
+	}
+	free(et.blur_masks);
+	free(et.blur_index);
+	free(et.blur_tex);
+	et.blur_masks = NULL;
+	et.blur_index = NULL;
+	et.blur_tex   = NULL;
+	et.nblurs     = 0;
+}
+
+// Layers an export larger than the working resolution resamples from it (bilinear) until their strokes replay
+// (stroke_rec.h): paint layers and painted masks. Fill layers, fill masks and generators render at the export's size.
+
+static string_array_t *et_not_upscaled = NULL;
+
+static void export_tiled_not_upscaled_add(char *name) {
+	if (string_array_index_of(et_not_upscaled, name) < 0) {
+		any_array_push(et_not_upscaled, string_copy(name));
+	}
+}
+
+static void export_tiled_not_upscaled_job(slot_layer_t_array_t *layers, char *object_name, void *_) {
+	for (i32 i = 0; i < layers->length; ++i) {
+		slot_layer_t *l = layers->buffer[i];
+		if (!export_texture_layer_used(l, object_name)) {
+			continue;
+		}
+		bool fill_tiles = !util_mesh_udim_active() && !g_context->merged_object_is_atlas && !et_test_no_fill; // export_tiled_fill_ok
+		if (l->fill_material == NULL || !fill_tiles) {
+			export_tiled_not_upscaled_add(l->name);
+		}
+		slot_layer_t_array_t *masks = slot_layer_get_masks(l, true);
+		for (i32 j = 0; masks != NULL && j < masks->length; ++j) {
+			slot_layer_t *m = masks->buffer[j];
+			if ((m->fill_material == NULL || !fill_tiles) && mask_stack_paint_index(m) >= 0 && mask_stack_get(m, mask_stack_paint_index(m)).visible) {
+				export_tiled_not_upscaled_add(m->name);
+			}
+		}
+	}
+}
+
+// How many layers an export at w x h (0 0 the working resolution) can not render at that size, see
+// export_tiled_not_upscaled_name
+i32 export_tiled_not_upscaled(i32 w, i32 h) {
+	et_not_upscaled = any_array_create_from_raw((void *[]){}, 0);
+	if ((w <= config_get_texture_res_x() && h <= config_get_texture_res_y()) || w <= 0 || h <= 0) {
+		return 0;
+	}
+	export_texture_init_preset();
+	export_texture_for_each_job(&export_tiled_not_upscaled_job, NULL);
+	return et_not_upscaled->length;
+}
+
+char *export_tiled_not_upscaled_name(i32 i) {
+	return et_not_upscaled != NULL && i >= 0 && i < et_not_upscaled->length ? et_not_upscaled->buffer[i] : "";
+}
+
 // API
 
 static void export_tiled_finish(bool cancelled);
@@ -853,7 +1194,8 @@ bool export_tiled_start(char *path, bool bake_material) {
 		export_tiled_cancel();
 	}
 	export_texture_init_preset();
-	timeline_finalize(); // Strokes still being recorded land in their timelines
+	timeline_finalize();           // Strokes still being recorded land in their timelines
+	history_flush_restores(NULL); // Deferred undo restores land in the layers
 	memset(&et, 0, sizeof(et));
 	memset(et_stats, 0, sizeof(et_stats));
 	et.path    = string_copy(path);
@@ -878,6 +1220,7 @@ bool export_tiled_start(char *path, bool bake_material) {
 	et.bytes_base      = util_texture_tracked_bytes();
 	util_texture_tracked_peak_reset();
 	et_stats[1] = export_tiled_budget() / 1024;
+	export_tiled_blurs_begin();
 
 	// Units of progress: per job its tiles and files, estimated with the default tile size
 	i32 s = et_test_tile > 0 ? et_test_tile : EXPORT_TILED_MAX_TILE;
@@ -955,6 +1298,8 @@ bool export_tiled_step(f64 budget_ms) {
 static void export_tiled_finish(bool cancelled) {
 	export_tiled_job_end();
 	export_tiled_release_targets();
+	export_tiled_release_pool();
+	export_tiled_blurs_end();
 	if (et_mm_capped) {
 		mm_buffers_export_end();
 		et_mm_capped = false;
@@ -1026,9 +1371,14 @@ void export_tiled_test_mm(bool on) {
 	et_test_mm = on;
 }
 
+void export_tiled_test_no_fill(bool on) {
+	et_test_no_fill = on;
+}
+
 // 0 peak tile target KB of the last export, 1 its budget KB, 2 tiles rendered, 3 tiles skipped, 4 files, 5 mm cap,
 // 6 tile target KB held now, 7 1 while a spool file is open, 8 files written by the export in progress, 9 layer tiles
-// from timelines, 10 layer tiles with a timeline it could not materialize (the live layer instead)
+// from timelines, 10 layer tiles with a timeline it could not materialize (the live layer instead), 11 fill layer and
+// mask tiles rendered
 i32 export_tiled_stat(i32 what) {
 	if (what == 6) {
 		i64 kb = 0;
@@ -1044,7 +1394,7 @@ i32 export_tiled_stat(i32 what) {
 	if (what == 8) {
 		return et.written != NULL ? et.written->length : 0;
 	}
-	return what >= 0 && what < 11 ? (i32)et_stats[what] : 0;
+	return what >= 0 && what < 12 ? (i32)et_stats[what] : 0;
 }
 
 // The uv coverage the legacy padding dilates with

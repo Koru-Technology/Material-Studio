@@ -724,6 +724,8 @@ static gpu_texture_t *mask_stack_source(slot_layer_t *m, mask_effect_t *e, f32 *
 	return mask_stack_black();
 }
 
+static f32 mask_stack_pass_rect[4] = {0.0, 0.0, 1.0, 1.0}; // The part of the mask a pass draws (export tiles), ID Selection reads it
+
 static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, gpu_texture_t *src, mask_effect_t *e, f32 src_w, f32 src_h) {
 	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_mask_stack);
@@ -737,6 +739,7 @@ static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, gpu_texture_
 	gpu_set_float4(pipes_params2_mask_stack, e->params[8], e->params[9], e->params[10], e->params[11]);
 	gpu_set_float4(pipes_params3_mask_stack, e->params[12], e->params[13], e->params[14], e->params[15]);
 	gpu_set_float2(pipes_src_size_mask_stack, src_w, src_h);
+	gpu_set_float4(pipes_src_size_mask_stack + 16, mask_stack_pass_rect[0], mask_stack_pass_rect[1], mask_stack_pass_rect[2], mask_stack_pass_rect[3]);
 	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
 	gpu_set_index_buffer(const_data_screen_aligned_ib);
 	gpu_draw();
@@ -869,6 +872,146 @@ void mask_stack_evaluate(slot_layer_t *m) {
 	if (in_use && !render_path) {
 		draw_begin(current, false, 0);
 	}
+}
+
+// Export (io/export_tiled.c): stacks evaluated for a tile of the export instead of the whole mask, at any resolution.
+// Generators render for the tile, ID Selection reads the ID map through the tile's rectangle, the paint effect and
+// anchors come from the export (src). A blur stays global: the stack below it is evaluated whole once and blurred at the
+// blur's size (mask_stack_blur_prefix), the tile reads that.
+
+// Visible effects of m before index
+static i32 mask_stack_visible_before(slot_layer_t *m, i32 index) {
+	i32 k = 0;
+	for (i32 i = 0; i < index; ++i) {
+		k += mask_stack_get(m, i).visible ? 1 : 0;
+	}
+	return k;
+}
+
+// What anchor e of m reads for a tile: *kind 0 black, 1 white, 2 the returned mask's evaluated stack, 3 the returned
+// layer's texpaint (opacity in a) or texpaint_pack (height in a) as e->params[1] says. e->params[1] becomes the channel
+// the shader reads, as in mask_stack_anchor_source.
+slot_layer_t *mask_stack_anchor_target(slot_layer_t *m, mask_effect_t *e, i32 *kind) {
+	*kind           = 0;
+	slot_layer_t *l = mask_stack_layer_by_id((i32)e->params[0]);
+	if (l == NULL) {
+		e->params[1] = 0.0;
+		return NULL;
+	}
+	if (mask_stack_anchor_reads_mask(l, e)) {
+		e->params[1]    = 0.0;
+		slot_layer_t *r = mask_stack_anchor_mask(l);
+		if (r == NULL) {
+			*kind = 1;
+			return NULL;
+		}
+		if (r == m) {
+			return NULL;
+		}
+		*kind = 2;
+		return r;
+	}
+	if (l->texpaint == NULL || ((i32)e->params[1] == 1 && l->texpaint_pack == NULL)) {
+		e->params[1] = 0.0;
+		return NULL;
+	}
+	*kind = 3;
+	return l;
+}
+
+// The blurred result blur effect index of m reads: the stack below it evaluated whole and blurred, copied into *out
+// (util_texture_ensure_target). False when nothing is below it (it reads black). No pass may be open.
+bool mask_stack_blur_prefix(slot_layer_t *m, i32 index, gpu_texture_t **out) {
+	if (mask_stack_visible_before(m, index) == 0) {
+		return false;
+	}
+	i32            w    = m->texpaint->width;
+	i32            h    = m->texpaint->height;
+	gpu_texture_t *a    = NULL;
+	gpu_texture_t *b    = NULL;
+	mask_effect_t  blur = mask_stack_get(m, index);
+	util_texture_ensure_target(&a, w, h, GPU_TEXTURE_FORMAT_RGBA32);
+	util_texture_ensure_target(&b, w, h, GPU_TEXTURE_FORMAT_RGBA32);
+	if (const_data_screen_aligned_vb == NULL) {
+		const_data_create_screen_aligned_data();
+	}
+	m->mask_evaluating = true;
+	mask_stack_anchors_prepare(m);
+	mask_gen_update(m);
+	gpu_texture_t *acc = mask_stack_black();
+	i32            k   = 0;
+	for (i32 i = 0; i < index; ++i) {
+		mask_effect_t e = mask_stack_get(m, i);
+		if (!e.visible) {
+			continue;
+		}
+		gpu_texture_t *dst   = k % 2 == 0 ? a : b;
+		f32            src_w = 1.0;
+		f32            src_h = 1.0;
+		gpu_texture_t *src   = e.type != MASK_EFFECT_BLUR ? mask_stack_source(m, &e, &src_w, &src_h)
+		                       : k == 0                    ? mask_stack_black()
+		                                                   : mask_stack_blur(acc, &e, w, h);
+		mask_stack_pass(dst, acc, src, &e, src_w, src_h);
+		acc = dst;
+		k++;
+	}
+	gpu_texture_t *blurred = mask_stack_blur(acc, &blur, w, h);
+	util_texture_ensure_target(out, blurred->width, blurred->height, blurred->format);
+	draw_begin(*out, false, 0);
+	draw_set_pipeline(blurred->format == GPU_TEXTURE_FORMAT_RGBA64 ? pipes_copy64 : blurred->format == GPU_TEXTURE_FORMAT_RGBA128 ? pipes_copy128 : pipes_copy);
+	draw_image(blurred, 0, 0);
+	draw_set_pipeline(NULL);
+	draw_end();
+	m->mask_evaluating = false;
+	util_texture_release_target(&a);
+	util_texture_release_target(&b);
+	return true;
+}
+
+// The stack of m evaluated for the part rect (u0, v0, du, dv) of the mask into dst (RGBA32, what texmask holds there),
+// scratch a target like dst, gen_scratch an RGBA32 one for generators. src(m, effect, index, data): the tile of the
+// paint effect, an anchor or a blur's blurred result, tile sized; NULL reads black. No pass may be open.
+void mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t *scratch, gpu_texture_t *gen_out, gpu_texture_t *gen_scratch, f32 *rect,
+                              gpu_texture_t *(*src)(slot_layer_t *, mask_effect_t *, i32, void *), void *data) {
+	if (const_data_screen_aligned_vb == NULL) {
+		const_data_create_screen_aligned_data();
+	}
+	i32 n       = mask_stack_count(m);
+	i32 visible = mask_stack_visible_before(m, n);
+	if (visible == 0) {
+		_gpu_begin(dst, NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
+		gpu_end();
+		return;
+	}
+	f32 saved[4];
+	memcpy(saved, mask_stack_pass_rect, sizeof(saved));
+	memcpy(mask_stack_pass_rect, rect, sizeof(saved));
+	gpu_texture_t *acc = mask_stack_black();
+	i32            k   = 0;
+	for (i32 i = 0; i < n; ++i) {
+		mask_effect_t e = mask_stack_get(m, i);
+		if (!e.visible) {
+			continue;
+		}
+		gpu_texture_t *out   = (visible - 1 - k) % 2 == 0 ? dst : scratch;
+		f32            src_w = 1.0;
+		f32            src_h = 1.0;
+		gpu_texture_t *s     = NULL;
+		if (mask_effect_is_generator(e.type)) {
+			mask_gen_render_rect(m, e, gen_scratch, gen_out, rect);
+			s = gen_out;
+		}
+		else if (e.type == MASK_EFFECT_ID_SELECTION) {
+			s = mask_stack_source(m, &e, &src_w, &src_h);
+		}
+		else if (e.type == MASK_EFFECT_PAINT || e.type == MASK_EFFECT_ANCHOR || (e.type == MASK_EFFECT_BLUR && k > 0)) {
+			s = src(m, &e, i, data);
+		}
+		mask_stack_pass(out, acc, s != NULL ? s : mask_stack_black(), &e, src_w, src_h);
+		acc = out;
+		k++;
+	}
+	memcpy(mask_stack_pass_rect, saved, sizeof(saved));
 }
 
 // Frees texmask (unload, or the stack became trivial)

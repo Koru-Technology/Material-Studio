@@ -1138,3 +1138,9 @@ X0(app_history_busy, "b()", b)
 X0(history_test_undos, "i()", i)
 X0(history_on_memory_warning, "v()", v)
 X1(timeline_tiles_test, "i(p:slot_layer_t l)", i, p)
+
+// Texture export, wave 2
+X2(export_tiled_not_upscaled, "i(i w,i h)", i, i, i)
+X1(export_tiled_not_upscaled_name, "p:char(i i)", p, i)
+X1(export_tiled_test_no_fill, "v(b on)", v, b)
+X0(layers_on_resized, "v()", v)
