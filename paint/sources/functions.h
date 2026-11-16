@@ -45,6 +45,7 @@ void export_obj_run(char *path, mesh_object_t_array_t *paint_objects);
 
 // ---- io/export_texture.c ----
 void export_texture_run(char *path, bool bake_material);
+void export_texture_test_options(char *preset, i32 layers_export, bool padding, i32 bits, i32 format);
 
 // ---- io/import_arm_assets.c ----
 char           *import_arm_abs(char *file, char *base);
@@ -414,6 +415,8 @@ i32  mm_buffers_require(i32 level); // What links need: 0 any, else at least tha
 void mm_buffers_test_res(i32 res);
 void mm_buffers_trim(void);
 void mm_buffers_test_budget(i32 kb);
+void mm_buffers_set_export_cap(i32 cap); // Full sizes up to cap during an export, 0 the normal cap
+i64  mm_buffers_export_budget(i64 reserved);
 
 // ---- nodes_material/mm_buffers_pipes.c ----
 void mm_buffers_hold_workers(bool hold);
@@ -432,6 +435,10 @@ void            mm_buffers_finish(void);                                        
 void            mm_buffers_clear();
 i32             mm_buffers_stat(i32 what);
 void            mm_buffers_init(); // Image node files, the text node's font
+i32             mm_buffers_export_begin(u64 *keys, i32 n, i32 max_size, i64 budget); // Export: the cap chosen, the passes pinned
+i32             mm_buffers_export_step(void);                                      // Renders the next one full, how many are left
+void            mm_buffers_export_end(void);                                       // Unpinned, larger textures freed, the normal cap
+i32             mm_buffers_export_largest(void);
 
 // ---- nodes_material/mm_buffers_test.c ----
 char *mm_buffers_test_ptex(char *path_or_id, i32 size);
@@ -441,6 +448,8 @@ i32   mm_buffers_test_resolve(i32 in_pass);
 i32   mm_buffers_test_map_size(i32 map);
 f32   mm_buffers_test_texel(i32 map, i32 x, i32 y, i32 channel);
 void  mm_buffers_test_write(char *prefix);
+i32   mm_buffers_test_export(i32 max_size, i32 budget_kb);
+i32   mm_buffers_test_tex_size(i32 map);
 
 // ---- nodes_material/mix_color_node.c ----
 void mix_color_node_init();
@@ -937,6 +946,8 @@ gpu_texture_t *box_bake_maps_inpaint_overlay();
 i32            box_bake_maps_inpaint_color();
 
 // ---- ui/box_export.c ----
+void box_export_textures_run(char *path, bool bake_material);
+void box_export_tiled_update(void *_);
 void box_export_fetch_presets();
 void box_export_parse_preset();
 void box_export_show_textures();
@@ -1403,6 +1414,8 @@ void           layers_merge_down();
 slot_layer_t  *layers_merge_group(slot_layer_t *l);
 void           layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask);
 void           layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer, gpu_texture_t *below);
+void           layers_merge_mask_ex(gpu_texture_t *dst, gpu_texture_t *temp, slot_layer_t *m, gpu_texture_t *mask_tex, slot_layer_t *layer, gpu_texture_t *below,
+                                    gpu_texture_t *coverage);
 gpu_texture_t *layers_height_below(slot_layer_t *l);
 slot_layer_t  *layers_udim_remap(slot_layer_t *l, gpu_texture_t **mask, i32 slot, bool to_tile);
 i32            layers_udim_tile_slot(slot_layer_t *l);
@@ -2403,3 +2416,17 @@ f32   script_diff_max();
 f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
+
+// ---- io/export_tiled.c ----
+bool           export_tiled_start(char *path, bool bake_material);
+bool           export_tiled_step(f64 budget_ms);
+void           export_tiled_cancel();
+bool           export_tiled_running();
+f32            export_tiled_progress();
+void           export_tiled_run(char *path, bool bake_material);
+void           export_tiled_set_resolution(i32 w, i32 h);
+void           export_tiled_test_tile(i32 size);
+void           export_tiled_test_raster(bool on);
+void           export_tiled_test_mm(bool on);
+i32            export_tiled_stat(i32 what);
+gpu_texture_t *export_tiled_test_coverage();

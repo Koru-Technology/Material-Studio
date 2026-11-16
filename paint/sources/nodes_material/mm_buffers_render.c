@@ -1250,6 +1250,118 @@ void mm_buffers_finish(void) {
 	mm_buffers_drained();
 }
 
+// Export (io/export_tiled.c): the passes materials sample rendered full at a raised size cap, kept until the export ends.
+// Rendering per tile is not possible: passes read their inputs anywhere. Keys do not include the size: textures above
+// the normal cap are evicted afterwards, or they would stay.
+
+static u64 *mm_buffers_export_keys = NULL;
+static i32  mm_buffers_export_n    = 0;
+static i32  mm_buffers_export_next = 0;
+static i32  mm_buffers_export_size = 0; // The cap chosen, 0 the normal one
+
+// Pins r and every pass it reads, sums their full size bytes at caps 2048, 4096, 8192 into bytes[]
+static void mm_buffers_export_pin(mm_buffers_recipe_t *r, i64 *bytes) {
+	if (r == NULL || r->pinned) {
+		return;
+	}
+	r->pinned = true;
+	for (i32 c = 0; c < 3; ++c) {
+		i32 cap = 2048 << c;
+		if (r->cpu) {
+			bytes[c] += (i64)r->w * r->h * 4;
+		}
+		else {
+			i64 s = r->own > cap ? cap : r->own;
+			bytes[c] += s * s * gpu_texture_format_size(mm_buffers_format(r)) * (r->iterate ? 2 : 1); // An iterate buffer's previous iteration
+		}
+	}
+	for (i32 k = 0; k < r->textures; ++k) {
+		mm_buffers_export_pin(mm_buffers_find(r->inputs[k]), bytes);
+	}
+	for (i32 k = 0; k < r->loop_textures; ++k) {
+		mm_buffers_export_pin(mm_buffers_find(r->loop_inputs[k]), bytes);
+	}
+	for (i32 k = 0; k < r->nloop; ++k) {
+		mm_buffers_export_pin(mm_buffers_find(r->loop[k]), bytes);
+	}
+	mm_buffers_export_pin(mm_buffers_find(r->owner), bytes);
+}
+
+// Chooses the largest cap of 2048, 4096 and 8192 (at most max_size) whose full textures of the passes keys sample fit
+// budget, pins them. They render full with mm_buffers_export_step. Returns the cap, 0 when even 2048 does not fit (the
+// normal cap stays).
+i32 mm_buffers_export_begin(u64 *keys, i32 n, i32 max_size, i64 budget) {
+	mm_buffers_export_end();
+	mm_buffers_trim(); // What the last render did not use goes first
+	i64 bytes[3] = {0, 0, 0};
+	free(mm_buffers_export_keys);
+	mm_buffers_export_keys = malloc(sizeof(u64) * (n > 0 ? n : 1));
+	mm_buffers_export_n    = 0;
+	for (i32 i = 0; i < n; ++i) {
+		mm_buffers_recipe_t *r = mm_buffers_find(keys[i]);
+		if (r == NULL) {
+			continue;
+		}
+		mm_buffers_export_keys[mm_buffers_export_n++] = keys[i];
+		mm_buffers_export_pin(r, bytes);
+	}
+	mm_buffers_export_size = 0;
+	for (i32 c = 2; c >= 0; --c) {
+		i32 cap = 2048 << c;
+		if (cap <= max_size && bytes[c] <= budget) {
+			mm_buffers_export_size = cap;
+			break;
+		}
+	}
+	mm_buffers_set_export_cap(mm_buffers_export_size);
+	mm_buffers_export_next = 0;
+	return mm_buffers_export_size;
+}
+
+// Renders the next pass of the export full, returns how many are left (0: all are full)
+i32 mm_buffers_export_step(void) {
+	while (mm_buffers_export_next < mm_buffers_export_n) {
+		mm_buffers_recipe_t *r = mm_buffers_find(mm_buffers_export_keys[mm_buffers_export_next++]);
+		if (r != NULL && !mm_buffers_sat(r, MM_BUFFERS_FULL)) {
+			mm_buffers_rerender(r, MM_BUFFERS_FULL);
+			break;
+		}
+	}
+	return mm_buffers_export_n - mm_buffers_export_next;
+}
+
+// The export is over (or cancelled): pins go, textures above the normal full size are freed, the normal cap is back
+void mm_buffers_export_end(void) {
+	mm_buffers_set_export_cap(0);
+	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
+		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
+			r->pinned = false;
+			if (r->tex != NULL && !r->cpu && !r->rendering && !r->job && r->tex_size > mm_buffers_full_size(r)) {
+				mm_buffers_texture_free(r->tex);
+				r->tex = NULL;
+			}
+		}
+	}
+	free(mm_buffers_export_keys);
+	mm_buffers_export_keys = NULL;
+	mm_buffers_export_n    = 0;
+	mm_buffers_export_next = 0;
+	mm_buffers_export_size = 0;
+}
+
+// The texture size of the largest pass the export pinned, 0 when none
+i32 mm_buffers_export_largest(void) {
+	i32 s = 0;
+	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
+		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
+			if (r->pinned && r->tex != NULL && r->tex_size > s) {
+				s = r->tex_size;
+			}
+		}
+	}
+	return s;
+}
+
 // Frees every texture, recipe and pipeline
 void mm_buffers_clear(void) {
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
@@ -1267,7 +1379,8 @@ void mm_buffers_clear(void) {
 // 0: passes rendered by the last render, 1: found in the cache, 2: failed shaders, 3: draws, 4: cached textures,
 // 5: cached pipelines, 6: cached texture memory in KB, 7: the texture budget in KB, 8: textures rendered again on
 // demand (since start), 9: recipes, 10: recipe memory in KB, 11: queued passes, 12: 1 in the synchronous mode
-// (MM_BUFFERS_SYNC), 13: 1 when 32-bit float buffers stay 32-bit (filterable)
+// (MM_BUFFERS_SYNC), 13: 1 when 32-bit float buffers stay 32-bit (filterable), 14: the export cap (0 none), 15: recipes
+// pinned for an export
 i32 mm_buffers_stat(i32 what) {
 	if (what >= 0 && what < 4) {
 		return mm_buffers_stats[what];
@@ -1293,15 +1406,19 @@ i32 mm_buffers_stat(i32 what) {
 	if (what == 13) {
 		return mm_buffers_float32() ? 1 : 0;
 	}
-	i64 textures = 0, bytes = 0, recipes = 0;
+	if (what == 14) {
+		return mm_buffers_export_cap;
+	}
+	i64 textures = 0, bytes = 0, recipes = 0, pinned = 0;
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
 		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
 			textures += r->tex != NULL;
 			bytes += r->tex != NULL ? mm_buffers_bytes(r->tex) : 0;
 			recipes += r->bytes;
+			pinned += r->pinned;
 		}
 	}
-	return what == 4 ? (i32)textures : what == 6 ? (i32)(bytes / 1024) : what == 10 ? (i32)(recipes / 1024) : 0;
+	return what == 4 ? (i32)textures : what == 6 ? (i32)(bytes / 1024) : what == 10 ? (i32)(recipes / 1024) : what == 15 ? (i32)pinned : 0;
 }
 
 // Image and text nodes: files relative to data/material_maker, the shipped font
