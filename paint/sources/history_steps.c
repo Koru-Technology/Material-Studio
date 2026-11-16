@@ -22,6 +22,7 @@ void history_paint() {
 	if (tiled) {
 		history_tiles_begin(step, g_context->layer);
 	}
+	timeline_stroke_begin(step, g_context->layer);
 
 	// Erasing the bottom layer makes the mesh see-through
 	if (g_context->tool == TOOL_TYPE_ERASER && g_context->layer == g_project->_->layers->buffer[0]) {
@@ -39,6 +40,7 @@ void history_new_layer() {
 void history_new_image_layer(asset_t *asset) {
 	history_step_t *step = history_push(HISTORY_ACTION_NEW_LAYER);
 	step->image_file     = string_copy(asset->file);
+	timeline_record_op(g_context->layer, TL_IMAGE, asset->file, string_length(asset->file) + 1, NULL, 0);
 }
 
 void history_new_black_mask() {
@@ -104,6 +106,7 @@ history_step_t *history_delete_layer(slot_layer_t *l) {
 void history_clear_layer() {
 	history_swap_active();
 	history_push(HISTORY_ACTION_CLEAR_LAYER);
+	timeline_record_op(g_context->layer, TL_CLEAR, NULL, 0, NULL, 0);
 }
 
 void history_order_layers(i32 prev_order) {
@@ -123,6 +126,7 @@ static void history_merge_capture(slot_layer_t *top, i32 start) {
 		slot_layer_t *l = layers->buffer[i];
 		slot_layer_t *c = slot_layer_clone(l);
 		c->uid          = l->uid; // Back in place of l on undo
+		c->timeline     = l->timeline;
 		any_array_push(step->merge_layers, c);
 		i32_array_push(step->merge_parents, l->parent != NULL ? array_index_of(layers, l->parent) : -1);
 	}
@@ -133,6 +137,14 @@ void history_merge_layers() {
 	slot_layer_t         *l1     = g_context->layer;
 	slot_layer_t         *l0     = layers->buffer[array_index_of(layers, l1) - slot_layer_count_descendants(l1) - 1];
 	history_merge_capture(l1, array_index_of(layers, l0) - slot_layer_count_descendants(l0));
+	// l1 goes into l0 (a group merged first is a new layer, its timeline starts with its next change)
+	timeline_t *src = timeline_of(l1);
+	tl_entry_t *e   = timeline_record(l0, TL_MERGE, HASH128_NONE, NULL, 0);
+	if (e != NULL && src != NULL) {
+		e->src_tl  = src->uid;
+		e->src_pos = src->cursor;
+		timeline_ref(src);
+	}
 }
 
 void history_merge_group(slot_layer_t *l) {
@@ -161,20 +173,36 @@ void history_apply_mask() {
 	history_step_t *step = history_push(HISTORY_ACTION_APPLY_MASK);
 	history_get_height_blend(m, step->layer_height_blend);
 	step->mask_effects = mask_stack_copy_effects(m->mask_effects);
+
+	// The layers the mask is applied to keep its timeline
+	timeline_t           *src   = timeline_of(m);
+	slot_layer_t_array_t *dests = slot_layer_is_group(m->parent) ? slot_layer_get_children(m->parent) : NULL;
+	for (i32 i = 0; i < (dests != NULL ? dests->length : 1); ++i) {
+		tl_entry_t *e = timeline_record(dests != NULL ? dests->buffer[i] : m->parent, TL_APPLY_MASK, HASH128_NONE, NULL, 0);
+		if (e != NULL && src != NULL) {
+			e->src_tl  = src->uid;
+			e->src_pos = src->cursor;
+			timeline_ref(src);
+		}
+	}
 }
 
 void history_invert_mask() {
 	history_push(HISTORY_ACTION_INVERT_MASK);
+	timeline_record_op(g_context->layer, TL_INVERT, NULL, 0, NULL, TL_FLAG_UPSCALABLE | TL_FLAG_INVOLUTION);
 }
 
+// The layer turns procedural: its timeline ends with the conversion and waits for a conversion back
 void history_to_fill_layer() {
 	history_copy_to_undo(g_context->layer->id, history_undo_i, false);
 	history_push(HISTORY_ACTION_TO_FILL_LAYER);
+	timeline_record_op(g_context->layer, TL_FILL, NULL, 0, NULL, 0);
 }
 
 void history_to_fill_mask() {
 	history_copy_to_undo(g_context->layer->id, history_undo_i, true);
 	history_push(HISTORY_ACTION_TO_FILL_MASK);
+	timeline_record_op(g_context->layer, TL_FILL, NULL, 0, NULL, 0);
 }
 
 // The step keeps the layer's fill material, not the selected one: undo gives it back

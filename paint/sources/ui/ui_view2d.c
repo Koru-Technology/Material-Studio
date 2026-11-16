@@ -249,6 +249,8 @@ static void ui_view2d_layer_move_apply_on_next_frame(void *_) {
 	if (history_undo_layers != NULL) {
 		history_paint();
 		history_steps->buffer[history_steps->length - 1]->name = tr("Move");
+		f32 uv[2] = {(f32)dx / l->texpaint->width, (f32)dy / l->texpaint->height};
+		timeline_retag_last(l, TL_TRANSLATE, uv, sizeof(uv), TL_FLAG_NONLOCAL);
 	}
 	g_context->layer = _layer;
 

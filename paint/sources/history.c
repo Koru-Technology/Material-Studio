@@ -141,11 +141,20 @@ static void history_step_free(history_step_t *step) {
 	}
 	history_tiles_release(step);
 	array_delete(step->mask_effects);
+	if (step->tl_moves != NULL) {
+		array_free(step->tl_moves);
+		free(step->tl_moves);
+	}
 	free(step);
 }
 
-static i32 history_ring_pending = 0; // Whole layer copies made for the step about to be pushed
-static u32 history_serial_next  = 1;
+static i32  history_ring_pending = 0; // Whole layer copies made for the step about to be pushed
+static u32  history_serial_next  = 1;
+static bool history_v2_on        = false;
+
+bool history_v2_active() {
+	return history_v2_on;
+}
 
 // Steps kept at most, paint steps keep their tiles and can go much further back than whole layer copies
 static i32 history_max_steps() {
@@ -226,7 +235,16 @@ static void history_step_resolve(history_step_t *step, bool undo) {
 
 // The layers, materials and objects step points at by position are still there. A step left behind by a change made
 // without history would read out of bounds, it is skipped instead.
+static bool history_step_valid_last = false; // What the last check found, its cursors move with the step
+
+static bool history_step_valid_check(history_step_t *step, bool undo);
+
 static bool history_step_valid(history_step_t *step, bool undo) {
+	history_step_valid_last = history_step_valid_check(step, undo);
+	return history_step_valid_last;
+}
+
+static bool history_step_valid_check(history_step_t *step, bool undo) {
 	history_step_resolve(step, undo);
 	i32 layers    = g_project->_->layers->length;
 	i32 materials = g_project->_->materials->length;
@@ -283,6 +301,7 @@ static bool history_step_valid(history_step_t *step, bool undo) {
 
 void history_undo() {
 	history_tiles_finalize();
+	timeline_finalize();
 	if (history_undos > 0) {
 		stroke_refine_end_all(); // Strokes keep the tier they reached
 		project_modified = true;
@@ -462,6 +481,9 @@ void history_undo() {
 			g_context->layer_preview_dirty = true;
 		}
 
+		if (history_step_valid_last) {
+			timeline_step_apply(step, true);
+		}
 		history_undos--;
 		history_redos++;
 		if (step->with_prev) {
@@ -584,6 +606,7 @@ void history_swap_active() {
 
 void history_redo() {
 	history_tiles_finalize();
+	timeline_finalize();
 	if (history_redos > 0) {
 		stroke_refine_end_all();
 		project_modified = true;
@@ -745,6 +768,9 @@ void history_redo() {
 			history_undo_i                 = history_ring_next();
 		}
 
+		if (history_step_valid_last) {
+			timeline_step_apply(step, false);
+		}
 		history_undos++;
 		history_redos--;
 		if (history_redos > 0 && history_steps->buffer[history_steps->length - history_redos]->with_prev) {
@@ -786,7 +812,9 @@ void history_reset() {
 	history_redos  = 0;
 	history_undo_i = 0;
 	history_ring_pending = 0;
+	history_v2_on        = g_config->history_v2; // Steps of both kinds never mix
 	history_tiles_reset();
+	timeline_reset_all();
 	stroke_refine_reset();
 	material_cache_reset(); // A new project: every material cache goes
 }
@@ -819,6 +847,7 @@ void history_ring_set_size(i32 n) {
 
 history_step_t *history_push(history_action_t action) {
 	history_tiles_finalize(); // The last stroke is over
+	timeline_finalize();
 	project_modified = true;
 	render_path_base_redraw();
 	char *name = history_action_to_string(action);
@@ -840,6 +869,7 @@ history_step_t *history_push(history_action_t action) {
 			history_step_free(array_pop(history_steps));
 		}
 		history_redos = 0;
+		timeline_truncate_all(); // Their entries
 	}
 
 	i32 opos = array_index_of(g_project->_->paint_objects, g_context->paint_object);

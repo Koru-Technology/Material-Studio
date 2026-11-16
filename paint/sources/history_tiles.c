@@ -8,12 +8,6 @@
 // The pool grows a page at a time up to the undo memory budget, past it the oldest steps are dropped.
 // Masks and gpus without region copies keep a whole layer copy per step (history_copy_to_undo).
 
-#ifdef IRON_METAL
-void gpu_copy_regions_begin(void);
-void gpu_copy_region(gpu_texture_t *dst, int dx, int dy, gpu_texture_t *src, int sx, int sy, int w, int h);
-void gpu_copy_regions_end(void);
-#endif
-
 #define HISTORY_TILES_GRID      64 // Tiles per layer side
 #define HISTORY_TILES_PAGE_GRID 16 // Tiles per page side
 #define HISTORY_TILES_PAGE      (HISTORY_TILES_PAGE_GRID * HISTORY_TILES_PAGE_GRID)
@@ -173,7 +167,15 @@ static i32 history_tiles_alloc(history_step_t *step) {
 }
 
 // Takes the changed tiles of the pending step from the snapshot
+static void history_tiles_finalize_step();
+
+// The last stroke is over: its tiles are taken, timelines capture the states after their last entries
 void history_tiles_finalize() {
+	history_tiles_finalize_step();
+	timeline_finalize();
+}
+
+static void history_tiles_finalize_step() {
 #ifdef IRON_METAL
 	history_step_t *step = history_tiles_pending;
 	slot_layer_t   *l    = history_tiles_pending_l;
@@ -220,6 +222,9 @@ void history_tiles_finalize() {
 		}
 	}
 	gpu_release_texture_pixels(diff->_image);
+	if (timeline_active()) {
+		timeline_stroke_dirty(step, step->undo_tiles); // The stroke's capture reads only these
+	}
 
 	for (i32 i = 0; i < step->undo_tiles->length; i += 2) {
 		step->undo_tiles->buffer[i + 1] = history_tiles_alloc(step);

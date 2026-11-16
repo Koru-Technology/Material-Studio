@@ -245,6 +245,7 @@ typedef struct slot_layer {
 	u32                  revision;        // Bumped when the pixels change, the masks anchoring the layer evaluate again
 	u64                  mask_inputs_key; // Anchored layers and ID map texmask was last evaluated with
 	bool                 mask_evaluating; // Cycle guard: a mask anchoring one being evaluated reads its last texmask
+	u32                  timeline;        // Uid of its timeline (stroke_rec.h), 0 for none
 } slot_layer_t;
 
 // One effect of a mask stack, unpacked from slot_layer_t.mask_effects (mask_stack_get / mask_stack_set)
@@ -826,6 +827,7 @@ typedef struct history_step {
 	u32                          parent_uid;   // 0 when none
 	u32                          material_uid;
 	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
+	i32_array_t                 *tl_moves;     // Timeline cursors the step moved: uid, before, after (timeline.c)
 } history_step_t;
 
 // ---- Logic nodes and node groups ----

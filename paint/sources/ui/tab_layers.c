@@ -460,6 +460,7 @@ void tab_layers_draw_layer_context_menu_to_paint_layer(void *_) {
 
 	slot_layer_is_layer(l) ? history_to_paint_layer() : history_to_paint_mask();
 	slot_layer_to_paint_layer(l);
+	timeline_record_op(l, TL_FILL, NULL, 0, NULL, 0); // Painted from here on, the fill as it is now is its start
 }
 
 void tab_layers_draw_layer_context_menu_to_fill_layer(void *_) {
