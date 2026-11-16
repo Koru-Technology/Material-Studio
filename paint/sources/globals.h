@@ -387,5 +387,3 @@ any_imap_t                  *neural_node_results;
 ui_node_t                   *neural_node_current;
 i32                          neural_node_downloading = 0;
 neural_node_model_t_array_t *neural_node_models      = NULL;
-
-char *render_path_raytrace_ext = ".metal";

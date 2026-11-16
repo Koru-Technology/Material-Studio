@@ -13,10 +13,10 @@ void render_path_raytrace_bake_commands_parse_paint_material(void (*parse_paint_
 }
 
 char *render_path_raytrace_bake_get_bake_shader_name() {
-	return g_context->bake_type == BAKE_TYPE_OCCLUSION     ? string("raytrace_bake_ao%s", render_path_raytrace_ext)
-	       : g_context->bake_type == BAKE_TYPE_LIGHTMAP    ? string("raytrace_bake_light%s", render_path_raytrace_ext)
-	       : g_context->bake_type == BAKE_TYPE_BENT_NORMAL ? string("raytrace_bake_bent%s", render_path_raytrace_ext)
-	                                                       : string("raytrace_bake_thick%s", render_path_raytrace_ext);
+	return g_context->bake_type == BAKE_TYPE_OCCLUSION     ? "raytrace_bake_ao.metal"
+	       : g_context->bake_type == BAKE_TYPE_LIGHTMAP    ? "raytrace_bake_light.metal"
+	       : g_context->bake_type == BAKE_TYPE_BENT_NORMAL ? "raytrace_bake_bent.metal"
+	                                                       : "raytrace_bake_thick.metal";
 }
 
 bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {

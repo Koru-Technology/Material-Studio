@@ -416,7 +416,7 @@ void render_path_raytrace_commands(bool use_live_layer) {
 			render_path_raytrace_init_shader = true;
 		}
 		char *mode = config_is_raytrace_fast() ? "core" : "full";
-		render_path_raytrace_setup(string("raytrace_brute_%s%s", mode, render_path_raytrace_ext), true);
+		render_path_raytrace_setup(string("raytrace_brute_%s.metal", mode), true);
 		render_path_raytrace_last_envmap = NULL;
 	}
 
