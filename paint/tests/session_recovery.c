@@ -8,7 +8,7 @@ int   fails      = 0;
 int   checks     = 0;
 int   step       = 0;
 int   frame      = 0;
-char *dir        = "/tmp/materialstudio_session_recovery";
+char *dir        = NULL;
 char *file       = NULL;
 int   v31_was    = 0;
 int   shadow_was = 0;
@@ -153,6 +153,7 @@ void main() {
 	shadow_was                           = script_get_config()->timeline_shadow;
 	script_get_config()->project_v31     = 1;
 	script_get_config()->timeline_shadow = 1;
+	dir = script_tmp_dir("materialstudio_session_recovery"); // Per run: suites of several worktrees run at once
 	iron_create_directory(dir);
 	file = string("%s/recover.arm", dir);
 	iron_delete_file(file);
