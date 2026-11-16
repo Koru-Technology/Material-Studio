@@ -506,6 +506,10 @@ void import_arm_run_project(char *path) {
 
 	ui_header_draw_progress(0.85);
 
+	if (g_project->timelines != NULL) {
+		timeline_io_decode((u8_array_t *)g_project->timelines); // The layers name their timeline, references at the end
+	}
+
 	// Assign parents to groups and masks
 	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
 		layer_data_t *ld = g_project->layer_datas->buffer[i];

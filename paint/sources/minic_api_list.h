@@ -1105,6 +1105,9 @@ X2(timeline_test_materialize, "b(p:slot_layer_t l,i pos)", b, p, i)
 X0(timeline_finalize, "v()", v)
 X0(history_tiles_reset, "v()", v)
 
+// timeline_io.c
+X2(timeline_io_test_state, "i(p:slot_layer_t l,i pos)", i, p, i)
+
 // Texture export (io/export_texture.c, ui/box_export.c) test hooks
 X5(export_texture_test_options, "v(p:char preset,i layers_export,b padding,i bits,i format)", v, p, i, b, i, i)
 X2(box_export_textures_run, "v(p:char path,b bake_material)", v, p, b)

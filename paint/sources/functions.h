@@ -2436,6 +2436,12 @@ f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
 
+// ---- timeline_io.c ----
+u8_array_t *timeline_io_encode();
+bool        timeline_io_decode(u8_array_t *a);
+hash128_t  *timeline_roots(i32 *n);
+i32         timeline_io_test_state(slot_layer_t *l, i32 pos);
+
 // ---- io/export_tiled.c ----
 bool           export_tiled_start(char *path, bool bake_material);
 bool           export_tiled_step(f64 budget_ms);
@@ -2501,4 +2507,6 @@ vec4_t           uniforms_pixel_snap_uv();
 
 // ---- render/make_dab_resolve.c ----
 void make_dab_resolve_run(i32 count);
+void make_dab_resolve_prewarm();
+void make_dab_resolve_prewarm_on_next_frame(void *_);
 char *make_brush_dab(char *k, i32 t);
