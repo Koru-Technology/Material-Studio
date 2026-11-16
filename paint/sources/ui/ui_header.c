@@ -393,28 +393,10 @@ void ui_header_draw_tool_properties() {
 		ui_header_draw_stroke_options(decal_mask);
 
 		if (g_context->tool != TOOL_TYPE_ERASER) {
-			string_array_t *brush_blending_combo = any_array_create_from_raw_tmp(
-			    (void *[]){
-			        tr("Mix"),
-			        tr("Darken"),
-			        tr("Multiply"),
-			        tr("Burn"),
-			        tr("Lighten"),
-			        tr("Screen"),
-			        tr("Dodge"),
-			        tr("Add"),
-			        tr("Overlay"),
-			        tr("Soft Light"),
-			        tr("Linear Light"),
-			        tr("Difference"),
-			        tr("Subtract"),
-			        tr("Divide"),
-			        tr("Hue"),
-			        tr("Saturation"),
-			        tr("Color"),
-			        tr("Value"),
-			    },
-			    18);
+			string_array_t *brush_blending_combo = any_array_create_from_raw_tmp(NULL, BLEND_TYPE_COUNT);
+			for (i32 i = 0; i < BLEND_TYPE_COUNT; ++i) {
+				brush_blending_combo->buffer[i] = tr(blend_type_name(i));
+			}
 			ui_combo((int *)&g_context->brush_blending, brush_blending_combo, tr("Blending"), false, UI_ALIGN_LEFT, true);
 			if (ui_item_changed()) {
 				make_material_parse_paint_material(true);

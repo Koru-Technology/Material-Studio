@@ -105,15 +105,12 @@ bool app_mask_effect_param(int32_t type, int32_t p, app_mask_param_t *out) {
 	return true;
 }
 
-static char *app_mask_blending_names[] = {"Normal", "Multiply", "Add", "Subtract", "Max", "Min", "Overlay"};
-_Static_assert(ARRAY_LENGTH(app_mask_blending_names) == MASK_BLEND_COUNT, "a name per mask blending");
-
 int32_t app_mask_blending_count(void) {
 	return MASK_BLEND_COUNT;
 }
 
 const char *app_mask_blending_name(int32_t blending) {
-	return blending >= 0 && blending < MASK_BLEND_COUNT ? tr(app_mask_blending_names[blending]) : NULL;
+	return blending >= 0 && blending < MASK_BLEND_COUNT ? tr(mask_blend_name(blending)) : NULL;
 }
 
 int32_t app_mask_add_effect(int32_t id, int32_t type) {

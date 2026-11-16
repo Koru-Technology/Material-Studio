@@ -164,22 +164,15 @@ uint32_t app_layers_props_signature(void) {
 	return h;
 }
 
-static char *app_blending_names[] = {
-    "Mix",     "Darken",  "Multiply",     "Burn",       "Lighten",  "Screen", "Dodge",      "Add",   "Overlay",
-    "Soft Light", "Linear Light", "Difference", "Subtract", "Divide", "Hue", "Saturation", "Color", "Value",
-};
-
-_Static_assert(ARRAY_LENGTH(app_blending_names) == BLEND_TYPE_VALUE + 1, "a name per blend_type_t");
-
 int32_t app_layer_blending_count(void) {
-	return (int32_t)ARRAY_LENGTH(app_blending_names);
+	return BLEND_TYPE_COUNT;
 }
 
 const char *app_layer_blending_name(int32_t blending) {
-	if (blending < 0 || blending >= app_layer_blending_count()) {
+	if (blending < 0 || blending >= BLEND_TYPE_COUNT) {
 		return NULL;
 	}
-	return tr(app_blending_names[blending]);
+	return tr(blend_type_name(blending));
 }
 
 bool app_layer_pick(int32_t id) {
