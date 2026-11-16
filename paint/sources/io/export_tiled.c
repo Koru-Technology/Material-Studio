@@ -1168,7 +1168,7 @@ static bool export_tiled_upscales(slot_layer_t *l, bool tiles) {
 	if (l->fill_material != NULL) {
 		return tiles && !et_test_no_fill;
 	}
-	timeline_t *tl = tiles ? timeline_of(l) : NULL;
+	timeline_t *tl = tiles ? (et.active ? timeline_of(l) : timeline_ensure(l)) : NULL; // An untouched layer: its state now
 	return tl != NULL && timeline_upscalable(tl, tl->cursor);
 }
 
@@ -1391,6 +1391,9 @@ bool export_tiled_start(char *path, bool bake_material) {
 	export_tiled_blurs_begin();
 	et_evicted_bytes   = 0;
 	et_predicted_bytes = export_tiled_predict();
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) { // Layers never changed: their state now, before export mode
+		timeline_ensure(g_project->_->layers->buffer[i]);    // takes them away
+	}
 	if (export_tiled_mode_wanted()) {
 		hstore_flush(); // The only copy of unsaved pixels goes to the store: on disk first, a kill keeps them
 		project_session_write(); // And the session head: the journal recovers them
