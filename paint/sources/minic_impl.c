@@ -117,12 +117,10 @@ config_t *script_get_config() {
 	return g_config;
 }
 platform_t script_get_platform() {
-#if defined(IRON_MACOS)
-	return PLATFORM_MACOS;
-#elif defined(IRON_IOS)
+#ifdef IRON_IOS
 	return PLATFORM_IOS;
 #else
-	return PLATFORM_LINUX;
+	return PLATFORM_MACOS;
 #endif
 }
 project_t *script_get_project() {

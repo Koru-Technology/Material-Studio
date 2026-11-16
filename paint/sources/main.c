@@ -5,9 +5,6 @@
 #define WITH_NEURAL // Neural nodes: they run downloaded desktop binaries (nodes_neural/neural_node.c)
 #endif
 
-#ifndef WITH_COMPRESS
-#define MM_STANDALONE // No iron_compress.c (Android): mm_core.c brings its own inflate
-#endif
 #include "material_maker/mm_core.c"
 
 #include "io/export_arm.c"
