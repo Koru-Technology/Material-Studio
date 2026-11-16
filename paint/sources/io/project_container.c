@@ -406,6 +406,7 @@ static void pc_history_roots(hash128_t **list, i32 *count, i32 *cap) {
 // The load is done: references are rebuilt from what the project holds, the live layers' maps, the timelines and the
 // history steps. The file's other blobs (and recovered ones) go at the next trim.
 void project_container_loaded() {
+	project_session_loaded();
 	if (pc.path == NULL) {
 		return;
 	}
@@ -1055,6 +1056,13 @@ void project_session_update() {
 // A new project or an open: the session head belongs to the one before (hstore_reset dropped it)
 void project_session_forget() {
 	pc_session      = HASH128_NONE;
+	pc_session_sig  = pc_history_signature();
+	pc_session_time = 0.0;
+}
+
+// The load is done: the history it decoded is the opened state, not a change to journal. A head of it would be the
+// newest one, and would hide the unsaved work of an earlier session from recovery.
+void project_session_loaded() {
 	pc_session_sig  = pc_history_signature();
 	pc_session_time = 0.0;
 }

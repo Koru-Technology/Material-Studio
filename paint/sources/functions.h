@@ -2426,6 +2426,7 @@ bool        project_session_due();
 bool        project_session_changed();
 void        project_session_update();
 void        project_session_forget();
+void        project_session_loaded();
 bool        project_session_pending(char *path);
 bool        project_session_recovering();
 bool        project_session_recover(char *path);
