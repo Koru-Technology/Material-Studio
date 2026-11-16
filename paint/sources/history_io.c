@@ -2,7 +2,7 @@
 
 // Undo history saved with v31 projects: the step list as an armpack map
 //   {version, serial_next, undos, redos, steps: [step map, ..]}
-// A step map holds the step's scalars, uids and tl_moves; mask_effects, swatches, layer_name and image_file inline; its
+// A step map holds the step's scalars, uids and tl_moves; mask_effects, swatches, path props, layer_name and image_file inline; its
 // node canvas as an HSTORE_CANVAS blob; the layers of a delete or merge step as their layer records (history_swap.c:
 // props and tile map, filled on undo by the record restore) with merge_parents. Hashes are i32 arrays of 4 (lo, hi).
 // GPU undo tiles are not saved: loaded steps undo from timelines.
@@ -124,7 +124,7 @@ static void hio_swatch(swatch_color_t *s, f32 *out) {
 	memcpy(out, v, sizeof(v));
 }
 
-#define HISTORY_IO_STEP_KEYS 41
+#define HISTORY_IO_STEP_KEYS 46
 
 static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	armpack_encode_map(HISTORY_IO_STEP_KEYS);
@@ -185,6 +185,23 @@ static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	hio_str("image_file", s->image_file);
 	hio_i32s("tl_moves", s->tl_moves);
 	hio_hashes("canvas", &canvas, hash128_is_none(canvas) ? 0 : 1);
+	slot_layer_t *p         = s->path; // Path props: points, world, camera, parents; curved, text, tool, material uid
+	f32_array_t  *pf[3]     = {p != NULL ? p->path_points : NULL, p != NULL ? p->path_points_world : NULL, p != NULL ? p->path_points_camera : NULL};
+	char         *pk[3]     = {"path_points", "path_world", "path_camera"};
+	for (i32 i = 0; i < 3; ++i) {
+		hio_key(pk[i]);
+		if (pf[i] != NULL) {
+			armpack_encode_array_f32(pf[i]);
+		}
+		else {
+			armpack_encode_null();
+		}
+	}
+	hio_i32s("path_parents", p != NULL ? p->path_points_parent : NULL);
+	i32         pp[4] = {p != NULL ? p->path_curved : 0, p != NULL ? p->path_text : 0, p != NULL ? p->path_tool : -1,
+	                     p != NULL && p->path_material != NULL ? (i32)p->path_material->uid : 0};
+	i32_array_t pa    = {.buffer = pp, .length = 4, .capacity = 4};
+	hio_i32s("path_props", p != NULL ? &pa : NULL);
 	i32 fill[2] = {(i32)s->fill_uids[0], (i32)s->fill_uids[1]};
 	i32_array_t fa = {.buffer = fill, .length = 2, .capacity = 2};
 	hio_i32s("fill_uids", &fa);
@@ -198,6 +215,12 @@ static u32 history_io_step_size(history_step_t *s) {
 	n += s->merge_layers != NULL ? s->merge_layers->length * 24 : 0;
 	n += s->merge_parents != NULL ? s->merge_parents->length * 4 : 0;
 	n += s->tl_moves != NULL ? s->tl_moves->length * 4 : 0;
+	if (s->path != NULL) {
+		void *pa[4] = {s->path->path_points, s->path->path_points_world, s->path->path_points_camera, s->path->path_points_parent};
+		for (i32 i = 0; i < 4; ++i) {
+			n += pa[i] != NULL ? ((f32_array_t *)pa[i])->length * 4 : 0; // i32 and f32 arrays alike
+		}
+	}
 	n += s->name != NULL ? string_length(s->name) : 0;
 	n += s->layer_name != NULL ? string_length(s->layer_name) : 0;
 	n += s->image_file != NULL ? string_length(s->image_file) : 0;
@@ -326,6 +349,14 @@ static history_step_t *history_io_decode_step(any_map_t *m) {
 		if (me->length > 0) {
 			memcpy(s->mask_effects->buffer, me->buffer, sizeof(f32) * me->length);
 		}
+	}
+	i32_array_t *pp = any_map_get(m, "path_props");
+	if (pp != NULL && pp->length == 4) {
+		slot_layer_t t = {.path_points = any_map_get(m, "path_points"), .path_points_world = any_map_get(m, "path_world"),
+		                  .path_points_camera = any_map_get(m, "path_camera"), .path_points_parent = any_map_get(m, "path_parents"),
+		                  .path_curved = pp->buffer[0] != 0, .path_text = pp->buffer[1] != 0, .path_tool = pp->buffer[2],
+		                  .path_material = slot_material_find_uid((u32)pp->buffer[3])};
+		s->path = history_path_copy(&t); // Copies out of the decoded map
 	}
 	s->swatch = armpack_map_get_i32(m, "swatch");
 	f32 *sc   = hio_get_f32s(m, "swatch_color", 9);

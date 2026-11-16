@@ -121,6 +121,7 @@ void layers_update_fill_layer(bool parse_paint) {
 
 	tool_type_t _tool      = g_context->tool;
 	i32         _fill_type = g_context->fill_type;
+	i32         _pdirty    = g_context->pdirty;
 	g_context->tool        = TOOL_TYPE_FILL;
 	g_context->fill_type   = FILL_TYPE_OBJECT;
 	g_context->pdirty      = 1;
@@ -135,6 +136,7 @@ void layers_update_fill_layer(bool parse_paint) {
 
 	g_context->tool      = _tool;
 	g_context->fill_type = _fill_type;
+	g_context->pdirty    = _pdirty; // Left at 1, the next frame painted the selected layer with its tool
 	if (parse_paint && layers_tool_paints_fill_layer(_tool)) {
 		make_material_parse_paint_material(false);
 	}

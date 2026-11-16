@@ -1492,6 +1492,14 @@ void step_layer_paths_verify() {
 	ok           = script_layer_add_path_point(p, 0.65, 0.35) && p->path_points->length == 6; // Clear of the curve and text
 	float after  = base_fraction(0x0000ff);
 	check(ok && after > before, string("loaded path keeps growing (%d, %.4f -> %.4f blue)", p->path_points->length, before, after));
+	history_undo(); // A path point is a step: its points and pixels come back together
+	history_flush_restores(NULL);
+	float undone = base_fraction(0x0000ff);
+	check(p->path_points->length == 4 && undone == before, string("undo of a path point (%d, %.4f blue)", p->path_points->length, undone));
+	history_redo();
+	history_flush_restores(NULL);
+	float redone = base_fraction(0x0000ff);
+	check(p->path_points->length == 6 && redone == after, string("redo of a path point (%d, %.4f blue)", p->path_points->length, redone));
 	script_texture_delete(export_name);
 	export_name = NULL;
 }
@@ -1772,7 +1780,7 @@ void run_step(int s) {
 }
 
 int step_count      = 59;
-int expected_checks = 138;
+int expected_checks = 140;
 
 void next_frame() {
 	if (sub == 0) {

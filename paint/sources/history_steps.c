@@ -101,6 +101,7 @@ history_step_t *history_delete_layer(slot_layer_t *l) {
 
 void history_clear_layer() {
 	history_step_t *step = history_push(HISTORY_ACTION_CLEAR_LAYER);
+	step->path           = slot_layer_is_path(g_context->layer) ? history_path_copy(g_context->layer) : NULL; // Clear drops the points too
 	history_tiles_begin(step, g_context->layer); // As a stroke, the tiles it changes. Before the entry: it finalizes what is pending
 	timeline_record_op(g_context->layer, TL_CLEAR, NULL, 0, NULL, 0);
 }
@@ -309,6 +310,15 @@ void history_delete_material_group(node_group_t *group) {
 void history_mask_stack() {
 	history_step_t *step = history_push(HISTORY_ACTION_MASK_STACK);
 	step->mask_effects   = mask_stack_copy_effects(g_context->layer->mask_effects);
+}
+
+// Before a path edit of l (points added, removed or moved): undo gives its points and pixels back
+void history_path(slot_layer_t *l) {
+	slot_layer_t *prev   = g_context->layer;
+	g_context->layer     = l;
+	history_step_t *step = history_push(HISTORY_ACTION_PATH);
+	step->path           = history_path_copy(l);
+	g_context->layer     = prev;
 }
 
 // Working resolution w0 x h0 to w1 x h1 (util/util_layer_resolution.c)
