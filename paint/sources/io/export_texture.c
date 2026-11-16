@@ -656,6 +656,10 @@ static void export_texture_create_baked_material(slot_material_t *source) {
 }
 
 static void export_texture_run_bake_material(char *path) {
+	object_t *plane = scene_get_child(".Plane");
+	if (plane == NULL) {
+		return;
+	}
 	if (render_path_paint_live_layer == NULL) {
 		render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
 	}
@@ -664,7 +668,7 @@ static void export_texture_run_bake_material(char *path) {
 	g_context->tool   = TOOL_TYPE_FILL;
 	make_material_parse_paint_material(true);
 	mesh_object_t *_paint_object = g_context->paint_object;
-	mesh_object_t *planeo        = scene_get_child(".Plane")->ext;
+	mesh_object_t *planeo        = plane->ext;
 	planeo->base->visible        = true;
 	g_context->paint_object      = planeo;
 	g_context->pdirty            = 1;
