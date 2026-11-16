@@ -390,6 +390,10 @@ i32 history_test_restore_runs() {
 	return history_restore_runs;
 }
 
+i32 history_test_undos() {
+	return history_undos;
+}
+
 // The cursors step moved go back (undo) or forth, the layers follow at the next flush. full: what the layers hold now is
 // no state of their timeline.
 static void history_defer_moves(history_step_t *step, bool undo, bool full) {

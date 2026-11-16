@@ -1881,6 +1881,7 @@ bool            history_v2_active(); // history_v2 as it was at the last history
 void            history_flush_restores(slot_layer_t *l);
 bool            history_busy();
 i32             history_test_restore_runs();
+i32             history_test_undos();
 void            history_on_memory_warning();
 i32             history_ring_size();
 void            history_ring_set_size(i32 n);
