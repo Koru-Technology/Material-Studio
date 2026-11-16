@@ -409,6 +409,7 @@ void export_arm_run_project(char *path) {
 	}
 	else if (string_equals(path, g_project->_->filepath)) {
 		project_modified = false;
+		hstore_journal_mark_saved(); // The history journal before here needs no recovery
 	}
 	array_free(buffer);
 	free(buffer);

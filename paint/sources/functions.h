@@ -915,6 +915,8 @@ char            *slot_material_unique_name(ui_node_canvas_t *self, char *name);
 slot_material_t *slot_material_create(shader_data_t *m, ui_node_canvas_t *c);
 slot_material_t *slot_material_find_uid(u32 uid);
 u32              project_uid_take(); // Next stable uid of a layer or material (slot_layer_t.uid, slot_material_t.uid)
+char            *project_uuid_get(); // Random 128-bit id of the project in hex, names its history journal
+void             project_uuid_new();
 void             slot_material_unload(slot_material_t *raw);
 void             slot_material_delete(slot_material_t *raw);
 
@@ -2285,3 +2287,28 @@ void           bake_maps_inpaint_clear(void);
 bool           bake_maps_inpaint_apply(char *path, i32 mode, bool vector);
 void           bake_maps_inpaint_end(void);
 #endif
+
+// ---- history_store.c ----
+void  hstore_chunk_header_write(u8 *p, u8 kind, u8 codec, u16 flags, hash128_t h, u32 raw_len, u32 comp_len);
+bool  hstore_chunk_header_read(const u8 *p, hstore_chunk_t *c);
+u8   *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify);
+char *hstore_journal_path(char *uuid);
+void  hstore_journal_mark_saved();
+bool  hstore_journal_pending(char *uuid);
+i32   hstore_recover();
+void  hstore_recover_end();
+void  hstore_journal_delete(char *uuid);
+void  hstore_journal_rebind(char *old_uuid);
+i32   hstore_test_put(i32 kind, i32 seed, i32 len, bool noise);
+i32   hstore_test_get(i32 id, i32 seed, i32 len, bool noise);
+bool  hstore_test_has(i32 id);
+void  hstore_test_ref(i32 id);
+void  hstore_test_unref(i32 id);
+f32   hstore_test_stat(i32 field);
+void  hstore_drop_tier(i32 tier);
+void  hstore_test_flush();
+void  hstore_test_trim(bool memory_warning);
+void  hstore_test_reset();
+void  hstore_test_crash();
+void  hstore_test_tear(i32 bytes);
+char *hstore_test_journal_path();
