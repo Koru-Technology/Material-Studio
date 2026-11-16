@@ -15,6 +15,9 @@ extern bool render_path_paint_tail_pending;
 
 // Translucent surfaces are discarded from "main", painting still needs to hit them
 static char *render_path_paint_depth() {
+	if (paint_exec_replay && paint_replay_depth != NULL) { // From the recorded camera (paint_replay.c)
+		return paint_replay_depth;
+	}
 	return render_path_base_has_paint_depth() ? "main_paint" : "main";
 }
 
@@ -1276,8 +1279,10 @@ void render_path_paint_dilate(bool base, bool nor_pack) {
 
 void render_path_paint_dilate_now(bool base, bool nor_pack) {
 	if (g_config->dilate_radius > 0 && !g_context->paint2d) {
-		util_uv_cache_dilate_map();
-		layers_make_temp_img();
+		if (!paint_exec_replay) { // Replays have their own, the size of their target (paint_replay.c)
+			util_uv_cache_dilate_map();
+			layers_make_temp_img();
+		}
 		i32 tid = g_context->layer->id;
 
 		char *format      = gpu_texture_format_name(layers_format(base_bits));

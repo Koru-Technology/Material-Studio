@@ -558,3 +558,14 @@ void render_path_paint_commands_samples_stamps() {
 	g_context->brush_dab_opacity = 1.0;
 	g_context->brush_dab_angle   = 0.0;
 }
+
+// Tests: taper of strokes, the pencil's and touch's alike (start, end in 0-1 of the taper length, then how much the size
+// and the opacity thin out)
+void render_path_paint_test_set_taper(f32 start, f32 end, f32 size, f32 opacity) {
+	g_context->brush_taper_start       = start;
+	g_context->brush_taper_end         = end;
+	g_context->brush_touch_taper_start = start;
+	g_context->brush_touch_taper_end   = end;
+	g_context->brush_taper_size        = size;
+	g_context->brush_taper_opacity     = opacity;
+}
