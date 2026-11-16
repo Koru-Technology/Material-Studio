@@ -755,7 +755,7 @@ i32 config_get_texture_res_y() {
 	return (i32)base_res_y;
 }
 
-// The touch UI (Preferences): popovers in place of the sidebar, long press menus, its theme and scale
+// The touch UI (Preferences): long press menus, its theme and scale
 void config_set_touch_ui(bool on) {
 	g_config->touch_ui = on;
 	ui_touch_control   = on;

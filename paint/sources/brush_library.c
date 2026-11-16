@@ -426,7 +426,6 @@ void brush_library_applied() {
 	make_material_parse_paint_material(true);
 	g_context->brush->preview_ready = false;
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	ui_popovers_redraw(-1);
 	ui_header_handle->redraws = 2;
 }
 

@@ -220,7 +220,6 @@ static void brush_previews_load_finish() {
 		}
 	}
 	brush_previews_load_count = 0;
-	ui_popovers_redraw(-1);
 }
 
 // ██╗    ██╗██████╗ ██╗████████╗███████╗
@@ -367,7 +366,6 @@ static void brush_previews_render(void *_) {
 		d->row_state = BRUSH_PREVIEW_READY;
 		brush_previews_drawn++;
 	}
-	ui_popovers_redraw(-1);
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 

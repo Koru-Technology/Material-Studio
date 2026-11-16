@@ -206,7 +206,6 @@
 #include "ui/ui_node_params.c"
 #include "ui/ui_nodes.c"
 #include "ui/ui_panels.c"
-#include "ui/ui_popovers.c"
 #include "ui/ui_brush_creator.c"
 #include "ui/ui_material_studio.c"
 #include "ui/ui_search.c"

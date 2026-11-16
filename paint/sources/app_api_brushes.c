@@ -126,7 +126,6 @@ bool app_brush_group_rename(int32_t id, const char *name) {
 		return false;
 	}
 	brush_group_rename(g, (char *)name);
-	ui_popovers_redraw(-1);
 	return true;
 }
 
@@ -136,7 +135,6 @@ bool app_brush_group_delete(int32_t id) {
 		return false;
 	}
 	brush_group_delete(g);
-	ui_popovers_redraw(-1);
 	iron_delay_idle_sleep();
 	return true;
 }
@@ -195,7 +193,6 @@ bool app_brush_delete(int32_t id) {
 		return false;
 	}
 	brush_library_delete(d);
-	ui_popovers_redraw(-1);
 	iron_delay_idle_sleep();
 	return true;
 }
@@ -208,7 +205,6 @@ bool app_brush_move(int32_t id, int32_t group_id) {
 	}
 	d->group = g->id;
 	brush_library_save();
-	ui_popovers_redraw(-1);
 	return true;
 }
 
@@ -219,7 +215,6 @@ bool app_brush_rename(int32_t id, const char *name) {
 	}
 	d->name = string_copy((char *)name);
 	brush_library_save();
-	ui_popovers_redraw(-1);
 	return true;
 }
 
@@ -368,7 +363,6 @@ static void app_color_new_material_on_next_frame(void *_) {
 	app_color_new_material_pending = false;
 	if (g_context->picked_color != NULL) {
 		tab_materials_accept_swatch_drop(project_clone_swatch(g_context->picked_color));
-		ui_popovers_redraw(-1);
 	}
 }
 

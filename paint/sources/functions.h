@@ -764,7 +764,6 @@ f32               render_path_base_get_super_sampling();
 gpu_texture_t    *render_path_target_image(char *name);
 gpu_texture_t    *render_path_empty_black();
 gpu_texture_t    *render_path_empty_white();
-gpu_texture_t    *render_path_base_presented_image(i32 *count);
 void              render_path_base_redraw();
 void              render_path_base_commands(void (*draw_commands)(void));
 void              render_path_base_draw_bloom(char *source, char *target);
@@ -992,7 +991,6 @@ void tab_brushes_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture
 void tab_brushes_draw_stroke(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h);
 void tab_brushes_show_group(i32 id);
 void tab_brushes_draw_content();
-void tab_brushes_draw_popover();
 void tab_brushes_draw(i32 *htab);
 
 // ---- ui/tab_console.c ----
@@ -1013,7 +1011,6 @@ void          tab_layers_set_fill_material_later(slot_layer_t *l, slot_material_
 slot_layer_t *tab_layers_fill_target(slot_layer_t *l);
 void          tab_layers_fill_properties(slot_layer_t *l, bool menu);
 void          tab_layers_draw_edit();
-void          tab_layers_draw_popover();
 void          tab_layers_draw(i32 *htab);
 bool          tab_layers_can_drop_new_layer(i32 position);
 
@@ -1064,7 +1061,6 @@ void                  ui_base_show_3d_view();
 i32                   ui_base_panel_shadow();
 void                  ui_base_fill_round(f32 x, f32 y, f32 w, f32 h, f32 r);
 void                  ui_base_panel_add_rect(i32 x, i32 y, i32 w, i32 h);
-extern gpu_texture_t *ui_base_panel_backdrop;
 bool                  ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 corners, bool shadow_left);
 
 // ---- ui/ui_box.c ----
@@ -1223,22 +1219,6 @@ void ui_panels_radius_slider_id(i32 which, f32 *radius);
 bool ui_panels_radius_dragging();
 void ui_panels_render_ui();
 
-// ---- ui/ui_popovers.c ----
-bool           ui_popovers_enabled();
-bool           ui_popovers_has_tab(i32 id);
-i32            ui_popovers_bar_bottom();
-void           ui_popovers_redraw(i32 area);
-i32            ui_popovers_current();
-bool           ui_popovers_title(char *title, bool plus);
-i32            ui_popovers_rect_get(i32 i);
-bool           ui_menu_shown();
-void           ui_popovers_show(i32 p);
-void           ui_popovers_show_materials_tab(i32 i);
-void           ui_popovers_close();
-void           ui_popovers_update();
-gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *changed);
-void           ui_popovers_render_ui();
-
 // ---- ui/ui_brush_creator.c ----
 bool ui_brush_creator_shown();
 void ui_brush_creator_redraw();
@@ -1343,7 +1323,6 @@ void layers_commands_merge_pack(gpu_pipeline_t *pipe, gpu_texture_t *i0, gpu_tex
                                 i32 i1blending, gpu_texture_t *temp);
 void layers_enable_translucency();
 void layers_set_object_mask();
-void tab_layers_apply_filter(i32 filter);
 void layers_history_with_prev(void (*push)(void));
 bool layers_sync_nodes();
 slot_layer_t_array_t *tab_layers_init_layer_map();

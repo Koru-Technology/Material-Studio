@@ -188,7 +188,7 @@ void ui_view2d_render_color_pick(void *_) {
 
 // Height of the tab names and the header drawn on top of the image, the image is centered in the area below
 i32 ui_view2d_top() {
-	return ui_base_show && !ui_popovers_enabled() ? ui_header_h * 2 : 0;
+	return ui_base_show ? ui_header_h * 2 : 0;
 }
 
 // Rect of the shown image relative to the window, the layer plane fills it when painting
@@ -319,7 +319,7 @@ void ui_view2d_update(void *_) {
 
 	// 2D view takes the tab it is docked in
 	ui_dock_layout();
-	if (!ui_base_show || ui_popovers_enabled()) {
+	if (!ui_base_show) {
 		headerh = 0;
 	}
 
@@ -671,8 +671,8 @@ void ui_view2d_update(void *_) {
 			draw_set_color(0xffffffff);
 		}
 
-		// Menu, none on touch: the popovers and the view button by the cube do its work
-		if (ui_base_show && !ui_popovers_enabled()) {
+		// Menu
+		if (ui_base_show) {
 			i32 top_y = ui_menu_top_y();
 			i32 ew    = math_floor(UI_ELEMENT_W());
 			draw_set_color(g_theme->WINDOW_BG_COL);
