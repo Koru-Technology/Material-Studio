@@ -1081,6 +1081,10 @@ X0(project_container_test_appended, "i()", i)
 X1(project_container_test_index_count, "i(i kind)", i, i)
 X1(project_container_is, "i(p:char path)", b, p)
 X1(project_container_save_copy, "i(p:char path)", b, p)
+X0(project_session_write, "i()", b)
+X1(project_session_pending, "i(p:char path)", b, p)
+X1(project_session_recover, "i(p:char path)", b, p)
+X0(project_clear_history, "v()", v)
 X1(project_file_uuid, "p:char(p:char path)", p, p)
 X1(hstore_journal_delete_for_file, "v(p:char path)", v, p)
 X2(project_test_truncate, "v(p:char path,i bytes)", v, p, i)
@@ -1165,6 +1169,12 @@ X3(paint_replay_test_into, "b(p:slot_layer_t src,i index,p:slot_layer_t dst)", b
 X5(paint_replay_test_tiles, "b(p:slot_layer_t src,i index,p:slot_layer_t dst,i n,i halo)", b, p, i, p, i, i)
 X3(paint_rec_test_bounds, "f(p:slot_layer_t l,i index,i c)", f, p, i, i)
 X4(render_path_paint_test_set_taper, "v(f start,f end,f size,f opacity)", v, f, f, f, f)
+
+// Working resolution change (util/util_layer_resolution.c)
+X2(layers_resolution_begin, "v(i w,i h)", v, i, i)
+X2(layers_resolution_apply, "v(i w,i h)", v, i, i)
+X0(layers_resolution_test_restores, "i()", i)
+X0(config_get_texture_res_x, "i()", i)
 
 // timeline.c: materialize at any resolution
 X8(timeline_test_render, "b(p:slot_layer_t l,i pos,i res_w,i res_h,f u0,f v0,f u1,f v1)", b, p, i, i, i, f, f, f, f)

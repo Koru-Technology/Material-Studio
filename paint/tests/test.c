@@ -1164,7 +1164,10 @@ void step_custom_importers() {
 char *file_font;
 
 void step_font() {
-	file_copy(string("%s/font_mono.ttf", data_path()), file_font);
+	buffer_t *font = data_get_blob("font_mono.ttf"); // Through the asset loader: a copy of ./data/ needs the bundle as working directory
+	if (font != NULL) {
+		iron_file_save_bytes(file_font, font, font->length);
+	}
 	check(iron_file_exists(file_font), "font copied");
 	script_import_asset(file_font, false);
 	check(1, "font imported");

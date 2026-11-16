@@ -265,16 +265,19 @@ void import_arm_run_project(char *path) {
 
 	project->_ = g_project->_; // Carry over runtime arrays set up by project_new
 	g_project  = project;
+	project_uuid = g_project->uuid != NULL ? string_copy(g_project->uuid) : NULL; // A new one for older projects
+	if (project_uuid != NULL && hstore_journal_pending(project_uuid)) { // Unsaved work of a session that did not end
+		i32 recovered = hstore_recover();
+		if (project_session_recovering() && project_session_overlay(g_project)) {
+			iron_log("Unsaved work recovered (%d blobs)", recovered);
+		}
+	}
 	layer_data_t *l0                     = g_project->layer_datas->buffer[0];
 	i32           res_x                  = l0->res_x > 0 ? l0->res_x : l0->res; // Square before version 31
 	i32           res_y                  = l0->res_y > 0 ? l0->res_y : l0->res;
 	base_res                             = res_x == res_y ? config_get_texture_res_pos(res_x) : TEXTURE_RES_CUSTOM;
 	base_res_x                           = (f32)res_x;
 	base_res_y                           = (f32)res_y;
-	project_uuid                         = g_project->uuid != NULL ? string_copy(g_project->uuid) : NULL; // A new one for older projects
-	if (project_uuid != NULL && hstore_journal_pending(project_uuid)) {
-		iron_log("History journal of an unsaved session: %d blobs recovered", hstore_recover()); // Used by the history load
-	}
 	texture_bits_t bits_pos              = l0->bpp == 8 ? TEXTURE_BITS_BITS8 : l0->bpp == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
 	base_bits                            = bits_pos;
 	i32                  bytes_per_pixel = math_floor(l0->bpp / 8.0);
@@ -505,6 +508,10 @@ void import_arm_run_project(char *path) {
 
 	if (g_project->timelines != NULL) {
 		timeline_io_decode((u8_array_t *)g_project->timelines); // The layers name their timeline, references at the end
+	}
+	if (g_project->history != NULL) {
+		u8_array_t *h = (u8_array_t *)g_project->history;
+		history_io_decode(h->buffer, h->length); // Steps name layers, materials and timelines by uid
 	}
 
 	// Assign parents to groups and masks

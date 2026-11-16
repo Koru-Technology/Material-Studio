@@ -518,16 +518,16 @@ static i64 history_io_bytes() {
 	return st.ram_bytes + st.disk_bytes - st.dead_bytes;
 }
 
-void history_io_thin(i64 budget_bytes) {
+void history_io_thin(i64 budget) {
 	timeline_finalize();
 	hstore_trim(false);
-	for (i32 round = 0; round < 16 && history_io_bytes() > budget_bytes; ++round) {
+	for (i32 round = 0; round < 16 && history_io_bytes() > budget; ++round) {
 		if (timeline_thin_all(round) == 0) {
 			break;
 		}
 		hstore_trim(false);
 	}
-	while (history_io_bytes() > budget_bytes && history_undos > 0 && history_steps->length > 1 + history_redos) {
+	while (history_io_bytes() > budget && history_undos > 0 && history_steps->length > 1 + history_redos) {
 		history_drop_oldest();
 		hstore_trim(false);
 	}

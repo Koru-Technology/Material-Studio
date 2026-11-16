@@ -2007,14 +2007,6 @@ bool timeline_tiles_base(hash128_t h, hash128_t base);
 hash128_t timeline_tiles_rebase(hash128_t h, hash128_t base);
 i32  timeline_tiles_test(slot_layer_t *l);
 
-// ---- history_io.c ----
-u8  *history_io_encode(u32 *len);
-bool history_io_decode(u8 *data, u32 len);
-i32  history_io_roots(hash128_t **out);
-void history_io_thin(i64 budget_bytes);
-void history_io_clear();
-i32  history_io_test_roundtrip(i32 _);
-
 // ---- history_steps.c ----
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
 void            history_paint();
@@ -2057,6 +2049,7 @@ void            history_delete_material();
 void            history_duplicate_material();
 void            history_delete_material_group(node_group_t *group);
 void            history_mask_stack();
+void            history_resolution(i32 w0, i32 h0, i32 w1, i32 h1);
 
 // ---- keymap.c ----
 void       keymap_load();
@@ -2420,6 +2413,9 @@ char *hstore_journal_path(char *uuid);
 void  hstore_journal_mark_saved();
 bool  hstore_journal_pending(char *uuid);
 i32   hstore_recover();
+i64   hstore_live_bytes();
+i32   hstore_kind_of(hash128_t h);
+hash128_t hstore_recovered_last(i32 kind);
 void  hstore_recover_end();
 void  hstore_journal_delete(char *uuid);
 void  hstore_journal_rebind(char *old_uuid);
@@ -2459,6 +2455,19 @@ bool        project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, b
 i32         project_container_roots(hash128_t *out, i32 cap);
 void        project_container_loaded();
 i32         project_container_test_index_count(i32 kind);
+bool        project_container_writing_session();
+u8_array_t *project_container_history_encode();
+i64         project_container_history_budget();
+void        project_clear_history();
+bool        project_session_write();
+bool        project_session_due();
+bool        project_session_changed();
+void        project_session_update();
+void        project_session_forget();
+bool        project_session_pending(char *path);
+bool        project_session_recovering();
+bool        project_session_recover(char *path);
+bool        project_session_overlay(project_t *p);
 void        project_container_pack_assets(project_t *p);
 void        project_container_unpack_assets(project_t *p);
 bool        project_container_save(char *path);
@@ -2612,3 +2621,18 @@ void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
 i32                   paint_exec_pending_ops();
 void                  render_path_base_draw_paint_depth_into(char *color, char *depth);
 shader_context_t     *make_material_parse_paint_kept(void);
+
+// ---- history_io.c ----
+u8  *history_io_encode(u32 *len);
+bool history_io_decode(u8 *data, u32 len);
+i32  history_io_roots(hash128_t **out);
+void history_io_thin(i64 budget);
+void history_io_clear();
+i32  history_io_test_roundtrip(i32 _);
+
+// ---- util/util_layer_resolution.c ----
+void layers_resolution_apply(i32 w, i32 h);
+void layers_resolution_begin(i32 w, i32 h);
+void layers_on_resized_by_user();
+void layers_resolution_reset();
+i32  layers_resolution_test_restores();

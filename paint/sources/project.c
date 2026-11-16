@@ -65,8 +65,9 @@ static bool project_autosave_due() {
 	return iron_time() - project_autosave_since >= minutes * 60.0;
 }
 
-// Saves modified projects every few minutes, from the update loop
+// Saves modified projects every few minutes, from the update loop. Journals the session head for crash recovery.
 void project_autosave_update() {
+	project_session_update();
 	if (!project_autosave_due() || project_autosave_busy()) {
 		return;
 	}
@@ -83,7 +84,7 @@ void project_autosave_update() {
 static bool (*project_idle_wake_next)(void) = NULL;
 
 static bool project_idle_wake(void) {
-	return project_autosave_due() || (project_idle_wake_next != NULL && project_idle_wake_next());
+	return project_autosave_due() || project_session_due() || (project_idle_wake_next != NULL && project_idle_wake_next());
 }
 
 // Wakes the idle app up when an auto save is due
@@ -95,6 +96,9 @@ void project_autosave_init() {
 // Saves right away instead of on the next frame, for when the app is about to be suspended or closed
 void project_save_now() {
 	if (!g_config->autosave || !project_modified || project_autosave_busy()) {
+		if (project_modified && project_session_changed()) {
+			project_session_write(); // Not saved: the session head keeps the work for a crash
+		}
 		return;
 	}
 	if (string_equals(g_project->_->filepath, "") && !project_set_default_path()) {
@@ -354,6 +358,7 @@ void project_new(bool reset_layers) {
 	history_reset();
 	hstore_reset(); // Deletes the closed project's journal
 	project_container_forget();
+	project_session_forget();
 	project_uuid = NULL;
 
 	make_material_parse_paint_material(true);

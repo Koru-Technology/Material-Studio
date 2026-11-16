@@ -384,3 +384,12 @@ void history_mask_stack() {
 	history_step_t *step = history_push(HISTORY_ACTION_MASK_STACK);
 	step->mask_effects   = mask_stack_copy_effects(g_context->layer->mask_effects);
 }
+
+// Working resolution w0 x h0 to w1 x h1 (util/util_layer_resolution.c)
+void history_resolution(i32 w0, i32 h0, i32 w1, i32 h1) {
+	history_step_t *step = history_push(HISTORY_ACTION_RESOLUTION);
+	step->resolution[0]  = w0;
+	step->resolution[1]  = h0;
+	step->resolution[2]  = w1;
+	step->resolution[3]  = h1;
+}
