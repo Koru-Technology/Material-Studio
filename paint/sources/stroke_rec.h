@@ -80,7 +80,6 @@ typedef enum tl_kind { // Frozen
 	TL_MERGE      = 10, // src_tl at src_pos is the layer merged in, params: its props and masks
 	TL_BAKE_OPAC  = 11, // Opacity and mask stack baked into the layer
 	TL_RASTER     = 12, // Keyframe, payload HSTORE_TILEMAP recorded at res_w x res_h, not upscalable
-	TL_REFINE     = 13, // Marker: a stroke sharpened as its material's buffers landed, nothing to replay
 } tl_kind_t;
 
 typedef enum tl_flag {

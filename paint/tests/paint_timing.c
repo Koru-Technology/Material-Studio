@@ -4,8 +4,7 @@
 // executor frame logs "[paint] t <ms> dabs <n> cpu <ms> gpu <ms>" to stderr. Each case below drags the mouse through the
 // same per frame path as a finger or pencil stroke, between "[paint_timing] begin <case>" and "end <case>" lines; the
 // lines of a case are summed by tests/paint_timing.sh.
-// Cases: batched stamps, unbatched stamps (batching off), symmetry (one draw per copy), a continuous brush (spacing 0),
-// with paint_resolved_dabs off, then on (names end in _off, _on).
+// Cases: batched stamps, unbatched stamps (batching off), symmetry (one draw per copy), a continuous brush (spacing 0).
 
 int frame = 0;
 int phase = 0;
@@ -27,11 +26,10 @@ char *case_kind(int k) {
 }
 
 char *case_name(int k) {
-	return string("%s_%s", case_kind(k), k >= 4 ? "on" : "off");
+	return case_kind(k);
 }
 
 void case_setup(int k) {
-	script_get_config()->paint_resolved_dabs = k >= 4;
 	k                  = k % 4;
 	context_t *ctx     = script_get_context();
 	ctx->brush_radius  = 0.5;
@@ -75,8 +73,7 @@ void next() {
 			kase  = kase + 1;
 			phase = 0;
 			frame = 0;
-			if (kase == 8) {
-				script_get_config()->paint_resolved_dabs = 0;
+			if (kase == 4) {
 				printf("PAINT_TIMING PASS");
 				script_quit();
 				return;

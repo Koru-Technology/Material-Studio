@@ -959,7 +959,6 @@ void minic_register_builtins() {
 	MINIC_I(dilate_radius);
 	MINIC_I(history_ram_mb);
 	MINIC_I(history_disk_mb);
-	MINIC_B(paint_resolved_dabs);
 	MINIC_I(history_max_steps);
 	MINIC_I(history_budget_mb);
 	MINIC_END();

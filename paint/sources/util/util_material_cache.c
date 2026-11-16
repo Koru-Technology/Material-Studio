@@ -687,8 +687,8 @@ static void material_cache_update(void *_) {
 	}
 
 	if (e->state == MATERIAL_CACHE_NEW) {
-		if (g_context->brush_time > 0 || iron_time() - material_cache_settle_t < MATERIAL_CACHE_SETTLE || stroke_refine_stat(0) > 0 ||
-		    stroke_refine_stat(1) > 0) {
+		if (g_context->brush_time > 0 || iron_time() - material_cache_settle_t < MATERIAL_CACHE_SETTLE || paint_refine_stat(0) > 0 ||
+		    stroke_refine_stat(1) > 0) { // Strokes and fill layers sharpen first
 			return;
 		}
 		u64 keys[MATERIAL_CACHE_KEYS];

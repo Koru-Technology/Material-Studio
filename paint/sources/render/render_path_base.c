@@ -369,9 +369,9 @@ void render_path_base_init_paint_depth() {
 	render_path_add_target("main_paint", 0, 0, "D32", render_path_base_get_super_sampling());
 }
 
-// With paint_resolved_dabs always: the dab resolve pass reads the mesh alone, translucent and hidden materials included
+// Always: the dab resolve pass reads the mesh alone, translucent and hidden materials included
 bool render_path_base_has_paint_depth() {
-	return (g_project->_->translucency || paint_exec_resolved_config()) && any_map_get(render_path_render_targets, "main_paint") != NULL;
+	return any_map_get(render_path_render_targets, "main_paint") != NULL;
 }
 
 char *render_path_base_ssao_target() {
@@ -571,7 +571,7 @@ static void render_path_base_draw_layer_pass(i32 layer_pass) {
 	render_path_base_draw_meshes(render_path_base_mesh_scon(layer_pass), layer_pass == make_mesh_layer_pass_count - 1);
 }
 
-// What the paint depth depends on: the camera, the meshes and where they are. With paint_resolved_dabs it is drawn again
+// What the paint depth depends on: the camera, the meshes and where they are. It is drawn again
 // only when this changes, painting redraws the gbuffer every frame and the mesh alone stays as it was.
 static u64 render_path_base_paint_depth_drawn = 0;
 
@@ -653,17 +653,15 @@ void render_path_base_draw_gbuffer() {
 	}
 
 	// Depth with the translucent surfaces included, for painting only - "main" keeps them see-through for the world pass
-	if (paint_exec_resolved_config()) {
-		if (any_map_get(render_path_render_targets, "main_paint") == NULL) {
-			render_path_base_init_paint_depth();
-		}
-		if (make_material_depth_scon == NULL) {
-			make_material_parse_depth_material();
-		}
+	if (any_map_get(render_path_render_targets, "main_paint") == NULL) {
+		render_path_base_init_paint_depth();
+	}
+	if (make_material_depth_scon == NULL) {
+		make_material_parse_depth_material();
 	}
 	if (render_path_base_has_paint_depth()) {
 		u64 key = render_path_base_paint_depth_key();
-		if (!paint_exec_resolved_config() || key != render_path_base_paint_depth_drawn) {
+		if (key != render_path_base_paint_depth_drawn) {
 			render_path_set_target("gbuffer0", NULL, "main_paint", GPU_CLEAR_DEPTH, 0, 1.0);
 			render_path_base_draw_meshes(make_material_depth_scon, false);
 			render_path_base_paint_depth_drawn = key;

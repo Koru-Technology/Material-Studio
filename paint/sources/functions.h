@@ -803,7 +803,8 @@ extern f32            render_path_paint_batch_drawn;
 bool                  render_path_paint_batched();
 void                  render_path_paint_batch_add();
 void                  render_path_paint_batch_flush(bool dilation);
-void                  render_path_paint_commands_paint(bool dilation);
+void                  render_path_paint_commands_paint(bool dilation); // From outside the stroke model: isolated (paint_exec.c)
+void                  render_path_paint_commands_paint_stroke(bool dilation);
 void                  render_path_paint_use_live_layer(bool use);
 bool                  render_path_paint_symmetry_on();
 bool                  render_path_paint_paint_enabled();
@@ -811,6 +812,7 @@ void                  render_path_paint_begin();
 void                  render_path_paint_end();
 bool                  render_path_paint_is_rt_bake();
 void                  render_path_paint_clear_blend();
+void                  render_path_paint_clear_blend_stroke();
 void                  render_path_paint_draw();
 void                  render_path_paint_bind_layers();
 void                  render_path_paint_unbind_layers();
@@ -818,6 +820,7 @@ void                  render_path_paint_live_layer_used();
 void                  render_path_paint_live_layer_release_idle();
 void                  render_path_paint_dilate_after_paint();
 void                  render_path_paint_dilate(bool base, bool nor_pack);
+void                  render_path_paint_dilate_stroke(bool base, bool nor_pack);
 
 // ---- render/render_path_paint_picker.c ----
 mesh_object_t *render_path_paint_pick_object();
@@ -1616,11 +1619,7 @@ i32  util_stencil_handle_size();
 void util_stencil_transform();
 
 // ---- util/util_stroke_refine.c ----
-void stroke_refine_end_all(void);
-void stroke_refine_history_pushed(history_action_t action);
-void stroke_refine_reset(void);
-void stroke_refine_stroke_begin(history_step_t *step); // util/util_stroke_refine.c: strokes sharpen as buffers land
-void stroke_refine_fold(void);
+void stroke_refine_reset(void); // util/util_stroke_refine.c: fill layers paint again as buffers land
 void stroke_refine_fill_track(slot_layer_t *l);
 i32  stroke_refine_stat(i32 what);
 
@@ -2523,7 +2522,7 @@ i32            export_tiled_stat(i32 what);
 gpu_texture_t *export_tiled_test_coverage();
 
 // ---- paint_exec.c ----
-// Resolved dabs. With paint_resolved_dabs, a paint draw reads its dabs from _texpaintdabs, the target of the dab resolve
+// Resolved dabs. A brush paint draw reads its dabs from _texpaintdabs, the target of the dab resolve
 // pass (render/make_dab_resolve.c): PAINT_DAB_TEXELS RGBA128 texels a dab, PAINT_DAB_ROW dabs a row, dab k at
 // x = (k % PAINT_DAB_ROW) * PAINT_DAB_TEXELS + t, y = k / PAINT_DAB_ROW. Texel t:
 //   0  p.xyz world position of the dab, w the homogeneous w of its unprojection (1 / clip w: camera align, decals)
@@ -2550,10 +2549,13 @@ gpu_texture_t *export_tiled_test_coverage();
 #define PAINT_DAB_MODE_BRUSH  0.0 // Off the mesh: far plane
 #define PAINT_DAB_MODE_ANCHOR 1.0 // Decal anchor, off the mesh: at the depth of the world origin, as make_texcoord_run did
 
-bool             paint_exec_resolved_config(); // paint_resolved_dabs, or IRON_PAINT_RESOLVED in the environment
 bool             paint_exec_on(); // The paint shader in use reads resolved dabs
 void             paint_exec_begin();
 void             paint_exec_end();
+void             paint_exec_isolate_begin(); // Work outside the stroke model: at once, apart from the open scope
+void             paint_exec_isolate_end();
+void             paint_exec_test_scope(i32 open);
+char            *paint_exec_test_fill_rect(slot_layer_t *l, i32 w);
 void             paint_exec_draw(bool dilation);
 void             paint_exec_batch_add();
 void             paint_exec_batch_flush(bool dilation);
@@ -2600,7 +2602,19 @@ u64  make_paint_glsl_hash(shader_context_t *scon);
 bool make_paint_scon_uses_matcache(shader_context_t *scon);
 gpu_texture_t *paint_replay_dilate_map(i32 w, i32 h, const f32 *uv_rect);
 void paint_mat_snapshot_reset();
+void paint_mat_snapshot_init();
+void paint_mat_snapshot_parse_begin(slot_material_t *m);
+void paint_mat_snapshot_parse_end();
+void paint_mat_snapshot_replay_begin(slot_material_t *m);
+void paint_mat_snapshot_replay_end();
 void render_path_paint_dilate_now(bool base, bool nor_pack);
+
+// ---- paint_refine.c ----
+void paint_refine_note(struct timeline *tl, i32 index, const u64 *keys, i32 n);
+void paint_refine_init();
+void paint_refine_reset();
+i32  paint_refine_stat(i32 what);
+bool paint_rec_active();
 
 // ---- paint_replay.c ----
 extern gpu_texture_t *paint_replay_s0[3];

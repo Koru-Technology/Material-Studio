@@ -1193,3 +1193,8 @@ X1(timeline_test_checkpoints, "i(p:slot_layer_t l)", i, p)
 X0(history_io_clear, "v()", v)
 X1(history_io_thin, "v(i budget_bytes)", v, i)
 X1(history_io_test_roundtrip, "i(i undos)", i, i)
+
+// paint_exec.c, paint_refine.c
+X1(paint_exec_test_scope, "v(i open)", v, i)
+X2(paint_exec_test_fill_rect, "p:char(p:slot_layer_t l,i w)", p, p, i)
+X1(paint_refine_stat, "i(i what)", i, i)

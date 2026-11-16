@@ -94,7 +94,6 @@ void next() {
 		check(tiles1 == 0 && tiles * 1000 <= painted, string("4 tiles are within 1/255 of the whole replay, on all but 0.1 percent exactly (%d differ)", tiles));
 		check(diff3(whole, blank, 1.0) > 10000, "the whole replay paints");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
-		script_get_config()->paint_resolved_dabs = 0;
 		printf("[rec_hires] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "REC_HIRES PASS" : "REC_HIRES FAIL");
 		script_quit();
@@ -104,7 +103,6 @@ void next() {
 }
 
 void main() {
-	script_get_config()->paint_resolved_dabs = 1;
 	script_brush_defaults();
 	script_project_new();
 	slot_material_t *m   = script_material_create("rec_hires_blue");

@@ -15,7 +15,7 @@
 //                 or height blend, a floor)
 //   TL_MERGE      tl_merge_params_t; the layer merged in is the src timeline at src_pos (no params: masks, groups, a
 //                 floor)
-// TL_INVERT and TL_REFINE replay without params. TL_ID_MASK, TL_PATH, TL_BAKE_OPAC: floors.
+// TL_INVERT replays without params. TL_ID_MASK, TL_PATH, TL_BAKE_OPAC: floors.
 
 #define TL_PARAMS_MAGIC 0x31504c54 // "TLP1"
 #define TL_PARAMS_HEAD  8
@@ -319,7 +319,6 @@ bool timeline_ops_replays(timeline_t *tl, i32 index) {
 	tl_entry_t *e = &tl->entries[index];
 	switch (e->kind) {
 	case TL_INVERT:
-	case TL_REFINE:
 		return true;
 	case TL_CLEAR:
 		return tl_ops_params_ok(e, sizeof(tl_clear_params_t), 0);
@@ -615,9 +614,6 @@ static bool tl_ops_replay_merge(tl_entry_t *e, tl_params_t *p, paint_target_t *t
 
 bool timeline_ops_replay(timeline_t *tl, i32 index, paint_target_t *t) {
 	tl_entry_t *e = &tl->entries[index];
-	if (e->kind == TL_REFINE) {
-		return true; // The stroke before it replayed at full tier already
-	}
 	if (e->kind == TL_INVERT) {
 		return tl_ops_replay_invert(t);
 	}

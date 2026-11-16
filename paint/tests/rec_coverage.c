@@ -1,8 +1,8 @@
 #include "global.h"
 
 // Every stroke painted with timelines on adds one entry to its layer's timeline (history_paint): a TL_STROKE when its
-// record replays (brush, eraser, with resolved dabs), a TL_RASTER (its tile state) otherwise: the tools wave 2 does not
-// replay yet (fill, decal, blur, clone), and every stroke with resolved dabs off.
+// record replays (brush, eraser), a TL_RASTER (its tile state) otherwise: the tools wave 2 does not replay yet (fill,
+// decal, blur, clone).
 
 int fails  = 0;
 int checks = 0;
@@ -53,17 +53,13 @@ char *name_of(int k) {
 	if (k == 4) {
 		return "blur";
 	}
-	if (k == 5) {
-		return "clone";
-	}
-	return "brush, resolved dabs off";
+	return "clone";
 }
 
 void next() {
 	frame           = frame + 1;
 	slot_layer_t *l = script_get_context()->layer;
 	if (frame == 2) {
-		script_get_config()->paint_resolved_dabs = kase != 6;
 		script_brush_defaults();
 		script_get_context()->brush_radius = 0.3;
 		context_select_tool(tool_of(kase));
@@ -88,9 +84,8 @@ void next() {
 		check(kind == want, string("%s: a %s entry (kind %d)", name_of(kase), want == 1 ? "TL_STROKE" : "TL_RASTER", kind));
 		kase  = kase + 1;
 		frame = 0;
-		if (kase == 7) {
+		if (kase == 6) {
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
-			script_get_config()->paint_resolved_dabs = 0;
 			printf("[rec_coverage] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "REC_COVERAGE PASS" : "REC_COVERAGE FAIL");
 			script_quit();

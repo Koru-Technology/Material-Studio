@@ -203,7 +203,6 @@ void next() {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[rec_hires] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "REC_HIRES PASS" : "REC_HIRES FAIL");
-		script_get_config()->paint_resolved_dabs = 0;
 		script_quit();
 		return;
 	}
@@ -213,7 +212,6 @@ void next() {
 
 void main() {
 	dir = script_tmp_dir("materialstudio_rec_hires");
-	script_get_config()->paint_resolved_dabs = 1;
 	script_brush_defaults();
 	script_notify_on_next_frame(next);
 }

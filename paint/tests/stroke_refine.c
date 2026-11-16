@@ -1,12 +1,14 @@
 #include "global.h"
 
 // Strokes painted right after picking a heavy Material Maker library material (Medieval Stone Brick Wall, 1403) paint at once with
-// tiny buffers rendered on the spot (within an allowance), then sharpen in place as better tiers land
-// (util_stroke_refine.c):
+// tiny buffers rendered on the spot (within an allowance), then sharpen by replay once the buffers are full
+// (paint_refine.c), fill layers paint again as better tiers land (util_stroke_refine.c):
 // - a live stroke (raw mouse events) right after the pick: no frame of it or of the seconds after it takes 350 ms
 // - a stroke (script_paint) right after the pick changes texels at once; once the buffers are full, it matches the same
-//   stroke painted with full buffers; one undo removes the stroke with its sharpening, redo brings it back
+//   stroke painted with full buffers; the sharpening adds no timeline entry, one undo removes the stroke, redo brings
+//   it back sharpened
 // - two overlapping strokes before full match their reference
+// - a stroke of another material painted on top keeps its place: both match their reference
 // - a fill layer made right after the pick matches one made after full
 // Run with IRON_FRAME_TIMING / IRON_SHADER_TIMING for the logs.
 
@@ -27,6 +29,9 @@ float            max_pick  = 0.0; // Longest frame from the pick until the strok
 int              sharpened = 0;
 int              wait      = 0;
 slot_layer_t    *fill1     = NULL;
+int              entries   = 0;    // Timeline entries after the stroke
+slot_material_t *plain     = NULL; // A material that is full at once
+slot_material_t *heavy     = NULL;
 
 int STRIDE = 5; // Texels between samples
 
@@ -186,17 +191,18 @@ int picked() {
 }
 
 int full() {
-	return mm_buffers_stat(11) == 0 && stroke_refine_stat(0) == 0 && stroke_refine_stat(1) == 0;
+	return mm_buffers_stat(11) == 0 && paint_refine_stat(0) == 0 && paint_refine_stat(1) == 0 && stroke_refine_stat(1) == 0;
 }
 
 void log_progress() {
-	if (stroke_refine_stat(2) != sharpened) {
-		sharpened = stroke_refine_stat(2);
-		printf("[refine] sharpening %d at %.2f s after the stroke (%.1f ms main thread)", sharpened, sys_time() - t_stroke, stroke_refine_stat(5) / 1000.0);
+	if (paint_refine_stat(2) != sharpened) {
+		sharpened = paint_refine_stat(2);
+		printf("[refine] sharpened by replay (%d) at %.2f s after the stroke, %d entries replayed so far", sharpened, sys_time() - t_stroke, paint_refine_stat(5));
 	}
 }
 
 void finish() {
+	material_cache_set_enabled(1);
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 	printf("[refine] %d checks, %d failures", checks, fails);
 	printf(fails == 0 ? "REFINE PASS" : "REFINE FAIL");
@@ -223,7 +229,7 @@ void next() {
 			t_stroke = sys_time();
 			script_mouse_press(cx - 150, cy, 0);
 			max_frame  = 0.0;
-			sharpened  = stroke_refine_stat(2);
+			sharpened  = paint_refine_stat(2);
 			sharpened0 = sharpened;
 			phase      = 22;
 			frame      = 0;
@@ -242,7 +248,7 @@ void next() {
 			max_frame = ft;
 			printf("[refine] live: frame of %.0f ms at %.2f s after the stroke started", ft * 1000.0, sys_time() - t_stroke);
 		}
-		records = stroke_refine_stat(0) > records ? stroke_refine_stat(0) : records;
+		records = paint_refine_stat(0) > records ? paint_refine_stat(0) : records;
 		log_progress();
 		if (frame <= 20) {
 			script_mouse_move(cx - 150 + frame * 15, cy);
@@ -250,11 +256,11 @@ void next() {
 		if (frame == 20) {
 			script_mouse_release(cx - 150 + frame * 15, cy, 0);
 		}
-		// Until its first sharpening (3-5 s on the iPad: its tiny buffers, then the material rendered in bands over frames)
-		if (frame > 20 && (stroke_refine_stat(2) > sharpened0 || sys_time() - t_stroke > 8.0)) {
-			check(records == 1, "the live stroke before full buffers keeps a record");
-			check(stroke_refine_stat(2) > sharpened0, string("the live stroke sharpened within 8 s (%d times, %.1f s)", stroke_refine_stat(2) - sharpened0, sys_time() - t_stroke));
-			check(max_frame < 0.35, string("no frame of the live stroke and until its first sharpening takes 350 ms (at most %.0f ms)", max_frame * 1000.0));
+		// Until it sharpens: the buffers full, its timeline replayed
+		if (frame > 20 && (paint_refine_stat(2) > sharpened0 || sys_time() - t_stroke > 120.0)) {
+			check(records == 1, "the live stroke before full buffers is noted to sharpen");
+			check(paint_refine_stat(2) > sharpened0, string("the live stroke sharpened by replay (%.1f s)", sys_time() - t_stroke));
+			check(max_frame < 0.35, string("no frame of the live stroke and until it sharpened takes 350 ms (at most %.0f ms)", max_frame * 1000.0));
 			script_layer_new(); // The scripted strokes on a layer of their own, the buffers rendered again from nothing
 			mm_buffers_clear();
 			phase = 0;
@@ -273,14 +279,16 @@ void next() {
 		max_pick = ft > max_pick && frame > 1 ? ft : max_pick;
 		if (picked()) {
 			printf("[refine] compiled %.2f s after the pick (longest frame %.0f ms), %d passes queued", sys_time() - t_pick, max_pick * 1000.0, mm_buffers_stat(11));
-			ended0   = stroke_refine_stat(6);
+			ended0   = paint_refine_stat(4);
 			t_stroke = sys_time();
 			stroke_a();
+			paint_rec_flush();
 			stroke_ms = (sys_time() - t_stroke) * 1000.0;
-			printf("[refine] stroke painted %.0f ms after it started (record tier %d, %d records)", stroke_ms, stroke_refine_stat(4), stroke_refine_stat(0));
-			check(stroke_refine_stat(0) == 1, "the stroke before full buffers keeps a record");
+			entries   = timeline_test_count(script_get_context()->layer);
+			printf("[refine] stroke painted %.0f ms after it started (%d noted)", stroke_ms, paint_refine_stat(0));
+			check(paint_refine_stat(0) == 1, "the stroke before full buffers is noted to sharpen");
 			max_frame  = 0.0;
-			sharpened  = stroke_refine_stat(2);
+			sharpened  = paint_refine_stat(2);
 			sharpened0 = sharpened;
 			phase      = 2;
 			frame     = 0;
@@ -307,9 +315,9 @@ void next() {
 			// The stroke's own time includes script_paint parsing the paint material again (scripts only), the live stroke
 			// above measures a stroke's frames
 			check(max_frame < 0.35, string("the frames after the stroke (%.0f ms itself) take less than 350 ms (at most %.0f ms)", stroke_ms, max_frame * 1000.0));
-			check(full(), "the buffers become full, the record ends");
-			check(stroke_refine_stat(2) > sharpened0 && stroke_refine_stat(6) == ended0,
-			      string("the stroke sharpened %d times, no record ended early", stroke_refine_stat(2) - sharpened0));
+			check(full(), "the buffers become full, the stroke sharpened");
+			check(paint_refine_stat(2) > sharpened0 && paint_refine_stat(4) == ended0, "the stroke sharpened by replay, no note failed");
+			check(timeline_test_count(script_get_context()->layer) == entries, "the sharpening adds no timeline entry");
 			snap_sharp();
 			dump_layer("sharp");
 			history_undo();
@@ -320,7 +328,7 @@ void next() {
 	else if (phase == 3) {
 		if (frame == 3) {
 			int d = layer_differ(base_b, base_n, base_p, 0);
-			check(d == 0, string("one undo removes the stroke and its sharpening (%d samples differ)", d));
+			check(d == 0, string("one undo removes the stroke (%d samples differ)", d));
 			history_redo();
 			phase = 4;
 			frame = 0;
@@ -338,7 +346,8 @@ void next() {
 	else if (phase == 5) { // The reference: the same stroke with full buffers
 		if (frame == 3) {
 			stroke_a();
-			check(stroke_refine_stat(0) == 0, "a stroke with full buffers keeps no record");
+			paint_rec_flush();
+			check(paint_refine_stat(0) == 0, "a stroke with full buffers is not noted");
 			phase = 6;
 			frame = 0;
 		}
@@ -367,9 +376,10 @@ void next() {
 			t_stroke = sys_time();
 			stroke_b1();
 			stroke_b2();
-			printf("[refine] two strokes painted %.0f ms after they started (record tier %d)", (sys_time() - t_stroke) * 1000.0, stroke_refine_stat(4));
-			check(stroke_refine_stat(0) == 1, "the second stroke of the same material extends the record");
-			sharpened = stroke_refine_stat(2);
+			paint_rec_flush();
+			printf("[refine] two strokes painted %.0f ms after they started", (sys_time() - t_stroke) * 1000.0);
+			check(paint_refine_stat(0) == 1, "both strokes wait in the layer's note");
+			sharpened = paint_refine_stat(2);
 			phase     = 9;
 			frame     = 0;
 		}
@@ -403,6 +413,77 @@ void next() {
 	else if (phase == 11) {
 		if (frame == 3) {
 			compare_sharp("two strokes");
+			// A stroke of another material on top, on a new layer, the buffers rendered again from nothing
+			script_layer_new();
+			mm_buffers_clear();
+			phase = 30;
+			frame = 0;
+		}
+	}
+	else if (phase == 30) {
+		if (frame == 3) {
+			snap_base();
+			pick();
+			phase = 31;
+			frame = 0;
+		}
+	}
+	else if (phase == 31) {
+		if (picked()) {
+			heavy    = script_get_context()->material;
+			t_stroke = sys_time();
+			stroke_b1();
+			script_material_set(plain); // Full at once: painted at its final tier
+			stroke_b2();
+			paint_rec_flush();
+			check(paint_refine_stat(0) == 1, "the heavy stroke under the other material's is noted");
+			phase = 32;
+			frame = 0;
+		}
+		else if (frame > 900) {
+			check(false, "the picked material compiles again");
+			finish();
+			return;
+		}
+	}
+	else if (phase == 32) {
+		log_progress();
+		if (full() || sys_time() - t_stroke > 120.0) {
+			check(full(), "the buffers become full again, the strokes sharpened");
+			snap_sharp();
+			history_undo();
+			history_undo();
+			phase = 33;
+			frame = 0;
+		}
+	}
+	else if (phase == 33) {
+		if (frame == 3) {
+			int d = layer_differ(base_b, base_n, base_p, 0);
+			check(d == 0, string("two undos remove both strokes (%d samples differ)", d));
+			script_material_set(heavy); // Its buffers full again before the reference (the other material may have had them go)
+			phase = 35;
+			frame = 0;
+		}
+	}
+	else if (phase == 35) {
+		if (frame > 3 && mm_buffers_stat(11) == 0) {
+			stroke_b1();
+			script_material_set(plain);
+			stroke_b2();
+			phase = 34;
+			frame = 0;
+		}
+		else if (frame > 3600) {
+			check(false, "the heavy material's buffers are full again");
+			finish();
+			return;
+		}
+	}
+	else if (phase == 34) {
+		if (frame == 3) {
+			compare_sharp("a stroke of another material on top");
+			script_material_set(heavy);
 			mm_buffers_clear();
 			phase = 12;
 			frame = 0;
@@ -464,12 +545,18 @@ void next() {
 }
 
 void main() {
+	material_cache_set_enabled(0); // References painted from the material evaluated, as replays paint (a cache may build while they wait)
 	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	script_project_new();
 	render_path_paint_set_stamp_seed(4242);
 	// The camera's projection jitters from frame to frame (taa) unless the brush preview is live: the strokes compared
 	// would land a fraction of a pixel apart, the edges of a hard brush differ
 	script_get_config()->brush_live = 1;
+	plain = script_material_create("refine_plain");
+	ui_node_t *rgb = script_material_create_node_at("RGB", -300.0, 0.0);
+	script_material_set_color(rgb, 0, 0, 0.2, 0.7, 0.3, 1.0);
+	script_material_connect(rgb, 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
+	script_material_update();
 	context_t *ctx     = script_get_context();
 	ctx->brush_radius  = 0.4;
 	ctx->brush_opacity = 1.0;

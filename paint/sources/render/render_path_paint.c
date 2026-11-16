@@ -223,7 +223,7 @@ void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) 
 static void render_path_paint_ref_target(char *name, char *format) {
 	i32 w = config_get_texture_res_x();
 	i32 h = config_get_texture_res_y();
-	if (paint_exec_resolved_config() && g_context->layer != NULL && g_context->layer->texpaint != NULL) {
+	if (g_context->layer != NULL && g_context->layer->texpaint != NULL) {
 		w = g_context->layer->texpaint->width;
 		h = g_context->layer->texpaint->height;
 	}
@@ -441,7 +441,7 @@ void render_path_paint_batch_flush(bool dilation) {
 		return;
 	}
 	render_path_paint_batch_upload();
-	render_path_paint_commands_paint(dilation);
+	render_path_paint_commands_paint_stroke(dilation);
 }
 
 static void render_path_paint_commands_paint_internal(bool dilation);
@@ -469,9 +469,16 @@ static void render_path_paint_timing_flush() { // The open pass ends: what was d
 	}
 }
 
-// A paint draw, executed by the paint executor (paint_exec.c)
-void render_path_paint_commands_paint(bool dilation) {
+// A paint draw of the stroke model, an op of the paint executor (paint_exec.c): it waits for the end of the open scope
+void render_path_paint_commands_paint_stroke(bool dilation) {
 	paint_exec_draw(dilation);
+}
+
+// A paint draw from outside the stroke model (fill layers, bakes, paths, ...): executed now, isolated (paint_exec.c)
+void render_path_paint_commands_paint(bool dilation) {
+	paint_exec_isolate_begin();
+	paint_exec_draw(dilation);
+	paint_exec_isolate_end();
 }
 
 // The draw itself, the paint executor's: the brush state from the uniforms, while it executes an op the op's
@@ -527,7 +534,6 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 	}
 
 	if (g_context->brush_time == 0 && g_context->tool != TOOL_TYPE_PARTICLE && !g_context->pick_pos_nor_tex && !paint_exec_replay) {
-		stroke_refine_fold(); // Before this draw (live brush preview, fill layer) adds to the coverage of the stroke that ended
 		g_context->brush_blend_dirty = true;
 	}
 
@@ -802,7 +808,7 @@ void render_path_paint_commands_symmetry() {
 			t->rot     = quat_mult(rot0, q);
 			t->scale   = (vec4_t){s0.x * f.x, s0.y * f.y, s0.z * f.z, s0.w};
 			transform_build_matrix(t);
-			render_path_paint_commands_paint(false);
+			render_path_paint_commands_paint_stroke(false);
 		}
 	}
 	t->loc   = loc0;
@@ -872,7 +878,7 @@ void render_path_paint_commands_live_brush() {
 
 	render_path_paint_commands_symmetry();
 	render_path_paint_live_brush = true; // A preview: Material Maker buffers as they are, better ones redraw it
-	render_path_paint_commands_paint(true);
+	render_path_paint_commands_paint_stroke(true);
 	render_path_paint_live_brush = false;
 
 	render_path_paint_use_live_layer(false);
@@ -988,7 +994,7 @@ void render_path_paint_end() {
 static void render_path_paint_commands_low_poly() {
 	mesh_object_t *merged = g_context->merged_object;
 	if (merged == NULL || !merged->base->visible) {
-		render_path_paint_commands_paint(true);
+		render_path_paint_commands_paint_stroke(true);
 		return;
 	}
 	mesh_object_t *high_poly = g_project->_->paint_objects->buffer[g_context->bake_high_poly];
@@ -1000,7 +1006,7 @@ static void render_path_paint_commands_low_poly() {
 		}
 	}
 	if (last < 0) { // The high poly is the only mesh, it bakes onto itself
-		render_path_paint_commands_paint(true);
+		render_path_paint_commands_paint_stroke(true);
 		return;
 	}
 	mesh_object_t *_paint_object = g_context->paint_object;
@@ -1009,7 +1015,7 @@ static void render_path_paint_commands_low_poly() {
 		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
 		if (p != high_poly && p->base->visible) {
 			context_select_paint_object(p);
-			render_path_paint_commands_paint(i == last); // Dilate once all objects are drawn
+			render_path_paint_commands_paint_stroke(i == last); // Dilate once all objects are drawn
 		}
 	}
 	merged->base->visible = true;
@@ -1054,16 +1060,20 @@ void render_path_paint_draw_bake_derivative(void *_) {
 	render_path_paint_bake_deriv();
 }
 
-void render_path_paint_clear_blend() {
+void render_path_paint_clear_blend_stroke() {
 	paint_exec_clear_blend();
+}
+
+// From outside the stroke model: now, isolated
+void render_path_paint_clear_blend() {
+	paint_exec_isolate_begin();
+	paint_exec_clear_blend();
+	paint_exec_isolate_end();
 }
 
 void render_path_paint_clear_blend_now() {
 	if (g_context->brush_blend_dirty) {
 		g_context->brush_blend_dirty = false;
-		if (g_context->brush_time == 0) {
-			stroke_refine_fold(); // The stroke's coverage, for strokes that sharpen as better buffers land
-		}
 		render_path_set_target("texpaint_blend0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_end();
@@ -1118,7 +1128,7 @@ void render_path_paint_draw() {
 						merged->base->visible = false; // Draw the high poly alone
 					}
 					context_select_paint_object(high_poly);
-					render_path_paint_commands_paint(true);
+					render_path_paint_commands_paint_stroke(true);
 					high_poly->base->visible = _visible;
 					if (_merged) {
 						merged->base->visible = true;
@@ -1149,7 +1159,7 @@ void render_path_paint_draw() {
 				for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 					mesh_object_t *p = g_project->_->paint_objects->buffer[i];
 					context_select_paint_object(p);
-					render_path_paint_commands_paint(true);
+					render_path_paint_commands_paint_stroke(true);
 				}
 
 				g_context->layer_filter = _layer_filter;
@@ -1159,14 +1169,14 @@ void render_path_paint_draw() {
 			}
 			else if (render_path_paint_is_rt_bake()) {
 				bool dispatched = render_path_raytrace_bake_commands(make_material_parse_paint_material);
-				render_path_paint_dilate(true, false);
+				render_path_paint_dilate_stroke(true, false);
 				// The raytrace setup frame traces no rays, keep its sample
 				if (!dispatched && g_context->pdirty > 0) {
 					g_context->pdirty++;
 				}
 			}
 			else {
-				render_path_paint_commands_paint(true);
+				render_path_paint_commands_paint_stroke(true);
 			}
 		}
 		else if (stamps && samples) { // Stamps along the pen samples
@@ -1179,12 +1189,12 @@ void render_path_paint_draw() {
 			render_path_paint_commands_samples();
 		}
 		else { // Paint
-			render_path_paint_commands_paint(true);
+			render_path_paint_commands_paint_stroke(true);
 		}
 	}
 	paint_exec_end();
 
-	render_path_paint_clear_blend();
+	render_path_paint_clear_blend_stroke();
 
 	if (g_context->paint2d) {
 		render_path_paint_restore_plane_mesh();
@@ -1261,8 +1271,15 @@ void render_path_paint_dilate_after_paint_now() {
 }
 
 // Dilation, an op of the paint executor
-void render_path_paint_dilate(bool base, bool nor_pack) {
+void render_path_paint_dilate_stroke(bool base, bool nor_pack) {
 	paint_exec_dilate(base, nor_pack);
+}
+
+// From outside the stroke model: now, isolated
+void render_path_paint_dilate(bool base, bool nor_pack) {
+	paint_exec_isolate_begin();
+	paint_exec_dilate(base, nor_pack);
+	paint_exec_isolate_end();
 }
 
 void render_path_paint_dilate_now(bool base, bool nor_pack) {

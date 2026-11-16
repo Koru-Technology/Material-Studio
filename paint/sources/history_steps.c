@@ -15,16 +15,12 @@ void history_paint() {
 	step->name           = tr(ui_toolbar_tool_labels->buffer[g_context->tool]);
 	history_tiles_begin(step, g_context->layer); // The snapshot the stroke blends over, its tiles for undo
 	timeline_stroke_begin(step, g_context->layer);
-	if (paint_exec_resolved_config()) {
-		paint_rec_stroke_begin(step, g_context->layer); // The stroke recorded for replay (paint_rec.c)
-	}
+	paint_rec_stroke_begin(step, g_context->layer); // The stroke recorded for replay (paint_rec.c)
 
 	// Erasing the bottom layer makes the mesh see-through
 	if (g_context->tool == TOOL_TYPE_ERASER && g_context->layer == g_project->_->layers->buffer[0]) {
 		layers_enable_translucency();
 	}
-
-	stroke_refine_stroke_begin(step); // Painted before the material's buffers are full: it sharpens as they land
 }
 
 void history_new_layer() {

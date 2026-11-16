@@ -199,7 +199,7 @@ static void script_paint_begin_stroke(void) {
 	else {
 		make_material_parse_paint_material(false);
 	}
-	render_path_paint_clear_blend();
+	render_path_paint_clear_blend_stroke();
 	render_path_base_draw_gbuffer();
 
 	history_push_undo = true;
@@ -247,7 +247,7 @@ static void script_paint_at(f32 x, f32 y) {
 	}
 	else {
 		render_path_paint_commands_symmetry(); // Mirror and radial copies as with the pen
-		render_path_paint_commands_paint(false);
+		render_path_paint_commands_paint_stroke(false);
 	}
 
 	script_paint_first = false;
@@ -276,7 +276,7 @@ void script_paint_end(void) {
 
 	draw_saved_t gpu = draw_suspend();
 
-	render_path_paint_dilate(true, true);
+	render_path_paint_dilate_stroke(true, true);
 	layers_update_linked_layers();
 
 	g_context->pdirty              = 0;

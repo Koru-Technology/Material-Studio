@@ -146,7 +146,6 @@ void config_brush_save_update() {
 	X(I32, undo_memory_mb, 1, 1048576)                                                           \
 	X(I32, history_ram_mb, 16, 1048576)                                                          \
 	X(I32, history_disk_mb, 64, 1048576)                                                         \
-	X(BOOL, paint_resolved_dabs, CONFIG_ANY)                                                     \
 	X(I32, history_max_steps, 2, 100000)                                                         \
 	X(I32, history_budget_mb, 0, 1048576)
 

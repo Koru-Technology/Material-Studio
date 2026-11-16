@@ -533,7 +533,6 @@ void history_undo() {
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_undos > 0) {
-		stroke_refine_end_all(); // Strokes keep the tier they reached
 		project_modified = true;
 		mask_stack_layer_changed(NULL); // Anchors read the layers as they were
 		render_path_base_redraw();
@@ -685,7 +684,6 @@ void history_redo() {
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_redos > 0) {
-		stroke_refine_end_all();
 		project_modified = true;
 		mask_stack_layer_changed(NULL);
 		render_path_base_redraw();
@@ -928,7 +926,6 @@ history_step_t *history_push(history_action_t action) {
 	step->material_uid = g_context->material != NULL ? g_context->material->uid : 0;
 
 	any_array_push(history_steps, step);
-	stroke_refine_history_pushed(action); // Layers changed otherwise than by strokes: their records end
 
 	while (history_steps->length > g_config->history_max_steps + 1) {
 		history_drop_oldest();

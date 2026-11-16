@@ -90,14 +90,8 @@ void make_blur_run(node_shader_t *shader) {
 	}
 	else {
 		node_shader_write_frag(shader, "vec2 tex_coord_inp = input.blur_uv;");
-		if (paint_exec_resolved_config()) { // A footprint in uv: the texel of the resolution the stroke was painted at
-			node_shader_add_constant(shader, "vec2 paint_res0", "_paint_res0");
-			node_shader_write_frag(shader, "float blur_step = 1.0 / constants.paint_res0.x;");
-		}
-		else {
-			node_shader_add_constant(shader, "vec2 texpaint_size", "_texpaint_size");
-			node_shader_write_frag(shader, "float blur_step = 1.0 / constants.texpaint_size.x;");
-		}
+		node_shader_add_constant(shader, "vec2 paint_res0", "_paint_res0"); // A footprint in uv: the texel of the resolution painted at
+		node_shader_write_frag(shader, "float blur_step = 1.0 / constants.paint_res0.x;");
 		node_shader_add_function(shader, str_get_blur_tool_weight);
 		// X
 		node_shader_write_frag(shader, "for (int i = 0; i <= 14; i += 1) {");
