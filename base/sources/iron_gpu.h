@@ -217,6 +217,8 @@ void  gpu_set_vertex_buffer(gpu_buffer_t *buffer);
 void  gpu_set_index_buffer(gpu_buffer_t *buffer);
 void  gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size);
 void  gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data);
+void  gpu_read_textures_async(gpu_texture_t **textures, int count); // Up to 8, without waiting for the gpu
+bool  gpu_read_textures_async_poll(uint8_t **data);               // True once they arrived, data[i] is texture i
 void  gpu_set_texture(uint32_t unit, gpu_texture_t *texture);
 void  gpu_use_linear_sampling(bool b);
 char *gpu_device_name();
