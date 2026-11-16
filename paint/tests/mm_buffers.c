@@ -8,7 +8,8 @@
 // The checker's renders are the Mac's: texels match them within 3/255 there. Other GPUs (the iPad's M1) evaluate the sin
 // based hashes of Material Maker's noises a little differently, fast math (the safe math mode matches less): noises and
 // random placements shift, and the texels are only logged. Every platform checks the maps' means and deviations over
-// a grid against the checker's.
+// a grid against the checker's. The checker renders every pass at its own size: the passes here are not clamped to the
+// project's texture resolution (88's normal map samples a 4096 buffer one texel apart).
 
 int fails  = 0;
 int checks = 0;
@@ -397,6 +398,7 @@ void next() {
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		mm_buffers_test_res(0);
 		printf("[mm_buffers] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "MM_BUFFERS PASS" : "MM_BUFFERS FAIL");
 		script_quit();
@@ -409,6 +411,7 @@ void next() {
 void main() {
 	script_brush_defaults();
 	script_project_new();
+	mm_buffers_test_res(4096);
 	printf("[mm_buffers] 32-bit float buffers: %s", mm_buffers_stat(13) == 1 ? "yes" : "no, 16-bit unless read with texelFetch (32-bit float filtering unsupported)");
 	script_notify_on_next_frame(next);
 }
