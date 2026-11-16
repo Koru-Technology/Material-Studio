@@ -1,6 +1,8 @@
 #include "global.h"
 
-// Touch popovers: the bar at the top right opens them, a touch outside closes one and still paints
+// Touch popovers: the bar at the top right opens them, a touch outside closes one and still paints. They are the
+// engine's panels: the test turns the native panels off (the app always runs with them, FrameDriver.swift) and the touch
+// UI on (the Mac's default is off), and both back at the end.
 
 int fails  = 0;
 int checks = 0;
@@ -9,6 +11,7 @@ int frame  = 0;
 double hold_start = 0.0; // When the long press started (the UI opens the menu after 0.5 s held, by the clock)
 int lx     = 0; // Layer row in the layers popover
 int ly     = 0;
+int touch_was = 0; // The user's touch UI setting
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -102,6 +105,8 @@ void next() {
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		config_set_touch_ui(touch_was);
+		app_set_native_chrome(true);
 		printf("[popover] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "POPOVER PASS" : "POPOVER FAIL");
 		script_quit();
@@ -114,6 +119,9 @@ void next() {
 void main() {
 	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	script_project_new();
+	touch_was = script_get_config()->touch_ui;
+	config_set_touch_ui(true);
+	app_set_native_chrome(false);
 	context_select_tool(TOOL_TYPE_BRUSH);
 	script_get_context()->brush_opacity = 1.0;
 	script_notify_on_next_frame(next);

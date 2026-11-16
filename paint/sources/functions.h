@@ -1754,6 +1754,7 @@ void                   config_apply();
 i32                    config_get_super_sample_quality(f32 f);
 f32                    config_get_super_sample_size(i32 i);
 void                   config_set_texture_res(i32 pos);
+void                   config_set_touch_ui(bool on);
 i32                    config_get_texture_res_x();
 i32                    config_get_texture_res_y();
 i32                    config_get_texture_res_pos(i32 i);

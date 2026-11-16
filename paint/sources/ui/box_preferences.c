@@ -212,11 +212,7 @@ void box_preferences_interface_tab() {
 	g_ui->changed = false;
 	ui_check(&g_config->touch_ui, tr("Touch UI"), "");
 	if (g_ui->changed) {
-		ui_touch_control = g_config->touch_ui;
-		config_load_theme(g_config->theme, true);
-		box_preferences_set_scale();
-		base_redraw_ui();
-		g_context->hscale_was_changed = true;
+		config_set_touch_ui(g_config->touch_ui);
 	}
 
 	ui_check(&g_config->splash_screen, tr("Splash Screen"), "");
