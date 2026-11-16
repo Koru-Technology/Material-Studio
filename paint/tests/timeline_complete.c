@@ -114,6 +114,7 @@ void next() {
 		a = script_get_context()->layer;
 		string_array_push(hashes, layer_hash(a));
 		check_last(a, 6, TL_MERGE, "merge down appends to the layer below");
+		check(timeline_tiles_test(a) == 0, string("partial edge tiles, restores into a part of a layer and past its edge (%d)", timeline_tiles_test(a)));
 		timeline_finalize();
 		check(timeline_test_states(a) == 7, string("every position keeps a state (%d of 7)", timeline_test_states(a)));
 		history_undo();
