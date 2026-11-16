@@ -229,7 +229,7 @@ static bool ui_view2d_layer_movable(slot_layer_t *l) {
 
 // Shift the texture contents, pixels moved out of the texture are discarded
 static void ui_view2d_shift_texture(gpu_texture_t *t, gpu_pipeline_t *pipe, i32 dx, i32 dy) {
-	gpu_pipeline_t *temp_pipe = base_bits == TEXTURE_BITS_BITS8 ? pipes_copy : base_bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;
+	gpu_pipeline_t *temp_pipe = layers_copy_pipe(base_bits);
 	draw_begin(layers_temp_image, false, 0);
 	draw_set_pipeline(temp_pipe);
 	draw_image(t, 0, 0);
@@ -268,7 +268,7 @@ static void ui_view2d_layer_move_apply_on_next_frame(void *_) {
 		ui_view2d_shift_texture(l->texpaint, pipes_copy8, dx, dy);
 	}
 	else {
-		gpu_pipeline_t *pipe = base_bits == TEXTURE_BITS_BITS8 ? pipes_copy : base_bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;
+		gpu_pipeline_t *pipe = layers_copy_pipe(base_bits);
 		ui_view2d_shift_texture(l->texpaint, pipe, dx, dy);
 		ui_view2d_shift_texture(l->texpaint_nor, pipe, dx, dy);
 		ui_view2d_shift_texture(l->texpaint_pack, pipe, dx, dy);
