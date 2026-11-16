@@ -107,6 +107,7 @@ void next() {
 		check(mask_of(p) == NULL && string_equals(layer_hash(p), after), "redo: the applied layer back");
 	}
 	else if (step == 10) {
+		check(string_equals(layer_hash(p), after), "frames after the redo: the applied layer as it was");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[undo_apply_mask] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO_APPLY_MASK PASS" : "UNDO_APPLY_MASK FAIL");
