@@ -425,9 +425,13 @@ void project_container_loaded() {
 	if (pc.path == NULL) {
 		return;
 	}
-	hash128_t *roots = malloc(sizeof(hash128_t) * (pc.maps_count > 0 ? pc.maps_count : 1));
-	i32        n     = project_container_roots(roots, pc.maps_count);
-	hstore_rebuild_refs(roots, n); // Each map gets the state's reference
+	i32        tl_count;
+	hash128_t *tl_roots = timeline_roots(&tl_count);
+	hash128_t *roots    = malloc(sizeof(hash128_t) * (pc.maps_count + tl_count + 1));
+	i32        n        = project_container_roots(roots, pc.maps_count);
+	memcpy(roots + n, tl_roots, sizeof(hash128_t) * tl_count);
+	hstore_rebuild_refs(roots, n + tl_count); // Each map gets the state's reference, each entry and checkpoint its own
+	free(tl_roots);
 	free(roots);
 }
 
@@ -675,7 +679,14 @@ bool project_container_save(char *path) {
 	pc_writer_t w = {.s = s, .old = append ? pc.index : NULL, .old_count = append ? pc.count : 0};
 	pc_w          = &w;
 	buffer_t *head = export_arm_encode_project(path); // Writes the rasters and assets
-	hstore_each(w.maps, w.maps_count, pc_put_blob, NULL);
+	i32        tl_count;
+	hash128_t *tl_roots = timeline_roots(&tl_count);
+	for (i32 i = 0; i < tl_count; ++i) {
+		pc_maps_push(&w.maps, &w.maps_count, &w.maps_cap, tl_roots[i]); // Roots of the walk, not referenced by the save
+	}
+	free(tl_roots);
+	hstore_each(w.maps, w.maps_count, pc_put_blob, NULL); // Each blob once
+	w.maps_count -= tl_count;
 	pc_w = NULL;
 
 	qsort(w.index, w.count, sizeof(hstore_index_entry_t), pc_compare_entry);

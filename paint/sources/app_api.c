@@ -573,6 +573,10 @@ void app_redo(void) {
 	iron_delay_idle_sleep();
 }
 
+bool app_history_busy(void) {
+	return app_ready() && history_busy();
+}
+
 // Layers
 
 int32_t app_layer_count(void) {

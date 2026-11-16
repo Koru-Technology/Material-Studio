@@ -378,6 +378,7 @@ typedef struct config {
 	i32                  history_disk_mb;   // History journal size above which it is compacted
 	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
+	i32                  history_max_steps; // history_v2: undo steps kept at most
 } config_t;
 
 // ---- Materials ----
@@ -829,6 +830,7 @@ typedef struct history_step {
 	u32                          material_uid;
 	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
 	i32_array_t                 *tl_moves;     // Timeline cursors the step moved: uid, before, after (timeline.c)
+	struct hash128              *records;      // history_v2: HSTORE_LAYER_RECORD of each of merge_layers, their textures freed
 } history_step_t;
 
 // ---- Logic nodes and node groups ----
