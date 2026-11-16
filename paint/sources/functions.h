@@ -2291,3 +2291,10 @@ bool           bake_maps_inpaint_apply(char *path, i32 mode, bool vector);
 void           bake_maps_inpaint_end(void);
 #endif
 
+// ---- util/util_test.c ----
+i32   script_diff_images(char *path_a, char *path_b, f32 tol);
+i32   script_diff_textures(gpu_texture_t *a, gpu_texture_t *b, f32 tol);
+f32   script_diff_max();
+f32   script_diff_mean();
+void  script_diff_mask(gpu_texture_t *mask, i32 mode);
+char *script_texture_hash(gpu_texture_t *t);
