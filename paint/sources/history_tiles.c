@@ -167,7 +167,15 @@ static i32 history_tiles_alloc(history_step_t *step) {
 }
 
 // Takes the changed tiles of the pending step from the snapshot
+static void history_tiles_finalize_step();
+
+// The last stroke is over: its tiles are taken, timelines capture the states after their last entries
 void history_tiles_finalize() {
+	history_tiles_finalize_step();
+	timeline_finalize();
+}
+
+static void history_tiles_finalize_step() {
 #ifdef IRON_METAL
 	history_step_t *step = history_tiles_pending;
 	slot_layer_t   *l    = history_tiles_pending_l;
@@ -214,6 +222,9 @@ void history_tiles_finalize() {
 		}
 	}
 	gpu_release_texture_pixels(diff->_image);
+	if (timeline_active()) {
+		timeline_stroke_dirty(step, step->undo_tiles); // The stroke's capture reads only these
+	}
 
 	for (i32 i = 0; i < step->undo_tiles->length; i += 2) {
 		step->undo_tiles->buffer[i + 1] = history_tiles_alloc(step);

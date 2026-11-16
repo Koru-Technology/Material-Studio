@@ -226,6 +226,7 @@ static void layers_duplicate_children(slot_layer_t *l, slot_layer_t *new_parent)
 		slot_layer_t *c     = children->buffer[i];
 		slot_layer_t *new_c = slot_layer_is_group(c) ? layers_new_group() : slot_layer_duplicate(c);
 		new_c->parent       = new_parent;
+		timeline_fork(c, new_c);
 		array_remove(g_project->_->layers, new_c);
 		array_insert(g_project->_->layers, array_index_of(g_project->_->layers, new_parent), new_c);
 		layers_duplicate_children(c, new_c);
@@ -235,6 +236,7 @@ static void layers_duplicate_children(slot_layer_t *l, slot_layer_t *new_parent)
 void layers_duplicate_layer(slot_layer_t *l) {
 	slot_layer_t *new_layer = slot_layer_is_group(l) ? layers_new_group() : slot_layer_duplicate(l);
 	new_layer->parent       = l->parent;
+	timeline_fork(l, new_layer); // Its pixels share the history of l
 	array_remove(g_project->_->layers, new_layer);
 	array_insert(g_project->_->layers, array_index_of(g_project->_->layers, l) + 1, new_layer);
 	layers_duplicate_children(l, new_layer);

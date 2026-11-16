@@ -431,6 +431,7 @@ bool layers_op_to_paint(slot_layer_t *l) {
 	context_set_layer(l);
 	slot_layer_is_layer(l) ? history_to_paint_layer() : history_to_paint_mask();
 	slot_layer_to_paint_layer(l);
+	timeline_record_op(l, TL_FILL, NULL, 0, NULL, 0); // Painted from here on, the fill as it is now is its start
 	layers_op_end(gpu);
 	return true;
 }

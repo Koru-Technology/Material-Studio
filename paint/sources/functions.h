@@ -1874,6 +1874,7 @@ extern bool    context_script_touch;
 bool           context_finger_paint_blocked();
 
 // ---- history.c ----
+bool            history_v2_active(); // history_v2 as it was at the last history_reset
 i32             history_ring_size();
 void            history_ring_set_size(i32 n);
 i32             history_ring_prev();
@@ -1901,6 +1902,39 @@ void                  history_swap_swatches(history_step_t *step);
 void                  history_swap_swatch(history_step_t *step);
 node_group_t_array_t *history_groups(history_step_t *step);
 void                  history_swap_canvas(history_step_t *step);
+
+// ---- timeline.c ----
+struct timeline;
+struct tl_entry;
+struct paint_target;
+bool        timeline_active(); // Timelines record: timeline_shadow or history_v2
+bool        timeline_layer_paints(slot_layer_t *l);
+void        timeline_truncate(struct timeline *tl);
+void        timeline_truncate_all();
+void        timeline_checkpoint_set(struct timeline *tl, i32 pos, hash128_t tilemap, bool pinned);
+hash128_t   timeline_state(struct timeline *tl, i32 pos);
+void        timeline_target_live(slot_layer_t *l, struct paint_target *t);
+struct timeline *timeline_ensure(slot_layer_t *l);
+struct tl_entry *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, const f32 *uv_bounds, u16 flags);
+void        timeline_stroke_begin(history_step_t *step, slot_layer_t *l);
+void        timeline_stroke_dirty(history_step_t *step, i32_array_t *tiles);
+void        timeline_finalize();
+void        timeline_step_apply(history_step_t *step, bool undo);
+void        timeline_fork(slot_layer_t *src, slot_layer_t *dst);
+bool        timeline_materialize_live(struct timeline *tl, slot_layer_t *l, i32 pos);
+i32         timeline_test_count(slot_layer_t *l);
+i32         timeline_test_kind(slot_layer_t *l, i32 i);
+i32         timeline_test_cursor(slot_layer_t *l);
+i32         timeline_test_states(slot_layer_t *l);
+bool        timeline_test_materialize(slot_layer_t *l, i32 pos);
+
+// ---- timeline_ops.c ----
+void timeline_retag_last(slot_layer_t *l, i32 kind, const void *params, u32 len, u16 flags);
+
+// ---- timeline_tiles.c ----
+void timeline_tiles_cache_reset();
+bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 *channels);
+bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, struct paint_target *dst);
 
 // ---- history_steps.c ----
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
