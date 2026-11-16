@@ -138,21 +138,7 @@ void layers_resize_targets() {
 
 	any_map_t *rts = render_path_render_targets;
 
-	render_target_t *blend0           = any_map_get(rts, "texpaint_blend0");
-	gpu_texture_t   *_texpaint_blend0 = blend0->_image;
-	gpu_delete_texture(_texpaint_blend0);
-	blend0->width  = config_get_texture_res_x();
-	blend0->height = config_get_texture_res_y();
-	blend0->_image = gpu_create_render_target(config_get_texture_res_x(), config_get_texture_res_y(), GPU_TEXTURE_FORMAT_R16);
-
-	render_target_t *blend1           = any_map_get(rts, "texpaint_blend1");
-	gpu_texture_t   *_texpaint_blend1 = blend1->_image;
-	gpu_delete_texture(_texpaint_blend1);
-	blend1->width  = config_get_texture_res_x();
-	blend1->height = config_get_texture_res_y();
-	blend1->_image = gpu_create_render_target(config_get_texture_res_x(), config_get_texture_res_y(), GPU_TEXTURE_FORMAT_R16);
-
-	g_context->brush_blend_dirty = true;
+	render_path_paint_scratch_resize(config_get_texture_res_x(), config_get_texture_res_y());
 
 	render_target_t *blur = any_map_get(rts, "texpaint_blur");
 	if (blur != NULL) {

@@ -50,6 +50,19 @@ bool  iron_is_directory(char *path);
 bool  iron_file_exists(char *path);
 void  iron_delete_file(char *path);
 bool  iron_file_save_bytes(char *path, buffer_t *bytes, u64 length);
+bool  iron_file_read_range(char *path, u64 offset, u64 length, void *dst);
+i64   iron_file_size(char *path); // -1 when missing
+
+// Writes a file in pieces, appending to it or replacing it
+typedef struct iron_file_stream {
+	int  fd;
+	u64  pos; // Offset of the next write
+	bool failed;
+} iron_file_stream_t;
+
+iron_file_stream_t *iron_file_stream_open(char *path, bool append);
+bool                iron_file_stream_write(iron_file_stream_t *s, const void *data, u64 length);
+bool                iron_file_stream_close(iron_file_stream_t *s, bool sync); // False when a write failed
 void  iron_file_download(char *url, void (*callback)(char *, buffer_t *), i32 size, char *dst_path);
 
 typedef struct file_download_data {

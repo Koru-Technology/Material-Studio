@@ -173,14 +173,17 @@ static void import_arm_uid_next(u32 saved) {
 void import_arm_run_project(char *path) {
 	iron_profile_mark("project load start");
 	ui_header_draw_progress(0.0);
-	buffer_t *b = data_get_blob(path);
-	if (b == NULL) {
+	project_t *project;
+	bool       import_as_mesh = false;
+	buffer_t  *b              = NULL;
+	if (project_container_is(path)) { // Version 31: the head, the index and the live layers are read
+		project = project_container_open(path);
+	}
+	else if ((b = data_get_blob(path)) == NULL) {
 		console_error(string("Could not open file %s.", path));
 		return;
 	}
-	project_t *project;
-	bool       import_as_mesh = false;
-	if (!import_arm_has_version(b)) {
+	else if (!import_arm_has_version(b)) {
 		import_as_mesh     = true;
 		scene_t *scene_raw = armpack_decode(b);
 		project            = ALLOC_INIT(project_t, {.mesh_datas = scene_raw->mesh_datas});
@@ -234,6 +237,7 @@ void import_arm_run_project(char *path) {
 	import_arm_progress_unpacked = 0;
 
 	project_new(import_as_mesh);
+	project_container_attach(); // After project_new reset the store
 	g_project->_->filepath = string_copy(path);
 	ui_files_filename      = string_copy(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, ".")));
 #ifdef IRON_IOS
@@ -268,6 +272,9 @@ void import_arm_run_project(char *path) {
 	base_res_x                           = (f32)res_x;
 	base_res_y                           = (f32)res_y;
 	project_uuid                         = g_project->uuid != NULL ? string_copy(g_project->uuid) : NULL; // A new one for older projects
+	if (project_uuid != NULL && hstore_journal_pending(project_uuid)) {
+		iron_log("History journal of an unsaved session: %d blobs recovered", hstore_recover()); // Used by the history load
+	}
 	texture_bits_t bits_pos              = l0->bpp == 8 ? TEXTURE_BITS_BITS8 : l0->bpp == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
 	base_bits                            = bits_pos;
 	i32                  bytes_per_pixel = math_floor(l0->bpp / 8.0);
@@ -431,7 +438,13 @@ void import_arm_run_project(char *path) {
 		}
 		any_array_push(g_project->_->layers, l);
 		if (!is_group) {
-			if (is_mask) { // Full bits for undo support, R8 is used
+			if (project_container_layer_restore(ld, l, i == 0 ? &g_project->_->translucency : NULL)) {
+				// Tiles of a container
+			}
+			else if (is_mask && project_container_mask_r8(ld)) {
+				import_arm_mask_texture_r8(l->texpaint, ld->texpaint, res_x, res_y);
+			}
+			else if (is_mask) { // Full bits for undo support, R8 is used
 				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
 			}
 			else { // Layer
@@ -611,6 +624,18 @@ void import_arm_run_project(char *path) {
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	g_context->ddirty = 4;
 	data_delete_blob(path);
+	project_container_loaded();
+	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
+		layer_data_t *ld = g_project->layer_datas->buffer[i];
+		if (ld->rasters != NULL || ld->tilemap != NULL) { // Read from a container, not part of a blob: uploaded
+			buffer_t **raster[3] = {(buffer_t **)&ld->texpaint, (buffer_t **)&ld->texpaint_nor, (buffer_t **)&ld->texpaint_pack};
+			for (i32 c = 0; c < 3; ++c) {
+				if (*raster[c] != NULL) {
+					array_free(*raster[c]); // The struct stays: non NULL tells layers from groups
+				}
+			}
+		}
+	}
 	iron_profile_mark("project load end");
 }
 

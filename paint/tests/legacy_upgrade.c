@@ -135,9 +135,8 @@ void next() {
 	}
 	else if (step == 7) {
 		snapshot();
-		script_get_config()->project_v31 = 0; // Saves as today
-		project_filepath_set(file30);
-		project_save(0);
+		script_get_config()->project_v31 = 0; // Saves as today, also under PROJECT_V31=1
+		export_arm_run_project_v30(file30);
 	}
 	else if (step == 8) {
 		script_project_new();

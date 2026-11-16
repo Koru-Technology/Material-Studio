@@ -236,16 +236,18 @@ buffer_t *export_arm_encode_project(char *path) {
 	i32 bits_pos = base_bits;
 	i32 bpp      = bits_pos == TEXTURE_BITS_BITS8 ? 8 : bits_pos == TEXTURE_BITS_BITS16 ? 16 : 32;
 
-	layer_data_t_array_t *ld = any_array_create_from_raw((void *[]){}, 0);
+	layer_data_t_array_t *ld        = any_array_create_from_raw((void *[]){}, 0);
+	bool                  container = project_container_writing(); // Pixels go in chunks (io/project_container.c)
 	export_arm_progress(0.1);
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		export_arm_progress(0.1 + 0.6 * i / (f32)g_project->_->layers->length);
-		slot_layer_t *l = g_project->_->layers->buffer[i];
+		slot_layer_t *l       = g_project->_->layers->buffer[i];
+		u8_array_t   *tilemap = container ? project_container_layer_tilemap(l) : NULL; // Whole textures where tiles do not fit
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
 		                              .res                = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
 		                              .bpp                = bpp,
-		                              .texpaint           = l->texpaint != NULL ? export_arm_encode_layer_texture(l->texpaint) : NULL,
+		                              .texpaint           = l->texpaint != NULL && !container ? export_arm_encode_layer_texture(l->texpaint) : NULL,
 		                              .uv_scale           = l->scale,
 		                              .uv_rot             = l->angle,
 		                              .uv_type            = l->uv_type,
@@ -257,8 +259,8 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .blending           = l->blending,
 		                              .parent             = l->parent != NULL ? array_index_of(g_project->_->layers, l->parent) : -1,
 		                              .visible            = l->visible,
-		                              .texpaint_nor       = l->texpaint_nor != NULL ? export_arm_encode_layer_texture(l->texpaint_nor) : NULL,
-		                              .texpaint_pack      = l->texpaint_pack != NULL ? export_arm_encode_layer_texture(l->texpaint_pack) : NULL,
+		                              .texpaint_nor       = l->texpaint_nor != NULL && !container ? export_arm_encode_layer_texture(l->texpaint_nor) : NULL,
+		                              .texpaint_pack      = l->texpaint_pack != NULL && !container ? export_arm_encode_layer_texture(l->texpaint_pack) : NULL,
 		                              .texpaint_sculpt    = NULL, // Sculpting was removed, the field stays for file compatibility
 		                              .paint_base         = l->paint_base,
 		                              .paint_opac         = l->paint_opac,
@@ -289,7 +291,9 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .uid                = l->uid,
 		                              .timeline           = l->timeline,
 		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
-		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y()});
+		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
+		                              .rasters            = container && tilemap == NULL ? project_container_layer_rasters(l) : NULL,
+		                              .tilemap            = tilemap});
 		any_array_push(ld, d);
 	}
 
@@ -390,7 +394,13 @@ buffer_t *export_arm_encode_project(char *path) {
 	}
 
 	export_arm_progress(0.8);
+	if (container) {
+		project_container_pack_assets(g_project);
+	}
 	buffer_t *buffer = util_encode_project(g_project);
+	if (container) {
+		project_container_unpack_assets(g_project);
+	}
 
 	for (i32 i = 0; i < ld->length; ++i) {
 		layer_data_t *d = ld->buffer[i];
@@ -398,6 +408,8 @@ buffer_t *export_arm_encode_project(char *path) {
 		export_arm_free_buffer(d->texpaint_nor);
 		export_arm_free_buffer(d->texpaint_pack);
 		export_arm_free_buffer(d->texpaint_sculpt);
+		export_arm_free_buffer(d->rasters);
+		export_arm_free_buffer(d->tilemap);
 		if (d->decal_mat != NULL) {
 			array_free(d->decal_mat);
 			free(d->decal_mat);
@@ -425,17 +437,24 @@ void export_arm_run_project_v30(char *path) {
 
 void export_arm_run_project(char *path) {
 	export_arm_show_progress = true;
-	buffer_t *buffer         = export_arm_encode_project(path);
-	export_arm_progress(0.9);
-	if (!iron_file_save_bytes(path, buffer, 0)) {
+	bool saved;
+	if (string_equals(export_arm_version(), "31")) {
+		saved = project_container_save(path); // Appends to the file when it can
+	}
+	else {
+		buffer_t *buffer = export_arm_encode_project(path);
+		export_arm_progress(0.9);
+		saved = iron_file_save_bytes(path, buffer, 0);
+		array_free(buffer);
+		free(buffer);
+	}
+	if (!saved) {
 		console_error(string("Could not save %s.", path)); // Still modified, saved again later
 	}
 	else if (string_equals(path, g_project->_->filepath)) {
 		project_modified = false;
 		hstore_journal_mark_saved(); // The history journal before here needs no recovery
 	}
-	array_free(buffer);
-	free(buffer);
 	export_arm_progress(1.0);
 	export_arm_show_progress = false;
 	base_redraw_ui();

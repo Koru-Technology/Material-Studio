@@ -377,6 +377,7 @@ typedef struct config {
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
 	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
+	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
 	i32                  history_max_steps; // history_v2: undo steps kept at most
 } config_t;
 
@@ -991,6 +992,8 @@ typedef struct layer_data {
 	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
 	i32               res_y;
 	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
+	struct u8_array  *rasters;  // v31 container, sizes tiles do not fit: hash128 of the HSTORE_RASTER chunks of the textures
+	struct u8_array  *tilemap;  // v31 container: hash128 of the HSTORE_TILEMAP of the layer's state, all its channels
 } layer_data_t;
 
 // ---- Shader outputs, export presets, neural models ----
@@ -1288,3 +1291,39 @@ typedef struct hstore_chunk {
 	u32       raw_len;
 	u32       comp_len;
 } hstore_chunk_t;
+
+// Entry of the index of a v31 project file (io/project_container.c), 40 bytes on disk
+typedef struct hstore_index_entry {
+	hash128_t h;
+	u64       off; // Of the chunk header
+	u32       raw_len;
+	u32       comp_len;
+	u8        kind;
+	u8        codec;
+} hstore_index_entry_t;
+// ---- Paint executor (paint_exec.c) ----
+typedef enum paint_op_kind {
+	PAINT_OP_DRAW         = 1, // A paint draw of dabs [dab_first, dab_first + dab_count), the blur snapshot of the frame with it
+	PAINT_OP_DILATE       = 2, // Dilation in a stroke (every few frames) or once it ends
+	PAINT_OP_DILATE_AFTER = 3, // Dilation after the dabs of a frame, deferred to the next frame while the stroke goes on
+	PAINT_OP_CLEAR_BLEND  = 4, // The stroke coverage clears
+	PAINT_OP_CLONE_FLATTEN = 5, // Clone source of the visible layers mode, at stroke start
+} paint_op_kind_t;
+
+// What a paint draw reads that changes from draw to draw: the brush state is in its dabs (PAINT_DAB_* in functions.h)
+typedef struct paint_exec_op {
+	i32    kind;     // paint_op_kind_t
+	bool   dilation; // DRAW: dilates after
+	bool   base;     // DILATE: the base texture, the normal and pack textures
+	bool   nor_pack;
+	bool   batched;  // DRAW: one draw paints its dabs in order, else dab_count is 1 (2 for a decal: the dab and its anchor)
+	i32    dab_first;
+	i32    dab_count;
+	f32    down;          // Input pressed, inp.z
+	f64    brush_time;    // As it was when the draw was emitted (the end of a stroke paints its tail with a time of its own)
+	vec4_t direction;     // _brush_direction: x, y the stroke direction, z 0 drops the dab
+	vec4_t pixel_snap_uv; // _pixel_snap_uv
+	vec4_t loc;           // Transform of the paint object, mirrored and turned for symmetry copies
+	quat_t rot;
+	vec4_t scale;
+} paint_exec_op_t;

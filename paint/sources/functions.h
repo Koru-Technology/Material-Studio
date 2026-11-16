@@ -45,11 +45,14 @@ void export_obj_run(char *path, mesh_object_t_array_t *paint_objects);
 
 // ---- io/export_texture.c ----
 void export_texture_run(char *path, bool bake_material);
+void export_texture_test_options(char *preset, i32 layers_export, bool padding, i32 bits, i32 format);
 
 // ---- io/import_arm_assets.c ----
 char           *import_arm_abs(char *file, char *base);
 void            import_arm_make_pink(char *abs);
 void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha);
+void            import_arm_mask_texture_r8(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h);
+bool            import_arm_texture_has_alpha(gpu_texture_t *t);
 void            import_arm_init_nodes(ui_node_t_array_t *nodes);
 packed_asset_t *import_arm_take_packed_asset(project_t *project, char *abs, char *file, bool copy);
 bool            import_arm_is_decodable(char *abs);
@@ -413,6 +416,8 @@ i32  mm_buffers_require(i32 level); // What links need: 0 any, else at least tha
 void mm_buffers_test_res(i32 res);
 void mm_buffers_trim(void);
 void mm_buffers_test_budget(i32 kb);
+void mm_buffers_set_export_cap(i32 cap); // Full sizes up to cap during an export, 0 the normal cap
+i64  mm_buffers_export_budget(i64 reserved);
 
 // ---- nodes_material/mm_buffers_pipes.c ----
 void mm_buffers_hold_workers(bool hold);
@@ -431,6 +436,10 @@ void            mm_buffers_finish(void);                                        
 void            mm_buffers_clear();
 i32             mm_buffers_stat(i32 what);
 void            mm_buffers_init(); // Image node files, the text node's font
+i32             mm_buffers_export_begin(u64 *keys, i32 n, i32 max_size, i64 budget); // Export: the cap chosen, the passes pinned
+i32             mm_buffers_export_step(void);                                      // Renders the next one full, how many are left
+void            mm_buffers_export_end(void);                                       // Unpinned, larger textures freed, the normal cap
+i32             mm_buffers_export_largest(void);
 
 // ---- nodes_material/mm_buffers_test.c ----
 char *mm_buffers_test_ptex(char *path_or_id, i32 size);
@@ -440,6 +449,8 @@ i32   mm_buffers_test_resolve(i32 in_pass);
 i32   mm_buffers_test_map_size(i32 map);
 f32   mm_buffers_test_texel(i32 map, i32 x, i32 y, i32 channel);
 void  mm_buffers_test_write(char *prefix);
+i32   mm_buffers_test_export(i32 max_size, i32 budget_kb);
+i32   mm_buffers_test_tex_size(i32 map);
 
 // ---- nodes_material/mix_color_node.c ----
 void mix_color_node_init();
@@ -936,6 +947,8 @@ gpu_texture_t *box_bake_maps_inpaint_overlay();
 i32            box_bake_maps_inpaint_color();
 
 // ---- ui/box_export.c ----
+void box_export_textures_run(char *path, bool bake_material);
+void box_export_tiled_update(void *_);
 void box_export_fetch_presets();
 void box_export_parse_preset();
 void box_export_show_textures();
@@ -1404,6 +1417,8 @@ void           layers_merge_down();
 slot_layer_t  *layers_merge_group(slot_layer_t *l);
 void           layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask);
 void           layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer, gpu_texture_t *below);
+void           layers_merge_mask_ex(gpu_texture_t *dst, gpu_texture_t *temp, slot_layer_t *m, gpu_texture_t *mask_tex, slot_layer_t *layer, gpu_texture_t *below,
+                                    gpu_texture_t *coverage);
 gpu_texture_t *layers_height_below(slot_layer_t *l);
 slot_layer_t  *layers_udim_remap(slot_layer_t *l, gpu_texture_t **mask, i32 slot, bool to_tile);
 i32            layers_udim_tile_slot(slot_layer_t *l);
@@ -2355,6 +2370,9 @@ i32   hstore_recover();
 void  hstore_recover_end();
 void  hstore_journal_delete(char *uuid);
 void  hstore_journal_rebind(char *old_uuid);
+void  hstore_attach_project(char *path, const hstore_index_entry_t *entries, i32 n);
+void  hstore_each(const hash128_t *roots, i32 n, void (*fn)(hash128_t h, void *ud), void *ud);
+u8   *hstore_chunk_payload(hash128_t h, hstore_chunk_t *c);
 i32   hstore_test_put(i32 kind, i32 seed, i32 len, bool noise);
 i32   hstore_test_get(i32 id, i32 seed, i32 len, bool noise);
 bool  hstore_test_has(i32 id);
@@ -2376,6 +2394,30 @@ void  hstore_test_rebuild();
 i32   hstore_test_refs(i32 id);
 
 // ---- io/project_container.c ----
+bool        project_container_is(char *path);
+bool        project_container_is_buffer(buffer_t *b);
+project_t  *project_container_open(char *path);
+project_t  *project_container_decode(buffer_t *b);
+void        project_container_attach();
+void        project_container_forget();
+bool        project_container_mask_r8(layer_data_t *ld);
+bool        project_container_writing();
+u8_array_t *project_container_layer_rasters(slot_layer_t *l);
+u8_array_t *project_container_layer_tilemap(slot_layer_t *l);
+bool        project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, bool *has_alpha);
+i32         project_container_roots(hash128_t *out, i32 cap);
+void        project_container_loaded();
+i32         project_container_test_index_count(i32 kind);
+void        project_container_pack_assets(project_t *p);
+void        project_container_unpack_assets(project_t *p);
+bool        project_container_save(char *path);
+char       *project_file_uuid(char *path);
+void        hstore_journal_delete_for_file(char *path);
+i32         project_container_test_reads();
+i32         project_container_test_appended();
+void        project_test_truncate(char *path, i32 bytes);
+i32         project_test_file_size(char *path);
+i32         project_test_mask_unequal(i32 i);
 u32  project_test_layer_uid(i32 i);
 u32  project_test_material_uid(i32 i);
 u32  project_test_uid_next();
@@ -2390,3 +2432,70 @@ f32   script_diff_max();
 f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
+
+// ---- io/export_tiled.c ----
+bool           export_tiled_start(char *path, bool bake_material);
+bool           export_tiled_step(f64 budget_ms);
+void           export_tiled_cancel();
+bool           export_tiled_running();
+f32            export_tiled_progress();
+void           export_tiled_run(char *path, bool bake_material);
+void           export_tiled_set_resolution(i32 w, i32 h);
+void           export_tiled_test_tile(i32 size);
+void           export_tiled_test_raster(bool on);
+void           export_tiled_test_mm(bool on);
+i32            export_tiled_stat(i32 what);
+gpu_texture_t *export_tiled_test_coverage();
+
+// ---- paint_exec.c ----
+// Resolved dabs. With paint_resolved_dabs, a paint draw reads its dabs from _texpaintdabs, the target of the dab resolve
+// pass (render/make_dab_resolve.c): PAINT_DAB_TEXELS RGBA128 texels a dab, PAINT_DAB_ROW dabs a row, dab k at
+// x = (k % PAINT_DAB_ROW) * PAINT_DAB_TEXELS + t, y = k / PAINT_DAB_ROW. Texel t:
+//   0  p.xyz world position of the dab, w the homogeneous w of its unprojection (1 / clip w: camera align, decals)
+//   1  p_last.xyz, w_last: the other end of the capsule
+//   2  normal at p, octahedral xy on a 1/32767 grid; z 1 when p is off the mesh, w 1 when p_last is
+//   3  radius, opacity, hardness, flow
+//   4  s.xy, s_last.xy: the screen points the dab was resolved from (0-1, y down)
+//   5  uv at s, uv at s_last (gbuffer2: pixel snap)
+//   6  tip mask rotation cos, sin (brush angle and dab angle), tilt shape xy (util_brush_tilt_shape)
+//   7  brush angle cos, sin, dab angle cos, sin
+// On the mesh, p and p_last are quantized: object space of the paint target (world_unpack), PAINT_DAB_QUANT steps an axis
+// over its bounds (paint_exec_space: -1.01 to 1.01, positions are packed normalized), back to world. Off the mesh they are the unquantized far plane point (a decal
+// anchor: at the depth of the world origin), recordings keep them as floats. The input of the pass (CPU, the same layout):
+// t0 s.xy s_last.xy, t1.x the mode, t3, t6, t7; the pass writes the rest.
+#define PAINT_DAB_TEXELS      8
+#define PAINT_DAB_ROW         64
+#define PAINT_DAB_MAX         2048 // A flush of the executor resolves at most this many
+#define PAINT_DAB_QUANT       2097151.0 // 2^21 - 1
+#define PAINT_DAB_QUANT_S     "2097151.0" // In GLSL
+#define PAINT_DAB_TEXELS_S    "8"
+#define PAINT_DAB_MODE_BRUSH  0.0 // Off the mesh: far plane
+#define PAINT_DAB_MODE_ANCHOR 1.0 // Decal anchor, off the mesh: at the depth of the world origin, as make_texcoord_run did
+
+bool             paint_exec_resolved_config(); // paint_resolved_dabs, or IRON_PAINT_RESOLVED in the environment
+bool             paint_exec_on(); // The paint shader in use reads resolved dabs
+void             paint_exec_begin();
+void             paint_exec_end();
+void             paint_exec_draw(bool dilation);
+void             paint_exec_batch_add();
+void             paint_exec_batch_flush(bool dilation);
+void             paint_exec_dilate(bool base, bool nor_pack);
+void             paint_exec_dilate_after_paint();
+void             paint_exec_clear_blend();
+void             paint_exec_clone_flatten();
+paint_exec_op_t *paint_exec_current(); // The op being executed, NULL outside of them
+f32             *paint_exec_dab(i32 k); // PAINT_DAB_TEXELS * 4 floats of input of dab k
+gpu_texture_t   *paint_exec_dabs_in();
+void             paint_exec_space(mat4_t *obj, mat4_t *obj_inv, vec4_t *bmin, vec4_t *bsize);
+void             render_path_paint_commands_paint_now(bool dilation);
+void             render_path_paint_dilate_after_paint_now();
+void             render_path_paint_clear_blend_now();
+void             render_path_paint_clone_snapshot();
+void             render_path_paint_scratch_resize(i32 w, i32 h);
+bool             render_path_paint_resolved();
+vec4_t           uniforms_brush_direction_now();
+vec4_t           uniforms_pixel_snap_uv();
+
+// ---- render/make_dab_resolve.c ----
+void make_dab_resolve_run(i32 count);
+char *make_brush_dab(char *k, i32 t);

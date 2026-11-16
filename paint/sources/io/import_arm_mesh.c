@@ -61,6 +61,9 @@ void import_arm_run_mesh(project_t *raw) {
 }
 
 project_t *import_arm_decode_project(buffer_t *b) {
+	if (project_container_is_buffer(b)) {
+		return project_container_decode(b);
+	}
 	if (!import_arm_has_version(b)) { // Mesh only
 		scene_t *scene = armpack_decode(b);
 		return ALLOC_INIT(project_t, {.mesh_datas = scene->mesh_datas});

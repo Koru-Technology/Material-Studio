@@ -266,16 +266,39 @@ void layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer,
 		return;
 	}
 	layers_make_temp_img();
-	util_copy_texture(layers_temp_image, dst, pipes_copy); // Copy to temp
+	layers_merge_mask_ex(dst, layers_temp_image, m, slot_layer_mask_texture(m), layer, below, util_uv_dilatemap_cached ? util_uv_dilatemap : NULL);
+}
 
-	gpu_texture_t   *mask_tex = slot_layer_mask_texture(m); // Evaluated stack
+// layers_merge_mask on textures of any size (export tiles): mask_tex the evaluated stack of m, temp a scratch like dst,
+// coverage the uv islands (NULL for everywhere)
+void layers_merge_mask_ex(gpu_texture_t *dst, gpu_texture_t *temp, slot_layer_t *m, gpu_texture_t *mask_tex, slot_layer_t *layer, gpu_texture_t *below,
+                          gpu_texture_t *coverage) {
+	if (!m->height_blend || layer == NULL || layer->texpaint_pack == NULL) {
+		if (!m->visible) {
+			return;
+		}
+		util_copy_texture(temp, dst, pipes_copy);
+		_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		gpu_set_pipeline(pipes_merge_mask);
+		gpu_set_texture(pipes_tex0_merge_mask, mask_tex);
+		gpu_set_texture(pipes_texa_merge_mask, temp);
+		gpu_set_float(pipes_opac_merge_mask, m->mask_opacity);
+		gpu_set_int(pipes_blending_merge_mask, BLEND_TYPE_MULTIPLY);
+		gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+		gpu_set_index_buffer(const_data_screen_aligned_ib);
+		gpu_draw();
+		gpu_end();
+		return;
+	}
+	util_copy_texture(temp, dst, pipes_copy); // Copy to temp
+
 	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_height_blend_mask);
 	gpu_set_texture(0, mask_tex);
-	gpu_set_texture(1, layers_temp_image);
+	gpu_set_texture(1, temp);
 	gpu_set_texture(2, layer->texpaint_pack);
 	gpu_set_texture(3, below != NULL ? below : render_path_empty_white());
-	gpu_set_texture(4, util_uv_dilatemap_cached ? util_uv_dilatemap : render_path_empty_white()); // Uv island coverage
+	gpu_set_texture(4, coverage != NULL ? coverage : render_path_empty_white()); // Uv island coverage
 	gpu_set_float(pipes_opac_height_blend, m->mask_opacity);
 	gpu_set_float(pipes_influence_height_blend, m->height_blend_influence);
 	gpu_set_float(pipes_sharpness_height_blend, m->height_blend_sharpness);

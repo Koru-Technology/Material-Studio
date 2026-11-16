@@ -24,6 +24,7 @@
 
 enum {
 	HSTORE_E_RECOVERED = 1, // Indexed by hstore_recover, kept by trim until hstore_recover_end
+	HSTORE_E_MARK      = 2, // Reached by hstore_each
 };
 
 typedef struct hstore_entry {
@@ -37,7 +38,13 @@ typedef struct hstore_entry {
 	u8        kind;
 	u8        codec;
 	u8        state;
+	u8        src; // File of disk_off: HSTORE_SRC_JOURNAL or HSTORE_SRC_PROJECT
 } hstore_entry_t;
+
+enum {
+	HSTORE_SRC_JOURNAL = 0,
+	HSTORE_SRC_PROJECT = 1, // The v31 project file it was opened from or saved to (io/project_container.c)
+};
 
 static hstore_entry_t *hstore_table       = NULL;
 static u32             hstore_cap         = 0; // Power of two
@@ -53,7 +60,8 @@ static i64             hstore_jsize       = 0;
 static i64             hstore_jmark       = 0; // Journal offset after the last mark chunk
 static bool            hstore_recovering  = false;
 static f64             hstore_flush_ms    = 0.0; // Duration of the last hstore_flush
-static i64             hstore_disk_reads  = 0;   // Chunks read back from the journal
+static i64             hstore_disk_reads  = 0;   // Chunks read back from the journal or the project
+static int             hstore_pfd         = -1;  // The v31 project file
 
 // ---- Chunks ----
 
@@ -205,7 +213,7 @@ static void hstore_remove(hstore_entry_t *e) {
 		}
 		free(e->ram);
 	}
-	if (e->disk_off >= 0) {
+	if (e->disk_off >= 0 && e->src == HSTORE_SRC_JOURNAL) {
 		hstore_dead += HSTORE_CHUNK_HEADER + e->comp_len;
 	}
 	hstore_count--;
@@ -399,13 +407,14 @@ static bool hstore_journal_append(hstore_entry_t *e) {
 	return true;
 }
 
-// The compressed payload of a journaled blob (malloc'd)
+// The compressed payload of a blob on disk, in the journal or the project (malloc'd)
 static u8 *hstore_journal_read_payload(hstore_entry_t *e) {
-	if (hstore_fd < 0 || e->disk_off < 0) {
+	int fd = e->src == HSTORE_SRC_PROJECT ? hstore_pfd : hstore_fd;
+	if (fd < 0 || e->disk_off < 0) {
 		return NULL;
 	}
 	u8 *p = malloc(e->comp_len > 0 ? e->comp_len : 1);
-	if (!hstore_pread_all(hstore_fd, p, e->comp_len, e->disk_off + HSTORE_CHUNK_HEADER)) {
+	if (!hstore_pread_all(fd, p, e->comp_len, e->disk_off + HSTORE_CHUNK_HEADER)) {
 		free(p);
 		return NULL;
 	}
@@ -450,7 +459,11 @@ static bool hstore_is_dirty(hstore_entry_t *e) {
 }
 
 static bool hstore_is_journaled(hstore_entry_t *e) {
-	return e->disk_off >= 0;
+	return e->disk_off >= 0 && e->src == HSTORE_SRC_JOURNAL;
+}
+
+static bool hstore_is_referenced(hstore_entry_t *e) {
+	return e->refs > 0;
 }
 
 static bool hstore_is_garbage(hstore_entry_t *e) {
@@ -804,6 +817,10 @@ void hstore_reset() {
 		unlink(path);
 		free(path);
 	}
+	if (hstore_pfd >= 0) {
+		close(hstore_pfd);
+		hstore_pfd = -1;
+	}
 	hstore_recovering = false;
 	hstore_budget_ram = hstore_ram_budget_now();
 }
@@ -818,6 +835,102 @@ hstore_stats_t hstore_stats() {
 	    .ram_budget  = hstore_budget_ram > 0 ? hstore_budget_ram : hstore_ram_budget_now(),
 	    .disk_budget = hstore_disk_budget(),
 	};
+}
+
+// ---- Project files (io/project_container.c) ----
+
+// Blobs of a v31 project file: stored ones read from it from now on, the others indexed to be read on demand, kept
+// without references until hstore_rebuild_refs (as recovered ones). Called after an open and after each save.
+void hstore_attach_project(char *path, const hstore_index_entry_t *entries, i32 n) {
+	if (hstore_pfd >= 0) {
+		close(hstore_pfd);
+	}
+	hstore_pfd = open(path, O_RDONLY);
+	if (hstore_pfd < 0) {
+		return;
+	}
+	for (i32 i = 0; i < n; ++i) {
+		const hstore_index_entry_t *x = &entries[i];
+		if (x->kind == 0 || x->kind == HSTORE_RASTER || !hstore_is_stored_hash(x->h)) {
+			continue; // Live rasters are read by the project load
+		}
+		hstore_entry_t *e = hstore_find(x->h);
+		if (e == NULL) {
+			e           = hstore_insert(x->h);
+			e->kind     = x->kind;
+			e->codec    = x->codec;
+			e->raw_len  = x->raw_len;
+			e->comp_len = x->comp_len;
+			e->state    = HSTORE_E_RECOVERED;
+		}
+		else if (e->disk_off >= 0 && e->src == HSTORE_SRC_JOURNAL) {
+			continue; // Its journal copy stays
+		}
+		if (e->ram != NULL && e->disk_off < 0) {
+			hstore_dirty -= e->comp_len; // Clean now
+		}
+		e->src      = HSTORE_SRC_PROJECT;
+		e->disk_off = (i64)x->off;
+	}
+}
+
+static void hstore_visit_mark(hash128_t child, void *ud) {
+	hstore_entry_t *e = hstore_find(child);
+	if (e != NULL && (e->state & HSTORE_E_MARK) == 0) {
+		e->state |= HSTORE_E_MARK;
+		hstore_list_push(ud, child);
+	}
+}
+
+// Blobs a save writes: the roots, the referenced blobs and what they own (children), each once. Refs alone miss
+// children a blob recovered or read from a project file owns: their refs come back with hstore_rebuild_refs only.
+void hstore_each(const hash128_t *roots, i32 n, void (*fn)(hash128_t h, void *ud), void *ud) {
+	hstore_list_t work = {0};
+	hstore_list_t all  = {0};
+	for (u32 i = 0; i < hstore_cap; ++i) {
+		hstore_table[i].state &= ~HSTORE_E_MARK;
+	}
+	for (i32 i = 0; i < n; ++i) {
+		hstore_visit_mark(roots[i], &work);
+	}
+	for (u32 i = 0; i < hstore_cap; ++i) {
+		if (!hash128_is_none(hstore_table[i].h) && hstore_table[i].refs > 0) {
+			hstore_visit_mark(hstore_table[i].h, &work);
+		}
+	}
+	while (work.n > 0) {
+		hash128_t h = work.h[--work.n];
+		hstore_list_push(&all, h);
+		hstore_entry_t    *e  = hstore_find(h);
+		hstore_children_fn fn_children = hstore_children_of(e->kind);
+		if (fn_children != NULL) {
+			u8 *raw = hstore_entry_bytes(e, true);
+			if (raw != NULL) {
+				fn_children(raw, e->raw_len, hstore_visit_mark, &work);
+				free(raw);
+			}
+		}
+	}
+	free(work.h);
+	for (u32 i = 0; i < all.n; ++i) {
+		fn(all.h[i], ud);
+	}
+	free(all.h);
+}
+
+// The chunk of a stored blob: its header fields and its payload as stored (malloc'd), NULL when missing or unreadable
+u8 *hstore_chunk_payload(hash128_t h, hstore_chunk_t *c) {
+	hstore_entry_t *e = hstore_find(h);
+	if (e == NULL) {
+		return NULL;
+	}
+	*c = (hstore_chunk_t){.kind = e->kind, .codec = e->codec, .h = e->h, .raw_len = e->raw_len, .comp_len = e->comp_len};
+	if (e->ram != NULL) {
+		u8 *p = malloc(e->comp_len > 0 ? e->comp_len : 1);
+		memcpy(p, e->ram, e->comp_len);
+		return p;
+	}
+	return hstore_journal_read_payload(e);
 }
 
 // ---- Saves and recovery ----
@@ -1091,6 +1204,10 @@ i32 hstore_test_refs(i32 id) {
 void hstore_test_crash() {
 	if (hstore_fd >= 0) {
 		hstore_journal_close();
+	}
+	if (hstore_pfd >= 0) {
+		close(hstore_pfd);
+		hstore_pfd = -1;
 	}
 	hstore_free_table();
 	hstore_table = NULL;
