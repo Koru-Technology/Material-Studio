@@ -422,6 +422,7 @@ void import_arm_run_project(char *path) {
 		if (ld->uid != 0) {
 			l->uid = ld->uid; // Older projects keep the new uid
 		}
+		l->timeline = ld->timeline;
 		l->visible = ld->visible;
 		if (ld->texpaint_sculpt != NULL) {
 			// Sculpting was removed: the layer is kept, empty and hidden, so masks and parents stay valid

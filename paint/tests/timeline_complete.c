@@ -126,7 +126,8 @@ void next() {
 	}
 	else if (step == 8) {
 		check(timeline_test_cursor(a) == 6, string("redo moves it forth (%d)", timeline_test_cursor(a)));
-		// Every kept state back into the layer
+		// Every kept state back into the layer, after a trim dropped what nothing references
+		hstore_test_trim(0);
 		for (int i = 0; i <= 6; ++i) {
 			bool ok = timeline_test_materialize(a, i);
 			check(ok && string_equals(layer_hash(a), hashes->buffer[i]), string("state %d written back byte for byte", i));

@@ -19,13 +19,6 @@
 #define TL_TILES_BATCH 256 // Tiles per transfer round trip
 #define TL_TILES_CACHE 8   // Maps kept resolved
 
-// Temporary until hstore_set_children lands: captures keep their tile references (never freed) instead of handing them
-// to the map. Delete with the merge of stroke-recording that brings the children API.
-#define TL_TILES_CHILDREN_SHIM 1
-#if TL_TILES_CHILDREN_SHIM
-typedef void (*hstore_visit_fn)(hash128_t child, void *ud);
-#endif
-
 #define TL_TILES_FULL_HEADER  16
 #define TL_TILES_DELTA_HEADER 24
 #define TL_TILES_DELTA_ENTRY  20
@@ -49,6 +42,17 @@ static gpu_transfer_t *tl_tiles_transfer = NULL;
 
 static i32 tl_tiles_per_channel() {
 	return HISTORY_TILES_GRID * HISTORY_TILES_GRID;
+}
+
+void timeline_tiles_children(const u8 *data, u32 len, hstore_visit_fn visit, void *ud);
+
+// hstore lists the tiles and the delta base of a stored map as its children
+static void tl_tiles_register() {
+	static bool registered = false;
+	if (!registered) {
+		hstore_set_children(HSTORE_TILEMAP, timeline_tiles_children);
+		registered = true;
+	}
 }
 
 static bool tl_tiles_inline(hash128_t h) {
@@ -79,6 +83,7 @@ static tl_tiles_map_t *tl_tiles_cache_put(tl_tiles_map_t *m) {
 }
 
 void timeline_tiles_cache_reset() {
+	tl_tiles_register(); // Before a project's blobs are read
 	for (i32 i = 0; i < TL_TILES_CACHE; ++i) {
 		tl_tiles_cache_clear_slot(&tl_tiles_cache[i]);
 	}
@@ -310,6 +315,7 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 	if (!tl_tiles_target_ok(src)) {
 		return HASH128_NONE;
 	}
+	tl_tiles_register();
 	gpu_texture_t *tex      = src->out[0];
 	i32            per      = tl_tiles_per_channel();
 	i32            channels = src->channels;
@@ -404,17 +410,11 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 		}
 		result = hstore_put(HSTORE_TILEMAP, blob, len); // A new map takes references on its tiles and base
 		free(blob);
-#if TL_TILES_CHILDREN_SHIM
-		if (delta) {
-			hstore_ref(prev);
-		}
-#else
 		for (i32 idx = 0; idx < total; ++idx) {
 			if (read[idx]) {
 				hstore_unref(m.tiles[idx]); // This capture's own
 			}
 		}
-#endif
 		m.key = result;
 		tl_tiles_map_t *hit = tl_tiles_cache_find(result);
 		if (hit == NULL) {

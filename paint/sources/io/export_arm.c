@@ -287,6 +287,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .mask_effects           = mask_stack_anchors_to_index(l->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length),
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
 		                              .uid                = l->uid,
+		                              .timeline           = l->timeline,
 		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
 		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y()});
 		any_array_push(ld, d);
