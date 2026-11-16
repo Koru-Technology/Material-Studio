@@ -25,6 +25,10 @@ char *live_m     = NULL;
 int   count2     = 0;
 char *pixels2[64];
 float decodes    = 0.0;
+int   v2_was     = 0;
+int   NUNDO      = 3;
+char *undone[8]; // The layers after each of NUNDO undos, before the save
+
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -56,6 +60,15 @@ slot_layer_t *find_uid(int uid) {
 		}
 	}
 	return NULL;
+}
+
+char *all_hash() {
+	char *h = string("%d", script_layer_count());
+	for (int i = 0; i < script_layer_count(); ++i) {
+		slot_layer_t *l = script_layer_at(i);
+		h               = string("%s | %d %s", h, l->uid, layer_hash(l));
+	}
+	return h;
 }
 
 void next() {
@@ -90,6 +103,16 @@ void next() {
 		history_undo(); // A redo branch: the cursor is not at the end
 	}
 	else if (step == 6) {
+		history_flush_restores(NULL);
+		for (int i = 0; i < NUNDO; ++i) { // Undo N, noted, and back: the saved history undoes the same after reopening
+			history_undo();
+			history_flush_restores(NULL);
+			undone[i] = string_copy(all_hash());
+		}
+		for (int i = 0; i < NUNDO; ++i) {
+			history_redo();
+			history_flush_restores(NULL);
+		}
 		timeline_finalize();
 		slot_layer_t *a = find_uid(uid_a);
 		slot_layer_t *m = find_uid(uid_m);
@@ -151,6 +174,17 @@ void next() {
 			}
 		}
 		check(ok, "after a trim too");
+		timeline_test_materialize(a, cursor_a);
+		for (int i = 0; i < NUNDO; ++i) {
+			history_undo();
+			history_flush_restores(NULL);
+			check(!history_busy() && string_equals(all_hash(), undone[i]), string("undo %d after reopen", i + 1));
+		}
+		for (int i = 0; i < NUNDO; ++i) {
+			history_redo();
+			history_flush_restores(NULL);
+		}
+		check(string_equals(layer_hash(find_uid(uid_a)), live_a), "redo back to the saved state");
 	}
 	else if (step == 10) { // Saved again: the timelines' blobs are written again (whole file)
 		project_filepath_set(string("%s/copy.arm", dir));
@@ -245,6 +279,7 @@ void next() {
 		iron_delete_file(string("%s/copy.arm", dir));
 		iron_delete_file(string("%s/copy2.arm", dir));
 		iron_delete_file(string("%s/nohistory.arm", dir));
+		script_get_config()->history_v2 = v2_was;
 		printf("[timeline_persist] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "TIMELINE_PERSIST PASS" : "TIMELINE_PERSIST FAIL");
 		script_quit();
@@ -260,6 +295,8 @@ void main() {
 	shadow_was                           = script_get_config()->timeline_shadow;
 	script_get_config()->project_v31     = 1;
 	script_get_config()->timeline_shadow = 1;
+	v2_was                               = script_get_config()->history_v2;
+	script_get_config()->history_v2      = 1; // Saved steps undo from timelines
 	iron_create_directory(dir);
 	file = string("%s/timelines.arm", dir);
 	script_notify_on_next_frame(next);

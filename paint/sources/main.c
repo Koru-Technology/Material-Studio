@@ -266,7 +266,7 @@
 #include "timeline_ops.c"
 #include "timeline_tiles.c"
 #include "timeline_io.c"
-#include "history_io_stub.c" // Until history_io.c (undo track)
+#include "history_io.c"
 #include "keymap.c"
 #include "logic_node.c"
 #include "minic_impl.c"

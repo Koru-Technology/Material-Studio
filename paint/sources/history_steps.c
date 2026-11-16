@@ -43,7 +43,7 @@ void history_new_layer() {
 void history_new_image_layer(asset_t *asset) {
 	history_step_t *step = history_push(HISTORY_ACTION_NEW_LAYER);
 	step->image_file     = string_copy(asset->file);
-	timeline_record_op(g_context->layer, TL_IMAGE, asset->file, string_length(asset->file) + 1, NULL, 0);
+	timeline_record_image(g_context->layer, asset);
 }
 
 void history_new_black_mask() {
@@ -228,7 +228,7 @@ void history_to_fill_layer() {
 		history_copy_to_undo(g_context->layer->id, history_undo_i, false);
 	}
 	history_push(HISTORY_ACTION_TO_FILL_LAYER);
-	timeline_record_op(g_context->layer, TL_FILL, NULL, 0, NULL, 0);
+	timeline_record_to_fill(g_context->layer, g_context->material);
 }
 
 void history_to_fill_mask() {
@@ -236,7 +236,7 @@ void history_to_fill_mask() {
 		history_copy_to_undo(g_context->layer->id, history_undo_i, true);
 	}
 	history_push(HISTORY_ACTION_TO_FILL_MASK);
-	timeline_record_op(g_context->layer, TL_FILL, NULL, 0, NULL, 0);
+	timeline_record_to_fill(g_context->layer, g_context->material);
 }
 
 // The step keeps the layer's fill material, not the selected one: undo gives it back

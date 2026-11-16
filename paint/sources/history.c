@@ -119,6 +119,10 @@ static bool history_in(i32 i, i32 length) {
 static void history_restore_uid(slot_layer_t *l, u32 uid) {
 	if (uid != 0 && slot_layer_find_uid(uid) == NULL) {
 		l->uid = uid;
+		if (l->timeline == 0) { // The redone steps of the layer move its timeline
+			timeline_t *tl = timeline_find_layer(uid);
+			l->timeline    = tl != NULL ? tl->uid : 0;
+		}
 	}
 }
 
@@ -350,8 +354,8 @@ static void history_restore_run(history_restore_t *r) {
 	}
 	paint_target_t t;
 	timeline_target_live(l, &t);
-	hash128_t to   = timeline_state(tl, r->pos);
-	hash128_t from = r->live >= 0 ? timeline_state(tl, r->live) : HASH128_NONE;
+	hash128_t to   = timeline_state_at(tl, r->pos, t.res_w, t.res_h);
+	hash128_t from = r->live >= 0 ? timeline_state_at(tl, r->live, t.res_w, t.res_h) : HASH128_NONE;
 	bool      ok   = !hash128_is_none(to) ? timeline_tiles_restore_from(to, from, &t) : timeline_materialize(tl, r->pos, &t);
 	if (!ok) {
 		iron_log("Undo could not restore the pixels of %s", l->name);
@@ -1075,6 +1079,40 @@ void history_on_memory_warning() {
 	}
 }
 
+// A step freed, its records and tiles let go (history_io.c)
+void history_step_dispose(history_step_t *step) {
+	history_step_free(step);
+}
+
+u32 history_serial_peek() {
+	return history_serial_next;
+}
+
+// The base step of a history: nothing undoes past it
+static history_step_t *history_base_step() {
+	return ALLOC_INIT(history_step_t, {.name = tr("New"), .layer = 0, .layer_type = LAYER_SLOT_TYPE_LAYER, .layer_parent = -1, .object = 0, .material = 0, .brush = 0});
+}
+
+// The steps become a base and steps (taken over), undos of them done (history_io.c: a saved history loaded)
+void history_steps_replace(any_array_t *steps, i32 undos, i32 redos, u32 serial_next) {
+	history_restore_count = 0; // Restores of the steps going
+	for (i32 i = 0; history_steps != NULL && i < history_steps->length; ++i) {
+		history_step_free(history_steps->buffer[i]);
+	}
+	array_free(history_steps);
+	free(history_steps);
+	history_steps = any_array_create_from_raw((void *[]){history_base_step()}, 1);
+	for (i32 i = 0; i < steps->length; ++i) {
+		any_array_push(history_steps, steps->buffer[i]);
+	}
+	history_undos        = undos;
+	history_redos        = redos;
+	history_undo_i       = 0;
+	history_ring_pending = 0;
+	history_serial_next  = serial_next > history_serial_next ? serial_next : history_serial_next;
+	stroke_refine_reset(); // Records point at steps
+}
+
 void history_reset() {
 	project_modified = false;
 	layers_resolution_reset(); // The states resolution changes kept
@@ -1085,12 +1123,7 @@ void history_reset() {
 		array_free(history_steps);
 		free(history_steps);
 	}
-	history_steps = any_array_create_from_raw(
-	    (void *[]){
-	        ALLOC_INIT(history_step_t,
-	                   {.name = tr("New"), .layer = 0, .layer_type = LAYER_SLOT_TYPE_LAYER, .layer_parent = -1, .object = 0, .material = 0, .brush = 0}),
-	    },
-	    1);
+	history_steps = any_array_create_from_raw((void *[]){history_base_step()}, 1);
 	history_undos  = 0;
 	history_redos  = 0;
 	history_undo_i = 0;

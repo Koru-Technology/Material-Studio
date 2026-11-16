@@ -21,7 +21,8 @@ slot_layer_t_array_t *history_merge_saved_layers() {
 
 // Layer records (history_v2): a layer out of the project for a step (deleted, merged) keeps its props in its struct and
 // its pixels as an HSTORE_LAYER_RECORD: u32 uid, u32 timeline, hash128 tile map (NONE for fill layers, they render
-// again), u32 layer_slot_type_t (the kind of a layer is told by its textures, they go). Groups keep no record.
+// again, and groups), u32 layer_slot_type_t (the kind of a layer is told by its textures, they go); then u32 length and
+// the layer's props as an armpack map (history_record_layer makes the layer again from them: a saved history loaded).
 
 #define HISTORY_RECORD_LEN 28
 
@@ -35,30 +36,197 @@ void history_record_children(const u8 *data, u32 len, hstore_visit_fn visit, voi
 	}
 }
 
-static hash128_t history_record_out(slot_layer_t *l) {
-	if (l->texpaint == NULL) {
-		return HASH128_NONE; // Group, or out already
+// Props of a layer record (every layer_data_t field but the pixels, and uid, timeline, id), bools as i32
+#define HISTORY_RECORD_PROPS 41
+
+static void hrec_i32(char *k, i32 v) {
+	armpack_encode_string(k);
+	armpack_encode_i32(v);
+}
+
+static void hrec_f32(char *k, f32 v) {
+	armpack_encode_string(k);
+	armpack_encode_f32(v);
+}
+
+static void hrec_f32s(char *k, f32_array_t *a) {
+	armpack_encode_string(k);
+	if (a != NULL) {
+		armpack_encode_array_f32(a);
 	}
+	else {
+		armpack_encode_null();
+	}
+}
+
+static u32 history_record_props_size(slot_layer_t *l) {
+	f32_array_t *a[5] = {l->path_points, l->path_points_world, l->path_points_camera, l->mask_effects, NULL};
+	u32          n    = 4096 + (l->name != NULL ? string_length(l->name) : 0) + (l->path_points_parent != NULL ? l->path_points_parent->length * 4 : 0);
+	for (i32 i = 0; i < 4; ++i) {
+		n += a[i] != NULL ? a[i]->length * 4 : 0;
+	}
+	return n;
+}
+
+static u32 history_record_props(slot_layer_t *l, u8 *out) {
+	armpack_encode_start(out);
+	armpack_encode_map(HISTORY_RECORD_PROPS);
+	armpack_encode_string("name");
+	armpack_encode_string(l->name != NULL ? l->name : "");
+	hrec_i32("uid", (i32)l->uid);
+	hrec_i32("timeline", (i32)l->timeline);
+	hrec_i32("id", l->id);
+	hrec_i32("visible", l->visible);
+	hrec_f32("opacity_mask", l->mask_opacity);
+	hrec_i32("fill_material", l->fill_material != NULL ? (i32)l->fill_material->uid : 0);
+	hrec_i32("show_panel", l->show_panel);
+	hrec_i32("blending", l->blending);
+	hrec_i32("object_mask", l->object_mask);
+	hrec_f32("uv_scale", l->scale);
+	hrec_f32("uv_rot", l->angle);
+	hrec_i32("uv_type", l->uv_type);
+	hrec_i32("uv_map", l->uv_map);
+	bool flags[11] = {l->paint_base, l->paint_opac,   l->paint_occ,          l->paint_rough, l->paint_met, l->paint_nor,
+	                  l->paint_nor_blend, l->paint_height, l->paint_height_blend, l->paint_emis,  l->paint_subs};
+	char *names[11] = {"paint_base", "paint_opac", "paint_occ", "paint_rough", "paint_met", "paint_nor", "paint_nor_blend", "paint_height", "paint_height_blend", "paint_emis", "paint_subs"};
+	for (i32 i = 0; i < 11; ++i) {
+		hrec_i32(names[i], flags[i]);
+	}
+	f32_array_t decal = {.buffer = (f32 *)&l->decal_mat, .length = 16, .capacity = 16};
+	hrec_f32s("decal_mat", &decal);
+	hrec_f32s("path_points", l->path_points);
+	hrec_f32s("path_points_world", l->path_points_world);
+	hrec_f32s("path_points_camera", l->path_points_camera);
+	armpack_encode_string("path_points_parent");
+	if (l->path_points_parent != NULL) {
+		armpack_encode_array_i32(l->path_points_parent);
+	}
+	else {
+		armpack_encode_null();
+	}
+	hrec_i32("path_tool", l->path_tool);
+	hrec_i32("path_curved", l->path_curved);
+	hrec_i32("path_text", l->path_text);
+	hrec_i32("path_material", l->path_material != NULL ? (i32)l->path_material->uid : 0);
+	hrec_i32("height_blend", l->height_blend);
+	hrec_i32("height_blend_below", l->height_blend_below);
+	hrec_f32("height_blend_influence", l->height_blend_influence);
+	hrec_f32("height_blend_sharpness", l->height_blend_sharpness);
+	hrec_f32("height_blend_offset", l->height_blend_offset);
+	hrec_f32("height_blend_reach", l->height_blend_reach);
+	hrec_f32s("mask_effects", l->mask_effects);
+	return armpack_encode_end();
+}
+
+static f32_array_t *hrec_get_f32s(any_map_t *m, char *k) {
+	f32_array_t *a = any_map_get(m, k);
+	if (a == NULL) {
+		return NULL;
+	}
+	f32_array_t *c = f32_array_create(a->length);
+	if (a->length > 0) {
+		memcpy(c->buffer, a->buffer, sizeof(f32) * a->length);
+	}
+	return c;
+}
+
+// A layer out of the project made again from its record: props, no textures (the record restore gives them back).
+// NULL when the record is missing.
+slot_layer_t *history_record_layer(hash128_t record) {
+	u32 len = 0;
+	u8 *b   = hash128_is_none(record) ? NULL : hstore_get(record, &len);
+	u32 plen = 0;
+	if (b == NULL || len < HISTORY_RECORD_LEN + 4) {
+		free(b);
+		return NULL;
+	}
+	memcpy(&plen, b + HISTORY_RECORD_LEN, 4);
+	buffer_t   pb = {.buffer = b + HISTORY_RECORD_LEN + 4, .length = plen};
+	any_map_t *m  = HISTORY_RECORD_LEN + 4 + plen <= len ? armpack_decode_to_map(&pb) : NULL;
+	if (m == NULL) {
+		free(b);
+		return NULL;
+	}
+	slot_layer_t *l = ALLOC_INIT(slot_layer_t, {0});
+	char         *name = any_map_get(m, "name");
+	l->name            = string_copy(name != NULL ? name : "");
+	l->uid             = (u32)armpack_map_get_i32(m, "uid");
+	l->timeline        = (u32)armpack_map_get_i32(m, "timeline");
+	l->id              = armpack_map_get_i32(m, "id");
+	l->visible         = armpack_map_get_i32(m, "visible") != 0;
+	l->mask_opacity    = armpack_map_get_f32(m, "opacity_mask");
+	l->fill_material   = slot_material_find_uid((u32)armpack_map_get_i32(m, "fill_material"));
+	l->show_panel      = armpack_map_get_i32(m, "show_panel") != 0;
+	l->blending        = armpack_map_get_i32(m, "blending");
+	l->object_mask     = armpack_map_get_i32(m, "object_mask");
+	l->scale           = armpack_map_get_f32(m, "uv_scale");
+	l->angle           = armpack_map_get_f32(m, "uv_rot");
+	l->uv_type         = armpack_map_get_i32(m, "uv_type");
+	l->uv_map          = armpack_map_get_i32(m, "uv_map");
+	bool *flags[11]    = {&l->paint_base, &l->paint_opac,   &l->paint_occ,          &l->paint_rough, &l->paint_met, &l->paint_nor,
+	                      &l->paint_nor_blend, &l->paint_height, &l->paint_height_blend, &l->paint_emis,  &l->paint_subs};
+	char *names[11]    = {"paint_base", "paint_opac", "paint_occ", "paint_rough", "paint_met", "paint_nor", "paint_nor_blend", "paint_height", "paint_height_blend", "paint_emis", "paint_subs"};
+	for (i32 i = 0; i < 11; ++i) {
+		*flags[i] = armpack_map_get_i32(m, names[i]) != 0;
+	}
+	f32_array_t *decal = any_map_get(m, "decal_mat");
+	l->decal_mat       = mat4_identity();
+	if (decal != NULL && decal->length == 16) {
+		memcpy(&l->decal_mat, decal->buffer, sizeof(f32) * 16);
+	}
+	l->path_points        = hrec_get_f32s(m, "path_points");
+	l->path_points_world  = hrec_get_f32s(m, "path_points_world");
+	l->path_points_camera = hrec_get_f32s(m, "path_points_camera");
+	i32_array_t *pp       = any_map_get(m, "path_points_parent");
+	if (pp != NULL) {
+		l->path_points_parent = i32_array_create(pp->length);
+		if (pp->length > 0) {
+			memcpy(l->path_points_parent->buffer, pp->buffer, sizeof(i32) * pp->length);
+		}
+	}
+	l->path_tool              = armpack_map_get_i32(m, "path_tool");
+	l->path_curved            = armpack_map_get_i32(m, "path_curved") != 0;
+	l->path_text              = armpack_map_get_i32(m, "path_text") != 0;
+	l->path_material          = slot_material_find_uid((u32)armpack_map_get_i32(m, "path_material"));
+	l->height_blend           = armpack_map_get_i32(m, "height_blend") != 0;
+	l->height_blend_below     = armpack_map_get_i32(m, "height_blend_below") != 0;
+	l->height_blend_influence = armpack_map_get_f32(m, "height_blend_influence");
+	l->height_blend_sharpness = armpack_map_get_f32(m, "height_blend_sharpness");
+	l->height_blend_offset    = armpack_map_get_f32(m, "height_blend_offset");
+	l->height_blend_reach     = armpack_map_get_f32(m, "height_blend_reach");
+	l->mask_effects           = hrec_get_f32s(m, "mask_effects");
+	free(b);
+	l->ext = string("%d", l->id); // history_io_decode gives it a free id
+	return l;
+}
+
+static hash128_t history_record_out(slot_layer_t *l) {
 	hash128_t   map = HASH128_NONE;
-	timeline_t *tl  = timeline_of(l);
+	timeline_t *tl  = l->texpaint != NULL ? timeline_of(l) : NULL; // Groups: props only
 	if (tl != NULL) {
 		map = timeline_state(tl, tl->cursor);
 		hstore_ref(map);
 	}
-	if (hash128_is_none(map) && timeline_layer_paints(l)) {
+	if (hash128_is_none(map) && l->texpaint != NULL && timeline_layer_paints(l)) {
 		paint_target_t t;
 		timeline_target_live(l, &t);
 		map = timeline_tiles_capture(&t, HASH128_NONE, NULL);
 	}
-	u32 kind = slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER;
-	u8  b[HISTORY_RECORD_LEN];
+	u32 kind = l->texpaint == NULL ? LAYER_SLOT_TYPE_GROUP : slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER;
+	u8 *b    = malloc(HISTORY_RECORD_LEN + 4 + history_record_props_size(l));
 	memcpy(b, &l->uid, 4);
 	memcpy(b + 4, &l->timeline, 4);
 	memcpy(b + 8, &map.lo, 8);
 	memcpy(b + 16, &map.hi, 8);
 	memcpy(b + 24, &kind, 4);
-	hash128_t h = hstore_put(HSTORE_LAYER_RECORD, b, HISTORY_RECORD_LEN); // Takes its own reference on the map
+	u32 plen = history_record_props(l, b + HISTORY_RECORD_LEN + 4);
+	memcpy(b + HISTORY_RECORD_LEN, &plen, 4);
+	hash128_t h = hstore_put(HSTORE_LAYER_RECORD, b, HISTORY_RECORD_LEN + 4 + plen); // Takes its own reference on the map
+	free(b);
 	hstore_unref(map);
+	if (l->texpaint == NULL) {
+		return h; // A group: nothing to unload
+	}
 	slot_layer_unload(l);
 	l->texpaint         = NULL;
 	l->texpaint_nor     = NULL;
@@ -94,7 +262,7 @@ static void history_record_in(slot_layer_t *l, hash128_t record) {
 	l->texpaint_preview = gpu_create_render_target(util_render_layer_preview_size, util_render_layer_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
 	paint_target_t t;
 	timeline_target_live(l, &t);
-	if (hash128_is_none(map) || !timeline_tiles_restore(map, &t)) {
+	if (hash128_is_none(map) || !timeline_state_resample(map, &t)) { // Scaled when the project's resolution changed since
 		draw_saved_t saved = draw_suspend();
 		slot_layer_clear(l, slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 		draw_resume(saved);
