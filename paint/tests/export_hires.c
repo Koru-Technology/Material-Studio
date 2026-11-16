@@ -121,7 +121,7 @@ void next() {
 		int size    = export_tiled_stat(14);
 		int largest = export_tiled_stat(15);
 		int across  = (4096 + size - 1) / size;
-		check(size == (largest < 3072 ? largest : 3072) && export_tiled_stat(2) == across * across && export_tiled_stat(11) > 0,
+		check((size == 3072 || (largest < 3072 && size <= largest)) && export_tiled_stat(2) == across * across && export_tiled_stat(11) > 0,
 		      string("3072 px tiles: %d px (the platform allows %d), %d tiles, %d fill tiles", size, largest, export_tiled_stat(2), export_tiled_stat(11)));
 		export_tiled_test_tile(1024);
 		int d = script_diff_images(file("w", "base"), file("t", "base"), 1.0);

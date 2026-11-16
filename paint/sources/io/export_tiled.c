@@ -1027,9 +1027,9 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	// Tile size: the platform's largest, halved while the targets exceed the budget
 	i32 s = et.w > et.h ? et.w : et.h;
 	s     = s > EXPORT_TILED_MAX_TILE ? EXPORT_TILED_MAX_TILE : s;
-	i32 largest = s;
+	i32 largest = s; // The largest core size the cap and budget allow (tests)
 	while (largest > 256 && export_tiled_target_bytes(largest, et.halo, et.format) > export_tiled_budget()) {
-		largest /= 2;
+		largest--;
 	}
 	if (et_test_tile > 0 && et_test_tile < s) {
 		s = et_test_tile;
@@ -1599,7 +1599,7 @@ void export_tiled_set_mode(i32 mode) {
 // 6 tile target KB held now, 7 1 while a spool file is open, 8 files written by the export in progress, 9 layer tiles
 // from timelines, 10 layer tiles with a timeline it could not materialize (the live layer instead), 11 fill layer and
 // mask tiles rendered, 12 KB of live layers evicted (export mode), 13 KB of live layer textures held now, 14 tile core
-// size of the last job, 15 the largest core size the platform allows it (tile cap and budget)
+// size of the last job, 15 the largest core size the platform allows it (tile cap and budget, to the texel)
 i32 export_tiled_stat(i32 what) {
 	if (what == 6) {
 		i64 kb = 0;
