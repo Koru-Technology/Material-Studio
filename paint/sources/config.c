@@ -33,9 +33,29 @@ void config_load() {
 
 static void config_save_now();
 
+// Flags of the stroke recording subsystem as loaded. A script saves these instead of its own: suites turn them on, and a
+// run that ends before turning them off must not leave them on in the user's config
+static bool config_script_flags[5];
+
+static void config_script_flags_swap() {
+	bool *f[5] = {&g_config->timeline_shadow, &g_config->history_v2, &g_config->export_tiled, &g_config->project_v31,
+	              &g_config->paint_resolved_dabs};
+	for (i32 i = 0; i < 5; ++i) {
+		bool t                 = *f[i];
+		*f[i]                  = config_script_flags[i];
+		config_script_flags[i] = t;
+	}
+}
+
 void config_save() {
 	script_brush_swap(); // A running script's test brush is not saved
+	if (args_script) {
+		config_script_flags_swap();
+	}
 	config_save_now();
+	if (args_script) {
+		config_script_flags_swap();
+	}
 	script_brush_swap();
 }
 
@@ -421,6 +441,11 @@ void config_init() {
 	base_res = g_config->layer_res;
 	config_set_texture_res(g_config->layer_res);
 	keymap_load();
+	config_script_flags[0] = g_config->timeline_shadow; // The flags as loaded, see config_save
+	config_script_flags[1] = g_config->history_v2;
+	config_script_flags[2] = g_config->export_tiled;
+	config_script_flags[3] = g_config->project_v31;
+	config_script_flags[4] = g_config->paint_resolved_dabs;
 }
 
 // A config from the keys of a loaded one: missing keys and numbers out of their range get the default value, unknown
