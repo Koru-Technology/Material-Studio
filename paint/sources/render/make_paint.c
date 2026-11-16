@@ -346,7 +346,10 @@ node_shader_context_t *make_paint_cache_bake_run(material_t *data, char *format,
 
 	node_shader_t *shader = node_shader_context_make_shader(con);
 	char          *tuv    = g_context->layer->uv_map == 1 ? "input.tex1" : "input.tex";
-	node_shader_write_vert(shader, string_tmp("vec2 tpos = vec2(%s.x * 2.0 - 1.0, (1.0 - %s.y) * 2.0 - 1.0);", tuv, tuv));
+	// The part of the layer rendered as paint draws transform it (_paint_uv_tile: a replay's target, live the whole layer)
+	node_shader_add_constant(shader, "vec4 paint_uv_tile", "_paint_uv_tile");
+	node_shader_write_vert(shader, string_tmp("vec2 tile_uv = (%s - constants.paint_uv_tile.xy) * constants.paint_uv_tile.zw;", tuv));
+	node_shader_write_vert(shader, "vec2 tpos = vec2(tile_uv.x * 2.0 - 1.0, (1.0 - tile_uv.y) * 2.0 - 1.0);");
 	node_shader_write_vert(shader, "output.pos = vec4(tpos, 0.0, 1.0);");
 	shader->frag_out = "vec4[3]";
 	make_texcoord_run(shader, false);
@@ -399,7 +402,7 @@ node_shader_context_t *make_paint_cache_bake_run(material_t *data, char *format,
 	}
 	for (i32 i = 0; *why == NULL && i < con->data->constants->length; ++i) {
 		char *link = ((shader_const_t *)con->data->constants->buffer[i])->link;
-		bool  ok   = link != NULL && (string_equals(link, "_brush_scale") || string_equals(link, "_uv_angle") || string_equals(link, "_mm_zero") ||
+		bool  ok   = link != NULL && (string_equals(link, "_brush_scale") || string_equals(link, "_uv_angle") || string_equals(link, "_mm_zero") || string_equals(link, "_paint_uv_tile") ||
                                    starts_with(link, "_size("));
 		if (!ok) {
 			*why = string_tmp("it reads the constant %s", link != NULL ? link : "(unlinked)");
@@ -673,7 +676,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 			make_blur_run(shader);
 		}
 	}
-	else if (!paint_replay_uncached && material_cache_paint_info(is_atlas, &cache_emis, &cache_subs, &cache_height)) { // Replays at another size: not
+	else if (material_cache_paint_info(is_atlas, &cache_emis, &cache_subs, &cache_height)) {
 		make_paint_material_from_cache(shader, cache_emis, cache_subs, cache_height);
 	}
 	else {

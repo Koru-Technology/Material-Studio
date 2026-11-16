@@ -5,8 +5,10 @@
 // are all full, its timeline is replayed from the state kept before it: every entry from there to the end, strokes of
 // other materials on top keeping their place, each stroke with its material at the full tier. The states kept after it
 // (checkpoints, what undo restores) are captured again as the replay passes them, the live layer becomes the state at
-// the cursor. A job across frames, a frame's share bounded by the entries' measured cost. Not an undo step: the history
-// does not change, its states are sharper. Intermediate tiers do not sharpen, a replay needs full buffers.
+// the cursor. A job across frames, a frame's share bounded by the entries' measured cost. Strokes replay composite-fast:
+// their material rendered once into a replay cache (util_material_cache.c), a band of it a frame, the strokes read it.
+// Not an undo step: the history does not change, its states are sharper. Intermediate tiers do not sharpen, a replay
+// needs full buffers.
 //
 // A stroke on the layer, an undo or redo moving its cursor, an entry added or dropped stops the job: it starts again from
 // the same stroke later. A replay that fails ends the note (the stroke keeps the tier it painted with).
@@ -163,6 +165,7 @@ static bool paint_refine_start(paint_refine_t *r) {
 
 static void paint_refine_stop(bool done) {
 	paint_refine_job.active = false;
+	material_cache_replay_release(); // Its replay caches
 	paint_refine_stats[done ? 0 : 1]++;
 }
 
@@ -196,8 +199,11 @@ static void paint_refine_step() {
 	}
 	f64 cost = 0.0;
 	while (j->pos < j->count && (cost == 0.0 || cost < PAINT_REFINE_BUDGET_MS)) {
-		tl_entry_t *e  = &tl->entries[j->pos];
-		bool        ok = e->kind == TL_RASTER ? timeline_tiles_restore(e->payload, &j->t) : timeline_entry_replay(tl, j->pos, &j->t); // A keyframe: its state
+		tl_entry_t *e = &tl->entries[j->pos];
+		if (e->kind == TL_STROKE && paint_replay_prepare(tl, j->pos, &j->t) == 0) { // Its material's replay cache a step on a frame
+			return;
+		}
+		bool ok = e->kind == TL_RASTER ? timeline_tiles_restore(e->payload, &j->t) : timeline_entry_replay(tl, j->pos, &j->t, true); // A keyframe: its state
 		if (!ok) {
 			paint_refine_stop(false);
 			i32 i = paint_refine_find(j->tl);
