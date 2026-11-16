@@ -2409,3 +2409,9 @@ f32   script_diff_max();
 f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
+
+// ---- timeline_io.c ----
+u8_array_t *timeline_io_encode();
+bool        timeline_io_decode(u8_array_t *a);
+hash128_t  *timeline_roots(i32 *n);
+i32         timeline_io_test_state(slot_layer_t *l, i32 pos);

@@ -1104,3 +1104,6 @@ X1(timeline_test_states, "i(p:slot_layer_t l)", i, p)
 X2(timeline_test_materialize, "b(p:slot_layer_t l,i pos)", b, p, i)
 X0(timeline_finalize, "v()", v)
 X0(history_tiles_reset, "v()", v)
+
+// timeline_io.c
+X2(timeline_io_test_state, "i(p:slot_layer_t l,i pos)", i, p, i)

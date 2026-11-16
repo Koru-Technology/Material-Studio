@@ -265,6 +265,7 @@
 #include "timeline.c"
 #include "timeline_ops.c"
 #include "timeline_tiles.c"
+#include "timeline_io.c"
 #include "keymap.c"
 #include "logic_node.c"
 #include "minic_impl.c"
