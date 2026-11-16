@@ -4,9 +4,9 @@
 //
 // Each paint layer and mask goes to the new size in turn. The state it leaves is kept (its tile map, with what it went to,
 // layers_resolution_kept). Back to a size it left, when it still holds what it went to from there, the kept state comes
-// back exactly (2K to 4K to 2K, and undo and redo of the change). Otherwise it is scaled: down box-filtered (halved while
-// at least twice as large: a texel between four is their average), up bilinear until timelines materialize at any
-// resolution.
+// back exactly (2K to 4K to 2K, and undo and redo of the change). Otherwise up, the timeline materializes at the new size
+// (strokes replay there, what does not replay is resampled); down, the layer is box-filtered (halved while at least
+// twice as large: a texel between four is their average).
 // The timeline of the layer gets the new state as a checkpoint at its cursor. Fill layers render again at the new size,
 // mask stacks evaluate again.
 
@@ -123,10 +123,21 @@ static void layers_resolution_layer(slot_layer_t *l, i32 w0, i32 h0, i32 w1, i32
 		}
 		exact = timeline_tiles_restore(k->at, &t);
 	}
+	timeline_t *tl       = timeline_of(l);
+	bool        replayed = false;
 	if (exact) {
 		layers_resolution_restores++;
 	}
-	else {
+	else if (tl != NULL && (w1 > w0 || h1 > h0)) { // Up: strokes replay at the new size, the rest is resampled
+		paint_target_t t = {.w = w1, .h = h1, .res_w = w1, .res_h = h1, .channels = mask ? 1 : 3};
+		t.uv_rect[2]     = 1.0;
+		t.uv_rect[3]     = 1.0;
+		for (i32 c = 0; c < 3; ++c) {
+			t.out[c] = now[c];
+		}
+		replayed = timeline_materialize(tl, tl->cursor, &t);
+	}
+	if (!exact && !replayed) {
 		for (i32 c = 0; c < 3; ++c) {
 			if (old[c] != NULL) {
 				layers_resolution_scale(now[c], old[c]);
@@ -153,7 +164,6 @@ static void layers_resolution_layer(slot_layer_t *l, i32 w0, i32 h0, i32 w1, i32
 	hash128_t after = layers_resolution_capture(l);
 	hstore_ref(after); // The state left is kept, and what it went to
 	layers_resolution_keep(l->uid, w0, h0, before, w1, h1, after);
-	timeline_t *tl = timeline_of(l);
 	if (tl != NULL) { // Its state at the cursor, at the new size (one size a position until checkpoints are sized)
 		timeline_checkpoint_set(tl, tl->cursor, after, true);
 	}
