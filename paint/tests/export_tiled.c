@@ -19,6 +19,7 @@ slot_layer_t    *layer_mask;
 slot_layer_t    *layer_paint;
 slot_layer_t    *layer_fill;
 slot_material_t *mat_noise;
+slot_layer_t    *layer_path;
 char            *presets = "base_color,generic,minecraft_mer,specular,unigine,unity,unreal,xplane";
 any_array_t     *preset_list;
 char            *hashes_before;
@@ -146,10 +147,6 @@ void compare(char *name, float tol, char *what) {
 	compare_size(name, tol, what, 2048);
 }
 
-void cfg_shadow_off() {
-	config_t *cfg        = script_get_config();
-}
-
 char *layer_hashes() {
 	char *s = "";
 	for (int i = 0; i < script_layer_count(); ++i) {
@@ -266,6 +263,11 @@ void next() {
 		}
 		check(files != NULL && files->length == 5 && bad == 0, string("streamed exr files byte equal to whole ones (%d differ)", bad));
 		export_texture_test_options("generic", 0, 0, 8, 0);
+		// Above the working resolution paint layers come from their timelines, materialized for each tile
+		export_tiled_set_resolution(4096, 4096);
+		export_texture_run(fresh_dir("timeline_t"), 0);
+		export_tiled_set_resolution(0, 0);
+		check(export_tiled_stat(9) > 0 && export_tiled_stat(10) == 0, string("4096: %d layer tiles from timelines, %d fell back", export_tiled_stat(9), export_tiled_stat(10)));
 	}
 	else if (step == 3) { // Bake material
 		script_material_set(mat_noise);
@@ -310,11 +312,11 @@ void next() {
 		compare("udim_visible", 1.0, "udim atlas whole");
 		script_layer_set_object(layer_fill, NULL);
 	}
-	else if (step == 8) { // Paint layers come from their timelines, restored for each tile
+	else if (step == 8) { // At the working resolution paint layers are the live ones
 		export_texture_test_options("generic", 0, 0, 8, 0);
-		export_both("timeline", 0, 2048);
-		compare("timeline", 1.0, "layers from their timelines");
-		check(export_tiled_stat(9) > 0 && export_tiled_stat(10) == 0, string("%d layer tiles from timelines, %d fell back", export_tiled_stat(9), export_tiled_stat(10)));
+		export_both("live", 0, 2048);
+		compare("live", 1.0, "layers at the working resolution");
+		check(export_tiled_stat(9) == 0, string("no layer tile from a timeline at the working resolution (%d)", export_tiled_stat(9)));
 	}
 	else if (step == 9) { // Padding: live layers untouched, islands as one whole tile pads them
 		export_texture_test_options("generic", 0, 1, 8, 0);
@@ -354,9 +356,47 @@ void next() {
 		check(n > 0 && has_paint && has_fill, string("4096 with udim tiles: %d layers not upscaled, the fill layer too (udim fills from the live layer)", n));
 		check(export_tiled_not_upscaled(0, 0) == 0, "working resolution: none");
 	}
+	else if (step == 12) { // Group merge: the merged layer exports as the group did
+		script_project_new();
+	}
+	else if (step == 13) {
+		export_texture_test_options("generic", 0, 0, 8, 0);
+		slot_layer_t *blue  = script_layer_new_color(0xff0000ff, 1.0, 0.5, 0.0);
+		slot_layer_t *group = script_layer_new_group(blue);
+		slot_layer_t *red   = script_layer_new_color(0xffff0000, 1.0, 0.5, 0.0);
+		script_layer_set_group(red, group);
+		red->mask_opacity = 0.5;
+		script_layer_update(red);
+		export_texture_run(fresh_dir("merge_l"), 0);
+		check(script_layer_merge_group(group) != NULL, "group merged");
+		export_texture_run(fresh_dir("merge_t"), 0);
+		compare("merge", 1.0, "after a group merge the export is the live layers");
+	}
+	else if (step == 14) { // Path edit: the export is the live path layer (to paint keeps the live pixels)
+		script_project_new();
+	}
+	else if (step == 15) {
+		slot_material_t *m   = script_material_create("et_path_blue");
+		ui_node_t       *rgb = script_material_create_node_at("RGB", -300.0, 0.0);
+		script_material_set_color(rgb, 0, 0, 0.0, 0.0, 1.0, 1.0);
+		script_material_connect(rgb, 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
+		script_material_update();
+		script_get_context()->brush_radius = 0.5;
+		layer_path = script_layer_new_path(0);
+		script_layer_add_path_point(layer_path, 0.45, 0.5);
+		export_texture_run(fresh_dir("path_dot"), 0); // The layer's first state exported
+		script_layer_add_path_point(layer_path, 0.55, 0.5);
+	}
+	else if (step == 16) {
+		export_texture_run(fresh_dir("path_t"), 0);
+		check(script_layer_to_paint(layer_path), "path converted to paint");
+		export_texture_run(fresh_dir("path_l"), 0);
+		compare("path", 1.0, "after a path edit the export is the live layer");
+		int d = script_diff_images(string("%s/path_dot/untitled_base.png", root), string("%s/path_t/untitled_base.png", root), 1.0);
+		check(d > 100, string("and shows the edit (%d values changed)", d));
+	}
 	else {
 		export_tiled_test_tile(0);
-		cfg_shadow_off();
 		printf("[export_tiled] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "EXPORT_TILED PASS" : "EXPORT_TILED FAIL");
 		script_quit();
@@ -368,7 +408,6 @@ void next() {
 
 void main() {
 	root = script_tmp_dir("materialstudio_export_tiled"); // Per run: suites of several worktrees run at once
-	config_t *cfg        = script_get_config();
 	script_project_new();
 	iron_create_directory(root);
 	script_notify_on_next_frame(next);
