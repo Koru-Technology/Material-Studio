@@ -14,14 +14,10 @@ void project_open_on_file_picked(char *path) {
 		return;
 	}
 
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 
 	import_arm_run_project(path);
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 void project_open() {
@@ -264,10 +260,7 @@ void project_new(bool reset_layers) {
 		md                  = mesh_data_create(scene_raw->mesh_datas->buffer[0]);
 	}
 
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 
 	shader_data_t *m = data_get_shader("Scene", "Material");
 	if (g_context->paint_object == NULL) {
@@ -345,8 +338,7 @@ void project_new(bool reset_layers) {
 		sys_notify_on_next_frame(&project_new_reset_layers, NULL);
 	}
 
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 
 	base_update_tools();
 	project_set_default_envmap();

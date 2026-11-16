@@ -55,22 +55,16 @@ static void import_arm_preview_next(void *_) {
 	slot_material_t *m = import_arm_preview_queue->buffer[0];
 	array_remove(import_arm_preview_queue, m);
 	if (array_index_of(g_project->_->materials, m) >= 0 && !m->preview_ready) { // Not deleted, not rendered meanwhile
-		slot_material_t *selected = g_context->material;
-		gpu_texture_t   *current  = _draw_current;
-		bool             in_use   = gpu_in_use;
-		if (in_use) {
-			draw_end();
-		}
-		g_context->material = m;
+		slot_material_t *selected   = g_context->material;
+		draw_saved_t     saved_draw = draw_suspend();
+		g_context->material         = m;
 		make_material_bake_node_previews();
 		util_render_make_material_preview();
 		g_context->material = selected;
 		if (selected != m) {
 			make_material_bake_node_previews(); // The selected material's node previews again (the bake replaced them)
 		}
-		if (in_use) {
-			draw_begin(current, false, 0);
-		}
+		draw_resume(saved_draw);
 		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 	if (import_arm_preview_queue->length > 0) {

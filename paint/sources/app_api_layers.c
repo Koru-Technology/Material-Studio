@@ -217,7 +217,7 @@ bool app_layer_set_name(int32_t id, const char *name) {
 	l->name    = string_copy(slot_layer_unique_name(l, (char *)name));
 	history_layer_name(l, prev);
 	if (l->path_text && slot_layer_is_path(l)) { // The name is the painted text
-		script_gpu_t gpu = script_gpu_begin();
+		draw_saved_t gpu = draw_suspend();
 		tab_layers_repaint_text_layer(l);
 		script_layer_op_end(gpu);
 	}
@@ -298,7 +298,7 @@ bool app_layer_new(int32_t kind) {
 		break;
 	}
 	case APP_LAYER_NEW_TEXT: {
-		script_gpu_t gpu = script_gpu_begin();
+		draw_saved_t gpu = draw_suspend();
 		base_init_undo_layers();
 		ok = layers_new_text_layer() != NULL;
 		if (ok) {
@@ -456,7 +456,7 @@ static bool app_layer_can_reparent(slot_layer_t *l, slot_layer_t *parent) {
 }
 
 static bool app_layer_reparent(slot_layer_t *l, slot_layer_t *parent) {
-	script_gpu_t gpu = script_gpu_begin();
+	draw_saved_t gpu = draw_suspend();
 	base_init_undo_layers();
 	slot_layer_t_array_t *pointers   = tab_layers_init_layer_map();
 	slot_layer_t         *old_parent = l->parent;
@@ -553,7 +553,7 @@ bool app_layer_set_blending(int32_t id, int32_t blending) {
 	if (l == NULL || blending < 0 || blending >= app_layer_blending_count() || (i32)l->blending == blending) {
 		return false;
 	}
-	script_gpu_t gpu = script_gpu_begin();
+	draw_saved_t gpu = draw_suspend();
 	context_set_layer(l);
 	history_layer_blending();
 	l->blending = blending;
@@ -568,7 +568,7 @@ bool app_layer_set_channel(int32_t id, int32_t channel, bool on) {
 		return false;
 	}
 	*f = on;
-	script_gpu_t gpu = script_gpu_begin();
+	draw_saved_t gpu = draw_suspend();
 	script_layer_op_end(gpu);
 	return app_layer_done(true);
 }
@@ -579,7 +579,7 @@ bool app_layer_set_uv_map(int32_t id, int32_t uv_map) {
 		return false;
 	}
 	l->uv_map = uv_map;
-	script_gpu_t gpu = script_gpu_begin();
+	draw_saved_t gpu = draw_suspend();
 	make_material_parse_paint_material(true);
 	script_layer_op_end(gpu);
 	return app_layer_done(true);
@@ -624,7 +624,7 @@ bool app_layer_set_fill_material(int32_t id, int32_t material_index) {
 	if (m == l->fill_material) {
 		return false;
 	}
-	script_gpu_t gpu = script_gpu_begin();
+	draw_saved_t gpu = draw_suspend();
 	base_init_undo_layers();
 	slot_layer_set_fill_material(l, m);
 	script_layer_op_end(gpu);
@@ -635,7 +635,7 @@ static void app_layer_height_blend_changed(slot_layer_t *m) {
 	if (m->height_blend) {
 		make_material_height_used = true; // Track the height of the layers below
 	}
-	script_gpu_t gpu = script_gpu_begin();
+	draw_saved_t gpu = draw_suspend();
 	script_layer_op_end(gpu);
 	if (ui_view2d_show) {
 		ui_view2d_hwnd->redraws = 2;

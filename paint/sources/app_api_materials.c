@@ -255,9 +255,9 @@ int32_t app_material_duplicate(int32_t id) {
 		return -1;
 	}
 	_tab_materials_draw_slots = array_index_of(g_project->_->materials, m);
-	script_gpu_t gpu          = script_gpu_begin();
+	draw_saved_t gpu          = draw_suspend();
 	tab_materials_draw_slots_duplicate(NULL);
-	script_gpu_end(gpu);
+	draw_resume(gpu);
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return g_context->material != NULL ? g_context->material->id : -1;
 }

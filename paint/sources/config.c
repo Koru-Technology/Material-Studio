@@ -711,15 +711,11 @@ void config_import_from(config_t *from) {
 
 void config_apply() {
 	config_save();
-	ui_tooltips            = g_config->tooltips;
-	g_context->ddirty      = 2;
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	ui_tooltips             = g_config->tooltips;
+	g_context->ddirty       = 2;
+	draw_saved_t saved_draw = draw_suspend();
 	render_path_base_apply_config();
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 i32 config_get_super_sample_quality(f32 f) {

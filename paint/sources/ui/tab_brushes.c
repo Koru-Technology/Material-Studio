@@ -34,18 +34,12 @@ void tab_brushes_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture
 		if (*dst == NULL) {
 			*dst = gpu_create_render_target(src->width, src->height, GPU_TEXTURE_FORMAT_RGBA32);
 		}
-		gpu_texture_t *current = _draw_current;
-		bool           in_use  = gpu_in_use;
-		if (in_use) {
-			draw_end();
-		}
+		draw_saved_t saved_draw = draw_suspend();
 		draw_begin(*dst, true, 0x00000000);
 		draw_set_color(0xffffffff);
 		draw_image(src, 0, 0);
 		draw_end();
-		if (in_use) {
-			draw_begin(current, false, 0);
-		}
+		draw_resume(saved_draw);
 	}
 
 	g_context->brush = _brush;

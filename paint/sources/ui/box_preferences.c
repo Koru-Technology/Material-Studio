@@ -448,8 +448,7 @@ void box_preferences_usage_tab() {
 		g_config->undo_steps = 1;
 	}
 	if (ui_item_changed()) {
-		gpu_texture_t *current = _draw_current;
-		draw_end();
+		draw_saved_t saved_draw = draw_suspend();
 
 		if (history_undo_layers != NULL) {
 			while (history_undo_layers->length < g_config->undo_steps) {
@@ -464,7 +463,7 @@ void box_preferences_usage_tab() {
 		}
 
 		history_reset();
-		draw_begin(current, false, 0);
+		draw_resume(saved_draw);
 	}
 
 	ui_slider_int(&g_config->dilate_radius, tr("Dilate Radius"), 0.0, 16.0, true, true, UI_ALIGN_RIGHT, true);

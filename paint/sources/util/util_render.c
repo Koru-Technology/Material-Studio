@@ -336,10 +336,7 @@ void util_render_make_decal_preview() {
 }
 
 void util_render_make_text_preview() {
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 
 	char        *text      = g_context->text_tool_text;
 	draw_font_t *font      = g_context->font->font;
@@ -363,15 +360,11 @@ void util_render_make_text_preview() {
 	draw_string(text, tex_w / 2.0 - text_w / 2.0, tex_w / 2.0 - text_h / 2.0);
 	draw_end();
 
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 void util_render_make_font_preview() {
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 
 	char        *text      = "Abg";
 	draw_font_t *font      = g_context->font->font;
@@ -389,8 +382,7 @@ void util_render_make_font_preview() {
 	draw_end();
 	g_context->font->preview_ready = true;
 
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 void util_render_make_brush_preview_parse_paint_material(void *_) {
@@ -436,11 +428,7 @@ static void util_render_brush_preview_clear_coverage() {
 // Brush strokes painted on the plane facing the camera, into the live layer, with a default material and no symmetry.
 // The brush preview and the drawing pad of the Brush Creator paint this way. Not while a window draws.
 void util_render_brush_scene_begin(util_render_brush_scene_t *sc) {
-	sc->current = _draw_current;
-	sc->in_use  = gpu_in_use;
-	if (sc->in_use) {
-		draw_end();
-	}
+	sc->saved_draw = draw_suspend();
 
 	g_context->material_preview = true;
 
@@ -613,9 +601,7 @@ void util_render_brush_scene_end(util_render_brush_scene_t *sc) {
 	camera_object_build_proj(scene_camera, -1.0);
 	camera_object_build_mat(scene_camera);
 
-	if (sc->in_use) {
-		draw_begin(sc->current, false, 0);
-	}
+	draw_resume(sc->saved_draw);
 }
 
 void util_render_make_brush_preview() {
@@ -802,11 +788,8 @@ void util_render_set_material_preview(slot_material_t *m, gpu_texture_t *src) {
 	if (m->image == NULL || m->image_icon == NULL || src == NULL) {
 		return;
 	}
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use) {
-		draw_end();
-	}
+	draw_saved_t saved_draw = draw_suspend();
+
 	render_target_t *texpreview      = any_map_get(render_path_render_targets, "texpreview");
 	render_target_t *texpreview_icon = any_map_get(render_path_render_targets, "texpreview_icon");
 	gpu_texture_t   *_preview        = texpreview->_image;
@@ -828,17 +811,12 @@ void util_render_set_material_preview(slot_material_t *m, gpu_texture_t *src) {
 	gpu_execute_and_wait();
 	texpreview->_image      = _preview;
 	texpreview_icon->_image = _icon;
-	if (in_use) {
-		draw_begin(current, false, 0);
-	}
+	draw_resume(saved_draw);
 	m->preview_ready = true;
 }
 
 void util_render_resize_asset_icons(void *_) {
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
@@ -849,8 +827,7 @@ void util_render_resize_asset_icons(void *_) {
 		b->image_icon   = util_render_resize_icon(b->image, b->image_icon, GPU_TEXTURE_FORMAT_RGBA32, "Scene/supersample_resolve/supersample_resolve");
 	}
 
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 void util_render_create_screen_aligned_full_data() {

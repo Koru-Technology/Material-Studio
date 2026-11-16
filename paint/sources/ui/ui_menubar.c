@@ -496,10 +496,9 @@ void ui_menubar_draw_category_items() {
 
 		ui_check(&g_context->draw_wireframe, string_tmp(" %s", tr("Wireframe")), "");
 		if (ui_item_changed()) {
-			gpu_texture_t *current = _draw_current;
-			draw_end();
+			draw_saved_t saved_draw = draw_suspend();
 			util_uv_cache_uv_map();
-			draw_begin(current, false, 0);
+			draw_resume(saved_draw);
 			make_material_parse_mesh_material();
 		}
 

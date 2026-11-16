@@ -400,17 +400,12 @@ static gpu_texture_t *mm_buffers_ensure(mm_buffers_recipe_t *r, i32 level) {
 }
 
 // Saves the 2D drawing in progress, the passes need their own render passes
-static bool           mm_buffers_saved_in_use = false;
-static gpu_texture_t *mm_buffers_saved_target = NULL;
-static u32            mm_buffers_saved_color  = 0;
+static draw_saved_t mm_buffers_saved_draw  = {0};
+static u32          mm_buffers_saved_color = 0;
 
 static void mm_buffers_gpu_begin(void) {
-	mm_buffers_saved_in_use = gpu_in_use;
-	if (mm_buffers_saved_in_use) {
-		mm_buffers_saved_target = _draw_current;
-		mm_buffers_saved_color  = draw_get_color();
-		draw_end();
-	}
+	mm_buffers_saved_color = draw_get_color();
+	mm_buffers_saved_draw  = draw_suspend();
 	if (const_data_screen_aligned_vb == NULL) {
 		const_data_create_screen_aligned_data();
 	}
@@ -427,8 +422,8 @@ static void mm_buffers_gpu_end(void) {
 	if (mm_buffers_queued() == 0) { // Kept while steps render, they need them again next frame
 		mm_buffers_scratch_free();
 	}
-	if (mm_buffers_saved_in_use) {
-		draw_begin(mm_buffers_saved_target, false, 0);
+	if (mm_buffers_saved_draw.active) {
+		draw_resume(mm_buffers_saved_draw);
 		draw_set_color(mm_buffers_saved_color);
 	}
 }

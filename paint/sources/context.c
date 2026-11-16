@@ -285,17 +285,13 @@ void context_set_layer(slot_layer_t *l) {
 	g_context->mask_effect    = -1; // Effect rows belong to the previous mask
 	ui_header_handle->redraws = 2;
 
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 
 	layers_set_object_mask();
 	make_material_parse_mesh_material();
 	make_material_parse_paint_material(true);
 
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	ui_view2d_hwnd->redraws = 2;
