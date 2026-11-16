@@ -101,6 +101,8 @@ void layers_init() {
 	                 layers_default_rough, 0.0);
 }
 
+// Timelines keep the states of the old size: restores across the change fail and log, they come with the
+// non-destructive resolution change (export track, phase 6)
 void layers_resize() {
 	// Fewer whole layer copies at 8K and above to save memory, the undo steps preference is kept
 	i32 ring = g_config->undo_steps;

@@ -1934,6 +1934,7 @@ struct tl_entry;
 struct paint_target;
 bool        timeline_active(); // Timelines record: timeline_shadow or history_v2
 bool        timeline_layer_paints(slot_layer_t *l);
+void        timeline_allow_fill(bool on);
 void        timeline_truncate(struct timeline *tl);
 void        timeline_truncate_all();
 void        timeline_checkpoint_set(struct timeline *tl, i32 pos, hash128_t tilemap, bool pinned);
