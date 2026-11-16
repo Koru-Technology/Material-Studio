@@ -3,17 +3,18 @@
 // Project files, version 31 with project_v31 on: a container of chunks (history_store.c), read lazily, saved by
 // appending. Little endian:
 //   "MSPJ" u32 31, 8 bytes 0
-//   chunks: "CHNK" ... (HSTORE_CHUNK_HEADER), live layer textures (HSTORE_RASTER), packed assets (HSTORE_ASSET), the
-//           referenced history blobs
-//   head:   the project as armpack (util_encode_project), layers with the hashes of their rasters instead of pixels,
-//           packed assets with the hash of their bytes
+//   chunks: "CHNK" ... (HSTORE_CHUNK_HEADER): the referenced blobs of the store, among them the tile maps of the live
+//           layers and their tiles (timeline_tiles.c); packed assets (HSTORE_ASSET); whole textures (HSTORE_RASTER) of
+//           layers whose size tiles do not divide
+//   head:   the project as armpack (util_encode_project), layers with the hash of their tile map (or rasters) instead
+//           of pixels, packed assets with the hash of their bytes
 //   index:  the chunks the head and history use, sorted by hash: u64 lo, u64 hi, u64 offset, u32 raw_len,
 //           u32 comp_len, u8 kind, u8 codec, 6 bytes 0
 //   footer: "MSPF" u32 31, u64 head_off, head_len, index_off, index_len, prev_footer, u32 crc32(head, index), u32 0,
 //           u32 0, u32 crc32(the 60 bytes before)
 // A save appends the chunks the file lacks, then a head, an index and a footer: until that footer lands the previous
 // one is the file's state (a torn tail is skipped back over). Opening reads the footer, the head, the index and the live
-// rasters; history blobs are read when used. Save As, compaction (40% dead bytes) and files outside the app (iCloud and
+// tiles; history blobs are read when used. Save As, compaction (40% dead bytes) and files outside the app (iCloud and
 // other providers) are written whole, next to the file and moved over it.
 
 #include <fcntl.h>
@@ -50,6 +51,8 @@ typedef struct pc_state {
 	hstore_index_entry_t *index;
 	i32                   count;
 	i64                   live; // Bytes the last footer uses
+	hash128_t            *maps; // Tile maps of the live layers in the head, referenced while they are its state
+	i32                   maps_count;
 } pc_state_t;
 
 static pc_state_t pc         = {0};
@@ -66,6 +69,9 @@ typedef struct pc_writer {
 	i32                         old_count;
 	u64                         live;
 	buffer_t_array_t           *assets; // Packed asset bytes swapped for their hash while the head is encoded
+	hash128_t                  *maps;   // Referenced by the save
+	i32                         maps_count;
+	i32                         maps_cap;
 } pc_writer_t;
 
 static pc_writer_t *pc_w = NULL;
@@ -108,10 +114,27 @@ static bool pc_read(pc_src_t *s, u64 off, u64 len, void *dst) {
 	return true;
 }
 
+static void pc_maps_push(hash128_t **maps, i32 *count, i32 *cap, hash128_t h) {
+	if (*count == *cap) {
+		*cap  = *cap == 0 ? 16 : *cap * 2;
+		*maps = realloc(*maps, sizeof(hash128_t) * *cap);
+	}
+	(*maps)[(*count)++] = h;
+}
+
 static void pc_state_free(pc_state_t *st) {
 	free(st->path);
 	free(st->index);
+	free(st->maps);
 	*st = (pc_state_t){0};
+}
+
+// Drops the references the state holds on its maps (not after hstore_reset, they are gone)
+static void pc_state_unref(pc_state_t *st) {
+	for (i32 i = 0; i < st->maps_count; ++i) {
+		hstore_unref(st->maps[i]);
+	}
+	st->maps_count = 0;
 }
 
 // ---- Index ----
@@ -280,6 +303,26 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 		for (i32 i = 0; i < project->layer_datas->length; ++i) {
 			layer_data_t  *ld = project->layer_datas->buffer[i];
 			buffer_t     **dst[3] = {(buffer_t **)&ld->texpaint, (buffer_t **)&ld->texpaint_nor, (buffer_t **)&ld->texpaint_pack};
+			u8_array_t    *tm     = (u8_array_t *)ld->tilemap;
+			if (tm != NULL && tm->length >= 16) { // Restored by the load from the store, empty buffers tell layers from groups
+				hstore_chunk_t chunk;
+				buffer_t      *b        = pc_payload(s, index, count, pc_hash_at(tm, 0), &chunk);
+				u8            *map      = b != NULL ? hstore_chunk_decode(&chunk, b->buffer, true) : NULL;
+				i32            channels = map != NULL && chunk.raw_len >= 2 ? map[1] : 3; // Tile map header: tag, channels
+				for (i32 c = 0; c < 3; ++c) {
+					*dst[c] = c == 0 || channels == 3 ? buffer_create(0) : NULL;
+				}
+				free(map);
+				if (b != NULL) {
+					array_free(b);
+					free(b);
+				}
+				if (st != NULL) {
+					i32 cap = st->maps_count;
+					pc_maps_push(&st->maps, &st->maps_count, &cap, pc_hash_at(tm, 0));
+				}
+				continue;
+			}
 			for (i32 c = 0; c < 3; ++c) {
 				hash128_t h = pc_hash_at(ld->rasters, c);
 				if (!hash128_is_none(h)) {
@@ -313,7 +356,9 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 	}
 
 	if (st != NULL) {
-		pc_state_free(st);
+		free(st->path);
+		free(st->index);
+		st->path       = NULL;
 		st->index      = index;
 		st->count      = count;
 		st->footer_off = at;
@@ -342,6 +387,7 @@ project_t *project_container_open(char *path) {
 	struct stat st;
 	fstat(fd, &st);
 	pc_src_t   s       = {.fd = fd, .size = (u64)st.st_size};
+	pc_state_free(&pc_opened);
 	project_t *project = pc_load(&s, &pc_opened);
 	close(fd);
 	if (project != NULL) {
@@ -371,6 +417,43 @@ void project_container_attach() {
 	if (pc.path != NULL) {
 		hstore_attach_project(pc.path, pc.index, pc.count);
 	}
+}
+
+// The load is done: references are rebuilt from what the project holds, the live layers' maps (project_container_roots)
+// and the timelines. The file's other blobs go at the next trim.
+void project_container_loaded() {
+	if (pc.path == NULL) {
+		return;
+	}
+	hash128_t *roots = malloc(sizeof(hash128_t) * (pc.maps_count > 0 ? pc.maps_count : 1));
+	i32        n     = project_container_roots(roots, pc.maps_count);
+	hstore_rebuild_refs(roots, n); // Each map gets the state's reference
+	free(roots);
+}
+
+// A layer of a container gets its tiles, false for the others. has_alpha: whether the texture has transparent texels.
+bool project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, bool *has_alpha) {
+	u8_array_t *tm = (u8_array_t *)ld->tilemap;
+	if (tm == NULL || tm->length < 16) {
+		return false;
+	}
+	paint_target_t t;
+	timeline_target_live(l, &t);
+	if (!timeline_tiles_restore(pc_hash_at(tm, 0), &t)) {
+		iron_log("Layer tiles could not be read, the layer starts empty");
+	}
+	if (has_alpha != NULL) {
+		*has_alpha = import_arm_texture_has_alpha(l->texpaint);
+	}
+	return true;
+}
+
+// Blobs the file's state holds (the tile maps of its live layers), roots for hstore_rebuild_refs
+i32 project_container_roots(hash128_t *out, i32 cap) {
+	for (i32 i = 0; i < pc.maps_count && i < cap; ++i) {
+		out[i] = pc.maps[i];
+	}
+	return pc.maps_count;
 }
 
 // Saved masks are one channel
@@ -448,7 +531,35 @@ static hash128_t pc_put_raster(gpu_texture_t *t, bool mask) {
 	return h;
 }
 
-// The hashes of a layer's textures, written as chunks of the save (layer_data_t.rasters), NULL for a group
+// The tile map of a layer's live state (layer_data_t.tilemap): its timeline's state at the cursor, else a capture. Its
+// tiles are written with the store's blobs. NULL for a group and where tiles do not fit (a size the grid does not
+// divide): the textures are written whole then.
+u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
+	if (l->texpaint == NULL) {
+		return NULL;
+	}
+	timeline_t *tl = timeline_active() ? timeline_of(l) : NULL;
+	hash128_t   h  = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE;
+	if (!hash128_is_none(h) && hstore_has(h)) {
+		hstore_ref(h);
+	}
+	else {
+		paint_target_t t;
+		timeline_target_live(l, &t);
+		h = timeline_tiles_capture(&t, HASH128_NONE, NULL); // Full: older saves' tiles go dead, unchanged ones dedupe
+		if (hash128_is_none(h)) {
+			return NULL;
+		}
+	}
+	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
+	u8_array_t *a = u8_array_create(16);
+	memcpy(a->buffer, &h.lo, 8);
+	memcpy(a->buffer + 8, &h.hi, 8);
+	return a;
+}
+
+// The hashes of a layer's textures, written as chunks of the save (layer_data_t.rasters), NULL for a group. Only for
+// sizes the tile grid does not divide.
 u8_array_t *project_container_layer_rasters(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
@@ -558,10 +669,13 @@ bool project_container_save(char *path) {
 		iron_file_stream_write(s, header, PC_HEADER);
 	}
 
+	if (timeline_active()) {
+		timeline_finalize(); // Pending entry states captured
+	}
 	pc_writer_t w = {.s = s, .old = append ? pc.index : NULL, .old_count = append ? pc.count : 0};
 	pc_w          = &w;
 	buffer_t *head = export_arm_encode_project(path); // Writes the rasters and assets
-	hstore_each(pc_put_blob, NULL);
+	hstore_each(w.maps, w.maps_count, pc_put_blob, NULL);
 	pc_w = NULL;
 
 	qsort(w.index, w.count, sizeof(hstore_index_entry_t), pc_compare_entry);
@@ -610,6 +724,10 @@ bool project_container_save(char *path) {
 		}
 	}
 	if (!ok) {
+		for (i32 i = 0; i < w.maps_count; ++i) {
+			hstore_unref(w.maps[i]);
+		}
+		free(w.maps);
 		free(w.index);
 		pc.size = -1; // The next save writes the file whole
 		return false;
@@ -618,8 +736,11 @@ bool project_container_save(char *path) {
 	struct stat st;
 	stat(path, &st);
 	char *p = string_copy(path);
+	pc_state_unref(&pc); // The new state's maps are referenced by the save
 	pc_state_free(&pc);
 	pc.path       = p;
+	pc.maps       = w.maps;
+	pc.maps_count = w.maps_count;
 	pc.size       = (i64)st.st_size;
 	pc.mtime      = pc_mtime_of(&st);
 	pc.footer_off = footer_off;
@@ -634,7 +755,7 @@ bool project_container_save(char *path) {
 	return true;
 }
 
-// A new project: saves do not append to the file of the one before
+// A new project (after hstore_reset): saves do not append to the file of the one before
 void project_container_forget() {
 	pc_state_free(&pc);
 }
@@ -689,6 +810,15 @@ i32 project_container_test_reads() {
 
 i32 project_container_test_appended() {
 	return project_container_last_save_appended;
+}
+
+// Entries of the last saved or opened file's index of a kind
+i32 project_container_test_index_count(i32 kind) {
+	i32 n = 0;
+	for (i32 i = 0; i < pc.count; ++i) {
+		n += pc.index[i].kind == kind;
+	}
+	return n;
 }
 
 

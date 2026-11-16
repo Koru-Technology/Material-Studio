@@ -1,8 +1,8 @@
 #include "global.h"
 
 // Version 31 project container (io/project_container.c, project_v31 on): round trip, opening reads only the live
-// layers, saves append, a torn append opens the save before, compaction rewrites the file, history blobs are read
-// from the file when used.
+// layers' tiles, saves append (less than 1 MB after a stroke), a torn append opens the save before, compaction rewrites
+// the file, history blobs are read from the file when used.
 
 int   fails  = 0;
 int   checks = 0;
@@ -55,15 +55,11 @@ int same_pixels() {
 	return 1;
 }
 
-// Textures of the live layers: the chunks an open reads
-int live_textures() {
-	int n = 0;
-	for (int i = 0; i < count * 3; ++i) {
-		if (hashes[i] != 0) {
-			n = n + 1;
-		}
-	}
-	return n;
+// Opens the file, the test's history blobs owned again (a history load would ref them as roots)
+void open_file() {
+	script_project_open(file);
+	hstore_test_ref(blob_a);
+	hstore_test_ref(blob_b);
 }
 
 void save() {
@@ -99,7 +95,7 @@ void next() {
 				unequal = unequal + project_test_mask_unequal(i);
 			}
 		}
-		check(unequal == 0, string("mask channels are equal, R8 keeps them (%d texels differ)", unequal));
+		check(unequal == 0, string("mask channels are equal, the R8 fallback keeps them (%d texels differ)", unequal));
 		save();
 	}
 	else if (step == 3) {
@@ -108,27 +104,27 @@ void next() {
 		script_project_new();
 	}
 	else if (step == 4) {
-		int reads = project_container_test_reads();
 		float disk = hstore_test_stat(8);
-		script_project_open(file);
-		int read = project_container_test_reads() - reads;
-		check(read == live_textures(), string("opening reads the live layers only (%d chunks, %d textures)", read, live_textures()));
-		check(hstore_test_stat(8) == disk, "history blobs are not read on open");
+		open_file();
+		int read  = (int)(hstore_test_stat(8) - disk);
+		int tiles = project_container_test_index_count(1) + project_container_test_index_count(2);
+		check(project_container_test_index_count(9) == 0, "live layers saved as tile maps");
+		check(read == tiles, string("opening reads the live tiles and maps only (%d chunks of %d)", read, tiles));
+		disk = hstore_test_stat(8);
 		check(same_pixels(), "round trip keeps the pixels");
 		check(hstore_test_has(blob_a) && hstore_test_has(blob_b), "history blobs are indexed");
 		check(hstore_test_get(blob_a, 900, 70000, 0) == 1 && hstore_test_get(blob_b, 901, 5000, 1) == 1, "history blobs read from the file");
 		check(hstore_test_stat(8) == disk + 2.0, "when used");
-		hstore_test_ref(blob_a); // Owned again, saved with the next saves
-		hstore_test_ref(blob_b);
 	}
 	else if (step == 5) {
-		int size = project_test_file_size(file);
+		saves = project_test_file_size(file);
 		stroke(0.3, 0.3, 0.7, 0.35);
 		save();
-		saves = size;
 	}
 	else if (step == 6) {
 		check(project_container_test_appended() == 1, "a save of the opened file appends");
+		int grew = project_test_file_size(file) - saves;
+		check(grew < 1024 * 1024, string("a save after a stroke appends less than 1 MB (%d KB)", grew / 1024));
 		snapshot(); // State B
 		stroke(0.3, 0.6, 0.7, 0.65);
 		save();
@@ -139,13 +135,11 @@ void next() {
 		script_project_new();
 	}
 	else if (step == 8) {
-		script_project_open(file);
+		open_file();
 	}
 	else if (step == 9) {
 		check(same_pixels(), "a torn save opens the save before");
 		check(hstore_test_get(blob_a, 900, 70000, 0) == 1, "with its history blobs");
-		hstore_test_ref(blob_a); // Unreferenced blobs are not saved: the history load would ref them
-		hstore_test_ref(blob_b);
 		stroke(0.45, 0.2, 0.5, 0.8);
 		save();
 	}
@@ -155,12 +149,10 @@ void next() {
 		script_project_new();
 	}
 	else if (step == 11) {
-		script_project_open(file);
+		open_file();
 	}
 	else if (step == 12) {
 		check(same_pixels(), "a save after a torn one opens");
-		hstore_test_ref(blob_a);
-		hstore_test_ref(blob_b);
 		saves = 0;
 	}
 	else if (step == 13) { // Saves until one compacts
@@ -179,7 +171,7 @@ void next() {
 		script_project_new();
 	}
 	else if (step == 14) {
-		script_project_open(file);
+		open_file();
 	}
 	else if (step == 15) {
 		check(same_pixels(), "a compacted file opens");

@@ -241,7 +241,8 @@ buffer_t *export_arm_encode_project(char *path) {
 	export_arm_progress(0.1);
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		export_arm_progress(0.1 + 0.6 * i / (f32)g_project->_->layers->length);
-		slot_layer_t *l = g_project->_->layers->buffer[i];
+		slot_layer_t *l       = g_project->_->layers->buffer[i];
+		u8_array_t   *tilemap = container ? project_container_layer_tilemap(l) : NULL; // Whole textures where tiles do not fit
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
 		                              .res                = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
@@ -291,7 +292,8 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .timeline           = l->timeline,
 		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
 		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
-		                              .rasters            = container ? project_container_layer_rasters(l) : NULL});
+		                              .rasters            = container && tilemap == NULL ? project_container_layer_rasters(l) : NULL,
+		                              .tilemap            = tilemap});
 		any_array_push(ld, d);
 	}
 
@@ -407,6 +409,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		export_arm_free_buffer(d->texpaint_pack);
 		export_arm_free_buffer(d->texpaint_sculpt);
 		export_arm_free_buffer(d->rasters);
+		export_arm_free_buffer(d->tilemap);
 		if (d->decal_mat != NULL) {
 			array_free(d->decal_mat);
 			free(d->decal_mat);

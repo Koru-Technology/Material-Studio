@@ -989,7 +989,8 @@ typedef struct layer_data {
 	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
 	i32               res_y;
 	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
-	struct u8_array  *rasters;  // v31 container: hash128 of the HSTORE_RASTER chunks of texpaint, nor, pack (NONE: none)
+	struct u8_array  *rasters;  // v31 container, sizes tiles do not fit: hash128 of the HSTORE_RASTER chunks of the textures
+	struct u8_array  *tilemap;  // v31 container: hash128 of the HSTORE_TILEMAP of the layer's state, all its channels
 } layer_data_t;
 
 // ---- Shader outputs, export presets, neural models ----
