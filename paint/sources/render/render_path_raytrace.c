@@ -1,5 +1,6 @@
 
 #include "../global.h"
+#include "../util/util_hash.h"
 
 f32 render_path_raytrace_uv_scale = 1.0;
 
@@ -20,36 +21,6 @@ static i32          render_path_raytrace_override_height    = 0;
 
 gpu_texture_t *render_path_raytrace_env_cdf      = NULL;
 static char   *render_path_raytrace_env_cdf_file = NULL;
-
-float render_path_raytrace_half_to_float(uint16_t h) {
-	uint32_t sign = (uint32_t)(h >> 15) << 31;
-	uint32_t exp  = (h >> 10) & 0x1f;
-	uint32_t man  = h & 0x3ff;
-	uint32_t bits;
-	if (exp == 0) {
-		if (man == 0) {
-			bits = sign;
-		}
-		else {
-			exp = 127 - 15 + 1;
-			while ((man & 0x400) == 0) {
-				man <<= 1;
-				exp--;
-			}
-			man &= 0x3ff;
-			bits = sign | (exp << 23) | (man << 13);
-		}
-	}
-	else if (exp == 31) {
-		bits = sign | 0x7f800000u | (man << 13);
-	}
-	else {
-		bits = sign | ((exp + 127 - 15) << 23) | (man << 13);
-	}
-	float f;
-	memcpy(&f, &bits, sizeof(f));
-	return f;
-}
 
 static void render_path_raytrace_env_luma_pixels(uint8_t *px, int32_t w, int32_t h, bool f16, float *out) {
 	int bpp = f16 ? 8 : 4;
@@ -74,9 +45,9 @@ static void render_path_raytrace_env_luma_pixels(uint8_t *px, int32_t w, int32_t
 					float  r, g, b;
 					if (f16) {
 						uint16_t *p = (uint16_t *)(px + o);
-						r           = render_path_raytrace_half_to_float(p[0]);
-						g           = render_path_raytrace_half_to_float(p[1]);
-						b           = render_path_raytrace_half_to_float(p[2]);
+						r           = f16_to_f32(p[0]);
+						g           = f16_to_f32(p[1]);
+						b           = f16_to_f32(p[2]);
 					}
 					else {
 						r = px[o + 0] / 255.0f;

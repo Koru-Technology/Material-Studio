@@ -1,4 +1,5 @@
 #include "../global.h"
+#include "util_hash.h"
 
 // Mask generators: effects of a mask stack (util_mask_stack.c) whose source is made from the mesh shape (Edge Wear, Dirt,
 // Position Gradient, Directional, 3D Noise, Light, Thickness). The paint mesh is drawn flat in uv space (mask_generator.glsl) into the stack's
@@ -37,17 +38,8 @@ static u64          mask_gen_bounds_gen = 0;
 static vec4_t       mask_gen_bounds_min;
 static vec4_t       mask_gen_bounds_max;
 
-static u64 mask_gen_hash(u64 h, const void *data, size_t n) {
-	const u8 *p = data;
-	for (size_t i = 0; i < n; ++i) {
-		h ^= p[i];
-		h *= 1099511628211ull;
-	}
-	return h;
-}
-
 static u64 mask_gen_hash_string(u64 h, char *s) {
-	return s != NULL ? mask_gen_hash(h, s, strlen(s)) : h;
+	return s != NULL ? hash_fnv1a(h, s, strlen(s)) : h;
 }
 
 void mask_gen_mesh_changed() {
@@ -81,7 +73,7 @@ static u64 mask_gen_epoch() {
 	u64 h    = 1469598103934665603ull;
 	u64 v[5] = {mesh_maps_generation(), mask_gen_mesh_gen, (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_CURVATURE),
 	            (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_AO), (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_THICKNESS)};
-	h        = mask_gen_hash(h, v, sizeof(v));
+	h        = hash_fnv1a(h, v, sizeof(v));
 	string_array_t *maps = g_project->mesh_maps;
 	for (i32 i = 0; maps != NULL && i < maps->length; ++i) {
 		if (i == MESH_MAP_CURVATURE || i == MESH_MAP_AO || i == MESH_MAP_THICKNESS) {
@@ -102,10 +94,10 @@ static u64 mask_gen_signature(slot_layer_t *m, mask_effect_t *e, u64 epoch) {
 	                        util_mesh_udim_layer(owner) ? 1 : 0,
 	                        mask_gen_radius()};
 	u64            p[2]  = {(u64)(uintptr_t)o, (u64)(uintptr_t)o->data};
-	u64            h     = mask_gen_hash(epoch, v, sizeof(v));
-	h        = mask_gen_hash(h, e->params, sizeof(e->params));
-	h        = mask_gen_hash(h, p, sizeof(p));
-	h        = mask_gen_hash(h, &o->base->transform->world, sizeof(mat4_t)); // Directional
+	u64            h     = hash_fnv1a(epoch, v, sizeof(v));
+	h        = hash_fnv1a(h, e->params, sizeof(e->params));
+	h        = hash_fnv1a(h, p, sizeof(p));
+	h        = hash_fnv1a(h, &o->base->transform->world, sizeof(mat4_t)); // Directional
 	return h;
 }
 
@@ -130,7 +122,7 @@ static u64 mask_gen_key(slot_layer_t *m, u64 epoch) {
 		mask_effect_t e = mask_stack_get(m, i);
 		if (e.visible && mask_effect_is_generator(e.type)) {
 			u64 s = mask_gen_signature(m, &e, epoch);
-			key   = mask_gen_hash(key, &s, sizeof(s));
+			key   = hash_fnv1a(key, &s, sizeof(s));
 		}
 	}
 	return key;
@@ -338,7 +330,7 @@ void mask_gen_update(slot_layer_t *m) {
 			continue;
 		}
 		u64 s = mask_gen_signature(m, &e, epoch);
-		key   = mask_gen_hash(key, &s, sizeof(s));
+		key   = hash_fnv1a(key, &s, sizeof(s));
 		bool dup = false;
 		for (i32 k = 0; k < count; ++k) {
 			dup = dup || sig[k] == s;
