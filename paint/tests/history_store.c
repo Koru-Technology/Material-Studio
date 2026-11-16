@@ -160,9 +160,10 @@ void children() {
 	hstore_test_list_add(s);
 	hstore_test_rebuild();
 	check(hstore_test_refs(s) == 2 && hstore_test_refs(s2) == 1, "a root gets a ref per listing");
-	check(hstore_test_refs(r) == 2 && hstore_test_refs(c) == 2 && hstore_test_refs(d) == 1 && hstore_test_refs(e) == 1, "a blob gets a ref per parent");
+	check(hstore_test_refs(r) == 0, "children of blobs only on disk are not read yet");
 	check(hstore_test_refs(f) == 0, "unreachable blobs have none");
 	hstore_test_trim(0);
+	check(hstore_test_refs(r) == 2 && hstore_test_refs(c) == 2 && hstore_test_refs(d) == 1 && hstore_test_refs(e) == 1, "the next trim reads them: a blob gets a ref per parent");
 	check(!hstore_test_has(f) && hstore_test_has(c) && hstore_test_has(r), "unreachable blobs go at the next trim");
 	hstore_test_unref(s);
 	hstore_test_unref(s);

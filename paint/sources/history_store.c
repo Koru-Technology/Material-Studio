@@ -27,6 +27,8 @@ enum {
 	HSTORE_E_MARK      = 2, // Reached by hstore_each
 	HSTORE_E_UNOWNED   = 4, // Holds no references on its children (indexed from disk, or unreached by a rebuild): its
 	                        // removal does not drop theirs
+	HSTORE_E_PENDING   = 8, // Reached by a rebuild while only on disk: holds its references, its children are counted
+	                        // when its bytes are read (hstore_get, hstore_put) or at a trim with io (opening reads none)
 };
 
 typedef struct hstore_entry {
@@ -631,6 +633,59 @@ static void hstore_visit_reach(hash128_t child, void *ud) {
 	}
 }
 
+// Counts the children of the reached blobs of the worklist, and theirs. Without io, a blob only on disk is left
+// pending: its children are counted when its bytes are read.
+static void hstore_reach_drain(hstore_list_t *work, bool io) {
+	while (work->n > 0) {
+		hstore_entry_t    *e  = hstore_find(work->h[--work->n]);
+		hstore_children_fn fn = e != NULL ? hstore_children_of(e->kind) : NULL;
+		if (fn == NULL) {
+			continue;
+		}
+		if (e->ram == NULL && !io) {
+			e->state |= HSTORE_E_PENDING;
+			continue;
+		}
+		e->state &= ~HSTORE_E_PENDING;
+		u8 *raw = hstore_entry_bytes(e, io);
+		if (raw != NULL) {
+			fn(raw, e->raw_len, hstore_visit_reach, work); // Changes refs only, e stays valid
+			free(raw);
+		}
+	}
+}
+
+// A pending blob's bytes were read: its children are counted
+static void hstore_resolve(hstore_entry_t *e, const u8 *raw, u32 len) {
+	e->state &= ~HSTORE_E_PENDING;
+	hstore_children_fn fn = hstore_children_of(e->kind);
+	if (fn == NULL) {
+		return;
+	}
+	hstore_list_t work = {0};
+	fn(raw, len, hstore_visit_reach, &work);
+	hstore_reach_drain(&work, false);
+	free(work.h);
+}
+
+static bool hstore_is_pending(hstore_entry_t *e) {
+	return (e->state & HSTORE_E_PENDING) != 0;
+}
+
+// The children of the pending blobs are counted, reading them (with io). False when some stay pending.
+static bool hstore_resolve_pending(bool io) {
+	u32              n;
+	hstore_entry_t **list = hstore_collect(hstore_is_pending, NULL, &n);
+	hstore_list_t    work = {0};
+	for (u32 i = 0; io && i < n; ++i) {
+		hstore_list_push(&work, list[i]->h);
+	}
+	free(list);
+	hstore_reach_drain(&work, true);
+	free(work.h);
+	return io || n == 0;
+}
+
 void hstore_set_children(hstore_kind_t kind, hstore_children_fn fn) {
 	if ((u32)kind < HSTORE_KINDS) {
 		hstore_children[kind] = fn;
@@ -640,6 +695,9 @@ void hstore_set_children(hstore_kind_t kind, hstore_children_fn fn) {
 // Removes the unreferenced blobs and, cascading, the children only they held. Without io, a blob with children whose
 // bytes are only in the journal waits for a trim with io.
 static void hstore_collect_garbage(bool io) {
+	if (!hstore_resolve_pending(io)) {
+		return; // Unreferenced blobs may be children of a pending one
+	}
 	hstore_list_t    work = {0};
 	u32              n;
 	hstore_entry_t **list = hstore_collect(hstore_is_garbage, NULL, &n);
@@ -672,7 +730,7 @@ static void hstore_collect_garbage(bool io) {
 void hstore_rebuild_refs(const hash128_t *roots, i32 n) {
 	for (u32 i = 0; i < hstore_cap; ++i) {
 		hstore_table[i].refs = 0;
-		hstore_table[i].state &= ~HSTORE_E_RECOVERED;
+		hstore_table[i].state &= ~(HSTORE_E_RECOVERED | HSTORE_E_PENDING);
 		hstore_table[i].state |= HSTORE_E_UNOWNED; // Until reached: then its children are counted
 	}
 	hstore_recovering  = false;
@@ -680,17 +738,7 @@ void hstore_rebuild_refs(const hash128_t *roots, i32 n) {
 	for (i32 i = 0; i < n; ++i) {
 		hstore_visit_reach(roots[i], &work);
 	}
-	while (work.n > 0) {
-		hstore_entry_t    *e  = hstore_find(work.h[--work.n]);
-		hstore_children_fn fn = e != NULL ? hstore_children_of(e->kind) : NULL;
-		if (fn != NULL) {
-			u8 *raw = hstore_entry_bytes(e, true);
-			if (raw != NULL) {
-				fn(raw, e->raw_len, hstore_visit_reach, &work);
-				free(raw);
-			}
-		}
-	}
+	hstore_reach_drain(&work, false); // Blobs only on disk are read for their children when used, or at a trim
 	free(work.h);
 }
 
@@ -708,6 +756,9 @@ hash128_t hstore_put(hstore_kind_t kind, const void *data, u32 len) {
 			if (fn != NULL) {
 				fn(data, len, hstore_visit_ref, NULL);
 			}
+		}
+		else if (e->state & HSTORE_E_PENDING) {
+			hstore_resolve(e, data, len);
 		}
 		return h;
 	}
@@ -756,6 +807,9 @@ u8 *hstore_get(hash128_t h, u32 *len) {
 		else {
 			free(payload);
 		}
+	}
+	if (out != NULL && (e->state & HSTORE_E_PENDING)) {
+		hstore_resolve(e, out, c.raw_len);
 	}
 	if (out != NULL && len != NULL) {
 		*len = c.raw_len;
