@@ -203,7 +203,7 @@ static void export_tiled_dilate(gpu_texture_t *dst, gpu_texture_t *src, gpu_text
 
 static void export_tiled_copy(gpu_texture_t *dst, gpu_texture_t *src) {
 	draw_begin(dst, false, 0);
-	draw_set_pipeline(dst->format == GPU_TEXTURE_FORMAT_R8 ? NULL : pipes_copy);
+	draw_set_pipeline(dst->format == GPU_TEXTURE_FORMAT_R8 ? NULL : export_texture_copy_pipe(dst->format));
 	draw_image(src, 0, 0);
 	draw_set_pipeline(NULL);
 	draw_end();
@@ -304,7 +304,7 @@ static void export_tiled_blit(gpu_texture_t *dst, gpu_texture_t *src, export_til
 	bool full = any && d[0] == hx && d[1] == hy && d[2] == dst->width && d[3] == dst->height;
 	draw_begin(dst, !full, 0x00000000);
 	if (any) {
-		draw_set_pipeline(dst->format == GPU_TEXTURE_FORMAT_R8 ? NULL : pipes_copy);
+		draw_set_pipeline(dst->format == GPU_TEXTURE_FORMAT_R8 ? NULL : export_texture_copy_pipe(dst->format));
 		draw_scaled_sub_image(src, s[0], s[1], s[2], s[3], d[0] - hx, d[1] - hy, d[2], d[3]);
 		draw_set_pipeline(NULL);
 	}
@@ -339,6 +339,7 @@ static gpu_texture_t      *et_fill[5]; // layers_render_fill_rect: the layer bef
 static gpu_texture_t      *et_fill_temp;
 static gpu_texture_t      *et_low[3]; // A tile's part of a layer at the working resolution
 static bool                et_test_no_fill = false; // Tests: fill layers from their live pixels
+static bool                et_test_whole   = false; // Tests: exr encoded whole, not streamed
 
 static void export_tiled_release_pool() {
 	for (i32 d = 0; d < EXPORT_TILED_DEPTH; ++d) {
@@ -406,7 +407,7 @@ static bool export_tiled_materialize(slot_layer_t *l, timeline_t *tl, i32 hx, i3
 	}
 	for (i32 k = 0; k < t->channels; ++k) {
 		draw_begin(t->out[k], false, 0);
-		draw_set_pipeline(pipes_copy);
+		draw_set_pipeline(export_texture_copy_pipe(t->out[k]->format));
 		draw_scaled_sub_image(et_low[k], hx * kx - x0, hy * ky - y0, t->w * kx, t->h * ky, 0, 0, t->w, t->h);
 		draw_set_pipeline(NULL);
 		draw_end();
@@ -490,7 +491,7 @@ static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *
 				export_tiled_target(&p->blur, b->format);
 				f32 kx = b->width / (f32)et.w, ky = b->height / (f32)et.h;
 				draw_begin(p->blur, false, 0);
-				draw_set_pipeline(b->format == GPU_TEXTURE_FORMAT_RGBA64 ? pipes_copy64 : b->format == GPU_TEXTURE_FORMAT_RGBA128 ? pipes_copy128 : pipes_copy);
+				draw_set_pipeline(export_texture_copy_pipe(b->format));
 				draw_scaled_sub_image(b, c->hx * kx, c->hy * ky, p->blur->width * kx, p->blur->height * ky, 0, 0, p->blur->width, p->blur->height);
 				draw_set_pipeline(NULL);
 				draw_end();
@@ -886,7 +887,7 @@ static void export_tiled_write_file(i32 tex) {
 	i32                      type   = layout.src >= 0 ? layout.type : 3;
 	i32                      off    = layout.src >= 0 ? layout.off : 0;
 	// Exr streams a band of tiles at a time, png and jpg encode the whole image
-	bool stream = et.bits > 8 && g_context->layers_destination != EXPORT_DESTINATION_PACK_INTO_PROJECT;
+	bool stream = et.bits > 8 && g_context->layers_destination != EXPORT_DESTINATION_PACK_INTO_PROJECT && !et_test_whole;
 	FILE *f     = stream ? export_exr_begin(path, et.w, et.h, et.bits) : NULL;
 	if (stream && f == NULL) {
 		console_error(string("Could not save %s.", path));
@@ -1392,6 +1393,10 @@ void export_tiled_test_mm(bool on) {
 
 void export_tiled_test_no_fill(bool on) {
 	et_test_no_fill = on;
+}
+
+void export_tiled_test_whole(bool on) {
+	et_test_whole = on;
 }
 
 // 0 peak tile target KB of the last export, 1 its budget KB, 2 tiles rendered, 3 tiles skipped, 4 files, 5 mm cap,
