@@ -64,41 +64,11 @@ static bool import_arm_has_alpha(buffer_t *pixels, i32 format) {
 	return false;
 }
 
-// A layer texture of res x res texels of bytes_per_texel, empty when its data is missing or corrupt
-static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha) {
-	u64       size   = (u64)w * (u64)h * (u64)bytes_per_texel; // 16K layers pass 2^31 bytes
-	buffer_t *pixels = w > 0 && h > 0 && size <= UINT32_MAX ? lz4_decode(b, (u32)size) : NULL;
-	if (pixels == NULL) {
-		iron_log("Layer data could not be read, the layer starts empty");
-		if (w <= 0 || h <= 0 || size > UINT32_MAX) {
-			w    = 1;
-			h    = 1;
-			size = bytes_per_texel;
-		}
-		pixels = buffer_create((u32)size);
-		memset(pixels->buffer, 0, pixels->length);
-	}
-	if (has_alpha != NULL) {
-		*has_alpha = import_arm_has_alpha(pixels, format);
-	}
-	gpu_texture_t *texture = gpu_create_texture_from_bytes_raw(pixels, w, h, format);
-	array_free(pixels);
-	free(pixels);
-	return texture;
-}
-
 // Whether a loaded texture has texels that are not opaque
 bool import_arm_texture_has_alpha(gpu_texture_t *t) {
 	bool alpha = import_arm_has_alpha(gpu_get_texture_pixels(t), t->format);
 	gpu_release_texture_pixels(t);
 	return alpha;
-}
-
-// dst of a loaded layer becomes its saved texture
-void import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha) {
-	gpu_texture_t *t = import_arm_texture_from_lz4(b, w, h, bytes_per_texel, format, has_alpha);
-	util_copy_texture(dst, t, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
-	gpu_delete_texture(t);
 }
 
 // Image nodes are saved by asset name, the saved index only picks between assets sharing a name

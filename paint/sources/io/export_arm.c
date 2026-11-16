@@ -227,9 +227,10 @@ buffer_t *export_arm_encode_project(char *path) {
 		u8_array_t   *tilemap = project_container_layer_tilemap(l); // Pixels go in chunks (io/project_container.c)
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
-		                              .res                = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
+		                              .type               = slot_layer_is_group(l) ? LAYER_SLOT_TYPE_GROUP : slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER,
+		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
+		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
 		                              .bpp                = bpp,
-		                              .texpaint           = NULL,
 		                              .uv_scale           = l->scale,
 		                              .uv_rot             = l->angle,
 		                              .uv_type            = l->uv_type,
@@ -241,9 +242,6 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .blending           = l->blending,
 		                              .parent             = l->parent != NULL ? array_index_of(g_project->_->layers, l->parent) : -1,
 		                              .visible            = l->visible,
-		                              .texpaint_nor       = NULL,
-		                              .texpaint_pack      = NULL,
-		                              .texpaint_sculpt    = NULL, // Sculpting was removed, the field stays for file compatibility
 		                              .paint_base         = l->paint_base,
 		                              .paint_opac         = l->paint_opac,
 		                              .paint_occ          = l->paint_occ,
@@ -272,8 +270,6 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
 		                              .uid                = l->uid,
 		                              .timeline           = project_container_writing_history() ? l->timeline : 0,
-		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
-		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
 		                              .tilemap            = tilemap});
 		any_array_push(ld, d);
 	}
@@ -408,10 +404,6 @@ buffer_t *export_arm_encode_project(char *path) {
 
 	for (i32 i = 0; i < ld->length; ++i) {
 		layer_data_t *d = ld->buffer[i];
-		export_arm_free_buffer(d->texpaint);
-		export_arm_free_buffer(d->texpaint_nor);
-		export_arm_free_buffer(d->texpaint_pack);
-		export_arm_free_buffer(d->texpaint_sculpt);
 		export_arm_free_buffer(d->tilemap);
 		if (d->decal_mat != NULL) {
 			array_free(d->decal_mat);

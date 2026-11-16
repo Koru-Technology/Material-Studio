@@ -108,7 +108,7 @@ static bool import_arm_validate(project_t *p, bool as_mesh) {
 		return false;
 	}
 	layer_data_t *l0 = p->layer_datas->buffer[0];
-	if (l0->res < 1 || l0->res > 16384 || (l0->bpp != 8 && l0->bpp != 16 && l0->bpp != 32)) {
+	if (l0->res_x < 1 || l0->res_x > 16384 || l0->res_y < 1 || l0->res_y > 16384 || (l0->bpp != 8 && l0->bpp != 16 && l0->bpp != 32)) {
 		return false;
 	}
 	if (p->mesh_transforms == NULL || p->mesh_transforms->length < p->mesh_datas->length) {
@@ -270,15 +270,12 @@ void import_arm_run_project(char *path) {
 		}
 	}
 	layer_data_t *l0                     = g_project->layer_datas->buffer[0];
-	i32           res_x                  = l0->res_x > 0 ? l0->res_x : l0->res; // Square before version 31
-	i32           res_y                  = l0->res_y > 0 ? l0->res_y : l0->res;
+	i32           res_x                  = l0->res_x;
+	i32           res_y                  = l0->res_y;
 	base_res                             = res_x == res_y ? config_get_texture_res_pos(res_x) : TEXTURE_RES_CUSTOM;
 	base_res_x                           = (f32)res_x;
 	base_res_y                           = (f32)res_y;
-	texture_bits_t bits_pos              = l0->bpp == 8 ? TEXTURE_BITS_BITS8 : l0->bpp == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
-	base_bits                            = bits_pos;
-	i32                  bytes_per_pixel = math_floor(l0->bpp / 8.0);
-	gpu_texture_format_t format          = layers_format(bits_pos);
+	base_bits                            = l0->bpp == 8 ? TEXTURE_BITS_BITS8 : l0->bpp == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
 
 	char *base = path_base_dir(path);
 	if (g_project->envmap != NULL) {
@@ -420,36 +417,21 @@ void import_arm_run_project(char *path) {
 	g_project->_->layers = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
 		layer_data_t *ld       = g_project->layer_datas->buffer[i];
-		bool          is_group = ld->texpaint == NULL;
-		bool          is_mask  = ld->texpaint != NULL && ld->texpaint_nor == NULL;
-		slot_layer_t *l        = slot_layer_create("", is_group ? LAYER_SLOT_TYPE_GROUP : is_mask ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER, NULL);
+		bool          is_group = ld->type == LAYER_SLOT_TYPE_GROUP;
+		bool          is_mask  = ld->type == LAYER_SLOT_TYPE_MASK;
+		slot_layer_t *l        = slot_layer_create("", is_mask ? LAYER_SLOT_TYPE_MASK : is_group ? LAYER_SLOT_TYPE_GROUP : LAYER_SLOT_TYPE_LAYER, NULL);
 		if (ld->name != NULL) {
 			l->name = string_copy(ld->name);
 		}
 		if (ld->uid != 0) {
-			l->uid = ld->uid; // Older projects keep the new uid
+			l->uid = ld->uid;
 		}
 		l->timeline = ld->timeline;
-		l->visible = ld->visible;
-		if (ld->texpaint_sculpt != NULL) {
-			// Sculpting was removed: the layer is kept, empty and hidden, so masks and parents stay valid
-			l->visible = false;
-			l->name    = string("%s (sculpt)", l->name);
-		}
+		l->visible  = ld->visible;
 		any_array_push(g_project->_->layers, l);
 		if (!is_group) {
-			if (project_container_layer_restore(ld, l, i == 0 ? &g_project->_->translucency : NULL)) {
-				// Tiles of a container
-			}
-			else if (is_mask) { // Full bits for undo support, R8 is used
-				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
-			}
-			else { // Layer
-				// See-through meshes when the bottom layer is not fully opaque
-				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4 * bytes_per_pixel, format, i == 0 ? &g_project->_->translucency : NULL);
-				import_arm_layer_texture(l->texpaint_nor, ld->texpaint_nor, res_x, res_y, 4 * bytes_per_pixel, format, NULL);
-				import_arm_layer_texture(l->texpaint_pack, ld->texpaint_pack, res_x, res_y, 4 * bytes_per_pixel, format, NULL);
-			}
+			// See-through meshes when the bottom layer is not fully opaque
+			project_container_layer_restore(ld, l, i == 0 ? &g_project->_->translucency : NULL);
 
 			l->scale   = ld->uv_scale;
 			l->angle   = ld->uv_rot;
@@ -588,8 +570,7 @@ void import_arm_run_project(char *path) {
 	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
 		layer_data_t *ld       = g_project->layer_datas->buffer[i];
 		slot_layer_t *l        = g_project->_->layers->buffer[i];
-		bool          is_group = ld->texpaint == NULL;
-		if (!is_group) {
+		if (ld->type != LAYER_SLOT_TYPE_GROUP) {
 			l->fill_material = ld->fill_material > -1 ? g_project->_->materials->buffer[ld->fill_material] : NULL;
 			l->path_material = ld->path_material > -1 ? g_project->_->materials->buffer[ld->path_material] : NULL;
 		}
@@ -630,17 +611,6 @@ void import_arm_run_project(char *path) {
 	g_context->ddirty = 4;
 	data_delete_blob(path);
 	project_container_loaded();
-	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
-		layer_data_t *ld = g_project->layer_datas->buffer[i];
-		if (ld->tilemap != NULL) { // Read from a container, not part of a blob: uploaded
-			buffer_t **raster[3] = {(buffer_t **)&ld->texpaint, (buffer_t **)&ld->texpaint_nor, (buffer_t **)&ld->texpaint_pack};
-			for (i32 c = 0; c < 3; ++c) {
-				if (*raster[c] != NULL) {
-					array_free(*raster[c]); // The struct stays: non NULL tells layers from groups
-				}
-			}
-		}
-	}
 	iron_profile_mark("project load end");
 }
 
