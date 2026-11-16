@@ -12,6 +12,7 @@
 #include "backends/ios_file_dialog.h"
 #endif
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -263,6 +264,69 @@ bool iron_file_save_bytes(char *path, buffer_t *bytes, u64 length) {
 		}
 	}
 	return iron_file_write_all(path, bytes, byte_length);
+}
+
+// length bytes at offset into dst, false when the file is shorter
+bool iron_file_read_range(char *path, u64 offset, u64 length, void *dst) {
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		return false;
+	}
+	u8  *p  = dst;
+	bool ok = true;
+	while (length > 0) {
+		ssize_t n = pread(fd, p, (size_t)length, (off_t)offset);
+		if (n <= 0) {
+			ok = false;
+			break;
+		}
+		p += n;
+		offset += n;
+		length -= n;
+	}
+	close(fd);
+	return ok;
+}
+
+i64 iron_file_size(char *path) {
+	struct stat st;
+	return stat(path, &st) == 0 ? (i64)st.st_size : -1;
+}
+
+iron_file_stream_t *iron_file_stream_open(char *path, bool append) {
+	int fd = open(path, append ? O_WRONLY | O_CREAT : O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0) {
+		return NULL;
+	}
+	iron_file_stream_t *s = calloc(1, sizeof(iron_file_stream_t));
+	s->fd                 = fd;
+	s->pos                = append ? (u64)lseek(fd, 0, SEEK_END) : 0;
+	return s;
+}
+
+bool iron_file_stream_write(iron_file_stream_t *s, const void *data, u64 length) {
+	const u8 *p = data;
+	while (length > 0 && !s->failed) {
+		ssize_t n = pwrite(s->fd, p, (size_t)length, (off_t)s->pos);
+		if (n <= 0) {
+			s->failed = true; // A full disk
+			break;
+		}
+		p += n;
+		s->pos += n;
+		length -= n;
+	}
+	return !s->failed;
+}
+
+bool iron_file_stream_close(iron_file_stream_t *s, bool sync) {
+	bool ok = !s->failed;
+	if (ok && sync) {
+		ok = fsync(s->fd) == 0;
+	}
+	ok = close(s->fd) == 0 && ok;
+	free(s);
+	return ok;
 }
 
 typedef struct _callback_data {

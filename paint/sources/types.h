@@ -987,6 +987,7 @@ typedef struct layer_data {
 	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
 	i32               res_y;
 	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
+	struct u8_array  *rasters;  // v31 container: hash128 of the HSTORE_RASTER chunks of texpaint, nor, pack (NONE: none)
 } layer_data_t;
 
 // ---- Shader outputs, export presets, neural models ----
@@ -1284,3 +1285,13 @@ typedef struct hstore_chunk {
 	u32       raw_len;
 	u32       comp_len;
 } hstore_chunk_t;
+
+// Entry of the index of a v31 project file (io/project_container.c), 40 bytes on disk
+typedef struct hstore_index_entry {
+	hash128_t h;
+	u64       off; // Of the chunk header
+	u32       raw_len;
+	u32       comp_len;
+	u8        kind;
+	u8        codec;
+} hstore_index_entry_t;

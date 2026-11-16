@@ -27,6 +27,8 @@ typedef enum hstore_kind { // Frozen
 	HSTORE_ASSET        = 6, // Image or font bytes as imported (brush tips, stencils, decals, image layers)
 	HSTORE_LAYER_RECORD = 7, // A removed layer: props, timeline uid, tilemap (history*.c)
 	HSTORE_CANVAS       = 8, // Node canvas (history steps)
+	HSTORE_RASTER       = 9, // Interim: a whole live layer texture, LZ4 (io/project_container.c). Retired for HSTORE_TILEMAP
+	                         // before project_v31 is on by default, the number stays reserved
 } hstore_kind_t;
 
 // Bit of hash128_t.hi: set on inline uniform tiles (encoded by timeline_tiles.c, never stored), always clear on stored

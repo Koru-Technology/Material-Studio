@@ -353,6 +353,7 @@ void project_new(bool reset_layers) {
 	g_context->color_picker_callback = NULL;
 	history_reset();
 	hstore_reset(); // Deletes the closed project's journal
+	project_container_forget();
 	project_uuid = NULL;
 
 	make_material_parse_paint_material(true);

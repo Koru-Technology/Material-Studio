@@ -94,6 +94,31 @@ void import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32
 	gpu_delete_texture(t);
 }
 
+// dst of a loaded mask becomes its saved value, one channel (version 31 containers), in every channel
+void import_arm_mask_texture_r8(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h) {
+	u64       n  = (u64)w * (u64)h;
+	buffer_t *r8 = w > 0 && h > 0 && n * 4 <= UINT32_MAX ? lz4_decode(b, (u32)n) : NULL;
+	if (r8 == NULL) {
+		iron_log("Mask data could not be read, the mask starts empty");
+		w = h = 1;
+		n     = 1;
+		r8    = buffer_create(1);
+		memset(r8->buffer, 0, 1);
+	}
+	buffer_t *px = buffer_create((u32)(n * 4));
+	for (u64 i = 0; i < n; ++i) {
+		u8 v = r8->buffer[i];
+		memset(px->buffer + i * 4, v, 4);
+	}
+	array_free(r8);
+	free(r8);
+	gpu_texture_t *t = gpu_create_texture_from_bytes_raw(px, w, h, GPU_TEXTURE_FORMAT_RGBA32);
+	array_free(px);
+	free(px);
+	util_copy_texture(dst, t, pipes_copy);
+	gpu_delete_texture(t);
+}
+
 // Image nodes are saved by asset name, the saved index only picks between assets sharing a name
 static i32 import_arm_image_asset_index(ui_node_button_t *but) {
 	char *name  = u8_array_to_string(but->data);
