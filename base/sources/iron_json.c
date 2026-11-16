@@ -371,12 +371,16 @@ static void load_tokens(char *s) {
 	ti     = 0;
 }
 
-// NULL for NULL (a missing file read as a string)
+// NULL for NULL (a missing file read as a string) and for invalid json
 void *json_parse(char *s) {
 	if (s == NULL) {
 		return NULL;
 	}
 	load_tokens(s);
+	if (num_tokens == 0) {
+		free(tokens);
+		return NULL;
+	}
 
 	uint32_t out_size = strlen(s) * 2;
 	decoded           = calloc(1, out_size);

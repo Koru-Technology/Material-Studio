@@ -154,11 +154,14 @@ void translator_load_translations(char *new_locale) {
 
 	if (!string_equals(g_config->locale, "en")) {
 		// Load the translation file, each line translates the same line of the source strings in en.txt
-		any_array_t *ids          = string_split(sys_buffer_to_string(iron_load_blob("data/locale/en.txt")), "\n");
-		any_array_t *translations = string_split(sys_buffer_to_string(iron_load_blob(string("data/locale/%s.txt", g_config->locale))), "\n");
-		for (i32 i = 0; i < ids->length; ++i) {
+		// A missing file leaves the strings untranslated, lines past the end of the translation file too
+		char        *source       = sys_buffer_to_string(iron_load_blob("data/locale/en.txt"));
+		char        *target       = sys_buffer_to_string(iron_load_blob(string("data/locale/%s.txt", g_config->locale)));
+		any_array_t *ids          = string_split(source != NULL ? source : "", "\n");
+		any_array_t *translations = string_split(target != NULL ? target : "", "\n");
+		for (i32 i = 0; i < ids->length && i < translations->length; ++i) {
 			char *id          = ids->buffer[i];
-			char *translation = i < translations->length ? translations->buffer[i] : "";
+			char *translation = translations->buffer[i];
 			translator_unescape_line(id);
 			translator_unescape_line(translation);
 			// Not translated yet, tr() falls back to the source string

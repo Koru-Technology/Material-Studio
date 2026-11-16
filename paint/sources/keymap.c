@@ -9,8 +9,11 @@ void keymap_load() {
 			g_config->keymap = "default.json";
 			return;
 		}
-		any_map_t      *new_keymap = json_parse_to_map(sys_buffer_to_string(blob));
-		string_array_t *keys       = map_keys(new_keymap);
+		any_map_t *new_keymap = json_parse_to_map(sys_buffer_to_string(blob));
+		if (new_keymap == NULL) {
+			return;
+		}
+		string_array_t *keys = map_keys(new_keymap);
 		for (i32 i = 0; i < keys->length; ++i) {
 			char *key = keys->buffer[i];
 			any_map_set(g_keymap, key, any_map_get(new_keymap, key));

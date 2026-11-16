@@ -638,6 +638,9 @@ static config_t *config_from_current(char *s) {
 }
 
 config_t *config_from_json(char *s) {
+	if (s == NULL) {
+		return NULL;
+	}
 	if (config_is_version(s, manifest_version_config)) {
 		return config_from_current(s);
 	}
@@ -650,7 +653,7 @@ char *config_get_sha() {
 		return "undefined";
 	}
 	version_t *v = json_parse(sys_buffer_to_string(blob));
-	return v->sha;
+	return v != NULL && v->sha != NULL ? v->sha : "undefined";
 }
 
 char *config_get_date() {
@@ -659,7 +662,7 @@ char *config_get_date() {
 		return "undefined";
 	}
 	version_t *v = json_parse(sys_buffer_to_string(blob));
-	return v->date;
+	return v != NULL && v->date != NULL ? v->date : "undefined";
 }
 
 iron_window_options_t *config_get_options() {

@@ -151,6 +151,9 @@ static void brush_library_load_file() {
 	any_map_t *m   = json_parse_to_map(str);
 	free(str);
 	data_delete_blob(path);
+	if (m == NULL) {
+		return;
+	}
 
 	char *next_id = any_map_get(m, "next_id");
 	if (next_id != NULL && atoi(next_id) > brush_library_next_id) {

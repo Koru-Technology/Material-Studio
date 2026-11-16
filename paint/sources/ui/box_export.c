@@ -271,12 +271,15 @@ void box_export_parse_preset() {
 		file = string("export_presets/%s.json", box_export_files->buffer[box_export_preset_index]);
 		blob = data_get_blob(file);
 	}
-	if (blob == NULL) {
-		box_export_preset = json_parse(box_export_preset_template);
-		return;
+	export_preset_t *preset = NULL;
+	if (blob != NULL) {
+		preset = json_parse(sys_buffer_to_string(blob));
+		data_delete_blob(file);
 	}
-	box_export_preset = json_parse(sys_buffer_to_string(blob));
-	data_delete_blob(file);
+	if (preset == NULL || preset->textures == NULL) { // Missing or corrupt preset file
+		preset = json_parse(box_export_preset_template);
+	}
+	box_export_preset = preset;
 }
 
 void box_export_tab_presets() {

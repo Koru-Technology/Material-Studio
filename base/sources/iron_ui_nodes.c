@@ -1321,11 +1321,9 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 	if (ui_is_paste && !current->is_typing) {
 		ui_is_paste = false;
 
-		bool is_json = ui_clipboard[0] == '{';
-		if (is_json) {
-
-			ui_node_canvas_t *paste_canvas = json_parse(ui_clipboard);
-
+		ui_node_canvas_t *paste_canvas = ui_clipboard[0] == '{' ? json_parse(ui_clipboard) : NULL;
+		// Copied nodes (not other text or invalid json)
+		if (paste_canvas != NULL && paste_canvas->nodes != NULL && paste_canvas->links != NULL && paste_canvas->nodes->length > 0) {
 			// Convert button data from string to u8 array
 			for (int i = 0; i < paste_canvas->nodes->length; ++i) {
 				for (int j = 0; j < paste_canvas->nodes->buffer[i]->buttons->length; ++j) {

@@ -321,6 +321,9 @@ slot_layer_t *smart_materials_insert(char *name) {
 	any_map_t *m = json_parse_to_map(s);
 	free(s);
 	data_delete_blob(path);
+	if (m == NULL) {
+		return NULL;
+	}
 
 	char *count_s = any_map_get(m, "count");
 	char *mats_s  = any_map_get(m, "materials");
