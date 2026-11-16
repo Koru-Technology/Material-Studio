@@ -134,6 +134,7 @@ string_array_t *export_arm_fonts_to_files(char *project_path, slot_font_t_array_
 }
 
 static bool export_arm_show_progress = false;
+static bool export_arm_v30           = false; // Save as v30: readable by builds from before 31, uids are not saved
 
 static void export_arm_progress(f32 progress) {
 	if (export_arm_show_progress) {
@@ -206,6 +207,7 @@ buffer_t *export_arm_encode_project(char *path) {
 			                                                       .paint_subs   = m->paint_subs,
 			                                                       .uv_scale     = m->uv_scale,
 			                                                       .uv_angle     = m->uv_angle,
+			                                                       .uid          = m->uid,
 			                                                   });
 			any_array_push(mdata2, d);
 		}
@@ -275,7 +277,10 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .height_blend_offset    = l->height_blend_offset,
 		                              .height_blend_reach     = l->height_blend_reach,
 		                              .mask_effects           = mask_stack_anchors_to_index(l->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length),
-		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1});
+		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
+		                              .uid                = l->uid,
+		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
+		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y()});
 		any_array_push(ld, d);
 	}
 
@@ -286,7 +291,9 @@ buffer_t *export_arm_encode_project(char *path) {
 	bool same_drive = g_project->envmap != NULL ? char_at(relative_to, 0)[0] == char_at(g_project->envmap, 0)[0] : true;
 #endif
 
-	g_project->version                = string_copy(manifest_version_project);
+	g_project->version                = string_copy(export_arm_v30 ? "30" : manifest_version_project);
+	g_project->uuid                   = project_uuid_get();
+	g_project->next_uid               = project_uid_next;
 	g_project->material_groups        = mgroups;
 	g_project->material_datas         = mdata2;
 	g_project->assets                 = texture_files;
@@ -398,6 +405,17 @@ buffer_t *export_arm_encode_project(char *path) {
 	free(micons);
 	g_project->material_icons = NULL;
 	return buffer;
+}
+
+// A project file older builds open (version 30): no uids, square layers
+void export_arm_run_project_v30(char *path) {
+	if (config_get_texture_res_x() != config_get_texture_res_y()) {
+		console_error(tr("Version 30 projects have square layers"));
+		return;
+	}
+	export_arm_v30 = true;
+	export_arm_run_project(path);
+	export_arm_v30 = false;
 }
 
 void export_arm_run_project(char *path) {
