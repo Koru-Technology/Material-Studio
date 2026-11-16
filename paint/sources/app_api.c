@@ -327,6 +327,12 @@ void app_set_viewport_mode(int32_t mode) {
 	iron_delay_idle_sleep();
 }
 
+// The engine stops updating after a while without input (IDLE_SLEEP), and touches on the native controls are not its
+// input: an action waiting for the next frame would wait for the next touch on the canvas
+void app_wake(void) {
+	iron_delay_idle_sleep();
+}
+
 void app_view_face(int32_t face) {
 	if (!app_ready()) {
 		return;

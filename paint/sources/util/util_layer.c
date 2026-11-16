@@ -102,13 +102,13 @@ void layers_init() {
 }
 
 void layers_resize() {
-	if (config_get_texture_res_x() >= 8192 || config_get_texture_res_y() >= 8192) { // Save memory for >=8k
-		g_config->undo_steps = config_get_texture_res_x() == 8192 ? 4 : 1;
-		while (history_undo_layers->length > g_config->undo_steps) {
-			slot_layer_t *l = array_pop(history_undo_layers);
-			sys_notify_on_next_frame(&slot_layer_unload, l);
-		}
+	// Fewer whole layer copies at 8K and above to save memory, the undo steps preference is kept
+	i32 ring = g_config->undo_steps;
+	if (config_get_texture_res_x() >= 8192 || config_get_texture_res_y() >= 8192) {
+		i32 cap = config_get_texture_res_x() == 8192 ? 4 : 1;
+		ring    = ring < cap ? ring : cap;
 	}
+	history_ring_set_size(ring);
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_resize_and_set_bits(l);

@@ -5,7 +5,6 @@ import SwiftUI
 
 struct PadToolColumn: View {
 	private var store = AppStore.shared
-	@State private var propertiesShown = false
 
 	var body: some View {
 		GlassEffectContainer(spacing: 10) {
@@ -14,9 +13,12 @@ struct PadToolColumn: View {
 					ForEach(paintTools) { tool in
 						Button {
 							if store.tool == tool.id {
-								propertiesShown.toggle() // A second tap on the tool opens its properties
+								PadPopovers.shared.toggle("Tool \(tool.id)") // A second tap on the tool opens its properties
 							}
 							else {
+								if PadPopovers.shared.shown?.hasPrefix("Tool ") == true {
+									PadPopovers.shared.close() // Another tool's properties
+								}
 								store.perform { app_set_tool(tool.id) }
 							}
 						} label: {
@@ -26,11 +28,9 @@ struct PadToolColumn: View {
 								.background(store.tool == tool.id ? Color.accentColor.opacity(0.35) : .clear, in: .rect(cornerRadius: 10))
 						}
 						.accessibilityLabel(tool.name)
-						.popover(isPresented: Binding(get: { propertiesShown && store.tool == tool.id }, set: { propertiesShown = $0 }),
-						         arrowEdge: .leading) {
+						.padPopover("Tool \(tool.id)", arrowEdge: .leading) {
 							ToolPropertiesView()
-								.frame(width: 320)
-								.presentationCompactAdaptation(.popover)
+								.frame(width: 320, height: 460)
 						}
 					}
 				}

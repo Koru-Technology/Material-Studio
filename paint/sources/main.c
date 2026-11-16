@@ -283,6 +283,7 @@
 #include "translator.c"
 #include "uniforms.c"
 #include "viewport.c"
+#include "util/util_test.c"
 
 #ifdef WITH_PLUGINS
 void plugins_init();

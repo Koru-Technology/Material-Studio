@@ -820,6 +820,11 @@ typedef struct history_step {
 	bool                         undo_tiled;     // Paint step undone from its tiles, see history_tiles.c
 	i32_array_t                 *undo_tiles;     // Tile and pool slot pairs, NULL until the stroke is over
 	i32                          undo_tiles_gen;
+	u32                          serial;       // Unique in the session, timeline entries point back at it
+	u32                          layer_uid;    // Layer, its parent and material of the step, found by uid first (history_step_valid)
+	u32                          parent_uid;   // 0 when none
+	u32                          material_uid;
+	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
 } history_step_t;
 
 // ---- Logic nodes and node groups ----

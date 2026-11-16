@@ -1344,6 +1344,7 @@ slot_layer_t *layers_new_text_layer();
 void          layers_create_filter();
 void          layers_create_image_mask(asset_t *asset);
 void          layers_create_image_layer(asset_t *asset);
+void          layers_create_image_at(i32 i, bool mask);
 void          layers_create_color_layer(i32 base_color, f32 occlusion, f32 roughness, f32 metallic, i32 position);
 void          layers_duplicate_layer(slot_layer_t *l);
 
@@ -1391,6 +1392,8 @@ bool layers_fill_paint_needs_new_layer();
 bool layers_fill_paint_to_new_layer();
 void layers_fill_paint_confirm_new_layer();
 bool layers_fill_paint_to_mask();
+bool layers_fill_paint_needs_mask();
+void layers_fill_paint_confirm_mask();
 bool layers_fill_paint_tool(i32 tool);
 void layers_create_fill_layer(uv_type_t uv_type, mat4_t decal_mat, i32 position);
 
@@ -1614,6 +1617,11 @@ i32            material_cache_stat(i32 what);
 char *util_texture_packed_name(char *basename);
 void  util_copy_texture(gpu_texture_t *dst, gpu_texture_t *src, gpu_pipeline_t *pipe);
 void  util_texture_capture_output(gpu_texture_t *img, char *basename);
+bool  util_texture_ensure_target(gpu_texture_t **t, i32 w, i32 h, gpu_texture_format_t format);
+void  util_texture_release_target(gpu_texture_t **t);
+i64   util_texture_tracked_bytes();
+i64   util_texture_tracked_peak();
+void  util_texture_tracked_peak_reset();
 
 // ---- util/util_touch.c ----
 void util_touch_update();
@@ -1867,6 +1875,8 @@ extern bool    context_script_touch;
 bool           context_finger_paint_blocked();
 
 // ---- history.c ----
+i32             history_ring_size();
+void            history_ring_set_size(i32 n);
 i32             history_ring_prev();
 i32             history_ring_next();
 void            history_drop_oldest();
@@ -1897,6 +1907,7 @@ void                  history_swap_canvas(history_step_t *step);
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
 void            history_paint();
 void            history_new_layer();
+void            history_new_image_layer(asset_t *asset);
 void            history_new_black_mask();
 void            history_new_white_mask();
 void            history_new_fill_mask();
@@ -2321,3 +2332,11 @@ u32  project_test_uid_next();
 i32  project_test_res(i32 axis);
 void project_test_set_res(i32 w, i32 h);
 i32  project_test_layer_hash(i32 i, i32 channel);
+
+// ---- util/util_test.c ----
+i32   script_diff_images(char *path_a, char *path_b, f32 tol);
+i32   script_diff_textures(gpu_texture_t *a, gpu_texture_t *b, f32 tol);
+f32   script_diff_max();
+f32   script_diff_mean();
+void  script_diff_mask(gpu_texture_t *mask, i32 mode);
+char *script_texture_hash(gpu_texture_t *t);

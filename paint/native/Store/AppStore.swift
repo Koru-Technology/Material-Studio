@@ -65,6 +65,7 @@ final class AppStore: ChangeOnly {
 	func perform<T>(_ action: () -> T) {
 		assert(!FrameDriver.shared.inTick, "app_* called inside a frame")
 		_ = action()
+		app_wake() // Many actions run on the engine's next frame, the engine may be idle
 		refresh()
 	}
 }

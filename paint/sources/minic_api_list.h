@@ -1069,3 +1069,16 @@ X0(project_test_uid_next, "i()", i)
 X1(project_test_res, "i(i axis)", i, i)
 X2(project_test_set_res, "v(i w,i h)", v, i, i)
 X2(project_test_layer_hash, "i(i i,i channel)", i, i, i)
+
+// util/util_test.c: fast pixel comparisons for tests, tol and results in 1/255
+X3(script_diff_images, "i(p:char path_a,p:char path_b,f tol)", i, p, p, f)
+X3(script_diff_textures, "i(p:gpu_texture_t a,p:gpu_texture_t b,f tol)", i, p, p, f)
+X0(script_diff_max, "f()", f)
+X0(script_diff_mean, "f()", f)
+X2(script_diff_mask, "v(p:gpu_texture_t mask,i mode)", v, p, i)
+X1(script_texture_hash, "p:char(p:gpu_texture_t t)", p, p)
+
+// History (history.c, util/util_layer_create.c) test hooks
+X2(layers_create_image_at, "v(i asset,i mask)", v, i, i)
+X0(history_ring_size, "i()", i)
+X1(history_ring_set_size, "v(i n)", v, i)
