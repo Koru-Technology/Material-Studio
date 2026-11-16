@@ -245,6 +245,7 @@ typedef struct slot_layer {
 	u32                  revision;        // Bumped when the pixels change, the masks anchoring the layer evaluate again
 	u64                  mask_inputs_key; // Anchored layers and ID map texmask was last evaluated with
 	bool                 mask_evaluating; // Cycle guard: a mask anchoring one being evaluated reads its last texmask
+	u32                  timeline;        // Uid of its timeline (stroke_rec.h), 0 for none
 } slot_layer_t;
 
 // One effect of a mask stack, unpacked from slot_layer_t.mask_effects (mask_stack_get / mask_stack_set)
@@ -375,6 +376,7 @@ typedef struct config {
 	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
+	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
 } config_t;
 
@@ -821,6 +823,12 @@ typedef struct history_step {
 	bool                         undo_tiled;     // Paint step undone from its tiles, see history_tiles.c
 	i32_array_t                 *undo_tiles;     // Tile and pool slot pairs, NULL until the stroke is over
 	i32                          undo_tiles_gen;
+	u32                          serial;       // Unique in the session, timeline entries point back at it
+	u32                          layer_uid;    // Layer, its parent and material of the step, found by uid first (history_step_valid)
+	u32                          parent_uid;   // 0 when none
+	u32                          material_uid;
+	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
+	i32_array_t                 *tl_moves;     // Timeline cursors the step moved: uid, before, after (timeline.c)
 } history_step_t;
 
 // ---- Logic nodes and node groups ----
@@ -902,6 +910,10 @@ typedef struct project {
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
 	struct string_array                         *mesh_maps;       // Asset name per mesh_map_t, "" for none, NULL when none ever set
+	char                                        *uuid;            // project_uuid, NULL before version 31
+	u32                                          next_uid;        // project_uid_next, 0 before version 31
+	struct u8_array                             *timelines;       // Timelines of the layers (timeline.c), NULL for none
+	struct u8_array                             *history;         // History steps (history*.c), NULL for none
 	project_runtime_t                           *_;
 } project_t;
 
@@ -974,6 +986,11 @@ typedef struct layer_data {
 	f32               height_blend_offset;
 	f32               height_blend_reach;
 	f32_array_t      *mask_effects; // slot_layer_t.mask_effects as is, NULL for the implicit stack
+	u32               uid;          // slot_layer_t.uid, 0 in projects before version 31
+	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
+	i32               res_y;
+	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
+	struct u8_array  *rasters;  // v31 container: hash128 of the HSTORE_RASTER chunks of texpaint, nor, pack (NONE: none)
 } layer_data_t;
 
 // ---- Shader outputs, export presets, neural models ----
@@ -1199,6 +1216,7 @@ typedef struct material_data2 {
 	bool paint_subs;
 	f32  uv_scale;
 	f32  uv_angle;
+	u32  uid; // slot_material_t.uid, 0 in projects before version 31 and in material files
 } material_data2_t;
 
 typedef struct material_data2_t_array {
@@ -1271,6 +1289,15 @@ typedef struct hstore_chunk {
 	u32       comp_len;
 } hstore_chunk_t;
 
+// Entry of the index of a v31 project file (io/project_container.c), 40 bytes on disk
+typedef struct hstore_index_entry {
+	hash128_t h;
+	u64       off; // Of the chunk header
+	u32       raw_len;
+	u32       comp_len;
+	u8        kind;
+	u8        codec;
+} hstore_index_entry_t;
 // ---- Paint executor (paint_exec.c) ----
 typedef enum paint_op_kind {
 	PAINT_OP_DRAW         = 1, // A paint draw of dabs [dab_first, dab_first + dab_count), the blur snapshot of the frame with it

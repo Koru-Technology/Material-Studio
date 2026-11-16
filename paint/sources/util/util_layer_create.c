@@ -167,17 +167,39 @@ void layers_create_image_mask(asset_t *asset) {
 		return;
 	}
 
-	history_new_layer();
 	slot_layer_t *m = layers_new_mask(false, l, -1);
+	if (m == NULL) {
+		return;
+	}
+	history_new_image_layer(asset); // The step points at the mask, redo draws the image again
 	slot_layer_clear(m, 0x00000000, project_get_image(asset), 1.0, layers_default_rough, 0.0);
 	g_context->layer_preview_dirty = true;
 }
 
 void layers_create_image_layer(asset_t *asset) {
-	history_new_layer();
 	slot_layer_t *m = layers_new_layer(false, -1, NULL);
+	if (m == NULL) {
+		return;
+	}
+	history_new_image_layer(asset);
 	slot_layer_clear(m, 0x00000000, project_get_image(asset), 1.0, layers_default_rough, 0.0);
 	g_context->layer_preview_dirty = true;
+}
+
+// Scripts: an image layer, or a mask of the selected layer, from asset i of the project
+void layers_create_image_at(i32 i, bool mask) {
+	if (i < 0 || i >= g_project->_->assets->length) {
+		return;
+	}
+	draw_saved_t gpu = draw_suspend();
+	base_init_undo_layers();
+	if (mask) {
+		layers_create_image_mask(g_project->_->assets->buffer[i]);
+	}
+	else {
+		layers_create_image_layer(g_project->_->assets->buffer[i]);
+	}
+	draw_resume(gpu);
 }
 
 void layers_create_color_layer_on_next_frame(void *_) {
@@ -204,6 +226,7 @@ static void layers_duplicate_children(slot_layer_t *l, slot_layer_t *new_parent)
 		slot_layer_t *c     = children->buffer[i];
 		slot_layer_t *new_c = slot_layer_is_group(c) ? layers_new_group() : slot_layer_duplicate(c);
 		new_c->parent       = new_parent;
+		timeline_fork(c, new_c);
 		array_remove(g_project->_->layers, new_c);
 		array_insert(g_project->_->layers, array_index_of(g_project->_->layers, new_parent), new_c);
 		layers_duplicate_children(c, new_c);
@@ -213,6 +236,7 @@ static void layers_duplicate_children(slot_layer_t *l, slot_layer_t *new_parent)
 void layers_duplicate_layer(slot_layer_t *l) {
 	slot_layer_t *new_layer = slot_layer_is_group(l) ? layers_new_group() : slot_layer_duplicate(l);
 	new_layer->parent       = l->parent;
+	timeline_fork(l, new_layer); // Its pixels share the history of l
 	array_remove(g_project->_->layers, new_layer);
 	array_insert(g_project->_->layers, array_index_of(g_project->_->layers, l) + 1, new_layer);
 	layers_duplicate_children(l, new_layer);

@@ -28,6 +28,7 @@ ui_node_socket_t *ui_get_socket(ui_node_t_array_t *nodes, i32 id);
 void      export_arm_run_mesh(char *path, mesh_object_t_array_t *paint_objects);
 buffer_t *export_arm_encode_project(char *path);
 void      export_arm_run_project(char *path);
+void      export_arm_run_project_v30(char *path);
 void      export_arm_run_material(char *path);
 buffer_t *export_arm_encode_library_material(slot_material_t *m);
 void      export_arm_pack_assets(project_t *raw, asset_t_array_t *assets);
@@ -48,7 +49,8 @@ void export_texture_run(char *path, bool bake_material);
 // ---- io/import_arm_assets.c ----
 char           *import_arm_abs(char *file, char *base);
 void            import_arm_make_pink(char *abs);
-void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 res, i32 bytes_per_texel, i32 format, bool *has_alpha);
+void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha);
+void            import_arm_mask_texture_r8(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h);
 void            import_arm_init_nodes(ui_node_t_array_t *nodes);
 packed_asset_t *import_arm_take_packed_asset(project_t *project, char *abs, char *file, bool copy);
 bool            import_arm_is_decodable(char *abs);
@@ -1343,6 +1345,7 @@ slot_layer_t *layers_new_text_layer();
 void          layers_create_filter();
 void          layers_create_image_mask(asset_t *asset);
 void          layers_create_image_layer(asset_t *asset);
+void          layers_create_image_at(i32 i, bool mask);
 void          layers_create_color_layer(i32 base_color, f32 occlusion, f32 roughness, f32 metallic, i32 position);
 void          layers_duplicate_layer(slot_layer_t *l);
 
@@ -1873,6 +1876,9 @@ extern bool    context_script_touch;
 bool           context_finger_paint_blocked();
 
 // ---- history.c ----
+bool            history_v2_active(); // history_v2 as it was at the last history_reset
+i32             history_ring_size();
+void            history_ring_set_size(i32 n);
 i32             history_ring_prev();
 i32             history_ring_next();
 void            history_drop_oldest();
@@ -1899,10 +1905,44 @@ void                  history_swap_swatch(history_step_t *step);
 node_group_t_array_t *history_groups(history_step_t *step);
 void                  history_swap_canvas(history_step_t *step);
 
+// ---- timeline.c ----
+struct timeline;
+struct tl_entry;
+struct paint_target;
+bool        timeline_active(); // Timelines record: timeline_shadow or history_v2
+bool        timeline_layer_paints(slot_layer_t *l);
+void        timeline_truncate(struct timeline *tl);
+void        timeline_truncate_all();
+void        timeline_checkpoint_set(struct timeline *tl, i32 pos, hash128_t tilemap, bool pinned);
+hash128_t   timeline_state(struct timeline *tl, i32 pos);
+void        timeline_target_live(slot_layer_t *l, struct paint_target *t);
+struct timeline *timeline_ensure(slot_layer_t *l);
+struct tl_entry *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, const f32 *uv_bounds, u16 flags);
+void        timeline_stroke_begin(history_step_t *step, slot_layer_t *l);
+void        timeline_stroke_dirty(history_step_t *step, i32_array_t *tiles);
+void        timeline_finalize();
+void        timeline_step_apply(history_step_t *step, bool undo);
+void        timeline_fork(slot_layer_t *src, slot_layer_t *dst);
+bool        timeline_materialize_live(struct timeline *tl, slot_layer_t *l, i32 pos);
+i32         timeline_test_count(slot_layer_t *l);
+i32         timeline_test_kind(slot_layer_t *l, i32 i);
+i32         timeline_test_cursor(slot_layer_t *l);
+i32         timeline_test_states(slot_layer_t *l);
+bool        timeline_test_materialize(slot_layer_t *l, i32 pos);
+
+// ---- timeline_ops.c ----
+void timeline_retag_last(slot_layer_t *l, i32 kind, const void *params, u32 len, u16 flags);
+
+// ---- timeline_tiles.c ----
+void timeline_tiles_cache_reset();
+bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 *channels);
+bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, struct paint_target *dst);
+
 // ---- history_steps.c ----
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
 void            history_paint();
 void            history_new_layer();
+void            history_new_image_layer(asset_t *asset);
 void            history_new_black_mask();
 void            history_new_white_mask();
 void            history_new_fill_mask();
@@ -2306,6 +2346,9 @@ i32   hstore_recover();
 void  hstore_recover_end();
 void  hstore_journal_delete(char *uuid);
 void  hstore_journal_rebind(char *old_uuid);
+void  hstore_attach_project(char *path, const hstore_index_entry_t *entries, i32 n);
+void  hstore_each(void (*fn)(hash128_t h, void *ud), void *ud);
+u8   *hstore_chunk_payload(hash128_t h, hstore_chunk_t *c);
 i32   hstore_test_put(i32 kind, i32 seed, i32 len, bool noise);
 i32   hstore_test_get(i32 id, i32 seed, i32 len, bool noise);
 bool  hstore_test_has(i32 id);
@@ -2319,6 +2362,39 @@ void  hstore_test_reset();
 void  hstore_test_crash();
 void  hstore_test_tear(i32 bytes);
 char *hstore_test_journal_path();
+void  hstore_test_children(i32 kind, bool on);
+void  hstore_test_list_clear();
+void  hstore_test_list_add(i32 id);
+i32   hstore_test_put_list(i32 kind);
+void  hstore_test_rebuild();
+i32   hstore_test_refs(i32 id);
+
+// ---- io/project_container.c ----
+bool        project_container_is(char *path);
+bool        project_container_is_buffer(buffer_t *b);
+project_t  *project_container_open(char *path);
+project_t  *project_container_decode(buffer_t *b);
+void        project_container_attach();
+void        project_container_forget();
+bool        project_container_mask_r8(layer_data_t *ld);
+bool        project_container_writing();
+u8_array_t *project_container_layer_rasters(slot_layer_t *l);
+void        project_container_pack_assets(project_t *p);
+void        project_container_unpack_assets(project_t *p);
+bool        project_container_save(char *path);
+char       *project_file_uuid(char *path);
+void        hstore_journal_delete_for_file(char *path);
+i32         project_container_test_reads();
+i32         project_container_test_appended();
+void        project_test_truncate(char *path, i32 bytes);
+i32         project_test_file_size(char *path);
+i32         project_test_mask_unequal(i32 i);
+u32  project_test_layer_uid(i32 i);
+u32  project_test_material_uid(i32 i);
+u32  project_test_uid_next();
+i32  project_test_res(i32 axis);
+void project_test_set_res(i32 w, i32 h);
+i32  project_test_layer_hash(i32 i, i32 channel);
 
 // ---- util/util_test.c ----
 i32   script_diff_images(char *path_a, char *path_b, f32 tol);

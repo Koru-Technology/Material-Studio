@@ -95,17 +95,35 @@ static char *history_action_to_string(history_action_t action) {
 	return tr("Paint");
 }
 
+// Whole layer copies the ring holds: the undo_steps preference, fewer at 8K and above (history_ring_set_size)
+i32 history_ring_size() {
+	return history_undo_layers != NULL && history_undo_layers->length > 0 ? history_undo_layers->length : g_config->undo_steps;
+}
+
 // Slots of the undo ring before and after history_undo_i
 i32 history_ring_prev() {
-	return history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+	return history_undo_i - 1 < 0 ? history_ring_size() - 1 : history_undo_i - 1;
 }
 
 i32 history_ring_next() {
-	return (history_undo_i + 1) % g_config->undo_steps;
+	return (history_undo_i + 1) % history_ring_size();
 }
 
 static bool history_in(i32 i, i32 length) {
 	return i >= 0 && i < length;
+}
+
+// A layer brought back keeps the uid steps and timelines know it by, unless another layer took it meanwhile
+static void history_restore_uid(slot_layer_t *l, u32 uid) {
+	if (uid != 0 && slot_layer_find_uid(uid) == NULL) {
+		l->uid = uid;
+	}
+}
+
+static void history_restore_material_uid(slot_material_t *m, u32 uid) {
+	if (uid != 0 && slot_material_find_uid(uid) == NULL) {
+		m->uid = uid;
+	}
 }
 
 static void history_undo_invert_mask(history_step_t *step) {
@@ -123,10 +141,20 @@ static void history_step_free(history_step_t *step) {
 	}
 	history_tiles_release(step);
 	array_delete(step->mask_effects);
+	if (step->tl_moves != NULL) {
+		array_free(step->tl_moves);
+		free(step->tl_moves);
+	}
 	free(step);
 }
 
-static i32 history_ring_pending = 0; // Whole layer copies made for the step about to be pushed
+static i32  history_ring_pending = 0; // Whole layer copies made for the step about to be pushed
+static u32  history_serial_next  = 1;
+static bool history_v2_on        = false;
+
+bool history_v2_active() {
+	return history_v2_on;
+}
 
 // Steps kept at most, paint steps keep their tiles and can go much further back than whole layer copies
 static i32 history_max_steps() {
@@ -158,13 +186,71 @@ void history_drop_oldest() {
 	}
 }
 
+// Whether the layer of the step is in the project when it runs: not when the step itself brings it back
+static bool history_step_layer_present(history_step_t *step, bool undo) {
+	switch (step->action) {
+	case HISTORY_ACTION_ORDER_LAYERS: // Positions swap with each run
+	case HISTORY_ACTION_DELETE_LAYER: // A range of positions
+	case HISTORY_ACTION_MERGE_LAYERS:
+		return false;
+	case HISTORY_ACTION_NEW_LAYER:
+	case HISTORY_ACTION_NEW_BLACK_MASK:
+	case HISTORY_ACTION_NEW_WHITE_MASK:
+	case HISTORY_ACTION_NEW_FILL_MASK:
+	case HISTORY_ACTION_NEW_GROUP:
+	case HISTORY_ACTION_SMART_MATERIAL:
+		return undo;
+	case HISTORY_ACTION_APPLY_MASK:
+		return !undo;
+	default:
+		return true;
+	}
+}
+
+// Steps find their layer, its parent and material by uid first: positions kept at push follow layers and materials moved
+// or removed without history since. Without a uid match the positions stay as they are.
+static void history_step_resolve(history_step_t *step, bool undo) {
+	slot_layer_t_array_t *layers = g_project->_->layers;
+	if (step->layer_uid != 0 && history_step_layer_present(step, undo)) {
+		slot_layer_t *l = slot_layer_find_uid(step->layer_uid);
+		if (l != NULL) {
+			step->layer = array_index_of(layers, l);
+		}
+	}
+	bool created = !undo && (step->action == HISTORY_ACTION_NEW_LAYER || step->action == HISTORY_ACTION_NEW_BLACK_MASK ||
+	                         step->action == HISTORY_ACTION_NEW_WHITE_MASK || step->action == HISTORY_ACTION_NEW_FILL_MASK);
+	if (created && step->parent_uid != 0) {
+		slot_layer_t *p = slot_layer_find_uid(step->parent_uid);
+		if (p != NULL) {
+			step->layer_parent = array_index_of(layers, p) + 1; // The parent's position while the layer is out, plus one
+		}
+	}
+	if (step->material_uid != 0) {
+		slot_material_t *m = slot_material_find_uid(step->material_uid);
+		if (m != NULL) {
+			step->material = array_index_of(g_project->_->materials, m);
+		}
+	}
+}
+
 // The layers, materials and objects step points at by position are still there. A step left behind by a change made
 // without history would read out of bounds, it is skipped instead.
+static bool history_step_valid_last = false; // What the last check found, its cursors move with the step
+
+static bool history_step_valid_check(history_step_t *step, bool undo);
+
 static bool history_step_valid(history_step_t *step, bool undo) {
+	history_step_valid_last = history_step_valid_check(step, undo);
+	return history_step_valid_last;
+}
+
+static bool history_step_valid_check(history_step_t *step, bool undo) {
+	history_step_resolve(step, undo);
 	i32 layers    = g_project->_->layers->length;
 	i32 materials = g_project->_->materials->length;
 	switch (step->action) {
 	case HISTORY_ACTION_EDIT_NODES:
+		return step->canvas_type != 0 || step->canvas_group != -1 || history_in(step->material, materials);
 	case HISTORY_ACTION_DELETE_NODE_GROUP:
 	case HISTORY_ACTION_NEW_SWATCH:
 	case HISTORY_ACTION_DELETE_SWATCH:
@@ -215,6 +301,7 @@ static bool history_step_valid(history_step_t *step, bool undo) {
 
 void history_undo() {
 	history_tiles_finalize();
+	timeline_finalize();
 	if (history_undos > 0) {
 		stroke_refine_end_all(); // Strokes keep the tier they reached
 		project_modified = true;
@@ -225,7 +312,7 @@ void history_undo() {
 
 		if (!history_step_valid(step, true)) {
 			iron_log("Undo skipped, its layer is gone: %s", step->name);
-			history_undo_i = ((history_undo_i - step->undo_ring) % g_config->undo_steps + g_config->undo_steps) % g_config->undo_steps; // Its copies
+			history_undo_i = ((history_undo_i - step->undo_ring) % history_ring_size() + history_ring_size()) % history_ring_size(); // Its copies
 		}
 		else if (step->action == HISTORY_ACTION_EDIT_NODES) {
 			history_swap_canvas(step);
@@ -310,6 +397,7 @@ void history_undo() {
 			history_undo_i     = history_ring_prev();
 			slot_layer_t *mask = history_undo_slot(history_undo_i);
 			layers_new_mask(false, current_layer, mask_pos);
+			history_restore_uid(g_context->layer, step->layer_uid);
 			slot_layer_swap(g_context->layer, mask);
 			history_restore_applied_mask(step, g_context->layer);
 			g_context->layers_preview_dirty = true;
@@ -365,6 +453,7 @@ void history_undo() {
 		}
 		else if (step->action == HISTORY_ACTION_DELETE_MATERIAL) {
 			g_context->material = slot_material_create(g_project->_->materials->buffer[0]->data, NULL);
+			history_restore_material_uid(g_context->material, step->material_uid);
 			array_insert(g_project->_->materials, step->material, g_context->material);
 			g_context->material->canvas = step->canvas;
 			ui_nodes_canvas_changed();
@@ -392,6 +481,9 @@ void history_undo() {
 			g_context->layer_preview_dirty = true;
 		}
 
+		if (history_step_valid_last) {
+			timeline_step_apply(step, true);
+		}
 		history_undos--;
 		history_redos++;
 		if (step->with_prev) {
@@ -480,21 +572,27 @@ static void history_redo_duplicate_layer(void *_) {
 	layers_duplicate_layer(g_context->layer);
 }
 
+// A new layer or mask redone as it was created: cleared and the image drawn now, steps redone after it in the same frame
+// paint on it
+static void history_redo_new_content(history_step_t *step, slot_layer_t *l) {
+	if (l->texpaint == NULL) {
+		return; // Group
+	}
+	gpu_texture_t *image = NULL;
+	for (i32 i = 0; step->image_file != NULL && i < g_project->_->assets->length; ++i) {
+		if (string_equals(g_project->_->assets->buffer[i]->file, step->image_file)) {
+			image = project_get_image(g_project->_->assets->buffer[i]);
+			break;
+		}
+	}
+	draw_saved_t saved = draw_suspend();
+	slot_layer_clear(l, step->action == HISTORY_ACTION_NEW_WHITE_MASK ? 0xffffffff : 0x00000000, image, 1.0, layers_default_rough, 0.0);
+	draw_resume(saved);
+}
+
 static void history_redo_new_fill_mask(slot_layer_t *l) {
 	if (slot_layer_alive(l)) {
 		slot_layer_to_fill_layer(l);
-	}
-}
-
-static void history_redo_new_white_mask(slot_layer_t *l) {
-	if (slot_layer_alive(l)) {
-		slot_layer_clear(l, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
-	}
-}
-
-static void history_redo_new_black_mask(slot_layer_t *l) {
-	if (slot_layer_alive(l)) {
-		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	}
 }
 
@@ -508,6 +606,7 @@ void history_swap_active() {
 
 void history_redo() {
 	history_tiles_finalize();
+	timeline_finalize();
 	if (history_redos > 0) {
 		stroke_refine_end_all();
 		project_modified = true;
@@ -518,7 +617,7 @@ void history_redo() {
 
 		if (!history_step_valid(step, false)) {
 			iron_log("Redo skipped, its layer is gone: %s", step->name);
-			history_undo_i = (history_undo_i + step->undo_ring) % g_config->undo_steps;
+			history_undo_i = (history_undo_i + step->undo_ring) % history_ring_size();
 		}
 		else if (step->action == HISTORY_ACTION_EDIT_NODES) {
 			history_swap_canvas(step);
@@ -527,14 +626,10 @@ void history_redo() {
 		         step->action == HISTORY_ACTION_NEW_FILL_MASK) {
 			slot_layer_t *parent = step->layer_parent > 0 ? g_project->_->layers->buffer[step->layer_parent - 1] : NULL;
 			slot_layer_t *l      = slot_layer_create("", step->layer_type, parent);
+			history_restore_uid(l, step->layer_uid);
 			array_insert(g_project->_->layers, step->layer, l);
-			if (step->action == HISTORY_ACTION_NEW_BLACK_MASK) {
-				sys_notify_on_next_frame(&history_redo_new_black_mask, l);
-			}
-			else if (step->action == HISTORY_ACTION_NEW_WHITE_MASK) {
-				sys_notify_on_next_frame(&history_redo_new_white_mask, l);
-			}
-			else if (step->action == HISTORY_ACTION_NEW_FILL_MASK) {
+			history_redo_new_content(step, l);
+			if (step->action == HISTORY_ACTION_NEW_FILL_MASK) {
 				g_context->material = g_project->_->materials->buffer[step->material];
 				sys_notify_on_next_frame(&history_redo_new_fill_mask, l);
 			}
@@ -547,6 +642,7 @@ void history_redo() {
 		else if (step->action == HISTORY_ACTION_NEW_GROUP) {
 			slot_layer_t *l     = g_project->_->layers->buffer[step->layer - 1];
 			slot_layer_t *group = layers_new_group();
+			history_restore_uid(group, step->layer_uid);
 			array_remove(g_project->_->layers, group);
 			array_insert(g_project->_->layers, step->layer, group);
 			group->parent = l->parent;
@@ -636,6 +732,7 @@ void history_redo() {
 		}
 		else if (step->action == HISTORY_ACTION_NEW_MATERIAL) {
 			g_context->material = slot_material_create(g_project->_->materials->buffer[0]->data, NULL);
+			history_restore_material_uid(g_context->material, step->material_uid);
 			array_insert(g_project->_->materials, step->material, g_context->material);
 			g_context->material->canvas = step->canvas;
 			ui_nodes_canvas_changed();
@@ -648,6 +745,7 @@ void history_redo() {
 		}
 		else if (step->action == HISTORY_ACTION_DUPLICATE_MATERIAL) {
 			g_context->material = slot_material_create(g_project->_->materials->buffer[0]->data, NULL);
+			history_restore_material_uid(g_context->material, step->material_uid);
 			array_insert(g_project->_->materials, step->material, g_context->material);
 			g_context->material->canvas = step->canvas;
 			ui_nodes_canvas_changed();
@@ -670,6 +768,9 @@ void history_redo() {
 			history_undo_i                 = history_ring_next();
 		}
 
+		if (history_step_valid_last) {
+			timeline_step_apply(step, false);
+		}
 		history_undos++;
 		history_redos--;
 		if (history_redos > 0 && history_steps->buffer[history_steps->length - history_redos]->with_prev) {
@@ -711,13 +812,42 @@ void history_reset() {
 	history_redos  = 0;
 	history_undo_i = 0;
 	history_ring_pending = 0;
+	history_v2_on        = g_config->history_v2; // Steps of both kinds never mix
 	history_tiles_reset();
+	timeline_reset_all();
 	stroke_refine_reset();
 	material_cache_reset(); // A new project: every material cache goes
 }
 
+// The ring holds n whole layer copies from now on, the preference stays as it is. Steps keeping copies go: their slots
+// moved. The redo branch goes first, then the oldest steps up to the last one keeping copies.
+void history_ring_set_size(i32 n) {
+	if (history_undo_layers == NULL || n < 1 || n == history_undo_layers->length) {
+		return;
+	}
+	while (history_undo_layers->length < n) {
+		any_array_push(history_undo_layers, slot_layer_create_undo(string("_undo%s", i32_to_string(history_undo_layers->length))));
+	}
+	while (history_undo_layers->length > n) {
+		sys_notify_on_next_frame(&slot_layer_unload, array_pop(history_undo_layers));
+	}
+	if (history_steps != NULL && history_ring_used() > 0) {
+		history_tiles_finalize();
+		stroke_refine_reset(); // Records point at steps
+		for (; history_redos > 0; --history_redos) {
+			history_step_free(array_pop(history_steps));
+		}
+		while (history_ring_used() > 0) {
+			history_drop_oldest();
+		}
+	}
+	history_undo_i       = 0;
+	history_ring_pending = 0;
+}
+
 history_step_t *history_push(history_action_t action) {
 	history_tiles_finalize(); // The last stroke is over
+	timeline_finalize();
 	project_modified = true;
 	render_path_base_redraw();
 	char *name = history_action_to_string(action);
@@ -739,6 +869,7 @@ history_step_t *history_push(history_action_t action) {
 			history_step_free(array_pop(history_steps));
 		}
 		history_redos = 0;
+		timeline_truncate_all(); // Their entries
 	}
 
 	i32 opos = array_index_of(g_project->_->paint_objects, g_context->paint_object);
@@ -761,13 +892,18 @@ history_step_t *history_push(history_action_t action) {
 	                                .layer_object   = g_context->layer->object_mask,
 	                                .layer_blending = g_context->layer->blending});
 
+	step->serial       = history_serial_next++;
+	step->layer_uid    = g_context->layer->uid;
+	step->parent_uid   = g_context->layer->parent != NULL ? g_context->layer->parent->uid : 0;
+	step->material_uid = g_context->material != NULL ? g_context->material->uid : 0;
+
 	step->undo_ring      = history_ring_pending;
 	history_ring_pending = 0;
 	any_array_push(history_steps, step);
 	stroke_refine_history_pushed(action); // Layers changed otherwise than by strokes: their records end
 
 	// Whole layer copies are a ring of undo_steps layers, a step whose copy would be overwritten goes first
-	while (history_steps->length > history_max_steps() + 1 || (history_steps->length > 2 && history_ring_used() > g_config->undo_steps)) {
+	while (history_steps->length > history_max_steps() + 1 || (history_steps->length > 2 && history_ring_used() > history_ring_size())) {
 		history_drop_oldest();
 	}
 	return history_steps->buffer[history_steps->length - 1];

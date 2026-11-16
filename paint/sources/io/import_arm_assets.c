@@ -65,13 +65,14 @@ static bool import_arm_has_alpha(buffer_t *pixels, i32 format) {
 }
 
 // A layer texture of res x res texels of bytes_per_texel, empty when its data is missing or corrupt
-static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 res, i32 bytes_per_texel, i32 format, bool *has_alpha) {
-	u64       size   = (u64)res * (u64)res * (u64)bytes_per_texel; // 16K layers pass 2^31 bytes
-	buffer_t *pixels = res > 0 && size <= UINT32_MAX ? lz4_decode(b, (u32)size) : NULL;
+static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha) {
+	u64       size   = (u64)w * (u64)h * (u64)bytes_per_texel; // 16K layers pass 2^31 bytes
+	buffer_t *pixels = w > 0 && h > 0 && size <= UINT32_MAX ? lz4_decode(b, (u32)size) : NULL;
 	if (pixels == NULL) {
 		iron_log("Layer data could not be read, the layer starts empty");
-		if (res <= 0 || size > UINT32_MAX) {
-			res  = 1;
+		if (w <= 0 || h <= 0 || size > UINT32_MAX) {
+			w    = 1;
+			h    = 1;
 			size = bytes_per_texel;
 		}
 		pixels = buffer_create((u32)size);
@@ -80,16 +81,41 @@ static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 res, i32 byte
 	if (has_alpha != NULL) {
 		*has_alpha = import_arm_has_alpha(pixels, format);
 	}
-	gpu_texture_t *texture = gpu_create_texture_from_bytes_raw(pixels, res, res, format);
+	gpu_texture_t *texture = gpu_create_texture_from_bytes_raw(pixels, w, h, format);
 	array_free(pixels);
 	free(pixels);
 	return texture;
 }
 
 // dst of a loaded layer becomes its saved texture
-void import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 res, i32 bytes_per_texel, i32 format, bool *has_alpha) {
-	gpu_texture_t *t = import_arm_texture_from_lz4(b, res, bytes_per_texel, format, has_alpha);
+void import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha) {
+	gpu_texture_t *t = import_arm_texture_from_lz4(b, w, h, bytes_per_texel, format, has_alpha);
 	util_copy_texture(dst, t, g_project->is_bgra ? pipes_copy_bgra : pipes_copy);
+	gpu_delete_texture(t);
+}
+
+// dst of a loaded mask becomes its saved value, one channel (version 31 containers), in every channel
+void import_arm_mask_texture_r8(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h) {
+	u64       n  = (u64)w * (u64)h;
+	buffer_t *r8 = w > 0 && h > 0 && n * 4 <= UINT32_MAX ? lz4_decode(b, (u32)n) : NULL;
+	if (r8 == NULL) {
+		iron_log("Mask data could not be read, the mask starts empty");
+		w = h = 1;
+		n     = 1;
+		r8    = buffer_create(1);
+		memset(r8->buffer, 0, 1);
+	}
+	buffer_t *px = buffer_create((u32)(n * 4));
+	for (u64 i = 0; i < n; ++i) {
+		u8 v = r8->buffer[i];
+		memset(px->buffer + i * 4, v, 4);
+	}
+	array_free(r8);
+	free(r8);
+	gpu_texture_t *t = gpu_create_texture_from_bytes_raw(px, w, h, GPU_TEXTURE_FORMAT_RGBA32);
+	array_free(px);
+	free(px);
+	util_copy_texture(dst, t, pipes_copy);
 	gpu_delete_texture(t);
 }
 

@@ -27,6 +27,8 @@ typedef enum hstore_kind { // Frozen
 	HSTORE_ASSET        = 6, // Image or font bytes as imported (brush tips, stencils, decals, image layers)
 	HSTORE_LAYER_RECORD = 7, // A removed layer: props, timeline uid, tilemap (history*.c)
 	HSTORE_CANVAS       = 8, // Node canvas (history steps)
+	HSTORE_RASTER       = 9, // Interim: a whole live layer texture, LZ4 (io/project_container.c). Retired for HSTORE_TILEMAP
+	                         // before project_v31 is on by default, the number stays reserved
 } hstore_kind_t;
 
 // Bit of hash128_t.hi: set on inline uniform tiles (encoded by timeline_tiles.c, never stored), always clear on stored
@@ -53,6 +55,16 @@ void           hstore_trim(bool memory_warning);
 void           hstore_flush(); // Journals every blob only held in RAM
 void           hstore_reset(); // New or opened project
 hstore_stats_t hstore_stats();
+
+// Blobs owning other blobs (a tilemap its tiles, a stroke its snapshot): the enumerator of a kind lists the children in
+// a blob's bytes. Storing a new blob refs each child listed (put the children first), a dedup hit refs nothing. Trim
+// unrefs the children of the blobs it removes, cascading. Kinds without one are leaves.
+typedef void (*hstore_visit_fn)(hash128_t child, void *ud);
+typedef void (*hstore_children_fn)(const u8 *data, u32 len, hstore_visit_fn visit, void *ud);
+void hstore_set_children(hstore_kind_t kind, hstore_children_fn fn);
+// Refs rebuilt from reachability (after a load or a recovery): each root gets a ref per listing, each blob one per
+// parent listing it, the rest is garbage at the next trim. Ends a recovery (hstore_recover_end).
+void hstore_rebuild_refs(const hash128_t *roots, i32 n);
 
 // ---- Timelines (timeline.c) ----
 

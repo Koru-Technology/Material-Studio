@@ -89,6 +89,89 @@ void recovery() {
 	check(!hstore_journal_pending(uuid), "a save ends the pending state");
 }
 
+// Kind 2 blobs list their children (a test enumerator), kind 1 are leaves
+int parent_of(int a, int b) {
+	hstore_test_list_clear();
+	hstore_test_list_add(a);
+	if (b >= 0) {
+		hstore_test_list_add(b);
+	}
+	return hstore_test_put_list(2);
+}
+
+void children() {
+	hstore_test_reset();
+	hstore_test_children(2, 1);
+	int t1 = hstore_test_put(1, 20, 4096, 1);
+	int t2 = hstore_test_put(1, 21, 4096, 1);
+	int t3 = hstore_test_put(1, 22, 4096, 1);
+	int p  = parent_of(t1, t2);
+	check(hstore_test_refs(t1) == 2 && hstore_test_refs(t2) == 2 && hstore_test_refs(t3) == 1, "a new parent refs its children");
+	int p2 = parent_of(t1, t2);
+	check(p2 != p && hstore_test_refs(p) == 2 && hstore_test_refs(t1) == 2, "a dedup hit refs the parent, not its children again");
+	hstore_test_unref(t1);
+	hstore_test_unref(t2);
+	hstore_test_unref(t3);
+	hstore_test_trim(0);
+	check(hstore_test_has(t1) && hstore_test_has(t2) && !hstore_test_has(t3), "children held by a parent stay");
+	int g = parent_of(p, t1);
+	check(hstore_test_refs(p) == 3 && hstore_test_refs(t1) == 2, "a grandparent refs its children");
+	hstore_test_unref(p);
+	hstore_test_unref(p);
+	hstore_test_trim(0);
+	check(hstore_test_has(p) && hstore_test_refs(p) == 1, "a parent held by a grandparent stays");
+	hstore_test_unref(g);
+	hstore_test_trim(0);
+	check(!hstore_test_has(g) && !hstore_test_has(p) && !hstore_test_has(t1) && !hstore_test_has(t2), "removal cascades to grandchildren");
+	check(hstore_test_stat(0) == 0.0, string("nothing left (%f blobs)", hstore_test_stat(0)));
+
+	// A parent only in the journal waits for a trim that may read
+	int a = hstore_test_put(1, 23, 4096, 1);
+	int b = hstore_test_put(1, 24, 4096, 1);
+	int q = parent_of(a, b);
+	hstore_test_unref(a);
+	hstore_test_unref(b);
+	hstore_drop_tier(1);
+	hstore_test_unref(q);
+	float reads = hstore_test_stat(8);
+	hstore_test_trim(1);
+	check(hstore_test_has(q) && hstore_test_has(a) && hstore_test_refs(a) == 1, "memory warning trim defers a parent only on disk");
+	check(hstore_test_stat(8) == reads, "memory warning trim reads nothing");
+	hstore_test_trim(0);
+	check(!hstore_test_has(q) && !hstore_test_has(a) && !hstore_test_has(b), "the next trim removes it and its children");
+
+	// Refs rebuilt from roots after a recovery
+	hstore_test_reset();
+	int c  = hstore_test_put(1, 25, 4096, 1);
+	int d  = hstore_test_put(1, 26, 4096, 1);
+	int e  = hstore_test_put(1, 27, 4096, 1);
+	int f  = hstore_test_put(1, 28, 4096, 1);
+	int r  = parent_of(c, d);
+	int s  = parent_of(r, e);
+	int s2 = parent_of(r, c);
+	hstore_test_flush();
+	hstore_test_crash();
+	int n = hstore_recover();
+	check(n == 7, string("recovered (%d)", n));
+	check(hstore_test_refs(r) == 0 && hstore_test_refs(c) == 0, "recovered blobs have no refs");
+	hstore_test_list_clear();
+	hstore_test_list_add(s);
+	hstore_test_list_add(s2);
+	hstore_test_list_add(s);
+	hstore_test_rebuild();
+	check(hstore_test_refs(s) == 2 && hstore_test_refs(s2) == 1, "a root gets a ref per listing");
+	check(hstore_test_refs(r) == 2 && hstore_test_refs(c) == 2 && hstore_test_refs(d) == 1 && hstore_test_refs(e) == 1, "a blob gets a ref per parent");
+	check(hstore_test_refs(f) == 0, "unreachable blobs have none");
+	hstore_test_trim(0);
+	check(!hstore_test_has(f) && hstore_test_has(c) && hstore_test_has(r), "unreachable blobs go at the next trim");
+	hstore_test_unref(s);
+	hstore_test_unref(s);
+	hstore_test_unref(s2);
+	hstore_test_trim(0);
+	check(hstore_test_stat(0) == 0.0, "rebuilt refs cascade like put ones");
+	hstore_test_children(2, 0);
+}
+
 void budgets() {
 	config_t *cfg = script_get_config();
 	hstore_test_reset();
@@ -156,6 +239,7 @@ void main() {
 	hstore_test_reset();
 	basics();
 	recovery();
+	children();
 	budgets();
 	char *path = hstore_test_journal_path();
 	hstore_test_reset();

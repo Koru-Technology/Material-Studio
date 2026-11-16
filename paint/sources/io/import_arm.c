@@ -156,17 +156,34 @@ static bool import_arm_validate(project_t *p, bool as_mesh) {
 	return true;
 }
 
+// Uids handed out after a load: above the saved counter and every uid of the project
+static void import_arm_uid_next(u32 saved) {
+	u32 next = saved > 0 ? saved : 1;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		u32 uid = g_project->_->layers->buffer[i]->uid;
+		next    = uid >= next ? uid + 1 : next;
+	}
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		u32 uid = g_project->_->materials->buffer[i]->uid;
+		next    = uid >= next ? uid + 1 : next;
+	}
+	project_uid_next = next;
+}
+
 void import_arm_run_project(char *path) {
 	iron_profile_mark("project load start");
 	ui_header_draw_progress(0.0);
-	buffer_t *b = data_get_blob(path);
-	if (b == NULL) {
+	project_t *project;
+	bool       import_as_mesh = false;
+	buffer_t  *b              = NULL;
+	if (project_container_is(path)) { // Version 31: the head, the index and the live layers are read
+		project = project_container_open(path);
+	}
+	else if ((b = data_get_blob(path)) == NULL) {
 		console_error(string("Could not open file %s.", path));
 		return;
 	}
-	project_t *project;
-	bool       import_as_mesh = false;
-	if (!import_arm_has_version(b)) {
+	else if (!import_arm_has_version(b)) {
 		import_as_mesh     = true;
 		scene_t *scene_raw = armpack_decode(b);
 		project            = ALLOC_INIT(project_t, {.mesh_datas = scene_raw->mesh_datas});
@@ -220,6 +237,7 @@ void import_arm_run_project(char *path) {
 	import_arm_progress_unpacked = 0;
 
 	project_new(import_as_mesh);
+	project_container_attach(); // After project_new reset the store
 	g_project->_->filepath = string_copy(path);
 	ui_files_filename      = string_copy(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, ".")));
 #ifdef IRON_IOS
@@ -248,9 +266,15 @@ void import_arm_run_project(char *path) {
 	project->_ = g_project->_; // Carry over runtime arrays set up by project_new
 	g_project  = project;
 	layer_data_t *l0                     = g_project->layer_datas->buffer[0];
-	base_res                             = config_get_texture_res_pos(l0->res);
-	base_res_x                           = (f32)l0->res;
-	base_res_y                           = (f32)l0->res;
+	i32           res_x                  = l0->res_x > 0 ? l0->res_x : l0->res; // Square before version 31
+	i32           res_y                  = l0->res_y > 0 ? l0->res_y : l0->res;
+	base_res                             = res_x == res_y ? config_get_texture_res_pos(res_x) : TEXTURE_RES_CUSTOM;
+	base_res_x                           = (f32)res_x;
+	base_res_y                           = (f32)res_y;
+	project_uuid                         = g_project->uuid != NULL ? string_copy(g_project->uuid) : NULL; // A new one for older projects
+	if (project_uuid != NULL && hstore_journal_pending(project_uuid)) {
+		iron_log("History journal of an unsaved session: %d blobs recovered", hstore_recover()); // Used by the history load
+	}
 	texture_bits_t bits_pos              = l0->bpp == 8 ? TEXTURE_BITS_BITS8 : l0->bpp == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
 	base_bits                            = bits_pos;
 	i32                  bytes_per_pixel = math_floor(l0->bpp / 8.0);
@@ -402,6 +426,10 @@ void import_arm_run_project(char *path) {
 		if (ld->name != NULL) {
 			l->name = string_copy(ld->name);
 		}
+		if (ld->uid != 0) {
+			l->uid = ld->uid; // Older projects keep the new uid
+		}
+		l->timeline = ld->timeline;
 		l->visible = ld->visible;
 		if (ld->texpaint_sculpt != NULL) {
 			// Sculpting was removed: the layer is kept, empty and hidden, so masks and parents stay valid
@@ -410,14 +438,17 @@ void import_arm_run_project(char *path) {
 		}
 		any_array_push(g_project->_->layers, l);
 		if (!is_group) {
-			if (is_mask) { // Full bits for undo support, R8 is used
-				import_arm_layer_texture(l->texpaint, ld->texpaint, ld->res, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
+			if (is_mask && project_container_mask_r8(ld)) {
+				import_arm_mask_texture_r8(l->texpaint, ld->texpaint, res_x, res_y);
+			}
+			else if (is_mask) { // Full bits for undo support, R8 is used
+				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
 			}
 			else { // Layer
 				// See-through meshes when the bottom layer is not fully opaque
-				import_arm_layer_texture(l->texpaint, ld->texpaint, ld->res, 4 * bytes_per_pixel, format, i == 0 ? &g_project->_->translucency : NULL);
-				import_arm_layer_texture(l->texpaint_nor, ld->texpaint_nor, ld->res, 4 * bytes_per_pixel, format, NULL);
-				import_arm_layer_texture(l->texpaint_pack, ld->texpaint_pack, ld->res, 4 * bytes_per_pixel, format, NULL);
+				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4 * bytes_per_pixel, format, i == 0 ? &g_project->_->translucency : NULL);
+				import_arm_layer_texture(l->texpaint_nor, ld->texpaint_nor, res_x, res_y, 4 * bytes_per_pixel, format, NULL);
+				import_arm_layer_texture(l->texpaint_pack, ld->texpaint_pack, res_x, res_y, 4 * bytes_per_pixel, format, NULL);
 			}
 
 			l->scale   = ld->uv_scale;
@@ -501,9 +532,14 @@ void import_arm_run_project(char *path) {
 		material_data2_t *md = g_project->material_datas->buffer[i];
 		import_arm_material_data(g_context->material, md);
 		g_context->material->uv_scale = md->uv_scale;
+		if (md->uid != 0) {
+			g_context->material->uid = md->uid;
+		}
 
 		any_array_push(g_project->_->materials, g_context->material);
 	}
+
+	import_arm_uid_next(g_project->next_uid);
 
 	ui_nodes_hwnd->redraws        = 2;
 	ui_nodes_group_stack          = any_array_create_from_raw((void *[]){}, 0);
@@ -585,6 +621,17 @@ void import_arm_run_project(char *path) {
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	g_context->ddirty = 4;
 	data_delete_blob(path);
+	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
+		layer_data_t *ld = g_project->layer_datas->buffer[i];
+		if (ld->rasters != NULL) { // Read from a container, not part of a blob: the pixels are uploaded
+			buffer_t **raster[3] = {(buffer_t **)&ld->texpaint, (buffer_t **)&ld->texpaint_nor, (buffer_t **)&ld->texpaint_pack};
+			for (i32 c = 0; c < 3; ++c) {
+				if (*raster[c] != NULL) {
+					array_free(*raster[c]); // The struct stays: non NULL tells layers from groups
+				}
+			}
+		}
+	}
 	iron_profile_mark("project load end");
 }
 

@@ -175,6 +175,7 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 			md->paint_subs        = armpack_map_get_i32(old, "paint_subs") > 0;
 			md->uv_scale          = armpack_map_get_f32(old, "uv_scale");
 			md->uv_angle          = armpack_map_get_f32(old, "uv_angle");
+			md->uid               = (u32)armpack_map_get_i32(old, "uid");
 			any_array_push(project->material_datas, md);
 		}
 	}
@@ -231,6 +232,11 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 			ld->height_blend_offset    = armpack_map_get_f32(old, "height_blend_offset");
 			ld->height_blend_reach     = armpack_map_get_f32(old, "height_blend_reach");
 			ld->mask_effects           = any_map_get(old, "mask_effects");
+			ld->uid                    = (u32)armpack_map_get_i32(old, "uid");
+			ld->res_x                  = armpack_map_get_i32(old, "res_x");
+			ld->res_y                  = armpack_map_get_i32(old, "res_y");
+			ld->timeline               = (u32)armpack_map_get_i32(old, "timeline");
+			ld->rasters                = any_map_get(old, "rasters");
 			any_array_push(project->layer_datas, ld);
 		}
 	}
@@ -268,13 +274,22 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 	project->linear_blending = armpack_map_get_i32(old, "linear_blending") > 0;
 	project->id_map          = string_copy(any_map_get(old, "id_map"));
 	project->mesh_maps       = any_map_get(old, "mesh_maps");
+	project->uuid            = string_copy(any_map_get(old, "uuid"));
+	project->next_uid        = (u32)armpack_map_get_i32(old, "next_uid");
+	project->timelines       = any_map_get(old, "timelines");
+	project->history         = any_map_get(old, "history");
 
 	return project;
 }
 
+// Projects from before have no uuid, no layer and material uids and square layers: they get them on load
+project_t *import_arm_from_version_30(any_map_t *old) {
+	return import_arm_from_map_to_arm(old);
+}
+
 project_t *import_arm_from_version_29(any_map_t *old) {
 	// Projects from before have no mask stacks (masks read their paint) and no registered mesh maps
-	return import_arm_from_map_to_arm(old);
+	return import_arm_from_version_30(old);
 }
 
 // Scene data (per-mesh materials, physics, skins, scripts, timeline, stages, mesh nodes, sounds) was removed, its keys are dropped
@@ -549,6 +564,7 @@ project_t *import_arm_from_old(buffer_t *b) {
 	    import_arm_from_version_15, import_arm_from_version_16, import_arm_from_version_17, import_arm_from_version_18, import_arm_from_version_19,
 	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22, import_arm_from_version_23, import_arm_from_version_24, import_arm_from_version_25,
 	    import_arm_from_version_26, import_arm_from_version_27, import_arm_from_version_28, import_arm_from_version_29,
+	    import_arm_from_version_30,
 	};
 	for (i32 v = ARRAY_LENGTH(fns) - 1; v >= 0; --v) {
 		if (import_arm_is_version(b, i32_to_string(v))) {
