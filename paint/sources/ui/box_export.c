@@ -12,7 +12,8 @@ char                    *box_export_preset_template = "{\
 }\
 ";
 
-void box_export_tab_export_textures_run(void *_) {
+// Exports the textures as the export box does: padding first (dilates the layers in place)
+void box_export_textures_run(char *path, bool bake_material) {
 	if (g_context->export_padding) {
 		i32 _dilate_radius      = g_config->dilate_radius;
 		g_config->dilate_radius = 256;
@@ -25,7 +26,11 @@ void box_export_tab_export_textures_run(void *_) {
 		g_config->dilate_radius = _dilate_radius;
 	}
 
-	export_texture_run(g_context->texture_export_path, _box_export_bake_material);
+	export_texture_run(path, bake_material);
+}
+
+void box_export_tab_export_textures_run(void *_) {
+	box_export_textures_run(g_context->texture_export_path, _box_export_bake_material);
 }
 
 void box_export_tab_export_textures_path_picked(char *path) {

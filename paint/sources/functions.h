@@ -44,6 +44,7 @@ void export_obj_run(char *path, mesh_object_t_array_t *paint_objects);
 
 // ---- io/export_texture.c ----
 void export_texture_run(char *path, bool bake_material);
+void export_texture_test_options(char *preset, i32 layers_export, bool padding, i32 bits, i32 format);
 
 // ---- io/import_arm_assets.c ----
 char           *import_arm_abs(char *file, char *base);
@@ -933,6 +934,7 @@ gpu_texture_t *box_bake_maps_inpaint_overlay();
 i32            box_bake_maps_inpaint_color();
 
 // ---- ui/box_export.c ----
+void box_export_textures_run(char *path, bool bake_material);
 void box_export_fetch_presets();
 void box_export_parse_preset();
 void box_export_show_textures();

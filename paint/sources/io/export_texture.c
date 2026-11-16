@@ -845,3 +845,27 @@ void export_texture_run(char *path, bool bake_material) {
 #endif
 	ui_files_last_path = "";
 }
+
+// Tests: the settings of the export box. preset by name ("" keeps it), layers_export_mode_t, padding, bits 8 / 16 / 32,
+// format 0 png 1 jpg
+void export_texture_test_options(char *preset, i32 layers_export, bool padding, i32 bits, i32 format) {
+	if (box_export_files == NULL) {
+		box_export_fetch_presets();
+	}
+	if (!string_equals(preset, "")) {
+		i32 i = string_array_index_of(box_export_files, preset);
+		if (i >= 0) {
+			box_export_preset_index = i;
+			box_export_preset       = NULL;
+			box_export_parse_preset();
+		}
+	}
+	g_context->layers_export = layers_export;
+	g_context->export_padding = padding;
+	g_context->format_type    = format;
+	i32 b                     = bits == 32 ? TEXTURE_BITS_BITS32 : bits == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS8;
+	if (b != base_bits) {
+		base_bits = b;
+		layers_set_bits();
+	}
+}
