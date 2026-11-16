@@ -420,9 +420,13 @@ void export_arm_run_project(char *path) {
 	{
 		gpu_texture_t   *tex       = render_path_target_image("buf");
 		gpu_texture_t   *mesh_icon = gpu_create_render_target(256, 256, GPU_TEXTURE_FORMAT_RGBA32);
-		f32              r         = base_window_aspect();
-		draw_begin(mesh_icon, false, 0);
-		draw_scaled_image(tex, -(256 * r - 256) / 2.0, 0, 256 * r, 256);
+		// The new target holds whatever was in memory (magenta on the iPad): clear it to the grey of the view,
+		// it shows where the view is transparent
+		f32 r  = base_window_aspect();
+		f32 dw = r >= 1.0 ? 256 * r : 256;
+		f32 dh = r >= 1.0 ? 256 : 256 / r;
+		draw_begin(mesh_icon, true, 0xff1a1a1a); // Linear, the gamma below makes it 90 grey
+		draw_scaled_image(tex, (256 - dw) / 2.0, (256 - dh) / 2.0, dw, dh); // Cover the square, also in portrait
 		draw_end();
 
 		buffer_t   *mesh_icon_pixels = gpu_get_texture_pixels(mesh_icon);

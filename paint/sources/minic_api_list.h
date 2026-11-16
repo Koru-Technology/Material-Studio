@@ -560,6 +560,7 @@ X0(script_layer_new, "p:slot_layer_t()", p)
 X0(script_layer_new_fill, "p:slot_layer_t()", p)
 X4(script_layer_new_color, "p:slot_layer_t(i base_color,f occlusion,f roughness,f metallic)", p, i, f, f, f)
 X1(script_layer_delete, "v(p:slot_layer_t l)", v, p)
+X0(box_projects_show, "v()", v)
 
 // app_api.h, the native UI's interface (tests/app_api.c)
 X0(app_layer_count, "i()", i)

@@ -374,6 +374,7 @@ void ui_set_scale(float factor);
 bool  ui_get_hover(float elem_h);
 bool  ui_get_released(float elem_h);
 bool  ui_get_started(float elem_h);
+bool  ui_get_pushed(float elem_h);
 extern float ui_image_draw_scale;
 extern float ui_window_composite_alpha;
 extern float ui_window_composite_scale;
