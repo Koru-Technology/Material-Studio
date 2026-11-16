@@ -957,6 +957,9 @@ void minic_register_builtins() {
 	MINIC_I(pencil_squeeze);
 	MINIC_I(undo_memory_mb);
 	MINIC_I(dilate_radius);
+	MINIC_B(timeline_shadow);
+	MINIC_B(history_v2);
+	MINIC_B(export_tiled);
 	MINIC_END();
 
 	MINIC_STRUCT(context_t);

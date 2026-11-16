@@ -225,6 +225,10 @@ void project_new_resize_layers(void *_) {
 	layers_resize();
 }
 
+u32 project_uid_take() {
+	return project_uid_next++;
+}
+
 void project_new(bool reset_layers) {
 	if (g_context->paint_object != NULL) {
 		project_cleanup();

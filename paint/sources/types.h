@@ -186,6 +186,7 @@ typedef struct mesh_geo_image {
 // ---- Layers, masks and fonts ----
 typedef struct slot_layer {
 	i32                   id;
+	u32                   uid;      // Stable in the project and saved, history and timelines find the layer by it
 	char                 *name;
 	char                 *ext;
 	bool                  visible;
@@ -369,6 +370,9 @@ typedef struct config {
 	i32                  pencil_squeeze;
 	struct i32_array    *quick_menu_slots;  // Quick menu items clockwise from the top, see quick_menu_item_t
 	i32                  undo_memory_mb;    // Undo steps are dropped, oldest first, above this budget
+	bool                 timeline_shadow;   // Stroke recording runs beside the old undo, nothing reads it (stroke_rec.h)
+	bool                 history_v2;        // Undo from timelines and checkpoints, the undo ring retired
+	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 } config_t;
 
 // ---- Materials ----
@@ -391,6 +395,7 @@ typedef struct slot_material {
 	bool                   paint_subs;
 	f32                    uv_scale; // Texture scale and rotation (degrees) when painted on paint layers
 	f32                    uv_angle;
+	u32                    uid; // Stable in the project and saved, history finds the material by it
 } slot_material_t;
 
 // ---- Tabs, docking and render passes ----

@@ -42,6 +42,7 @@ slot_material_t *slot_material_create(shader_data_t *m, ui_node_canvas_t *c) {
 	raw->paint_subs      = true;
 	raw->uv_scale        = 1.0;
 	raw->uv_angle        = 0.0;
+	raw->uid             = project_uid_take();
 
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *mat = g_project->_->materials->buffer[i];
@@ -102,4 +103,14 @@ void slot_material_delete(slot_material_t *raw) {
 	if (g_project->_->materials->length > 0) {
 		context_set_material(g_project->_->materials->buffer[mpos > 0 ? mpos - 1 : 0]);
 	}
+}
+
+slot_material_t *slot_material_find_uid(u32 uid) {
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		slot_material_t *m = g_project->_->materials->buffer[i];
+		if (m->uid == uid) {
+			return m;
+		}
+	}
+	return NULL;
 }

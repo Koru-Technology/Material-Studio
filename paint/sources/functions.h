@@ -872,6 +872,7 @@ void                  slot_layer_alloc_textures(slot_layer_t *raw);
 char                 *slot_layer_unique_name(slot_layer_t *self, char *name);
 slot_layer_t         *slot_layer_create_undo(char *ext);
 slot_layer_t         *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t *parent);
+slot_layer_t         *slot_layer_find_uid(u32 uid); // Layers of the project, NULL if none has it
 void                  slot_layer_delete(slot_layer_t *raw);
 void                  slot_layer_unload(slot_layer_t *raw);
 void                  slot_layer_swap(slot_layer_t *raw, slot_layer_t *other);
@@ -912,6 +913,8 @@ void                  slot_layer_move(slot_layer_t *raw, i32 to);
 // ---- slots/slot_material.c ----
 char            *slot_material_unique_name(ui_node_canvas_t *self, char *name);
 slot_material_t *slot_material_create(shader_data_t *m, ui_node_canvas_t *c);
+slot_material_t *slot_material_find_uid(u32 uid);
+u32              project_uid_take(); // Next stable uid of a layer or material (slot_layer_t.uid, slot_material_t.uid)
 void             slot_material_unload(slot_material_t *raw);
 void             slot_material_delete(slot_material_t *raw);
 

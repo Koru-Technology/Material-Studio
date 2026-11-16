@@ -318,6 +318,9 @@ i32             console_message_color = 0x00000000;
 string_array_t *console_last_traces;
 char           *console_capture = NULL;
 
+// ---- project.c ----
+u32 project_uid_next = 1; // Stable uids of layers and materials, saved with the project, never reused in it
+
 // ---- history.c ----
 history_step_t_array_t *history_steps;
 i32                     history_undo_i      = 0;     // Undo layer

@@ -144,7 +144,10 @@ void config_brush_save_update() {
 	X(I32, pencil_double_tap, PENCIL_ACTION_SYSTEM, PENCIL_ACTION_OFF)                           \
 	X(I32, pencil_squeeze, PENCIL_ACTION_SYSTEM, PENCIL_ACTION_OFF)                              \
 	X(I32S, quick_menu_slots, CONFIG_ANY)                                                        \
-	X(I32, undo_memory_mb, 1, 1048576)
+	X(I32, undo_memory_mb, 1, 1048576)                                                           \
+	X(BOOL, timeline_shadow, CONFIG_ANY)                                                         \
+	X(BOOL, history_v2, CONFIG_ANY)                                                              \
+	X(BOOL, export_tiled, CONFIG_ANY)
 
 #define CONFIG_ANY -FLT_MAX, FLT_MAX
 

@@ -113,6 +113,7 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 		}
 		next_id = raw->id + 1;
 		ext     = string("%d", raw->id);
+		raw->uid = project_uid_take();
 	}
 	raw->ext    = string_copy(ext);
 	raw->parent = parent;
@@ -844,4 +845,14 @@ void slot_layer_move(slot_layer_t *raw, i32 to) {
 	context_set_layer(raw);
 
 	tab_layers_remap_all_layer_pointers(pointers);
+}
+
+slot_layer_t *slot_layer_find_uid(u32 uid) {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		if (l->uid == uid) {
+			return l;
+		}
+	}
+	return NULL;
 }

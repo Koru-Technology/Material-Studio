@@ -11,3 +11,4 @@
 #include "globals.h"
 #include "shader_snippets.h"
 #include "types.h"
+#include "stroke_rec.h" // Contract of the stroke recording subsystem
