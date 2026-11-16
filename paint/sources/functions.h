@@ -2438,6 +2438,7 @@ void project_test_set_res(i32 w, i32 h);
 i32  project_test_layer_hash(i32 i, i32 channel);
 
 // ---- util/util_test.c ----
+char *script_tmp_dir(char *name);
 i32   script_diff_images(char *path_a, char *path_b, f32 tol);
 i32   script_diff_textures(gpu_texture_t *a, gpu_texture_t *b, f32 tol);
 f32   script_diff_max();

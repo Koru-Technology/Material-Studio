@@ -342,6 +342,7 @@ void next() {
 }
 
 void main() {
+	root = script_tmp_dir("materialstudio_export_tiled"); // Per run: suites of several worktrees run at once
 	config_t *cfg        = script_get_config();
 	cfg->timeline_shadow = 1; // Paint layers record their timelines, the tiled export reads them
 	script_project_new();

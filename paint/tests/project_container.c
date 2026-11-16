@@ -193,6 +193,7 @@ void next() {
 }
 
 void main() {
+	dir = script_tmp_dir("materialstudio_project_container"); // Per run: suites of several worktrees run at once
 	v31_was                          = script_get_config()->project_v31;
 	script_get_config()->project_v31 = 1;
 	iron_create_directory(dir);

@@ -1,4 +1,5 @@
 #include "../global.h"
+#include <unistd.h>
 
 // Pixel comparisons and hashes for test scripts (paint/tests), in C: per-pixel loops in minic are too slow at layer sizes.
 // Diffs count the channel values that differ by more than tol, in 1/255 units whatever the format; script_diff_max and
@@ -164,4 +165,10 @@ i32 script_diff_files(char *path_a, char *path_b) {
 	iron_delete_blob(a);
 	iron_delete_blob(b);
 	return r;
+}
+
+// A temporary directory of this run, /tmp/<name>_<pid>: suites of several worktrees run at the same time and must not
+// share their files
+char *script_tmp_dir(char *name) {
+	return string("/tmp/%s_%d", name, (i32)getpid());
 }

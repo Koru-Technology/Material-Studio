@@ -188,6 +188,7 @@ void next() {
 }
 
 void main() {
+	dir = script_tmp_dir("materialstudio_rec_replay"); // Per run: suites of several worktrees run at once
 	script_get_config()->paint_resolved_dabs = 1;
 	script_get_config()->timeline_shadow     = 1;
 	v31                                      = script_get_config()->project_v31;
