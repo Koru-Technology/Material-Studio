@@ -48,8 +48,8 @@ static brush_library_builtin_t brush_library_builtins[] = {
 };
 // clang-format on
 
-#define BRUSH_LIBRARY_BUILTIN_COUNT       ((i32)(sizeof(brush_library_builtins) / sizeof(brush_library_builtins[0])))
-#define BRUSH_LIBRARY_BUILTIN_GROUP_COUNT ((i32)(sizeof(brush_library_builtin_groups) / sizeof(brush_library_builtin_groups[0])))
+#define BRUSH_LIBRARY_BUILTIN_COUNT       ((i32)ARRAY_LENGTH(brush_library_builtins))
+#define BRUSH_LIBRARY_BUILTIN_GROUP_COUNT ((i32)ARRAY_LENGTH(brush_library_builtin_groups))
 
 static brush_def_t   *brush_library_defs[BRUSH_LIBRARY_MAX];
 static i32            brush_library_n = 0;

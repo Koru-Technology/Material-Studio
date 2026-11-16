@@ -1014,7 +1014,7 @@ void minic_register_builtins() {
 	minic_register_global("ui_nodes_show", &ui_nodes_show, MINIC_T_BOOL);
 
 	// minic_api_list.h
-	for (int i = 0; i < (int)(sizeof(minic_api_entries) / sizeof(minic_api_entries[0])); ++i) {
+	for (int i = 0; i < (int)ARRAY_LENGTH(minic_api_entries); ++i) {
 		minic_api_register(minic_api_entries[i].name, minic_api_entries[i].sig, minic_api_entries[i].fn);
 	}
 }

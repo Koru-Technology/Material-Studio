@@ -1093,7 +1093,7 @@ static pattern_def_t pattern_defs[] = {
 };
 // clang-format on
 
-#define PATTERN_DEF_COUNT ((i32)(sizeof(pattern_defs) / sizeof(pattern_defs[0])))
+#define PATTERN_DEF_COUNT ((i32)ARRAY_LENGTH(pattern_defs))
 
 i32 pattern_node_count() {
 	return PATTERN_DEF_COUNT;

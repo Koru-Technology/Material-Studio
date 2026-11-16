@@ -775,7 +775,7 @@ static studio_layer_preset_t studio_layer_presets[] = {
 };
 // clang-format on
 
-#define STUDIO_LAYER_PRESET_COUNT ((i32)(sizeof(studio_layer_presets) / sizeof(studio_layer_presets[0])))
+#define STUDIO_LAYER_PRESET_COUNT ((i32)ARRAY_LENGTH(studio_layer_presets))
 #define STUDIO_FIRST_LAYER_PRESET 14 // Edge Wear
 
 static i32 studio_layer_preset_index(char *name) {
@@ -816,7 +816,7 @@ static studio_preset_t studio_presets[] = {
 };
 // clang-format on
 
-#define STUDIO_PRESET_COUNT ((i32)(sizeof(studio_presets) / sizeof(studio_presets[0])))
+#define STUDIO_PRESET_COUNT ((i32)ARRAY_LENGTH(studio_presets))
 
 i32 studio_preset_count() {
 	return STUDIO_PRESET_COUNT;

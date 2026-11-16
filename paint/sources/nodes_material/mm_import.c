@@ -53,7 +53,7 @@ static char *mm_import_type(mm_json_t *n) {
 		return "";
 	}
 	static const char *dropped[] = {"comment", "comment_line", "debug", "export", "autoexport", "ios"};
-	for (i32 i = 0; i < (i32)(sizeof(dropped) / sizeof(dropped[0])); ++i) {
+	for (i32 i = 0; i < (i32)ARRAY_LENGTH(dropped); ++i) {
 		if (strcmp(type, dropped[i]) == 0) {
 			return NULL;
 		}
@@ -131,7 +131,7 @@ static i32 mm_import_material_port(mm_json_t *n, i32 port, bool unlit) {
 static void mm_import_material_params(ui_node_t *node, mm_json_t *n) {
 	bool              unlit  = string_equals(node->type, "MM_MATERIAL_UNLIT");
 	mm_nodes_param_t *params = unlit ? mm_material_unlit_params : mm_material_params;
-	i32               count  = unlit ? 1 : (i32)(sizeof(mm_material_params) / sizeof(mm_material_params[0]));
+	i32               count  = unlit ? 1 : (i32)ARRAY_LENGTH(mm_material_params);
 	mm_json_t        *values = mm_json_get(n, "parameters");
 	for (i32 i = 0; i < count; ++i) {
 		mm_nodes_store(&params[i], node->buttons->buffer[params[i].button], mm_json_get(values, params[i].name));
@@ -149,7 +149,7 @@ char *mm_material_parameters_json(ui_node_t *node) {
 	}
 	bool              unlit  = string_equals(node->type, "MM_MATERIAL_UNLIT");
 	mm_nodes_param_t *params = unlit ? mm_material_unlit_params : mm_material_params;
-	i32               count  = unlit ? 1 : (i32)(sizeof(mm_material_params) / sizeof(mm_material_params[0]));
+	i32               count  = unlit ? 1 : (i32)ARRAY_LENGTH(mm_material_params);
 	mm_mark_t         mk     = mm_arena_mark();
 	mm_json_t        *o      = mm_json_new(MM_JSON_OBJECT);
 	for (i32 i = 0; i < count; ++i) {

@@ -14,10 +14,6 @@ _Static_assert(APP_SAME(APP_VIEWPORT_LIT, VIEWPORT_MODE_LIT) && APP_SAME(APP_VIE
                    APP_SAME(APP_VIEWPORT_MASK, VIEWPORT_MODE_MASK) && APP_SAME(APP_VIEWPORT_PATH_TRACE + 1, VIEWPORT_MODE_PLUGIN),
                "app_api.h mirrors viewport_mode_t");
 
-#ifndef ARRAY_LENGTH // Engine-wide once base has it
-#define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
-#endif
-
 static bool     app_engine_ready     = false;
 static uint32_t app_previews_counter = 0;
 

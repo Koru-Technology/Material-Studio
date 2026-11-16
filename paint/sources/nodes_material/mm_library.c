@@ -33,7 +33,7 @@ typedef struct mm_library_entry {
 
 static const char *mm_library_sections[] = {"Bricks & Walls", "Stone & Rock",     "Tiles & Floors", "Metal",    "Ground & Nature", "Wood",
                                             "Food",           "Fabric & Leather", "Sci-Fi & Tech",  "Patterns", "Creatures & Organic"};
-#define MM_LIBRARY_SECTIONS ((i32)(sizeof(mm_library_sections) / sizeof(mm_library_sections[0])))
+#define MM_LIBRARY_SECTIONS ((i32)ARRAY_LENGTH(mm_library_sections))
 
 static mm_library_entry_t *mm_library_entries = NULL;
 static i32                 mm_library_n       = 0;

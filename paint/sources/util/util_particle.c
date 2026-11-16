@@ -122,7 +122,7 @@ static util_particle_preset_t util_particle_presets[] = {
 // clang-format on
 
 i32 util_particle_preset_count() {
-	return sizeof(util_particle_presets) / sizeof(util_particle_presets[0]);
+	return ARRAY_LENGTH(util_particle_presets);
 }
 
 char *util_particle_preset_name(i32 i) {
