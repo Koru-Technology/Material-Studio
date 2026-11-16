@@ -1,7 +1,8 @@
 #include "global.h"
 
-// Project files: version 31 keeps the pixels, the layer and material uids, the project uuid and non-square layers. A
-// version 30 file (Save as v30, what builds before 31 read) opens with the same pixels and new unique uids.
+// Project files: version 31 (project_v31 on) keeps the pixels, the layer and material uids, the project uuid and
+// non-square layers. A version 30 file (project_v31 off, what builds before 31 read) opens with the same pixels and new
+// unique uids.
 
 int   fails  = 0;
 int   checks = 0;
@@ -15,6 +16,7 @@ int   uids[32];
 int   hashes[96];
 int   mat_uid = 0;
 char *uuid    = NULL;
+int   v31_was = 0;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -102,6 +104,7 @@ void next() {
 	else if (step == 2) {
 		snapshot();
 		check(uids_valid(), "uids of a new project");
+		script_get_config()->project_v31 = 1;
 		project_filepath_set(file31);
 		project_save(0);
 	}
@@ -132,20 +135,25 @@ void next() {
 	}
 	else if (step == 7) {
 		snapshot();
-		export_arm_run_project_v30(file30);
-		script_project_new();
+		script_get_config()->project_v31 = 0; // Saves as today
+		project_filepath_set(file30);
+		project_save(0);
 	}
 	else if (step == 8) {
+		script_project_new();
+	}
+	else if (step == 9) {
 		check(iron_file_exists(file30), "version 30 saved");
 		script_project_open(file30);
 	}
-	else if (step == 9) {
+	else if (step == 10) {
 		check(same_pixels(), "a version 30 file opens with the same pixels");
 		check(uids_valid(), "a version 30 file gets new unique uids");
 		check(!string_equals(project_uuid_get(), uuid), "and a new uuid");
 		check(string_equals(script_get_project()->version, "31"), "upgraded to 31");
 	}
 	else {
+		script_get_config()->project_v31 = v31_was;
 		iron_delete_file(file31);
 		iron_delete_file(file30);
 		printf("[legacy_upgrade] %d checks, %d failures", checks, fails);
@@ -158,6 +166,7 @@ void next() {
 }
 
 void main() {
+	v31_was = script_get_config()->project_v31;
 	iron_create_directory(dir);
 	file31 = string("%s/v31.arm", dir);
 	file30 = string("%s/v30.arm", dir);

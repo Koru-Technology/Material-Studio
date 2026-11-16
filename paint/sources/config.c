@@ -149,7 +149,8 @@ void config_brush_save_update() {
 	X(BOOL, history_v2, CONFIG_ANY)                                                              \
 	X(BOOL, export_tiled, CONFIG_ANY)                                                            \
 	X(I32, history_ram_mb, 16, 1048576)                                                          \
-	X(I32, history_disk_mb, 64, 1048576)
+	X(I32, history_disk_mb, 64, 1048576)                                                         \
+	X(BOOL, project_v31, CONFIG_ANY)
 
 #define CONFIG_ANY -FLT_MAX, FLT_MAX
 

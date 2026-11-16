@@ -375,6 +375,7 @@ typedef struct config {
 	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
+	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 } config_t;
 
 // ---- Materials ----
