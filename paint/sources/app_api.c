@@ -69,16 +69,7 @@ static uint32_t app_hash_fq(uint32_t h, float v) {
 }
 
 static slot_layer_t *app_layer_by_id(int32_t id) {
-	if (!app_ready()) {
-		return NULL;
-	}
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->id == id) {
-			return l;
-		}
-	}
-	return NULL;
+	return app_ready() ? mask_stack_layer_by_id(id) : NULL;
 }
 
 static uint32_t app_layers_signature(void) {
