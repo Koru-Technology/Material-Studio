@@ -153,14 +153,14 @@ static void brush_pad_paint_point(brush_pad_stroke_t *s, i32 i, bool stamps) {
 		render_path_paint_commands_stamps();
 	}
 	else {
-		render_path_paint_commands_paint(false);
+		render_path_paint_commands_paint_stroke(false);
 	}
 }
 
 static void brush_pad_clear_live() {
 	slot_layer_clear(render_path_paint_live_layer, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	g_context->brush_blend_dirty = true; // The coverage of the stroke starts over
-	render_path_paint_clear_blend();
+	render_path_paint_clear_blend_stroke();
 	brush_pad_live = false;
 }
 

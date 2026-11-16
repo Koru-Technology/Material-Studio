@@ -144,7 +144,7 @@ static void render_path_paint_dab_paint(render_path_paint_dab_t *d, f32 size, f3
 		}
 		else {
 			render_path_paint_commands_symmetry();
-			render_path_paint_commands_paint(dilation);
+			render_path_paint_commands_paint_stroke(dilation);
 		}
 	}
 	util_brush_sample_pressure = pressure;
@@ -482,7 +482,7 @@ void render_path_paint_commands_samples() {
 		}
 		else {
 			render_path_paint_commands_symmetry();
-			render_path_paint_commands_paint(i == count - 1);
+			render_path_paint_commands_paint_stroke(i == count - 1);
 		}
 		render_path_paint_samples_last = pts[i];
 	}

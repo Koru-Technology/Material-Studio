@@ -6,17 +6,59 @@
 // for the end of the outermost paint_exec_begin / paint_exec_end, one pass resolves every dab of them to world space
 // (render/make_dab_resolve.c), then they draw. The brush uniforms (uniforms.c) read the op being executed.
 // Otherwise every op runs at once, as painting did before.
+//
+// The stroke model emits into the open scope (render_path_paint_commands_paint_stroke and the other _stroke entries).
+// Work outside it (a fill layer, a fill rendered for a replay or an export tile, bakes, paths, sharpening, replays) runs
+// isolated (paint_exec_isolate_begin / end, which the public render_path_paint_commands_paint, _dilate and _clear_blend
+// do): at once, against the targets and context its caller set, never part of a recorded stroke, whether a scope is
+// open or not. Ops of the open scope waiting for its end run first when they paint the same targets with the same
+// context, else after it (they are set aside: the caller swapped targets in, and swaps them back before the scope ends).
 
 #define PAINT_EXEC_OPS_MAX 512
+#define PAINT_EXEC_LEVELS  4 // Isolations nested at most
 
-static paint_exec_op_t  paint_exec_ops[PAINT_EXEC_OPS_MAX];
+static paint_exec_op_t  paint_exec_ops0[PAINT_EXEC_OPS_MAX];
+static f32              paint_exec_in0[PAINT_DAB_MAX * PAINT_DAB_TEXELS * 4];
+static paint_exec_op_t *paint_exec_ops  = paint_exec_ops0;
+static f32             *paint_exec_in   = paint_exec_in0;
 static i32              paint_exec_nops = 0;
-static f32              paint_exec_in[PAINT_DAB_MAX * PAINT_DAB_TEXELS * 4];
 static i32              paint_exec_ndabs       = 0;
 static i32              paint_exec_batch_first = -1; // Dabs of the batch being collected, [first, ndabs)
 static i32              paint_exec_depth       = 0;
 static paint_exec_op_t *paint_exec_op          = NULL;
 static gpu_texture_t   *paint_exec_in_tex      = NULL;
+static i32              paint_exec_resolved_n  = 0; // Dabs of paint_exec_in_tex resolved last
+static bool             paint_exec_flushing    = false;
+static i32              paint_exec_isolated    = 0;
+
+// What the ops waiting paint into and with: an isolated draw with the same runs after them
+typedef struct {
+	void *layer;
+	void *material;
+	void *scon;
+	void *object;
+	void *rt[3];
+	i32   tool;
+} paint_exec_ctx_t;
+
+static paint_exec_ctx_t paint_exec_queue_ctx;
+
+static paint_exec_ctx_t paint_exec_ctx_now() {
+	paint_exec_ctx_t c;
+	memset(&c, 0, sizeof(c));
+	slot_layer_t *l = g_context->layer;
+	c.layer         = l;
+	c.material      = g_context->material;
+	c.scon          = make_material_paint_scon;
+	c.object        = g_context->paint_object;
+	c.tool          = g_context->tool;
+	if (l != NULL) {
+		c.rt[0] = any_map_get(render_path_render_targets, string_tmp("texpaint%d", l->id));
+		c.rt[1] = any_map_get(render_path_render_targets, string_tmp("texpaint_nor%d", l->id));
+		c.rt[2] = any_map_get(render_path_render_targets, string_tmp("texpaint_pack%d", l->id));
+	}
+	return c;
+}
 
 // paint_resolved_dabs, or IRON_PAINT_RESOLVED set: the test suites run with it on, the saved config stays as it is
 bool paint_exec_resolved_config() {
@@ -73,7 +115,8 @@ static void paint_exec_timing_done(void *data, f64 gpu_ms) {
 }
 
 static void paint_exec_run(paint_exec_op_t *op, i32 rec_base) {
-	if (!paint_exec_replay) {
+	bool rec = !paint_exec_replay && paint_exec_isolated == 0;
+	if (rec) {
 		paint_rec_op(op, rec_base);
 	}
 	f64 brush_time        = g_context->brush_time;
@@ -93,7 +136,7 @@ static void paint_exec_run(paint_exec_op_t *op, i32 rec_base) {
 		}
 		paint_exec_op = op;
 		render_path_paint_commands_paint_now(op->dilation);
-		if (!paint_exec_replay) {
+		if (rec) {
 			paint_rec_op_done(op);
 		}
 		paint_exec_op = NULL;
@@ -149,14 +192,19 @@ static void paint_exec_flush() {
 		buffer_t b    = {.buffer = (u8 *)paint_exec_in, .length = rows * PAINT_DAB_ROW * PAINT_DAB_TEXELS * 4 * sizeof(f32)};
 		paint_exec_in_tex = gpu_create_texture_from_bytes(&b, PAINT_DAB_ROW * PAINT_DAB_TEXELS, rows, GPU_TEXTURE_FORMAT_RGBA128);
 		make_dab_resolve_run(ndabs);
+		paint_exec_resolved_n = ndabs;
 	}
-	i32 rec_base = paint_exec_replay ? -1 : paint_rec_flush_dabs(ndabs); // The stroke's record reads them back
+	i32 rec_base = paint_exec_replay || paint_exec_isolated > 0 ? -1 : paint_rec_flush_dabs(ndabs); // The stroke's record reads them back
 
-	i32 nops        = paint_exec_nops;
-	paint_exec_nops = 0; // Ops emitted while these execute (none should) run at once
+	i32              nops   = paint_exec_nops;
+	paint_exec_op_t *ops    = paint_exec_ops; // An isolation while they execute has buffers of its own
+	bool             nested = paint_exec_flushing;
+	paint_exec_nops         = 0; // Ops emitted while these execute (none should) run at once
+	paint_exec_flushing     = true;
 	for (i32 i = 0; i < nops; ++i) {
-		paint_exec_run(&paint_exec_ops[i], rec_base);
+		paint_exec_run(&ops[i], rec_base);
 	}
+	paint_exec_flushing = nested;
 
 	// The batch being collected moves to the front
 	if (paint_exec_batch_first >= 0) {
@@ -200,6 +248,9 @@ void paint_exec_end() {
 static paint_exec_op_t *paint_exec_push(i32 kind) {
 	if (paint_exec_nops == PAINT_EXEC_OPS_MAX) {
 		paint_exec_flush();
+	}
+	if (paint_exec_nops == 0) {
+		paint_exec_queue_ctx = paint_exec_ctx_now();
 	}
 	paint_exec_op_t *op = &paint_exec_ops[paint_exec_nops++];
 	memset(op, 0, sizeof(paint_exec_op_t));
@@ -276,7 +327,7 @@ static void paint_exec_draw_state(paint_exec_op_t *op) {
 
 void paint_exec_draw(bool dilation) {
 	if (paint_exec_op != NULL || !paint_exec_on()) { // The old path, or a draw of an op being executed
-		if (paint_exec_op == NULL && g_context->pdirty > 0) {
+		if (paint_exec_op == NULL && g_context->pdirty > 0 && paint_exec_isolated == 0) {
 			paint_rec_foreign(); // Not replayable yet
 		}
 		paint_exec_flush();
@@ -355,7 +406,7 @@ void paint_exec_batch_flush(bool dilation) {
 
 // Ops other than draws wait behind the draws emitted before them
 static bool paint_exec_pending() { // Or a stroke is recorded: they are ops of the record
-	return paint_exec_op == NULL && (paint_exec_nops > 0 || paint_rec_recording());
+	return paint_exec_op == NULL && (paint_exec_nops > 0 || (paint_exec_isolated == 0 && paint_rec_recording()));
 }
 
 void paint_exec_dilate(bool base, bool nor_pack) {
@@ -401,4 +452,125 @@ void paint_exec_clone_flatten() {
 	if (paint_exec_depth == 0) {
 		paint_exec_flush();
 	}
+}
+
+// Isolated work (see the top): the ops of the open scope run first when they paint as it does, else wait, set aside
+typedef struct {
+	paint_exec_op_t *ops;
+	f32             *in;
+	i32              nops;
+	i32              ndabs;
+	i32              batch_first;
+	i32              depth;
+	paint_exec_op_t *op;
+	gpu_texture_t   *in_tex;
+	i32              resolved_n;
+	paint_exec_ctx_t ctx;
+} paint_exec_level_t;
+
+static paint_exec_level_t paint_exec_levels[PAINT_EXEC_LEVELS];
+static paint_exec_op_t   *paint_exec_level_ops[PAINT_EXEC_LEVELS];
+static f32               *paint_exec_level_in[PAINT_EXEC_LEVELS];
+static i32                paint_exec_overflow = 0; // Isolations past PAINT_EXEC_LEVELS, run as they are
+
+void paint_exec_isolate_begin() {
+	if (paint_exec_isolated == PAINT_EXEC_LEVELS - 1) {
+		paint_exec_overflow++;
+		return;
+	}
+	if (paint_exec_op == NULL && !paint_exec_flushing && paint_exec_nops > 0) {
+		paint_exec_ctx_t now = paint_exec_ctx_now();
+		if (memcmp(&now, &paint_exec_queue_ctx, sizeof(now)) == 0) {
+			paint_exec_flush(); // The same targets: in the order emitted
+		}
+	}
+	paint_exec_level_t *s = &paint_exec_levels[paint_exec_isolated];
+	*s                    = (paint_exec_level_t){.ops         = paint_exec_ops,
+	                                             .in          = paint_exec_in,
+	                                             .nops        = paint_exec_nops,
+	                                             .ndabs       = paint_exec_ndabs,
+	                                             .batch_first = paint_exec_batch_first,
+	                                             .depth       = paint_exec_depth,
+	                                             .op          = paint_exec_op,
+	                                             .in_tex      = paint_exec_in_tex,
+	                                             .resolved_n  = paint_exec_resolved_n,
+	                                             .ctx         = paint_exec_queue_ctx};
+	paint_exec_isolated++;
+	i32 k = paint_exec_isolated;
+	if (paint_exec_level_ops[k] == NULL) {
+		paint_exec_level_ops[k] = malloc(sizeof(paint_exec_op_t) * PAINT_EXEC_OPS_MAX);
+		paint_exec_level_in[k]  = malloc(sizeof(f32) * PAINT_DAB_MAX * PAINT_DAB_TEXELS * 4);
+	}
+	paint_exec_ops         = paint_exec_level_ops[k];
+	paint_exec_in          = paint_exec_level_in[k];
+	paint_exec_nops        = 0;
+	paint_exec_ndabs       = 0;
+	paint_exec_batch_first = -1;
+	paint_exec_depth       = 0;
+	paint_exec_op          = NULL;
+	paint_exec_in_tex      = NULL;
+	paint_exec_resolved_n  = 0;
+}
+
+void paint_exec_isolate_end() {
+	if (paint_exec_overflow > 0) {
+		paint_exec_overflow--;
+		return;
+	}
+	if (paint_exec_isolated == 0) {
+		return;
+	}
+	paint_exec_depth = 0;
+	paint_exec_flush();
+	bool resolved = paint_exec_in_tex != NULL;
+	if (paint_exec_in_tex != NULL) {
+		gpu_delete_texture(paint_exec_in_tex); // Freed after the frame
+	}
+	paint_exec_isolated--;
+	paint_exec_level_t *s  = &paint_exec_levels[paint_exec_isolated];
+	paint_exec_ops         = s->ops;
+	paint_exec_in          = s->in;
+	paint_exec_nops        = s->nops;
+	paint_exec_ndabs       = s->ndabs;
+	paint_exec_batch_first = s->batch_first;
+	paint_exec_depth       = s->depth;
+	paint_exec_op          = s->op;
+	paint_exec_in_tex      = s->in_tex;
+	paint_exec_resolved_n  = s->resolved_n;
+	paint_exec_queue_ctx   = s->ctx;
+	if (resolved && paint_exec_flushing && paint_exec_in_tex != NULL && paint_exec_resolved_n > 0) {
+		make_dab_resolve_run(paint_exec_resolved_n); // Ops of a flush still executing read their dabs resolved
+	}
+}
+
+// Scripts: a scope of the stroke model held open (1) or closed (0), as a stroke's frame holds it
+void paint_exec_test_scope(i32 open) {
+	if (open) {
+		paint_exec_begin();
+	}
+	else {
+		paint_exec_end();
+	}
+}
+
+// Scripts: fill layer l rendered by layers_render_fill_rect at w x w (a replay or an export tile), the hashes of its
+// base, normal and pack; "" when it did not render
+char *paint_exec_test_fill_rect(slot_layer_t *l, i32 w) {
+	static gpu_texture_t *out[3]     = {NULL, NULL, NULL};
+	static gpu_texture_t *scratch[5] = {NULL, NULL, NULL, NULL, NULL};
+	if (l == NULL || l->texpaint == NULL || l->texpaint_nor == NULL) {
+		return "";
+	}
+	gpu_texture_t *src[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
+	for (i32 k = 0; k < 3; ++k) {
+		util_texture_ensure_target(&out[k], w, w, src[k]->format);
+		util_texture_ensure_target(&scratch[k], w, w, src[k]->format);
+	}
+	util_texture_ensure_target(&scratch[3], w, w, src[1]->format);
+	util_texture_ensure_target(&scratch[4], w, w, src[2]->format);
+	paint_target_t t = {.w = w, .h = w, .uv_rect = {0.0, 0.0, 1.0, 1.0}, .res_w = w, .res_h = w, .channels = 3, .out = {out[0], out[1], out[2]}};
+	if (!layers_render_fill_rect(l, &t, scratch)) {
+		return "";
+	}
+	return string("%s %s %s", script_texture_hash(out[0]), script_texture_hash(out[1]), script_texture_hash(out[2]));
 }

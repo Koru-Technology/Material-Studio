@@ -338,6 +338,7 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	render_target_t *blend0      = any_map_get(render_path_render_targets, "texpaint_blend0");
 	i32              live_w = blend0->width, live_h = blend0->height;
 
+	paint_exec_isolate_begin(); // Apart from a scope open (a materialize from inside a stroke), its targets swapped in
 	g_context->layer     = l;
 	g_context->material  = m;
 	g_context->pdirty    = 1;
@@ -380,6 +381,7 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	mm_buffers_require(need);
 	paint_mat_snapshot_replay_end();
 	paint_exec_replay = false;
+	paint_exec_isolate_end();
 	if (_render_path_current_image != NULL) {
 		render_path_end();
 	}

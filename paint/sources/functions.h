@@ -808,7 +808,8 @@ extern f32            render_path_paint_batch_drawn;
 bool                  render_path_paint_batched();
 void                  render_path_paint_batch_add();
 void                  render_path_paint_batch_flush(bool dilation);
-void                  render_path_paint_commands_paint(bool dilation);
+void                  render_path_paint_commands_paint(bool dilation); // From outside the stroke model: isolated (paint_exec.c)
+void                  render_path_paint_commands_paint_stroke(bool dilation);
 void                  render_path_paint_use_live_layer(bool use);
 bool                  render_path_paint_symmetry_on();
 bool                  render_path_paint_paint_enabled();
@@ -816,6 +817,7 @@ void                  render_path_paint_begin();
 void                  render_path_paint_end();
 bool                  render_path_paint_is_rt_bake();
 void                  render_path_paint_clear_blend();
+void                  render_path_paint_clear_blend_stroke();
 void                  render_path_paint_draw();
 void                  render_path_paint_bind_layers();
 void                  render_path_paint_unbind_layers();
@@ -823,6 +825,7 @@ void                  render_path_paint_live_layer_used();
 void                  render_path_paint_live_layer_release_idle();
 void                  render_path_paint_dilate_after_paint();
 void                  render_path_paint_dilate(bool base, bool nor_pack);
+void                  render_path_paint_dilate_stroke(bool base, bool nor_pack);
 
 // ---- render/render_path_paint_picker.c ----
 mesh_object_t *render_path_paint_pick_object();
@@ -2508,6 +2511,10 @@ bool             paint_exec_resolved_config(); // paint_resolved_dabs, or IRON_P
 bool             paint_exec_on(); // The paint shader in use reads resolved dabs
 void             paint_exec_begin();
 void             paint_exec_end();
+void             paint_exec_isolate_begin(); // Work outside the stroke model: at once, apart from the open scope
+void             paint_exec_isolate_end();
+void             paint_exec_test_scope(i32 open);
+char            *paint_exec_test_fill_rect(slot_layer_t *l, i32 w);
 void             paint_exec_draw(bool dilation);
 void             paint_exec_batch_add();
 void             paint_exec_batch_flush(bool dilation);
