@@ -49,3 +49,50 @@ void util_texture_capture_output(gpu_texture_t *img, char *basename) {
 	any_map_set(data_cached_textures, abs, copy);
 	import_texture_run(abs, true);
 }
+
+// Render targets sized on demand (tile and scratch targets), counted in the bytes below
+
+static i64 util_texture_bytes      = 0;
+static i64 util_texture_bytes_peak = 0;
+
+static i64 util_texture_target_bytes(gpu_texture_t *t) {
+	return (i64)t->width * t->height * gpu_texture_format_size(t->format);
+}
+
+// *t becomes a w x h render target of format, kept when it is one already. True when (re)allocated (its pixels are undefined).
+bool util_texture_ensure_target(gpu_texture_t **t, i32 w, i32 h, gpu_texture_format_t format) {
+	if (*t != NULL && (*t)->width == w && (*t)->height == h && (*t)->format == format) {
+		return false;
+	}
+	util_texture_release_target(t);
+	*t = gpu_create_render_target(w, h, format);
+	util_texture_bytes += util_texture_target_bytes(*t);
+	if (util_texture_bytes > util_texture_bytes_peak) {
+		util_texture_bytes_peak = util_texture_bytes;
+	}
+	return true;
+}
+
+// Frees a target of util_texture_ensure_target, *t becomes NULL
+void util_texture_release_target(gpu_texture_t **t) {
+	if (*t == NULL) {
+		return;
+	}
+	util_texture_bytes -= util_texture_target_bytes(*t);
+	gpu_delete_texture(*t);
+	*t = NULL;
+}
+
+// Bytes of the targets util_texture_ensure_target holds now
+i64 util_texture_tracked_bytes() {
+	return util_texture_bytes;
+}
+
+// The most they held since the last reset
+i64 util_texture_tracked_peak() {
+	return util_texture_bytes_peak;
+}
+
+void util_texture_tracked_peak_reset() {
+	util_texture_bytes_peak = util_texture_bytes;
+}

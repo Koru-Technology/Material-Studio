@@ -1611,6 +1611,11 @@ i32            material_cache_stat(i32 what);
 char *util_texture_packed_name(char *basename);
 void  util_copy_texture(gpu_texture_t *dst, gpu_texture_t *src, gpu_pipeline_t *pipe);
 void  util_texture_capture_output(gpu_texture_t *img, char *basename);
+bool  util_texture_ensure_target(gpu_texture_t **t, i32 w, i32 h, gpu_texture_format_t format);
+void  util_texture_release_target(gpu_texture_t **t);
+i64   util_texture_tracked_bytes();
+i64   util_texture_tracked_peak();
+void  util_texture_tracked_peak_reset();
 
 // ---- util/util_touch.c ----
 void util_touch_update();
@@ -2285,3 +2290,4 @@ void           bake_maps_inpaint_clear(void);
 bool           bake_maps_inpaint_apply(char *path, i32 mode, bool vector);
 void           bake_maps_inpaint_end(void);
 #endif
+
