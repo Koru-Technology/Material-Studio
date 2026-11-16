@@ -454,7 +454,6 @@ void                   export_arm_run_mesh(char *path, mesh_object_t_array_t *pa
 buffer_t              *export_arm_encode_project(char *path);
 void                   export_arm_run_project(char *path);
 void                   export_arm_run_material(char *path);
-void                   export_arm_run_brush(char *path);
 void                   export_arm_pack_assets(project_t *raw, asset_t_array_t *assets);
 void                   export_arm_run_swatches(char *path);
 void                   import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hdr_as_envmap, void (*done)(void));

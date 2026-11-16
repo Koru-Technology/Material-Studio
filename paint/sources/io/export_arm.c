@@ -608,62 +608,6 @@ buffer_t *export_arm_encode_library_material(slot_material_t *m) {
 	return util_encode_project(raw);
 }
 
-void export_arm_run_brush(char *path) {
-	if (!ends_with(path, ".arm")) {
-		path = string("%s.arm", path);
-	}
-	ui_node_canvas_t_array_t *bnodes = any_array_create_from_raw((void *[]){}, 0);
-	slot_brush_t             *b      = g_context->brush;
-	ui_node_canvas_t         *c      = util_clone_canvas(b->canvas);
-	asset_t_array_t          *assets = any_array_create_from_raw((void *[]){}, 0);
-	for (i32 i = 0; i < c->nodes->length; ++i) {
-		ui_node_t *n = c->nodes->buffer[i];
-		export_arm_export_node(n, assets);
-	}
-	any_array_push(bnodes, c);
-
-	string_array_t         *texture_files = export_arm_assets_to_files(path, assets);
-	packed_asset_t_array_t *packed_assets = NULL;
-	if (!g_context->pack_assets_on_export) {
-		packed_assets = export_arm_get_packed_assets(path, texture_files);
-	}
-
-#ifdef IRON_BGRA
-	buffer_t *buf = lz4_encode(buffer_bgra_swap(gpu_get_texture_pixels(b->image)));
-#else
-	buffer_t *buf = lz4_encode(gpu_get_texture_pixels(b->image));
-#endif
-	buffer_t_array_t *bicons = any_array_create_from_raw(
-	    (void *[]){
-	        buf,
-	    },
-	    1);
-
-	project_t *raw = ALLOC_INIT(
-	    project_t,
-	    {.version = manifest_version_project, .brush_nodes = bnodes, .brush_icons = bicons, .assets = texture_files, .packed_assets = packed_assets});
-
-	if (g_context->write_icon_on_export) { // Separate icon files
-		buffer_t *buf = gpu_get_texture_pixels(b->image);
-#ifdef IRON_BGRA
-		buf = buffer_bgra_swap(buf);
-#endif
-		iron_write_png(string("%s_icon.png", substring(path, 0, string_length(path) - 4)), buf, b->image->width, b->image->height, 0);
-		iron_write_jpg(string("%s_icon.jpg", substring(path, 0, string_length(path) - 4)), buf, b->image->width, b->image->height, 0, 50);
-	}
-
-	if (g_context->pack_assets_on_export) { // Pack textures
-		export_arm_pack_assets(raw, assets);
-	}
-
-	buffer_t *buffer = util_encode_project(raw);
-	if (!iron_file_save_bytes(path, buffer, 0)) {
-		console_error(string("Could not save %s.", path));
-	}
-	array_free(buffer);
-	free(buffer);
-}
-
 static buffer_t *export_arm_asset_bytes(char *file) {
 	if (g_project->packed_assets != NULL) {
 		for (i32 i = 0; i < g_project->packed_assets->length; ++i) {
