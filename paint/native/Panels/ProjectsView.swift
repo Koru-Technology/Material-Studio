@@ -37,7 +37,7 @@ struct ProjectsView: View {
 				header(inset: gap)
 			}
 		}
-		.background(Color(white: 0.15))
+		.background(Color(white: 26 / 255)) // The 3D view's background in the editor
 		.environment(\.colorScheme, .dark)
 		.confirmationDialog("Delete \(deleting?.name ?? "")?", isPresented: $deleting.isPresent(), titleVisibility: .visible) {
 			Button("Delete", role: .destructive) {
