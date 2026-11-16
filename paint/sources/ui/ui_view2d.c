@@ -549,22 +549,14 @@ void ui_view2d_update(void *_) {
 			}
 
 			if (ui_view2d_layer_mode == VIEW_2D_LAYER_MODE_VISIBLE) {
-				gpu_texture_t *current = _draw_current;
-				bool           in_use  = gpu_in_use;
-				if (in_use)
-					draw_end();
+				draw_saved_t saved_draw = draw_suspend();
 				layer = layers_flatten(false, NULL);
-				if (in_use)
-					draw_begin(current, false, 0);
+				draw_resume(saved_draw);
 			}
 			else if (slot_layer_is_group(layer)) {
-				gpu_texture_t *current = _draw_current;
-				bool           in_use  = gpu_in_use;
-				if (in_use)
-					draw_end();
+				draw_saved_t saved_draw = draw_suspend();
 				layer = layers_flatten(false, slot_layer_get_children(layer));
-				if (in_use)
-					draw_begin(current, false, 0);
+				draw_resume(saved_draw);
 			}
 			else {
 				draw_set_color(color_from_floats(layer->mask_opacity, layer->mask_opacity, layer->mask_opacity, 1.0));

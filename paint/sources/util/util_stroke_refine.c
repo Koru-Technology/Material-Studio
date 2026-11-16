@@ -295,28 +295,21 @@ static stroke_refine_pipe_t *stroke_refine_pipe(char *glsl, gpu_texture_format_t
 }
 
 // The passes need their own render passes: the render path's or the 2D drawing in progress ends meanwhile
-static bool           stroke_refine_saved_draw   = false;
-static gpu_texture_t *stroke_refine_saved_target = NULL;
+static draw_saved_t stroke_refine_saved_draw = {0};
 
 static void stroke_refine_gpu_begin(void) {
 	if (_render_path_current_image != NULL) {
 		render_path_end();
 	}
-	stroke_refine_saved_draw = gpu_in_use;
-	if (stroke_refine_saved_draw) {
-		stroke_refine_saved_target = _draw_current;
-		draw_end();
-	}
+	stroke_refine_saved_draw = draw_suspend();
 	if (const_data_screen_aligned_vb == NULL) {
 		const_data_create_screen_aligned_data();
 	}
 }
 
 static void stroke_refine_gpu_end(void) {
-	if (stroke_refine_saved_draw) {
-		draw_begin(stroke_refine_saved_target, false, 0);
-		stroke_refine_saved_draw = false;
-	}
+	draw_resume(stroke_refine_saved_draw);
+	stroke_refine_saved_draw.active = false;
 }
 
 static bool stroke_refine_pass(stroke_refine_pipe_t *p, gpu_texture_t **targets, gpu_texture_t **inputs, i32 n, f32 *a, f32 *b) {
@@ -835,11 +828,8 @@ static i32 stroke_refine_sharpen(stroke_refine_t *r, i32 tier) {
 	}
 	stroke_refine_busy = true;
 	iron_profile_mark("refine sharpen start");
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use) {
-		draw_end();
-	}
+	draw_saved_t saved_draw = draw_suspend();
+
 	stroke_refine_render_t m = {r, r->material, r->scale, r->angle, UV_TYPE_UVMAP, r->layer->uv_map, 0, r->keys, r->nkeys, &r->shader};
 	i32                    result = stroke_refine_render_material(&m, tier, s);
 	bool                   ok     = result == STROKE_REFINE_DONE;
@@ -868,9 +858,7 @@ static i32 stroke_refine_sharpen(stroke_refine_t *r, i32 tier) {
 		r->tier                         = stroke_refine_band_tier < tier ? stroke_refine_band_tier : tier; // Its first band's
 		stroke_refine_stats[2]++;
 	}
-	if (in_use) {
-		draw_begin(current, false, 0);
-	}
+	draw_resume(saved_draw);
 	stroke_refine_busy = false;
 	iron_profile_mark("refine sharpen end");
 	double ms = (iron_time() - t0) * 1000.0;
@@ -917,11 +905,8 @@ static i32 stroke_refine_fill_paint(stroke_refine_fill_t *f, i32 tier) {
 	if (s == NULL) {
 		return STROKE_REFINE_FAILED;
 	}
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use) {
-		draw_end();
-	}
+	draw_saved_t saved_draw = draw_suspend();
+
 	stroke_refine_render_t m = {l, f->material, l->scale, l->angle, l->uv_type, l->uv_map, l->object_mask, NULL, 0, &f->shader};
 	i32                    result = stroke_refine_render_material(&m, tier, s);
 	if (result == STROKE_REFINE_DONE) {
@@ -942,9 +927,7 @@ static i32 stroke_refine_fill_paint(stroke_refine_fill_t *f, i32 tier) {
 		g_context->rtdirty              = 1;
 		render_path_base_redraw();
 	}
-	if (in_use) {
-		draw_begin(current, false, 0);
-	}
+	draw_resume(saved_draw);
 	return result;
 }
 

@@ -14,10 +14,6 @@ _Static_assert(APP_SAME(APP_VIEWPORT_LIT, VIEWPORT_MODE_LIT) && APP_SAME(APP_VIE
                    APP_SAME(APP_VIEWPORT_MASK, VIEWPORT_MODE_MASK) && APP_SAME(APP_VIEWPORT_PATH_TRACE + 1, VIEWPORT_MODE_PLUGIN),
                "app_api.h mirrors viewport_mode_t");
 
-#ifndef ARRAY_LENGTH // Engine-wide once base has it
-#define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
-#endif
-
 static bool     app_engine_ready     = false;
 static uint32_t app_previews_counter = 0;
 
@@ -73,16 +69,7 @@ static uint32_t app_hash_fq(uint32_t h, float v) {
 }
 
 static slot_layer_t *app_layer_by_id(int32_t id) {
-	if (!app_ready()) {
-		return NULL;
-	}
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->id == id) {
-			return l;
-		}
-	}
-	return NULL;
+	return app_ready() ? mask_stack_layer_by_id(id) : NULL;
 }
 
 static uint32_t app_layers_signature(void) {

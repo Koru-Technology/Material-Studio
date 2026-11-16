@@ -168,7 +168,7 @@ typedef struct {
 #define X(kind, name, ...) {#name, CONFIG_##kind, (i32)offsetof(config_t, name), __VA_ARGS__},
 static const config_field_t config_fields[] = {CONFIG_FIELDS};
 #undef X
-#define CONFIG_FIELD_COUNT (i32)(sizeof(config_fields) / sizeof(config_fields[0]))
+#define CONFIG_FIELD_COUNT (i32)ARRAY_LENGTH(config_fields)
 
 // The config as JSON
 static char *config_to_json(config_t *c) {
@@ -620,7 +620,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_17,
 	    config_from_version_18,
 	};
-	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
+	for (i32 v = ARRAY_LENGTH(fns) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {
 			buffer_t *b = json_encode_to_armpack(s);
 			return b != NULL ? fns[v](armpack_decode_to_map(b)) : NULL;
@@ -638,6 +638,9 @@ static config_t *config_from_current(char *s) {
 }
 
 config_t *config_from_json(char *s) {
+	if (s == NULL) {
+		return NULL;
+	}
 	if (config_is_version(s, manifest_version_config)) {
 		return config_from_current(s);
 	}
@@ -650,7 +653,7 @@ char *config_get_sha() {
 		return "undefined";
 	}
 	version_t *v = json_parse(sys_buffer_to_string(blob));
-	return v->sha;
+	return v != NULL && v->sha != NULL ? v->sha : "undefined";
 }
 
 char *config_get_date() {
@@ -659,7 +662,7 @@ char *config_get_date() {
 		return "undefined";
 	}
 	version_t *v = json_parse(sys_buffer_to_string(blob));
-	return v->date;
+	return v != NULL && v->date != NULL ? v->date : "undefined";
 }
 
 iron_window_options_t *config_get_options() {
@@ -711,15 +714,11 @@ void config_import_from(config_t *from) {
 
 void config_apply() {
 	config_save();
-	ui_tooltips            = g_config->tooltips;
-	g_context->ddirty      = 2;
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	ui_tooltips             = g_config->tooltips;
+	g_context->ddirty       = 2;
+	draw_saved_t saved_draw = draw_suspend();
 	render_path_base_apply_config();
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 i32 config_get_super_sample_quality(f32 f) {

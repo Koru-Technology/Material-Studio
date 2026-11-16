@@ -21,7 +21,6 @@ void layers_update_fill_layers() {
 	slot_layer_t  *_layer     = g_context->layer;
 	tool_type_t    _tool      = g_context->tool;
 	i32            _fill_type = g_context->fill_type;
-	gpu_texture_t *current    = NULL;
 
 	bool has_fill_layer = false;
 	bool has_fill_mask  = false;
@@ -39,13 +38,10 @@ void layers_update_fill_layers() {
 	}
 
 	if (has_fill_layer || has_fill_mask) {
-		current     = _draw_current;
-		bool in_use = gpu_in_use;
-		if (in_use)
-			draw_end();
-		g_context->pdirty    = 1;
-		g_context->tool      = TOOL_TYPE_FILL;
-		g_context->fill_type = FILL_TYPE_OBJECT;
+		draw_saved_t saved_draw = draw_suspend();
+		g_context->pdirty       = 1;
+		g_context->tool         = TOOL_TYPE_FILL;
+		g_context->fill_type    = FILL_TYPE_OBJECT;
 
 		if (has_fill_layer) {
 			bool first = true;
@@ -87,8 +83,7 @@ void layers_update_fill_layers() {
 		g_context->ddirty               = 2;
 		g_context->rtdirty              = 1;
 		g_context->layers_preview_dirty = true;
-		if (in_use)
-			draw_begin(current, false, 0);
+		draw_resume(saved_draw);
 		g_context->layer = _layer;
 		layers_set_object_mask();
 		g_context->tool      = _tool;
@@ -122,10 +117,7 @@ bool layers_tool_paints_fill_layer(tool_type_t tool) {
 }
 
 void layers_update_fill_layer(bool parse_paint) {
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 
 	tool_type_t _tool      = g_context->tool;
 	i32         _fill_type = g_context->fill_type;
@@ -146,8 +138,7 @@ void layers_update_fill_layer(bool parse_paint) {
 	if (parse_paint && layers_tool_paints_fill_layer(_tool)) {
 		make_material_parse_paint_material(false);
 	}
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 // Repaints fill layer l with its own material, the selected layer and material stay

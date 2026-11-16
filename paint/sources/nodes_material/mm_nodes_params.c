@@ -230,7 +230,7 @@ static const char *mm_nodes_mm_socket_type(char *type) {
 	    {"VALUE", "f"},          {"RGB", "rgb"},         {"RGBA", "rgba"},   {"MM_SDF2D", "sdf2d"}, {"MM_SDF3D", "sdf3d"}, {"MM_SDF3DC", "sdf3dc"},
 	    {"MM_TEX3D_GS", "tex3d_gs"}, {"MM_TEX3D", "tex3d"}, {"MM_V4V4", "v4v4"}, {"MM_FILL", "fill"},
 	};
-	for (i32 i = 0; type != NULL && i < (i32)(sizeof(map) / sizeof(map[0])); ++i) {
+	for (i32 i = 0; type != NULL && i < (i32)ARRAY_LENGTH(map); ++i) {
 		if (strcmp(type, map[i][0]) == 0) {
 			return map[i][1];
 		}

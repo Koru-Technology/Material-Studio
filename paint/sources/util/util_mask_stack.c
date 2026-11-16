@@ -86,7 +86,7 @@ static mask_effect_param_t mask_params_anchor[] = {
     {"Channel", 1, MASK_PARAM_CHOICE, 0.0, 2.0, 0.0, "Mask,Height,Opacity"},
 };
 
-#define MASK_PARAMS_OF(a) *count = sizeof(a) / sizeof(a[0]); return a
+#define MASK_PARAMS_OF(a) *count = ARRAY_LENGTH(a); return a
 
 // The settings of an effect type, NULL with count 0 when it has none (paint, invert)
 mask_effect_param_t *mask_effect_params(i32 type, i32 *count) {

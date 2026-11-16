@@ -27,7 +27,7 @@ static mm_bridge_builtin_t mm_bridge_builtins[] = {
     {"vvec_cam", "vec3", "vec3 vvec_cam = mm_g_vvec_cam;", false},
     {"dotnv", "float", "float dotnv = mm_g_dotnv;", false},
 };
-#define MM_BRIDGE_BUILTINS (sizeof(mm_bridge_builtins) / sizeof(mm_bridge_builtins[0]))
+#define MM_BRIDGE_BUILTINS ARRAY_LENGTH(mm_bridge_builtins)
 
 static struct {
 	node_shader_t     *shader; // The shader being generated, the state is reset for another one
@@ -57,7 +57,7 @@ static const char *mm_bridge_type(char *socket_type) {
 	}
 	static const char *mm[][2] = {{"MM_SDF2D", "sdf2d"},   {"MM_SDF3D", "sdf3d"}, {"MM_SDF3DC", "sdf3dc"}, {"MM_TEX3D_GS", "tex3d_gs"},
 	                              {"MM_TEX3D", "tex3d"},   {"MM_V4V4", "v4v4"},   {"MM_FILL", "fill"}};
-	for (u32 i = 0; i < sizeof(mm) / sizeof(mm[0]); ++i) {
+	for (u32 i = 0; i < ARRAY_LENGTH(mm); ++i) {
 		if (string_equals(socket_type, (char *)mm[i][0])) {
 			return mm[i][1];
 		}

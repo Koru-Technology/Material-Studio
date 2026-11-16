@@ -13,13 +13,7 @@ bool make_material_is_default(shader_data_t *m) {
 }
 
 bool make_material_get_mout() {
-	for (i32 i = 0; i < g_context->material->canvas->nodes->length; ++i) {
-		ui_node_t *n = g_context->material->canvas->nodes->buffer[i];
-		if (string_equals(n->type, "OUTPUT_MATERIAL_PBR")) {
-			return true;
-		}
-	}
-	return false;
+	return ui_canvas_find_type(g_context->material->canvas, "OUTPUT_MATERIAL_PBR") != NULL;
 }
 
 void make_material_delete_context_on_next_frame(shader_context_t *c) {
@@ -280,15 +274,11 @@ void make_material_bake_node_previews() {
 // Refresh previews of a material that is not selected but fills linked layers,
 // blur and warp sample other layers so they go stale on every stroke
 void make_material_bake_node_previews_linked() {
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw   = draw_suspend();
 	make_material_bake_linked = true;
 	make_material_bake_node_previews();
 	make_material_bake_linked = false;
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 // The position picker shader reads only the gbuffer, it does not depend on the material and is built once
@@ -303,13 +293,9 @@ static void make_material_set_paint_scon(shader_context_t *scon) {
 }
 
 static void make_material_bake_previews_now(void) {
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 	make_material_bake_node_previews();
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 static void make_material_parse_paint_material_now(bool bake_previews) {

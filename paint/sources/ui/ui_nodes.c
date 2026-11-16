@@ -1348,16 +1348,7 @@ void ui_nodes_update(void *_) {
 		ui_nodes_make_node_preview(sel);
 
 		// If script node is present, update selected node preview on every frame
-		bool              has_script_node = false;
-		ui_node_canvas_t *canvas          = g_context->material->canvas;
-		for (i32 i = 0; i < canvas->nodes->length; ++i) {
-			ui_node_t *n = canvas->nodes->buffer[i];
-			if (string_equals(n->type, "SCRIPT_CPU")) {
-				has_script_node = true;
-				break;
-			}
-		}
-		if (has_script_node) {
+		if (ui_canvas_find_type(g_context->material->canvas, "SCRIPT_CPU") != NULL) {
 			ui_nodes_last_node_selected_id = -1;
 			ui_view2d_hwnd->redraws        = 2;
 			iron_delay_idle_sleep();

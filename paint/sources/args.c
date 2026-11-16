@@ -184,7 +184,12 @@ static bool args_export_textures_prepare() {
 	}
 	box_export_preset = json_parse(sys_buffer_to_string(blob));
 	data_delete_blob(file);
-	return box_export_preset != NULL;
+	if (box_export_preset == NULL || box_export_preset->textures == NULL) {
+		box_export_preset = NULL;
+		iron_log(tr("Invalid export preset"));
+		return false;
+	}
+	return true;
 }
 
 void args_run_on_next_frame(void *_) {

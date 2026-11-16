@@ -2,13 +2,7 @@
 #include "../global.h"
 
 ui_node_t *import_json_material_get_output_node(ui_node_canvas_t *canvas) {
-	for (i32 i = 0; i < canvas->nodes->length; ++i) {
-		ui_node_t *n = canvas->nodes->buffer[i];
-		if (string_equals(n->type, "OUTPUT_MATERIAL_PBR")) {
-			return n;
-		}
-	}
-	return NULL;
+	return ui_canvas_find_type(canvas, "OUTPUT_MATERIAL_PBR");
 }
 
 void import_json_material_add_output_node(ui_node_canvas_t *canvas) {

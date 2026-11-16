@@ -14,7 +14,7 @@ static char *render_pass_builtins[][3] = {
 };
 
 static i32 render_pass_builtin(char *name) {
-	for (i32 i = 0; i < sizeof(render_pass_builtins) / sizeof(render_pass_builtins[0]); ++i) {
+	for (i32 i = 0; i < ARRAY_LENGTH(render_pass_builtins); ++i) {
 		if (string_equals(render_pass_builtins[i][0], name)) {
 			return i;
 		}

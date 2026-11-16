@@ -142,7 +142,7 @@ static char *mm_nodes_socket_type(const char *mm) {
 	    {"f", "VALUE"},          {"rgb", "RGB"},         {"rgba", "RGBA"},   {"sdf2d", "MM_SDF2D"}, {"sdf3d", "MM_SDF3D"},
 	    {"sdf3dc", "MM_SDF3DC"}, {"tex3d_gs", "MM_TEX3D_GS"}, {"tex3d", "MM_TEX3D"}, {"v4v4", "MM_V4V4"}, {"fill", "MM_FILL"}, {"any", "MM_ANY"},
 	};
-	for (i32 i = 0; mm != NULL && i < (i32)(sizeof(map) / sizeof(map[0])); ++i) {
+	for (i32 i = 0; mm != NULL && i < (i32)ARRAY_LENGTH(map); ++i) {
 		if (strcmp(mm, map[i][0]) == 0) {
 			return (char *)map[i][1];
 		}
@@ -748,7 +748,7 @@ static mm_json_t *mm_nodes_output_typed(mm_json_t *o) {
 		return o;
 	}
 	static const char *types[] = {"f", "rgb", "rgba", "sdf2d", "sdf3d", "sdf3dc", "tex3d_gs", "tex3d", "v4v4", "fill"};
-	for (i32 i = 0; i < (i32)(sizeof(types) / sizeof(types[0])); ++i) {
+	for (i32 i = 0; i < (i32)ARRAY_LENGTH(types); ++i) {
 		if (mm_json_get(o, types[i]) != NULL) {
 			o = mm_json_copy(o);
 			mm_json_set(o, "type", mm_json_string(types[i]));
@@ -781,7 +781,7 @@ static double mm_nodes_seed_of(mm_json_t *data, bool *locked, bool *has) {
 
 static bool mm_nodes_is_builtin(const char *type) {
 	static const char *types[] = {"buffer", "iterate_buffer", "switch", "reroute", "remote", "portal", "image", "text"};
-	for (i32 i = 0; type != NULL && i < (i32)(sizeof(types) / sizeof(types[0])); ++i) {
+	for (i32 i = 0; type != NULL && i < (i32)ARRAY_LENGTH(types); ++i) {
 		if (strcmp(type, types[i]) == 0) {
 			return true;
 		}
@@ -1003,7 +1003,7 @@ static const char *mm_nodes_state_keys[] = {"version", "widgets", "io", "port_ty
 
 static mm_json_t *mm_nodes_state_of(mm_json_t *data, mm_nodes_param_t *params, i32 count) {
 	mm_json_t *s = mm_json_new(MM_JSON_OBJECT);
-	for (i32 i = 0; i < (i32)(sizeof(mm_nodes_state_keys) / sizeof(mm_nodes_state_keys[0])); ++i) {
+	for (i32 i = 0; i < (i32)ARRAY_LENGTH(mm_nodes_state_keys); ++i) {
 		if (mm_json_get(data, mm_nodes_state_keys[i]) != NULL) {
 			mm_json_set(s, mm_nodes_state_keys[i], mm_json_get(data, mm_nodes_state_keys[i]));
 		}

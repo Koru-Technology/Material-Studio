@@ -584,7 +584,13 @@ bool ui_nodes_popup_open();
 bool ui_nodes_popup_hovered();
 void ui_nodes_popup_render(ui_node_canvas_t *canvas);
 
-void ui_remove_node(ui_node_t *n, ui_node_canvas_t *canvas);
+void ui_remove_node(ui_node_t *n, ui_node_canvas_t *canvas); // ui_canvas_remove_node(canvas, n, true)
+
+// Graph edits in code
+ui_node_t      *ui_canvas_find_type(ui_node_canvas_t *c, char *type);                  // First node of the type, NULL when none
+ui_node_link_t *ui_canvas_input_link(ui_node_canvas_t *c, ui_node_t *node, int in);    // The link into input in, NULL when unlinked
+void            ui_canvas_unlink_input(ui_node_canvas_t *c, ui_node_t *node, int in);  // Removes the links into input in
+void            ui_canvas_remove_node(ui_node_canvas_t *c, ui_node_t *n, bool notify); // With its links, notify: node editor callbacks
 
 float                  UI_NODES_SCALE();
 float                  UI_NODES_PAN_X();

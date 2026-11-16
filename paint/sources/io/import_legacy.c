@@ -550,7 +550,7 @@ project_t *import_arm_from_old(buffer_t *b) {
 	    import_arm_from_version_20, import_arm_from_version_21, import_arm_from_version_22, import_arm_from_version_23, import_arm_from_version_24, import_arm_from_version_25,
 	    import_arm_from_version_26, import_arm_from_version_27, import_arm_from_version_28, import_arm_from_version_29,
 	};
-	for (i32 v = sizeof(fns) / sizeof(fns[0]) - 1; v >= 0; --v) {
+	for (i32 v = ARRAY_LENGTH(fns) - 1; v >= 0; --v) {
 		if (import_arm_is_version(b, i32_to_string(v))) {
 			return fns[v](old);
 		}

@@ -29,14 +29,7 @@ void brush_output_node_parse_inputs() {
 	g_context->brush_nodes_scale  = input2->_f32;
 	g_context->brush_nodes_angle  = input3->_f32;
 
-	g_context->brush_nodes_uses_random = false;
-	for (i32 i = 0; i < g_context->brush->canvas->nodes->length; ++i) {
-		ui_node_t *n = g_context->brush->canvas->nodes->buffer[i];
-		if (string_equals(n->type, "random_node")) {
-			g_context->brush_nodes_uses_random = true;
-			break;
-		}
-	}
+	g_context->brush_nodes_uses_random = ui_canvas_find_type(g_context->brush->canvas, "random_node") != NULL;
 
 	logic_node_value_t *opac = input4; // Float or texture name
 	if (opac == NULL) {

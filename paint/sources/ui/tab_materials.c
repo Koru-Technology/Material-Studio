@@ -67,6 +67,9 @@ static void tab_materials_on_material_removed(slot_material_t *m, i32 deleted) {
 
 void tab_materials_delete_material(slot_material_t *m) {
 	i32 i = array_index_of(g_project->_->materials, m);
+	if (i < 0) {
+		return;
+	}
 	for (i32 j = 0; j < g_project->_->layers->length; ++j) {
 		slot_layer_t *l = g_project->_->layers->buffer[j];
 		if (l->fill_material == m) {

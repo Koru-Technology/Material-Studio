@@ -65,7 +65,7 @@ static i32 ui_toolbar_order[] = {
     TOOL_TYPE_CLONE, TOOL_TYPE_BLUR,   TOOL_TYPE_INPAINT,                     // Retouch
     TOOL_TYPE_DECAL, TOOL_TYPE_TEXT,                                          // Project
 };
-#define UI_TOOLBAR_ORDER_COUNT (i32)(sizeof(ui_toolbar_order) / sizeof(ui_toolbar_order[0]))
+#define UI_TOOLBAR_ORDER_COUNT (i32)ARRAY_LENGTH(ui_toolbar_order)
 
 // Tools of a group share a hue
 static u32 ui_toolbar_item_color(i32 tool) {

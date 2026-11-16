@@ -580,11 +580,7 @@ static void material_cache_band(material_cache_t *e) {
 	if (_render_path_current_image != NULL) {
 		render_path_end();
 	}
-	bool           drawing = gpu_in_use;
-	gpu_texture_t *target  = _draw_current;
-	if (drawing) {
-		draw_end();
-	}
+	draw_saved_t saved_draw = draw_suspend();
 	gpu_commit(NULL, NULL); // The work so far apart: the band's GPU time is its own
 	gpu_begin(e->tex, 3, NULL, e->row == 0 ? GPU_CLEAR_COLOR : GPU_CLEAR_NONE, 0x00000000, 0.0f);
 	gpu_scissor(0, e->row, e->w, rows);
@@ -601,9 +597,7 @@ static void material_cache_band(material_cache_t *e) {
 	atomic_store(&material_cache_band_us, -1);
 	atomic_store(&material_cache_band_flight, true);
 	gpu_commit(material_cache_band_done, NULL);
-	if (drawing) {
-		draw_begin(target, false, 0);
-	}
+	draw_resume(saved_draw);
 	e->row += rows;
 	material_cache_stats[11]++;
 }

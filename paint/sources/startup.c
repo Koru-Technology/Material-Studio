@@ -475,7 +475,6 @@ static int16_t  mesh__Plane_nor[]     = {0, -32767, 0, -32767, 0, -32767, 0, -32
 static int16_t  mesh__Plane_tex[]     = {3, 32763, 32763, 32763, 32763, 3, 3, 3};
 static uint32_t mesh__Plane_indices[] = {3, 0, 1, 3, 1, 2};
 
-#define STARTUP_LEN(a) (sizeof(a) / sizeof(a[0]))
 
 static vertex_array_t *startup_vertex_array(char *attrib, char *data, i16_array_t *values) {
 	vertex_array_t *vat = (vertex_array_t *)calloc(1, sizeof(vertex_array_t));
@@ -502,8 +501,8 @@ static mesh_data_t *startup_raw_mesh(char *name, int16_t *pos, int pos_n, int16_
 }
 
 #define STARTUP_GIZMO_MESH(n)                                                                                                                            \
-	startup_raw_mesh("." #n, mesh__##n##_pos, STARTUP_LEN(mesh__##n##_pos), mesh__##n##_nor, STARTUP_LEN(mesh__##n##_nor), NULL, 0, mesh__##n##_indices, \
-	                 STARTUP_LEN(mesh__##n##_indices))
+	startup_raw_mesh("." #n, mesh__##n##_pos, ARRAY_LENGTH(mesh__##n##_pos), mesh__##n##_nor, ARRAY_LENGTH(mesh__##n##_nor), NULL, 0, mesh__##n##_indices, \
+	                 ARRAY_LENGTH(mesh__##n##_indices))
 
 // A shader context of the scene. Lists are space separated: attachments "RGBA64 R8", elements "name:data", constants
 // "name:type:link", textures "name" or "name:link". Fields left out: no depth write, compare always, cull none, a pos:float2
@@ -729,7 +728,7 @@ static shader_context_t *startup_shader_context(const startup_context_t *t) {
 
 static any_array_t *startup_shader_datas(void) {
 	any_array_t *datas = any_array_create(0);
-	for (int i = 0; i < (int)STARTUP_LEN(startup_contexts); ++i) {
+	for (int i = 0; i < (int)ARRAY_LENGTH(startup_contexts); ++i) {
 		const startup_context_t *t  = &startup_contexts[i];
 		shader_data_t           *sd = datas->length > 0 ? datas->buffer[datas->length - 1] : NULL;
 		if (sd == NULL || !string_equals(sd->name, t->data)) {
@@ -810,8 +809,8 @@ scene_t *startup_get_scene(void) {
 	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(TranslateX));
 	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(TranslateY));
 	any_array_push(scene->mesh_datas, STARTUP_GIZMO_MESH(TranslateZ));
-	any_array_push(scene->mesh_datas, startup_raw_mesh(".Plane", mesh__Plane_pos, STARTUP_LEN(mesh__Plane_pos), mesh__Plane_nor, STARTUP_LEN(mesh__Plane_nor),
-	                                                   mesh__Plane_tex, STARTUP_LEN(mesh__Plane_tex), mesh__Plane_indices, STARTUP_LEN(mesh__Plane_indices)));
+	any_array_push(scene->mesh_datas, startup_raw_mesh(".Plane", mesh__Plane_pos, ARRAY_LENGTH(mesh__Plane_pos), mesh__Plane_nor, ARRAY_LENGTH(mesh__Plane_nor),
+	                                                   mesh__Plane_tex, ARRAY_LENGTH(mesh__Plane_tex), mesh__Plane_indices, ARRAY_LENGTH(mesh__Plane_indices)));
 	any_array_push(scene->mesh_datas, startup_make_sphere());
 
 	scene->camera_datas            = any_array_create(1);
@@ -842,7 +841,7 @@ scene_t *startup_get_scene(void) {
 	object_desc_t *gizmo = startup_object(".Gizmo", "mesh_object", ".Gizmo", (f32[])STARTUP_IDENTITY,
 	                                      (f32[]){2.1500000953674316f, 2.1500000953674316f, 2.1500000953674316f}, false);
 	gizmo->children      = (object_desc_t_array_t *)any_array_create(0);
-	for (int i = 0; i < (int)STARTUP_LEN(startup_gizmo_parts); ++i) {
+	for (int i = 0; i < (int)ARRAY_LENGTH(startup_gizmo_parts); ++i) {
 		const startup_gizmo_part_t *p             = &startup_gizmo_parts[i];
 		f32                         transform[16] = STARTUP_IDENTITY;
 		transform[12]                             = p->x;

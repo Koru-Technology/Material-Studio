@@ -58,21 +58,14 @@ bool history_tiles_supported(slot_layer_t *l) {
 }
 
 // Draw passes in progress end for the copies and continue after
-static bool           history_tiles_resume  = false;
-static gpu_texture_t *history_tiles_resume_target = NULL;
+static draw_saved_t history_tiles_saved_draw = {0};
 
 static void history_tiles_pause_draw() {
-	history_tiles_resume        = gpu_in_use;
-	history_tiles_resume_target = _draw_current;
-	if (history_tiles_resume) {
-		draw_end();
-	}
+	history_tiles_saved_draw = draw_suspend();
 }
 
 static void history_tiles_resume_draw() {
-	if (history_tiles_resume) {
-		draw_begin(history_tiles_resume_target, false, 0);
-	}
+	draw_resume(history_tiles_saved_draw);
 }
 
 static char *history_tiles_format_name(gpu_texture_format_t f) {

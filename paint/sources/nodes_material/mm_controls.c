@@ -210,7 +210,7 @@ static bool mm_controls_add(ui_node_canvas_t *canvas, mm_json_t *c, i32 order, f
 		variable_set(v, &d, 1, 0);
 	}
 	if (linked == 0) {
-		util_nodes_remove_node(canvas, v);
+		ui_canvas_remove_node(canvas, v, false);
 		return false;
 	}
 	f32 bottom = *y + (kind == 5 ? 330 : 240);

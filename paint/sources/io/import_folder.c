@@ -49,14 +49,7 @@ slot_material_t *import_folder_make_material(char *name, char *dir, char **maps)
 	ui_nodes_t       *nodes  = m->nodes;
 	ui_node_canvas_t *canvas = m->canvas;
 	canvas->name             = string_copy(slot_material_unique_name(canvas, name));
-	ui_node_t *nout          = NULL;
-	for (i32 i = 0; i < canvas->nodes->length; ++i) {
-		ui_node_t *n = canvas->nodes->buffer[i];
-		if (string_equals(n->type, "OUTPUT_MATERIAL_PBR")) {
-			nout = n;
-			break;
-		}
-	}
+	ui_node_t *nout          = ui_canvas_find_type(canvas, "OUTPUT_MATERIAL_PBR");
 	for (i32 i = 0; i < canvas->nodes->length; ++i) {
 		ui_node_t *n = canvas->nodes->buffer[i];
 		if (string_equals(n->name, "Color")) {

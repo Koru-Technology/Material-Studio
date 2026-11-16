@@ -337,26 +337,68 @@ static void ui_remove_node_at(ui_node_canvas_t *canvas, int at) {
 	canvas->nodes->length--;
 }
 
-void ui_remove_node(ui_node_t *n, ui_node_canvas_t *canvas) {
-	if (n == NULL)
-		return;
+ui_node_t *ui_canvas_find_type(ui_node_canvas_t *c, char *type) {
+	for (int i = 0; i < c->nodes->length; ++i) {
+		if (string_equals(c->nodes->buffer[i]->type, type)) {
+			return c->nodes->buffer[i];
+		}
+	}
+	return NULL;
+}
+
+ui_node_link_t *ui_canvas_input_link(ui_node_canvas_t *c, ui_node_t *node, int in) {
+	for (int i = 0; i < c->links->length; ++i) {
+		ui_node_link_t *l = c->links->buffer[i];
+		if (l->to_id == node->id && l->to_socket == in) {
+			return l;
+		}
+	}
+	return NULL;
+}
+
+void ui_canvas_unlink_input(ui_node_canvas_t *c, ui_node_t *node, int in) {
 	int i = 0;
-	while (i < canvas->links->length) {
-		ui_node_link_t *l = canvas->links->buffer[i];
+	while (i < c->links->length) {
+		ui_node_link_t *l = c->links->buffer[i];
+		if (l->to_id == node->id && l->to_socket == in) {
+			ui_remove_link_at(c, i);
+		}
+		else {
+			i++;
+		}
+	}
+}
+
+// notify: the node editor's callbacks (ui_nodes_on_node_changed for the nodes it fed, ui_nodes_on_node_remove), not for
+// graphs edited in code
+void ui_canvas_remove_node(ui_node_canvas_t *c, ui_node_t *n, bool notify) {
+	if (n == NULL) {
+		return;
+	}
+	int i = 0;
+	while (i < c->links->length) {
+		ui_node_link_t *l = c->links->buffer[i];
 		if (l->from_id == n->id || l->to_id == n->id) {
-			ui_remove_link_at(canvas, i);
-			if (ui_nodes_on_node_changed != NULL && l->from_id == n->id) {
-				ui_nodes_on_node_changed(ui_get_node(canvas->nodes, l->to_id));
+			ui_remove_link_at(c, i);
+			if (notify && ui_nodes_on_node_changed != NULL && l->from_id == n->id) {
+				ui_nodes_on_node_changed(ui_get_node(c->nodes, l->to_id));
 			}
 		}
 		else {
 			i++;
 		}
 	}
-	ui_remove_node_at(canvas, ui_get_node_index(canvas->nodes->buffer, canvas->nodes->length, n->id));
-	if (ui_nodes_on_node_remove != NULL) {
+	int at = ui_get_node_index(c->nodes->buffer, c->nodes->length, n->id);
+	if (at >= 0) {
+		ui_remove_node_at(c, at);
+	}
+	if (notify && ui_nodes_on_node_remove != NULL) {
 		(*ui_nodes_on_node_remove)(n);
 	}
+}
+
+void ui_remove_node(ui_node_t *n, ui_node_canvas_t *canvas) {
+	ui_canvas_remove_node(canvas, n, true);
 }
 
 bool ui_is_selected(ui_node_t *node) {
@@ -881,10 +923,9 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 	current_nodes = nodes;
 	ui_t *current = ui_get_current();
 	if (!ui_nodes_elements_baked) {
-		gpu_texture_t *current = _draw_current;
-		draw_end();
+		draw_saved_t saved_draw = draw_suspend();
 		ui_nodes_bake_elements();
-		draw_begin(current, false, 0);
+		draw_resume(saved_draw);
 	}
 	if (ui_nodes_exclude_remove == NULL) {
 		ui_nodes_exclude_remove = calloc(1, sizeof(string_array_t));
@@ -1322,11 +1363,9 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 	if (ui_is_paste && !current->is_typing) {
 		ui_is_paste = false;
 
-		bool is_json = ui_clipboard[0] == '{';
-		if (is_json) {
-
-			ui_node_canvas_t *paste_canvas = json_parse(ui_clipboard);
-
+		ui_node_canvas_t *paste_canvas = ui_clipboard[0] == '{' ? json_parse(ui_clipboard) : NULL;
+		// Copied nodes (not other text or invalid json)
+		if (paste_canvas != NULL && paste_canvas->nodes != NULL && paste_canvas->links != NULL && paste_canvas->nodes->length > 0) {
 			// Convert button data from string to u8 array
 			for (int i = 0; i < paste_canvas->nodes->length; ++i) {
 				for (int j = 0; j < paste_canvas->nodes->buffer[i]->buttons->length; ++j) {

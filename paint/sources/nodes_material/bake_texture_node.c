@@ -84,16 +84,11 @@ bool bake_to_target(render_target_t *rt, bake_type_t bake_type, void (*done)(voi
 		rt->format = "RGBA128";
 		rt->_image = gpu_create_render_target(rt->width, rt->height, GPU_TEXTURE_FORMAT_RGBA128);
 
-		_bake_to_target_bits   = base_bits;
-		base_bits              = TEXTURE_BITS_BITS32;
-		gpu_texture_t *current = _draw_current; // Called from the node ui or from an update
-		if (current != NULL) {
-			draw_end();
-		}
+		_bake_to_target_bits    = base_bits;
+		base_bits               = TEXTURE_BITS_BITS32;
+		draw_saved_t saved_draw = draw_suspend(); // Called from the node ui or from an update
 		layers_set_bits();
-		if (current != NULL) {
-			draw_begin(current, false, 0);
-		}
+		draw_resume(saved_draw);
 
 		// Requires 2 steps
 		history_push_undo = true;

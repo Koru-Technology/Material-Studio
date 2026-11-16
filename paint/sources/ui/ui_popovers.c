@@ -338,11 +338,7 @@ gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *changed) {
 	f32 kx = src->width / (f32)sys_w();
 	f32 ky = src->height / (f32)sys_h();
 
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use) {
-		draw_end();
-	}
+	draw_saved_t saved_draw = draw_suspend();
 	draw_begin(levels[0], true, 0xff000000);
 	draw_set_color(0xffffffff);
 	draw_scaled_sub_image(src, (x - sys_x()) * kx, (y - sys_y()) * ky, w * kx, h * ky, 0, 0, levels[0]->width, levels[0]->height);
@@ -359,9 +355,7 @@ gpu_texture_t *ui_popovers_backdrop(i32 x, i32 y, i32 w, i32 h, bool *changed) {
 		draw_scaled_image(levels[i + 1], 0, 0, levels[i]->width, levels[i]->height);
 		draw_end();
 	}
-	if (in_use) {
-		draw_begin(current, false, 0);
-	}
+	draw_resume(saved_draw);
 	return levels[UI_POPOVERS_BLUR_SHOWN];
 }
 

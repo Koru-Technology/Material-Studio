@@ -342,10 +342,9 @@ void ui_header_draw_tool_properties() {
 		if (decal_tool) {
 			ui_slider(&g_context->brush_scale, tr("UV Scale"), 0.01, 5.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
 			if (ui_item_changed()) {
-				gpu_texture_t *current = _draw_current;
-				draw_end();
+				draw_saved_t saved_draw = draw_suspend();
 				util_render_make_decal_preview();
-				draw_begin(current, false, 0);
+				draw_resume(saved_draw);
 			}
 		}
 
@@ -448,11 +447,10 @@ void ui_header_draw_tool_properties() {
 			ui_text_input(&g_context->text_tool_text, "", UI_ALIGN_LEFT, true, true);
 			g_ui->_w = w;
 			if (ui_item_changed()) {
-				gpu_texture_t *current = _draw_current;
-				draw_end();
+				draw_saved_t saved_draw = draw_suspend();
 				util_render_make_text_preview();
 				util_render_make_decal_preview();
-				draw_begin(current, false, 0);
+				draw_resume(saved_draw);
 			}
 		}
 
@@ -505,11 +503,10 @@ void ui_header_draw_tool_properties() {
 			ui_combo(&g_context->fill_type, fill_mode_combo, tr("Fill Mode"), false, UI_ALIGN_LEFT, true);
 			if (ui_item_changed()) {
 				if (g_context->fill_type == FILL_TYPE_FACE) {
-					gpu_texture_t *current = _draw_current;
-					draw_end();
+					draw_saved_t saved_draw = draw_suspend();
 					// cache_uv_map();
 					util_uv_cache_triangle_map();
-					draw_begin(current, false, 0);
+					draw_resume(saved_draw);
 					// draw_wireframe = true;
 				}
 				make_material_parse_paint_material(true);

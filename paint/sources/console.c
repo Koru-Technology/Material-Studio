@@ -17,14 +17,10 @@ void console_draw_toast(char *s) {
 
 void console_toast(char *s) {
 	// Show a popup message
-	gpu_texture_t *current = _draw_current;
-	bool           in_use  = gpu_in_use;
-	if (in_use)
-		draw_end();
+	draw_saved_t saved_draw = draw_suspend();
 	console_log(s);
 	console_draw_toast(s);
-	if (in_use)
-		draw_begin(current, false, 0);
+	draw_resume(saved_draw);
 }
 
 void console_info(char *s) {
