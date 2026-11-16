@@ -4,9 +4,9 @@
 #include <os/proc.h>
 #endif
 
-// Texture export in tiles (g_config->export_tiled), the live layers left as they are.
+// Texture export, in tiles at any resolution, the live layers left as they are.
 //
-// The jobs (texture sets) and file names are the legacy export's (export_texture.c). A job's output (w x h) is cut into
+// The jobs (texture sets), file names and channel packing are export_texture.c's. A job's output (w x h) is cut into
 // tiles of EXPORT_TILED_MAX_TILE or less (smaller while their targets exceed the budget), each rendered with a halo
 // around its core: square targets of size + 2 halo, also past the edges of the output.
 //
@@ -1411,7 +1411,7 @@ bool export_tiled_start(char *path, bool bake_material) {
 		return false;
 	}
 	et.active          = true;
-	et.height_coverage = util_uv_dilatemap_cached; // Height blended masks read it when there is one, as the legacy export
+	et.height_coverage = util_uv_dilatemap_cached; // Height blended masks read it when there is one
 	et.bytes_base      = util_texture_tracked_bytes();
 	util_texture_tracked_peak_reset();
 	et_stats[1] = export_tiled_budget() / 1024;
@@ -1626,7 +1626,7 @@ i32 export_tiled_stat(i32 what) {
 	return what >= 0 && what < 12 ? (i32)et_stats[what] : 0;
 }
 
-// The uv coverage the legacy padding dilates with
+// The uv coverage of the working resolution (util_uv_cache_dilate_map)
 gpu_texture_t *export_tiled_test_coverage() {
 	util_uv_cache_dilate_map();
 	return util_uv_dilatemap;

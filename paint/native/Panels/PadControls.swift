@@ -241,7 +241,7 @@ struct PadMenuBar: View {
 					}
 					Menu("Export", systemImage: "square.and.arrow.up") {
 						Button("Textures…", systemImage: "photo.stack") {
-							if app_export_available() { exporting = true } else { run(APP_COMMAND_EXPORT_TEXTURES) }
+							exporting = true
 						}
 						Button("Mesh…", systemImage: "cube") { run(APP_COMMAND_EXPORT_MESH) }
 						Button("Swatches…", systemImage: "swatchpalette") { run(APP_COMMAND_EXPORT_SWATCHES) }

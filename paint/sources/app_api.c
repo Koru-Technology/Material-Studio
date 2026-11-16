@@ -498,11 +498,6 @@ void app_command(int32_t command) {
 	case APP_COMMAND_REIMPORT_TEXTURES:
 		project_reimport_textures();
 		break;
-	case APP_COMMAND_EXPORT_TEXTURES:
-		g_context->layers_export = EXPORT_MODE_VISIBLE;
-		box_export_tab           = 0;
-		box_export_show_textures();
-		break;
 	case APP_COMMAND_EXPORT_MESH:
 		g_context->export_mesh_index = 0; // All
 		box_export_show_mesh();

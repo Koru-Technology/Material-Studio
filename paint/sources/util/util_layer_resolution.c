@@ -1,7 +1,6 @@
 #include "../global.h"
 
-// Working resolution changes that keep detail (with g_config->export_tiled; layers_resize resamples otherwise). A change
-// is a history step (HISTORY_ACTION_RESOLUTION): undo goes back to the resolution before, redo forth again.
+// Working resolution changes that keep detail. A change is a history step (HISTORY_ACTION_RESOLUTION): undo goes back to the resolution before, redo forth again.
 //
 // Each paint layer and mask goes to the new size in turn. The state it leaves is kept (its tile map, with what it went to,
 // layers_resolution_kept). Back to a size it left, when it still holds what it went to from there, the kept state comes
@@ -283,24 +282,13 @@ static void layers_resolution_update(void *_) {
 	}
 }
 
-// The working resolution goes to w x h over the next frames, a layer each, undoable once done. The resolution controls
-// call it instead of layers_on_resized with the tiled export.
+// The working resolution goes to w x h over the next frames, a layer each, undoable once done (the resolution controls)
 bool layers_resolution_begin(i32 w, i32 h) {
 	if (!layers_resolution_start(w, h, true)) {
 		return false;
 	}
 	sys_notify_on_update(&layers_resolution_update, NULL);
 	return true;
-}
-
-// The resolution controls: base_res_x and base_res_y set
-void layers_on_resized_by_user() {
-	if (g_config->export_tiled) {
-		layers_resolution_begin((i32)base_res_x, (i32)base_res_y);
-	}
-	else {
-		layers_on_resized();
-	}
 }
 
 // Tests: layers that came back exactly from a kept state so far

@@ -26,9 +26,7 @@ struct ProjectSettingsSheet: View {
 				} header: {
 					Text("Resolution")
 				} footer: {
-					Text(info.keeps_detail
-					     ? "Painted detail is kept: going back to a resolution brings the layers back as they were. Undo reverts the change."
-					     : "Layers are resampled to the new resolution.")
+					Text("Painted detail is kept: going back to a resolution brings the layers back as they were. Undo reverts the change.")
 				}
 				if info.running {
 					Section("Changing resolution") {
@@ -43,7 +41,6 @@ struct ProjectSettingsSheet: View {
 					Button("Save a Copy Without History…") {
 						AppStore.shared.perform { app_history_save_copy() }
 					}
-					.disabled(!history.can_save_copy)
 				} header: {
 					Text("History")
 				} footer: {
