@@ -1962,6 +1962,7 @@ void timeline_entry_upgrade(struct timeline *tl, i32 index, i32 kind, hash128_t 
 void timeline_tiles_cache_reset();
 bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 *channels);
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, struct paint_target *dst);
+i32  timeline_tiles_test(slot_layer_t *l);
 
 // ---- history_steps.c ----
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
