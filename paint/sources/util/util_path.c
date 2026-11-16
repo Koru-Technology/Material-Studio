@@ -733,6 +733,7 @@ void util_layer_remove_path_point(slot_layer_t *l) {
 	if (idx < 0 || idx >= num_points) {
 		return;
 	}
+	history_path(l);
 
 	// Anchors sit at even indices, their control points at the odd index before them
 	i32 start = idx;
@@ -795,12 +796,12 @@ void util_layer_remove_path_point(slot_layer_t *l) {
 }
 
 void util_layer_add_path_point(slot_layer_t *l, f32 screen_x, f32 screen_y) {
-	if (l->path_tool == -1) {
-		l->path_tool = g_context->tool;
-	}
-	if (!l->path_text && (i32)g_context->tool != l->path_tool) {
+	i32 tool = l->path_tool == -1 ? (i32)g_context->tool : l->path_tool; // The first point picks the tool
+	if (!l->path_text && (i32)g_context->tool != tool) {
 		return;
 	}
+	history_path(l);
+	l->path_tool = tool;
 
 	bool _paint2d = g_context->paint2d;
 	if (_paint2d) {
@@ -947,6 +948,7 @@ void util_layer_check_path_grab() {
 	}
 
 	if (closest >= 0) {
+		history_path(l); // The drag is one step
 		path_point_dragging = closest;
 		for (i32 j = 0; j < path_point_sphere_count; j++) {
 			if (path_point_spheres[j] != NULL) {

@@ -1920,6 +1920,9 @@ void                  history_record_children(const u8 *data, u32 len, void (*vi
 slot_layer_t         *history_record_layer(hash128_t record);
 void                  history_records_free(history_step_t *step);
 void                  history_swap_order(history_step_t *step);
+slot_layer_t         *history_path_copy(slot_layer_t *l);
+void                  history_path_free(slot_layer_t *p);
+void                  history_swap_path(history_step_t *step, slot_layer_t *l);
 void                  history_get_height_blend(slot_layer_t *l, f32 *out);
 void                  history_restore_applied_mask(history_step_t *step, slot_layer_t *m);
 void                  history_swap_layer_props(history_step_t *step);
@@ -2041,6 +2044,7 @@ void            history_duplicate_material();
 void            history_delete_material_group(node_group_t *group);
 void            history_mask_stack();
 void            history_resolution(i32 w0, i32 h0, i32 w1, i32 h1);
+void            history_path(slot_layer_t *l);
 
 // ---- keymap.c ----
 void       keymap_load();

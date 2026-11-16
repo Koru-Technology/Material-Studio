@@ -828,6 +828,7 @@ typedef struct history_step {
 	struct hash128              *records;      // HSTORE_LAYER_RECORD of each of merge_layers, their textures freed
 	u32                          fill_uids[2]; // Apply mask: fill material of the mask and of its layer, 0 when painted
 	i32                          resolution[4]; // Resolution change: width and height before, after
+	struct slot_layer           *path;          // Path edit, clear of a path layer: the path props on the other side (props only)
 } history_step_t;
 
 // ---- Logic nodes and node groups ----

@@ -93,6 +93,8 @@ static char *history_action_to_string(history_action_t action) {
 		return tr("Edit Mask Stack");
 	case HISTORY_ACTION_RESOLUTION:
 		return tr("Resolution");
+	case HISTORY_ACTION_PATH:
+		return tr("Edit Path");
 	}
 	return tr("Paint");
 }
@@ -128,6 +130,7 @@ static void history_step_free(history_step_t *step) {
 	}
 	history_tiles_release(step);
 	array_delete(step->mask_effects);
+	history_path_free(step->path);
 	if (step->tl_moves != NULL) {
 		array_free(step->tl_moves);
 		free(step->tl_moves);
@@ -480,6 +483,10 @@ static bool history_layer_step(history_step_t *step, bool undo) {
 	case HISTORY_ACTION_PAINT:
 	case HISTORY_ACTION_CLEAR_LAYER:
 	case HISTORY_ACTION_INVERT_MASK:
+	case HISTORY_ACTION_PATH:
+		if (step->path != NULL && l != NULL) {
+			history_swap_path(step, l); // The points with the pixels
+		}
 		history_raster_step(step, undo);
 		return true;
 	case HISTORY_ACTION_APPLY_MASK:
