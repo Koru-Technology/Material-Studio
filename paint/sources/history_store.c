@@ -25,6 +25,8 @@
 enum {
 	HSTORE_E_RECOVERED = 1, // Indexed by hstore_recover, kept by trim until hstore_recover_end
 	HSTORE_E_MARK      = 2, // Reached by hstore_each
+	HSTORE_E_UNOWNED   = 4, // Holds no references on its children (indexed from disk, or unreached by a rebuild): its
+	                        // removal does not drop theirs
 };
 
 typedef struct hstore_entry {
@@ -62,6 +64,7 @@ static bool            hstore_recovering  = false;
 static f64             hstore_flush_ms    = 0.0; // Duration of the last hstore_flush
 static i64             hstore_disk_reads  = 0;   // Chunks read back from the journal or the project
 static int             hstore_pfd         = -1;  // The v31 project file
+static bool            hstore_jowned      = false; // The journal holds this session's writes: reset deletes it
 
 // ---- Chunks ----
 
@@ -369,17 +372,19 @@ static bool hstore_journal_open() {
 			close(fd);
 			return false;
 		}
-		hstore_jsize = HSTORE_JOURNAL_HEADER;
-		hstore_jmark = HSTORE_JOURNAL_HEADER;
+		hstore_jsize  = HSTORE_JOURNAL_HEADER;
+		hstore_jmark  = HSTORE_JOURNAL_HEADER;
+		hstore_jowned = true;
 	}
-	else {
+	else { // Left by a session that did not end: kept by reset until this one writes to it
 		hstore_scan_t s = hstore_journal_scan(fd, size);
 		if (s.end < size && ftruncate(fd, (off_t)s.end) != 0) {
 			close(fd);
 			return false;
 		}
-		hstore_jsize = s.end;
-		hstore_jmark = s.mark;
+		hstore_jsize  = s.end;
+		hstore_jmark  = s.mark;
+		hstore_jowned = false;
 		hstore_dead += s.end - HSTORE_JOURNAL_HEADER;
 	}
 	hstore_fd      = fd;
@@ -401,8 +406,9 @@ static bool hstore_journal_append(hstore_entry_t *e) {
 		}
 		return false;
 	}
-	hstore_jsize = off + HSTORE_CHUNK_HEADER + e->comp_len;
-	e->disk_off  = off;
+	hstore_jsize  = off + HSTORE_CHUNK_HEADER + e->comp_len;
+	hstore_jowned = true;
+	e->disk_off   = off;
 	hstore_dirty -= e->comp_len;
 	return true;
 }
@@ -566,6 +572,7 @@ static void hstore_free_table() {
 #define HSTORE_KINDS 32
 
 static hstore_children_fn hstore_children[HSTORE_KINDS];
+static hash128_t          hstore_recovered_kind[HSTORE_KINDS]; // Last chunk of each kind hstore_recover read
 
 typedef struct hstore_list {
 	hash128_t *h;
@@ -615,10 +622,11 @@ static void hstore_visit_unref(hash128_t child, void *ud) {
 	}
 }
 
-// Refs a reachable blob, the first ref queues its children
+// Refs a reachable blob, the first ref queues its children (counted: it owns them)
 static void hstore_visit_reach(hash128_t child, void *ud) {
 	hstore_entry_t *e = hstore_find(child);
 	if (e != NULL && ++e->refs == 1) {
+		e->state &= ~HSTORE_E_UNOWNED;
 		hstore_list_push(ud, child);
 	}
 }
@@ -645,7 +653,7 @@ static void hstore_collect_garbage(bool io) {
 		if (e == NULL || !hstore_is_garbage(e)) {
 			continue;
 		}
-		hstore_children_fn fn = hstore_children_of(e->kind);
+		hstore_children_fn fn = (e->state & HSTORE_E_UNOWNED) == 0 ? hstore_children_of(e->kind) : NULL;
 		if (fn != NULL) {
 			if (e->ram == NULL && !io) {
 				continue; // Deferred
@@ -665,6 +673,7 @@ void hstore_rebuild_refs(const hash128_t *roots, i32 n) {
 	for (u32 i = 0; i < hstore_cap; ++i) {
 		hstore_table[i].refs = 0;
 		hstore_table[i].state &= ~HSTORE_E_RECOVERED;
+		hstore_table[i].state |= HSTORE_E_UNOWNED; // Until reached: then its children are counted
 	}
 	hstore_recovering  = false;
 	hstore_list_t work = {0};
@@ -693,6 +702,13 @@ hash128_t hstore_put(hstore_kind_t kind, const void *data, u32 len) {
 	if (e != NULL) {
 		e->refs++;
 		e->tick = ++hstore_tick;
+		if (e->state & HSTORE_E_UNOWNED) { // Read from disk and not owning its children yet: it does from now on
+			e->state &= ~HSTORE_E_UNOWNED;
+			hstore_children_fn fn = hstore_children_of((u8)kind);
+			if (fn != NULL) {
+				fn(data, len, hstore_visit_ref, NULL);
+			}
+		}
 		return h;
 	}
 	if (hstore_budget_ram == 0) {
@@ -749,6 +765,12 @@ u8 *hstore_get(hash128_t h, u32 *len) {
 
 bool hstore_has(hash128_t h) {
 	return hstore_find(h) != NULL;
+}
+
+// hstore_kind_t of a stored blob, 0 when missing
+i32 hstore_kind_of(hash128_t h) {
+	hstore_entry_t *e = hstore_find(h);
+	return e != NULL ? e->kind : 0;
 }
 
 void hstore_ref(hash128_t h) {
@@ -812,17 +834,32 @@ void hstore_reset() {
 	hstore_dead  = 0;
 	hstore_tick  = 0;
 	if (hstore_fd >= 0) {
-		char *path = string_copy(hstore_fd_path);
+		char *path  = string_copy(hstore_fd_path);
+		bool  owned = hstore_jowned;
 		hstore_journal_close();
-		unlink(path);
+		if (owned) {
+			unlink(path); // Not one left by a crash that this session only read: it may still be recovered
+		}
 		free(path);
 	}
 	if (hstore_pfd >= 0) {
 		close(hstore_pfd);
 		hstore_pfd = -1;
 	}
+	memset(hstore_recovered_kind, 0, sizeof(hstore_recovered_kind));
 	hstore_recovering = false;
 	hstore_budget_ram = hstore_ram_budget_now();
+}
+
+// Compressed bytes of every stored blob, wherever it is: what a save with history writes at most
+i64 hstore_live_bytes() {
+	i64 n = 0;
+	for (u32 i = 0; i < hstore_cap; ++i) {
+		if (!hash128_is_none(hstore_table[i].h)) {
+			n += hstore_table[i].comp_len;
+		}
+	}
+	return n;
 }
 
 hstore_stats_t hstore_stats() {
@@ -861,7 +898,7 @@ void hstore_attach_project(char *path, const hstore_index_entry_t *entries, i32 
 			e->codec    = x->codec;
 			e->raw_len  = x->raw_len;
 			e->comp_len = x->comp_len;
-			e->state    = HSTORE_E_RECOVERED;
+			e->state    = HSTORE_E_RECOVERED | HSTORE_E_UNOWNED;
 		}
 		else if (e->disk_off >= 0 && e->src == HSTORE_SRC_JOURNAL) {
 			continue; // Its journal copy stays
@@ -942,6 +979,7 @@ void hstore_journal_mark_saved() {
 	u8 head[HSTORE_CHUNK_HEADER];
 	hstore_chunk_header_write(head, 0, HSTORE_CODEC_RAW, HSTORE_CHUNK_MARK, HASH128_NONE, 0, 0);
 	if (hstore_pwrite_all(hstore_fd, head, HSTORE_CHUNK_HEADER, hstore_jsize)) {
+		hstore_jowned = true;
 		hstore_jsize += HSTORE_CHUNK_HEADER;
 		hstore_jmark = hstore_jsize;
 		hstore_dead += HSTORE_CHUNK_HEADER;
@@ -977,6 +1015,7 @@ i32 hstore_recover() {
 	i64 off   = hstore_jmark;
 	i32 count = 0;
 	u8  head[HSTORE_CHUNK_HEADER];
+	memset(hstore_recovered_kind, 0, sizeof(hstore_recovered_kind));
 	while (off + HSTORE_CHUNK_HEADER <= hstore_jsize) {
 		hstore_chunk_t c;
 		if (!hstore_pread_all(hstore_fd, head, HSTORE_CHUNK_HEADER, off) || !hstore_chunk_header_read(head, &c)) {
@@ -989,6 +1028,9 @@ i32 hstore_recover() {
 			break; // Corrupt: it and what follows are dropped
 		}
 		free(raw);
+		if (c.kind < HSTORE_KINDS && c.kind != 0) {
+			hstore_recovered_kind[c.kind] = c.h;
+		}
 		if (hstore_find(c.h) == NULL && c.kind != 0) {
 			hstore_entry_t *e = hstore_insert(c.h);
 			e->kind           = c.kind;
@@ -996,7 +1038,7 @@ i32 hstore_recover() {
 			e->raw_len        = c.raw_len;
 			e->comp_len       = c.comp_len;
 			e->disk_off       = off;
-			e->state          = HSTORE_E_RECOVERED;
+			e->state          = HSTORE_E_RECOVERED | HSTORE_E_UNOWNED;
 			hstore_dead -= HSTORE_CHUNK_HEADER + c.comp_len;
 			count++;
 		}
@@ -1011,6 +1053,11 @@ i32 hstore_recover() {
 	}
 	hstore_recovering = count > 0;
 	return count;
+}
+
+// The last blob of kind the last hstore_recover read (the newest session head), NONE when none
+hash128_t hstore_recovered_last(i32 kind) {
+	return (u32)kind < HSTORE_KINDS ? hstore_recovered_kind[kind] : HASH128_NONE;
 }
 
 // Recovered blobs nothing referenced go at the next trim
