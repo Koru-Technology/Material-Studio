@@ -446,7 +446,7 @@ i32 mm_node_param_socket(ui_node_t *node, char *param, i32 stop, ui_node_canvas_
 	                                                    .node_id       = node->id,
 	                                                    .name          = string_copy(key),
 	                                                    .type          = type,
-	                                                    .color         = string_equals(type, "GRADIENT") ? 0xffd88a3d : mm_nodes_socket_color(type),
+	                                                    .color         = string_equals(type, "GRADIENT") ? 0xffd88a3d : nodes_material_get_socket_color(type),
 	                                                    .default_value = f32_array_create_from_raw(v, string_equals(type, "VALUE") ? 1 : 4),
 	                                                    .min           = 0.0,
 	                                                    .max           = 1.0,

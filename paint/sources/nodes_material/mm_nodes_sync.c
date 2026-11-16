@@ -146,7 +146,7 @@ static char *mm_nodes_linked_type(ui_node_canvas_t *canvas, ui_node_t *node, i32
 static void mm_nodes_set_socket_type(ui_node_socket_t *s, char *type) {
 	if (!string_equals(s->type, type)) {
 		s->type  = string_copy(type);
-		s->color = mm_nodes_socket_color(type);
+		s->color = nodes_material_get_socket_color(type);
 		if (s->default_value == NULL || (i32)s->default_value->length < mm_nodes_socket_size(type)) {
 			f32 v[4] = {0, 0, 0, 1};
 			s->default_value = f32_array_create(4);

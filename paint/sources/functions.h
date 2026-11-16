@@ -1616,7 +1616,7 @@ void              nodes_material_new_group_button(i32 node_id);
 void              nodes_material_group_input_button(i32 node_id);
 void              nodes_material_group_output_button(i32 node_id);
 void              nodes_material_sync_sockets(ui_node_t *node);
-i32               nodes_material_get_socket_color(char *type);
+u32               nodes_material_get_socket_color(char *type);
 f32_array_t      *nodes_material_get_socket_default_value(char *type);
 char             *nodes_material_get_socket_name(char *type);
 ui_node_socket_t *nodes_material_create_socket(ui_nodes_t *nodes, ui_node_t *node, char *name, char *type, ui_node_canvas_t *canvas, f32 min, f32 max,
