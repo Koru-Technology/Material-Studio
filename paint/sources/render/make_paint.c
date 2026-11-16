@@ -554,6 +554,10 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	node_shader_write_attrib_frag(shader, "sp.y = sp.y * 0.5 + 0.5;");
 	node_shader_write_attrib_frag(shader, "sp.y = 1.0 - sp.y;");
 	node_shader_write_attrib_frag(shader, "sp.z -= 0.0001;"); // small bias
+	// Depth reject's margin: the depth change across a texel. A fragment of the surface the depth was drawn from (an island's
+	// edge seen edge-on, a crease) compares about equal, the texel's own slope keeps it from flipping with the part of the
+	// layer rendered (export tiles interpolate the same point a few ulps apart)
+	node_shader_write_attrib_frag(shader, "float sp_dz = fwidth(sp.z);");
 	if (make_paint_resolved) { // The first dab of the draw, see PAINT_DAB_TEXELS
 		node_shader_add_texture(shader, "texpaintdabs", "_texpaintdabs");
 		node_shader_add_constant(shader, "float paint_dab_first", "_paint_dab_first");

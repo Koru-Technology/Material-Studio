@@ -41,7 +41,7 @@ static void make_brush_tilt_stretch(node_shader_t *shader, char *shape, char *pa
 }
 
 static void make_brush_depth_reject(node_shader_t *shader) {
-	node_shader_write_frag(shader, "if (sp.z > textureLod(sampler2D(gbufferD, sampler_linear), sp.xy, 0.0).r - 0.00008) { discard; }");
+	node_shader_write_frag(shader, "if (sp.z > textureLod(sampler2D(gbufferD, sampler_linear), sp.xy, 0.0).r - 0.00008 + sp_dz) { discard; }");
 }
 
 // depth_reject drops fragments hidden behind the surface under the brush.
