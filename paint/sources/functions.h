@@ -2333,3 +2333,6 @@ f32   script_diff_max();
 f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
+
+// ---- io/export_tiled.c ----
+void export_tiled_run(char *path, bool bake_material);

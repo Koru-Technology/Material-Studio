@@ -283,6 +283,7 @@
 #include "uniforms.c"
 #include "viewport.c"
 #include "util/util_test.c"
+#include "io/export_tiled.c"
 
 #ifdef WITH_PLUGINS
 void plugins_init();

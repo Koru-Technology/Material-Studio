@@ -25,9 +25,8 @@ static buffer_t *export_texture_pack_pixels(buffer_t *pixels, i32 count, i32 bit
 	return rgba;
 }
 
-static void export_texture_write_texture(char *file, buffer_t *pixels, i32 type, i32 off) {
-	i32 res_x       = config_get_texture_res_x();
-	i32 res_y       = config_get_texture_res_y();
+// Writes pixels (res_x x res_y, native order) as file: type 1 rgb, 2 one channel at off, 3 rgba
+static void export_texture_write_texture(char *file, buffer_t *pixels, i32 res_x, i32 res_y, i32 type, i32 off) {
 	i32 bits_handle = base_bits;
 	i32 bits        = bits_handle == TEXTURE_BITS_BITS8 ? 8 : bits_handle == TEXTURE_BITS_BITS16 ? 16 : 32;
 	i32 format      = 0; // RGBA
@@ -237,9 +236,12 @@ static void export_texture_set_channel(f32 value, buffer_t *to, i32 to_channel, 
 	}
 }
 
-static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, char *object_name, bool bake_material) {
-	i32 texture_size_x = config_get_texture_res_x();
-	i32 texture_size_y = config_get_texture_res_y();
+static i32 export_texture_bits() {
+	return base_bits == TEXTURE_BITS_BITS8 ? 8 : base_bits == TEXTURE_BITS_BITS16 ? 16 : 32;
+}
+
+// The file name of a job's textures before the texture name: <project>[_<object>], *ext the rest (udim: <tile>.png)
+static char *export_texture_file_base(slot_layer_t_array_t *layers, char *object_name, char **ext_out) {
 #ifdef IRON_IOS
 	char *f = sys_title();
 #else
@@ -249,7 +251,7 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		f = string_copy(tr("untitled"));
 	}
 	texture_ldr_format_t format_type = g_context->format_type;
-	i32                  bits        = base_bits == TEXTURE_BITS_BITS8 ? 8 : base_bits == TEXTURE_BITS_BITS16 ? 16 : 32;
+	i32                  bits        = export_texture_bits();
 	char                *ext         = bits > 8 ? ".exr" : format_type == TEXTURE_LDR_FORMAT_PNG ? ".png" : ".jpg";
 	if (ends_with(f, ext)) {
 		f = string_copy(substring(f, 0, string_length(f) - 4));
@@ -264,10 +266,6 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 		ext = string("%s%s", object_name, ext);
 	}
 
-	layers_make_temp_img();
-	layers_make_export_img();
-	gpu_texture_t *empty = render_path_empty_white();
-
 	// Append object mask name
 	bool export_selected = g_context->layers_export == EXPORT_MODE_SELECTED;
 	if (export_selected && slot_layer_get_object_mask(layers->buffer[0]) > 0) {
@@ -276,48 +274,314 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 	if (!is_udim && !export_selected && !string_equals(object_name, "")) {
 		f = string("%s_%s", f, object_name);
 	}
+	*ext_out = ext;
+	return f;
+}
 
-	// Export a single udim tile when the target is one
+// The atlas slot of the udim tile a job exports alone, -1 for none
+static i32 export_texture_udim_slot(slot_layer_t_array_t *layers, char *object_name) {
 	i32 udim_slot = -1;
 	if (util_mesh_udim_active()) {
 		i32 udim_tile = util_mesh_udim_tile(object_name);
 		if (udim_tile >= 0) {
 			udim_slot = util_mesh_udim_slot(udim_tile);
 		}
-		else if (export_selected) {
+		else if (g_context->layers_export == EXPORT_MODE_SELECTED) {
 			udim_slot = layers_udim_tile_slot(layers->buffer[0]);
 		}
 	}
+	return udim_slot;
+}
 
-	// Clear export layer
-	_gpu_begin(layers_expa, NULL, NULL, GPU_CLEAR_COLOR, color_from_floats(0.0, 0.0, 0.0, 0.0), 0.0);
+// Layer l1 of a job goes into its textures
+static bool export_texture_layer_used(slot_layer_t *l1, char *object_name) {
+	bool export_selected = g_context->layers_export == EXPORT_MODE_SELECTED;
+	bool is_udim         = g_context->layers_export == EXPORT_MODE_PER_UDIM_TILE;
+	if (!export_selected && !slot_layer_is_visible(l1)) {
+		return false;
+	}
+	if (!slot_layer_is_layer(l1)) {
+		return false;
+	}
+	if (slot_layer_has_visible_filter(l1)) {
+		return false;
+	}
+
+	if (!string_equals(object_name, "") && slot_layer_get_object_mask(l1) > 0) {
+		if (is_udim && !ends_with(g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l1) - 1]->base->name, object_name)) {
+			return false;
+		}
+		bool per_object = g_context->layers_export == EXPORT_MODE_PER_OBJECT;
+		if (per_object && !string_equals(g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l1) - 1]->base->name, object_name)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// The composite starts empty: base, normal, pack
+static void export_texture_clear(gpu_texture_t **acc) {
+	_gpu_begin(acc[0], NULL, NULL, GPU_CLEAR_COLOR, color_from_floats(0.0, 0.0, 0.0, 0.0), 0.0);
 	gpu_end();
-	_gpu_begin(layers_expb, NULL, NULL, GPU_CLEAR_COLOR, color_from_floats(0.5, 0.5, 1.0, 0.0), 0.0);
+	_gpu_begin(acc[1], NULL, NULL, GPU_CLEAR_COLOR, color_from_floats(0.5, 0.5, 1.0, 0.0), 0.0);
 	gpu_end();
-	_gpu_begin(layers_expc, NULL, NULL, GPU_CLEAR_COLOR, color_from_floats(1.0, 0.0, 0.0, 0.0), 0.0);
+	_gpu_begin(acc[2], NULL, NULL, GPU_CLEAR_COLOR, color_from_floats(1.0, 0.0, 0.0, 0.0), 0.0);
 	gpu_end();
+}
+
+// layers_commands_merge_pack with temp as the target's copy
+static void export_texture_merge_pack(gpu_texture_t *temp, gpu_pipeline_t *pipe, gpu_texture_t *i0, gpu_texture_t *i1, gpu_texture_t *i1pack,
+                                      f32 i1mask_opacity, gpu_texture_t *i1texmask, i32 i1blending) {
+	_gpu_begin(i0, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	gpu_set_pipeline(pipe);
+	gpu_set_texture(pipes_tex0, i1);
+	gpu_set_texture(pipes_tex1, i1pack);
+	gpu_set_texture(pipes_texmask, i1texmask);
+	gpu_set_texture(pipes_texa, temp);
+	gpu_set_float(pipes_opac, i1mask_opacity);
+	gpu_set_float(pipes_tex1w, i1pack->width);
+	gpu_set_int(pipes_blending, i1blending);
+	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+	gpu_set_index_buffer(const_data_screen_aligned_ib);
+	gpu_draw();
+	gpu_end();
+}
+
+// Composites layer l1, index i of the job's count layers, into acc (base, normal, pack) through mask. temp: a scratch of
+// acc's size and format. Every pass is a screen quad: acc can be a whole texture or a tile of one (io/export_tiled.c).
+static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp, slot_layer_t *l1, gpu_texture_t *mask, i32 i, i32 count) {
+	gpu_texture_t *empty = render_path_empty_white();
+	if (l1->paint_base || l1->paint_opac) {
+		util_copy_texture(temp, acc[0], pipes_copy); // Copy to temp
+
+		_gpu_begin(acc[0], NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		gpu_set_pipeline(l1->paint_base ? pipes_merge : pipes_get_merge_a());
+		gpu_set_texture(pipes_tex0, l1->texpaint);
+		gpu_set_texture(pipes_tex1, empty);
+		gpu_set_texture(pipes_texmask, mask);
+		gpu_set_texture(pipes_texa, temp);
+		gpu_set_float(pipes_opac, slot_layer_get_opacity(l1));
+		gpu_set_float(pipes_tex1w, empty->width);
+		gpu_set_int(pipes_blending, (count > 1 ? slot_layer_get_blending(l1) : 0) + (g_project->linear_blending ? 1000 : 0));
+		gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+		gpu_set_index_buffer(const_data_screen_aligned_ib);
+		gpu_draw();
+		gpu_end();
+	}
+
+	if (l1->paint_nor) {
+		util_copy_texture(temp, acc[1], pipes_copy);
+
+		_gpu_begin(acc[1], NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		gpu_set_pipeline(pipes_merge);
+		gpu_set_texture(pipes_tex0, l1->texpaint);
+		gpu_set_texture(pipes_tex1, l1->texpaint_nor);
+		gpu_set_texture(pipes_texmask, mask);
+		gpu_set_texture(pipes_texa, temp);
+		gpu_set_float(pipes_opac, slot_layer_get_opacity(l1));
+		gpu_set_float(pipes_tex1w, l1->texpaint_nor->width);
+		gpu_set_int(pipes_blending, l1->paint_nor_blend ? 102 : 101);
+		gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+		gpu_set_index_buffer(const_data_screen_aligned_ib);
+		gpu_draw();
+		gpu_end();
+	}
+
+	if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
+		util_copy_texture(temp, acc[2], pipes_copy);
+
+		// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
+		bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
+		i32  pack_mode  = pack_blend ? 300 + slot_layer_get_blending(l1) : 101;
+		if (l1->paint_occ && l1->paint_rough && l1->paint_met && l1->paint_height) {
+			export_texture_merge_pack(temp, pipes_merge, acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+			                           pack_blend ? (l1->paint_height_blend ? 400 : 300) + slot_layer_get_blending(l1) : l1->paint_height_blend ? 103 : 101);
+		}
+		else {
+			if (l1->paint_occ)
+				export_texture_merge_pack(temp, pipes_get_merge_r(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+			if (l1->paint_rough)
+				export_texture_merge_pack(temp, pipes_get_merge_g(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+			if (l1->paint_met)
+				export_texture_merge_pack(temp, pipes_get_merge_b(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+			if (l1->paint_height)
+				export_texture_merge_pack(temp, pipes_get_merge_a(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+				                           l1->paint_height_blend ? 103 : 101);
+		}
+	}
+}
+
+// How a preset texture is written: one composite as it is (src 0 base, 1 normal, 2 pack; type 1 rgb, 2 one channel at
+// off), or packed channel by channel (src -1, type 3)
+typedef struct export_texture_layout {
+	i32 src;
+	i32 type;
+	i32 off;
+} export_texture_layout_t;
+
+static export_texture_layout_t export_texture_layout(export_preset_texture_t *t) {
+	string_array_t *c              = t->channels;
+	bool            single_channel = string_equals(c->buffer[0], c->buffer[1]) && string_equals(c->buffer[1], c->buffer[2]) && string_equals(c->buffer[3], "1.0");
+	bool            linear         = string_equals(t->color_space, "linear");
+	if (string_equals(c->buffer[0], "base_r") && string_equals(c->buffer[1], "base_g") && string_equals(c->buffer[2], "base_b") &&
+	    string_equals(c->buffer[3], "1.0") && linear) {
+		return (export_texture_layout_t){0, 1, 0};
+	}
+	if (string_equals(c->buffer[0], "nor_r") && string_equals(c->buffer[1], "nor_g") && string_equals(c->buffer[2], "nor_b") &&
+	    string_equals(c->buffer[3], "1.0") && linear) {
+		return (export_texture_layout_t){1, 1, 0};
+	}
+	if (string_equals(c->buffer[0], "occ") && string_equals(c->buffer[1], "rough") && string_equals(c->buffer[2], "metal") &&
+	    string_equals(c->buffer[3], "1.0") && linear) {
+		return (export_texture_layout_t){2, 1, 0};
+	}
+	if (single_channel && linear) {
+		char *c0 = c->buffer[0];
+		if (string_equals(c0, "occ")) {
+			return (export_texture_layout_t){2, 2, 0};
+		}
+		if (string_equals(c0, "rough")) {
+			return (export_texture_layout_t){2, 2, 1};
+		}
+		if (string_equals(c0, "metal")) {
+			return (export_texture_layout_t){2, 2, 2};
+		}
+		if (string_equals(c0, "height")) {
+			return (export_texture_layout_t){2, 2, 3};
+		}
+		if (string_equals(c0, "opac")) {
+			return (export_texture_layout_t){0, 2, 3};
+		}
+	}
+	return (export_texture_layout_t){-1, 3, 0};
+}
+
+// The composites the preset reads: need[0] base, [1] normal, [2] pack
+static void export_texture_needs(export_preset_t *preset, bool *need) {
+	need[0] = need[1] = need[2] = false;
+	for (i32 i = 0; i < preset->textures->length; ++i) {
+		export_preset_texture_t *t = preset->textures->buffer[i];
+		for (i32 i = 0; i < t->channels->length; ++i) {
+			char *c = t->channels->buffer[i];
+			if (string_equals(c, "base_r") || string_equals(c, "base_g") || string_equals(c, "base_b") || string_equals(c, "opac") ||
+			    string_equals(c, "diff_r") || string_equals(c, "diff_g") || string_equals(c, "diff_b") || string_equals(c, "spec_r") ||
+			    string_equals(c, "spec_g") || string_equals(c, "spec_b")) {
+				need[0] = true;
+			}
+			if (string_equals(c, "nor_r") || string_equals(c, "nor_g") || string_equals(c, "nor_g_directx") || string_equals(c, "nor_b") ||
+			    string_equals(c, "emis") || string_equals(c, "subs")) {
+				need[1] = true;
+			}
+			if (string_equals(c, "occ") || string_equals(c, "rough") || string_equals(c, "metal") || string_equals(c, "height") ||
+			    string_equals(c, "smooth") || string_equals(c, "diff_r") || string_equals(c, "diff_g") || string_equals(c, "diff_b") ||
+			    string_equals(c, "spec_r") || string_equals(c, "spec_g") || string_equals(c, "spec_b")) {
+				need[2] = true;
+			}
+		}
+	}
+}
+
+// Packs the channels of preset texture t into pix from the composites' pixels, any size: whole textures or tiles
+static void export_texture_pack(export_preset_texture_t *t, buffer_t *pixpaint, buffer_t *pixpaint_nor, buffer_t *pixpaint_pack, buffer_t *pix, i32 bits) {
+	for (i32 i = 0; i < 4; ++i) {
+		char *c = t->channels->buffer[i];
+		if (string_equals(c, "base_r")) {
+			export_texture_copy_channel(pixpaint, 0, pix, i, bits, true); // Base color is stored sRGB encoded already
+		}
+		else if (string_equals(c, "base_g")) {
+			export_texture_copy_channel(pixpaint, 1, pix, i, bits, true); // Base color is stored sRGB encoded already
+		}
+		else if (string_equals(c, "base_b")) {
+			export_texture_copy_channel(pixpaint, 2, pix, i, bits, true); // Base color is stored sRGB encoded already
+		}
+		else if (string_equals(c, "height")) {
+			export_texture_copy_channel(pixpaint_pack, 3, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "metal")) {
+			export_texture_copy_channel(pixpaint_pack, 2, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "nor_r")) {
+			export_texture_copy_channel(pixpaint_nor, 0, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "nor_g")) {
+			export_texture_copy_channel(pixpaint_nor, 1, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "nor_g_directx")) {
+			export_texture_copy_channel_inv(pixpaint_nor, 1, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "nor_b")) {
+			export_texture_copy_channel(pixpaint_nor, 2, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "occ")) {
+			export_texture_copy_channel(pixpaint_pack, 0, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "opac")) {
+			export_texture_copy_channel(pixpaint, 3, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "rough")) {
+			export_texture_copy_channel(pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "smooth")) {
+			export_texture_copy_channel_inv(pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "emis")) {
+			export_texture_extract_channel(pixpaint_nor, 3, pix, i, 3, 1, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "subs")) {
+			export_texture_extract_channel(pixpaint_nor, 3, pix, i, 3, 2, bits, string_equals(t->color_space, "linear"));
+		}
+		else if (string_equals(c, "diff_r")) {
+			export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 0, pix, i, bits, string_equals(t->color_space, "linear"), false);
+		}
+		else if (string_equals(c, "diff_g")) {
+			export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"), false);
+		}
+		else if (string_equals(c, "diff_b")) {
+			export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 2, pix, i, bits, string_equals(t->color_space, "linear"), false);
+		}
+		else if (string_equals(c, "spec_r")) {
+			export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 0, pix, i, bits, string_equals(t->color_space, "linear"), true);
+		}
+		else if (string_equals(c, "spec_g")) {
+			export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"), true);
+		}
+		else if (string_equals(c, "spec_b")) {
+			export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 2, pix, i, bits, string_equals(t->color_space, "linear"), true);
+		}
+		else if (string_equals(c, "0.0")) {
+			export_texture_set_channel(0.0, pix, i, bits, true);
+		}
+		else if (string_equals(c, "1.0")) {
+			export_texture_set_channel(1.0, pix, i, bits, true);
+		}
+	}
+}
+
+static char *export_texture_out_path(char *path, char *f, export_preset_texture_t *t, char *ext) {
+	char *tex_name = !string_equals(t->name, "") ? string("_%s", t->name) : "";
+	return string("%s%s%s%s%s", path, PATH_SEP, f, tex_name, ext);
+}
+
+static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, char *object_name, bool bake_material) {
+	i32   texture_size_x = config_get_texture_res_x();
+	i32   texture_size_y = config_get_texture_res_y();
+	char *ext;
+	char *f    = export_texture_file_base(layers, object_name, &ext);
+	i32   bits = export_texture_bits();
+
+	layers_make_temp_img();
+	layers_make_export_img();
+	gpu_texture_t *empty = render_path_empty_white();
+
+	i32            udim_slot = export_texture_udim_slot(layers, object_name);
+	gpu_texture_t *acc[3]    = {layers_expa, layers_expb, layers_expc};
+	export_texture_clear(acc);
 
 	// Flatten layers
 	for (i32 i = 0; i < layers->length; ++i) {
 		slot_layer_t *l1 = layers->buffer[i];
-		if (!export_selected && !slot_layer_is_visible(l1)) {
+		if (!export_texture_layer_used(l1, object_name)) {
 			continue;
-		}
-		if (!slot_layer_is_layer(l1)) {
-			continue;
-		}
-		if (slot_layer_has_visible_filter(l1)) {
-			continue;
-		}
-
-		if (!string_equals(object_name, "") && slot_layer_get_object_mask(l1) > 0) {
-			if (is_udim && !ends_with(g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l1) - 1]->base->name, object_name)) {
-				continue;
-			}
-			bool per_object = g_context->layers_export == EXPORT_MODE_PER_OBJECT;
-			if (per_object && !string_equals(g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l1) - 1]->base->name, object_name)) {
-				continue;
-			}
 		}
 
 		gpu_texture_t        *mask    = empty;
@@ -340,210 +604,35 @@ static void export_texture_run_layers(char *path, slot_layer_t_array_t *layers, 
 			l1 = layers_udim_remap(l1, l1masks != NULL ? &mask : NULL, layers_udim_tile_slot(l1), false);
 		}
 
-		if (l1->paint_base || l1->paint_opac) {
-			util_copy_texture(layers_temp_image, layers_expa, pipes_copy); // Copy to temp
-
-			_gpu_begin(layers_expa, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-			gpu_set_pipeline(l1->paint_base ? pipes_merge : pipes_get_merge_a());
-			gpu_set_texture(pipes_tex0, l1->texpaint);
-			gpu_set_texture(pipes_tex1, empty);
-			gpu_set_texture(pipes_texmask, mask);
-			gpu_set_texture(pipes_texa, layers_temp_image);
-			gpu_set_float(pipes_opac, slot_layer_get_opacity(l1));
-			gpu_set_float(pipes_tex1w, empty->width);
-			gpu_set_int(pipes_blending, (layers->length > 1 ? slot_layer_get_blending(l1) : 0) + (g_project->linear_blending ? 1000 : 0));
-			gpu_set_vertex_buffer(const_data_screen_aligned_vb);
-			gpu_set_index_buffer(const_data_screen_aligned_ib);
-			gpu_draw();
-			gpu_end();
-		}
-
-		if (l1->paint_nor) {
-			util_copy_texture(layers_temp_image, layers_expb, pipes_copy);
-
-			_gpu_begin(layers_expb, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-			gpu_set_pipeline(pipes_merge);
-			gpu_set_texture(pipes_tex0, l1->texpaint);
-			gpu_set_texture(pipes_tex1, l1->texpaint_nor);
-			gpu_set_texture(pipes_texmask, mask);
-			gpu_set_texture(pipes_texa, layers_temp_image);
-			gpu_set_float(pipes_opac, slot_layer_get_opacity(l1));
-			gpu_set_float(pipes_tex1w, l1->texpaint_nor->width);
-			gpu_set_int(pipes_blending, l1->paint_nor_blend ? 102 : 101);
-			gpu_set_vertex_buffer(const_data_screen_aligned_vb);
-			gpu_set_index_buffer(const_data_screen_aligned_ib);
-			gpu_draw();
-			gpu_end();
-		}
-
-		if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
-			util_copy_texture(layers_temp_image, layers_expc, pipes_copy);
-
-			// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
-			bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
-			i32  pack_mode  = pack_blend ? 300 + slot_layer_get_blending(l1) : 101;
-			if (l1->paint_occ && l1->paint_rough && l1->paint_met && l1->paint_height) {
-				layers_commands_merge_pack(pipes_merge, layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
-				                           pack_blend ? (l1->paint_height_blend ? 400 : 300) + slot_layer_get_blending(l1) : l1->paint_height_blend ? 103 : 101);
-			}
-			else {
-				if (l1->paint_occ)
-					layers_commands_merge_pack(pipes_get_merge_r(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
-				if (l1->paint_rough)
-					layers_commands_merge_pack(pipes_get_merge_g(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
-				if (l1->paint_met)
-					layers_commands_merge_pack(pipes_get_merge_b(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
-				if (l1->paint_height)
-					layers_commands_merge_pack(pipes_get_merge_a(), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
-					                           l1->paint_height_blend ? 103 : 101);
-			}
-		}
+		export_texture_merge_layer(acc, layers_temp_image, l1, mask, i, layers->length);
 	}
 
 	gpu_texture_t *texpaint      = layers_expa;
 	gpu_texture_t *texpaint_nor  = layers_expb;
 	gpu_texture_t *texpaint_pack = layers_expc;
 
-	buffer_t        *pixpaint      = NULL;
-	buffer_t        *pixpaint_nor  = NULL;
-	buffer_t        *pixpaint_pack = NULL;
-	export_preset_t *preset        = box_export_preset;
-	buffer_t        *pix           = NULL;
-
-	for (i32 i = 0; i < preset->textures->length; ++i) {
-		export_preset_texture_t *t = preset->textures->buffer[i];
-		for (i32 i = 0; i < t->channels->length; ++i) {
-			char *c = t->channels->buffer[i];
-			if ((string_equals(c, "base_r") || string_equals(c, "base_g") || string_equals(c, "base_b") || string_equals(c, "opac") ||
-			     string_equals(c, "diff_r") || string_equals(c, "diff_g") || string_equals(c, "diff_b") || string_equals(c, "spec_r") ||
-			     string_equals(c, "spec_g") || string_equals(c, "spec_b")) &&
-			    pixpaint == NULL) {
-				pixpaint = gpu_get_texture_pixels(texpaint);
-			}
-			if ((string_equals(c, "nor_r") || string_equals(c, "nor_g") || string_equals(c, "nor_g_directx") || string_equals(c, "nor_b") ||
-			     string_equals(c, "emis") || string_equals(c, "subs")) &&
-			    pixpaint_nor == NULL) {
-				pixpaint_nor = gpu_get_texture_pixels(texpaint_nor);
-			}
-			if ((string_equals(c, "occ") || string_equals(c, "rough") || string_equals(c, "metal") || string_equals(c, "height") ||
-			     string_equals(c, "smooth") || string_equals(c, "diff_r") || string_equals(c, "diff_g") || string_equals(c, "diff_b") ||
-			     string_equals(c, "spec_r") || string_equals(c, "spec_g") || string_equals(c, "spec_b")) &&
-			    pixpaint_pack == NULL) {
-				pixpaint_pack = gpu_get_texture_pixels(texpaint_pack);
-			}
-		}
-	}
+	export_preset_t *preset = box_export_preset;
+	bool             need[3];
+	export_texture_needs(preset, need);
+	buffer_t *pixpaint      = need[0] ? gpu_get_texture_pixels(texpaint) : NULL;
+	buffer_t *pixpaint_nor  = need[1] ? gpu_get_texture_pixels(texpaint_nor) : NULL;
+	buffer_t *pixpaint_pack = need[2] ? gpu_get_texture_pixels(texpaint_pack) : NULL;
+	buffer_t *src[3]        = {pixpaint, pixpaint_nor, pixpaint_pack};
+	buffer_t *pix           = NULL;
 
 	for (i32 i = 0; i < preset->textures->length; ++i) {
 		export_preset_texture_t *t        = preset->textures->buffer[i];
-		string_array_t          *c        = t->channels;
-		char                    *tex_name = !string_equals(t->name, "") ? string("_%s", t->name) : "";
-		bool  single_channel = string_equals(c->buffer[0], c->buffer[1]) && string_equals(c->buffer[1], c->buffer[2]) && string_equals(c->buffer[3], "1.0");
-		char *out_path       = string("%s%s%s%s%s", path, PATH_SEP, f, tex_name, ext);
-		if (string_equals(c->buffer[0], "base_r") && string_equals(c->buffer[1], "base_g") && string_equals(c->buffer[2], "base_b") &&
-		    string_equals(c->buffer[3], "1.0") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint, 1, 0);
-		}
-		else if (string_equals(c->buffer[0], "nor_r") && string_equals(c->buffer[1], "nor_g") && string_equals(c->buffer[2], "nor_b") &&
-		         string_equals(c->buffer[3], "1.0") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint_nor, 1, 0);
-		}
-		else if (string_equals(c->buffer[0], "occ") && string_equals(c->buffer[1], "rough") && string_equals(c->buffer[2], "metal") &&
-		         string_equals(c->buffer[3], "1.0") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint_pack, 1, 0);
-		}
-		else if (single_channel && string_equals(c->buffer[0], "occ") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint_pack, 2, 0);
-		}
-		else if (single_channel && string_equals(c->buffer[0], "rough") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint_pack, 2, 1);
-		}
-		else if (single_channel && string_equals(c->buffer[0], "metal") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint_pack, 2, 2);
-		}
-		else if (single_channel && string_equals(c->buffer[0], "height") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint_pack, 2, 3);
-		}
-		else if (single_channel && string_equals(c->buffer[0], "opac") && string_equals(t->color_space, "linear")) {
-			export_texture_write_texture(out_path, pixpaint, 2, 3);
+		char                    *out_path = export_texture_out_path(path, f, t, ext);
+		export_texture_layout_t  layout   = export_texture_layout(t);
+		if (layout.src >= 0) {
+			export_texture_write_texture(out_path, src[layout.src], texture_size_x, texture_size_y, layout.type, layout.off);
 		}
 		else {
 			if (pix == NULL) {
 				pix = buffer_create(texture_size_x * texture_size_y * 4 * math_floor(bits / 8.0));
 			}
-			for (i32 i = 0; i < 4; ++i) {
-				char *c = t->channels->buffer[i];
-				if (string_equals(c, "base_r")) {
-					export_texture_copy_channel(pixpaint, 0, pix, i, bits, true); // Base color is stored sRGB encoded already
-				}
-				else if (string_equals(c, "base_g")) {
-					export_texture_copy_channel(pixpaint, 1, pix, i, bits, true); // Base color is stored sRGB encoded already
-				}
-				else if (string_equals(c, "base_b")) {
-					export_texture_copy_channel(pixpaint, 2, pix, i, bits, true); // Base color is stored sRGB encoded already
-				}
-				else if (string_equals(c, "height")) {
-					export_texture_copy_channel(pixpaint_pack, 3, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "metal")) {
-					export_texture_copy_channel(pixpaint_pack, 2, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "nor_r")) {
-					export_texture_copy_channel(pixpaint_nor, 0, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "nor_g")) {
-					export_texture_copy_channel(pixpaint_nor, 1, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "nor_g_directx")) {
-					export_texture_copy_channel_inv(pixpaint_nor, 1, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "nor_b")) {
-					export_texture_copy_channel(pixpaint_nor, 2, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "occ")) {
-					export_texture_copy_channel(pixpaint_pack, 0, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "opac")) {
-					export_texture_copy_channel(pixpaint, 3, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "rough")) {
-					export_texture_copy_channel(pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "smooth")) {
-					export_texture_copy_channel_inv(pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "emis")) {
-					export_texture_extract_channel(pixpaint_nor, 3, pix, i, 3, 1, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "subs")) {
-					export_texture_extract_channel(pixpaint_nor, 3, pix, i, 3, 2, bits, string_equals(t->color_space, "linear"));
-				}
-				else if (string_equals(c, "diff_r")) {
-					export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 0, pix, i, bits, string_equals(t->color_space, "linear"), false);
-				}
-				else if (string_equals(c, "diff_g")) {
-					export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"), false);
-				}
-				else if (string_equals(c, "diff_b")) {
-					export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 2, pix, i, bits, string_equals(t->color_space, "linear"), false);
-				}
-				else if (string_equals(c, "spec_r")) {
-					export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 0, pix, i, bits, string_equals(t->color_space, "linear"), true);
-				}
-				else if (string_equals(c, "spec_g")) {
-					export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 1, pix, i, bits, string_equals(t->color_space, "linear"), true);
-				}
-				else if (string_equals(c, "spec_b")) {
-					export_texture_compute_diff_spec_channel(pixpaint, pixpaint_pack, 2, pix, i, bits, string_equals(t->color_space, "linear"), true);
-				}
-				else if (string_equals(c, "0.0")) {
-					export_texture_set_channel(0.0, pix, i, bits, true);
-				}
-				else if (string_equals(c, "1.0")) {
-					export_texture_set_channel(1.0, pix, i, bits, true);
-				}
-			}
-			export_texture_write_texture(out_path, pix, 3, 0);
+			export_texture_pack(t, pixpaint, pixpaint_nor, pixpaint_pack, pix, bits);
+			export_texture_write_texture(out_path, pix, texture_size_x, texture_size_y, 3, 0);
 		}
 	}
 
@@ -648,10 +737,11 @@ static void export_texture_create_baked_material(slot_material_t *source) {
 	history_new_material();
 }
 
-static void export_texture_run_bake_material(char *path) {
+// Bake material: the material painted onto the plane into the live layer, the layers to export (NULL without the plane)
+static slot_layer_t_array_t *export_texture_bake_begin() {
 	object_t *plane = scene_get_child(".Plane");
 	if (plane == NULL) {
-		return;
+		return NULL;
 	}
 	if (render_path_paint_live_layer == NULL) {
 		render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
@@ -687,25 +777,36 @@ static void export_texture_run_bake_material(char *path) {
 		g_project->_->paint_objects->buffer[i]->base->visible = _visibles->buffer[i];
 	}
 
-	slot_layer_t_array_t *layers = any_array_create_from_raw(
+	if (g_context->bake_create_material) {
+		export_texture_baked_files = any_array_create_from_raw((void *[]){}, 0);
+	}
+	return any_array_create_from_raw(
 	    (void *[]){
 	        render_path_paint_live_layer,
 	    },
 	    1);
-	slot_material_t *source = g_context->material;
-	if (g_context->bake_create_material) {
-		export_texture_baked_files = any_array_create_from_raw((void *[]){}, 0);
-	}
-	export_texture_run_layers(path, layers, "", true);
+}
+
+// After the export of the bake: the baked material from the written files, when asked for
+static void export_texture_bake_end(slot_material_t *source) {
 	if (export_texture_baked_files != NULL) {
 		export_texture_create_baked_material(source);
 		export_texture_baked_files = NULL;
 	}
 }
 
-void export_texture_run(char *path, bool bake_material) {
+static void export_texture_run_bake_material(char *path) {
+	slot_layer_t_array_t *layers = export_texture_bake_begin();
+	if (layers == NULL) {
+		return;
+	}
+	slot_material_t *source = g_context->material;
+	export_texture_run_layers(path, layers, "", true);
+	export_texture_bake_end(source);
+}
 
-	// Exporting without opening the export box
+// The preset of the export box, also when exporting without opening it
+static void export_texture_init_preset() {
 	if (box_export_files == NULL) {
 		box_export_fetch_presets();
 		i32 i                   = string_array_index_of(box_export_files, "generic");
@@ -714,11 +815,12 @@ void export_texture_run(char *path, bool bake_material) {
 	if (box_export_preset == NULL) {
 		box_export_parse_preset();
 	}
+}
 
-	if (bake_material) {
-		export_texture_run_bake_material(path);
-	}
-	else if (g_context->layers_export == EXPORT_MODE_PER_UDIM_TILE) {
+// The texture sets the export settings make (not bake material): fn(layers, object name, data) for each, the object
+// name a udim tile, an object or an atlas ("" for none)
+static void export_texture_for_each_job(void (*fn)(slot_layer_t_array_t *, char *, void *), void *data) {
+	if (g_context->layers_export == EXPORT_MODE_PER_UDIM_TILE) {
 		string_array_t *udim_tiles = any_array_create_from_raw((void *[]){}, 0);
 		for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 			char *name = g_project->_->paint_objects->buffer[i]->base->name;
@@ -733,11 +835,11 @@ void export_texture_run(char *path, bool bake_material) {
 		if (udim_tiles->length > 0) {
 			for (i32 i = 0; i < udim_tiles->length; ++i) {
 				char *udim_tile = udim_tiles->buffer[i];
-				export_texture_run_layers(path, g_project->_->layers, udim_tile, false);
+				fn(g_project->_->layers, udim_tile, data);
 			}
 		}
 		else {
-			export_texture_run_layers(path, g_project->_->layers, "", false);
+			fn(g_project->_->layers, "", data);
 		}
 	}
 	else if (g_context->layers_export == EXPORT_MODE_PER_OBJECT) {
@@ -755,11 +857,11 @@ void export_texture_run(char *path, bool bake_material) {
 		if (object_names->length > 0) {
 			for (i32 i = 0; i < object_names->length; ++i) {
 				char *name = object_names->buffer[i];
-				export_texture_run_layers(path, g_project->_->layers, name, false);
+				fn(g_project->_->layers, name, data);
 			}
 		}
 		else {
-			export_texture_run_layers(path, g_project->_->layers, "", false);
+			fn(g_project->_->layers, "", data);
 		}
 	}
 	else { // Visible or selected
@@ -808,7 +910,7 @@ void export_texture_run(char *path, bool bake_material) {
 					}
 				}
 				if (layers->length > 0) {
-					export_texture_run_layers(path, layers, g_project->atlas_names->buffer[atlas_index], false);
+					fn(layers, g_project->atlas_names->buffer[atlas_index], data);
 				}
 			}
 		}
@@ -829,10 +931,13 @@ void export_texture_run(char *path, bool bake_material) {
 			else {
 				layers = g_project->_->layers;
 			}
-			export_texture_run_layers(path, layers, "", false);
+			fn(layers, "", data);
 		}
 	}
+}
 
+// The export is done
+static void export_texture_done() {
 #ifdef IRON_IOS
 	if (config_is_iphone()) {
 		console_info(string("%s (\"Files/On My iPhone/%s\")", tr("Textures exported"), manifest_title));
@@ -844,6 +949,25 @@ void export_texture_run(char *path, bool bake_material) {
 	console_info(tr("Textures exported"));
 #endif
 	ui_files_last_path = "";
+}
+
+static void export_texture_run_job(slot_layer_t_array_t *layers, char *object_name, void *path) {
+	export_texture_run_layers(path, layers, object_name, false);
+}
+
+void export_texture_run(char *path, bool bake_material) {
+	export_texture_init_preset();
+	if (g_config->export_tiled) {
+		export_tiled_run(path, bake_material);
+		return;
+	}
+	if (bake_material) {
+		export_texture_run_bake_material(path);
+	}
+	else {
+		export_texture_for_each_job(&export_texture_run_job, path);
+	}
+	export_texture_done();
 }
 
 // Tests: the settings of the export box. preset by name ("" keeps it), layers_export_mode_t, padding, bits 8 / 16 / 32,
