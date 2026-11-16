@@ -832,6 +832,7 @@ void render_path_paint_commands_cursor();
 
 // ---- render/render_path_paint_stroke.c ----
 void render_path_paint_set_stamp_seed(i32 seed);
+void render_path_paint_test_set_taper(f32 start, f32 end, f32 size, f32 opacity);
 bool render_path_paint_filter_on();
 void render_path_paint_filter_apply(render_path_paint_filter_t *f, f32 *x, f32 *y, f32 dt);
 f32  render_path_paint_spacing();

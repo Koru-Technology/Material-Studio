@@ -55,6 +55,9 @@ char *case_name(int k) {
 	if (k == 9) {
 		return "tip";
 	}
+	if (k == 11) {
+		return "taper";
+	}
 	return "saved and opened";
 }
 
@@ -86,6 +89,7 @@ void setup(int k) {
 	ctx->brush_jitter_size    = k == 3 ? 0.4 : 0.0;
 	ctx->brush_jitter_opacity = k == 3 ? 0.3 : 0.0;
 	ctx->sym_x                = k == 4;
+	render_path_paint_test_set_taper(k == 11 ? 0.5 : 0.0, k == 11 ? 0.5 : 0.0, 0.8, 0.6);
 	if (k == 9) {
 		app_brush_use(12); // Square: a tip
 		ctx->brush_radius  = 0.3;
@@ -185,8 +189,8 @@ void next() {
 		compare(kase);
 		kase  = kase + 1;
 		frame = 0;
-		if (kase == 11) {
-			check(paint_rec_test_stored() >= 10, string("strokes stored (%d)", paint_rec_test_stored()));
+		if (kase == 12) {
+			check(paint_rec_test_stored() >= 11, string("strokes stored (%d)", paint_rec_test_stored()));
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 			script_get_config()->paint_resolved_dabs = 0;
 			script_get_config()->timeline_shadow     = 0;
