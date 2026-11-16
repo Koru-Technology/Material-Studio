@@ -278,3 +278,28 @@ void mm_buffers_test_write(char *prefix) {
 		iron_delete_blob(b);
 	}
 }
+
+// The export cap (mm_buffers_export_begin) over the last test render's maps: renders them full at the cap chosen for
+// max_size and budget_kb, returns the cap
+i32 mm_buffers_test_export(i32 max_size, i32 budget_kb) {
+	u64 keys[MM_MAP_COUNT];
+	i32 n = 0;
+	for (i32 k = 0; k < MM_MAP_COUNT; ++k) {
+		if (mm_buffers_test_links[k] != NULL) {
+			keys[n++] = strtoull(mm_buffers_test_links[k] + strlen(MM_BUFFERS_LINK), NULL, 16);
+		}
+	}
+	i32 cap = mm_buffers_export_begin(keys, n, max_size, (i64)budget_kb * 1024);
+	while (mm_buffers_export_step() > 0) {
+	}
+	return cap;
+}
+
+// The size of the texture a map of the last test render has now, 0 for none
+i32 mm_buffers_test_tex_size(i32 map) {
+	if (map < 0 || map >= MM_MAP_COUNT || mm_buffers_test_links[map] == NULL) {
+		return 0;
+	}
+	mm_buffers_recipe_t *r = mm_buffers_find(strtoull(mm_buffers_test_links[map] + strlen(MM_BUFFERS_LINK), NULL, 16));
+	return r != NULL && r->tex != NULL ? r->tex_size : 0;
+}

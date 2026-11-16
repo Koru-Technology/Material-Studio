@@ -266,8 +266,25 @@ void next() {
 		box_export_textures_run(l, 0);
 		script_diff_mask(export_tiled_test_coverage(), 1); // TILED
 		compare("pad", 1.0, "padding, inside uv islands");
+		set_tiled(1); // TILED
+		export_tiled_test_raster(1); // TILED
+		box_export_textures_run(fresh_dir("padr_t"), 0); // TILED
+		export_tiled_test_raster(0); // TILED
+		box_export_textures_run(fresh_dir("padr_l"), 0); // TILED
+		set_tiled(0); // TILED
+		compare("padr", 1.0, "padding, uv coverage rasterized per tile against the working one, inside uv islands");
 		script_diff_mask(NULL, 0);
 		export_texture_test_options("generic", 0, 0, 8, 0);
+	}
+	else if (step == 9 && !baseline) { // Export resolution above the working one: files at that size, the Material Maker cap raised
+		set_tiled(1); // TILED
+		export_tiled_set_resolution(4096, 4096); // TILED
+		export_texture_run(fresh_dir("hires_t"), 0); // TILED
+		export_tiled_set_resolution(0, 0); // TILED
+		set_tiled(0); // TILED
+		check(export_tiled_stat(4) == 5 && export_tiled_stat(2) == 64, string("4096 export: %d files, %d tiles", export_tiled_stat(4), export_tiled_stat(2))); // TILED
+		check(export_tiled_stat(5) == 4096, string("Material Maker cap %d", export_tiled_stat(5))); // TILED
+		check(mm_buffers_stat(14) == 0, "Material Maker cap restored");
 	}
 	else {
 		set_tiled(0);
