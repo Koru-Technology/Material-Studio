@@ -1155,3 +1155,7 @@ X2(paint_replay_test_entry, "b(p:slot_layer_t l,i index)", b, p, i)
 // Texture export, more
 X2(script_diff_files, "i(p:char path_a,p:char path_b)", i, p, p)
 X1(export_tiled_test_whole, "v(b on)", v, b)
+X1(script_texture_read, "v(p:gpu_texture_t t)", v, p)
+X1(script_image_read, "b(p:char path)", b, p)
+X3(script_texel, "f(f u,f v,i c)", f, f, f, i)
+X2(layers_flatten, "p:slot_layer_t(b height_to_normal,p:slot_layer_t_array_t layers)", p, b, p)
