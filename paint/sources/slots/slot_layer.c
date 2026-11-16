@@ -1,8 +1,6 @@
 
 #include "../global.h"
 
-bool slot_layer_defer_alloc = false;
-
 // English name of a layer / brush blending, tr() it to show it
 char *blend_type_name(blend_type_t type) {
 	static char *names[] = {
@@ -49,13 +47,6 @@ char *slot_layer_unique_name(slot_layer_t *self, char *name) {
 		res = string_tmp("%s%s", base, strings_number_ext(++i));
 	}
 	return res;
-}
-
-slot_layer_t *slot_layer_create_undo(char *ext) {
-	slot_layer_defer_alloc = true;
-	slot_layer_t *l        = slot_layer_create(ext, LAYER_SLOT_TYPE_LAYER, NULL);
-	slot_layer_defer_alloc = false;
-	return l;
 }
 
 slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t *parent) {
@@ -126,9 +117,7 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 		i32 id    = (raw->id + 1);
 		raw->name = string("Layer %d", id);
 
-		if (!slot_layer_defer_alloc) {
-			slot_layer_alloc_textures(raw);
-		}
+		slot_layer_alloc_textures(raw);
 
 		raw->texpaint_preview = gpu_create_render_target(util_render_layer_preview_size, util_render_layer_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
 

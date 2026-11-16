@@ -324,11 +324,9 @@ char *project_uuid     = NULL; // 32 hex digits, project_uuid_get
 
 // ---- history.c ----
 history_step_t_array_t *history_steps;
-i32                     history_undo_i      = 0;     // Undo layer
-i32                     history_undos       = 0;     // Undos available
-i32                     history_redos       = 0;     // Redos available
-bool                    history_push_undo   = false; // Store undo on next paint
-slot_layer_t_array_t   *history_undo_layers = NULL;
+i32                     history_undos     = 0;     // Undos available
+i32                     history_redos     = 0;     // Redos available
+bool                    history_push_undo = false; // Store undo on next paint
 
 // ---- nodes_brush.c ----
 ui_node_t_array_t   *nodes_brush_category0;

@@ -139,7 +139,7 @@ static void tl_ops_record_fill(slot_layer_t *l, slot_material_t *m, f32 scale, f
 }
 
 void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32 len, const f32 *uv_bounds, u16 flags) {
-	if (!timeline_active() || !timeline_layer_paints(l)) {
+	if (!timeline_layer_paints(l)) {
 		return;
 	}
 	if (kind == TL_FILL && params == NULL) { // To paint: the fill it was, the step keeps its material
@@ -161,7 +161,7 @@ void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32
 
 // To fill: the conversion renders material m, scaled and rotated as it was painted with
 void timeline_record_to_fill(slot_layer_t *l, slot_material_t *m) {
-	if (!timeline_active() || !timeline_layer_paints(l) || m == NULL) {
+	if (!timeline_layer_paints(l) || m == NULL) {
 		return;
 	}
 	tl_ops_record_fill(l, m, m->uv_scale, m->uv_angle);
@@ -182,7 +182,7 @@ static buffer_t *tl_ops_asset_bytes(asset_t *asset, bool *owned) {
 
 // A layer or mask drawn from an image asset: its bytes by content hash, it replays when the file is gone
 void timeline_record_image(slot_layer_t *l, asset_t *asset) {
-	if (!timeline_active() || !timeline_layer_paints(l) || asset == NULL) {
+	if (!timeline_layer_paints(l) || asset == NULL) {
 		return;
 	}
 	bool      owned = false;
@@ -484,12 +484,7 @@ static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t
 		util_texture_ensure_target(&tl_ops_scratch[3], t->w, t->h, q->texpaint_nor->format);
 		util_texture_ensure_target(&tl_ops_scratch[4], t->w, t->h, q->texpaint_pack->format);
 	}
-	// The paint pass draws the stroke coverage too: its targets the size of t, or it draws a part of t only
-	render_target_t *blend0 = any_map_get(render_path_render_targets, "texpaint_blend0");
-	i32              live_w = blend0->width, live_h = blend0->height;
-	render_path_paint_scratch_resize(t->w, t->h);
 	bool ok = layers_render_fill_rect(l, t, tl_ops_scratch);
-	render_path_paint_scratch_resize(live_w, live_h);
 	*l      = saved;
 	if (ok) {
 		tl_ops_dilate(l, t);

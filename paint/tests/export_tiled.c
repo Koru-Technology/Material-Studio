@@ -148,7 +148,6 @@ void compare(char *name, float tol, char *what) {
 
 void cfg_shadow_off() {
 	config_t *cfg        = script_get_config();
-	cfg->timeline_shadow = 0;
 }
 
 char *layer_hashes() {
@@ -311,7 +310,7 @@ void next() {
 		compare("udim_visible", 1.0, "udim atlas whole");
 		script_layer_set_object(layer_fill, NULL);
 	}
-	else if (step == 8) { // Paint layers come from their timelines (timeline_shadow), restored for each tile
+	else if (step == 8) { // Paint layers come from their timelines, restored for each tile
 		export_texture_test_options("generic", 0, 0, 8, 0);
 		export_both("timeline", 0, 2048);
 		compare("timeline", 1.0, "layers from their timelines");
@@ -370,7 +369,6 @@ void next() {
 void main() {
 	root = script_tmp_dir("materialstudio_export_tiled"); // Per run: suites of several worktrees run at once
 	config_t *cfg        = script_get_config();
-	cfg->timeline_shadow = 1; // Paint layers record their timelines, the tiled export reads them
 	script_project_new();
 	iron_create_directory(root);
 	script_notify_on_next_frame(next);

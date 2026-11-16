@@ -124,7 +124,6 @@ void next() {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[undo_deep] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO_DEEP PASS" : "UNDO_DEEP FAIL");
-		script_get_config()->history_v2 = false;
 		script_quit();
 		return;
 	}
@@ -133,7 +132,6 @@ void next() {
 }
 
 void main() {
-	script_get_config()->history_v2 = true;
 	script_brush_defaults();
 	script_project_new();
 	slot_material_t *mat = script_material_create("deep_red");

@@ -144,7 +144,6 @@ void next() {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[timeline_complete] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "TIMELINE_COMPLETE PASS" : "TIMELINE_COMPLETE FAIL");
-		script_get_config()->timeline_shadow = false;
 		script_quit();
 		return;
 	}
@@ -153,7 +152,6 @@ void next() {
 }
 
 void main() {
-	script_get_config()->timeline_shadow = true;
 	script_brush_defaults();
 	script_project_new();
 	hashes               = string_array_create(0);

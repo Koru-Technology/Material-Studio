@@ -95,7 +95,6 @@ void next() {
 		check(diff3(whole, blank, 1.0) > 10000, "the whole replay paints");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		script_get_config()->paint_resolved_dabs = 0;
-		script_get_config()->timeline_shadow     = 0;
 		printf("[rec_hires] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "REC_HIRES PASS" : "REC_HIRES FAIL");
 		script_quit();
@@ -106,7 +105,6 @@ void next() {
 
 void main() {
 	script_get_config()->paint_resolved_dabs = 1;
-	script_get_config()->timeline_shadow     = 1;
 	script_brush_defaults();
 	script_project_new();
 	slot_material_t *m   = script_material_create("rec_hires_blue");

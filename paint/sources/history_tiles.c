@@ -4,10 +4,9 @@
 // The stroke starts with a copy of the whole layer (the snapshot). Once the stroke is over, a pass compares the layer with
 // the snapshot per tile and the changed tiles are copied from the snapshot into pages of a tile pool. Undo and redo swap
 // the tiles of the layer with the ones in the pool, the snapshot holds the layer tiles in between.
-// Two pools: paint layers (base, normal, pack) and, with history_v2, masks (one texture). They grow a page at a time up
-// to the undo memory budget together. Past it the oldest steps are dropped, with history_v2 only their tiles go: they
-// undo from their timeline then (timeline.c).
-// Masks without history_v2 and gpus without region copies keep a whole layer copy per step (history_copy_to_undo).
+// Two pools: paint layers (base, normal, pack) and masks (one texture). They grow a page at a time up to the undo memory
+// budget together. Past it the tiles of the oldest steps go, those steps undo from their timeline then (timeline.c).
+// The snapshot is also what the paint shader blends over (_texpaint_undo, history_tiles_stroke_source).
 
 #define HISTORY_TILES_GRID      64 // Tiles per layer side
 #define HISTORY_TILES_PAGE_GRID 16 // Tiles per page side
@@ -45,33 +44,24 @@ static history_tiles_pool_t history_tiles_pools[2] = {
 static history_step_t *history_tiles_pending   = NULL; // Step whose tiles are still to be taken from the snapshot
 static slot_layer_t   *history_tiles_pending_l = NULL;
 
-static bool history_tiles_enabled = true; // Off for comparisons, see history_tiles_set_enabled
+static gpu_texture_t *history_tiles_source[3] = {NULL, NULL, NULL}; // Set: what the paint shader blends over instead
 
 static history_tiles_pool_t *history_tiles_pool_of(history_step_t *step) {
 	return &history_tiles_pools[step->layer_type == LAYER_SLOT_TYPE_MASK ? 1 : 0];
 }
 
-void history_tiles_set_enabled(bool on) {
-	history_tiles_finalize();
-	history_tiles_enabled = on;
-}
-
 bool history_tiles_supported(slot_layer_t *l) {
-#ifdef IRON_METAL
-	if (!history_tiles_enabled || l == NULL || l->texpaint == NULL) {
+	if (l == NULL || l->texpaint == NULL) {
 		return false;
 	}
 	if (l->texpaint->width % HISTORY_TILES_GRID != 0 || l->texpaint->height % HISTORY_TILES_GRID != 0) {
 		return false;
 	}
 	if (slot_layer_is_mask(l)) {
-		return history_v2_active();
+		return true;
 	}
 	return slot_layer_is_layer(l) && l->texpaint_nor != NULL && l->texpaint_pack != NULL && l->texpaint->format == l->texpaint_nor->format &&
 	       l->texpaint->format == l->texpaint_pack->format;
-#else
-	return false;
-#endif
 }
 
 // Draw passes in progress end for the copies and continue after
@@ -92,6 +82,19 @@ static i64 history_tiles_pool_page_bytes(history_tiles_pool_t *p) {
 
 i64 history_tiles_page_bytes() {
 	return history_tiles_pool_page_bytes(&history_tiles_pools[0]);
+}
+
+// The pools in KB and the steps holding tiles, for tests
+i32 history_tiles_test_memory_kb() {
+	return (i32)(history_tiles_memory() / 1024);
+}
+
+i32 history_tiles_test_steps() {
+	i32 n = 0;
+	for (i32 i = 0; i < history_steps->length; ++i) {
+		n += history_steps->buffer[i]->undo_tiles != NULL ? 1 : 0;
+	}
+	return n;
 }
 
 i64 history_tiles_memory() {
@@ -196,7 +199,7 @@ void history_tiles_release(history_step_t *step) {
 	}
 }
 
-// history_v2: the tiles of the oldest step holding some in pool p go, the step undoes from its timeline. False if none.
+// The tiles of the oldest step holding some in pool p go, the step undoes from its timeline. False if none.
 static bool history_tiles_release_oldest(history_tiles_pool_t *p, history_step_t *keep) {
 	for (i32 i = 1; i < history_steps->length; ++i) {
 		history_step_t *s = history_steps->buffer[i];
@@ -208,7 +211,7 @@ static bool history_tiles_release_oldest(history_tiles_pool_t *p, history_step_t
 	return false;
 }
 
-// Keeps the tiles of the newest steps only (history_v2, memory warning)
+// Keeps the tiles of the newest steps only (memory warning)
 void history_tiles_keep_newest(i32 steps) {
 	for (i32 i = 0; i < history_steps->length - steps; ++i) {
 		if (history_steps->buffer[i]->undo_tiles != NULL) {
@@ -217,20 +220,15 @@ void history_tiles_keep_newest(i32 steps) {
 	}
 }
 
-// A free pool slot, past the budget older steps are dropped (with history_v2 their tiles)
+// A free pool slot, past the budget the tiles of older steps go
 static i32 history_tiles_alloc(history_tiles_pool_t *p, history_step_t *step) {
 	i64 budget = (i64)g_config->undo_memory_mb * 1024 * 1024;
 	while (p->free == NULL || p->free->length == 0) {
 		bool over = history_tiles_memory() + history_tiles_pool_page_bytes(p) > budget;
-		if (over && history_v2_active() && history_tiles_release_oldest(p, step)) {
+		if (over && history_tiles_release_oldest(p, step)) {
 			continue;
 		}
-		bool can_drop = !history_v2_active() && history_steps->length > 1 && history_steps->buffer[0] != step;
-		if (!over || !can_drop) {
-			history_tiles_add_page(p);
-			break;
-		}
-		history_drop_oldest();
+		history_tiles_add_page(p); // Under budget, or no older tiles left
 	}
 	return i32_array_pop(p->free);
 }
@@ -245,7 +243,6 @@ void history_tiles_finalize() {
 }
 
 static void history_tiles_finalize_step() {
-#ifdef IRON_METAL
 	history_step_t *step = history_tiles_pending;
 	slot_layer_t   *l    = history_tiles_pending_l;
 	if (step == NULL) {
@@ -305,9 +302,7 @@ static void history_tiles_finalize_step() {
 		}
 	}
 	gpu_release_texture_pixels(diff->_image);
-	if (timeline_active()) {
-		timeline_stroke_dirty(step, step->undo_tiles); // The stroke's capture reads only these
-	}
+	timeline_stroke_dirty(step, step->undo_tiles); // The stroke's capture reads only these
 
 	for (i32 i = 0; i < step->undo_tiles->length; i += 2) {
 		step->undo_tiles->buffer[i + 1] = history_tiles_alloc(p, step);
@@ -326,7 +321,6 @@ static void history_tiles_finalize_step() {
 		gpu_copy_regions_end();
 	}
 	history_tiles_resume_draw();
-#endif
 }
 
 static void history_tiles_layer_textures(slot_layer_t *l, gpu_texture_t **tex) {
@@ -335,10 +329,13 @@ static void history_tiles_layer_textures(slot_layer_t *l, gpu_texture_t **tex) {
 	tex[2] = l->texpaint_pack;
 }
 
-// Paint step start: the layer is copied into the snapshot
+// Paint step start: the layer is copied into the snapshot. Layers without tiles (a size off the tile grid) undo from
+// their timeline only.
 void history_tiles_begin(history_step_t *step, slot_layer_t *l) {
-#ifdef IRON_METAL
 	history_tiles_finalize();
+	if (!history_tiles_supported(l)) {
+		return;
+	}
 	history_tiles_pool_t *p   = history_tiles_pool_of(step);
 	gpu_texture_t        *tex = l->texpaint;
 	if (tex->width != p->layer_w || tex->height != p->layer_h || (i32)tex->format != p->format) {
@@ -365,7 +362,6 @@ void history_tiles_begin(history_step_t *step, slot_layer_t *l) {
 	history_tiles_resume_draw();
 	history_tiles_pending   = step;
 	history_tiles_pending_l = l;
-#endif
 }
 
 // The step whose tiles are still to be taken (the last stroke's, until the next push, undo or redo) and its layer
@@ -376,18 +372,31 @@ history_step_t *history_tiles_pending_step(slot_layer_t **layer) {
 	return history_tiles_pending;
 }
 
-// While a tiled stroke paints, the layer as it was before the stroke (blending reads it), NULL otherwise
+// What the paint shader blends over instead of the stroke's snapshot (live brush preview, fill renders), base NULL: the
+// snapshot again
+void history_tiles_source_set(gpu_texture_t *base, gpu_texture_t *nor, gpu_texture_t *pack) {
+	history_tiles_source[0] = base;
+	history_tiles_source[1] = nor;
+	history_tiles_source[2] = pack;
+}
+
+// The layer as it was before the stroke, what the paint shader blends over (_texpaint_undo): the source set, the
+// snapshot while a stroke paints the layer, empty otherwise
 gpu_texture_t *history_tiles_stroke_source(i32 i) {
-	if (history_tiles_pending == NULL || history_tiles_pending_l != g_context->layer) {
-		return NULL;
+	if (history_tiles_source[0] != NULL) {
+		return history_tiles_source[i] != NULL ? history_tiles_source[i] : history_tiles_source[0];
 	}
-	history_tiles_pool_t *p = history_tiles_pool_of(history_tiles_pending);
-	return i < p->channels ? history_tiles_snapshot(p, i) : NULL;
+	if (history_tiles_pending != NULL && history_tiles_pending_l == g_context->layer) {
+		history_tiles_pool_t *p = history_tiles_pool_of(history_tiles_pending);
+		if (i < p->channels) {
+			return history_tiles_snapshot(p, i);
+		}
+	}
+	return render_path_find_image("empty_black");
 }
 
 // Undo and redo: the tiles of the layer and the pool trade places
 void history_tiles_swap(history_step_t *step, slot_layer_t *l) {
-#ifdef IRON_METAL
 	history_tiles_finalize();
 	if (!history_tiles_valid(step, l)) {
 		return;
@@ -422,7 +431,6 @@ void history_tiles_swap(history_step_t *step, slot_layer_t *l) {
 		gpu_copy_regions_end();
 	}
 	history_tiles_resume_draw();
-#endif
 }
 
 // Memory warning: only the pools stay

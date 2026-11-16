@@ -27,10 +27,6 @@ static tl_pending_t *timeline_pending   = NULL;
 static i32           timeline_pending_count = 0;
 static i32           timeline_pending_cap   = 0;
 
-bool timeline_active() {
-	return g_config->timeline_shadow || history_v2_active();
-}
-
 timeline_t *timeline_create(u32 layer_uid, i32 channels) {
 	timeline_t *tl = calloc(1, sizeof(timeline_t));
 	tl->uid        = project_uid_take();
@@ -251,7 +247,7 @@ void timeline_target_live(slot_layer_t *l, paint_target_t *t) {
 
 // The timeline of l, made at its first change: the pinned checkpoint at 0 is l as it is now
 timeline_t *timeline_ensure(slot_layer_t *l) {
-	if (!timeline_active() || !timeline_layer_paints(l)) {
+	if (!timeline_layer_paints(l)) {
 		return NULL;
 	}
 	timeline_t *tl = timeline_find(l->timeline);
@@ -784,9 +780,9 @@ static void timeline_checkpoint_drop(timeline_t *tl, i32 i) {
 	hstore_unref(c.tilemap);
 }
 
-// Cost-based checkpoints for the positions older than the recent ones (history_v2)
+// Cost-based checkpoints for the positions older than the recent ones
 static void timeline_policy(timeline_t *tl) {
-	if (timeline_keep_recent < 0 || !history_v2_active()) {
+	if (timeline_keep_recent < 0) {
 		return;
 	}
 	i32 last = tl->cursor - timeline_keep_recent;

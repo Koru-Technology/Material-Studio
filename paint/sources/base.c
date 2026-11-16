@@ -288,21 +288,6 @@ rect_t *base_get_drag_background() {
 	return NULL;
 }
 
-// history_v2 never fills the ring, it stays as scratch: render_path_paint and raytrace bake bind texpaint_undo<i> (known
-// debt, to go with the ring in phase 7)
-void base_init_undo_layers() {
-	if (history_undo_layers == NULL) {
-		history_undo_layers = any_array_create_from_raw((void *[]){}, 0);
-		for (i32 i = 0; i < g_config->undo_steps; ++i) {
-			i32           len = history_undo_layers->length;
-			char         *ext = string("_undo%s", i32_to_string(len));
-			slot_layer_t *l   = slot_layer_create_undo(ext);
-			any_array_push(history_undo_layers, l);
-		}
-		slot_layer_alloc_textures(history_undo_layers->buffer[history_undo_i]);
-	}
-}
-
 void base_update(void *_) {
 	util_pencil_update();
 	brush_previews_update();
@@ -475,7 +460,6 @@ void base_update(void *_) {
 	if (g_context->frame == 2) {
 		util_render_make_material_preview();
 		ui_dock_redraw(TAB_AREA_SIDEBAR1);
-		base_init_undo_layers();
 
 		make_material_parse_mesh_material();
 		make_material_parse_paint_material(true);

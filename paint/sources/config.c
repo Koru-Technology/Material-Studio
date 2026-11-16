@@ -86,7 +86,6 @@ void config_brush_save_update() {
 	X(STRINGS, bookmarks, CONFIG_ANY)                                                            \
 	X(STRING, keymap, CONFIG_ANY)                                                                \
 	X(STRING, theme, CONFIG_ANY)                                                                 \
-	X(I32, undo_steps, 1, 1000)                                                                  \
 	X(F32, camera_fov, 0.01, 3.1)                                                                \
 	X(F32, camera_pan_speed, CONFIG_ANY)                                                         \
 	X(F32, camera_zoom_speed, CONFIG_ANY)                                                        \
@@ -145,8 +144,6 @@ void config_brush_save_update() {
 	X(I32, pencil_squeeze, PENCIL_ACTION_SYSTEM, PENCIL_ACTION_OFF)                              \
 	X(I32S, quick_menu_slots, CONFIG_ANY)                                                        \
 	X(I32, undo_memory_mb, 1, 1048576)                                                           \
-	X(BOOL, timeline_shadow, CONFIG_ANY)                                                         \
-	X(BOOL, history_v2, CONFIG_ANY)                                                              \
 	X(I32, history_ram_mb, 16, 1048576)                                                          \
 	X(I32, history_disk_mb, 64, 1048576)                                                         \
 	X(BOOL, paint_resolved_dabs, CONFIG_ANY)                                                     \
@@ -299,11 +296,6 @@ config_t *config_create_default() {
 	c->keymap = "default.json";
 #endif
 	c->theme  = "default.json";
-#if defined(IRON_IOS)
-	c->undo_steps = 4;
-#else
-	c->undo_steps = 6;
-#endif
 	c->pressure_sensitivity = 1.0;
 	c->camera_fov           = 0.69;
 #if defined(IRON_IOS)

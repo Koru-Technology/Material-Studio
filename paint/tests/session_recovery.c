@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Crash recovery (io/project_container.c session heads, timeline_shadow on): work after the last save is
+// Crash recovery (io/project_container.c session heads): work after the last save is
 // journaled as a session head; after a crash, opening the file gives the saved state and the journal stays (also through
 // another crash with no edits after the open), recovering gives the unsaved layers, pixels and timelines back. Saving
 // ends the pending state.
@@ -11,7 +11,6 @@ int   step       = 0;
 int   frame      = 0;
 char *dir        = NULL;
 char *file       = NULL;
-int   shadow_was = 0;
 int   uid_a      = 0;
 int   uid_b      = 0;
 char *saved_a    = NULL;
@@ -22,7 +21,6 @@ int   cursor_a   = 0;
 int   layers     = 0;
 int   states[64];
 char *before_a   = NULL; // a before its second stroke
-int   v2_was     = 0;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -143,7 +141,7 @@ void next() {
 		history_undo();
 		history_undo();
 	}
-	else if (step == 9) {
+	else if (step == 11) {
 		history_flush_restores(NULL);
 		slot_layer_t *a = find_uid(uid_a);
 		check(find_uid(uid_b) == NULL, "undo after recovery: the new layer goes");
@@ -152,19 +150,17 @@ void next() {
 		history_redo();
 		history_redo();
 	}
-	else if (step == 10) {
+	else if (step == 12) {
 		history_flush_restores(NULL);
 		slot_layer_t *a = find_uid(uid_a);
 		check(a != NULL && string_equals(layer_hash(a), live_a) && find_uid(uid_b) != NULL, "redo after recovery");
 		project_filepath_set(file);
 		project_save(0);
 	}
-	else if (step == 11) {
+	else if (step == 13) {
 		check(!project_session_pending(file), "saving ends the pending state");
 	}
 	else {
-		script_get_config()->timeline_shadow = shadow_was;
-		script_get_config()->history_v2      = v2_was;
 		script_project_new();
 		iron_delete_file(file);
 		printf("[session_recovery] %d checks, %d failures", checks, fails);
@@ -177,10 +173,6 @@ void next() {
 }
 
 void main() {
-	shadow_was                           = script_get_config()->timeline_shadow;
-	script_get_config()->timeline_shadow = 1;
-	v2_was                               = script_get_config()->history_v2;
-	script_get_config()->history_v2      = 1; // Saved steps undo from timelines
 	dir = script_tmp_dir("materialstudio_session_recovery"); // Per run: suites of several worktrees run at once
 	iron_create_directory(dir);
 	file = string("%s/recover.arm", dir);

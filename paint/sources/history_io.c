@@ -1,12 +1,11 @@
 #include "global.h"
 
-// Undo history saved with v31 projects (history_v2): the step list as an armpack map
+// Undo history saved with v31 projects: the step list as an armpack map
 //   {version, serial_next, undos, redos, steps: [step map, ..]}
 // A step map holds the step's scalars, uids and tl_moves; mask_effects, swatches, layer_name and image_file inline; its
 // node canvas as an HSTORE_CANVAS blob; the layers of a delete or merge step as their layer records (history_swap.c:
 // props and tile map, filled on undo by the record restore) with merge_parents. Hashes are i32 arrays of 4 (lo, hi).
-// GPU undo tiles are not saved: loaded steps undo from timelines. Steps keeping whole layer copies (the ring, history
-// v1) are not saved, the history starts after the last of them.
+// GPU undo tiles are not saved: loaded steps undo from timelines.
 // The blobs the steps hold (records, canvases) are history_io_roots; timelines and their blobs are saved with them
 // (timeline_io.c), never dropped by thinning.
 
@@ -37,9 +36,9 @@ static hash128_t history_io_canvas_put(ui_node_canvas_t *c) {
 	return hstore_put(HSTORE_CANVAS, history_io_canvas_buf, len);
 }
 
-// A step the saved history can hold: no whole layer copies, layers out of the project as records
+// A step the saved history can hold: layers out of the project as records
 static bool history_io_savable(history_step_t *s) {
-	return s->undo_ring == 0 && (s->merge_layers == NULL || s->merge_layers->length == 0 || s->records != NULL);
+	return s->merge_layers == NULL || s->merge_layers->length == 0 || s->records != NULL;
 }
 
 // Steps [first, end) of history_steps are saved, the step before first is the base
@@ -48,9 +47,6 @@ static void history_io_range(i32 *first, i32 *end, i32 *undos, i32 *redos) {
 	i32 done = n - 1 - history_redos; // Last step done
 	*first   = 1;
 	*end     = n;
-	if (!history_v2_active()) {
-		*first = *end = n;
-	}
 	for (i32 i = done; i >= *first; --i) {
 		if (!history_io_savable(history_steps->buffer[i])) {
 			*first = i + 1;
@@ -424,7 +420,7 @@ static bool history_io_step_ok(history_step_t *s, any_array_t *steps) {
 bool history_io_decode(u8 *data, u32 len) {
 	buffer_t   b = {.buffer = data, .length = len};
 	any_map_t *m = data != NULL && len > 0 ? armpack_decode_to_map(&b) : NULL;
-	if (m == NULL || armpack_map_get_i32(m, "version") != HISTORY_IO_VERSION || !history_v2_active()) {
+	if (m == NULL || armpack_map_get_i32(m, "version") != HISTORY_IO_VERSION) {
 		return false;
 	}
 	any_array_t *list  = any_map_get(m, "steps");
@@ -483,7 +479,6 @@ bool history_io_decode(u8 *data, u32 len) {
 	history_steps_replace(kept, undos - first, end > undos ? end - undos : 0, (u32)armpack_map_get_i32(m, "serial_next"));
 	array_free(kept);
 	free(kept);
-	project_session_forget(); // The loaded steps are the opened state, not unsaved work: no session head is due for them
 	return true;
 }
 
