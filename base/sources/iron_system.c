@@ -970,6 +970,9 @@ static void _sys_run_callbacks_once(any_array_t *cbs, i32 len) {
 }
 
 void sys_render(void) {
+#ifdef IRON_METAL
+	gpu_transfer_poll(); // Readbacks that landed
+#endif
 	i32 len = _sys_on_next_frames->length;
 	_sys_run_callbacks_once(_sys_on_next_frames, len);
 

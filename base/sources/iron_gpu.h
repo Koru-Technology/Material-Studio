@@ -235,6 +235,15 @@ void            gpu_transfer_destroy(gpu_transfer_t *t);
 void           *gpu_transfer_map(gpu_transfer_t *t, size_t size); // Grows if needed, cpu pointer
 void            gpu_copy_region_to_transfer(gpu_transfer_t *t, gpu_texture_t *src, int sx, int sy, int w, int h, size_t offset);
 void            gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *dst, int dx, int dy, int w, int h, size_t offset);
+
+// Readbacks without waiting: the copies recorded into t since its last commit land with the commands recorded so far, then
+// done(t, ud) runs on the main thread from gpu_transfer_poll or gpu_transfer_wait, in commit order. A pending t is not
+// mapped (or grown) until its done ran. At most GPU_TRANSFER_INFLIGHT pending: committing one more waits for the oldest.
+#define GPU_TRANSFER_INFLIGHT 8
+void gpu_transfer_commit(gpu_transfer_t *t, void (*done)(gpu_transfer_t *t, void *ud), void *ud);
+void gpu_transfer_poll(void); // sys_render calls it first thing every frame
+void gpu_transfer_wait(void); // Submits the work recorded so far, runs every pending done
+int  gpu_transfer_pending(void);
 #endif
 void  gpu_set_texture(uint32_t unit, gpu_texture_t *texture);
 void  gpu_use_linear_sampling(bool b);
