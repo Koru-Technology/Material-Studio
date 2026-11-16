@@ -52,8 +52,6 @@ static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
 	draw_end();
 }
 
-void app_notify_previews(void); // app_api.c
-
 void util_layer_update_preview() {
 	if (layers_sync_nodes()) { // Nodes follow the layers they read
 		layers_update_linked_layers();

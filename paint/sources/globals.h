@@ -129,6 +129,8 @@ i32              pipes_outline_tex;
 i32              pipes_offset;
 any_map_t       *import_texture_importers;
 any_map_t       *import_text_importers;
+i32              import_arm_progress_unpacked = 0;    // Bytes of the .arm file's assets unpacked, for the progress bar
+string_array_t  *import_arm_material_files    = NULL; // Files of the materials being imported: same-named textures of other folders are skipped
 
 #if defined(IRON_MACOS)
 char *ui_files_default_path = "/Users";

@@ -2,8 +2,6 @@
 
 // Textures of .arm files: paths relative to the file, packed assets, decoded in parallel, layer data, pink placeholders
 
-extern i32 import_arm_progress_unpacked; // import_arm.c
-
 // Absolute path of a file referenced by a project. iOS moves the app container between installs, a path inside the old container is
 // moved into the current one
 char *import_arm_abs(char *file, char *base) {
@@ -95,9 +93,6 @@ void import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 res, i32 byte
 	gpu_delete_texture(t);
 }
 
-// Files of the materials being imported: same-named textures of other folders are skipped
-string_array_t *import_arm_material_files = NULL;
-
 // Image nodes are saved by asset name, the saved index only picks between assets sharing a name
 static i32 import_arm_image_asset_index(ui_node_button_t *but) {
 	char *name  = u8_array_to_string(but->data);
@@ -163,7 +158,7 @@ packed_asset_t *import_arm_take_packed_asset(project_t *project, char *abs, char
 	return NULL;
 }
 
-void import_arm_unpack_asset(project_t *project, char *abs, char *file, bool copy) {
+static void import_arm_unpack_asset(project_t *project, char *abs, char *file, bool copy) {
 	packed_asset_t *pa = import_arm_take_packed_asset(project, abs, file, copy);
 	if (pa == NULL) {
 		return;

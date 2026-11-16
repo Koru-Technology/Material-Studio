@@ -1,6 +1,5 @@
 #include "../global.h"
 
-i32 import_arm_decode_images(import_arm_image_t *images, i32 start, i32 count); // import_arm_assets.c
 #include <iron_profile.h>
 
 // Deleted textures are only freed at the end of the frame, loading a project would hold the old layers,
@@ -12,8 +11,6 @@ static void import_arm_free_deleted() {
 	gpu_execute_and_wait();
 	gpu_cleanup();
 }
-
-i32 import_arm_progress_unpacked = 0;
 
 // Materials whose preview was given before their import compiles on the next frame (a library thumbnail, the preview
 // saved in the material file): that compile does not render their preview
@@ -85,7 +82,7 @@ static void import_arm_preview_queue_add(slot_material_t *m) {
 	}
 }
 
-void import_arm_run_project_on_next_frame(void *_) {
+static void import_arm_run_project_on_next_frame(void *_) {
 	// Once envmap is imported
 	scene_world->strength       = g_project->envmap_strength;
 	g_context->envmap_angle     = g_project->envmap_angle;

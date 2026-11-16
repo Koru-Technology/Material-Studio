@@ -2,8 +2,6 @@
 
 // Materials, node groups, brushes and swatches from .arm files
 
-extern string_array_t *import_arm_material_files; // import_arm_assets.c
-
 void import_arm_run_material_from_project_on_next_frame(slot_material_t_array_t *imported) {
 	for (i32 i = 0; i < imported->length; ++i) {
 		slot_material_t *m  = imported->buffer[i];
@@ -41,7 +39,7 @@ static char *import_arm_unique_group_name(char *name, ui_node_canvas_t_array_t *
 	return res;
 }
 
-void import_arm_rename_group(char *name, char *new_name, slot_material_t_array_t *materials, ui_node_canvas_t_array_t *groups) {
+static void import_arm_rename_group(char *name, char *new_name, slot_material_t_array_t *materials, ui_node_canvas_t_array_t *groups) {
 	for (i32 i = 0; i < materials->length; ++i) {
 		slot_material_t *m = materials->buffer[i];
 		for (i32 i = 0; i < m->canvas->nodes->length; ++i) {
