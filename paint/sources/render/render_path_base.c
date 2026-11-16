@@ -4,17 +4,6 @@
 f32                      render_path_base_super_sample = 1.0;
 render_target_t_array_t *render_path_base_bloom_mipmaps;
 
-// Creates a render target, w and h 0 for the size of the view times scale
-render_target_t *render_path_add_target(char *name, i32 w, i32 h, char *format, f32 scale) {
-	render_target_t *t = render_target_create();
-	t->name            = name;
-	t->width           = w;
-	t->height          = h;
-	t->format          = format;
-	t->scale           = scale;
-	return render_path_create_render_target(t);
-}
-
 void render_path_base_init() {
 	pipes_init();
 	const_data_create_screen_aligned_data();
@@ -27,31 +16,8 @@ void render_path_base_init() {
 	render_path_add_target("gbuffer2", 0, 0, "RGBA64", render_path_base_get_super_sampling());
 	render_path_add_target("buf", 0, 0, "RGBA64", render_path_base_get_super_sampling());
 	render_path_add_target("last", 0, 0, "RGBA64", render_path_base_get_super_sampling());
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "empty_white";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "R8";
-		buffer_t *b        = buffer_create(1);
-		buffer_set_u8(b, 0, 255);
-		t->_image = gpu_create_texture_from_bytes(b, t->width, t->height, GPU_TEXTURE_FORMAT_R8);
-		array_free(b);
-		free(b);
-		any_map_set(render_path_render_targets, t->name, t);
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "empty_black";
-		t->width           = 1;
-		t->height          = 1;
-		t->format          = "RGBA32";
-		buffer_t *b        = buffer_create(4);
-		t->_image          = gpu_create_texture_from_bytes(b, t->width, t->height, GPU_TEXTURE_FORMAT_RGBA32);
-		array_free(b);
-		free(b);
-		any_map_set(render_path_render_targets, t->name, t);
-	}
+	render_path_empty_white();
+	render_path_empty_black();
 
 	if (g_config->rp_ssao > 0.0) {
 		render_path_base_init_ssao();
@@ -193,20 +159,39 @@ static i32   render_path_base_presented_count = 0;    // Images presented, a new
 
 // The image of a render target, empty_black when there is no such target
 gpu_texture_t *render_path_target_image(char *name) {
-	render_target_t *rt = any_map_get(render_path_render_targets, name);
-	if (rt == NULL || rt->_image == NULL) {
-		rt = any_map_get(render_path_render_targets, "empty_black");
+	gpu_texture_t *image = render_path_find_image(name);
+	return image != NULL ? image : render_path_empty_black();
+}
+
+// The 1x1 texture name with every byte at value, made on first use
+static gpu_texture_t *render_path_empty(char *name, gpu_texture_format_t format, u8 value) {
+	gpu_texture_t *image = render_path_find_image(name);
+	if (image != NULL) {
+		return image;
 	}
-	return rt->_image;
+	if (render_path_render_targets == NULL) {
+		render_path_render_targets = any_map_create();
+	}
+	render_target_t *t = render_target_create();
+	t->name            = name;
+	t->width           = 1;
+	t->height          = 1;
+	t->format          = gpu_texture_format_name(format);
+	buffer_t *b        = buffer_create(gpu_texture_format_size(format));
+	memset(b->buffer, value, b->length);
+	t->_image = gpu_create_texture_from_bytes(b, 1, 1, format);
+	array_free(b);
+	free(b);
+	any_map_set(render_path_render_targets, t->name, t);
+	return t->_image;
 }
 
 gpu_texture_t *render_path_empty_black() {
-	return render_path_target_image("empty_black");
+	return render_path_empty("empty_black", GPU_TEXTURE_FORMAT_RGBA32, 0);
 }
 
 gpu_texture_t *render_path_empty_white() {
-	render_target_t *rt = any_map_get(render_path_render_targets, "empty_white");
-	return rt != NULL ? rt->_image : render_path_empty_black();
+	return render_path_empty("empty_white", GPU_TEXTURE_FORMAT_R8, 255);
 }
 
 // Last image of the 3D view and a count that changes with every new image, NULL before the first
@@ -215,8 +200,7 @@ gpu_texture_t *render_path_base_presented_image(i32 *count) {
 	if (render_path_base_presented == NULL) {
 		return NULL;
 	}
-	render_target_t *rt = any_map_get(render_path_render_targets, render_path_base_presented);
-	return rt != NULL ? rt->_image : NULL;
+	return render_path_find_image(render_path_base_presented);
 }
 static i32   render_path_base_redraw_frames = 0;
 

@@ -1,23 +1,6 @@
 
 #include "global.h"
 
-// Width over height of the window, 1 while it has no height
-f32 base_window_aspect() {
-	i32 h = sys_h();
-	return h > 0 ? sys_w() / (f32)h : 1.0;
-}
-
-// Width over height of the view painted in (3D or 2D), 1 while it has no height
-f32 base_paint_view_aspect() {
-	i32 h = base_paint_view_h();
-	return h > 0 ? base_paint_view_w() / (f32)h : 1.0;
-}
-
-// Screen space brush scale of a view h pixels high
-f32 base_scale2d(i32 h) {
-	return (900 / (f32)(h > 0 ? h : 1)) * g_config->window_scale;
-}
-
 void viewport_scale_to_bounds(f32 bounds) {
 	mesh_object_t *po = context_main_object();
 	for (i32 i = 0; i < po->base->children->length; ++i) {

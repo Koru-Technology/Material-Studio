@@ -376,7 +376,7 @@ int32_t app_material_thumbnail(int32_t id, int32_t max_size, uint8_t *out, int32
 	if (m == NULL || !m->preview_ready) {
 		return 0;
 	}
-	return app_read_rgba8(m->image, max_size, true, false, out, capacity, w, h);
+	return app_read_rgba8(m->image, max_size, true, out, capacity, w, h);
 }
 
 // ██╗     ██╗██████╗ ██████╗  █████╗ ██████╗ ██╗   ██╗
@@ -695,7 +695,7 @@ int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t 
 	if (icon == NULL) {
 		return 0;
 	}
-	return app_read_rgba8(icon, 128, true, false, out, capacity, w, h);
+	return app_read_rgba8(icon, 128, true, out, capacity, w, h);
 }
 
 // ███████╗███╗   ███╗ █████╗ ██████╗ ████████╗
@@ -739,7 +739,7 @@ int32_t app_smart_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t *w
 	if (icon == NULL) {
 		return -1;
 	}
-	return app_read_rgba8(icon, 128, true, false, out, capacity, w, h);
+	return app_read_rgba8(icon, 128, true, out, capacity, w, h);
 }
 
 // Applying and saving draw to layers and export materials: they run when the frame starts, as from the old tab

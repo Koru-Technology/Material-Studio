@@ -416,8 +416,7 @@ void tab_textures_draw(i32 *htab) {
 					asset_t       *asset = g_project->_->assets->buffer[i];
 					gpu_texture_t *img   = project_get_image(asset);
 					if (img == NULL) {
-						render_target_t *empty_rt = any_map_get(render_path_render_targets, "empty_black");
-						img                       = empty_rt->_image;
+						img = render_path_empty_black();
 					}
 					uix    = g_ui->_x;
 					uiy    = g_ui->_y;

@@ -918,6 +918,12 @@ i32 sys_h(void) {
 	return iron_window_height();
 }
 
+// Width over height of the window, 1 while it has no height
+f32 sys_aspect(void) {
+	i32 h = sys_h();
+	return h > 0 ? sys_w() / (f32)h : 1.0f;
+}
+
 i32 sys_x(void) {
 	if (sys_on_x != NULL) {
 		return sys_on_x();

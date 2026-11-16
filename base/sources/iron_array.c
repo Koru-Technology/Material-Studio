@@ -345,19 +345,7 @@ int16_t buffer_get_i16(buffer_t *b, uint32_t p) {
 }
 
 float buffer_get_f16(buffer_t *b, uint32_t p) {
-	uint16_t half     = *(uint16_t *)(b->buffer + p);
-	uint32_t sign     = (half & 0x8000) << 16;
-	uint32_t exp_frac = half & 0x7FFF;
-	if (exp_frac == 0)
-		return 0.0;
-	if ((half & 0x7C00) == 0x7C00)
-		return NAN;
-	union {
-		float    f;
-		uint32_t u;
-	} result;
-	result.u = sign | ((exp_frac << 13) + 0x38000000);
-	return result.f;
+	return half_to_float(*(uint16_t *)(b->buffer + p));
 }
 
 uint32_t buffer_get_u32(buffer_t *b, uint32_t p) {
@@ -707,6 +695,36 @@ uint16_t float_to_half_fast(float value) {
 	if (v.u < 0x38800000)
 		return sign;
 	return sign | ((v.u - 0x38000000) >> 13);
+}
+
+// IEEE 754 half to float, subnormals, infinities and NaN included
+float half_to_float(uint16_t h) {
+	uint32_t sign = (uint32_t)(h >> 15) << 31;
+	int32_t  exp  = (h >> 10) & 0x1f;
+	uint32_t man  = h & 0x3ff;
+	uint32_t bits;
+	if (exp == 0) {
+		if (man == 0) {
+			bits = sign;
+		}
+		else { // Subnormal
+			exp = 127 - 15 + 1;
+			while ((man & 0x400) == 0) {
+				man <<= 1;
+				exp--;
+			}
+			bits = sign | ((uint32_t)exp << 23) | ((man & 0x3ff) << 13);
+		}
+	}
+	else if (exp == 31) {
+		bits = sign | 0x7f800000 | (man << 13);
+	}
+	else {
+		bits = sign | ((uint32_t)(exp - 15 + 127) << 23) | (man << 13);
+	}
+	float f;
+	memcpy(&f, &bits, 4);
+	return f;
 }
 
 uint8_t half_to_u8_fast(uint16_t h) {

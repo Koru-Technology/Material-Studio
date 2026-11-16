@@ -333,7 +333,7 @@ static void brush_previews_queue_write(u64 key, gpu_texture_t *rt) {
 	if (brush_previews_queue_count >= BRUSH_PREVIEWS_MAX) {
 		return;
 	}
-	buffer_t *b = gpu_get_texture_pixels(rt);
+	buffer_t *b = gpu_get_texture_pixels_rgba8(rt);
 	i32       n = rt->width * rt->height * 4;
 	if (b == NULL || b->buffer == NULL || b->length < n) {
 		return;
@@ -341,13 +341,6 @@ static void brush_previews_queue_write(u64 key, gpu_texture_t *rt) {
 	u8 *pixels = malloc(n);
 	memcpy(pixels, b->buffer, n);
 	gpu_release_texture_pixels(rt);
-#ifdef IRON_BGRA
-	for (i32 p = 0; p < n; p += 4) {
-		u8 c          = pixels[p];
-		pixels[p]     = pixels[p + 2];
-		pixels[p + 2] = c;
-	}
-#endif
 	int            len = 0;
 	unsigned char *png = stbi_write_png_to_mem(pixels, rt->width * 4, rt->width, rt->height, 4, &len);
 	free(pixels);

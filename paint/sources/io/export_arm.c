@@ -418,10 +418,9 @@ void export_arm_run_project(char *path) {
 
 #ifdef IRON_IOS
 	{
-		render_target_t *rt        = any_map_get(render_path_render_targets, "buf");
-		gpu_texture_t   *tex       = rt->_image;
+		gpu_texture_t   *tex       = render_path_target_image("buf");
 		gpu_texture_t   *mesh_icon = gpu_create_render_target(256, 256, GPU_TEXTURE_FORMAT_RGBA32);
-		f32              r         = sys_w() / (float)sys_h();
+		f32              r         = base_window_aspect();
 		draw_begin(mesh_icon, false, 0);
 		draw_scaled_image(tex, -(256 * r - 256) / 2.0, 0, 256 * r, 256);
 		draw_end();

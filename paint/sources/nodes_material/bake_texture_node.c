@@ -129,12 +129,7 @@ static void bake_texture_node_run(ui_node_t *node, int bake_type) {
 		rt->_image = gpu_create_render_target(rt->width, rt->height, GPU_TEXTURE_FORMAT_RGBA32);
 	}
 	if (rt == NULL) {
-		rt         = render_target_create();
-		rt->name   = string_copy(rt_name);
-		rt->width  = config_get_texture_res_x();
-		rt->height = config_get_texture_res_y();
-		rt->format = "RGBA32";
-		render_path_create_render_target(rt);
+		rt = render_path_add_target(rt_name, config_get_texture_res_x(), config_get_texture_res_y(), "RGBA32", 1.0);
 	}
 	bake_to_target(rt, bake_type, NULL, NULL);
 }

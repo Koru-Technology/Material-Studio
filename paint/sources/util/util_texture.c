@@ -19,18 +19,28 @@ char *util_texture_packed_name(char *basename) {
 	}
 }
 
-void util_texture_capture_output(gpu_texture_t *img, char *basename, bool bgra) {
+// dst becomes src through pipe (a copy pipeline of dst's format, or a filter such as invert)
+void util_copy_texture(gpu_texture_t *dst, gpu_texture_t *src, gpu_pipeline_t *pipe) {
+	draw_begin(dst, false, 0);
+	draw_set_pipeline(pipe);
+	draw_image(src, 0, 0);
+	draw_set_pipeline(NULL);
+	draw_end();
+}
+
+void util_texture_capture_output(gpu_texture_t *img, char *basename) {
 	if (img == NULL) {
 		return;
 	}
 
 	char *abs = util_texture_packed_name(basename);
 
-	buffer_t *buf = gpu_get_texture_pixels(img);
-
-	if (bgra && img->format == GPU_TEXTURE_FORMAT_RGBA32) {
-		buf = buffer_bgra_swap(buf); // Vulkan non-rt textures need a flip
+	buffer_t *buf = gpu_get_texture_pixels_rgba8(img);
+#ifdef IRON_BGRA
+	if (img->format == GPU_TEXTURE_FORMAT_RGBA32) {
+		buffer_bgra_swap(buf); // iron_encode_png takes the order render targets read back in
 	}
+#endif
 
 	u8_array_t     *bytes = iron_encode_png(buf, img->width, img->height, 0);
 	packed_asset_t *pa    = ALLOC_INIT(packed_asset_t, {.name = abs, .bytes = bytes});

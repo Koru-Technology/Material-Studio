@@ -124,8 +124,7 @@ void project_id_map_removed(asset_t *a) {
 }
 
 static void ui_id_mask_write_colors(void *_) {
-	render_target_t *rt = any_map_get(render_path_render_targets, "texpaint_colorid_sel");
-	draw_begin(rt->_image, true, 0x00000000); // Alpha 0 marks a free slot
+	draw_begin(render_path_target_image("texpaint_colorid_sel"), true, 0x00000000); // Alpha 0 marks a free slot
 	for (i32 i = 0; i < ui_id_mask_count; ++i) {
 		draw_set_color(0xff000000 | ui_id_mask_colors[i]);
 		draw_filled_rect(i, 0, 1, 1);
@@ -313,10 +312,9 @@ static void ui_id_mask_build(void *_m) {
 
 	if (map != NULL) {
 		gpu_texture_t   *image = project_get_image(map);
-		render_target_t *sel   = any_map_get(render_path_render_targets, "texpaint_colorid_sel");
 		_gpu_begin(m->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 		gpu_set_pipeline(pipes_colorid_to_mask);
-		gpu_set_texture(pipes_texpaint_colorid, sel->_image);
+		gpu_set_texture(pipes_texpaint_colorid, render_path_target_image("texpaint_colorid_sel"));
 		gpu_set_texture(pipes_tex_colorid, image);
 		gpu_set_float2(pipes_size_colorid, image->width, image->height);
 		gpu_set_vertex_buffer(const_data_screen_aligned_vb);

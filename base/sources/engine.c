@@ -6,6 +6,7 @@ i32 _object_uid_counter = 0;
 
 i32 sys_w(void);
 i32 sys_h(void);
+f32 sys_aspect(void);
 i32 sys_x(void);
 i32 sys_y(void);
 f64 sys_time(void);
@@ -563,7 +564,7 @@ void shader_context_compile(shader_context_t *raw) {
 	if (raw->color_attachments != NULL) {
 		raw->_->pipe->color_attachment_count = raw->color_attachments->length;
 		for (i32 i = 0; i < raw->color_attachments->length; ++i) {
-			raw->_->pipe->color_attachment[i] = shader_context_get_tex_format((char *)raw->color_attachments->buffer[i]);
+			raw->_->pipe->color_attachment[i] = gpu_texture_format_from_name((char *)raw->color_attachments->buffer[i]);
 		}
 	}
 	if (raw->depth_attachment != NULL) {
@@ -710,22 +711,6 @@ gpu_blend_t shader_context_get_blend_fac(char *s) {
 	if (strcmp(s, "inverse_destination_alpha") == 0)
 		return GPU_BLEND_INV_DEST_ALPHA;
 	return GPU_BLEND_ONE;
-}
-
-gpu_texture_format_t shader_context_get_tex_format(char *s) {
-	if (strcmp(s, "RGBA32") == 0)
-		return GPU_TEXTURE_FORMAT_RGBA32;
-	if (strcmp(s, "RGBA64") == 0)
-		return GPU_TEXTURE_FORMAT_RGBA64;
-	if (strcmp(s, "RGBA128") == 0)
-		return GPU_TEXTURE_FORMAT_RGBA128;
-	if (strcmp(s, "R32") == 0)
-		return GPU_TEXTURE_FORMAT_R32;
-	if (strcmp(s, "R16") == 0)
-		return GPU_TEXTURE_FORMAT_R16;
-	if (strcmp(s, "R8") == 0)
-		return GPU_TEXTURE_FORMAT_R8;
-	return GPU_TEXTURE_FORMAT_RGBA32;
 }
 
 void shader_context_add_const(shader_context_t *raw, i32 offset) {
@@ -1026,7 +1011,7 @@ void camera_object_build_proj(camera_object_t *raw, f32 screen_aspect) {
 	}
 	else {
 		if (screen_aspect < 0) {
-			screen_aspect = (f32)sys_w() / (f32)sys_h();
+			screen_aspect = sys_aspect();
 		}
 		f32 aspect = raw->data->aspect != 0.0 ? raw->data->aspect : screen_aspect;
 		raw->p     = mat4_persp(raw->data->fov, aspect, raw->data->near_plane, raw->data->far_plane);
@@ -1526,7 +1511,7 @@ bool uniforms_set_context_const(i32 location, shader_const_t *c) {
 			f = sys_time();
 		}
 		else if (string_equals(c->link, "_aspect_ratio_window")) {
-			f = (f32)sys_w() / (f32)sys_h();
+			f = sys_aspect();
 		}
 		else {
 			return false;
@@ -2440,6 +2425,46 @@ render_target_t *render_path_create_render_target(render_target_t *t) {
 	return t;
 }
 
+// Creates a render target, w and h 0 for the size of the window times scale. Name and format are copied.
+render_target_t *render_path_add_target(char *name, i32 w, i32 h, char *format, f32 scale) {
+	render_target_t *t = render_target_create();
+	t->name            = string_copy(name);
+	t->width           = w;
+	t->height          = h;
+	t->format          = string_copy(format);
+	t->scale           = scale;
+	return render_path_create_render_target(t);
+}
+
+// The render target name at w x h in format, created again when it has another size or format
+render_target_t *render_path_ensure_target(char *name, i32 w, i32 h, char *format) {
+	render_target_t *rt = render_path_render_targets != NULL ? any_map_get(render_path_render_targets, name) : NULL;
+	if (rt != NULL && (rt->width != w || rt->height != h || !string_equals(rt->format, format))) {
+		render_path_remove_target(name);
+		rt = NULL;
+	}
+	return rt != NULL ? rt : render_path_add_target(name, w, h, format, 1.0);
+}
+
+// Deletes the texture of render target name and drops the target, nothing when there is none
+void render_path_remove_target(char *name) {
+	render_target_t *rt = render_path_render_targets != NULL ? any_map_get(render_path_render_targets, name) : NULL;
+	if (rt == NULL) {
+		return;
+	}
+	if (rt->_image != NULL) {
+		gpu_delete_texture(rt->_image);
+		rt->_image = NULL;
+	}
+	map_delete(render_path_render_targets, name);
+}
+
+// The texture of render target name, NULL when there is none
+gpu_texture_t *render_path_find_image(char *name) {
+	render_target_t *rt = render_path_render_targets != NULL ? any_map_get(render_path_render_targets, name) : NULL;
+	return rt != NULL ? rt->_image : NULL;
+}
+
 gpu_texture_t *render_path_create_image(render_target_t *t) {
 	i32 width  = t->width == 0 ? sys_w() : t->width;
 	i32 height = t->height == 0 ? sys_h() : t->height;
@@ -2451,32 +2476,7 @@ gpu_texture_t *render_path_create_image(render_target_t *t) {
 	if (height < 1) {
 		height = 1;
 	}
-	return gpu_create_render_target(width, height, t->format != NULL ? render_path_get_tex_format(t->format) : GPU_TEXTURE_FORMAT_RGBA32);
-}
-
-gpu_texture_format_t render_path_get_tex_format(char *s) {
-	if (string_equals(s, "RGBA32")) {
-		return GPU_TEXTURE_FORMAT_RGBA32;
-	}
-	if (string_equals(s, "RGBA64")) {
-		return GPU_TEXTURE_FORMAT_RGBA64;
-	}
-	if (string_equals(s, "RGBA128")) {
-		return GPU_TEXTURE_FORMAT_RGBA128;
-	}
-	if (string_equals(s, "R32")) {
-		return GPU_TEXTURE_FORMAT_R32;
-	}
-	if (string_equals(s, "R16")) {
-		return GPU_TEXTURE_FORMAT_R16;
-	}
-	if (string_equals(s, "R8")) {
-		return GPU_TEXTURE_FORMAT_R8;
-	}
-	if (string_equals(s, "D32")) {
-		return GPU_TEXTURE_FORMAT_D32;
-	}
-	return GPU_TEXTURE_FORMAT_RGBA32;
+	return gpu_create_render_target(width, height, gpu_texture_format_from_name(t->format));
 }
 
 render_target_t *render_target_create(void) {

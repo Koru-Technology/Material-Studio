@@ -396,6 +396,7 @@ f64           sys_delta(void);
 f64           sys_real_delta(void);
 i32           sys_w(void);
 i32           sys_h(void);
+f32           sys_aspect(void);
 i32           sys_x(void);
 i32           sys_y(void);
 char         *sys_title(void);

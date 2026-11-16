@@ -237,12 +237,7 @@ static void studio_create_targets() {
 	char *names[]   = {"smain", "stex", "sgbuffer0", "sgbuffer1"};
 	char *formats[] = {"D32", "RGBA64", "RGBA64", "RGBA64"};
 	for (i32 i = 0; i < 4; ++i) {
-		render_target_t *t = render_target_create();
-		t->name            = names[i];
-		t->width           = STUDIO_PREVIEW_SIZE;
-		t->height          = STUDIO_PREVIEW_SIZE;
-		t->format          = formats[i];
-		render_path_create_render_target(t);
+		render_path_add_target(names[i], STUDIO_PREVIEW_SIZE, STUDIO_PREVIEW_SIZE, formats[i], 1.0);
 	}
 }
 

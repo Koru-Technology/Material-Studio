@@ -141,7 +141,7 @@ void input_node_update(float_node_t *self) {
 	}
 
 	if (g_context->brush_lazy_radius > 0 && !slot_layer_is_path(g_context->layer)) {
-		f32    aspect = sys_w() / (f32)sys_h();
+		f32    aspect = base_window_aspect();
 		vec4_t v1     = (vec4_t){g_context->brush_lazy_x * aspect, g_context->brush_lazy_y, 0.0, 1.0};
 		vec4_t v2     = (vec4_t){input_node_coords.x * aspect, input_node_coords.y, 0.0, 1.0};
 		f32    d      = vec4_dist(v1, v2);

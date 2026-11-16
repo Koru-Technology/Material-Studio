@@ -422,7 +422,6 @@ void                 shader_context_delete(shader_context_t *raw);
 gpu_compare_mode_t   shader_context_get_compare_mode(char *s);
 gpu_cull_mode_t      shader_context_get_cull_mode(char *s);
 gpu_blend_t          shader_context_get_blend_fac(char *s);
-gpu_texture_format_t shader_context_get_tex_format(char *s);
 void                 shader_context_add_const(shader_context_t *raw, i32 offset);
 void                 shader_context_add_tex(shader_context_t *raw, i32 i);
 
@@ -604,6 +603,9 @@ void                 render_path_draw_shader_keep_target(char *handle);
 void                 render_path_load_shader(char *handle);
 void                 render_path_resize(void);
 render_target_t     *render_path_create_render_target(render_target_t *t);
+render_target_t     *render_path_add_target(char *name, i32 w, i32 h, char *format, f32 scale);
+render_target_t     *render_path_ensure_target(char *name, i32 w, i32 h, char *format);
+void                 render_path_remove_target(char *name);
+gpu_texture_t       *render_path_find_image(char *name);
 gpu_texture_t       *render_path_create_image(render_target_t *t);
-gpu_texture_format_t render_path_get_tex_format(char *s);
 render_target_t     *render_target_create(void);

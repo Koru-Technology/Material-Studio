@@ -88,8 +88,7 @@ static void ui_files_clear_icon_map(void) {
 		return;
 	}
 	gpu_texture_t   *icons_tex = resource_get("icons.k");
-	render_target_t *rt        = any_map_get(render_path_render_targets, "empty_black");
-	gpu_texture_t   *empty     = rt->_image;
+	gpu_texture_t   *empty     = render_path_empty_black();
 	for (i32 i = 0; i < (i32)ui_files_icon_map->keys->capacity; ++i) {
 		gpu_texture_t *tex = ui_files_icon_map->values->buffer[i];
 		if (tex != NULL && tex != icons_tex && tex != empty) {
@@ -311,15 +310,13 @@ char *ui_files_file_browser(char **path, bool drag_files, char *search, bool ref
 					iron_delete_blob(buffer);
 
 					if (icon == NULL) {
-						render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-						icon                = rt->_image;
+						icon = render_path_empty_black();
 					}
 
 					any_map_set(ui_files_icon_map, key, icon);
 				}
 
-				render_target_t *rt_empty = any_map_get(render_path_render_targets, "empty_black");
-				if (icon == rt_empty->_image) {
+				if (icon == render_path_empty_black()) {
 					icon = NULL;
 					rect = cube;
 					if (ui_files_selected != i) {
@@ -352,8 +349,7 @@ char *ui_files_file_browser(char **path, bool drag_files, char *search, bool ref
 #endif
 				icon = any_map_get(ui_files_icon_map, shandle);
 				if (icon == NULL) {
-					render_target_t *rt    = any_map_get(render_path_render_targets, "empty_black");
-					gpu_texture_t   *empty = rt->_image;
+					gpu_texture_t *empty = render_path_empty_black();
 					any_map_set(ui_files_icon_map, shandle, empty);
 					gpu_texture_t *image = data_get_texture(shandle);
 

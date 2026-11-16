@@ -176,8 +176,7 @@ static gpu_texture_t *mesh_maps_neutral_texture(i32 type) {
 		}
 		return mesh_maps_flat;
 	}
-	render_target_t *rt = any_map_get(render_path_render_targets, type == MESH_MAP_POSITION ? "empty_black" : "empty_white");
-	return rt->_image;
+	return type == MESH_MAP_POSITION ? render_path_empty_black() : render_path_empty_white();
 }
 
 // Curvature baked from the paint meshes while none is registered, NULL until baked

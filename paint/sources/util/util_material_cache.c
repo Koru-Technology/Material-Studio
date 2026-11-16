@@ -415,8 +415,7 @@ gpu_texture_t *material_cache_texture(i32 i) {
 	if (e != NULL && e->state == MATERIAL_CACHE_READY && i >= 0 && i < 3 && e->tex[i] != NULL) {
 		return e->tex[i];
 	}
-	render_target_t *rt = any_map_get(render_path_render_targets, "empty_black");
-	return rt->_image;
+	return render_path_empty_black();
 }
 
 // Paint draws (render_path_paint_commands_paint): a paint shader reading a cache that no longer fits (scale, rotation,
@@ -466,10 +465,6 @@ static bool material_cache_thread_ended(material_cache_t *e) {
 	return true;
 }
 
-static char *material_cache_format_name(i32 format) {
-	return format == GPU_TEXTURE_FORMAT_RGBA128 ? "RGBA128" : format == GPU_TEXTURE_FORMAT_RGBA64 ? "RGBA64" : "RGBA32";
-}
-
 static void material_cache_unfit(material_cache_t *e, char *why) {
 	if (material_cache_timing()) {
 		iron_log("[matcache] material %d paints live: %s", e->material->id, why);
@@ -486,7 +481,7 @@ static void material_cache_parse(material_cache_t *e) {
 	material_t *sdata  = ALLOC_INIT(material_t, {.name = "Material", .canvas = e->material->canvas});
 	char       *glsl   = NULL;
 	char       *why    = NULL;
-	node_shader_context_t *con = make_paint_cache_bake_run(sdata, material_cache_format_name(format), &e->emis_used, &e->subs_used, &e->height_used, &glsl, &why);
+	node_shader_context_t *con = make_paint_cache_bake_run(sdata, gpu_texture_format_name(format), &e->emis_used, &e->subs_used, &e->height_used, &glsl, &why);
 	e->bake                    = con->data;
 	e->bake_loaded             = false;
 	node_shader_context_free(con);

@@ -34,9 +34,9 @@ mesh_object_t *render_path_paint_pick_object() {
 	render_path_bind_target("gbuffer2", "gbuffer2");
 	render_path_paint_draw_fullscreen_triangle();
 
-	buffer_t *pixel = gpu_get_texture_pixels(render_path_target_image("texpaint_picker"));
+	buffer_t *pixel = gpu_get_texture_pixels_rgba8(render_path_target_image("texpaint_picker"));
 	if (buffer_get_u8(pixel, 3) > 0) {
-		i32 r_byte = buffer_get_u8(pixel, 2);
+		i32 r_byte = buffer_get_u8(pixel, 0);
 		i32 g_byte = buffer_get_u8(pixel, 1);
 		i32 index  = r_byte + g_byte * 256 - 1;
 		if (index >= 0 && index < g_project->_->paint_objects->length) {
@@ -45,10 +45,6 @@ mesh_object_t *render_path_paint_pick_object() {
 	}
 	return NULL;
 }
-
-f32    uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link);
-vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link);
-vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link);
 
 // Dabs painted by one draw when the paint shader is batched (render_path_paint_batched): the stamps or samples of a frame
 
@@ -117,13 +113,6 @@ static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_m
 	ui_dock_redraw(2);
 }
 
-static gpu_texture_t *render_path_paint_picker_target(char *name) {
-	return render_path_target_image(name);
-}
-
-void gpu_read_textures_async(gpu_texture_t **textures, int count);
-bool gpu_read_textures_async_poll(uint8_t **data);
-
 static bool        render_path_paint_picker_mask = false;
 static tool_type_t render_path_paint_picker_tool = TOOL_TYPE_PICKER;
 
@@ -137,9 +126,9 @@ void render_path_paint_picker_poll() {
 }
 
 void render_path_paint_picker_read(bool is_mask) {
-	gpu_texture_t *textures[4] = {render_path_paint_picker_target("texpaint_picker"), render_path_paint_picker_target("texpaint_uv_picker"),
-	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_nor_picker"),
-	                              is_mask ? NULL : render_path_paint_picker_target("texpaint_pack_picker")};
+	gpu_texture_t *textures[4] = {render_path_target_image("texpaint_picker"), render_path_target_image("texpaint_uv_picker"),
+	                              is_mask ? NULL : render_path_target_image("texpaint_nor_picker"),
+	                              is_mask ? NULL : render_path_target_image("texpaint_pack_picker")};
 	render_path_paint_picker_mask = is_mask;
 	render_path_paint_picker_tool = g_context->tool;
 	gpu_read_textures_async(textures, is_mask ? 2 : 4);

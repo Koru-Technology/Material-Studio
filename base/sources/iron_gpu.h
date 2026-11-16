@@ -217,6 +217,8 @@ void  gpu_set_vertex_buffer(gpu_buffer_t *buffer);
 void  gpu_set_index_buffer(gpu_buffer_t *buffer);
 void  gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size);
 void  gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data);
+void  gpu_read_textures_async(gpu_texture_t **textures, int count); // Up to 8, without waiting for the gpu
+bool  gpu_read_textures_async_poll(uint8_t **data);               // True once they arrived, data[i] is texture i
 void  gpu_set_texture(uint32_t unit, gpu_texture_t *texture);
 void  gpu_use_linear_sampling(bool b);
 char *gpu_device_name();
@@ -255,9 +257,11 @@ void _gpu_raytrace_as_add(gpu_buffer_t *vb, gpu_buffer_t *ib, mat4_t transform, 
 void _gpu_raytrace_as_build();
 void _gpu_raytrace_dispatch_rays(gpu_texture_t *render_target, buffer_t *buffer);
 
-uint32_t gpu_vertex_data_size(gpu_vertex_data_t data);
-uint32_t gpu_vertex_struct_size(gpu_vertex_structure_t *s);
-uint32_t gpu_texture_format_size(gpu_texture_format_t format);
+uint32_t             gpu_vertex_data_size(gpu_vertex_data_t data);
+uint32_t             gpu_vertex_struct_size(gpu_vertex_structure_t *s);
+uint32_t             gpu_texture_format_size(gpu_texture_format_t format);
+gpu_texture_format_t gpu_texture_format_from_name(const char *name);
+char                *gpu_texture_format_name(gpu_texture_format_t format);
 
 extern bool            gpu_in_use;
 extern uint32_t        gpu_buffer_versions;

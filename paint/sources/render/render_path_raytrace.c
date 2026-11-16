@@ -21,36 +21,6 @@ static i32          render_path_raytrace_override_height    = 0;
 gpu_texture_t *render_path_raytrace_env_cdf      = NULL;
 static char   *render_path_raytrace_env_cdf_file = NULL;
 
-float render_path_raytrace_half_to_float(uint16_t h) {
-	uint32_t sign = (uint32_t)(h >> 15) << 31;
-	uint32_t exp  = (h >> 10) & 0x1f;
-	uint32_t man  = h & 0x3ff;
-	uint32_t bits;
-	if (exp == 0) {
-		if (man == 0) {
-			bits = sign;
-		}
-		else {
-			exp = 127 - 15 + 1;
-			while ((man & 0x400) == 0) {
-				man <<= 1;
-				exp--;
-			}
-			man &= 0x3ff;
-			bits = sign | (exp << 23) | (man << 13);
-		}
-	}
-	else if (exp == 31) {
-		bits = sign | 0x7f800000u | (man << 13);
-	}
-	else {
-		bits = sign | ((exp + 127 - 15) << 23) | (man << 13);
-	}
-	float f;
-	memcpy(&f, &bits, sizeof(f));
-	return f;
-}
-
 static void render_path_raytrace_env_luma_pixels(uint8_t *px, int32_t w, int32_t h, bool f16, float *out) {
 	int bpp = f16 ? 8 : 4;
 	for (int cy = 0; cy < ENV_CDF_H; ++cy) {
@@ -74,9 +44,9 @@ static void render_path_raytrace_env_luma_pixels(uint8_t *px, int32_t w, int32_t
 					float  r, g, b;
 					if (f16) {
 						uint16_t *p = (uint16_t *)(px + o);
-						r           = render_path_raytrace_half_to_float(p[0]);
-						g           = render_path_raytrace_half_to_float(p[1]);
-						b           = render_path_raytrace_half_to_float(p[2]);
+						r           = half_to_float(p[0]);
+						g           = half_to_float(p[1]);
+						b           = half_to_float(p[2]);
 					}
 					else {
 						r = px[o + 0] / 255.0f;
@@ -279,7 +249,7 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	if (count == 0) {
 		return false;
 	}
-	char *format    = base_bits == TEXTURE_BITS_BITS8 ? "RGBA32" : base_bits == TEXTURE_BITS_BITS16 ? "RGBA64" : "RGBA128";
+	char *format    = gpu_texture_format_name(layers_format(base_bits));
 	i32   width     = config_get_texture_res_x();
 	i32   height    = config_get_texture_res_y();
 	bool  recreated = false;
@@ -287,17 +257,10 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	                                                     render_path_raytrace_override_width != width || render_path_raytrace_override_height != height)) {
 		for (i32 i = 0; i < render_path_raytrace_override_allocated; ++i) {
 			for (char *c = "abc"; *c != '\0'; ++c) {
-				char            *name = render_path_raytrace_override_target(i, *c);
-				render_target_t *rt   = any_map_get(render_path_render_targets, name);
-				gpu_delete_texture(rt->_image);
-				map_delete(render_path_render_targets, name);
+				render_path_remove_target(render_path_raytrace_override_target(i, *c));
 			}
 		}
-		render_target_t *mask = any_map_get(render_path_render_targets, "raytrace_override_mask");
-		if (mask != NULL) {
-			gpu_delete_texture(mask->_image);
-			map_delete(render_path_render_targets, "raytrace_override_mask");
-		}
+		render_path_remove_target("raytrace_override_mask");
 		render_path_raytrace_override_allocated = 0;
 		recreated                               = true;
 	}
@@ -310,7 +273,7 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	}
 	while (render_path_raytrace_override_allocated < count) {
 		for (char *c = "abc"; *c != '\0'; ++c) {
-			render_path_add_target(string_copy(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c)), width, height, format, 1.0);
+			render_path_add_target(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c), width, height, format, 1.0);
 		}
 		render_path_raytrace_override_allocated++;
 	}
