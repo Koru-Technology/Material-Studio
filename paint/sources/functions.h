@@ -1952,6 +1952,7 @@ struct tl_entry *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, c
 void        timeline_stroke_begin(history_step_t *step, slot_layer_t *l);
 void        timeline_stroke_dirty(history_step_t *step, i32_array_t *tiles);
 void        timeline_finalize();
+bool        timeline_entry_replay(struct timeline *tl, i32 i, struct paint_target *t);
 void        timeline_step_apply(history_step_t *step, bool undo);
 void        timeline_fork(slot_layer_t *src, slot_layer_t *dst);
 bool        timeline_materialize_live(struct timeline *tl, slot_layer_t *l, i32 pos);

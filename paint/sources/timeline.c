@@ -319,6 +319,7 @@ void timeline_stroke_dirty(history_step_t *step, i32_array_t *tiles) {
 
 // Captures the states after the entries recorded since the last finalize
 void timeline_finalize() {
+	paint_rec_flush(); // A stroke whose dabs are still read back becomes its entry first
 	for (i32 i = 0; i < timeline_pending_count; ++i) { // In order: a capture reads the state the one before kept
 		tl_pending_t p = timeline_pending[i];
 		timeline_t  *tl = timeline_find(p.tl);
@@ -383,6 +384,15 @@ void timeline_fork(slot_layer_t *src, slot_layer_t *dst) {
 	}
 }
 
+// Entry i applied to t: a stroke replayed (paint_replay.c), an op re-rendered (timeline_ops.c). False when it can not be.
+bool timeline_entry_replay(timeline_t *tl, i32 i, paint_target_t *t) {
+	if (tl->entries[i].kind == TL_STROKE) {
+		paint_replay_opts_t o = {.exact = t->res_w == tl->entries[i].res_w && t->res_h == tl->entries[i].res_h};
+		return paint_replay_entry(tl, i, t, &o);
+	}
+	return timeline_ops_replay(tl, i, t);
+}
+
 // Writes the state at pos into t: the best kept state at pos or before, the entries after it replayed
 bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
 	if (tl == NULL || pos < 0 || pos > tl->count) {
@@ -397,7 +407,7 @@ bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
 		return false;
 	}
 	for (i32 i = from; i < pos; ++i) {
-		if (!timeline_ops_replay(tl, i, t)) {
+		if (!timeline_entry_replay(tl, i, t)) {
 			return false;
 		}
 	}
