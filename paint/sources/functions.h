@@ -2324,6 +2324,12 @@ void  hstore_test_reset();
 void  hstore_test_crash();
 void  hstore_test_tear(i32 bytes);
 char *hstore_test_journal_path();
+void  hstore_test_children(i32 kind, bool on);
+void  hstore_test_list_clear();
+void  hstore_test_list_add(i32 id);
+i32   hstore_test_put_list(i32 kind);
+void  hstore_test_rebuild();
+i32   hstore_test_refs(i32 id);
 
 // ---- io/project_container.c ----
 u32  project_test_layer_uid(i32 i);
