@@ -1061,6 +1061,15 @@ X0(hstore_journal_mark_saved, "v()", v)
 X1(hstore_journal_pending, "i(p:char uuid)", b, p)
 X0(project_uuid_get, "p:char()", p)
 
+// io/project_container.c, io/export_arm.c
+X1(export_arm_run_project_v30, "v(p:char path)", v, p)
+X1(project_test_layer_uid, "i(i i)", i, i)
+X1(project_test_material_uid, "i(i i)", i, i)
+X0(project_test_uid_next, "i()", i)
+X1(project_test_res, "i(i axis)", i, i)
+X2(project_test_set_res, "v(i w,i h)", v, i, i)
+X2(project_test_layer_hash, "i(i i,i channel)", i, i, i)
+
 // util/util_test.c: fast pixel comparisons for tests, tol and results in 1/255
 X3(script_diff_images, "i(p:char path_a,p:char path_b,f tol)", i, p, p, f)
 X3(script_diff_textures, "i(p:gpu_texture_t a,p:gpu_texture_t b,f tol)", i, p, p, f)

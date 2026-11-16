@@ -134,6 +134,15 @@ string_array_t *export_arm_fonts_to_files(char *project_path, slot_font_t_array_
 }
 
 static bool export_arm_show_progress = false;
+static bool export_arm_v30           = false; // Save as v30: readable by builds from before 31, uids are not saved
+
+// Version files are written in. 31 only with project_v31 on (or env PROJECT_V31=1 for test runs): builds from before
+// it, installed on the same device, cannot open it
+static char *export_arm_version() {
+	char *e   = getenv("PROJECT_V31");
+	bool  v31 = g_config->project_v31 || (e != NULL && atoi(e) != 0);
+	return v31 && !export_arm_v30 ? manifest_version_project : "30";
+}
 
 static void export_arm_progress(f32 progress) {
 	if (export_arm_show_progress) {
@@ -206,6 +215,7 @@ buffer_t *export_arm_encode_project(char *path) {
 			                                                       .paint_subs   = m->paint_subs,
 			                                                       .uv_scale     = m->uv_scale,
 			                                                       .uv_angle     = m->uv_angle,
+			                                                       .uid          = m->uid,
 			                                                   });
 			any_array_push(mdata2, d);
 		}
@@ -275,7 +285,10 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .height_blend_offset    = l->height_blend_offset,
 		                              .height_blend_reach     = l->height_blend_reach,
 		                              .mask_effects           = mask_stack_anchors_to_index(l->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length),
-		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1});
+		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
+		                              .uid                = l->uid,
+		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
+		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y()});
 		any_array_push(ld, d);
 	}
 
@@ -286,7 +299,9 @@ buffer_t *export_arm_encode_project(char *path) {
 	bool same_drive = g_project->envmap != NULL ? char_at(relative_to, 0)[0] == char_at(g_project->envmap, 0)[0] : true;
 #endif
 
-	g_project->version                = string_copy(manifest_version_project);
+	g_project->version                = string_copy(export_arm_version());
+	g_project->uuid                   = project_uuid_get();
+	g_project->next_uid               = project_uid_next;
 	g_project->material_groups        = mgroups;
 	g_project->material_datas         = mdata2;
 	g_project->assets                 = texture_files;
@@ -398,6 +413,13 @@ buffer_t *export_arm_encode_project(char *path) {
 	free(micons);
 	g_project->material_icons = NULL;
 	return buffer;
+}
+
+// A project file older builds open (version 30): no uids, layers saved square (their width)
+void export_arm_run_project_v30(char *path) {
+	export_arm_v30 = true;
+	export_arm_run_project(path);
+	export_arm_v30 = false;
 }
 
 void export_arm_run_project(char *path) {
@@ -541,7 +563,7 @@ void export_arm_run_material(char *path) {
                                                          });
 	any_array_push(mdata2, md2);
 
-	project_t *raw = ALLOC_INIT(project_t, {.version         = manifest_version_project,
+	project_t *raw = ALLOC_INIT(project_t, {.version         = export_arm_version(),
 	                                        .material_nodes  = mnodes,
 	                                        .material_groups = mgroups,
 	                                        .material_icons  = micons,
@@ -604,7 +626,7 @@ buffer_t *export_arm_encode_library_material(slot_material_t *m) {
                                                          });
 	any_array_push(mdata2, md2);
 
-	project_t *raw = ALLOC_INIT(project_t, {.version        = manifest_version_project,
+	project_t *raw = ALLOC_INIT(project_t, {.version        = export_arm_version(),
 	                                        .material_nodes = mnodes,
 	                                        .material_icons = any_array_create_from_raw((void *[]){icon}, 1),
 	                                        .material_datas = mdata2,
@@ -666,7 +688,7 @@ void export_arm_run_swatches(char *path) {
 	if (!ends_with(path, ".arm")) {
 		path = string("%s.arm", path);
 	}
-	project_t *raw    = ALLOC_INIT(project_t, {.version = manifest_version_project, .swatches = g_project->swatches});
+	project_t *raw    = ALLOC_INIT(project_t, {.version = export_arm_version(), .swatches = g_project->swatches});
 	buffer_t  *buffer = util_encode_project(raw);
 	if (!iron_file_save_bytes(path, buffer, 0)) {
 		console_error(string("Could not save %s.", path));

@@ -28,6 +28,7 @@ ui_node_socket_t *ui_get_socket(ui_node_t_array_t *nodes, i32 id);
 void      export_arm_run_mesh(char *path, mesh_object_t_array_t *paint_objects);
 buffer_t *export_arm_encode_project(char *path);
 void      export_arm_run_project(char *path);
+void      export_arm_run_project_v30(char *path);
 void      export_arm_run_material(char *path);
 buffer_t *export_arm_encode_library_material(slot_material_t *m);
 void      export_arm_pack_assets(project_t *raw, asset_t_array_t *assets);
@@ -48,7 +49,7 @@ void export_texture_run(char *path, bool bake_material);
 // ---- io/import_arm_assets.c ----
 char           *import_arm_abs(char *file, char *base);
 void            import_arm_make_pink(char *abs);
-void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 res, i32 bytes_per_texel, i32 format, bool *has_alpha);
+void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha);
 void            import_arm_init_nodes(ui_node_t_array_t *nodes);
 packed_asset_t *import_arm_take_packed_asset(project_t *project, char *abs, char *file, bool copy);
 bool            import_arm_is_decodable(char *abs);
@@ -2323,6 +2324,14 @@ void  hstore_test_reset();
 void  hstore_test_crash();
 void  hstore_test_tear(i32 bytes);
 char *hstore_test_journal_path();
+
+// ---- io/project_container.c ----
+u32  project_test_layer_uid(i32 i);
+u32  project_test_material_uid(i32 i);
+u32  project_test_uid_next();
+i32  project_test_res(i32 axis);
+void project_test_set_res(i32 w, i32 h);
+i32  project_test_layer_hash(i32 i, i32 channel);
 
 // ---- util/util_test.c ----
 i32   script_diff_images(char *path_a, char *path_b, f32 tol);

@@ -156,6 +156,20 @@ static bool import_arm_validate(project_t *p, bool as_mesh) {
 	return true;
 }
 
+// Uids handed out after a load: above the saved counter and every uid of the project
+static void import_arm_uid_next(u32 saved) {
+	u32 next = saved > 0 ? saved : 1;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		u32 uid = g_project->_->layers->buffer[i]->uid;
+		next    = uid >= next ? uid + 1 : next;
+	}
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
+		u32 uid = g_project->_->materials->buffer[i]->uid;
+		next    = uid >= next ? uid + 1 : next;
+	}
+	project_uid_next = next;
+}
+
 void import_arm_run_project(char *path) {
 	iron_profile_mark("project load start");
 	ui_header_draw_progress(0.0);
@@ -248,9 +262,12 @@ void import_arm_run_project(char *path) {
 	project->_ = g_project->_; // Carry over runtime arrays set up by project_new
 	g_project  = project;
 	layer_data_t *l0                     = g_project->layer_datas->buffer[0];
-	base_res                             = config_get_texture_res_pos(l0->res);
-	base_res_x                           = (f32)l0->res;
-	base_res_y                           = (f32)l0->res;
+	i32           res_x                  = l0->res_x > 0 ? l0->res_x : l0->res; // Square before version 31
+	i32           res_y                  = l0->res_y > 0 ? l0->res_y : l0->res;
+	base_res                             = res_x == res_y ? config_get_texture_res_pos(res_x) : TEXTURE_RES_CUSTOM;
+	base_res_x                           = (f32)res_x;
+	base_res_y                           = (f32)res_y;
+	project_uuid                         = g_project->uuid != NULL ? string_copy(g_project->uuid) : NULL; // A new one for older projects
 	texture_bits_t bits_pos              = l0->bpp == 8 ? TEXTURE_BITS_BITS8 : l0->bpp == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
 	base_bits                            = bits_pos;
 	i32                  bytes_per_pixel = math_floor(l0->bpp / 8.0);
@@ -402,6 +419,9 @@ void import_arm_run_project(char *path) {
 		if (ld->name != NULL) {
 			l->name = string_copy(ld->name);
 		}
+		if (ld->uid != 0) {
+			l->uid = ld->uid; // Older projects keep the new uid
+		}
 		l->visible = ld->visible;
 		if (ld->texpaint_sculpt != NULL) {
 			// Sculpting was removed: the layer is kept, empty and hidden, so masks and parents stay valid
@@ -411,13 +431,13 @@ void import_arm_run_project(char *path) {
 		any_array_push(g_project->_->layers, l);
 		if (!is_group) {
 			if (is_mask) { // Full bits for undo support, R8 is used
-				import_arm_layer_texture(l->texpaint, ld->texpaint, ld->res, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
+				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
 			}
 			else { // Layer
 				// See-through meshes when the bottom layer is not fully opaque
-				import_arm_layer_texture(l->texpaint, ld->texpaint, ld->res, 4 * bytes_per_pixel, format, i == 0 ? &g_project->_->translucency : NULL);
-				import_arm_layer_texture(l->texpaint_nor, ld->texpaint_nor, ld->res, 4 * bytes_per_pixel, format, NULL);
-				import_arm_layer_texture(l->texpaint_pack, ld->texpaint_pack, ld->res, 4 * bytes_per_pixel, format, NULL);
+				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4 * bytes_per_pixel, format, i == 0 ? &g_project->_->translucency : NULL);
+				import_arm_layer_texture(l->texpaint_nor, ld->texpaint_nor, res_x, res_y, 4 * bytes_per_pixel, format, NULL);
+				import_arm_layer_texture(l->texpaint_pack, ld->texpaint_pack, res_x, res_y, 4 * bytes_per_pixel, format, NULL);
 			}
 
 			l->scale   = ld->uv_scale;
@@ -501,9 +521,14 @@ void import_arm_run_project(char *path) {
 		material_data2_t *md = g_project->material_datas->buffer[i];
 		import_arm_material_data(g_context->material, md);
 		g_context->material->uv_scale = md->uv_scale;
+		if (md->uid != 0) {
+			g_context->material->uid = md->uid;
+		}
 
 		any_array_push(g_project->_->materials, g_context->material);
 	}
+
+	import_arm_uid_next(g_project->next_uid);
 
 	ui_nodes_hwnd->redraws        = 2;
 	ui_nodes_group_stack          = any_array_create_from_raw((void *[]){}, 0);
