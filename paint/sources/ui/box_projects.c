@@ -41,7 +41,8 @@ void box_projects_cancel_load() {
 void box_projects_load(char *path) {
 	_box_projects_load_cancelled = false;
 #ifdef IRON_IOS
-	box_projects_native_shown = false;
+	box_projects_native_shown   = false;
+	box_projects_import_pending = false;
 #endif
 	if (ui_box_show) {
 		ui_box_hide();
@@ -68,7 +69,8 @@ void box_projects_delete(i32 i) {
 void box_projects_new() {
 	project_new(true);
 #ifdef IRON_IOS
-	box_projects_native_shown = false;
+	box_projects_native_shown   = false;
+	box_projects_import_pending = false;
 #endif
 	if (ui_box_show) {
 		ui_box_hide();
@@ -88,6 +90,18 @@ void box_projects_new() {
 		}
 	}
 	sys_title_set(title);
+}
+
+static void box_projects_import_picked(char *path) { // Desktop: the dialog returns the path
+	box_projects_import_pending = false;
+	base_on_open_file(path);
+}
+
+// Picks a model, it opens in a new project as a model shared with the app (base_on_open_file). The iPad's picker
+// hands the file over as a drop: base_handle_drop_paths sends it there while the pick is pending
+void box_projects_import() {
+	box_projects_import_pending = true;
+	ui_files_show(string_array_join(path_mesh_formats(), ","), false, false, &box_projects_import_picked);
 }
 
 #ifndef IRON_IOS

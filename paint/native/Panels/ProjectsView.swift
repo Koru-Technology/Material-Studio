@@ -50,22 +50,36 @@ struct ProjectsView: View {
 		}
 	}
 
-	// Title and new project button, in line with the grid's first and last columns
+	// Title, import and new project buttons, in line with the grid's first and last columns
 	private func header(inset: CGFloat) -> some View {
 		HStack {
 			Text("Material Studio")
 				.font(.largeTitle)
 				.fontWeight(.semibold)
 			Spacer()
-			Button {
-				AppStore.shared.perform { app_project_new() }
-			} label: {
-				Image(systemName: "plus")
-					.font(.title3)
-					.frame(width: 44, height: 44)
+			GlassEffectContainer(spacing: 8) {
+				HStack(spacing: 8) {
+					Button {
+						AppStore.shared.perform { app_project_import() }
+					} label: {
+						Label("Import", systemImage: "square.and.arrow.down")
+							.font(.body.weight(.medium))
+							.padding(.horizontal, 16)
+							.frame(height: 44)
+					}
+					.glassEffect(.regular.interactive(), in: .capsule)
+					.accessibilityHint("Starts a new project on a model")
+					Button {
+						AppStore.shared.perform { app_project_new() }
+					} label: {
+						Image(systemName: "plus")
+							.font(.title3)
+							.frame(width: 44, height: 44)
+					}
+					.glassEffect(.regular.interactive(), in: .circle)
+					.accessibilityLabel("New Project")
+				}
 			}
-			.glassEffect(.regular.interactive(), in: .circle)
-			.accessibilityLabel("New Project")
 		}
 		.foregroundStyle(.primary)
 		.padding(.horizontal, inset)

@@ -433,6 +433,13 @@ void app_project_new(void) {
 	box_projects_new();
 }
 
+void app_project_import(void) {
+	if (!app_ready()) {
+		return;
+	}
+	box_projects_import();
+}
+
 void app_command(int32_t command) {
 	if (!app_ready()) {
 		return;

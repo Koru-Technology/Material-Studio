@@ -199,6 +199,8 @@ static void base_handle_open_paths() {
 		return;
 	}
 	box_projects_cancel_load(); // Instead of reopening the last project on startup
+	box_projects_native_shown   = false;
+	box_projects_import_pending = false;
 	ui_box_hide();
 	ui_menu_show = false;
 	// The open project is kept: saved first when it has a file
@@ -218,6 +220,11 @@ void base_handle_drop_paths() {
 			base_drop_x     = mouse_x;
 			base_drop_y     = mouse_y;
 			char *drop_path = array_shift(base_drop_paths);
+			if (box_projects_import_pending && box_projects_native_shown) { // Picked from the projects screen's Import
+				box_projects_import_pending = false;
+				base_on_open_file(drop_path);
+				return;
+			}
 			import_asset_run(drop_path, base_drop_x, base_drop_y, true, true, NULL);
 		}
 	}

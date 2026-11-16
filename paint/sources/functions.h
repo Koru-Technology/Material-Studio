@@ -961,6 +961,7 @@ void  box_projects_cancel_load();
 void  box_projects_load(char *path);
 void  box_projects_delete(i32 i);
 void  box_projects_new();
+void  box_projects_import();
 void  box_projects_show();
 void  box_projects_recent_tab();
 
@@ -1645,6 +1646,7 @@ void args_parse();
 void args_run();
 
 // ---- base.c ----
+void            base_on_open_file(char *path);
 bool            base_startup_covering();
 bool            base_startup_loading();
 void            base_startup_cover_done();

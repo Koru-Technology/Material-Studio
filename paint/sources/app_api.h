@@ -137,6 +137,7 @@ const char *app_project_path(int32_t index); // Full path of the .arm file, vali
 void        app_project_open(int32_t index); // Closes the screen, the project loads over the next frames
 void        app_project_delete(int32_t index); // With its files
 void        app_project_new(void);           // Closes the screen
+void        app_project_import(void);        // Picks a model, it opens in a new project and the screen closes
 
 // History
 const char *app_undo_name(void); // Name of the step undo would revert, "" when none
