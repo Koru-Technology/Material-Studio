@@ -1066,6 +1066,42 @@ void history_on_memory_warning() {
 	}
 }
 
+// A step freed, its records and tiles let go (history_io.c)
+void history_step_dispose(history_step_t *step) {
+	history_step_free(step);
+}
+
+u32 history_serial_peek() {
+	return history_serial_next;
+}
+
+// The base step of a history: nothing undoes past it
+static history_step_t *history_base_step() {
+	return ALLOC_INIT(history_step_t, {.name = tr("New"), .layer = 0, .layer_type = LAYER_SLOT_TYPE_LAYER, .layer_parent = -1, .object = 0, .material = 0, .brush = 0});
+}
+
+// The steps become a base and steps (taken over), undos of them done (history_io.c: a saved history loaded)
+void history_steps_replace(any_array_t *steps, i32 undos, i32 redos, u32 serial_next) {
+	history_flush_restores(NULL);
+	history_tiles_finalize();
+	timeline_finalize();
+	for (i32 i = 0; history_steps != NULL && i < history_steps->length; ++i) {
+		history_step_free(history_steps->buffer[i]);
+	}
+	array_free(history_steps);
+	free(history_steps);
+	history_steps = any_array_create_from_raw((void *[]){history_base_step()}, 1);
+	for (i32 i = 0; i < steps->length; ++i) {
+		any_array_push(history_steps, steps->buffer[i]);
+	}
+	history_undos        = undos;
+	history_redos        = redos;
+	history_undo_i       = 0;
+	history_ring_pending = 0;
+	history_serial_next  = serial_next > history_serial_next ? serial_next : history_serial_next;
+	stroke_refine_reset(); // Records point at steps
+}
+
 void history_reset() {
 	project_modified = false;
 	if (history_steps != NULL) {
@@ -1075,12 +1111,7 @@ void history_reset() {
 		array_free(history_steps);
 		free(history_steps);
 	}
-	history_steps = any_array_create_from_raw(
-	    (void *[]){
-	        ALLOC_INIT(history_step_t,
-	                   {.name = tr("New"), .layer = 0, .layer_type = LAYER_SLOT_TYPE_LAYER, .layer_parent = -1, .object = 0, .material = 0, .brush = 0}),
-	    },
-	    1);
+	history_steps = any_array_create_from_raw((void *[]){history_base_step()}, 1);
 	history_undos  = 0;
 	history_redos  = 0;
 	history_undo_i = 0;

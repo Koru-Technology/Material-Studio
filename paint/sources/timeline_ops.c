@@ -383,7 +383,67 @@ static bool tl_ops_replay_image(tl_params_t *p, paint_target_t *t) {
 	return true;
 }
 
-// The fill rendered for t (layers_render_fill_rect) by a stand-in of the layer: its fill the snapshot, its uv props the
+// Render targets the dilation reads by name, pointed at t's textures for a while
+typedef struct tl_ops_swap {
+	char            *name;
+	render_target_t *was;
+	render_target_t  rt;
+} tl_ops_swap_t;
+
+static void tl_ops_swap(tl_ops_swap_t *s, char *name, gpu_texture_t *t) {
+	s->name = string_copy(name);
+	s->was  = any_map_get(render_path_render_targets, s->name);
+	s->rt   = (render_target_t){.name = s->name, .width = t->width, .height = t->height, .format = gpu_texture_format_name(t->format), .scale = 1.0, ._image = t};
+	any_map_set(render_path_render_targets, s->name, &s->rt);
+}
+
+static void tl_ops_unswap(tl_ops_swap_t *s) {
+	if (s->was != NULL) {
+		any_map_set(render_path_render_targets, s->name, s->was);
+	}
+	else {
+		map_delete(render_path_render_targets, s->name);
+	}
+}
+
+// t dilated as layers_update_fill_layer dilates the live layer l: over the uv islands of t's part of the layer
+static void tl_ops_dilate(slot_layer_t *l, paint_target_t *t) {
+	if (g_config->dilate_radius <= 0) {
+		return;
+	}
+	draw_saved_t  saved = draw_suspend();
+	tl_ops_swap_t swaps[4];
+	i32           n = 0;
+	util_texture_ensure_target(&tl_ops_scratch[0], t->w, t->h, t->out[0]->format);
+	tl_ops_swap(&swaps[n++], string_tmp("texpaint%d", l->id), t->out[0]);
+	if (t->channels == 3) {
+		tl_ops_swap(&swaps[n++], string_tmp("texpaint_nor%d", l->id), t->out[1]);
+		tl_ops_swap(&swaps[n++], string_tmp("texpaint_pack%d", l->id), t->out[2]);
+	}
+	tl_ops_swap(&swaps[n++], "temptex0", tl_ops_scratch[0]);
+	slot_layer_t  *layer   = g_context->layer;
+	bool           paint2d = g_context->paint2d;
+	bool           replay  = paint_exec_replay;
+	gpu_texture_t *map     = paint_replay_dilatemap;
+	g_context->layer       = l;
+	g_context->paint2d     = false;
+	paint_exec_replay      = true; // The dilate map of t's size and part (uniforms.c)
+	paint_replay_dilatemap = paint_replay_dilate_map(t->w, t->h, t->uv_rect);
+	render_path_paint_dilate_now(true, true);
+	if (_render_path_current_image != NULL) {
+		render_path_end();
+	}
+	paint_replay_dilatemap = map;
+	paint_exec_replay      = replay;
+	g_context->paint2d     = paint2d;
+	g_context->layer       = layer;
+	for (i32 i = n - 1; i >= 0; --i) {
+		tl_ops_unswap(&swaps[i]);
+	}
+	draw_resume(saved);
+}
+
+// The fill rendered for t (layers_render_fill_rect) by the layer for a while: its fill the snapshot, its uv props the
 // recorded ones
 static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t) {
 	slot_layer_t *l = slot_layer_find_uid(tl->layer_uid);
@@ -396,16 +456,16 @@ static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t
 	}
 	tl_fill_params_t f;
 	memcpy(&f, p->body, sizeof(f));
-	slot_layer_t tmp  = *l;
-	tmp.fill_material = m;
-	tmp.scale         = f.scale;
-	tmp.angle         = f.angle;
-	tmp.uv_type       = f.uv_type;
-	tmp.uv_map        = f.uv_map;
-	tmp.object_mask   = f.object_mask;
-	memcpy(&tmp.decal_mat, f.decal_mat, sizeof(f.decal_mat));
-	bool *flags[11] = {&tmp.paint_base, &tmp.paint_opac,   &tmp.paint_occ,          &tmp.paint_rough, &tmp.paint_met, &tmp.paint_nor,
-	                   &tmp.paint_nor_blend, &tmp.paint_height, &tmp.paint_height_blend, &tmp.paint_emis,  &tmp.paint_subs};
+	slot_layer_t saved = *l; // The layer itself renders it (the paint pass finds it by pointer), as the fill it was
+	l->fill_material   = m;
+	l->scale           = f.scale;
+	l->angle           = f.angle;
+	l->uv_type         = f.uv_type;
+	l->uv_map          = f.uv_map;
+	l->object_mask     = f.object_mask;
+	memcpy(&l->decal_mat, f.decal_mat, sizeof(f.decal_mat));
+	bool *flags[11] = {&l->paint_base, &l->paint_opac,   &l->paint_occ,          &l->paint_rough, &l->paint_met, &l->paint_nor,
+	                   &l->paint_nor_blend, &l->paint_height, &l->paint_height_blend, &l->paint_emis,  &l->paint_subs};
 	for (i32 i = 0; i < 11; ++i) {
 		*flags[i] = f.paint[i] != 0;
 	}
@@ -419,12 +479,18 @@ static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t
 			q                              = children != NULL && children->length > 0 ? children->buffer[0] : NULL;
 		}
 		if (q == NULL || q->texpaint_nor == NULL) {
+			*l = saved;
 			return false;
 		}
 		util_texture_ensure_target(&tl_ops_scratch[3], t->w, t->h, q->texpaint_nor->format);
 		util_texture_ensure_target(&tl_ops_scratch[4], t->w, t->h, q->texpaint_pack->format);
 	}
-	return layers_render_fill_rect(&tmp, t, tl_ops_scratch);
+	bool ok = layers_render_fill_rect(l, t, tl_ops_scratch);
+	*l      = saved;
+	if (ok) {
+		tl_ops_dilate(l, t);
+	}
+	return ok;
 }
 
 bool timeline_ops_replay(timeline_t *tl, i32 index, paint_target_t *t) {

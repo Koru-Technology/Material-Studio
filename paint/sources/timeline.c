@@ -18,6 +18,8 @@ typedef struct tl_pending {
 	u64  dirty[HISTORY_TILES_GRID * HISTORY_TILES_GRID / 64];
 } tl_pending_t;
 
+static void timeline_policy(struct timeline *tl);
+
 static timeline_t  **timeline_all       = NULL;
 static i32           timeline_all_count = 0;
 static i32           timeline_all_cap   = 0;
@@ -365,7 +367,18 @@ void timeline_finalize() {
 			timeline_checkpoint_set(tl, p.index + 1, h, false);
 		}
 	}
+	i32 n                  = timeline_pending_count;
+	u32 done[64];
+	for (i32 i = 0; i < n && i < 64; ++i) {
+		done[i] = timeline_pending[i].tl;
+	}
 	timeline_pending_count = 0;
+	for (i32 i = 0; i < n && i < 64; ++i) {
+		timeline_t *tl = timeline_find(done[i]);
+		if (tl != NULL && (i == 0 || done[i - 1] != done[i])) {
+			timeline_policy(tl);
+		}
+	}
 }
 
 // Undo and redo of step: the cursors it moved go back or forth
@@ -559,15 +572,11 @@ bool timeline_state_resample(hash128_t h, paint_target_t *t) {
 // Writes the state at pos into t, at t's resolution for its uv_rect. It starts from the latest of: a state kept at t's
 // resolution, an op writing every texel; at the floor or after it. Without one the floor's state of another resolution
 // is resampled. The entries after the start replay at t's resolution, one that fails becomes a floor and it starts again.
-bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
-	if (tl == NULL || pos < 0 || pos > tl->count) {
-		return false;
-	}
-	timeline_finalize();
+static bool timeline_materialize_into(timeline_t *tl, i32 pos, paint_target_t *t) {
 	while (true) {
-		i32       fl = timeline_floor(tl, pos);
-		i32       from  = -1;
-		hash128_t h     = HASH128_NONE;
+		i32       fl   = timeline_floor(tl, pos);
+		i32       from = -1;
+		hash128_t h    = HASH128_NONE;
 		for (i32 p = pos; p >= fl && from < 0; --p) {
 			h = timeline_state_at(tl, p, t->res_w, t->res_h);
 			if (!hash128_is_none(h)) {
@@ -602,6 +611,76 @@ bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
 	}
 }
 
+// Read reach of the strokes a materialize to pos may replay, in uv: a part of the layer replays grown by it. Whole
+// layer (1) when one reads anywhere in it.
+static f32 timeline_halo(timeline_t *tl, i32 pos) {
+	f32 halo = 0.0;
+	for (i32 i = timeline_floor(tl, pos); i < pos; ++i) {
+		tl_entry_t *e = &tl->entries[i];
+		if (e->kind != TL_STROKE) {
+			continue;
+		}
+		if (e->flags & TL_FLAG_NONLOCAL) {
+			return 1.0;
+		}
+		halo = e->halo_uv > halo ? e->halo_uv : halo;
+	}
+	return halo;
+}
+
+#define TIMELINE_GROWN_DEPTH 4 // Translate materializes again from inside a materialize
+
+static gpu_texture_t *timeline_grown[TIMELINE_GROWN_DEPTH][3];
+static i32            timeline_grown_depth = 0;
+
+bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
+	if (tl == NULL || pos < 0 || pos > tl->count) {
+		return false;
+	}
+	timeline_finalize();
+	bool whole = t->uv_rect[0] <= 0.0 && t->uv_rect[1] <= 0.0 && t->uv_rect[2] >= 1.0 && t->uv_rect[3] >= 1.0;
+	f32  halo  = whole ? 0.0 : timeline_halo(tl, pos);
+	if (halo <= 0.0 || timeline_grown_depth >= TIMELINE_GROWN_DEPTH) {
+		return timeline_materialize_into(tl, pos, t);
+	}
+	// A part of the layer: replayed with the texels its strokes read around it, the middle copied into t
+	f32 du = (t->uv_rect[2] - t->uv_rect[0]) / t->w;
+	f32 dv = (t->uv_rect[3] - t->uv_rect[1]) / t->h;
+	i32 px = (i32)ceilf(halo / du);
+	i32 py = (i32)ceilf(halo / dv);
+	if (halo >= 1.0) { // The whole layer and t's part of it
+		px = (i32)ceilf(t->uv_rect[0] / du) > 0 ? (i32)ceilf(t->uv_rect[0] / du) : 0;
+		py = (i32)ceilf(t->uv_rect[1] / dv) > 0 ? (i32)ceilf(t->uv_rect[1] / dv) : 0;
+		i32 qx = (i32)ceilf((1.0 - t->uv_rect[2]) / du), qy = (i32)ceilf((1.0 - t->uv_rect[3]) / dv);
+		px = px > qx ? px : qx;
+		py = py > qy ? py : qy;
+	}
+	paint_target_t g = *t;
+	g.w              = t->w + px * 2;
+	g.h              = t->h + py * 2;
+	g.uv_rect[0]     = t->uv_rect[0] - px * du;
+	g.uv_rect[1]     = t->uv_rect[1] - py * dv;
+	g.uv_rect[2]     = t->uv_rect[2] + px * du;
+	g.uv_rect[3]     = t->uv_rect[3] + py * dv;
+	i32 d            = timeline_grown_depth++;
+	for (i32 k = 0; k < t->channels; ++k) {
+		util_texture_ensure_target(&timeline_grown[d][k], g.w, g.h, t->out[k]->format);
+		g.out[k] = timeline_grown[d][k];
+	}
+	bool ok = timeline_materialize_into(tl, pos, &g);
+	timeline_grown_depth--;
+	if (ok) {
+		draw_saved_t saved = draw_suspend();
+		gpu_copy_regions_begin();
+		for (i32 k = 0; k < t->channels; ++k) {
+			gpu_copy_region(t->out[k], 0, 0, g.out[k], px, py, t->w, t->h);
+		}
+		gpu_copy_regions_end();
+		draw_resume(saved);
+	}
+	return ok;
+}
+
 // The live layer of tl goes from the state at its cursor to the one at pos, only the tiles that differ are written
 bool timeline_materialize_live(timeline_t *tl, slot_layer_t *l, i32 pos) {
 	if (tl == NULL || l == NULL || !timeline_layer_paints(l)) {
@@ -629,6 +708,140 @@ void timeline_reset_all() {
 	}
 	timeline_tiles_cache_reset();
 	timeline_ops_reset();
+}
+
+// ---- Checkpoint policy and thinning ----
+// Undo needs a state at every position only where replay can not go: at 0, at the cursor, after an entry that does
+// not replay. Elsewhere a state is a shortcut: kept while recent, then only when the replay cost since the last one
+// kept passes half the deep undo target (cost-based checkpoints). A state kept after dropped ones is encoded again
+// against the last one kept, so the dropped ones' tile maps and the tiles only they held go.
+
+static i32 timeline_keep_recent = 32; // Positions behind the cursor whose states all stay, < 0: no policy
+
+void timeline_set_keep_recent(i32 n) {
+	timeline_keep_recent = n;
+}
+
+// Replay budget of a deep undo hop: a checkpoint about every half of it
+static f32 timeline_cp_target_ms() {
+#ifdef IRON_IOS
+	return 400.0;
+#else
+	return 250.0;
+#endif
+}
+
+// Replay cost of entry i: measured, else estimated from its size
+static f32 timeline_entry_cost(tl_entry_t *e) {
+	if (e->cost_ms > 0.0) {
+		return e->cost_ms;
+	}
+	return 10.0 * ((f32)e->res_w * e->res_h) / (2048.0 * 2048.0);
+}
+
+// The state at pos is needed, not a shortcut
+static bool timeline_state_needed(timeline_t *tl, tl_checkpoint_t *c) {
+	return c->pinned || c->pos == 0 || c->pos == tl->cursor || !timeline_entry_replays(tl, c->pos - 1);
+}
+
+// Checkpoint i goes. The next state kept at its size, a delta on it, is encoded again on the one kept before.
+static void timeline_checkpoint_drop(timeline_t *tl, i32 i) {
+	tl_checkpoint_t c = tl->cps[i];
+	for (i32 k = i; k < tl->cp_count - 1; ++k) {
+		tl->cps[k] = tl->cps[k + 1];
+	}
+	tl->cp_count--;
+	hash128_t base = HASH128_NONE; // Kept before it at its size
+	for (i32 k = i - 1; k >= 0 && hash128_is_none(base); --k) {
+		if (tl->cps[k].w == c.w && tl->cps[k].h == c.h) {
+			base = tl->cps[k].tilemap;
+		}
+	}
+	for (i32 k = i; k < tl->cp_count; ++k) {
+		tl_checkpoint_t *n = &tl->cps[k];
+		if (n->w != c.w || n->h != c.h) {
+			continue;
+		}
+		if (timeline_tiles_base(n->tilemap, c.tilemap)) {
+			hash128_t r = timeline_tiles_rebase(n->tilemap, base);
+			if (!hash128_is_none(r)) {
+				hstore_unref(n->tilemap);
+				n->tilemap = r;
+			}
+		}
+		break;
+	}
+	hstore_unref(c.tilemap);
+}
+
+// Cost-based checkpoints for the positions older than the recent ones (history_v2)
+static void timeline_policy(timeline_t *tl) {
+	if (timeline_keep_recent < 0 || !history_v2_active()) {
+		return;
+	}
+	i32 last = tl->cursor - timeline_keep_recent;
+	f32 acc  = 0.0;
+	f32 half = timeline_cp_target_ms() * 0.5;
+	i32 ci   = 0;
+	for (i32 pos = 1; pos <= last; ++pos) {
+		acc += timeline_entry_cost(&tl->entries[pos - 1]);
+		while (ci < tl->cp_count && tl->cps[ci].pos < pos) {
+			ci++;
+		}
+		bool kept = false;
+		while (ci < tl->cp_count && tl->cps[ci].pos == pos) {
+			if (timeline_state_needed(tl, &tl->cps[ci]) || acc >= half) {
+				kept = true;
+				ci++;
+			}
+			else {
+				timeline_checkpoint_drop(tl, ci);
+			}
+		}
+		if (kept || !timeline_entry_replays(tl, pos - 1)) {
+			acc = 0.0;
+		}
+	}
+}
+
+// Thinning for a history budget (history_io_thin): every other state not needed behind the cursor goes, the oldest
+// first. Count dropped.
+i32 timeline_thin_all(i32 round) {
+	i32 dropped = 0;
+	for (i32 t = 0; t < timeline_all_count; ++t) {
+		timeline_t *tl  = timeline_all[t];
+		bool        odd = false;
+		for (i32 i = 0; i < tl->cp_count; ++i) {
+			tl_checkpoint_t *c = &tl->cps[i];
+			if (c->pos >= tl->cursor || timeline_state_needed(tl, c)) {
+				continue;
+			}
+			odd = !odd;
+			if (odd) {
+				timeline_checkpoint_drop(tl, i--);
+				dropped++;
+			}
+		}
+	}
+	return dropped;
+}
+
+// Clear history: the states only undo needed go, the timelines stay
+void timeline_clear_states_all() {
+	for (i32 t = 0; t < timeline_all_count; ++t) {
+		timeline_t *tl = timeline_all[t];
+		for (i32 i = 0; i < tl->cp_count; ++i) {
+			if (!timeline_state_needed(tl, &tl->cps[i])) {
+				timeline_checkpoint_drop(tl, i--);
+			}
+		}
+	}
+}
+
+// Scripts: checkpoints of l's timeline
+i32 timeline_test_checkpoints(slot_layer_t *l) {
+	timeline_t *tl = timeline_of(l);
+	return tl != NULL ? tl->cp_count : -1;
 }
 
 // Scripts: entries of the timeline of l, the kind of entry i, the cursor, kept states

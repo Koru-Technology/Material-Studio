@@ -1913,6 +1913,9 @@ void            history_ring_set_size(i32 n);
 i32             history_ring_prev();
 i32             history_ring_next();
 void            history_drop_oldest();
+void            history_step_dispose(history_step_t *step);
+u32             history_serial_peek();
+void            history_steps_replace(any_array_t *steps, i32 undos, i32 redos, u32 serial_next);
 void            history_undo();
 slot_layer_t   *history_undo_slot(i32 i);
 void            history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask);
@@ -1927,6 +1930,7 @@ slot_layer_t_array_t *history_merge_saved_layers();
 void                  history_swap_merge(history_step_t *step, bool undo);
 void                  history_records_take(history_step_t *step);
 void                  history_record_children(const u8 *data, u32 len, void (*visit)(hash128_t child, void *ud), void *ud);
+slot_layer_t         *history_record_layer(hash128_t record);
 void                  history_records_free(history_step_t *step);
 void                  history_swap_order(history_step_t *step);
 void                  history_get_height_blend(slot_layer_t *l, f32 *out);
@@ -1978,6 +1982,10 @@ i32         timeline_test_quadrants(slot_layer_t *l, i32 res, i32 tol);
 i32         timeline_test_floor(slot_layer_t *l);
 bool        timeline_test_upscalable(slot_layer_t *l);
 void        timeline_test_keep(i32 slot);
+void        timeline_set_keep_recent(i32 n);
+i32         timeline_thin_all(i32 round);
+void        timeline_clear_states_all();
+i32         timeline_test_checkpoints(slot_layer_t *l);
 gpu_texture_t *timeline_test_kept(i32 slot, i32 k);
 
 // ---- timeline_ops.c ----
@@ -1995,7 +2003,17 @@ void timeline_tiles_cache_reset();
 bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 *channels);
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, struct paint_target *dst);
 bool timeline_tiles_uniform(hash128_t h);
+bool timeline_tiles_base(hash128_t h, hash128_t base);
+hash128_t timeline_tiles_rebase(hash128_t h, hash128_t base);
 i32  timeline_tiles_test(slot_layer_t *l);
+
+// ---- history_io.c ----
+u8  *history_io_encode(u32 *len);
+bool history_io_decode(u8 *data, u32 len);
+i32  history_io_roots(hash128_t **out);
+void history_io_thin(i64 budget_bytes);
+void history_io_clear();
+i32  history_io_test_roundtrip(i32 _);
 
 // ---- history_steps.c ----
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);

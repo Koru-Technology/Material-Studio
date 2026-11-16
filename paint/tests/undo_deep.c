@@ -84,6 +84,11 @@ void next() {
 			return;
 		}
 		h_end = all_hash();
+		timeline_finalize();
+		hstore_test_trim(0);
+		printf("[undo_deep] store after 200 strokes: %d blobs, %d KB in RAM, %d KB journaled; checkpoints a %d, b %d, c %d, m %d", (int)hstore_test_stat(0),
+		       (int)hstore_test_stat(1), (int)hstore_test_stat(2), timeline_test_checkpoints(a), timeline_test_checkpoints(b), timeline_test_checkpoints(c),
+		       timeline_test_checkpoints(m));
 		history_on_memory_warning(); // Tiles of the last 4 steps stay, the store drops what it can without reading back
 		check(!string_equals(h_end, h_start) && !string_equals(h_mid, h_start), "the strokes paint");
 		check(history_test_undos() == undos + 200, string("200 steps to undo (%d)", history_test_undos() - undos));

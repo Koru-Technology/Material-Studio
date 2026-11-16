@@ -257,6 +257,60 @@ bool timeline_tiles_uniform(hash128_t h) {
 	return true;
 }
 
+// Map h is a delta on base
+bool timeline_tiles_base(hash128_t h, hash128_t base) {
+	u32 len = 0;
+	u8 *b   = hash128_is_none(h) ? NULL : hstore_get(h, &len);
+	bool on = b != NULL && len >= TL_TILES_DELTA_HEADER && b[0] == 1 && hash128_eq(tl_tiles_read_hash(b + 8), base);
+	free(b);
+	return on;
+}
+
+// State h encoded again: a delta on base (NONE, or another size: a full map), a reference added. NONE when a map is
+// missing.
+hash128_t timeline_tiles_rebase(hash128_t h, hash128_t base) {
+	tl_tiles_map_t *m = tl_tiles_resolve(h);
+	if (m == NULL) {
+		return HASH128_NONE;
+	}
+	tl_tiles_map_t c     = *m;
+	i32            total = c.channels * tl_tiles_per_channel();
+	c.tiles              = malloc(total * sizeof(hash128_t));
+	memcpy(c.tiles, m->tiles, total * sizeof(hash128_t));
+	tl_tiles_map_t *p = tl_tiles_resolve(base);
+	u32            *changed = malloc(total * sizeof(u32));
+	u32             count   = 0;
+	bool            delta   = p != NULL && p->channels == c.channels && p->width == c.width && p->height == c.height && p->format == c.format &&
+	               p->depth < TL_TILES_DEPTH;
+	for (i32 i = 0; delta && i < total; ++i) {
+		if (!hash128_eq(p->tiles[i], c.tiles[i])) {
+			changed[count++] = i;
+		}
+	}
+	delta     = delta && count * TL_TILES_DELTA_ENTRY < (u32)total * 16;
+	u32 len   = 0;
+	u8 *blob  = NULL;
+	if (delta) {
+		c.depth = p->depth + 1;
+		blob    = tl_tiles_encode_delta(&c, base, changed, count, &len);
+	}
+	else {
+		c.depth = 0;
+		blob    = tl_tiles_encode_full(&c, &len);
+	}
+	hash128_t r = hstore_put(HSTORE_TILEMAP, blob, len); // Takes references on its tiles and base
+	free(blob);
+	free(changed);
+	c.key = r;
+	if (tl_tiles_cache_find(r) == NULL) {
+		tl_tiles_cache_put(&c);
+	}
+	else {
+		free(c.tiles);
+	}
+	return r;
+}
+
 // Children of a stored map (hstore_set_children): its tiles, and the base of a delta
 void timeline_tiles_children(const u8 *data, u32 len, hstore_visit_fn visit, void *ud) {
 	if (len < TL_TILES_FULL_HEADER) {
