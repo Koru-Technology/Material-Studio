@@ -393,7 +393,7 @@ typedef struct tl_ops_swap {
 static void tl_ops_swap(tl_ops_swap_t *s, char *name, gpu_texture_t *t) {
 	s->name = string_copy(name);
 	s->was  = any_map_get(render_path_render_targets, s->name);
-	s->rt   = (render_target_t){.name = s->name, .width = t->width, .height = t->height, .format = gpu_texture_format_name(t->format), .scale = 1.0, ._image = t};
+	s->rt   = (render_target_t){.name = s->name, .width = t->width, .height = t->height, ._image = t}; // As paint_replay.c
 	any_map_set(render_path_render_targets, s->name, &s->rt);
 }
 
@@ -485,7 +485,12 @@ static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t
 		util_texture_ensure_target(&tl_ops_scratch[3], t->w, t->h, q->texpaint_nor->format);
 		util_texture_ensure_target(&tl_ops_scratch[4], t->w, t->h, q->texpaint_pack->format);
 	}
+	// The paint pass draws the stroke coverage too: its targets the size of t, or it draws a part of t only
+	render_target_t *blend0 = any_map_get(render_path_render_targets, "texpaint_blend0");
+	i32              live_w = blend0->width, live_h = blend0->height;
+	render_path_paint_scratch_resize(t->w, t->h);
 	bool ok = layers_render_fill_rect(l, t, tl_ops_scratch);
+	render_path_paint_scratch_resize(live_w, live_h);
 	*l      = saved;
 	if (ok) {
 		tl_ops_dilate(l, t);
