@@ -2,7 +2,8 @@
 
 // Timelines saved with v31 projects (timeline_io.c, timeline_shadow and project_v31 on): after a save and an open, the
 // timelines have their entries, cursor and kept states, each position materializes to the pixels it had before the
-// save, and the cursor's state is the live layer.
+// save, and the cursor's state is the live layer. An appending save reads the children of the new tile maps only, a
+// whole rewrite of every reachable one.
 
 int   fails      = 0;
 int   checks     = 0;
@@ -21,6 +22,9 @@ int   states[64];
 char *pixels[64];
 char *live_a     = NULL;
 char *live_m     = NULL;
+int   count2     = 0;
+char *pixels2[64];
+float decodes    = 0.0;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -163,6 +167,75 @@ void next() {
 			ok = timeline_test_materialize(a, p) && string_equals(layer_hash(a), pixels[p]);
 		}
 		check(ok, "a project saved from an opened one keeps its timelines");
+		timeline_test_materialize(a, cursor_a);
+		script_layer_set(a);
+		stroke(0.35, 0.55, 0.65, 0.58); // On the mesh
+	}
+	else if (step == 13) {
+		stroke(0.4, 0.42, 0.62, 0.44);
+	}
+	else if (step == 14) {
+		timeline_finalize();
+		slot_layer_t *a = find_uid(uid_a);
+		count2          = timeline_test_count(a);
+		for (int p = 0; p <= count2; ++p) {
+			timeline_test_materialize(a, p);
+			pixels2[p] = string_copy(layer_hash(a));
+		}
+		timeline_test_materialize(a, timeline_test_cursor(a));
+		decodes = hstore_test_stat(9);
+		project_filepath_set(string("%s/copy.arm", dir)); // The opened file: appended
+		project_save(0);
+	}
+	else if (step == 15) {
+		int read = (int)(hstore_test_stat(9) - decodes);
+		int maps = project_container_test_index_count(2);
+		check(project_container_test_appended() == 1, "saved by appending");
+		check(read >= 1 && read <= 4 && maps >= 6, string("an append reads the new tile maps only (%d of %d maps)", read, maps));
+		decodes = hstore_test_stat(9);
+		project_filepath_set(string("%s/copy2.arm", dir)); // Save As: whole
+		project_save(0);
+	}
+	else if (step == 16) {
+		int read = (int)(hstore_test_stat(9) - decodes);
+		int maps = project_container_test_index_count(2);
+		check(project_container_test_appended() == 0, "a new file is written whole");
+		check(read == maps, string("a whole rewrite reads every reachable tile map (%d of %d)", read, maps));
+		script_project_new();
+	}
+	else if (step == 17) {
+		script_project_open(string("%s/copy2.arm", dir));
+		slot_layer_t *a  = find_uid(uid_a);
+		int           ok = timeline_test_count(a) == count2;
+		for (int p = 0; ok && p <= count2; ++p) {
+			ok = timeline_test_materialize(a, p) && string_equals(layer_hash(a), pixels2[p]);
+		}
+		check(ok, string("it opens with every position (%d entries)", count2));
+		script_project_open(string("%s/copy.arm", dir));
+		a  = find_uid(uid_a);
+		ok = timeline_test_count(a) == count2;
+		for (int p = 0; ok && p <= count2; ++p) {
+			ok = timeline_test_materialize(a, p) && string_equals(layer_hash(a), pixels2[p]);
+		}
+		check(ok, "and the appended file too");
+		live_a = string_copy(layer_hash(a));
+		char *path = string_copy(project_filepath_get());
+		char *uuid = string_copy(project_uuid_get());
+		check(project_container_save_copy(string("%s/nohistory.arm", dir)), "copy without history saved");
+		check(string_equals(project_filepath_get(), path) && string_equals(project_uuid_get(), uuid), "the session keeps its file and uuid");
+		int copy_size = project_test_file_size(string("%s/nohistory.arm", dir));
+		int full_size = project_test_file_size(string("%s/copy2.arm", dir));
+		check(copy_size < full_size, string("smaller than with history (%d KB, %d KB)", copy_size / 1024, full_size / 1024));
+		check(!string_equals(project_file_uuid(string("%s/nohistory.arm", dir)), uuid), "with its own uuid");
+		script_project_new();
+	}
+	else if (step == 18) {
+		script_project_open(string("%s/nohistory.arm", dir));
+		slot_layer_t *a = find_uid(uid_a);
+		check(a != NULL && string_equals(layer_hash(a), live_a), "it opens with the live layers");
+		check(timeline_test_count(a) == -1, "and no timeline");
+		int maps = project_container_test_index_count(2);
+		check(maps <= script_layer_count(), string("only the live layers' tile maps, full (%d)", maps));
 	}
 	else {
 		script_get_config()->project_v31     = v31_was;
@@ -170,6 +243,8 @@ void next() {
 		script_project_new();
 		iron_delete_file(file);
 		iron_delete_file(string("%s/copy.arm", dir));
+		iron_delete_file(string("%s/copy2.arm", dir));
+		iron_delete_file(string("%s/nohistory.arm", dir));
 		printf("[timeline_persist] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "TIMELINE_PERSIST PASS" : "TIMELINE_PERSIST FAIL");
 		script_quit();

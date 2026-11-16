@@ -1041,7 +1041,8 @@ X2(armpack_map_get_f32, "f(p:any_map_t map,p:char key)", f, p, p)
 X2(armpack_map_get_i32, "i(p:any_map_t map,p:char key)", i, p, p)
 
 // history_store.c test hooks. hstore_test_stat fields, KB unless noted: 0 blobs (count), 1 ram, 2 disk (journal),
-// 3 dirty, 4 dead, 5 ram budget, 6 disk budget, 7 last flush (ms), 8 chunks read from the journal (count)
+// 3 dirty, 4 dead, 5 ram budget, 6 disk budget, 7 last flush (ms), 8 chunks read from the journal or project (count),
+// 9 blobs saves read the children of (count)
 X4(hstore_test_put, "i(i kind,i seed,i len,i noise)", i, i, i, i, b)
 X4(hstore_test_get, "i(i id,i seed,i len,i noise)", i, i, i, i, b)
 X1(hstore_test_has, "i(i id)", b, i)
@@ -1079,6 +1080,7 @@ X0(project_container_test_reads, "i()", i)
 X0(project_container_test_appended, "i()", i)
 X1(project_container_test_index_count, "i(i kind)", i, i)
 X1(project_container_is, "i(p:char path)", b, p)
+X1(project_container_save_copy, "i(p:char path)", b, p)
 X1(project_file_uuid, "p:char(p:char path)", p, p)
 X1(hstore_journal_delete_for_file, "v(p:char path)", v, p)
 X2(project_test_truncate, "v(p:char path,i bytes)", v, p, i)

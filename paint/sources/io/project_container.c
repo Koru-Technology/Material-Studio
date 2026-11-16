@@ -72,6 +72,7 @@ typedef struct pc_writer {
 	hash128_t                  *maps;   // Referenced by the save
 	i32                         maps_count;
 	i32                         maps_cap;
+	bool                        no_history; // A copy without history: the live layers' tile maps only
 } pc_writer_t;
 
 static pc_writer_t *pc_w = NULL;
@@ -471,6 +472,11 @@ bool project_container_writing() {
 	return pc_w != NULL;
 }
 
+// Timelines and history blobs go in the save
+bool project_container_writing_history() {
+	return pc_w != NULL && !pc_w->no_history;
+}
+
 // A chunk of the save: written unless the file or this save has it, listed in the new index either way
 static void pc_put(u8 kind, u8 codec, hash128_t h, u32 raw_len, const u8 *payload, u32 comp_len) {
 	pc_writer_t                *w   = pc_w;
@@ -542,7 +548,7 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
 	}
-	timeline_t *tl = timeline_active() ? timeline_of(l) : NULL;
+	timeline_t *tl = timeline_active() && !pc_w->no_history ? timeline_of(l) : NULL; // A copy: full maps, no delta chains
 	hash128_t   h  = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE;
 	if (!hash128_is_none(h) && hstore_has(h)) {
 		hstore_ref(h);
@@ -616,16 +622,30 @@ void project_container_unpack_assets(project_t *p) {
 	pc_w->assets = NULL;
 }
 
-static void pc_put_blob(hash128_t h, void *ud) {
+// A blob the walk reached: written unless the file has it. The file has its children too (pc_carry), the walk stops.
+static bool pc_put_blob(hash128_t h, void *ud) {
 	if (pc_find(pc_w->old, pc_w->old_count, h) != NULL) {
 		pc_put(0, 0, h, 0, NULL, 0);
-		return;
+		return false;
 	}
 	hstore_chunk_t c;
 	u8            *payload = hstore_chunk_payload(h, &c);
 	if (payload != NULL) {
 		pc_put(c.kind, c.codec, h, c.raw_len, payload, c.comp_len);
 		free(payload);
+	}
+	return true;
+}
+
+// An append lists again the blobs of the file the store still holds: the children of the ones the walk stopped at are
+// among them (a stored parent references its children, so they stay stored). Blobs nothing references any more left
+// the store at a trim, their bytes count as dead. A superset at worst, a whole rewrite walks everything.
+static void pc_carry() {
+	for (i32 i = 0; i < pc_w->old_count; ++i) {
+		const hstore_index_entry_t *e = &pc_w->old[i];
+		if (hstore_has(e->h)) { // Rasters and packed assets are not store blobs, the save lists them itself
+			pc_put(0, 0, e->h, 0, NULL, 0);
+		}
 	}
 }
 
@@ -653,9 +673,8 @@ static bool pc_can_append(char *path) {
 
 i32 project_container_last_save_appended = 0; // 1 when the last save appended (tests)
 
-// Saves the project as a container: appended to the file it came from, else written whole
-bool project_container_save(char *path) {
-	bool                append = pc_can_append(path);
+static bool pc_save(char *path, bool copy) {
+	bool                append = !copy && pc_can_append(path);
 	char               *target = append ? path : string_copy(string("%s.saving", path));
 	iron_file_stream_t *s      = iron_file_stream_open(target, append);
 	if (s == NULL && !append) {
@@ -676,16 +695,26 @@ bool project_container_save(char *path) {
 	if (timeline_active()) {
 		timeline_finalize(); // Pending entry states captured
 	}
-	pc_writer_t w = {.s = s, .old = append ? pc.index : NULL, .old_count = append ? pc.count : 0};
+	pc_writer_t w = {.s = s, .old = append ? pc.index : NULL, .old_count = append ? pc.count : 0, .no_history = copy};
 	pc_w          = &w;
+	char *uuid    = project_uuid_get();
+	if (copy) {
+		project_uuid_new(); // Another file: its own journal name
+	}
 	buffer_t *head = export_arm_encode_project(path); // Writes the rasters and assets
-	i32        tl_count;
-	hash128_t *tl_roots = timeline_roots(&tl_count);
+	if (copy) {
+		project_uuid = uuid;
+	}
+	i32        tl_count = 0;
+	hash128_t *tl_roots = copy ? NULL : timeline_roots(&tl_count);
 	for (i32 i = 0; i < tl_count; ++i) {
 		pc_maps_push(&w.maps, &w.maps_count, &w.maps_cap, tl_roots[i]); // Roots of the walk, not referenced by the save
 	}
 	free(tl_roots);
-	hstore_each(w.maps, w.maps_count, pc_put_blob, NULL); // Each blob once
+	hstore_each(w.maps, w.maps_count, !copy, pc_put_blob, NULL); // Each blob once
+	if (append) {
+		pc_carry();
+	}
 	w.maps_count -= tl_count;
 	pc_w = NULL;
 
@@ -734,14 +763,16 @@ bool project_container_save(char *path) {
 			remove(target);
 		}
 	}
-	if (!ok) {
+	if (!ok || copy) { // A copy is not where the session saves
 		for (i32 i = 0; i < w.maps_count; ++i) {
 			hstore_unref(w.maps[i]);
 		}
 		free(w.maps);
 		free(w.index);
-		pc.size = -1; // The next save writes the file whole
-		return false;
+		if (!ok && !copy) {
+			pc.size = -1; // The next save writes the file whole
+		}
+		return ok;
 	}
 
 	struct stat st;
@@ -766,12 +797,26 @@ bool project_container_save(char *path) {
 	return true;
 }
 
+// Saves the project as a container: appended to the file it came from, else written whole
+bool project_container_save(char *path) {
+	return pc_save(path, false);
+}
+
+// "Save copy without history": a container of the project and its live layers, no timelines nor history blobs, with
+// its own uuid. The session goes on saving to its file. project_v31 only.
+bool project_container_save_copy(char *path) {
+	if (!g_config->project_v31) {
+		return false;
+	}
+	return pc_save(path, true);
+}
+
 // A new project (after hstore_reset): saves do not append to the file of the one before
 void project_container_forget() {
 	pc_state_free(&pc);
 }
 
-// The uuid saved in a project file (version 31), NULL when it has none
+// The uuid saved in a project file (a version 31 container: its footer and head are read), NULL when it has none
 char *project_file_uuid(char *path) {
 	if (project_container_is(path)) {
 		int         fd = open(path, O_RDONLY);
@@ -797,12 +842,7 @@ char *project_file_uuid(char *path) {
 		close(fd);
 		return NULL;
 	}
-	buffer_t *b = iron_load_blob(path);
-	if (b == NULL || !import_arm_has_version(b)) {
-		return NULL;
-	}
-	any_map_t *m    = armpack_decode_to_map(b);
-	return m != NULL ? string_copy(any_map_get(m, "uuid")) : NULL;
+	return NULL; // Version 30 files have none (version 31 is always a container)
 }
 
 // A project file deleted from the projects screen: its history journal goes too

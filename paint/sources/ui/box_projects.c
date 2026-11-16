@@ -59,6 +59,7 @@ void box_projects_delete(i32 i) {
 	}
 	char *path = box_projects_recent_path(i);
 	char *base = substring(path, 0, string_length(path) - 4);
+	hstore_journal_delete_for_file(path); // Its history journal, named by the uuid in the file
 	iron_delete_file(path);
 	iron_delete_file(string("%s_icon.png", base));
 	iron_delete_file(base);
