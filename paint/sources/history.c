@@ -1,7 +1,7 @@
 #include "global.h"
 
 // Undo and redo: the list of steps, whole layer copies in the undo ring (paint steps keep tiles, history_tiles.c),
-// steps checked against the project before they run. history_steps.c pushes them, history_layers.c swaps their state.
+// steps checked against the project before they run. history_steps.c pushes them, history_swap.c swaps their state.
 
 static void history_redo_smart_material(char *name);
 
