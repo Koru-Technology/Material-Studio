@@ -249,7 +249,7 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	if (count == 0) {
 		return false;
 	}
-	char *format    = layers_format_name(base_bits);
+	char *format    = gpu_texture_format_name(layers_format(base_bits));
 	i32   width     = config_get_texture_res_x();
 	i32   height    = config_get_texture_res_y();
 	bool  recreated = false;
@@ -257,17 +257,10 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	                                                     render_path_raytrace_override_width != width || render_path_raytrace_override_height != height)) {
 		for (i32 i = 0; i < render_path_raytrace_override_allocated; ++i) {
 			for (char *c = "abc"; *c != '\0'; ++c) {
-				char            *name = render_path_raytrace_override_target(i, *c);
-				render_target_t *rt   = any_map_get(render_path_render_targets, name);
-				gpu_delete_texture(rt->_image);
-				map_delete(render_path_render_targets, name);
+				render_path_remove_target(render_path_raytrace_override_target(i, *c));
 			}
 		}
-		render_target_t *mask = any_map_get(render_path_render_targets, "raytrace_override_mask");
-		if (mask != NULL) {
-			gpu_delete_texture(mask->_image);
-			map_delete(render_path_render_targets, "raytrace_override_mask");
-		}
+		render_path_remove_target("raytrace_override_mask");
 		render_path_raytrace_override_allocated = 0;
 		recreated                               = true;
 	}
@@ -280,7 +273,7 @@ static bool render_path_raytrace_override_targets(i32 count) {
 	}
 	while (render_path_raytrace_override_allocated < count) {
 		for (char *c = "abc"; *c != '\0'; ++c) {
-			render_path_add_target(string_copy(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c)), width, height, format, 1.0);
+			render_path_add_target(render_path_raytrace_override_target(render_path_raytrace_override_allocated, *c), width, height, format, 1.0);
 		}
 		render_path_raytrace_override_allocated++;
 	}

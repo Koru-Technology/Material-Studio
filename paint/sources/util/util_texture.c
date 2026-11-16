@@ -19,6 +19,15 @@ char *util_texture_packed_name(char *basename) {
 	}
 }
 
+// dst becomes src through pipe (a copy pipeline of dst's format, or a filter such as invert)
+void util_copy_texture(gpu_texture_t *dst, gpu_texture_t *src, gpu_pipeline_t *pipe) {
+	draw_begin(dst, false, 0);
+	draw_set_pipeline(pipe);
+	draw_image(src, 0, 0);
+	draw_set_pipeline(NULL);
+	draw_end();
+}
+
 void util_texture_capture_output(gpu_texture_t *img, char *basename) {
 	if (img == NULL) {
 		return;

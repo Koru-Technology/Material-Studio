@@ -219,30 +219,17 @@ void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) 
 }
 
 static void render_path_paint_ref_target(char *name, char *format) {
-	render_target_t *rt = any_map_get(render_path_render_targets, name);
-	if (rt != NULL && (rt->width != config_get_texture_res_x() || rt->height != config_get_texture_res_y() || !string_equals(rt->format, format))) {
-		gpu_delete_texture(rt->_image);
-		map_delete(render_path_render_targets, name);
-		rt = NULL;
-	}
-	if (rt == NULL) {
-		render_path_add_target(name, config_get_texture_res_x(), config_get_texture_res_y(), format, 1.0);
-	}
+	render_path_ensure_target(name, config_get_texture_res_x(), config_get_texture_res_y(), format);
 }
 
 // Frees the full size scratch targets, they are created again when needed
 void render_path_paint_release_scratch() {
 	char *names[] = {"texpaint_ref", "texpaint_nor_ref", "texpaint_pack_ref"};
 	for (i32 i = 0; i < 3; ++i) {
-		render_target_t *rt = any_map_get(render_path_render_targets, names[i]);
-		if (rt != NULL) {
-			gpu_delete_texture(rt->_image);
-			map_delete(render_path_render_targets, names[i]);
-		}
+		render_path_remove_target(names[i]);
 	}
 	if (layers_temp_image != NULL) {
-		gpu_delete_texture(layers_temp_image);
-		map_delete(render_path_render_targets, "temptex0");
+		render_path_remove_target("temptex0");
 		layers_temp_image = NULL;
 	}
 }
@@ -264,7 +251,7 @@ static void render_path_paint_ref_snapshot(i32 tid, bool is_mask) {
 		render_path_draw_shader("Scene/copy_pass/copy_pass");
 		return;
 	}
-	char *format = layers_format_name(base_bits);
+	char *format = gpu_texture_format_name(layers_format(base_bits));
 	render_path_paint_ref_target("texpaint_ref", format);
 	render_path_paint_ref_target("texpaint_nor_ref", format);
 	render_path_paint_ref_target("texpaint_pack_ref", format);
@@ -285,7 +272,7 @@ static void render_path_paint_ref_snapshot(i32 tid, bool is_mask) {
 // Clone source for the visible layers mode
 static void render_path_paint_clone_snapshot() {
 	layers_flatten(false, NULL);
-	char *format = layers_format_name(base_bits);
+	char *format = gpu_texture_format_name(layers_format(base_bits));
 	render_path_paint_ref_target("texpaint_ref", format);
 	render_path_paint_ref_target("texpaint_nor_ref", format);
 	render_path_paint_ref_target("texpaint_pack_ref", format);
@@ -1212,7 +1199,7 @@ void render_path_paint_dilate(bool base, bool nor_pack) {
 		layers_make_temp_img();
 		i32 tid = g_context->layer->id;
 
-		char *format      = layers_format_name(base_bits);
+		char *format      = gpu_texture_format_name(layers_format(base_bits));
 		char *copy_pass   = string_equals(format, "RGBA64") ? "copyRGBA64_pass" : string_equals(format, "RGBA128") ? "copyRGBA128_pass" : "copy_pass";
 		char *dilate_pass = string_equals(format, "RGBA64") ? "dilateRGBA64_pass" : string_equals(format, "RGBA128") ? "dilateRGBA128_pass" : "dilate_pass";
 

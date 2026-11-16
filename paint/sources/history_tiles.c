@@ -75,10 +75,6 @@ static void history_tiles_resume_draw() {
 	}
 }
 
-static char *history_tiles_format_name(gpu_texture_format_t f) {
-	return f == GPU_TEXTURE_FORMAT_RGBA64 ? "RGBA64" : f == GPU_TEXTURE_FORMAT_RGBA128 ? "RGBA128" : "RGBA32";
-}
-
 static i32 history_tiles_bytes_per_texel() {
 	return history_tiles_format == GPU_TEXTURE_FORMAT_RGBA64 ? 8 : history_tiles_format == GPU_TEXTURE_FORMAT_RGBA128 ? 16 : 4;
 }
@@ -93,32 +89,18 @@ i64 history_tiles_memory() {
 }
 
 static gpu_texture_t *history_tiles_snapshot(i32 i) {
-	render_target_t *rt = any_map_get(render_path_render_targets, history_tiles_snap_names[i]);
-	return rt != NULL ? rt->_image : NULL;
+	return render_path_find_image(history_tiles_snap_names[i]);
 }
 
 static void history_tiles_free_snapshot() {
 	for (i32 i = 0; i < 3; ++i) {
-		render_target_t *rt = any_map_get(render_path_render_targets, history_tiles_snap_names[i]);
-		if (rt != NULL) {
-			gpu_delete_texture(rt->_image);
-			map_delete(render_path_render_targets, history_tiles_snap_names[i]);
-		}
+		render_path_remove_target(history_tiles_snap_names[i]);
 	}
 }
 
 static void history_tiles_ensure_snapshot() {
 	for (i32 i = 0; i < 3; ++i) {
-		render_target_t *rt = any_map_get(render_path_render_targets, history_tiles_snap_names[i]);
-		if (rt != NULL && (rt->width != history_tiles_layer_w || rt->height != history_tiles_layer_h ||
-		                   !string_equals(rt->format, history_tiles_format_name(history_tiles_format)))) {
-			gpu_delete_texture(rt->_image);
-			map_delete(render_path_render_targets, history_tiles_snap_names[i]);
-			rt = NULL;
-		}
-		if (rt == NULL) {
-			render_path_add_target(history_tiles_snap_names[i], history_tiles_layer_w, history_tiles_layer_h, history_tiles_format_name(history_tiles_format), 1.0);
-		}
+		render_path_ensure_target(history_tiles_snap_names[i], history_tiles_layer_w, history_tiles_layer_h, gpu_texture_format_name(history_tiles_format));
 	}
 }
 
@@ -212,15 +194,7 @@ void history_tiles_finalize() {
 	}
 	history_tiles_pause_draw();
 
-	render_target_t *diff = any_map_get(render_path_render_targets, "undo_tiles_diff");
-	if (diff != NULL && diff->width != history_tiles_blocks) {
-		gpu_delete_texture(diff->_image);
-		map_delete(render_path_render_targets, "undo_tiles_diff");
-		diff = NULL;
-	}
-	if (diff == NULL) {
-		diff = render_path_add_target("undo_tiles_diff", history_tiles_blocks, history_tiles_blocks, "RGBA32", 1.0);
-	}
+	render_target_t *diff = render_path_ensure_target("undo_tiles_diff", history_tiles_blocks, history_tiles_blocks, "RGBA32");
 	render_path_set_target("undo_tiles_diff", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 	render_path_bind_target("undo_snap0", "tex0");
 	render_path_bind_target("undo_snap1", "tex1");

@@ -375,7 +375,7 @@ static void mask_stack_alloc_texture(slot_layer_t *m) {
 	if (m->texmask != NULL) {
 		return;
 	}
-	m->texmask = render_path_add_target(string("texmask%s", m->ext), m->texpaint->width, m->texpaint->height, "RGBA32", 1.0)->_image;
+	m->texmask = render_path_add_target(string_tmp("texmask%s", m->ext), m->texpaint->width, m->texpaint->height, "RGBA32", 1.0)->_image;
 }
 
 gpu_texture_t *mask_stack_get_scratch(i32 w, i32 h) {
@@ -866,6 +866,6 @@ void mask_stack_free_texture(slot_layer_t *m) {
 		return;
 	}
 	gpu_delete_texture(m->texmask);
-	map_delete(render_path_render_targets, string("texmask%s", m->ext));
+	map_delete(render_path_render_targets, string_tmp("texmask%s", m->ext));
 	m->texmask = NULL;
 }

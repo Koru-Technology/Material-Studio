@@ -402,6 +402,23 @@ uint32_t gpu_texture_format_size(gpu_texture_format_t format) {
 	}
 }
 
+static const char *gpu_texture_format_names[] = {"RGBA32", "RGBA64", "RGBA128", "R8", "R16", "R32", "D32"};
+
+// Format of a render target format name ("RGBA64", "R8", ...), RGBA32 for NULL or an unknown name
+gpu_texture_format_t gpu_texture_format_from_name(const char *name) {
+	for (int i = 0; name != NULL && i < (int)(sizeof(gpu_texture_format_names) / sizeof(gpu_texture_format_names[0])); ++i) {
+		if (strcmp(name, gpu_texture_format_names[i]) == 0) {
+			return (gpu_texture_format_t)i;
+		}
+	}
+	return GPU_TEXTURE_FORMAT_RGBA32;
+}
+
+// Name of a format as render targets take it, "RGBA32" for compressed ones
+char *gpu_texture_format_name(gpu_texture_format_t format) {
+	return (int)format >= 0 && format <= GPU_TEXTURE_FORMAT_D32 ? (char *)gpu_texture_format_names[format] : "RGBA32";
+}
+
 static gpu_buffer_t                 rt_constant_buffer;
 static gpu_raytrace_pipeline_t      rt_pipeline;
 static gpu_acceleration_structure_t rt_accel;

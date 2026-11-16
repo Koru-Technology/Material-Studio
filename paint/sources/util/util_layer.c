@@ -14,13 +14,13 @@ f32       _layers_occlusion;
 f32       _layers_roughness;
 f32       _layers_metallic;
 
-// dst becomes src through pipe (a copy pipeline of dst's format, or a filter such as invert)
-void util_copy_texture(gpu_texture_t *dst, gpu_texture_t *src, gpu_pipeline_t *pipe) {
-	draw_begin(dst, false, 0);
-	draw_set_pipeline(pipe);
-	draw_image(src, 0, 0);
-	draw_set_pipeline(NULL);
-	draw_end();
+// Layer textures at bits per channel (base_bits): texture format and copy pipeline, gpu_texture_format_name() for render targets
+gpu_texture_format_t layers_format(texture_bits_t bits) {
+	return bits == TEXTURE_BITS_BITS8 ? GPU_TEXTURE_FORMAT_RGBA32 : bits == TEXTURE_BITS_BITS16 ? GPU_TEXTURE_FORMAT_RGBA64 : GPU_TEXTURE_FORMAT_RGBA128;
+}
+
+gpu_pipeline_t *layers_copy_pipe(texture_bits_t bits) {
+	return bits == TEXTURE_BITS_BITS8 ? pipes_copy : bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;
 }
 
 static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
@@ -191,14 +191,12 @@ void layers_make_temp_img() {
 
 	if (layers_temp_image != NULL && (layers_temp_image->width != l->texpaint->width || layers_temp_image->height != l->texpaint->height ||
 	                                  layers_temp_image->format != l->texpaint->format)) {
-		render_target_t *_temptex0 = any_map_get(render_path_render_targets, "temptex0");
-		gpu_delete_texture(_temptex0->_image);
-		map_delete(render_path_render_targets, "temptex0");
+		render_path_remove_target("temptex0");
 		layers_temp_image = NULL;
 	}
 
 	if (layers_temp_image == NULL) {
-		layers_temp_image = render_path_add_target("temptex0", l->texpaint->width, l->texpaint->height, layers_format_name(base_bits), 1.0)->_image;
+		layers_temp_image = render_path_add_target("temptex0", l->texpaint->width, l->texpaint->height, gpu_texture_format_name(layers_format(base_bits)), 1.0)->_image;
 	}
 }
 
@@ -219,21 +217,15 @@ void layers_make_export_img() {
 	slot_layer_t *l = g_project->_->layers->buffer[0];
 	if (layers_expa != NULL &&
 	    (layers_expa->width != l->texpaint->width || layers_expa->height != l->texpaint->height || layers_expa->format != l->texpaint->format)) {
-		gpu_texture_t *_expa = layers_expa;
-		gpu_texture_t *_expb = layers_expb;
-		gpu_texture_t *_expc = layers_expc;
-		gpu_delete_texture(_expa);
-		gpu_delete_texture(_expb);
-		gpu_delete_texture(_expc);
+		render_path_remove_target("expa");
+		render_path_remove_target("expb");
+		render_path_remove_target("expc");
 		layers_expa = NULL;
 		layers_expb = NULL;
 		layers_expc = NULL;
-		map_delete(render_path_render_targets, "expa");
-		map_delete(render_path_render_targets, "expb");
-		map_delete(render_path_render_targets, "expc");
 	}
 	if (layers_expa == NULL) {
-		char *format = layers_format_name(base_bits);
+		char *format = gpu_texture_format_name(layers_format(base_bits));
 		i32   w      = l->texpaint->width;
 		i32   h      = l->texpaint->height;
 		layers_expa  = render_path_add_target("expa", w, h, format, 1.0)->_image;

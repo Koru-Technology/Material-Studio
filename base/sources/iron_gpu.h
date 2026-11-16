@@ -257,9 +257,11 @@ void _gpu_raytrace_as_add(gpu_buffer_t *vb, gpu_buffer_t *ib, mat4_t transform, 
 void _gpu_raytrace_as_build();
 void _gpu_raytrace_dispatch_rays(gpu_texture_t *render_target, buffer_t *buffer);
 
-uint32_t gpu_vertex_data_size(gpu_vertex_data_t data);
-uint32_t gpu_vertex_struct_size(gpu_vertex_structure_t *s);
-uint32_t gpu_texture_format_size(gpu_texture_format_t format);
+uint32_t             gpu_vertex_data_size(gpu_vertex_data_t data);
+uint32_t             gpu_vertex_struct_size(gpu_vertex_structure_t *s);
+uint32_t             gpu_texture_format_size(gpu_texture_format_t format);
+gpu_texture_format_t gpu_texture_format_from_name(const char *name);
+char                *gpu_texture_format_name(gpu_texture_format_t format);
 
 extern bool            gpu_in_use;
 extern uint32_t        gpu_buffer_versions;
