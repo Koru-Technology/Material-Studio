@@ -84,6 +84,19 @@ i64 history_tiles_page_bytes() {
 	return history_tiles_pool_page_bytes(&history_tiles_pools[0]);
 }
 
+// The pools in KB and the steps holding tiles, for tests
+i32 history_tiles_test_memory_kb() {
+	return (i32)(history_tiles_memory() / 1024);
+}
+
+i32 history_tiles_test_steps() {
+	i32 n = 0;
+	for (i32 i = 0; i < history_steps->length; ++i) {
+		n += history_steps->buffer[i]->undo_tiles != NULL ? 1 : 0;
+	}
+	return n;
+}
+
 i64 history_tiles_memory() {
 	i64 bytes = 0;
 	for (i32 i = 0; i < 2; ++i) {

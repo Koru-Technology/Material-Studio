@@ -1137,6 +1137,8 @@ X0(history_test_restore_runs, "i()", i)
 X1(history_flush_restores, "v(p:slot_layer_t l)", v, p)
 X0(app_history_busy, "b()", b)
 X0(history_test_undos, "i()", i)
+X0(history_tiles_test_memory_kb, "i()", i)
+X0(history_tiles_test_steps, "i()", i)
 X0(history_on_memory_warning, "v()", v)
 X1(timeline_tiles_test, "i(p:slot_layer_t l)", i, p)
 

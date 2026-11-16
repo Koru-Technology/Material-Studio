@@ -1160,6 +1160,8 @@ void ui_menu_sub_end();
 extern i32      history_tiles_size;
 extern i32      history_tiles_block;
 extern i32      history_tiles_blocks;
+i32             history_tiles_test_memory_kb();
+i32             history_tiles_test_steps();
 void            history_tiles_source_set(gpu_texture_t *base, gpu_texture_t *nor, gpu_texture_t *pack);
 bool            history_tiles_supported(slot_layer_t *l);
 i64             history_tiles_memory();
