@@ -2449,16 +2449,19 @@ gpu_texture_t *export_tiled_test_coverage();
 //   5  uv at s, uv at s_last (gbuffer2: pixel snap)
 //   6  tip mask rotation cos, sin (brush angle and dab angle), tilt shape xy (util_brush_tilt_shape)
 //   7  brush angle cos, sin, dab angle cos, sin
+//   8  q of p (PAINT_DAB_QUANT steps an axis, as floats), w 0; off the mesh (not quantized) p itself, w 1
+//   9  q of p_last, the same
 // On the mesh, p and p_last are quantized: object space of the paint target (world_unpack), PAINT_DAB_QUANT steps an axis
 // over its bounds (paint_exec_space: -1.01 to 1.01, positions are packed normalized), back to world. Off the mesh they are the unquantized far plane point (a decal
 // anchor: at the depth of the world origin), recordings keep them as floats. The input of the pass (CPU, the same layout):
-// t0 s.xy s_last.xy, t1.x the mode, t3, t6, t7; the pass writes the rest.
-#define PAINT_DAB_TEXELS      8
+// t0 s.xy s_last.xy, t1.x the mode, t3, t6, t7; the pass writes the rest. Replaying (paint_exec_replay), the input is a
+// recorded row: t0 and t1 are made again from q (t8, t9) when quantized, the rest is copied.
+#define PAINT_DAB_TEXELS      10
 #define PAINT_DAB_ROW         64
 #define PAINT_DAB_MAX         2048 // A flush of the executor resolves at most this many
 #define PAINT_DAB_QUANT       2097151.0 // 2^21 - 1
 #define PAINT_DAB_QUANT_S     "2097151.0" // In GLSL
-#define PAINT_DAB_TEXELS_S    "8"
+#define PAINT_DAB_TEXELS_S    "10"
 #define PAINT_DAB_MODE_BRUSH  0.0 // Off the mesh: far plane
 #define PAINT_DAB_MODE_ANCHOR 1.0 // Decal anchor, off the mesh: at the depth of the world origin, as make_texcoord_run did
 

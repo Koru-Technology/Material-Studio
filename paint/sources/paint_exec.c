@@ -220,6 +220,10 @@ static i32 paint_exec_dab_add(f32 x, f32 y, f32 last_x, f32 last_y, f32 mode) {
 	d[2]         = last_x;
 	d[3]         = last_y;
 	d[4]         = mode;
+	d[16]        = x; // t4, as the pass writes it: replaying, t0 holds the position
+	d[17]        = y;
+	d[18]        = last_x;
+	d[19]        = last_y;
 	d[12]        = uniforms_brush_radius();
 	d[13]        = uniforms_brush_opacity();
 	d[14]        = uniforms_brush_hardness();

@@ -409,10 +409,10 @@ static void render_path_paint_cull(mesh_object_t *o) {
 	if (op != NULL) { // The dabs of the draw being executed
 		for (i32 i = 0; i < op->dab_count && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) {
 			f32 *d = paint_exec_dab(op->dab_first + i);
-			if (d[4] != PAINT_DAB_MODE_BRUSH) {
+			if (!paint_exec_replay && d[4] != PAINT_DAB_MODE_BRUSH) {
 				continue; // A decal anchor
 			}
-			dabs[count++] = (paint_cull_dab_t){d[0] * 2.0 - 1.0, 1.0 - d[1] * 2.0, d[2] * 2.0 - 1.0, 1.0 - d[3] * 2.0, d[12] * stretch};
+			dabs[count++] = (paint_cull_dab_t){d[16] * 2.0 - 1.0, 1.0 - d[17] * 2.0, d[18] * 2.0 - 1.0, 1.0 - d[19] * 2.0, d[12] * stretch};
 		}
 	}
 	else if (render_path_paint_batched()) {
