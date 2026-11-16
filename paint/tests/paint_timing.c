@@ -68,7 +68,6 @@ void next() {
 			phase = 0;
 			frame = 0;
 			if (kase == 4) {
-				printf("[paint_timing] resolved %d", script_get_config()->paint_resolved_dabs);
 				printf("PAINT_TIMING PASS");
 				script_quit();
 				return;

@@ -362,8 +362,9 @@ void render_path_base_init_paint_depth() {
 	render_path_add_target("main_paint", 0, 0, "D32", render_path_base_get_super_sampling());
 }
 
+// With paint_resolved_dabs always: the dab resolve pass reads the mesh alone, translucent and hidden materials included
 bool render_path_base_has_paint_depth() {
-	return g_project->_->translucency && any_map_get(render_path_render_targets, "main_paint") != NULL;
+	return (g_project->_->translucency || paint_exec_resolved_config()) && any_map_get(render_path_render_targets, "main_paint") != NULL;
 }
 
 char *render_path_base_ssao_target() {
@@ -609,6 +610,14 @@ void render_path_base_draw_gbuffer() {
 	}
 
 	// Depth with the translucent surfaces included, for painting only - "main" keeps them see-through for the world pass
+	if (paint_exec_resolved_config()) {
+		if (any_map_get(render_path_render_targets, "main_paint") == NULL) {
+			render_path_base_init_paint_depth();
+		}
+		if (make_material_depth_scon == NULL) {
+			make_material_parse_depth_material();
+		}
+	}
 	if (render_path_base_has_paint_depth()) {
 		render_path_set_target("gbuffer0", NULL, "main_paint", GPU_CLEAR_DEPTH, 0, 1.0);
 		render_path_base_draw_meshes(make_material_depth_scon, false);

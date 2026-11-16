@@ -39,9 +39,11 @@ void make_texcoord_run(node_shader_t *shader, bool is_atlas) {
 		else if (decal) {
 			shader->frag_wposition = true;
 			node_shader_add_function(shader, str_octahedron_wrap);
-			node_shader_add_texture(shader, "gbuffer0", NULL);
+			if (!make_paint_resolved) {
+				node_shader_add_texture(shader, "gbuffer0", NULL);
+				node_shader_add_constant(shader, "mat4 invVP", "_inv_view_proj_matrix");
+			}
 			node_shader_add_constant(shader, "vec4 decal_mask", "_decal_mask");
-			node_shader_add_constant(shader, "mat4 invVP", "_inv_view_proj_matrix");
 			node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
 			node_shader_add_constant(shader, "vec3 camera_right", "_camera_right");
 			node_shader_add_constant(shader, "vec3 camera_up", "_camera_up");
@@ -50,11 +52,16 @@ void make_texcoord_run(node_shader_t *shader, bool is_atlas) {
 			// Off the mesh, anchor the decal at the depth of the world origin
 			node_shader_write_attrib_frag(shader, "vec4 origin_clip = constants.VP * vec4(0.0, 0.0, 0.0, 1.0);");
 			node_shader_write_attrib_frag(shader, "if (constants.camera_align > 0.0) {");
-			node_shader_write_attrib_frag(shader, "float ca_depth = textureLod(sampler2D(gbufferD, sampler_linear), constants.decal_mask.xy, 0.0).r;");
-			node_shader_write_attrib_frag(shader, "if (ca_depth >= 1.0 && origin_clip.w > 0.0) { ca_depth = origin_clip.z / origin_clip.w; }");
-			node_shader_write_attrib_frag(shader, "vec2 ca_coord = vec2(constants.decal_mask.x * 2.0 - 1.0, 1.0 - constants.decal_mask.y * 2.0);");
-			node_shader_write_attrib_frag(shader, "vec4 ca_homog = constants.invVP * vec4(ca_coord.x, ca_coord.y, ca_depth, 1.0);");
-			node_shader_write_attrib_frag(shader, "float ca_clip_w = 1.0 / ca_homog.w;");
+			if (make_paint_resolved) { // The anchor, the dab after the brush dab (paint_exec_draw)
+				node_shader_write_attrib_frag(shader, string_tmp("float ca_clip_w = 1.0 / %s.w;", make_brush_dab("dab_k0 + 1", 0)));
+			}
+			else {
+				node_shader_write_attrib_frag(shader, "float ca_depth = textureLod(sampler2D(gbufferD, sampler_linear), constants.decal_mask.xy, 0.0).r;");
+				node_shader_write_attrib_frag(shader, "if (ca_depth >= 1.0 && origin_clip.w > 0.0) { ca_depth = origin_clip.z / origin_clip.w; }");
+				node_shader_write_attrib_frag(shader, "vec2 ca_coord = vec2(constants.decal_mask.x * 2.0 - 1.0, 1.0 - constants.decal_mask.y * 2.0);");
+				node_shader_write_attrib_frag(shader, "vec4 ca_homog = constants.invVP * vec4(ca_coord.x, ca_coord.y, ca_depth, 1.0);");
+				node_shader_write_attrib_frag(shader, "float ca_clip_w = 1.0 / ca_homog.w;");
+			}
 			node_shader_write_attrib_frag(shader, "float vp_up_y = (constants.VP * vec4(constants.camera_up, 0.0)).y;");
 			node_shader_write_attrib_frag(shader, "uvsp = sp.xy - constants.decal_mask.xy;");
 			node_shader_write_attrib_frag(shader, "uvsp.x *= constants.aspect_ratio;");
@@ -67,17 +74,26 @@ void make_texcoord_run(node_shader_t *shader, bool is_atlas) {
 			node_shader_write_attrib_frag(shader, "vec2 decal_xy = constants.inp.xy;");
 			node_shader_write_attrib_frag(shader, "if (constants.decal_mask.z > 0.0) { decal_xy = constants.decal_mask.xy; }");
 
-			// Unproject the decal anchor point from the depth buffer
-			node_shader_write_attrib_frag(shader, "float decal_depth = textureLod(sampler2D(gbufferD, sampler_linear), decal_xy, 0.0).r;");
-			node_shader_write_attrib_frag(shader, "float decal_off_mesh = 0.0;");
-			node_shader_write_attrib_frag(
-			    shader, "if (decal_depth >= 1.0 && origin_clip.w > 0.0) { decal_depth = origin_clip.z / origin_clip.w; decal_off_mesh = 1.0; }");
-			node_shader_write_attrib_frag(shader, "vec4 decal_wpos4 = vec4(vec2(decal_xy.x, 1.0 - decal_xy.y) * 2.0 - 1.0, decal_depth, 1.0);");
-			node_shader_write_attrib_frag(shader, "decal_wpos4 = constants.invVP * decal_wpos4;");
-			node_shader_write_attrib_frag(shader, "vec3 decal_wpos = decal_wpos4.xyz / decal_wpos4.w;");
+			if (make_paint_resolved) { // The anchor resolved, the dab after the brush dab (paint_exec_draw)
+				node_shader_write_attrib_frag(shader, string_tmp("vec4 decal_wpos4 = %s;", make_brush_dab("dab_k0 + 1", 0)));
+				node_shader_write_attrib_frag(shader, string_tmp("vec4 decal_r2 = %s;", make_brush_dab("dab_k0 + 1", 2)));
+				node_shader_write_attrib_frag(shader, "float decal_off_mesh = decal_r2.z;");
+				node_shader_write_attrib_frag(shader, "vec3 decal_wpos = decal_wpos4.xyz;");
+				node_shader_write_attrib_frag(shader, "vec2 dg0 = decal_r2.xy;");
+			}
+			else {
+				// Unproject the decal anchor point from the depth buffer
+				node_shader_write_attrib_frag(shader, "float decal_depth = textureLod(sampler2D(gbufferD, sampler_linear), decal_xy, 0.0).r;");
+				node_shader_write_attrib_frag(shader, "float decal_off_mesh = 0.0;");
+				node_shader_write_attrib_frag(
+				    shader, "if (decal_depth >= 1.0 && origin_clip.w > 0.0) { decal_depth = origin_clip.z / origin_clip.w; decal_off_mesh = 1.0; }");
+				node_shader_write_attrib_frag(shader, "vec4 decal_wpos4 = vec4(vec2(decal_xy.x, 1.0 - decal_xy.y) * 2.0 - 1.0, decal_depth, 1.0);");
+				node_shader_write_attrib_frag(shader, "decal_wpos4 = constants.invVP * decal_wpos4;");
+				node_shader_write_attrib_frag(shader, "vec3 decal_wpos = decal_wpos4.xyz / decal_wpos4.w;");
 
-			// Decode face normal at anchor point
-			node_shader_write_attrib_frag(shader, "vec2 dg0 = textureLod(sampler2D(gbuffer0, sampler_linear), decal_xy, 0.0).rg;");
+				// Decode face normal at anchor point
+				node_shader_write_attrib_frag(shader, "vec2 dg0 = textureLod(sampler2D(gbuffer0, sampler_linear), decal_xy, 0.0).rg;");
+			}
 			node_shader_write_attrib_frag(shader, "vec3 dn;");
 			node_shader_write_attrib_frag(shader, "dn.z = 1.0 - abs(dg0.x) - abs(dg0.y);");
 			node_shader_write_attrib_frag(
