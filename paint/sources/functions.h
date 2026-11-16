@@ -1623,11 +1623,7 @@ i32  util_stencil_handle_size();
 void util_stencil_transform();
 
 // ---- util/util_stroke_refine.c ----
-void stroke_refine_end_all(void);
-void stroke_refine_history_pushed(history_action_t action);
-void stroke_refine_reset(void);
-void stroke_refine_stroke_begin(history_step_t *step); // util/util_stroke_refine.c: strokes sharpen as buffers land
-void stroke_refine_fold(void);
+void stroke_refine_reset(void); // util/util_stroke_refine.c: fill layers paint again as buffers land
 void stroke_refine_fill_track(slot_layer_t *l);
 i32  stroke_refine_stat(i32 what);
 
@@ -2567,6 +2563,13 @@ void paint_mat_snapshot_parse_end();
 void paint_mat_snapshot_replay_begin(slot_material_t *m);
 void paint_mat_snapshot_replay_end();
 void render_path_paint_dilate_now(bool base, bool nor_pack);
+
+// ---- paint_refine.c ----
+void paint_refine_note(struct timeline *tl, i32 index, const u64 *keys, i32 n);
+void paint_refine_init();
+void paint_refine_reset();
+i32  paint_refine_stat(i32 what);
+bool paint_rec_active();
 
 // ---- paint_replay.c ----
 extern gpu_texture_t *paint_replay_s0[3];

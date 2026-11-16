@@ -290,6 +290,7 @@
 #include "paint_exec.c"
 #include "paint_rec.c"
 #include "paint_mat_snapshot.c"
+#include "paint_refine.c"
 #include "paint_replay.c"
 #include "render/make_dab_resolve.c"
 #include "util/util_test.c"

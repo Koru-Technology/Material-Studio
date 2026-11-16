@@ -537,7 +537,6 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 	}
 
 	if (g_context->brush_time == 0 && g_context->tool != TOOL_TYPE_PARTICLE && !g_context->pick_pos_nor_tex && !paint_exec_replay) {
-		stroke_refine_fold(); // Before this draw (live brush preview, fill layer) adds to the coverage of the stroke that ended
 		g_context->brush_blend_dirty = true;
 	}
 
@@ -1087,9 +1086,6 @@ void render_path_paint_clear_blend() {
 void render_path_paint_clear_blend_now() {
 	if (g_context->brush_blend_dirty) {
 		g_context->brush_blend_dirty = false;
-		if (g_context->brush_time == 0) {
-			stroke_refine_fold(); // The stroke's coverage, for strokes that sharpen as better buffers land
-		}
 		render_path_set_target("texpaint_blend0", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 		render_path_end();

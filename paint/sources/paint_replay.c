@@ -102,9 +102,12 @@ static shader_context_t *paint_replay_shader(paint_state_t *s) {
 			paint_replay_scons[i] = NULL;
 		}
 	}
+	bool uncached         = paint_replay_uncached;
+	paint_replay_uncached = uncached || !s->matcache; // A material cache built since the stroke is not read
 	paint_mat_snapshot_parse_begin(g_context->material);
 	shader_context_t *scon = make_material_parse_paint_kept();
 	paint_mat_snapshot_parse_end();
+	paint_replay_uncached = uncached;
 	if (scon == NULL || (verify && make_paint_glsl_hash(scon) != s->glsl)) {
 		if (scon != NULL) {
 			make_material_free_paint_scon(scon);

@@ -562,7 +562,6 @@ void history_undo() {
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_undos > 0) {
-		stroke_refine_end_all(); // Strokes keep the tier they reached
 		project_modified = true;
 		mask_stack_layer_changed(NULL); // Anchors read the layers as they were
 		render_path_base_redraw();
@@ -869,7 +868,6 @@ void history_redo() {
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_redos > 0) {
-		stroke_refine_end_all();
 		project_modified = true;
 		mask_stack_layer_changed(NULL);
 		render_path_base_redraw();
@@ -1114,7 +1112,6 @@ void history_ring_set_size(i32 n) {
 	}
 	if (history_steps != NULL && history_ring_used() > 0) {
 		history_tiles_finalize();
-		stroke_refine_reset(); // Records point at steps
 		for (; history_redos > 0; --history_redos) {
 			history_step_free(array_pop(history_steps));
 		}
@@ -1184,7 +1181,6 @@ history_step_t *history_push(history_action_t action) {
 	step->undo_ring      = history_ring_pending;
 	history_ring_pending = 0;
 	any_array_push(history_steps, step);
-	stroke_refine_history_pushed(action); // Layers changed otherwise than by strokes: their records end
 
 	// Whole layer copies are a ring of undo_steps layers, a step whose copy would be overwritten goes first
 	while (history_steps->length > history_max_steps() + 1 || (history_steps->length > 2 && history_ring_used() > history_ring_size())) {

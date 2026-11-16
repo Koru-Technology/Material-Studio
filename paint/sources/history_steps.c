@@ -31,8 +31,6 @@ void history_paint() {
 	if (g_context->tool == TOOL_TYPE_ERASER && g_context->layer == g_project->_->layers->buffer[0]) {
 		layers_enable_translucency();
 	}
-
-	stroke_refine_stroke_begin(step); // Painted before the material's buffers are full: it sharpens as they land
 }
 
 void history_new_layer() {

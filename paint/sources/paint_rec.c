@@ -32,6 +32,8 @@ typedef struct paint_rec_head {
 
 static paint_rec_t paint_rec = {0};
 static i32         paint_rec_stored = 0; // Strokes stored as TL_STROKE, for tests
+static u64         paint_rec_keys[32];   // Material Maker buffers sampled below full by the stroke (paint_refine.c)
+static i32         paint_rec_nkeys = 0;
 
 #define PAINT_REC_GROW(arr, n, cap, type)                       \
 	if ((n) == (cap)) {                                         \
@@ -52,6 +54,11 @@ static void paint_rec_clear(paint_rec_t *r) {
 bool paint_rec_recording() {
 	paint_rec_t *r = &paint_rec;
 	return r->active && !paint_exec_replay && g_context->layer != NULL && g_context->layer->uid == r->layer_uid && !render_path_paint_live_layer_locked;
+}
+
+// A stroke is being recorded
+bool paint_rec_active() {
+	return paint_rec.active;
 }
 
 // The stroke paints something the replay does not do yet: it stays a raster entry
@@ -185,6 +192,7 @@ void paint_rec_stroke_begin(history_step_t *step, slot_layer_t *l) {
 	r->res_h       = l->texpaint->height;
 	r->channels    = slot_layer_is_mask(l) ? 1 : 3;
 	r->mm_tier     = MM_BUFFERS_FULL;
+	paint_rec_nkeys = 0;
 	vec4_t bmin, bsize;
 	paint_exec_space(&r->obj, &r->obj_inv, &bmin, &bsize);
 }
@@ -304,6 +312,15 @@ void paint_rec_op_done(paint_exec_op_t *op) {
 	r->ops[r->n_ops - 1].mm_tier = tier;
 	if (tier < r->mm_tier) {
 		r->mm_tier = tier;
+	}
+	for (i32 i = 0; tier < MM_BUFFERS_FULL && i < n; ++i) {
+		bool seen = false;
+		for (i32 k = 0; k < paint_rec_nkeys && !seen; ++k) {
+			seen = paint_rec_keys[k] == keys[i];
+		}
+		if (!seen && paint_rec_nkeys < 32) {
+			paint_rec_keys[paint_rec_nkeys++] = keys[i];
+		}
 	}
 }
 
@@ -543,6 +560,7 @@ f32 paint_rec_test_bounds(slot_layer_t *l, i32 index, i32 c) {
 void paint_rec_init() {
 	hstore_set_children(HSTORE_STROKE, paint_rec_children);
 	paint_mat_snapshot_init();
+	paint_refine_init();
 }
 
 // The stroke ended: stored, its entry a TL_STROKE when it replays
@@ -566,6 +584,9 @@ void paint_rec_finish() {
 		tl_entry_t *e = &tl->entries[r->index];
 		e->flags      = TL_FLAG_LOCAL | TL_FLAG_UPSCALABLE;
 		e->mm_tier    = r->mm_tier;
+		if (r->mm_tier < MM_BUFFERS_FULL) {
+			paint_refine_note(tl, r->index, paint_rec_keys, paint_rec_nkeys); // Sharpens by replay once they are full
+		}
 		// Reads around what it writes: dilation's neighbours (blur's kernel, once replayed)
 		i32 reach  = r->n_states > 0 ? r->states[0].dilate_radius : 0;
 		e->halo_uv = (f32)(reach + 1) / (f32)r->res_w;
