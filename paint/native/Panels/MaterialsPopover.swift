@@ -150,7 +150,7 @@ struct MaterialsProjectView: View {
 				Button(role: .destructive) {
 					AppStore.shared.perform { app_material_delete_unused() }
 				} label: {
-					Label("Delete Unused Materials", systemImage: "trash.slash")
+					Label("Remove Unused Materials", systemImage: "trash.slash")
 				}
 				.disabled(store.materials.count < 2)
 			} label: {
@@ -171,20 +171,6 @@ struct MaterialsProjectView: View {
 			edit(m)
 		} label: {
 			Label("Edit", systemImage: "slider.horizontal.3")
-		}
-		if m.canOpenStudio {
-			Button {
-				AppStore.shared.perform { app_material_open_studio(m.id) }
-				closePopover(dismiss)
-			} label: {
-				Label("Edit in Material Studio", systemImage: "wand.and.stars")
-			}
-		}
-		Button {
-			AppStore.shared.perform { app_material_show_nodes(m.id) }
-			closePopover(dismiss)
-		} label: {
-			Label("Edit Nodes", systemImage: "point.3.connected.trianglepath.dotted")
 		}
 		Divider()
 		Button {
@@ -214,7 +200,7 @@ struct MaterialsProjectView: View {
 		Button(role: .destructive) {
 			AppStore.shared.perform { app_material_delete(m.id) }
 		} label: {
-			Label("Delete", systemImage: "trash")
+			Label("Remove", systemImage: "trash")
 		}
 		.disabled(!app_material_can_delete(m.id))
 	}

@@ -188,6 +188,10 @@ void util_particle_update() {
 		layers_fill_paint_confirm_new_layer();
 		particle_dropped = true;
 	}
+	else if (mouse_started("left") && context_in_paint_area() && !g_context->paint2d && layers_fill_paint_needs_mask()) {
+		layers_fill_paint_confirm_mask();
+		particle_dropped = true;
+	}
 	if (!particle_dropped && mouse_down("left") && context_in_paint_area() && !g_context->paint2d &&
 	    (mouse_started("left") || sys_time() - particle_last_spawn_time >= 1.0 / rate)) {
 		particle_last_spawn_time = sys_time();
