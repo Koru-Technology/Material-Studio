@@ -363,7 +363,7 @@ buffer_t *export_arm_encode_project(char *path) {
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
 		buffer_t        *icon;
-		if (m->preview_ready && m->image != NULL) {
+		if (m->preview_ready && m->image != NULL && !project_container_writing_session()) { // Recovery renders them again
 			icon = export_arm_encode_icon(m->image);
 			gpu_release_texture_pixels(m->image);
 		}
@@ -386,22 +386,46 @@ buffer_t *export_arm_encode_project(char *path) {
 	g_project->is_bgra = false;
 #endif
 
-	bool pack_assets = g_context->pack_assets_on_save;
+	bool pack_assets = g_context->pack_assets_on_save && !project_container_writing_session();
 	export_arm_progress(0.7);
 	if (pack_assets) {
 		export_arm_pack_assets(g_project, g_project->_->assets);
 	}
 
 	export_arm_progress(0.8);
+	// Container and session heads: packed assets as hashes, timelines and history steps (their blobs are written with
+	// the store's). A session head leaves out what recovery takes from the saved file: meshes and packed assets.
+	bool                    session        = project_container_writing_session();
+	mesh_data_t_array_t    *session_meshes = g_project->mesh_datas;
+	buffer_t_array_t       *session_icons  = g_project->mesh_icons;
+	packed_asset_t_array_t *session_packed = g_project->packed_assets;
 	if (container) {
-		project_container_pack_assets(g_project);
-		g_project->timelines = project_container_writing_history() ? timeline_io_encode() : NULL; // Their blobs are written with the store's
+		if (session) {
+			g_project->mesh_datas    = NULL;
+			g_project->mesh_icons    = NULL;
+			g_project->packed_assets = NULL;
+		}
+		else {
+			project_container_pack_assets(g_project);
+		}
+		bool history         = project_container_writing_history();
+		g_project->timelines = history ? timeline_io_encode() : NULL;
+		g_project->history   = history ? project_container_history_encode() : NULL;
 	}
 	buffer_t *buffer = util_encode_project(g_project);
 	if (container) {
-		project_container_unpack_assets(g_project);
+		if (session) {
+			g_project->mesh_datas    = session_meshes;
+			g_project->mesh_icons    = session_icons;
+			g_project->packed_assets = session_packed;
+		}
+		else {
+			project_container_unpack_assets(g_project);
+		}
 		export_arm_free_buffer(g_project->timelines);
+		export_arm_free_buffer(g_project->history);
 		g_project->timelines = NULL;
+		g_project->history   = NULL;
 	}
 
 	for (i32 i = 0; i < ld->length; ++i) {

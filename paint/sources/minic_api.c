@@ -966,6 +966,7 @@ void minic_register_builtins() {
 	MINIC_B(project_v31);
 	MINIC_B(paint_resolved_dabs);
 	MINIC_I(history_max_steps);
+	MINIC_I(history_budget_mb);
 	MINIC_END();
 
 	MINIC_STRUCT(context_t);

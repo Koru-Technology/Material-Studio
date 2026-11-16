@@ -152,7 +152,8 @@ void config_brush_save_update() {
 	X(I32, history_disk_mb, 64, 1048576)                                                         \
 	X(BOOL, project_v31, CONFIG_ANY)                                                             \
 	X(BOOL, paint_resolved_dabs, CONFIG_ANY)                                                     \
-	X(I32, history_max_steps, 2, 100000)
+	X(I32, history_max_steps, 2, 100000)                                                         \
+	X(I32, history_budget_mb, 0, 1048576)
 
 #define CONFIG_ANY -FLT_MAX, FLT_MAX
 
