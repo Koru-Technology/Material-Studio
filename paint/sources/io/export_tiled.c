@@ -405,9 +405,10 @@ static export_tiled_evicted_t *export_tiled_evicted_find(slot_layer_t *l) {
 }
 
 // Layer or mask l's pixels for the tile, into t->out (a mask: out[0]). Fill layers and fill masks render for t->uv_rect
-// at the export resolution (layers_render_fill_rect), dilated as the live ones. Paint layers materialize their timeline
-// (stroke_rec.h) at the state they show, at the export resolution: strokes replay there, what can not replay is
-// resampled from its own resolution (export_tiled_not_upscaled). Otherwise the live layer's pixels, scaled.
+// at the export resolution (layers_render_fill_rect), dilated as the live ones. At the working resolution paint layers
+// are the live layer's pixels, exactly what shows. Above it they materialize their timeline (stroke_rec.h) at the state
+// they show: strokes replay there, what can not replay is resampled (export_tiled_not_upscaled). Without a timeline the
+// live layer's pixels, scaled.
 static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i32 hy, paint_target_t *t) {
 	if (export_tiled_fill_ok(l, m)) {
 		for (i32 k = 0; k < 3; ++k) {
@@ -426,7 +427,10 @@ static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i
 			return true;
 		}
 	}
-	timeline_t *tl = m.mode == 0 ? timeline_of(l) : NULL; // Udim maps: the live layer for now
+	// Above the layer's resolution its timeline (udim maps: the live layer for now). At it, the live layer as it shows.
+	export_tiled_evicted_t *ev    = export_tiled_evicted_find(l);
+	bool                    above = et.w != (ev != NULL ? ev->w : l->texpaint->width) || et.h != (ev != NULL ? ev->hh : l->texpaint->height);
+	timeline_t             *tl    = m.mode == 0 && above ? timeline_of(l) : NULL;
 	if (tl != NULL) {
 		if (timeline_materialize(tl, tl->cursor, t)) { // At the export's resolution, for the tile's rectangle
 			et_stats[9]++;
@@ -434,7 +438,6 @@ static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i
 		}
 		et_stats[10]++;
 	}
-	export_tiled_evicted_t *ev = export_tiled_evicted_find(l);
 	if (ev != NULL && timeline_state_resample(ev->h, t)) { // Export mode: the live layer is away
 		return true;
 	}
@@ -1168,8 +1171,23 @@ static bool export_tiled_upscales(slot_layer_t *l, bool tiles) {
 	if (l->fill_material != NULL) {
 		return tiles && !et_test_no_fill;
 	}
-	timeline_t *tl = tiles ? (et.active ? timeline_of(l) : timeline_ensure(l)) : NULL; // An untouched layer: its state now
-	return tl != NULL && timeline_upscalable(tl, tl->cursor);
+	if (!tiles) {
+		return false;
+	}
+	timeline_t *tl = timeline_of(l);
+	if (tl != NULL) {
+		return timeline_upscalable(tl, tl->cursor);
+	}
+	if (et.active || !timeline_layer_paints(l)) {
+		return false;
+	}
+	// Never changed (a new project's layer, a new mask): uniform, it scales as it is
+	paint_target_t t;
+	timeline_target_live(l, &t);
+	hash128_t h       = timeline_tiles_capture(&t, HASH128_NONE, NULL);
+	bool      uniform = timeline_tiles_uniform(h);
+	hstore_unref(h);
+	return uniform;
 }
 
 static void export_tiled_not_upscaled_job(slot_layer_t_array_t *layers, char *object_name, void *_) {
@@ -1391,9 +1409,6 @@ bool export_tiled_start(char *path, bool bake_material) {
 	export_tiled_blurs_begin();
 	et_evicted_bytes   = 0;
 	et_predicted_bytes = export_tiled_predict();
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) { // Layers never changed: their state now, before export mode
-		timeline_ensure(g_project->_->layers->buffer[i]);    // takes them away
-	}
 	if (export_tiled_mode_wanted()) {
 		hstore_flush(); // The only copy of unsaved pixels goes to the store: on disk first, a kill keeps them
 		project_session_write(); // And the session head: the journal recovers them
