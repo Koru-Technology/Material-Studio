@@ -170,7 +170,11 @@ i32 script_diff_files(char *path_a, char *path_b) {
 // A temporary directory of this run, /tmp/<name>_<pid>: suites of several worktrees run at the same time and must not
 // share their files
 char *script_tmp_dir(char *name) {
+#ifdef IRON_IOS
+	return string("%s%s_%d", iron_internal_save_path(), name, (i32)getpid()); // /tmp is outside the sandbox
+#else
 	return string("/tmp/%s_%d", name, (i32)getpid());
+#endif
 }
 
 // Texels for comparisons across formats: script_texture_read or script_image_read takes a snapshot (RGBA floats, RGBA
