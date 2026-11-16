@@ -36,6 +36,8 @@ void      export_arm_run_swatches(char *path);
 
 // ---- io/export_exr.c ----
 buffer_t *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 type, i32 off);
+FILE     *export_exr_begin(char *path, i32 width, i32 height, i32 bits);
+void      export_exr_band(FILE *f, buffer_t *src, i32 width, i32 y0, i32 rows, i32 bits, i32 type, i32 off);
 
 // ---- io/export_mesh.c ----
 void export_mesh_run(char *path, mesh_object_t_array_t *paint_objects);
@@ -2441,6 +2443,7 @@ f32   script_diff_max();
 f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
+i32   script_diff_files(char *path_a, char *path_b);
 
 // ---- timeline_io.c ----
 u8_array_t *timeline_io_encode();

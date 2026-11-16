@@ -291,6 +291,7 @@
 #include "render/make_dab_resolve.c"
 #include "util/util_test.c"
 #include "io/export_tiled.c"
+#include "app_api_export.c"
 
 #ifdef WITH_PLUGINS
 void plugins_init();

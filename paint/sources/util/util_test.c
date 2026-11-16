@@ -149,3 +149,19 @@ char *script_texture_hash(gpu_texture_t *t) {
 	free(p);
 	return string("%016llx", (unsigned long long)h);
 }
+
+// Bytes that differ between two files, -1 when one does not load or their sizes differ
+i32 script_diff_files(char *path_a, char *path_b) {
+	buffer_t *a = iron_load_blob(path_a);
+	buffer_t *b = iron_load_blob(path_b);
+	i32       r = -1;
+	if (a != NULL && b != NULL && a->length == b->length) {
+		r = 0;
+		for (u32 i = 0; i < a->length; ++i) {
+			r += a->buffer[i] != b->buffer[i];
+		}
+	}
+	iron_delete_blob(a);
+	iron_delete_blob(b);
+	return r;
+}

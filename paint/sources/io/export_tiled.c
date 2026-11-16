@@ -883,8 +883,17 @@ static void export_tiled_write_file(i32 tex) {
 	export_texture_layout_t  layout = export_texture_layout(t);
 	char                    *path   = export_texture_out_path(et.path, et.file, t, et.ext);
 	size_t                   bpp    = et.bpp;
-	buffer_t                *out    = buffer_create((u32)((size_t)et.w * et.h * bpp));
-	bool                     need[3];
+	i32                      type   = layout.src >= 0 ? layout.type : 3;
+	i32                      off    = layout.src >= 0 ? layout.off : 0;
+	// Exr streams a band of tiles at a time, png and jpg encode the whole image
+	bool stream = et.bits > 8 && g_context->layers_destination != EXPORT_DESTINATION_PACK_INTO_PROJECT;
+	FILE *f     = stream ? export_exr_begin(path, et.w, et.h, et.bits) : NULL;
+	if (stream && f == NULL) {
+		console_error(string("Could not save %s.", path));
+		return;
+	}
+	buffer_t *out = buffer_create((u32)((size_t)et.w * (stream ? et.size : et.h) * bpp));
+	bool      need[3];
 	need[0] = need[1] = need[2] = false;
 	if (layout.src >= 0) {
 		need[layout.src] = true;
@@ -920,8 +929,12 @@ static void export_tiled_write_file(i32 tex) {
 			array_free(pix);
 			free(pix);
 		}
+		i32 y0 = stream ? 0 : tile->y;
 		for (i32 row = 0; row < tile->h; ++row) {
-			memcpy(out->buffer + ((size_t)(tile->y + row) * et.w + tile->x) * bpp, src + (size_t)row * tile->w * bpp, (size_t)tile->w * bpp);
+			memcpy(out->buffer + ((size_t)(y0 + row) * et.w + tile->x) * bpp, src + (size_t)row * tile->w * bpp, (size_t)tile->w * bpp);
+		}
+		if (stream && (i + 1 == et.ntiles || et.tiles[i + 1].y != tile->y)) { // The band of tiles is complete
+			export_exr_band(f, out, et.w, tile->y, tile->h, et.bits, type, off);
 		}
 		if (layout.src < 0) {
 			free(src);
@@ -931,7 +944,13 @@ static void export_tiled_write_file(i32 tex) {
 		}
 		free(reach);
 	}
-	export_texture_write_texture(path, out, et.w, et.h, layout.src >= 0 ? layout.type : 3, layout.src >= 0 ? layout.off : 0);
+	if (stream) {
+		fclose(f);
+		export_texture_bake_material_add_texture(path);
+	}
+	else {
+		export_texture_write_texture(path, out, et.w, et.h, type, off);
+	}
 	array_free(out);
 	free(out);
 	any_array_push(et.written, string_copy(path));
