@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Undo v2, deep: 200 strokes on 3 layers and a mask, the GPU undo tiles dropped half way. Undoing back to the start and
+// Undo v2, deep: 200 strokes on 3 layers and a mask, the GPU undo tiles dropped half way, a memory warning at the end. Undoing back to the start and
 // redoing to the end gives every layer back byte for byte: tile swaps for the recent steps, timeline states for the rest.
 
 int fails  = 0;
@@ -84,6 +84,7 @@ void next() {
 			return;
 		}
 		h_end = all_hash();
+		history_on_memory_warning(); // Tiles of the last 4 steps stay, the store drops what it can without reading back
 		check(!string_equals(h_end, h_start) && !string_equals(h_mid, h_start), "the strokes paint");
 		check(history_test_undos() == undos + 200, string("200 steps to undo (%d)", history_test_undos() - undos));
 		for (int i = 0; i < 100; ++i) {
@@ -95,7 +96,7 @@ void next() {
 	}
 	else if (step == 3) {
 		check(!history_busy(), "restores done");
-		check(string_equals(all_hash(), h_mid), "100 undos from tiles give the layers after stroke 100 back");
+		check(string_equals(all_hash(), h_mid), "100 undos (4 from tiles) give the layers after stroke 100 back");
 		for (int i = 0; i < 100; ++i) {
 			history_undo();
 		}
