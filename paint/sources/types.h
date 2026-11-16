@@ -373,6 +373,7 @@ typedef struct config {
 	bool                 timeline_shadow;   // Stroke recording runs beside the old undo, nothing reads it (stroke_rec.h)
 	bool                 history_v2;        // Undo from timelines and checkpoints, the undo ring retired
 	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
+	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
 } config_t;
 
 // ---- Materials ----

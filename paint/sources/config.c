@@ -147,7 +147,8 @@ void config_brush_save_update() {
 	X(I32, undo_memory_mb, 1, 1048576)                                                           \
 	X(BOOL, timeline_shadow, CONFIG_ANY)                                                         \
 	X(BOOL, history_v2, CONFIG_ANY)                                                              \
-	X(BOOL, export_tiled, CONFIG_ANY)
+	X(BOOL, export_tiled, CONFIG_ANY)                                                            \
+	X(BOOL, paint_resolved_dabs, CONFIG_ANY)
 
 #define CONFIG_ANY -FLT_MAX, FLT_MAX
 
