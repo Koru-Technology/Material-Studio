@@ -335,25 +335,39 @@ void camera_set_pivot_center_to_mouse() {
 	camera_object_build_mat(camera);
 }
 
+// Rolls the view around the look direction, radians clockwise on screen: the view turns with the fingers. Two finger twist
+// and the ring around the view cube. While held is false and the roll is near level, it levels again shortly after.
+static bool camera_roll_held = false;
+static bool camera_rolling   = false;
+static f64  camera_roll_time = 0.0;
+
+void camera_roll(f32 radians, bool held) {
+	camera_roll_held = held;
+	if (radians == 0.0) {
+		return;
+	}
+	camera_object_t *camera = scene_camera;
+	vec4_t           look   = vec4_norm(transform_look(camera->base->transform));
+	transform_rotate(camera->base->transform, look, -radians);
+	camera_object_build_mat(camera);
+	camera_redraws    = 2;
+	g_context->ddirty = 2; // The rest of the camera update may not run without a button down
+	camera_rolling    = true;
+	camera_roll_time  = sys_time();
+}
+
 #ifdef IRON_IOS
-// Twist with two fingers or the trackpad rolls the view around the look direction, it levels again near 0
+// Twist with two fingers or the trackpad rolls the view, it levels again near 0
 static void camera_twist() {
-	static f64  twist_time = 0.0;
-	static bool twisting   = false;
 	camera_object_t *camera = scene_camera;
 	vec4_t           look   = vec4_norm(transform_look(camera->base->transform));
 	if (mouse_twist_delta != 0.0 && context_in_3d_view() && base_ui_enabled && !base_paint_in_2d()) {
-		transform_rotate(camera->base->transform, look, -mouse_twist_delta); // The view turns with the fingers
-		camera_object_build_mat(camera);
-		camera_redraws    = 2;
-		g_context->ddirty = 2; // The rest of the camera update may not run without a button down
-		twisting          = true;
-		twist_time     = sys_time();
+		camera_roll(mouse_twist_delta, false);
 	}
-	else if (twisting && !mouse_down("right") && sys_time() - twist_time > 0.25) {
-		twisting     = false;
-		vec4_t right = vec4_norm(transform_right(camera->base->transform));
-		f32    roll  = math_asin(math_max(-1.0, math_min(1.0, right.z)));
+	else if (camera_rolling && !camera_roll_held && !mouse_down("right") && sys_time() - camera_roll_time > 0.25) {
+		camera_rolling = false;
+		vec4_t right   = vec4_norm(transform_right(camera->base->transform));
+		f32    roll    = math_asin(math_max(-1.0, math_min(1.0, right.z)));
 		if (math_abs(roll) < 0.07 && roll != 0.0) {
 			transform_rotate(camera->base->transform, look, roll);
 			if (math_abs(vec4_norm(transform_right(camera->base->transform)).z) > math_abs(right.z)) {

@@ -343,6 +343,22 @@ void app_view_orbit(float x, float y) {
 	iron_delay_idle_sleep();
 }
 
+void app_view_turn(float x, float y) {
+	if (!app_ready()) {
+		return;
+	}
+	viewport_turn(x, y);
+	iron_delay_idle_sleep();
+}
+
+void app_view_roll(float radians, bool held) {
+	if (!app_ready()) {
+		return;
+	}
+	camera_roll(radians, held);
+	iron_delay_idle_sleep();
+}
+
 // As the old Camera menu's FoV slider: a perspective camera moves along its view to keep the pivot's framing
 void app_set_camera_fov(float fov) {
 	if (!app_ready() || scene_camera == NULL) {
