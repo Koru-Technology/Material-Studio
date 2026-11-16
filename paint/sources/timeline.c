@@ -323,6 +323,20 @@ tl_entry_t *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, const 
 	return &tl->entries[tl->count - 1];
 }
 
+// A path layer repainted (util_path.c): its pixels changed with no step of their own, the change goes with the last
+// step as a floor (exports and undo read it from the timeline). Repaints in a row (a point dragged) share one entry,
+// its state taken again.
+void timeline_record_path(slot_layer_t *l) {
+	timeline_t     *tl   = timeline_find(l->timeline);
+	history_step_t *step = timeline_last_step();
+	tl_entry_t     *last = tl != NULL && tl->count > 0 && tl->cursor == tl->count ? &tl->entries[tl->count - 1] : NULL;
+	if (last != NULL && last->kind == TL_PATH && last->step_serial == (step != NULL ? step->serial : 0)) {
+		timeline_pending_add(tl, tl->count - 1, l, step);
+		return;
+	}
+	timeline_record(l, TL_PATH, HASH128_NONE, NULL, TL_FLAG_NONLOCAL);
+}
+
 // history_paint(): the stroke is a TL_RASTER entry, its tile delta comes at finalize
 void timeline_stroke_begin(history_step_t *step, slot_layer_t *l) {
 	timeline_record(l, TL_RASTER, HASH128_NONE, NULL, 0);
@@ -919,6 +933,18 @@ bool timeline_test_render(slot_layer_t *l, i32 pos, i32 res_w, i32 res_h, f32 u0
 		return false;
 	}
 	return timeline_materialize(tl, pos < 0 ? tl->cursor : pos, &t);
+}
+
+// Entry i of l's timeline replayed over the state before it, at the working resolution: the op's replay alone. False
+// without a state before it.
+bool timeline_test_replay_entry(slot_layer_t *l, i32 i) {
+	timeline_t    *tl = timeline_of(l);
+	paint_target_t t;
+	if (tl == NULL || i < 0 || i >= tl->count || !timeline_test_target(l, timeline_test_tex, l->texpaint->width, l->texpaint->height, 0, 0, 1, 1, &t)) {
+		return false;
+	}
+	hash128_t h = timeline_state_at(tl, i, t.res_w, t.res_h);
+	return !hash128_is_none(h) && timeline_tiles_restore(h, &t) && timeline_entry_replay(tl, i, &t);
 }
 
 // The live textures of l scaled (bilinear) to res_w x res_h, what a resolution change did before timelines

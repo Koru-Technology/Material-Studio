@@ -667,6 +667,7 @@ static void path_repaint(slot_layer_t *l) {
 	camera_object_build_proj(scene_camera, -1.0);
 	camera_object_build_mat(scene_camera);
 	render_path_base_draw_gbuffer();
+	timeline_record_path(l); // The timeline holds what the layer shows
 
 	g_context->pdirty           = 0;
 	g_context->rtdirty          = 1;
