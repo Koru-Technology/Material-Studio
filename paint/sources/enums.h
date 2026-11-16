@@ -632,6 +632,7 @@ typedef enum {
 	HISTORY_ACTION_MASK_HEIGHT_BLEND,
 	HISTORY_ACTION_MASK_STACK, // Effects of a mask stack added, removed, moved or edited
 	HISTORY_ACTION_RESOLUTION, // Working resolution changed, layers kept (util/util_layer_resolution.c)
+	HISTORY_ACTION_PATH,       // Points of a path layer added, removed or moved (util/util_path.c)
 } history_action_t;
 
 // Rounded corners of floating panels

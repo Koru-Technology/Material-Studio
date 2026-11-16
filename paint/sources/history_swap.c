@@ -359,6 +359,70 @@ void history_swap_merge(history_step_t *step, bool undo) {
 	g_context->layers_preview_dirty = true;
 }
 
+static f32_array_t *history_f32s_copy(f32_array_t *a) {
+	if (a == NULL) {
+		return NULL;
+	}
+	f32_array_t *c = f32_array_create(a->length);
+	if (a->length > 0) {
+		memcpy(c->buffer, a->buffer, sizeof(f32) * a->length);
+	}
+	return c;
+}
+
+// The path props of l (points, curve, text, tool, material) in a layer struct of their own
+slot_layer_t *history_path_copy(slot_layer_t *l) {
+	slot_layer_t *c       = ALLOC_INIT(slot_layer_t, {0});
+	c->path_points        = history_f32s_copy(l->path_points);
+	c->path_points_world  = history_f32s_copy(l->path_points_world);
+	c->path_points_camera = history_f32s_copy(l->path_points_camera);
+	if (l->path_points_parent != NULL) {
+		c->path_points_parent = i32_array_create(l->path_points_parent->length);
+		if (l->path_points_parent->length > 0) {
+			memcpy(c->path_points_parent->buffer, l->path_points_parent->buffer, sizeof(i32) * l->path_points_parent->length);
+		}
+	}
+	c->path_curved   = l->path_curved;
+	c->path_text     = l->path_text;
+	c->path_tool     = l->path_tool;
+	c->path_material = l->path_material;
+	return c;
+}
+
+void history_path_free(slot_layer_t *p) {
+	if (p == NULL) {
+		return;
+	}
+	array_delete(p->path_points);
+	array_delete(p->path_points_world);
+	array_delete(p->path_points_camera);
+	array_delete(p->path_points_parent);
+	free(p);
+}
+
+// The path props of l and of the step trade places
+void history_swap_path(history_step_t *step, slot_layer_t *l) {
+	slot_layer_t t        = *l;
+	slot_layer_t *p       = step->path;
+	l->path_points        = p->path_points;
+	l->path_points_world  = p->path_points_world;
+	l->path_points_camera = p->path_points_camera;
+	l->path_points_parent = p->path_points_parent;
+	l->path_curved        = p->path_curved;
+	l->path_text          = p->path_text;
+	l->path_tool          = p->path_tool;
+	l->path_material      = p->path_material;
+	p->path_points        = t.path_points;
+	p->path_points_world  = t.path_points_world;
+	p->path_points_camera = t.path_points_camera;
+	p->path_points_parent = t.path_points_parent;
+	p->path_curved        = t.path_curved;
+	p->path_text          = t.path_text;
+	p->path_tool          = t.path_tool;
+	p->path_material      = t.path_material;
+	path_layer_last_active = l->path_points != NULL ? l->path_points->length / 2 - 1 : -1;
+}
+
 void history_swap_order(history_step_t *step) {
 	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
 	slot_layer_t         *l        = g_project->_->layers->buffer[step->prev_order];
