@@ -288,6 +288,8 @@ rect_t *base_get_drag_background() {
 	return NULL;
 }
 
+// history_v2 never fills the ring, it stays as scratch: render_path_paint and raytrace bake bind texpaint_undo<i> (known
+// debt, to go with the ring in phase 7)
 void base_init_undo_layers() {
 	if (history_undo_layers == NULL) {
 		history_undo_layers = any_array_create_from_raw((void *[]){}, 0);
