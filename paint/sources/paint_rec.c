@@ -12,7 +12,7 @@
 //   dabs: PAINT_DAB_TEXELS * 4 arrays of n_dabs f32, the resolved texels component by component.
 
 #define PAINT_REC_MAGIC   0x31435250 // "PRC1"
-#define PAINT_REC_VERSION 2
+#define PAINT_REC_VERSION 3
 
 typedef struct paint_rec_head {
 	u32 magic;
@@ -65,7 +65,7 @@ static bool paint_rec_tool_replayable() {
 	tool_type_t tool = g_context->tool;
 	slot_layer_t *l  = g_context->layer;
 	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER) && l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
-	       !context_is_pixel_snap() && g_context->brush_mask_image == NULL && g_context->brush_stencil_image == NULL && !g_context->pick_pos_nor_tex;
+	       !context_is_pixel_snap() && !g_context->pick_pos_nor_tex;
 }
 
 void paint_state_capture(paint_state_t *s, hash128_t material) {
@@ -105,6 +105,14 @@ void paint_state_capture(paint_state_t *s, hash128_t material) {
 	s->batching        = make_paint_batching;
 	s->dilate_radius   = g_config->dilate_radius;
 	s->matcache        = make_material_paint_scon != NULL && make_paint_scon_uses_matcache(make_material_paint_scon);
+	s->tip             = paint_asset_intern(g_context->brush_mask_image);
+	s->tip_alpha       = g_context->brush_mask_image_is_alpha;
+	s->stencil         = paint_asset_intern(g_context->brush_stencil_image);
+	s->stencil_alpha   = g_context->brush_stencil_image_is_alpha;
+	s->stencil_transform[0] = g_context->brush_stencil_x;
+	s->stencil_transform[1] = g_context->brush_stencil_y;
+	s->stencil_transform[2] = g_context->brush_stencil_scale;
+	s->stencil_transform[3] = g_context->brush_stencil_angle;
 }
 
 static u16 paint_rec_state_index(paint_rec_t *r) {
@@ -136,6 +144,8 @@ static u16 paint_rec_cam_index(paint_rec_t *r) {
 	c.w     = render_path_current_w;
 	c.h     = render_path_current_h;
 	c.frame = scene_camera->frame;
+	c.right = camera_object_right_world(scene_camera);
+	c.up    = camera_object_up_world(scene_camera);
 	if (r->n_cams > 0 && memcmp(&r->cams[r->n_cams - 1], &c, sizeof(c)) == 0) {
 		return r->n_cams - 1;
 	}
@@ -163,6 +173,7 @@ void paint_rec_stroke_begin(history_step_t *step, slot_layer_t *l) {
 	if (tl == NULL || tl->count == 0 || !paint_rec_tool_replayable()) {
 		return;
 	}
+	paint_asset_stroke_begin();
 	paint_rec_t *r = &paint_rec;
 	r->active      = true;
 	r->replayable  = true;
@@ -478,6 +489,12 @@ static void paint_rec_children(const u8 *data, u32 len, hstore_visit_fn visit, v
 		memcpy(&s, data + sizeof(h) + i * sizeof(paint_state_t), sizeof(s));
 		if (!hash128_is_none(s.material)) {
 			visit(s.material, ud);
+		}
+		if (!hash128_is_none(s.tip)) {
+			visit(s.tip, ud);
+		}
+		if (!hash128_is_none(s.stencil)) {
+			visit(s.stencil, ud);
 		}
 	}
 }

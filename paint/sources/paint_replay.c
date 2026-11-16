@@ -12,6 +12,7 @@ static i32 paint_replay_count     = 0;
 gpu_texture_t *paint_replay_s0[3] = {NULL, NULL, NULL}; // The target before the stroke: what _texpaint_undo reads replaying
 mat4_t         paint_replay_obj;                        // The paint target's object space when recorded
 mat4_t         paint_replay_obj_inv;
+paint_rec_cam_t paint_replay_cam; // The camera of the draws replayed now
 
 // Paint shaders parsed for replays, by GLSL hash, kept for the next replays
 #define PAINT_REPLAY_SCONS 8
@@ -60,6 +61,14 @@ static void paint_replay_state_apply(paint_state_t *s) {
 	g_project->linear_blending             = s->linear_blending;
 	g_project->_->translucency             = s->translucency;
 	make_paint_batching                    = s->batching;
+	g_context->brush_mask_image            = paint_asset_texture(s->tip);
+	g_context->brush_mask_image_is_alpha   = s->tip_alpha;
+	g_context->brush_stencil_image         = paint_asset_texture(s->stencil);
+	g_context->brush_stencil_image_is_alpha = s->stencil_alpha;
+	g_context->brush_stencil_x             = s->stencil_transform[0];
+	g_context->brush_stencil_y             = s->stencil_transform[1];
+	g_context->brush_stencil_scale         = s->stencil_transform[2];
+	g_context->brush_stencil_angle         = s->stencil_transform[3];
 }
 
 // The paint shader of a state, NULL when it does not hash as recorded. A stroke that read the material from its cache
@@ -97,6 +106,7 @@ static void paint_replay_camera(paint_rec_cam_t *c) {
 	scene_camera->p     = c->p;
 	scene_camera->vp    = mat4_mult_mat(c->v, c->p);
 	scene_camera->frame = c->frame;
+	paint_replay_cam    = *c;
 	render_target_t *main = any_map_get(render_path_render_targets, "main_paint");
 	if (main != NULL && main->_image != NULL && main->_image->width == c->w && main->_image->height == c->h) {
 		paint_replay_depth = "main_paint";

@@ -376,11 +376,11 @@ vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) 
 		return v;
 	}
 	else if (string_equals(link, "_camera_right")) {
-		v = camera_object_right_world(scene_camera);
+		v = paint_exec_replay ? paint_replay_cam.right : camera_object_right_world(scene_camera); // Replaying: as recorded
 		return v;
 	}
 	else if (string_equals(link, "_camera_up")) {
-		v = camera_object_up_world(scene_camera);
+		v = paint_exec_replay ? paint_replay_cam.up : camera_object_up_world(scene_camera);
 		return v;
 	}
 	return v;

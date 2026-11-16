@@ -4,7 +4,7 @@
 // a stroke on a new layer with resolved dabs and timelines on, notes the hash of the layer's textures, then restores the
 // state before the stroke and replays its record into the layer: the hashes must match, no replay may fall back.
 // Cases: batched stamps, unbatched stamps, flow below 1, jitter (seeded), symmetry, a continuous brush, the eraser over a
-// stroke, a stroke through the per frame path (mouse events, tail and in-stroke dilation), a mask. Then a stroke replays
+// stroke, a stroke through the per frame path (mouse events, tail and in-stroke dilation), a mask, a brush tip. Then a stroke replays
 // the same after the project is saved (project_v31) and opened again.
 
 int fails  = 0;
@@ -52,6 +52,9 @@ char *case_name(int k) {
 	if (k == 8) {
 		return "mask";
 	}
+	if (k == 9) {
+		return "tip";
+	}
 	return "saved and opened";
 }
 
@@ -83,6 +86,11 @@ void setup(int k) {
 	ctx->brush_jitter_size    = k == 3 ? 0.4 : 0.0;
 	ctx->brush_jitter_opacity = k == 3 ? 0.3 : 0.0;
 	ctx->sym_x                = k == 4;
+	if (k == 9) {
+		app_brush_use(12); // Square: a tip
+		ctx->brush_radius  = 0.3;
+		ctx->brush_spacing = 0.05;
+	}
 	context_select_tool(TOOL_TYPE_BRUSH);
 	app_layer_new(0);
 	if (k == 8) {
@@ -140,18 +148,18 @@ void next() {
 			make_paint_set_batching(1);
 		}
 	}
-	else if (kase == 9 && frame == 7) { // Saved, a new project, opened again
+	else if (kase == 10 && frame == 7) { // Saved, a new project, opened again
 		iron_create_directory(dir);
 		project_filepath_set(string("%s/rec.arm", dir));
 		project_save(0);
 	}
-	else if (kase == 9 && frame == 9) {
+	else if (kase == 10 && frame == 9) {
 		script_project_new();
 	}
-	else if (kase == 9 && frame == 11) {
+	else if (kase == 10 && frame == 11) {
 		script_project_open(string("%s/rec.arm", dir));
 	}
-	else if (kase == 9 && frame == 14) {
+	else if (kase == 10 && frame == 14) {
 		check(find_uid(uid) != NULL, "the layer is there after opening");
 		check(string_equals(h0, hash_of(find_uid(uid)->texpaint)), "the layer as saved");
 	}
@@ -173,12 +181,12 @@ void next() {
 		paint_rec_flush();
 		note();
 	}
-	else if ((kase != 7 && kase != 9 && frame == 10) || (kase == 7 && frame == 44) || (kase == 9 && frame == 16)) {
+	else if ((kase != 7 && kase != 10 && frame == 10) || (kase == 7 && frame == 44) || (kase == 10 && frame == 16)) {
 		compare(kase);
 		kase  = kase + 1;
 		frame = 0;
-		if (kase == 10) {
-			check(paint_rec_test_stored() >= 9, string("strokes stored (%d)", paint_rec_test_stored()));
+		if (kase == 11) {
+			check(paint_rec_test_stored() >= 10, string("strokes stored (%d)", paint_rec_test_stored()));
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 			script_get_config()->paint_resolved_dabs = 0;
 			script_get_config()->timeline_shadow     = 0;
