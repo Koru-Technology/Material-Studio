@@ -51,7 +51,6 @@ void export_texture_test_options(char *preset, i32 layers_export, bool padding, 
 char           *import_arm_abs(char *file, char *base);
 void            import_arm_make_pink(char *abs);
 void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha);
-void            import_arm_mask_texture_r8(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h);
 bool            import_arm_texture_has_alpha(gpu_texture_t *t);
 void            import_arm_init_nodes(ui_node_t_array_t *nodes);
 packed_asset_t *import_arm_take_packed_asset(project_t *project, char *abs, char *file, bool copy);
@@ -2402,9 +2401,7 @@ project_t  *project_container_open(char *path);
 project_t  *project_container_decode(buffer_t *b);
 void        project_container_attach();
 void        project_container_forget();
-bool        project_container_mask_r8(layer_data_t *ld);
 bool        project_container_writing();
-u8_array_t *project_container_layer_rasters(slot_layer_t *l);
 u8_array_t *project_container_layer_tilemap(slot_layer_t *l);
 bool        project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, bool *has_alpha);
 i32         project_container_roots(hash128_t *out, i32 cap);

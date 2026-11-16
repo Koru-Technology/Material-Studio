@@ -4,10 +4,9 @@
 // appending. Little endian:
 //   "MSPJ" u32 31, 8 bytes 0
 //   chunks: "CHNK" ... (HSTORE_CHUNK_HEADER): the referenced blobs of the store, among them the tile maps of the live
-//           layers and their tiles (timeline_tiles.c); packed assets (HSTORE_ASSET); whole textures (HSTORE_RASTER) of
-//           layers whose size tiles do not divide
-//   head:   the project as armpack (util_encode_project), layers with the hash of their tile map (or rasters) instead
-//           of pixels, packed assets with the hash of their bytes
+//           layers and their tiles (timeline_tiles.c), the timelines' blobs; packed assets (HSTORE_ASSET)
+//   head:   the project as armpack (util_encode_project), layers with the hash of their tile map instead of pixels,
+//           packed assets with the hash of their bytes
 //   index:  the chunks the head and history use, sorted by hash: u64 lo, u64 hi, u64 offset, u32 raw_len,
 //           u32 comp_len, u8 kind, u8 codec, 6 bytes 0
 //   footer: "MSPF" u32 31, u64 head_off, head_len, index_off, index_len, prev_footer, u32 crc32(head, index), u32 0,
@@ -307,9 +306,10 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 			u8_array_t    *tm     = (u8_array_t *)ld->tilemap;
 			if (tm != NULL && tm->length >= 16) { // Restored by the load from the store, empty buffers tell layers from groups
 				hstore_chunk_t chunk;
-				buffer_t      *b        = pc_payload(s, index, count, pc_hash_at(tm, 0), &chunk);
+				hash128_t      h        = pc_hash_at(tm, 0);
+				buffer_t      *b        = hash128_is_none(h) ? NULL : pc_payload(s, index, count, h, &chunk);
 				u8            *map      = b != NULL ? hstore_chunk_decode(&chunk, b->buffer, true) : NULL;
-				i32            channels = map != NULL && chunk.raw_len >= 2 ? map[1] : 3; // Tile map header: tag, channels
+				i32            channels = map != NULL && chunk.raw_len >= 2 ? map[1] : tm->length >= 17 ? tm->buffer[16] : 3; // Map header: tag, channels
 				for (i32 c = 0; c < 3; ++c) {
 					*dst[c] = c == 0 || channels == 3 ? buffer_create(0) : NULL;
 				}
@@ -318,21 +318,11 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 					array_free(b);
 					free(b);
 				}
-				if (st != NULL) {
+				if (st != NULL && !hash128_is_none(h)) {
 					i32 cap = st->maps_count;
-					pc_maps_push(&st->maps, &st->maps_count, &cap, pc_hash_at(tm, 0));
+					pc_maps_push(&st->maps, &st->maps_count, &cap, h);
 				}
 				continue;
-			}
-			for (i32 c = 0; c < 3; ++c) {
-				hash128_t h = pc_hash_at(ld->rasters, c);
-				if (!hash128_is_none(h)) {
-					hstore_chunk_t chunk;
-					*dst[c] = pc_payload(s, index, count, h, &chunk);
-					if (*dst[c] == NULL) {
-						*dst[c] = buffer_create(0); // Missing: the layer starts empty
-					}
-				}
 			}
 		}
 	}
@@ -444,7 +434,8 @@ bool project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, bool *ha
 	}
 	paint_target_t t;
 	timeline_target_live(l, &t);
-	if (!timeline_tiles_restore(pc_hash_at(tm, 0), &t)) {
+	hash128_t h = pc_hash_at(tm, 0);
+	if (hash128_is_none(h) || !timeline_tiles_restore(h, &t)) {
 		iron_log("Layer tiles could not be read, the layer starts empty");
 	}
 	if (has_alpha != NULL) {
@@ -461,10 +452,6 @@ i32 project_container_roots(hash128_t *out, i32 cap) {
 	return pc.maps_count;
 }
 
-// Saved masks are one channel
-bool project_container_mask_r8(layer_data_t *ld) {
-	return ld->rasters != NULL;
-}
 
 // ---- Writing ----
 
@@ -512,38 +499,8 @@ static bool pc_has(hash128_t h) {
 	return false;
 }
 
-static hash128_t pc_put_raster(gpu_texture_t *t, bool mask) {
-	buffer_t *px  = gpu_get_texture_pixels(t);
-	buffer_t *raw = px;
-	if (mask) { // One channel, the mask's value (the texture is RGBA32 for undo, its channels are equal)
-		raw = buffer_create(px->length / 4);
-		for (u32 i = 0; i < raw->length; ++i) {
-			raw->buffer[i] = px->buffer[i * 4];
-		}
-	}
-	hash128_t h = hstore_hash(raw->buffer, raw->length);
-	if (!pc_has(h)) {
-		if (pc_find(pc_w->old, pc_w->old_count, h) != NULL) {
-			pc_put(HSTORE_RASTER, HSTORE_CODEC_LZ4, h, raw->length, NULL, 0);
-		}
-		else {
-			buffer_t *enc = lz4_encode(raw); // Always LZ4: the load reads it as version 30 reads layers
-			pc_put(HSTORE_RASTER, HSTORE_CODEC_LZ4, h, raw->length, enc->buffer, enc->length);
-			array_free(enc);
-			free(enc);
-		}
-	}
-	gpu_release_texture_pixels(t);
-	if (raw != px) {
-		array_free(raw);
-		free(raw);
-	}
-	return h;
-}
-
 // The tile map of a layer's live state (layer_data_t.tilemap): its timeline's state at the cursor, else a capture. Its
-// tiles are written with the store's blobs. NULL for a group and where tiles do not fit (a size the grid does not
-// divide): the textures are written whole then.
+// tiles are written with the store's blobs. NULL for a group.
 u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
@@ -557,31 +514,17 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 		paint_target_t t;
 		timeline_target_live(l, &t);
 		h = timeline_tiles_capture(&t, HASH128_NONE, NULL); // Full: older saves' tiles go dead, unchanged ones dedupe
-		if (hash128_is_none(h)) {
-			return NULL;
+		if (hash128_is_none(h)) { // Below the tile size: saved without pixels, still a layer (NONE, then its channels)
+			iron_log("Layer %s could not be cut in tiles, it is saved empty", l->name);
+			u8_array_t *a = u8_array_create(17);
+			a->buffer[16] = (u8)t.channels;
+			return a;
 		}
 	}
 	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
 	u8_array_t *a = u8_array_create(16);
 	memcpy(a->buffer, &h.lo, 8);
 	memcpy(a->buffer + 8, &h.hi, 8);
-	return a;
-}
-
-// The hashes of a layer's textures, written as chunks of the save (layer_data_t.rasters), NULL for a group. Only for
-// sizes the tile grid does not divide.
-u8_array_t *project_container_layer_rasters(slot_layer_t *l) {
-	if (l->texpaint == NULL) {
-		return NULL;
-	}
-	u8_array_t    *a      = u8_array_create(48);
-	gpu_texture_t *ts[3]  = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
-	bool           mask   = slot_layer_is_mask(l);
-	for (i32 c = 0; c < 3; ++c) {
-		hash128_t h = ts[c] != NULL ? pc_put_raster(ts[c], mask && c == 0) : HASH128_NONE;
-		memcpy(a->buffer + c * 16, &h.lo, 8);
-		memcpy(a->buffer + c * 16 + 8, &h.hi, 8);
-	}
 	return a;
 }
 
@@ -692,6 +635,7 @@ static bool pc_save(char *path, bool copy) {
 		iron_file_stream_write(s, header, PC_HEADER);
 	}
 
+	history_flush_restores(NULL); // Deferred undo restores land: the live layers are the ones shown
 	if (timeline_active()) {
 		timeline_finalize(); // Pending entry states captured
 	}
@@ -701,7 +645,7 @@ static bool pc_save(char *path, bool copy) {
 	if (copy) {
 		project_uuid_new(); // Another file: its own journal name
 	}
-	buffer_t *head = export_arm_encode_project(path); // Writes the rasters and assets
+	buffer_t *head = export_arm_encode_project(path); // Writes the packed assets, captures the tile maps
 	if (copy) {
 		project_uuid = uuid;
 	}

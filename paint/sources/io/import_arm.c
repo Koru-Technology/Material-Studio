@@ -441,9 +441,6 @@ void import_arm_run_project(char *path) {
 			if (project_container_layer_restore(ld, l, i == 0 ? &g_project->_->translucency : NULL)) {
 				// Tiles of a container
 			}
-			else if (is_mask && project_container_mask_r8(ld)) {
-				import_arm_mask_texture_r8(l->texpaint, ld->texpaint, res_x, res_y);
-			}
 			else if (is_mask) { // Full bits for undo support, R8 is used
 				import_arm_layer_texture(l->texpaint, ld->texpaint, res_x, res_y, 4, GPU_TEXTURE_FORMAT_RGBA32, NULL);
 			}
@@ -631,7 +628,7 @@ void import_arm_run_project(char *path) {
 	project_container_loaded();
 	for (i32 i = 0; i < g_project->layer_datas->length; ++i) {
 		layer_data_t *ld = g_project->layer_datas->buffer[i];
-		if (ld->rasters != NULL || ld->tilemap != NULL) { // Read from a container, not part of a blob: uploaded
+		if (ld->tilemap != NULL) { // Read from a container, not part of a blob: uploaded
 			buffer_t **raster[3] = {(buffer_t **)&ld->texpaint, (buffer_t **)&ld->texpaint_nor, (buffer_t **)&ld->texpaint_pack};
 			for (i32 c = 0; c < 3; ++c) {
 				if (*raster[c] != NULL) {

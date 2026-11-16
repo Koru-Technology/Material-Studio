@@ -236,7 +236,6 @@ project_t *import_arm_from_map_to_arm(any_map_t *old) {
 			ld->res_x                  = armpack_map_get_i32(old, "res_x");
 			ld->res_y                  = armpack_map_get_i32(old, "res_y");
 			ld->timeline               = (u32)armpack_map_get_i32(old, "timeline");
-			ld->rasters                = any_map_get(old, "rasters");
 			ld->tilemap                = any_map_get(old, "tilemap");
 			any_array_push(project->layer_datas, ld);
 		}
