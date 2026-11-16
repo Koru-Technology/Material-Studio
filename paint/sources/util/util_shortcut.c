@@ -26,7 +26,7 @@ void util_shortcut_undo_redo() {
 			util_shortcut_tap_fingers = 3;
 		}
 		util_shortcut_tap_moved += math_abs(mouse_movement_x) + math_abs(mouse_movement_y) + math_abs(mouse_wheel_delta) * 40.0;
-#if defined(IRON_IOS) || defined(IRON_ANDROID)
+#ifdef IRON_IOS
 		util_shortcut_tap_moved += math_abs(mouse_twist_delta) * 200.0;
 #endif
 		if (!mouse_down("right") && !mouse_down("middle")) {
@@ -107,12 +107,6 @@ void util_shortcut_global() {
 	if (keyboard_started(any_map_get(g_keymap, "view_distract_free")) || (keyboard_started("escape") && !ui_base_show && !ui_box_show)) {
 		ui_base_toggle_distract_free();
 	}
-
-#ifdef IRON_LINUX
-	if (g_ui->is_alt_down && g_ui->is_key_pressed && g_ui->key_code == KEY_CODE_RETURN) {
-		base_toggle_fullscreen();
-	}
-#endif
 }
 
 void util_shortcut_brush() {
