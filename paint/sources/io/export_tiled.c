@@ -337,6 +337,7 @@ typedef struct export_tiled_pool {
 static export_tiled_pool_t et_pool[EXPORT_TILED_DEPTH];
 static gpu_texture_t      *et_fill[5]; // layers_render_fill_rect: the layer before, a mask's normal and pack outputs
 static gpu_texture_t      *et_fill_temp;
+static gpu_texture_t      *et_low[3]; // A tile's part of a layer at the working resolution
 static bool                et_test_no_fill = false; // Tests: fill layers from their live pixels
 
 static void export_tiled_release_pool() {
@@ -348,6 +349,9 @@ static void export_tiled_release_pool() {
 	}
 	for (i32 i = 0; i < 5; ++i) {
 		util_texture_release_target(&et_fill[i]);
+	}
+	for (i32 i = 0; i < 3; ++i) {
+		util_texture_release_target(&et_low[i]);
 	}
 	util_texture_release_target(&et_fill_temp);
 }
@@ -376,6 +380,40 @@ static void export_tiled_dilate_copy(gpu_texture_t *t, i32 radius) {
 	export_tiled_dilate(t, et_fill_temp, et_cov, radius);
 }
 
+// Layer l's timeline at its cursor for the tile: restored for the tile's rectangle at the working resolution, scaled up
+// (bilinear) when the export is larger, until strokes replay at any resolution
+static bool export_tiled_materialize(slot_layer_t *l, timeline_t *tl, i32 hx, i32 hy, paint_target_t *t) {
+	i32 w0 = l->texpaint->width;
+	i32 h0 = l->texpaint->height;
+	if (w0 == et.w && h0 == et.h) {
+		return timeline_materialize(tl, tl->cursor, t);
+	}
+	f32 kx = w0 / (f32)et.w, ky = h0 / (f32)et.h;
+	i32 x0 = (i32)math_floor(hx * kx) - 1, y0 = (i32)math_floor(hy * ky) - 1; // A texel more around: bilinear reads it
+	i32 x1 = (i32)math_ceil((hx + t->w) * kx) + 1, y1 = (i32)math_ceil((hy + t->h) * ky) + 1;
+	gpu_texture_t *live[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
+	paint_target_t lo      = {.w = x1 - x0, .h = y1 - y0, .res_w = w0, .res_h = h0, .channels = t->channels};
+	lo.uv_rect[0]          = x0 / (f32)w0;
+	lo.uv_rect[1]          = y0 / (f32)h0;
+	lo.uv_rect[2]          = x1 / (f32)w0;
+	lo.uv_rect[3]          = y1 / (f32)h0;
+	for (i32 k = 0; k < t->channels; ++k) {
+		util_texture_ensure_target(&et_low[k], lo.w, lo.h, live[k]->format);
+		lo.out[k] = et_low[k];
+	}
+	if (!timeline_materialize(tl, tl->cursor, &lo)) {
+		return false;
+	}
+	for (i32 k = 0; k < t->channels; ++k) {
+		draw_begin(t->out[k], false, 0);
+		draw_set_pipeline(pipes_copy);
+		draw_scaled_sub_image(et_low[k], hx * kx - x0, hy * ky - y0, t->w * kx, t->h * ky, 0, 0, t->w, t->h);
+		draw_set_pipeline(NULL);
+		draw_end();
+	}
+	return true;
+}
+
 // The plug-in point: layer or mask l's pixels for the tile, into t->out (a mask: out[0]). Fill layers and fill masks
 // render for t->uv_rect at the export resolution (layers_render_fill_rect), dilated as the live ones. Paint layers from
 // their timeline (stroke_rec.h) at the state they show; otherwise, or when it can not (today: restoring kept states only,
@@ -400,7 +438,7 @@ static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i
 	}
 	timeline_t *tl = m.mode == 0 ? timeline_of(l) : NULL; // Udim maps: the live layer for now
 	if (tl != NULL) {
-		if (timeline_materialize(tl, tl->cursor, t)) {
+		if (export_tiled_materialize(l, tl, hx, hy, t)) {
 			et_stats[9]++;
 			return true;
 		}
@@ -1116,13 +1154,14 @@ static void export_tiled_not_upscaled_job(slot_layer_t_array_t *layers, char *ob
 		if (!export_texture_layer_used(l, object_name)) {
 			continue;
 		}
-		if (l->fill_material == NULL) {
+		bool fill_tiles = !util_mesh_udim_active() && !g_context->merged_object_is_atlas && !et_test_no_fill; // export_tiled_fill_ok
+		if (l->fill_material == NULL || !fill_tiles) {
 			export_tiled_not_upscaled_add(l->name);
 		}
 		slot_layer_t_array_t *masks = slot_layer_get_masks(l, true);
 		for (i32 j = 0; masks != NULL && j < masks->length; ++j) {
 			slot_layer_t *m = masks->buffer[j];
-			if (m->fill_material == NULL && mask_stack_paint_index(m) >= 0 && mask_stack_get(m, mask_stack_paint_index(m)).visible) {
+			if ((m->fill_material == NULL || !fill_tiles) && mask_stack_paint_index(m) >= 0 && mask_stack_get(m, mask_stack_paint_index(m)).visible) {
 				export_tiled_not_upscaled_add(m->name);
 			}
 		}
@@ -1155,7 +1194,8 @@ bool export_tiled_start(char *path, bool bake_material) {
 		export_tiled_cancel();
 	}
 	export_texture_init_preset();
-	timeline_finalize(); // Strokes still being recorded land in their timelines
+	timeline_finalize();           // Strokes still being recorded land in their timelines
+	history_flush_restores(NULL); // Deferred undo restores land in the layers
 	memset(&et, 0, sizeof(et));
 	memset(et_stats, 0, sizeof(et_stats));
 	et.path    = string_copy(path);
