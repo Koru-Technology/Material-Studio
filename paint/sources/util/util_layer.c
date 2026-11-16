@@ -196,13 +196,13 @@ void layers_make_export_img() {
 }
 
 void layers_commands_merge_pack(gpu_pipeline_t *pipe, gpu_texture_t *i0, gpu_texture_t *i1, gpu_texture_t *i1pack, f32 i1mask_opacity, gpu_texture_t *i1texmask,
-                                i32 i1blending) {
+                                i32 i1blending, gpu_texture_t *temp) {
 	_gpu_begin(i0, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipe);
 	gpu_set_texture(pipes_tex0, i1);
 	gpu_set_texture(pipes_tex1, i1pack);
 	gpu_set_texture(pipes_texmask, i1texmask);
-	gpu_set_texture(pipes_texa, layers_temp_image);
+	gpu_set_texture(pipes_texa, temp); // The copy of i0
 	gpu_set_float(pipes_opac, i1mask_opacity);
 	gpu_set_float(pipes_tex1w, i1pack->width);
 	gpu_set_int(pipes_blending, i1blending);

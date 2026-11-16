@@ -294,16 +294,18 @@ void layers_apply_mask(slot_layer_t *l, slot_layer_t *m) {
 	}
 
 	layers_make_temp_img();
+	layers_apply_mask_pass(l->texpaint, layers_temp_image, mask_tex, mask_opac);
+}
 
-	// Copy layer to temp
-	util_copy_texture(layers_temp_image, l->texpaint, layers_pipe_for(pipes_copy, layers_temp_image->format));
-
-	// Apply mask
-	_gpu_begin(l->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	gpu_set_pipeline(layers_pipe_for(pipes_apply_mask, l->texpaint->format));
-	gpu_set_texture(pipes_tex0_mask, layers_temp_image);
+// The base color of dst masked by mask_tex at opacity opac, temp a scratch like dst (timeline replays run it on targets
+// of any size)
+void layers_apply_mask_pass(gpu_texture_t *dst, gpu_texture_t *temp, gpu_texture_t *mask_tex, f32 opac) {
+	util_copy_texture(temp, dst, layers_pipe_for(pipes_copy, temp->format));
+	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	gpu_set_pipeline(layers_pipe_for(pipes_apply_mask, dst->format));
+	gpu_set_texture(pipes_tex0_mask, temp);
 	gpu_set_texture(pipes_texa_mask, mask_tex);
-	gpu_set_float(pipes_opac_apply_mask, mask_opac);
+	gpu_set_float(pipes_opac_apply_mask, opac);
 	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
 	gpu_set_index_buffer(const_data_screen_aligned_ib);
 	gpu_draw();

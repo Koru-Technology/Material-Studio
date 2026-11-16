@@ -11,7 +11,11 @@
 //   TL_IMAGE      children[0] the image file's bytes (HSTORE_ASSET), then its file extension (decoder), 0 ended
 //   TL_FILL       children[0] the material snapshot, then tl_fill_params_t (the layer's uv props)
 //   TL_ID_MASK    picked colors, not replayed yet
-// TL_INVERT and TL_REFINE replay without params. TL_APPLY_MASK, TL_MERGE, TL_ID_MASK, TL_PATH, TL_BAKE_OPAC: floors.
+//   TL_APPLY_MASK f32 the mask's opacity; the mask is the entry's src timeline at src_pos (no params: a mask with effects
+//                 or height blend, a floor)
+//   TL_MERGE      tl_merge_params_t; the layer merged in is the src timeline at src_pos (no params: masks, groups, a
+//                 floor)
+// TL_INVERT and TL_REFINE replay without params. TL_ID_MASK, TL_PATH, TL_BAKE_OPAC: floors.
 
 #define TL_PARAMS_MAGIC 0x31504c54 // "TLP1"
 #define TL_PARAMS_HEAD  8
@@ -34,6 +38,16 @@ typedef struct tl_fill_params {
 	u8  paint[11]; // base opac occ rough met nor nor_blend height height_blend emis subs
 	u8  pad;
 } tl_fill_params_t;
+
+typedef struct tl_merge_params {
+	f32 opacity_below; // The layer merged into: its opacity is baked first
+	f32 opacity;       // The layer merged in: its props as layers_merge_layer reads them
+	i32 blending;
+	u8  visible;
+	u8  paint[8]; // base nor nor_blend occ rough met height height_blend
+	u8  linear;   // The project's linear blending
+	u8  pad[2];
+} tl_merge_params_t;
 
 typedef struct tl_params {
 	u8       *blob; // malloc'd
@@ -136,6 +150,37 @@ static void tl_ops_record_fill(slot_layer_t *l, slot_material_t *m, f32 scale, f
 	}
 	tl_ops_record(l, TL_FILL, &snap, 1, &p, sizeof(p), NULL, TL_FLAG_UPSCALABLE);
 	hstore_unref(snap); // The params hold it
+}
+
+// An entry reading timeline src at its cursor (apply mask, merge): the entry keeps src
+static void tl_ops_record_src(slot_layer_t *l, tl_kind_t kind, timeline_t *src, const void *body, u32 len) {
+	hash128_t   payload = body != NULL && src != NULL ? tl_params_put(NULL, 0, body, len) : HASH128_NONE;
+	tl_entry_t *e       = timeline_record(l, kind, payload, NULL, !hash128_is_none(payload) ? TL_FLAG_UPSCALABLE : 0);
+	if (e != NULL && src != NULL) {
+		e->src_tl  = src->uid;
+		e->src_pos = src->cursor;
+		timeline_ref(src);
+	}
+}
+
+// Mask m (its timeline src) applied to l. It replays when the mask texture is its pixels: no effects, no height blend.
+void timeline_record_apply_mask(slot_layer_t *l, slot_layer_t *m, timeline_t *src) {
+	f32 opacity = m->mask_opacity;
+	tl_ops_record_src(l, TL_APPLY_MASK, src, mask_stack_is_trivial(m) && !m->height_blend ? &opacity : NULL, sizeof(opacity));
+}
+
+// l1 merged down into l0 (layers_merge_down). It replays when both are layers without masks: the merge is then l0's
+// opacity baked and layers_merge_layer.
+void timeline_record_merge(slot_layer_t *l0, slot_layer_t *l1) {
+	bool              plain = slot_layer_is_layer(l0) && slot_layer_is_layer(l1) && !slot_layer_is_filter(l1) && !slot_layer_has_masks(l0, false) &&
+	                          !slot_layer_has_masks(l1, false);
+	tl_merge_params_t p     = {.opacity_below = l0->mask_opacity, .opacity = l1->mask_opacity, .blending = l1->blending, .visible = l1->visible,
+	                           .linear = g_project->linear_blending};
+	bool              f[8]  = {l1->paint_base, l1->paint_nor, l1->paint_nor_blend, l1->paint_occ, l1->paint_rough, l1->paint_met, l1->paint_height, l1->paint_height_blend};
+	for (i32 i = 0; i < 8; ++i) {
+		p.paint[i] = f[i];
+	}
+	tl_ops_record_src(l0, TL_MERGE, timeline_of(l1), plain ? &p : NULL, sizeof(p));
 }
 
 void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32 len, const f32 *uv_bounds, u16 flags) {
@@ -284,6 +329,10 @@ bool timeline_ops_replays(timeline_t *tl, i32 index) {
 		return tl_ops_params_ok(e, 1, 1);
 	case TL_FILL:
 		return tl_ops_params_ok(e, sizeof(tl_fill_params_t), 1);
+	case TL_APPLY_MASK:
+		return tl_ops_params_ok(e, sizeof(f32), 0) && timeline_find(e->src_tl) != NULL;
+	case TL_MERGE:
+		return tl_ops_params_ok(e, sizeof(tl_merge_params_t), 0) && timeline_find(e->src_tl) != NULL;
 	default:
 		return false;
 	}
@@ -492,6 +541,78 @@ static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t
 	return ok;
 }
 
+#define TL_OPS_SRC_DEPTH 4 // Merges of layers holding merges
+
+static gpu_texture_t *tl_ops_src[TL_OPS_SRC_DEPTH][3]; // The src timeline materialized at t's size and part
+static i32            tl_ops_src_depth = 0;
+static gpu_texture_t *tl_ops_temp      = NULL; // Copy of t's base for the passes
+
+// The entry's src timeline at its src_pos, materialized for t's part of the layer into tl_ops_src[depth] (src entries
+// reading timelines of their own use the next depth). False when it can not be.
+static bool tl_ops_src_materialize(tl_entry_t *e, paint_target_t *t, i32 channels, paint_target_t *s) {
+	timeline_t *src = timeline_find(e->src_tl);
+	if (src == NULL || src->channels != channels || tl_ops_src_depth >= TL_OPS_SRC_DEPTH) {
+		return false;
+	}
+	i32 d       = tl_ops_src_depth;
+	*s          = *t;
+	s->channels = channels;
+	for (i32 k = 0; k < 3; ++k) {
+		s->out[k] = NULL;
+	}
+	for (i32 k = 0; k < channels; ++k) {
+		util_texture_ensure_target(&tl_ops_src[d][k], t->w, t->h, channels == 1 ? GPU_TEXTURE_FORMAT_RGBA32 : t->out[k]->format); // Masks: RGBA32
+		s->out[k] = tl_ops_src[d][k];
+	}
+	tl_ops_src_depth++;
+	bool ok = timeline_materialize(src, e->src_pos, s);
+	tl_ops_src_depth--;
+	return ok;
+}
+
+// The mask's pixels masking t's base, as layers_apply_mask
+static bool tl_ops_replay_apply_mask(tl_entry_t *e, tl_params_t *p, paint_target_t *t) {
+	paint_target_t s;
+	if (t->channels != 3 || !tl_ops_src_materialize(e, t, 1, &s)) {
+		return false;
+	}
+	f32 opacity;
+	memcpy(&opacity, p->body, sizeof(opacity));
+	draw_saved_t saved = draw_suspend();
+	util_texture_ensure_target(&tl_ops_temp, t->w, t->h, t->out[0]->format);
+	layers_apply_mask_pass(t->out[0], tl_ops_temp, s.out[0], opacity);
+	draw_resume(saved);
+	return true;
+}
+
+// The merged layer's pixels merged into t, as layers_merge_down for layers without masks
+static bool tl_ops_replay_merge(tl_entry_t *e, tl_params_t *p, paint_target_t *t) {
+	paint_target_t s;
+	if (t->channels != 3 || !tl_ops_src_materialize(e, t, 3, &s)) {
+		return false;
+	}
+	tl_merge_params_t mp;
+	memcpy(&mp, p->body, sizeof(mp));
+	draw_saved_t saved = draw_suspend();
+	util_texture_ensure_target(&tl_ops_temp, t->w, t->h, t->out[0]->format);
+	if (mp.opacity_below < 1.0) { // layers_bake_opacity
+		layers_apply_mask_pass(t->out[0], tl_ops_temp, render_path_empty_black(), 1.0 - mp.opacity_below);
+	}
+	slot_layer_t l0 = {.texpaint = t->out[0], .texpaint_nor = t->out[1], .texpaint_pack = t->out[2], .visible = true, .mask_opacity = 1.0};
+	slot_layer_t l1 = {.texpaint = s.out[0], .texpaint_nor = s.out[1], .texpaint_pack = s.out[2], .visible = mp.visible, .mask_opacity = mp.opacity,
+	                   .blending = mp.blending};
+	bool *f[8] = {&l1.paint_base, &l1.paint_nor, &l1.paint_nor_blend, &l1.paint_occ, &l1.paint_rough, &l1.paint_met, &l1.paint_height, &l1.paint_height_blend};
+	for (i32 i = 0; i < 8; ++i) {
+		*f[i] = mp.paint[i] != 0;
+	}
+	bool linear                = g_project->linear_blending;
+	g_project->linear_blending = mp.linear != 0;
+	layers_merge_layer_ex(&l0, &l1, false, tl_ops_temp);
+	g_project->linear_blending = linear;
+	draw_resume(saved);
+	return true;
+}
+
 bool timeline_ops_replay(timeline_t *tl, i32 index, paint_target_t *t) {
 	tl_entry_t *e = &tl->entries[index];
 	if (e->kind == TL_REFINE) {
@@ -520,6 +641,12 @@ bool timeline_ops_replay(timeline_t *tl, i32 index, paint_target_t *t) {
 		break;
 	case TL_FILL:
 		ok = tl_ops_replay_fill(tl, &p, t);
+		break;
+	case TL_APPLY_MASK:
+		ok = tl_ops_replay_apply_mask(e, &p, t);
+		break;
+	case TL_MERGE:
+		ok = tl_ops_replay_merge(e, &p, t);
 		break;
 	default:
 		break;

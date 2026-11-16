@@ -123,14 +123,7 @@ void history_merge_layers() {
 	slot_layer_t         *l1     = g_context->layer;
 	slot_layer_t         *l0     = layers->buffer[array_index_of(layers, l1) - slot_layer_count_descendants(l1) - 1];
 	history_merge_capture(l1, array_index_of(layers, l0) - slot_layer_count_descendants(l0));
-	// l1 goes into l0 (a group merged first is a new layer, its timeline starts with its next change)
-	timeline_t *src = timeline_of(l1);
-	tl_entry_t *e   = timeline_record(l0, TL_MERGE, HASH128_NONE, NULL, 0);
-	if (e != NULL && src != NULL) {
-		e->src_tl  = src->uid;
-		e->src_pos = src->cursor;
-		timeline_ref(src);
-	}
+	timeline_record_merge(l0, l1); // l1 goes into l0 (a group merged first is a new layer, its timeline starts with its next change)
 }
 
 void history_merge_group(slot_layer_t *l) {
@@ -153,12 +146,7 @@ void history_apply_mask() {
 	timeline_t           *src   = timeline_ensure(m);
 	slot_layer_t_array_t *dests = slot_layer_is_group(m->parent) ? slot_layer_get_children(m->parent) : NULL;
 	for (i32 i = 0; i < (dests != NULL ? dests->length : 1); ++i) {
-		tl_entry_t *e = timeline_record(dests != NULL ? dests->buffer[i] : m->parent, TL_APPLY_MASK, HASH128_NONE, NULL, 0);
-		if (e != NULL && src != NULL) {
-			e->src_tl  = src->uid;
-			e->src_pos = src->cursor;
-			timeline_ref(src);
-		}
+		timeline_record_apply_mask(dests != NULL ? dests->buffer[i] : m->parent, m, src);
 	}
 	timeline_allow_fill(false);
 }
