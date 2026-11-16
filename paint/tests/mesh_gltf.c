@@ -36,7 +36,7 @@ void next() {
 
 	if (step == 0) {
 		before     = script_get_mesh_objects()->length;
-		char *path = "/tmp/materialstudio_two_prims.gltf";
+		char *path = string("%s/materialstudio_two_prims.gltf", script_save_path());
 		iron_file_save_bytes(path, sys_string_to_buffer(two_prims), 0);
 		script_append_mesh(path);
 	}
