@@ -564,6 +564,28 @@ static void render_path_base_draw_layer_pass(i32 layer_pass) {
 	render_path_base_draw_meshes(render_path_base_mesh_scon(layer_pass), layer_pass == make_mesh_layer_pass_count - 1);
 }
 
+// What the paint depth depends on: the camera, the meshes and where they are. With paint_resolved_dabs it is drawn again
+// only when this changes, painting redraws the gbuffer every frame and the mesh alone stays as it was.
+static u64 render_path_base_paint_depth_drawn = 0;
+
+static u64 render_path_base_paint_depth_key() {
+	u64   h   = HASH_FNV1A_BASIS;
+	gpu_texture_t *t   = render_path_target_image("main_paint");
+	void          *p[] = {t, make_material_depth_scon};
+	i32            s[] = {t != NULL ? t->width : 0, t != NULL ? t->height : 0};
+	h                  = hash_fnv1a(h, p, sizeof(p));
+	h                  = hash_fnv1a(h, s, sizeof(s));
+	h         = hash_fnv1a(h, &scene_camera->vp, sizeof(mat4_t));
+	for (i32 i = 0; i < scene_meshes->length; ++i) {
+		mesh_object_t *m = scene_meshes->buffer[i];
+		void          *q[] = {m, m->data, m->material};
+		h                 = hash_fnv1a(h, q, sizeof(q));
+		h                 = hash_fnv1a(h, &m->base->visible, sizeof(bool));
+		h                 = hash_fnv1a(h, &m->base->transform->world, sizeof(mat4_t));
+	}
+	return h;
+}
+
 void render_path_base_draw_gbuffer() {
 	string_array_t *additional = any_array_create_from_raw_tmp(
 	    (void *[]){
@@ -619,8 +641,12 @@ void render_path_base_draw_gbuffer() {
 		}
 	}
 	if (render_path_base_has_paint_depth()) {
-		render_path_set_target("gbuffer0", NULL, "main_paint", GPU_CLEAR_DEPTH, 0, 1.0);
-		render_path_base_draw_meshes(make_material_depth_scon, false);
+		u64 key = render_path_base_paint_depth_key();
+		if (!paint_exec_resolved_config() || key != render_path_base_paint_depth_drawn) {
+			render_path_set_target("gbuffer0", NULL, "main_paint", GPU_CLEAR_DEPTH, 0, 1.0);
+			render_path_base_draw_meshes(make_material_depth_scon, false);
+			render_path_base_paint_depth_drawn = key;
+		}
 	}
 
 	bool hide     = context_is_stencil_hidden() || keyboard_down("control");
