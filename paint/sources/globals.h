@@ -502,3 +502,6 @@ vec4_t paint_exec_uv_tile  = {0.0, 0.0, 1.0, 1.0}; // _paint_uv_tile: the part o
 vec2_t paint_exec_res0     = {0.0, 0.0};           // _paint_res0: resolution of the layer when recorded, 0 0 the layer's own
 bool   make_paint_resolved = false;                // The paint shader being generated reads resolved dabs (paint_exec.c)
 bool   paint_exec_replay   = false;                // The executor flushes recorded dabs and ops (paint_replay.c)
+bool   paint_replay_uncached = false; // Paint shaders parsed without the material cache (a replay at another size)
+char  *paint_replay_depth    = NULL;  // Depth target replay draws read, from the recorded camera
+gpu_texture_t *paint_replay_dilatemap = NULL; // UV islands of the replay's target

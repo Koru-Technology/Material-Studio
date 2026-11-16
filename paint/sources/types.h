@@ -1366,6 +1366,7 @@ typedef struct paint_state {
 	i32       translucency;
 	i32       batching; // make_paint_batching
 	i32       dilate_radius;
+	i32       matcache; // The material came from its cache (util_material_cache.c)
 } paint_state_t;
 
 typedef struct paint_rec_cam {

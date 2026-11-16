@@ -576,6 +576,9 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		}
 		return util_uv_trianglemap;
 	}
+	else if (string_equals(link, "_texdilatemap") && paint_exec_replay && paint_replay_dilatemap != NULL) {
+		return paint_replay_dilatemap;
+	}
 	else if (string_equals(link, "_texdilatemap")) {
 		if (util_uv_dilatemap_cached) {
 			return util_uv_dilatemap;

@@ -196,6 +196,26 @@ static void make_paint_glsl_note(shader_context_t *scon, char *glsl) {
 	make_paint_glsl_next                         = (make_paint_glsl_next + 1) % MAKE_PAINT_GLSL_NOTES;
 }
 
+// The texel of tex the fragment paints. With resolved dabs a fetch: targets of any size (replay tiles) read it exactly,
+// a sample at the texel's center rounds when the size is not a power of two.
+static char *make_paint_texel(char *tex) {
+	if (paint_exec_resolved_config()) {
+		return string_tmp("texelFetch(sampler2D(%s, sampler_linear), ivec2(int(gl_FragCoord.x), int(gl_FragCoord.y)), 0)", tex);
+	}
+	return string_tmp("textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0)", tex);
+}
+
+// The paint shader reads the material from its cache (util_material_cache.c)
+bool make_paint_scon_uses_matcache(shader_context_t *scon) {
+	for (i32 i = 0; scon->texture_units != NULL && i < scon->texture_units->length; ++i) {
+		char *link = scon->texture_units->buffer[i]->link;
+		if (link != NULL && string_equals(link, "_matcache0")) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // hash128(glsl).lo of a paint shader made by make_paint_run_context, 0 when unknown
 u64 make_paint_glsl_hash(shader_context_t *scon) {
 	for (i32 i = 0; scon != NULL && i < MAKE_PAINT_GLSL_NOTES; ++i) {
@@ -652,7 +672,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 			make_blur_run(shader);
 		}
 	}
-	else if (material_cache_paint_info(is_atlas, &cache_emis, &cache_subs, &cache_height)) {
+	else if (!paint_replay_uncached && material_cache_paint_info(is_atlas, &cache_emis, &cache_subs, &cache_height)) { // Replays at another size: not
 		make_paint_material_from_cache(shader, cache_emis, cache_subs, cache_height);
 	}
 	else {
@@ -823,7 +843,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		                       "vec2 sample_tc = vec2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
 		node_shader_write_frag(shader, "sample_tc.y = 1.0 - sample_tc.y;");
 		node_shader_add_texture(shader, "paintmask", NULL);
-		node_shader_write_frag(shader, "float sample_mask = textureLod(sampler2D(paintmask, sampler_linear), sample_tc, 0.0).r;");
+		node_shader_write_frag(shader, string_tmp("float sample_mask = %s.r;", make_paint_texel("paintmask")));
 		node_shader_write_frag(shader, "float cov = sample_mask;");
 		make_brush_run_batched_coverage(shader);
 		node_shader_write_frag(shader, "float str = cov;");
@@ -850,7 +870,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	                       "vec2 sample_tc = vec2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
 	node_shader_write_frag(shader, "sample_tc.y = 1.0 - sample_tc.y;");
 	node_shader_add_texture(shader, "paintmask", NULL);
-	node_shader_write_frag(shader, "float sample_mask = textureLod(sampler2D(paintmask, sampler_linear), sample_tc, 0.0).r;");
+	node_shader_write_frag(shader, string_tmp("float sample_mask = %s.r;", make_paint_texel("paintmask")));
 	if (accum) {
 		node_shader_add_constant(shader, "float brush_strength", "_brush_strength");
 		node_shader_write_frag(shader, "str *= constants.brush_strength;");
@@ -865,7 +885,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	} // Not batched
 
 	node_shader_add_texture(shader, tex_src, tex_src_link);
-	node_shader_write_frag(shader, string_tmp("vec4 sample_undo = textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0);", tex_src));
+	node_shader_write_frag(shader, string_tmp("vec4 sample_undo = %s;", make_paint_texel(tex_src)));
 
 	f32 matid = g_context->material->id / 255.0;
 	if (g_context->picker_material_mask) {
@@ -908,8 +928,8 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	// Output
 	node_shader_add_texture(shader, tex_nor_src, tex_nor_link);
 	node_shader_add_texture(shader, tex_pack_src, tex_pack_link);
-	node_shader_write_frag(shader, string_tmp("vec4 sample_nor_undo = textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0);", tex_nor_src));
-	node_shader_write_frag(shader, string_tmp("vec4 sample_pack_undo = textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0);", tex_pack_src));
+	node_shader_write_frag(shader, string_tmp("vec4 sample_nor_undo = %s;", make_paint_texel(tex_nor_src)));
+	node_shader_write_frag(shader, string_tmp("vec4 sample_pack_undo = %s;", make_paint_texel(tex_pack_src)));
 
 	bool is_mask = slot_layer_is_mask(g_context->layer);
 	if (g_context->tool == TOOL_TYPE_ERASER && !is_mask) {

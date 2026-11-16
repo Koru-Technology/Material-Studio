@@ -120,6 +120,11 @@ void compare(int k) {
 	int eq1 = string_equals(h1, hash_of(l->texpaint_nor));
 	int eq2 = string_equals(h2, hash_of(l->texpaint_pack));
 	check(ok && paint_replay_test_fallbacks() == fb, string("%s: it replays", case_name(k)));
+	float u0 = paint_rec_test_bounds(l, n - 1, 0);
+	float v0 = paint_rec_test_bounds(l, n - 1, 1);
+	float u1 = paint_rec_test_bounds(l, n - 1, 2);
+	float v1 = paint_rec_test_bounds(l, n - 1, 3);
+	check(u1 > u0 && v1 > v0 && (u1 - u0) * (v1 - v0) < 0.9, string("%s: uv bounds from the tiles it changed (%.3f %.3f %.3f %.3f)", case_name(k), u0, v0, u1, v1));
 	check(eq0 && eq1 && eq2, string("%s: the replay is byte-equal to the live stroke (base %d, nor %d, pack %d)", case_name(k), eq0, eq1, eq2));
 }
 

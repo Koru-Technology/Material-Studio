@@ -62,15 +62,19 @@ static void paint_replay_state_apply(paint_state_t *s) {
 	make_paint_batching                    = s->batching;
 }
 
-// The paint shader of a state, NULL when it does not hash as recorded
+// The paint shader of a state, NULL when it does not hash as recorded. A stroke that read the material from its cache
+// (addressed by texel of the live layer) replays at another size with the material evaluated: that shader is not the
+// recorded one, the hash is not checked.
 static shader_context_t *paint_replay_shader(paint_state_t *s) {
+	bool verify = !(paint_replay_uncached && s->matcache);
+	u64  key    = verify ? s->glsl : s->glsl ^ 0x9e3779b97f4a7c15ull;
 	for (i32 i = 0; i < PAINT_REPLAY_SCONS; ++i) {
-		if (paint_replay_scons[i] != NULL && paint_replay_scon_hashes[i] == s->glsl) {
+		if (paint_replay_scons[i] != NULL && paint_replay_scon_hashes[i] == key) {
 			return paint_replay_scons[i];
 		}
 	}
 	shader_context_t *scon = make_material_parse_paint_kept();
-	if (scon == NULL || make_paint_glsl_hash(scon) != s->glsl) {
+	if (scon == NULL || (verify && make_paint_glsl_hash(scon) != s->glsl)) {
 		if (scon != NULL) {
 			make_material_free_paint_scon(scon);
 		}
@@ -81,17 +85,89 @@ static shader_context_t *paint_replay_shader(paint_state_t *s) {
 		make_material_free_paint_scon(paint_replay_scons[i]);
 	}
 	paint_replay_scons[i]       = scon;
-	paint_replay_scon_hashes[i] = s->glsl;
+	paint_replay_scon_hashes[i] = key;
 	paint_replay_scon_next      = (i + 1) % PAINT_REPLAY_SCONS;
 	return scon;
 }
 
+// The camera of a draw, and the geometry-only depth from it at the viewport's size then (depth reject reads it at the
+// fragment's screen point): main_paint when it has that size, else a target of the replay's own
 static void paint_replay_camera(paint_rec_cam_t *c) {
 	scene_camera->v     = c->v;
 	scene_camera->p     = c->p;
 	scene_camera->vp    = mat4_mult_mat(c->v, c->p);
 	scene_camera->frame = c->frame;
-	render_path_base_draw_paint_depth(); // Depth reject reads it at the fragment's screen point
+	render_target_t *main = any_map_get(render_path_render_targets, "main_paint");
+	if (main != NULL && main->_image != NULL && main->_image->width == c->w && main->_image->height == c->h) {
+		paint_replay_depth = "main_paint";
+		render_path_base_draw_paint_depth_into("gbuffer0", "main_paint");
+		return;
+	}
+	render_path_ensure_target("replay_depth", c->w, c->h, "D32");
+	render_path_ensure_target("replay_depth_color", c->w, c->h, "RGBA64"); // The depth pipeline's attachment
+	paint_replay_depth = "replay_depth";
+	render_path_base_draw_paint_depth_into("replay_depth_color", "replay_depth");
+}
+
+// UV islands of the layer for a target of w x h covering uv_rect (the dilate map of util_uv.c, at any size and rect)
+static gpu_pipeline_t *paint_replay_dilate_pipe = NULL;
+
+gpu_texture_t *paint_replay_dilate_map(i32 w, i32 h, const f32 *uv_rect) {
+	static gpu_texture_t *map = NULL;
+	util_texture_ensure_target(&map, w, h, GPU_TEXTURE_FORMAT_R8);
+	if (paint_replay_dilate_pipe == NULL) {
+		char *glsl = "#version 450\n\
+layout(set = 0, binding = 0, std140) uniform Constants { layout(offset = 0) vec4 tile; } constants;\n\
+layout(set = 0, binding = 1) uniform sampler sampler_linear;\n\
+#ifdef VERT\n\
+layout(location = 0) in vec4 in_pos;\n\
+layout(location = 1) in vec2 in_nor;\n\
+layout(location = 2) in vec2 in_tex;\n\
+void main() {\n\
+	vec2 t = (in_tex - constants.tile.xy) * constants.tile.zw;\n\
+	gl_Position = vec4(t.x * 2.0 - 1.0, (1.0 - t.y) * 2.0 - 1.0, 0.0, 1.0);\n\
+	float keep = in_pos.x + in_nor.x;\n\
+}\n\
+#endif\n\
+#ifdef FRAG\n\
+layout(location = 0) out float frag_color;\n\
+void main() { frag_color = 1.0; }\n\
+#endif\n";
+		char *vs = NULL, *fs = NULL;
+		i32   vs_size = 0, fs_size = 0;
+		gpu_create_shaders_from_glsl(glsl, &vs, &fs, &vs_size, &fs_size);
+		paint_replay_dilate_pipe                  = gpu_create_pipeline();
+		paint_replay_dilate_pipe->vertex_shader   = gpu_create_shader_from_source(vs, vs_size, GPU_SHADER_TYPE_VERTEX);
+		paint_replay_dilate_pipe->fragment_shader = gpu_create_shader_from_source(fs, fs_size, GPU_SHADER_TYPE_FRAGMENT);
+		gpu_vertex_structure_t *vst               = ALLOC_INIT(gpu_vertex_structure_t, {0});
+		gpu_vertex_structure_add(vst, "pos", GPU_VERTEX_DATA_I16_4X_NORM);
+		gpu_vertex_structure_add(vst, "nor", GPU_VERTEX_DATA_I16_2X_NORM);
+		gpu_vertex_structure_add(vst, "tex", GPU_VERTEX_DATA_I16_2X_NORM);
+		paint_replay_dilate_pipe->input_layout        = vst;
+		paint_replay_dilate_pipe->depth_write         = false;
+		paint_replay_dilate_pipe->depth_mode          = GPU_COMPARE_MODE_ALWAYS;
+		paint_replay_dilate_pipe->color_attachment[0] = GPU_TEXTURE_FORMAT_R8;
+		gpu_pipeline_compile(paint_replay_dilate_pipe);
+	}
+	i32 mask = context_object_mask_used() ? slot_layer_get_object_mask(g_context->layer) : 0; // As util_uv_cache_dilate_map
+	if (context_layer_filter_used()) {
+		mask = g_context->layer_filter;
+	}
+	bool         use_merged = g_context->merged_object != NULL && (mask == 0 || util_mesh_udim_layer(g_context->layer));
+	mesh_data_t *geom       = use_merged ? g_context->merged_object->data : g_context->paint_object->data;
+	f32          du         = uv_rect[2] - uv_rect[0];
+	f32          dv         = uv_rect[3] - uv_rect[1];
+	if (_render_path_current_image != NULL) {
+		render_path_end();
+	}
+	_gpu_begin(map, NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
+	gpu_set_pipeline(paint_replay_dilate_pipe);
+	gpu_set_float4(0, uv_rect[0], uv_rect[1], du > 0.0 ? 1.0 / du : 1.0, dv > 0.0 ? 1.0 / dv : 1.0);
+	gpu_set_vertex_buffer(geom->_->vertex_buffer);
+	gpu_set_index_buffer(geom->_->index_buffer);
+	gpu_draw();
+	gpu_end();
+	return map;
 }
 
 // Render targets named as the layer's textures, pointing at t: the paint draws write t
@@ -243,7 +319,7 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	f32 dv               = t->uv_rect[3] - t->uv_rect[1];
 	paint_exec_uv_tile   = (vec4_t){t->uv_rect[0], t->uv_rect[1], du > 0.0 ? 1.0 / du : 1.0, dv > 0.0 ? 1.0 / dv : 1.0};
 
-	paint_replay_swap_t swaps[3];
+	paint_replay_swap_t swaps[4];
 	i32                 nswaps = 0;
 	// The map keeps its keys: the names render_path_paint.c keeps (render_path_paint_key), same translation unit
 	paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint%d", l->id), t->out[0]);
@@ -253,6 +329,15 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	}
 	paint_replay_s0_make(t);
 	render_path_paint_scratch_resize(t->w, t->h);
+	bool exact = t->w == r.res_w && t->h == r.res_h && t->uv_rect[0] == 0.0 && t->uv_rect[1] == 0.0 && t->uv_rect[2] == 1.0 && t->uv_rect[3] == 1.0;
+	paint_replay_uncached  = !exact;
+	paint_replay_dilatemap = paint_replay_dilate_map(t->w, t->h, t->uv_rect);
+	static gpu_texture_t *temp = NULL; // The dilation's copy, the target's size and format
+	util_texture_ensure_target(&temp, t->w, t->h, t->out[0]->format);
+	paint_replay_swap(&swaps[nswaps++], "temptex0", temp);
+	if (o != NULL && o->mm_cap > 0) {
+		mm_buffers_set_export_cap(o->mm_cap);
+	}
 	g_context->brush_blend_dirty = true;
 	render_path_paint_clear_blend_now(); // The stroke's coverage starts empty
 
@@ -266,8 +351,19 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	}
 
 	for (i32 i = nswaps - 1; i >= 0; --i) {
-		any_map_set(render_path_render_targets, swaps[i].name, swaps[i].saved);
+		if (swaps[i].saved != NULL) {
+			any_map_set(render_path_render_targets, swaps[i].name, swaps[i].saved);
+		}
+		else {
+			any_map_set(render_path_render_targets, swaps[i].name, NULL); // Not there before
+		}
 	}
+	if (o != NULL && o->mm_cap > 0) {
+		mm_buffers_set_export_cap(0);
+	}
+	paint_replay_uncached  = false;
+	paint_replay_depth     = NULL;
+	paint_replay_dilatemap = NULL;
 	render_path_paint_scratch_resize(live_w, live_h);
 	*g_context                     = saved_ctx;
 	*g_config                      = saved_cfg;
@@ -318,4 +414,73 @@ bool paint_replay_test_entry(slot_layer_t *l, i32 index) {
 	paint_target_t t;
 	timeline_target_live(l, &t);
 	return paint_replay_entry(tl, index, &t, NULL);
+}
+
+// Scripts: entry index of the timeline of src replayed into dst as it is (any size)
+bool paint_replay_test_into(slot_layer_t *src, i32 index, slot_layer_t *dst) {
+	paint_target_t t;
+	timeline_target_live(dst, &t);
+	return paint_replay_entry(timeline_of(src), index, &t, NULL);
+}
+
+// Scripts: the same into dst in n x n tiles, each replayed with halo texels around it, its middle copied into dst
+bool paint_replay_test_tiles(slot_layer_t *src, i32 index, slot_layer_t *dst, i32 n, i32 halo) {
+	paint_target_t live;
+	timeline_target_live(dst, &live);
+	i32             tw = live.w / n;
+	i32             th = live.h / n;
+	gpu_texture_t **tex = calloc(n * n * 3, sizeof(gpu_texture_t *));
+	i32            *rect = calloc(n * n * 4, sizeof(i32));
+	for (i32 k = 0; k < n * n; ++k) { // Every tile starts as dst is now
+		i32 x0 = (k % n) * tw - halo, y0 = (k / n) * th - halo;
+		i32 x1 = x0 + tw + halo * 2, y1 = y0 + th + halo * 2;
+		x0 = x0 < 0 ? 0 : x0;
+		y0 = y0 < 0 ? 0 : y0;
+		x1 = x1 > live.w ? live.w : x1;
+		y1 = y1 > live.h ? live.h : y1;
+		i32 *r = &rect[k * 4];
+		r[0] = x0, r[1] = y0, r[2] = x1 - x0, r[3] = y1 - y0;
+		if (_render_path_current_image != NULL) {
+			render_path_end();
+		}
+		gpu_copy_regions_begin();
+		for (i32 c = 0; c < live.channels; ++c) {
+			util_texture_ensure_target(&tex[k * 3 + c], r[2], r[3], live.out[c]->format);
+			gpu_copy_region(tex[k * 3 + c], 0, 0, live.out[c], x0, y0, r[2], r[3]);
+		}
+		gpu_copy_regions_end();
+	}
+	bool ok = true;
+	for (i32 k = 0; k < n * n && ok; ++k) {
+		i32           *r = &rect[k * 4];
+		paint_target_t t = live;
+		t.w              = r[2];
+		t.h              = r[3];
+		t.uv_rect[0]     = r[0] / (f32)live.w;
+		t.uv_rect[1]     = r[1] / (f32)live.h;
+		t.uv_rect[2]     = (r[0] + r[2]) / (f32)live.w;
+		t.uv_rect[3]     = (r[1] + r[3]) / (f32)live.h;
+		for (i32 c = 0; c < live.channels; ++c) {
+			t.out[c] = tex[k * 3 + c];
+		}
+		ok = paint_replay_entry(timeline_of(src), index, &t, NULL);
+	}
+	for (i32 k = 0; k < n * n && ok; ++k) { // The middles into dst
+		i32 *r = &rect[k * 4];
+		i32  x = (k % n) * tw, y = (k / n) * th;
+		if (_render_path_current_image != NULL) {
+			render_path_end();
+		}
+		gpu_copy_regions_begin();
+		for (i32 c = 0; c < live.channels; ++c) {
+			gpu_copy_region(live.out[c], x, y, tex[k * 3 + c], x - r[0], y - r[1], tw, th);
+		}
+		gpu_copy_regions_end();
+	}
+	for (i32 i = 0; i < n * n * 3; ++i) {
+		util_texture_release_target(&tex[i]);
+	}
+	free(tex);
+	free(rect);
+	return ok;
 }

@@ -633,3 +633,47 @@ i32 timeline_tiles_test(slot_layer_t *l) {
 	return -1;
 #endif
 }
+
+// The uv box of the tiles that differ between two maps of the same size, grown by a texel (u0 v0 u1 v1). False when one
+// is missing, they differ in size or no tile changed.
+bool timeline_tiles_changed_bounds(hash128_t prev, hash128_t cur, f32 out[4]) {
+	tl_tiles_map_t *a = tl_tiles_resolve(prev);
+	if (a == NULL) {
+		return false;
+	}
+	i32        n     = a->channels * tl_tiles_per_channel();
+	i32        w     = a->width;
+	i32        h     = a->height;
+	i32        ch    = a->channels;
+	hash128_t *tiles = malloc(sizeof(hash128_t) * n); // Resolving cur may take a's cache slot
+	memcpy(tiles, a->tiles, sizeof(hash128_t) * n);
+	tl_tiles_map_t *b = tl_tiles_resolve(cur);
+	if (b == NULL || b->width != w || b->height != h || b->channels != ch) {
+		free(tiles);
+		return false;
+	}
+	i32 x0 = w, y0 = h, x1 = 0, y1 = 0;
+	for (i32 i = 0; i < n; ++i) {
+		if (hash128_eq(tiles[i], b->tiles[i])) {
+			continue;
+		}
+		i32 x, y, tw, th;
+		tl_tiles_rect(w, h, i % tl_tiles_per_channel(), &x, &y, &tw, &th);
+		x0 = x < x0 ? x : x0;
+		y0 = y < y0 ? y : y0;
+		x1 = x + tw > x1 ? x + tw : x1;
+		y1 = y + th > y1 ? y + th : y1;
+	}
+	free(tiles);
+	if (x1 <= x0 || y1 <= y0) {
+		return false;
+	}
+	out[0] = (x0 - 1) / (f32)w;
+	out[1] = (y0 - 1) / (f32)h;
+	out[2] = (x1 + 1) / (f32)w;
+	out[3] = (y1 + 1) / (f32)h;
+	for (i32 i = 0; i < 4; ++i) {
+		out[i] = out[i] < 0.0 ? 0.0 : out[i] > 1.0 ? 1.0 : out[i];
+	}
+	return true;
+}

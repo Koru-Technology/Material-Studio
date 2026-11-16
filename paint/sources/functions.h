@@ -2536,7 +2536,12 @@ void paint_rec_finish();
 void paint_rec_init();
 void paint_rec_flush(); // stroke_rec.h, for scripts
 i32  paint_rec_test_stored();
+f32  paint_rec_test_bounds(slot_layer_t *l, i32 index, i32 c);
+bool timeline_tiles_changed_bounds(hash128_t prev, hash128_t cur, f32 out[4]);
+hash128_t timeline_state(struct timeline *tl, i32 pos);
 u64  make_paint_glsl_hash(shader_context_t *scon);
+bool make_paint_scon_uses_matcache(shader_context_t *scon);
+gpu_texture_t *paint_replay_dilate_map(i32 w, i32 h, const f32 *uv_rect);
 void paint_mat_snapshot_reset();
 void render_path_paint_dilate_now(bool base, bool nor_pack);
 
@@ -2547,7 +2552,9 @@ extern mat4_t         paint_replay_obj_inv;
 i32                   paint_replay_test_fallbacks();
 i32                   paint_replay_test_count();
 bool                  paint_replay_test_entry(slot_layer_t *l, i32 index);
+bool                  paint_replay_test_into(slot_layer_t *src, i32 index, slot_layer_t *dst);
+bool                  paint_replay_test_tiles(slot_layer_t *src, i32 index, slot_layer_t *dst, i32 n, i32 halo);
 void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
 i32                   paint_exec_pending_ops();
-void                  render_path_base_draw_paint_depth();
+void                  render_path_base_draw_paint_depth_into(char *color, char *depth);
 shader_context_t     *make_material_parse_paint_kept(void);
