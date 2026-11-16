@@ -143,8 +143,9 @@ void        app_project_import(void);        // Picks a model, it opens in a new
 
 // History
 const char *app_undo_name(void); // Name of the step undo would revert, "" when none
-void        app_undo(void);
+void        app_undo(void); // Returns at once: layers to restore from history follow over the next frames
 void        app_redo(void);
+bool        app_history_busy(void); // Undo or redo still restores layers (history_v2), the counts are already the new ones
 
 // Layers, listed top of the stack first (the order the layers panel shows)
 typedef enum {

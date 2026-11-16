@@ -24,7 +24,7 @@ void gpu_release_staging_buffers(void);
 // Low memory: drop what is created again when needed
 void base_on_memory_warning() {
 	if (g_context->brush_time == 0) {
-		history_tiles_trim(); // Not in the middle of a stroke
+		history_on_memory_warning(); // Not in the middle of a stroke
 		render_path_paint_release_scratch();
 	}
 	mm_buffers_trim(); // Material Maker buffer textures the last render did not use, they render again when needed
@@ -288,6 +288,8 @@ rect_t *base_get_drag_background() {
 	return NULL;
 }
 
+// history_v2 never fills the ring, it stays as scratch: render_path_paint and raytrace bake bind texpaint_undo<i> (known
+// debt, to go with the ring in phase 7)
 void base_init_undo_layers() {
 	if (history_undo_layers == NULL) {
 		history_undo_layers = any_array_create_from_raw((void *[]){}, 0);

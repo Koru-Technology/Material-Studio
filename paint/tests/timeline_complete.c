@@ -119,9 +119,9 @@ void next() {
 		history_undo();
 	}
 	else if (step == 7) {
-		check(timeline_test_cursor(a) == 5, string("undo moves the cursor back (%d)", timeline_test_cursor(a)));
-		slot_layer_t *back = find_uid(a->uid); // The layer as it was before the merge
-		check(back != NULL && back != a && timeline_test_cursor(back) == 5 && string_equals(layer_hash(back), hashes->buffer[5]), "undo of the merge");
+		slot_layer_t *back = find_uid(a->uid); // The layer as it was before the merge, it shares the timeline
+		check(back != NULL && back != a && timeline_test_cursor(back) == 5, string("undo moves the cursor back (%d)", timeline_test_cursor(back)));
+		check(back != NULL && string_equals(layer_hash(back), hashes->buffer[5]), "undo of the merge");
 		history_redo();
 	}
 	else if (step == 8) {

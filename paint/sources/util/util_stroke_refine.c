@@ -806,6 +806,7 @@ static void stroke_refine_history(stroke_refine_t *r) {
 	g_context->tool        = r->tool;
 	i32 before             = history_steps->length;
 	history_paint();
+	timeline_retag_last(r->layer, TL_REFINE, NULL, 0, 0); // Marker: the sharpening replays with the stroke
 	if (history_steps->length > before && last == r->step && history_steps->length > 1) {
 		history_steps->buffer[history_steps->length - 1]->with_prev = true;
 	}

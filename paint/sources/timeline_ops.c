@@ -33,6 +33,31 @@ void timeline_retag_last(slot_layer_t *l, i32 kind, const void *params, u32 len,
 	}
 }
 
+// Entry index of tl becomes kind with payload (the reference handed over): a stroke recorded as TL_RASTER proven
+// replayable (paint_rec.c). A tile state the entry held already moves to a checkpoint after it, nothing is lost.
+void timeline_entry_upgrade(timeline_t *tl, i32 index, i32 kind, hash128_t payload) {
+	if (tl == NULL || index < 0 || index >= tl->count) {
+		hstore_unref(payload);
+		return;
+	}
+	tl_entry_t *e = &tl->entries[index];
+	if (e->kind == TL_RASTER && !hash128_is_none(e->payload)) {
+		timeline_checkpoint_set(tl, index + 1, e->payload, false);
+	}
+	else {
+		hstore_unref(e->payload);
+	}
+	e->kind    = kind;
+	e->payload = payload;
+	tl->floor  = 0;
+	for (i32 i = tl->count - 1; i >= 0; --i) {
+		if (tl->entries[i].kind == TL_RASTER) {
+			tl->floor = i + 1;
+			break;
+		}
+	}
+}
+
 bool timeline_ops_replay(timeline_t *tl, i32 index, paint_target_t *t) {
 	return false;
 }
