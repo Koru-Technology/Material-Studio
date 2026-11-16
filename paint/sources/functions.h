@@ -1956,6 +1956,7 @@ bool        timeline_test_materialize(slot_layer_t *l, i32 pos);
 
 // ---- timeline_ops.c ----
 void timeline_retag_last(slot_layer_t *l, i32 kind, const void *params, u32 len, u16 flags);
+void timeline_entry_upgrade(struct timeline *tl, i32 index, i32 kind, hash128_t payload);
 
 // ---- timeline_tiles.c ----
 void timeline_tiles_cache_reset();
