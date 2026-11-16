@@ -1,9 +1,12 @@
 #include "../global.h"
 #include <unistd.h>
+#ifdef IRON_IOS
+#include <os/proc.h>
+#endif
 
-// Texture export in tiles (g_config->export_tiled), the live layers left as they are.
+// Texture export, in tiles at any resolution, the live layers left as they are.
 //
-// The jobs (texture sets) and file names are the legacy export's (export_texture.c). A job's output (w x h) is cut into
+// The jobs (texture sets), file names and channel packing are export_texture.c's. A job's output (w x h) is cut into
 // tiles of EXPORT_TILED_MAX_TILE or less (smaller while their targets exceed the budget), each rendered with a halo
 // around its core: square targets of size + 2 halo, also past the edges of the output.
 //
@@ -381,28 +384,50 @@ static void export_tiled_dilate_copy(gpu_texture_t *t, i32 radius) {
 	export_tiled_dilate(t, et_fill_temp, et_cov, radius);
 }
 
-// Layer l's timeline at its cursor for the tile: restored for the tile's rectangle at the working resolution, scaled up
-// (bilinear) when the export is larger, until strokes replay at any resolution
-static bool export_tiled_materialize(slot_layer_t *l, timeline_t *tl, i32 hx, i32 hy, paint_target_t *t) {
-	i32 w0 = l->texpaint->width;
-	i32 h0 = l->texpaint->height;
+// Export mode (6b, export_tiled_set_mode): the live textures of paint layers and masks leave the GPU during the export,
+// their state a tile map in the blob store (T1 RAM, T2 disk), restored afterwards. Their tiles come from the tile maps.
+
+typedef struct export_tiled_evicted {
+	slot_layer_t        *l;
+	hash128_t            h; // Its state
+	i32                  w;
+	i32                  hh;
+	gpu_texture_format_t format[3];
+	bool                 refill; // A fill layer: rendered again instead
+} export_tiled_evicted_t;
+
+static export_tiled_evicted_t *et_evicted  = NULL;
+static i32                     et_nevicted = 0;
+
+static export_tiled_evicted_t *export_tiled_evicted_find(slot_layer_t *l) {
+	for (i32 i = 0; i < et_nevicted; ++i) {
+		if (et_evicted[i].l == l) {
+			return &et_evicted[i];
+		}
+	}
+	return NULL;
+}
+
+// Layer l's state for the tile, at its own size w0 x h0: its timeline at the cursor (tl), or tile map h. Restored for the
+// tile's rectangle at the working resolution, scaled up (bilinear) when the export is larger, until strokes replay at any
+// resolution.
+static bool export_tiled_restore(timeline_t *tl, hash128_t h, i32 w0, i32 h0, i32 hx, i32 hy, paint_target_t *t) {
 	if (w0 == et.w && h0 == et.h) {
-		return timeline_materialize(tl, tl->cursor, t);
+		return tl != NULL ? timeline_materialize(tl, tl->cursor, t) : timeline_tiles_restore_from(h, HASH128_NONE, t);
 	}
 	f32 kx = w0 / (f32)et.w, ky = h0 / (f32)et.h;
 	i32 x0 = (i32)math_floor(hx * kx) - 1, y0 = (i32)math_floor(hy * ky) - 1; // A texel more around: bilinear reads it
 	i32 x1 = (i32)math_ceil((hx + t->w) * kx) + 1, y1 = (i32)math_ceil((hy + t->h) * ky) + 1;
-	gpu_texture_t *live[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
-	paint_target_t lo      = {.w = x1 - x0, .h = y1 - y0, .res_w = w0, .res_h = h0, .channels = t->channels};
-	lo.uv_rect[0]          = x0 / (f32)w0;
-	lo.uv_rect[1]          = y0 / (f32)h0;
-	lo.uv_rect[2]          = x1 / (f32)w0;
-	lo.uv_rect[3]          = y1 / (f32)h0;
+	paint_target_t lo = {.w = x1 - x0, .h = y1 - y0, .res_w = w0, .res_h = h0, .channels = t->channels};
+	lo.uv_rect[0]     = x0 / (f32)w0;
+	lo.uv_rect[1]     = y0 / (f32)h0;
+	lo.uv_rect[2]     = x1 / (f32)w0;
+	lo.uv_rect[3]     = y1 / (f32)h0;
 	for (i32 k = 0; k < t->channels; ++k) {
-		util_texture_ensure_target(&et_low[k], lo.w, lo.h, live[k]->format);
+		util_texture_ensure_target(&et_low[k], lo.w, lo.h, t->out[k]->format);
 		lo.out[k] = et_low[k];
 	}
-	if (!timeline_materialize(tl, tl->cursor, &lo)) {
+	if (!(tl != NULL ? timeline_materialize(tl, tl->cursor, &lo) : timeline_tiles_restore_from(h, HASH128_NONE, &lo))) {
 		return false;
 	}
 	for (i32 k = 0; k < t->channels; ++k) {
@@ -437,13 +462,19 @@ static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i
 			return true;
 		}
 	}
-	timeline_t *tl = m.mode == 0 ? timeline_of(l) : NULL; // Udim maps: the live layer for now
+	export_tiled_evicted_t *ev = export_tiled_evicted_find(l);
+	i32                     w0 = ev != NULL ? ev->w : l->texpaint->width;
+	i32                     h0 = ev != NULL ? ev->hh : l->texpaint->height;
+	timeline_t             *tl = m.mode == 0 ? timeline_of(l) : NULL; // Udim maps: the live layer for now
 	if (tl != NULL) {
-		if (export_tiled_materialize(l, tl, hx, hy, t)) {
+		if (export_tiled_restore(tl, HASH128_NONE, w0, h0, hx, hy, t)) {
 			et_stats[9]++;
 			return true;
 		}
 		et_stats[10]++;
+	}
+	if (ev != NULL && export_tiled_restore(NULL, ev->h, w0, h0, hx, hy, t)) { // Export mode: the live layer is away
+		return true;
 	}
 	gpu_texture_t *live[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
 	for (i32 k = 0; k < t->channels; ++k) {
@@ -1204,6 +1235,150 @@ char *export_tiled_not_upscaled_name(i32 i) {
 	return et_not_upscaled != NULL && i >= 0 && i < et_not_upscaled->length ? et_not_upscaled->buffer[i] : "";
 }
 
+// Export mode: evicting and restoring the live layers
+
+static i32            et_mode            = 2; // 0 off, 1 on, 2 auto (iOS, large exports)
+static i64            et_evicted_bytes   = 0;
+static i64            et_predicted_bytes = 0;
+static gpu_texture_t *et_placeholder[GPU_TEXTURE_FORMAT_D32 + 1];
+
+static gpu_texture_t *export_tiled_placeholder(gpu_texture_format_t f) {
+	if (et_placeholder[f] == NULL) {
+		et_placeholder[f] = gpu_create_render_target(1, 1, f);
+	}
+	return et_placeholder[f];
+}
+
+static i64 export_tiled_layers_bytes() {
+	i64 b = 0;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t  *l      = g_project->_->layers->buffer[i];
+		gpu_texture_t *tex[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
+		for (i32 k = 0; k < 3; ++k) {
+			b += tex[k] != NULL ? (i64)tex[k]->width * tex[k]->height * gpu_texture_format_size(tex[k]->format) : 0;
+		}
+	}
+	return b;
+}
+
+// What the export would hold at its peak with the live layers there: tile targets, Material Maker buffers, the layers
+static i64 export_tiled_predict() {
+	i32 w = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
+	i32 h = et_res_h > 0 ? et_res_h : config_get_texture_res_y();
+	i32 s = w > h ? w : h; // The tile size export_tiled_job_begin chooses
+	s     = s > EXPORT_TILED_MAX_TILE ? EXPORT_TILED_MAX_TILE : s;
+	s     = et_test_tile > 0 && et_test_tile < s ? et_test_tile : s;
+	while (s > 256 && export_tiled_target_bytes(s, 22, layers_format(base_bits)) > export_tiled_budget()) {
+		s /= 2;
+	}
+	return export_tiled_target_bytes(s, 22, layers_format(base_bits)) + (i64)mm_buffers_stat(6) * 1024 + export_tiled_layers_bytes();
+}
+
+static bool export_tiled_mode_wanted() {
+	if (et_mode == 0 || util_mesh_udim_active() || g_context->merged_object_is_atlas) { // Udim maps blit the live layers
+		return false;
+	}
+	if (et_mode == 1) {
+		return true;
+	}
+#ifdef IRON_IOS
+	i32 w = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
+	if (w > config_get_texture_res_x()) {
+		return true;
+	}
+	if (__builtin_available(iOS 13.0, *)) {
+		i64 avail = (i64)os_proc_available_memory();
+		return avail > 0 && et_predicted_bytes > avail / 2;
+	}
+#endif
+	return false;
+}
+
+static void export_tiled_set_layer_target(slot_layer_t *l, char *prefix, gpu_texture_t *t) {
+	render_target_t *rt = any_map_get(render_path_render_targets, string_tmp("%s%s", prefix, l->ext));
+	if (rt != NULL) {
+		rt->_image = t;
+	}
+}
+
+// The live textures of the project's paint layers and masks go, their states stay in the blob store
+static void export_tiled_evict() {
+	timeline_finalize();
+	history_flush_restores(NULL);
+	char *names[3] = {"texpaint", "texpaint_nor", "texpaint_pack"};
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		if ((!slot_layer_is_layer(l) && !slot_layer_is_mask(l)) || l->texpaint == NULL) {
+			continue;
+		}
+		bool        mask = slot_layer_is_mask(l);
+		timeline_t *tl   = timeline_of(l);
+		hash128_t   h    = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE; // Kept already: no readback
+		if (!hash128_is_none(h)) {
+			hstore_ref(h);
+		}
+		else {
+			paint_target_t t;
+			timeline_target_live(l, &t);
+			h = timeline_tiles_capture(&t, HASH128_NONE, NULL);
+		}
+		if (hash128_is_none(h)) {
+			continue;
+		}
+		export_tiled_evicted_t e = {.l = l, .h = h, .w = l->texpaint->width, .hh = l->texpaint->height};
+		gpu_texture_t        **f[3] = {&l->texpaint, &l->texpaint_nor, &l->texpaint_pack};
+		for (i32 k = 0; k < (mask ? 1 : 3); ++k) {
+			gpu_texture_t *tex = *f[k];
+			e.format[k]        = tex->format;
+			et_evicted_bytes += (i64)tex->width * tex->height * gpu_texture_format_size(tex->format);
+			gpu_delete_texture(tex);
+			*f[k] = export_tiled_placeholder(e.format[k]);
+			export_tiled_set_layer_target(l, names[k], *f[k]);
+		}
+		if (mask) {
+			mask_stack_free_texture(l); // Evaluated again afterwards
+		}
+		et_evicted                = realloc(et_evicted, sizeof(export_tiled_evicted_t) * (et_nevicted + 1));
+		et_evicted[et_nevicted++] = e;
+	}
+	// What renders again on demand goes too
+	mm_buffers_trim();
+	material_cache_reset();
+	history_on_memory_warning();
+}
+
+// The live textures come back, exactly as they were
+static void export_tiled_unevict() {
+	char *names[3] = {"texpaint", "texpaint_nor", "texpaint_pack"};
+	for (i32 i = 0; i < et_nevicted; ++i) {
+		export_tiled_evicted_t *e    = &et_evicted[i];
+		slot_layer_t           *l    = e->l;
+		bool                    mask = slot_layer_is_mask(l);
+		paint_target_t          t    = {.w = e->w, .h = e->hh, .res_w = e->w, .res_h = e->hh, .channels = mask ? 1 : 3};
+		t.uv_rect[2]                 = 1.0;
+		t.uv_rect[3]                 = 1.0;
+		gpu_texture_t **f[3]         = {&l->texpaint, &l->texpaint_nor, &l->texpaint_pack};
+		for (i32 k = 0; k < t.channels; ++k) {
+			*f[k]    = gpu_create_render_target(e->w, e->hh, e->format[k]);
+			t.out[k] = *f[k];
+			export_tiled_set_layer_target(l, names[k], *f[k]);
+		}
+		if (!timeline_tiles_restore(e->h, &t)) {
+			console_error(string("Export: layer %s could not be restored", l->name));
+		}
+		hstore_unref(e->h);
+		if (mask) {
+			mask_stack_mark_dirty(l);
+		}
+		mask_stack_layer_changed(l);
+	}
+	free(et_evicted);
+	et_evicted                     = NULL;
+	et_nevicted                    = 0;
+	g_context->ddirty              = 2;
+	g_context->layer_preview_dirty = true;
+}
+
 // API
 
 static void export_tiled_finish(bool cancelled);
@@ -1236,11 +1411,18 @@ bool export_tiled_start(char *path, bool bake_material) {
 		return false;
 	}
 	et.active          = true;
-	et.height_coverage = util_uv_dilatemap_cached; // Height blended masks read it when there is one, as the legacy export
+	et.height_coverage = util_uv_dilatemap_cached; // Height blended masks read it when there is one
 	et.bytes_base      = util_texture_tracked_bytes();
 	util_texture_tracked_peak_reset();
 	et_stats[1] = export_tiled_budget() / 1024;
 	export_tiled_blurs_begin();
+	et_evicted_bytes   = 0;
+	et_predicted_bytes = export_tiled_predict();
+	if (export_tiled_mode_wanted()) {
+		hstore_flush(); // The only copy of unsaved pixels goes to the store: on disk first, a kill keeps them
+		project_session_write(); // And the session head: the journal recovers them
+		export_tiled_evict();
+	}
 
 	// Units of progress: per job its tiles and files, estimated with the default tile size
 	i32 s = et_test_tile > 0 ? et_test_tile : EXPORT_TILED_MAX_TILE;
@@ -1317,9 +1499,16 @@ bool export_tiled_step(f64 budget_ms) {
 
 static void export_tiled_finish(bool cancelled) {
 	export_tiled_job_end();
+	i64 tiles_peak = util_texture_tracked_peak() - et.bytes_base;
 	export_tiled_release_targets();
 	export_tiled_release_pool();
 	export_tiled_blurs_end();
+	iron_log("[export] predicted peak %d MB; measured: tile targets %d MB, Material Maker %d MB, layers %s %d MB", (i32)(et_predicted_bytes >> 20),
+	         (i32)(tiles_peak >> 20), mm_buffers_stat(6) >> 10, et_nevicted > 0 ? "evicted" : "kept",
+	         (i32)((et_nevicted > 0 ? et_evicted_bytes : export_tiled_layers_bytes()) >> 20));
+	if (et_nevicted > 0) {
+		export_tiled_unevict();
+	}
 	if (et_mm_capped) {
 		mm_buffers_export_end();
 		et_mm_capped = false;
@@ -1347,6 +1536,11 @@ void export_tiled_cancel() {
 	if (et.active) {
 		export_tiled_finish(true);
 	}
+}
+
+// Export mode is on: the viewport keeps its last frame (render_path_base_commands)
+bool export_tiled_frozen() {
+	return et_nevicted > 0;
 }
 
 bool export_tiled_running() {
@@ -1399,10 +1593,15 @@ void export_tiled_test_whole(bool on) {
 	et_test_whole = on;
 }
 
+// Export mode: 0 off, 1 on, 2 auto (on iOS for exports above the working resolution or larger than half the memory left)
+void export_tiled_set_mode(i32 mode) {
+	et_mode = mode;
+}
+
 // 0 peak tile target KB of the last export, 1 its budget KB, 2 tiles rendered, 3 tiles skipped, 4 files, 5 mm cap,
 // 6 tile target KB held now, 7 1 while a spool file is open, 8 files written by the export in progress, 9 layer tiles
 // from timelines, 10 layer tiles with a timeline it could not materialize (the live layer instead), 11 fill layer and
-// mask tiles rendered
+// mask tiles rendered, 12 KB of live layers evicted (export mode), 13 KB of live layer textures held now
 i32 export_tiled_stat(i32 what) {
 	if (what == 6) {
 		i64 kb = 0;
@@ -1418,10 +1617,16 @@ i32 export_tiled_stat(i32 what) {
 	if (what == 8) {
 		return et.written != NULL ? et.written->length : 0;
 	}
+	if (what == 12) {
+		return (i32)(et_evicted_bytes / 1024);
+	}
+	if (what == 13) {
+		return (i32)(export_tiled_layers_bytes() / 1024);
+	}
 	return what >= 0 && what < 12 ? (i32)et_stats[what] : 0;
 }
 
-// The uv coverage the legacy padding dilates with
+// The uv coverage of the working resolution (util_uv_cache_dilate_map)
 gpu_texture_t *export_tiled_test_coverage() {
 	util_uv_cache_dilate_map();
 	return util_uv_dilatemap;

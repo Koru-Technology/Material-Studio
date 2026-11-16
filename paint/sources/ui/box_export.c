@@ -12,28 +12,20 @@ char                    *box_export_preset_template = "{\
 }\
 ";
 
-// Exports the textures as the export box does. The legacy export pads by dilating the layers in place first, the tiled
-// one pads its own tiles.
-void box_export_textures_run(char *path, bool bake_material) {
-	if (g_context->export_padding && !g_config->export_tiled) {
-		i32 _dilate_radius      = g_config->dilate_radius;
-		g_config->dilate_radius = 256;
-		slot_layer_t *_layer    = g_context->layer;
-		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-			g_context->layer = g_project->_->layers->buffer[i];
-			render_path_paint_dilate(true, true);
-		}
-		g_context->layer        = _layer;
-		g_config->dilate_radius = _dilate_radius;
-	}
-
-	export_texture_run(path, bake_material);
-}
+// The export's resolution apart from the project's: an index of box_export_sizes, 0 the working resolution
+static i32 box_export_size = 0;
+static i32 box_export_sizes[] = {0, 2048, 4096, 8192, 16384};
+#ifdef IRON_IOS
+#define BOX_EXPORT_SIZES_HIDDEN 1 // 16384: 8K at most on iOS
+#else
+#define BOX_EXPORT_SIZES_HIDDEN 0
+#endif
 
 // The tiled export runs over frames, a box shows its progress and cancels it
 
 static void box_export_tiled_end() {
 	sys_remove_update(&box_export_tiled_update);
+	export_tiled_set_resolution(0, 0);
 	ui_box_hide();
 }
 
@@ -56,14 +48,15 @@ static void box_export_tiled_box() {
 }
 
 void box_export_tab_export_textures_run(void *_) {
-	if (g_config->export_tiled) {
-		if (export_tiled_start(g_context->texture_export_path, _box_export_bake_material)) {
-			ui_box_show_custom(&box_export_tiled_box, 400, 120, NULL, false, tr("Export"));
-			sys_notify_on_update(&box_export_tiled_update, NULL);
-		}
-		return;
+	i32 size = box_export_sizes[box_export_size];
+	export_tiled_set_resolution(size, size);
+	if (export_tiled_start(g_context->texture_export_path, _box_export_bake_material)) {
+		ui_box_show_custom(&box_export_tiled_box, 400, 120, NULL, false, tr("Export"));
+		sys_notify_on_update(&box_export_tiled_update, NULL);
 	}
-	box_export_textures_run(g_context->texture_export_path, _box_export_bake_material);
+	else {
+		export_tiled_set_resolution(0, 0);
+	}
 }
 
 void box_export_tab_export_textures_path_picked(char *path) {
@@ -84,25 +77,18 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 
 		ui_row2();
 
-		string_array_t *base_res_combo = any_array_create_from_raw_tmp(
+		string_array_t *size_combo = any_array_create_from_raw_tmp(
 		    (void *[]){
+		        string_tmp("%s (%dx%d)", tr("Project"), config_get_texture_res_x(), config_get_texture_res_y()),
 		        "2048",
 		        "4096",
 		        "8192",
+#if !defined(IRON_IOS)
 		        "16384",
-		        tr("Custom"),
+#endif
 		    },
-		    5);
-
-		// The tiled export leaves the project's resolution: it exports at the working resolution for now (its own export
-		// resolution, export_tiled_set_resolution, comes with stroke replay)
-		g_ui->enabled = !g_config->export_tiled;
-		ui_combo(&base_res, base_res_combo, tr("Resolution"), true, UI_ALIGN_LEFT, true);
-		if (ui_item_changed() && !g_config->export_tiled) {
-			config_set_texture_res(base_res);
-			layers_on_resized();
-		}
-		g_ui->enabled = true;
+		    ARRAY_LENGTH(box_export_sizes) - BOX_EXPORT_SIZES_HIDDEN);
+		ui_combo(&box_export_size, size_combo, tr("Resolution"), true, UI_ALIGN_LEFT, true);
 
 #if defined(IRON_IOS)
 		string_array_t *base_bits_combo = any_array_create_from_raw_tmp(
@@ -123,22 +109,6 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 		ui_combo(&base_bits, base_bits_combo, tr("Color"), true, UI_ALIGN_LEFT, true);
 		if (ui_item_changed()) {
 			sys_notify_on_next_frame(&box_export_tab_export_textures_on_next_frame, NULL);
-		}
-
-		if (base_res == TEXTURE_RES_CUSTOM && !g_config->export_tiled) {
-			static bool res_was_changed = false;
-			ui_row2();
-			ui_slider(&base_res_x, tr("Width"), 1, 16384, false, 1, true, UI_ALIGN_RIGHT, true);
-			bool res_changed = ui_item_changed();
-			ui_slider(&base_res_y, tr("Height"), 1, 16384, false, 1, true, UI_ALIGN_RIGHT, true);
-			res_changed |= ui_item_changed();
-			if (res_was_changed && !g_ui->input_down) {
-				res_was_changed = false;
-				layers_on_resized();
-			}
-			if (res_changed) {
-				res_was_changed = true;
-			}
 		}
 
 		ui_row2();

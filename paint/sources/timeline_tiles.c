@@ -37,9 +37,7 @@ typedef struct tl_tiles_map {
 
 static tl_tiles_map_t  tl_tiles_cache[TL_TILES_CACHE];
 static i32             tl_tiles_cache_next = 0;
-#ifdef IRON_METAL
 static gpu_transfer_t *tl_tiles_transfer = NULL;
-#endif
 
 static i32 tl_tiles_per_channel() {
 	return HISTORY_TILES_GRID * HISTORY_TILES_GRID;
@@ -53,6 +51,7 @@ static void tl_tiles_register() {
 	if (!registered) {
 		hstore_set_children(HSTORE_TILEMAP, timeline_tiles_children);
 		hstore_set_children(HSTORE_LAYER_RECORD, history_record_children);
+		hstore_set_children(HSTORE_PARAMS, timeline_ops_children);
 		registered = true;
 	}
 }
@@ -239,6 +238,77 @@ bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 
 	return true;
 }
 
+// Each channel of map h is one value (its tiles inline and equal): a state that scales to any resolution as it is
+bool timeline_tiles_uniform(hash128_t h) {
+	tl_tiles_map_t *m = tl_tiles_resolve(h);
+	if (m == NULL) {
+		return false;
+	}
+	i32 per = tl_tiles_per_channel();
+	for (i32 i = 0; i < m->channels * per; ++i) {
+		hash128_t first = m->tiles[i - i % per];
+		bool      empty = m->tiles[i].lo == 0 && m->tiles[i].hi == HASH128_INLINE_BIT; // A tile of no texels
+		if (!tl_tiles_inline(m->tiles[i]) || (!empty && !hash128_eq(m->tiles[i], first))) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// Map h is a delta on base
+bool timeline_tiles_base(hash128_t h, hash128_t base) {
+	u32 len = 0;
+	u8 *b   = hash128_is_none(h) ? NULL : hstore_get(h, &len);
+	bool on = b != NULL && len >= TL_TILES_DELTA_HEADER && b[0] == 1 && hash128_eq(tl_tiles_read_hash(b + 8), base);
+	free(b);
+	return on;
+}
+
+// State h encoded again: a delta on base (NONE, or another size: a full map), a reference added. NONE when a map is
+// missing.
+hash128_t timeline_tiles_rebase(hash128_t h, hash128_t base) {
+	tl_tiles_map_t *m = tl_tiles_resolve(h);
+	if (m == NULL) {
+		return HASH128_NONE;
+	}
+	tl_tiles_map_t c     = *m;
+	i32            total = c.channels * tl_tiles_per_channel();
+	c.tiles              = malloc(total * sizeof(hash128_t));
+	memcpy(c.tiles, m->tiles, total * sizeof(hash128_t));
+	tl_tiles_map_t *p = tl_tiles_resolve(base);
+	u32            *changed = malloc(total * sizeof(u32));
+	u32             count   = 0;
+	bool            delta   = p != NULL && p->channels == c.channels && p->width == c.width && p->height == c.height && p->format == c.format &&
+	               p->depth < TL_TILES_DEPTH;
+	for (i32 i = 0; delta && i < total; ++i) {
+		if (!hash128_eq(p->tiles[i], c.tiles[i])) {
+			changed[count++] = i;
+		}
+	}
+	delta     = delta && count * TL_TILES_DELTA_ENTRY < (u32)total * 16;
+	u32 len   = 0;
+	u8 *blob  = NULL;
+	if (delta) {
+		c.depth = p->depth + 1;
+		blob    = tl_tiles_encode_delta(&c, base, changed, count, &len);
+	}
+	else {
+		c.depth = 0;
+		blob    = tl_tiles_encode_full(&c, &len);
+	}
+	hash128_t r = hstore_put(HSTORE_TILEMAP, blob, len); // Takes references on its tiles and base
+	free(blob);
+	free(changed);
+	c.key = r;
+	if (tl_tiles_cache_find(r) == NULL) {
+		tl_tiles_cache_put(&c);
+	}
+	else {
+		free(c.tiles);
+	}
+	return r;
+}
+
 // Children of a stored map (hstore_set_children): its tiles, and the base of a delta
 void timeline_tiles_children(const u8 *data, u32 len, hstore_visit_fn visit, void *ud) {
 	if (len < TL_TILES_FULL_HEADER) {
@@ -336,7 +406,6 @@ static bool tl_tiles_target_ok(paint_target_t *t) {
 }
 
 hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 *dirty) {
-#ifdef IRON_METAL
 	if (!tl_tiles_target_ok(src)) {
 		return HASH128_NONE;
 	}
@@ -453,16 +522,12 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 	free(read);
 	free(changed);
 	return result;
-#else
-	return HASH128_NONE;
-#endif
 }
 
 // Writes the tiles of map into dst, only the ones that differ from prev when dst holds prev now (NONE: every tile).
 // dst may cover a part of the layer (uv_rect) at the map's resolution, or reach past its edge: tiles go at an offset,
 // texels outside the layer are cleared.
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *dst) {
-#ifdef IRON_METAL
 	if (!tl_tiles_target_ok(dst)) {
 		return false;
 	}
@@ -560,9 +625,6 @@ bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *
 	free(want);
 	free(have);
 	return ok;
-#else
-	return false;
-#endif
 }
 
 bool timeline_tiles_restore(hash128_t tilemap, paint_target_t *dst) {
@@ -572,7 +634,6 @@ bool timeline_tiles_restore(hash128_t tilemap, paint_target_t *dst) {
 // Scripts: a capture of a 100 x 80 part of l (partial tiles) restores byte for byte, a capture of l restores into a part
 // of it and past its edge. Mismatches found, -1 when it could not run.
 i32 timeline_tiles_test(slot_layer_t *l) {
-#ifdef IRON_METAL
 	if (l == NULL || l->texpaint == NULL) {
 		return -1;
 	}
@@ -641,9 +702,6 @@ i32 timeline_tiles_test(slot_layer_t *l) {
 	gpu_delete_texture(c);
 	draw_resume(save);
 	return bad;
-#else
-	return -1;
-#endif
 }
 
 // The uv box of the tiles that differ between two maps of the same size, grown by a texel (u0 v0 u1 v1). False when one

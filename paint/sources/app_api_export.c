@@ -7,10 +7,6 @@ _Static_assert((i32)APP_EXPORT_LAYERS_PER_UDIM == (i32)EXPORT_MODE_PER_UDIM_TILE
 static i32             app_export_size = 0;
 static string_array_t *app_export_names = NULL; // Not upscaled at app_export_size
 
-bool app_export_available(void) {
-	return g_config->export_tiled;
-}
-
 static void app_export_presets() {
 	if (box_export_files == NULL) {
 		box_export_fetch_presets();
@@ -110,7 +106,7 @@ static void app_export_path_picked(char *path) {
 }
 
 bool app_export_start(void) {
-	if (!g_config->export_tiled || export_tiled_running()) {
+	if (export_tiled_running()) {
 		return false;
 	}
 	g_context->layers_destination = EXPORT_DESTINATION_DISK;
@@ -129,4 +125,61 @@ void app_export_cancel(void) {
 		sys_remove_update(&app_export_update);
 		export_tiled_set_resolution(0, 0);
 	}
+}
+
+void app_resolution_get(app_resolution_t *out) {
+	*out = (app_resolution_t){.width = config_get_texture_res_x(), .height = config_get_texture_res_y()};
+#ifdef IRON_IOS
+	out->max_size = 8192;
+#else
+	out->max_size = 16384;
+#endif
+	out->running  = layers_resolution_running();
+	out->progress = layers_resolution_progress();
+}
+
+bool app_resolution_set(int32_t size) {
+	app_resolution_t r;
+	app_resolution_get(&r);
+	if (r.running || size < 512 || size > r.max_size || (size == r.width && size == r.height)) {
+		return false;
+	}
+	return layers_resolution_begin(size, size);
+}
+
+void app_history_info(app_history_info_t *out) {
+	hstore_stats_t s = hstore_stats();
+	*out = (app_history_info_t){.ram_bytes = s.ram_bytes, .disk_bytes = s.disk_bytes, .blobs = (int32_t)s.blobs};
+}
+
+void app_history_clear(void) {
+	project_clear_history();
+}
+
+static void app_history_copy_picked(char *path) {
+	char *name = string_equals(ui_files_filename, "") ? tr("untitled") : ui_files_filename;
+	char *file = string("%s%s%s", path, PATH_SEP, name);
+	if (!ends_with(file, ".arm")) {
+		file = string("%s.arm", file);
+	}
+	if (!project_container_save_copy(file)) {
+		console_error(string("Could not save %s.", file));
+	}
+}
+
+bool app_history_save_copy(void) {
+#ifdef IRON_IOS
+	char *dir = iron_save_dialog("", ""); // The documents folder, as Save As (project.c)
+	dir       = string_copy(substring(dir, 0, string_length(dir) - 8)); // Strip /"untitled"
+	char *f   = string("%s/%s copy.arm", dir, sys_title());
+	if (!project_container_save_copy(f)) {
+		console_error(string("Could not save %s.", f));
+		return false;
+	}
+	console_info(tr("Copy saved"));
+	return true;
+#else
+	ui_files_show("arm", true, false, &app_history_copy_picked);
+	return true;
+#endif
 }

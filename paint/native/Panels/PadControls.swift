@@ -218,6 +218,7 @@ func run(_ command: app_command_t) {
 struct PadMenuBar: View {
 	private var store = AppStore.shared
 	@State private var exporting = false // The export sheet (tiled export), the engine's export box otherwise
+	@State private var settings  = false // Project settings
 
 	var body: some View {
 		GlassEffectContainer(spacing: 8) {
@@ -240,7 +241,7 @@ struct PadMenuBar: View {
 					}
 					Menu("Export", systemImage: "square.and.arrow.up") {
 						Button("Textures…", systemImage: "photo.stack") {
-							if app_export_available() { exporting = true } else { run(APP_COMMAND_EXPORT_TEXTURES) }
+							exporting = true
 						}
 						Button("Mesh…", systemImage: "cube") { run(APP_COMMAND_EXPORT_MESH) }
 						Button("Swatches…", systemImage: "swatchpalette") { run(APP_COMMAND_EXPORT_SWATCHES) }
@@ -254,6 +255,7 @@ struct PadMenuBar: View {
 					}
 					Section {
 						Button("Capture Screenshot", systemImage: "camera") { run(APP_COMMAND_SCREENSHOT) }
+						Button("Project Settings…", systemImage: "slider.horizontal.3") { settings = true }
 						Button("Settings…", systemImage: "gear") { run(APP_COMMAND_PREFERENCES) }
 					}
 				} label: {
@@ -267,6 +269,9 @@ struct PadMenuBar: View {
 		.foregroundStyle(.primary)
 		.sheet(isPresented: $exporting) {
 			ExportSheet()
+		}
+		.sheet(isPresented: $settings) {
+			ProjectSettingsSheet()
 		}
 	}
 }

@@ -1,7 +1,7 @@
 #include "global.h"
 
-// History fixes: image layer and image mask redo draw the image again, layers brought back by redo keep their uid, the
-// undo ring resizes without touching the undo steps preference.
+// History fixes: image layer and image mask redo draw the image again, layers brought back by redo keep their uid, a
+// clear undoes.
 
 int fails  = 0;
 int checks = 0;
@@ -132,10 +132,6 @@ void next() {
 	else if (step == 9) {
 		a = ctx->layer;
 		check(a->uid == uid && painted > 100 && opaque(a) == painted, string("redo of a layer and its stroke (%d of %d)", opaque(a), painted));
-		// The ring resized, the preference kept
-		int pref = script_get_config()->undo_steps;
-		history_ring_set_size(2);
-		check(history_ring_size() == 2 && script_get_config()->undo_steps == pref, "ring resized, undo steps preference kept");
 		texels = opaque(a);
 		script_layer_clear(a);
 	}
@@ -144,9 +140,7 @@ void next() {
 		history_undo();
 	}
 	else if (step == 11) {
-		check(opaque(a) == texels, "undo of a clear with the resized ring");
-		history_ring_set_size(script_get_config()->undo_steps);
-		check(history_ring_size() == script_get_config()->undo_steps, "ring back to the preference");
+		check(opaque(a) == texels, "undo of a clear");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[history_fixes] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "HISTORY_FIXES PASS" : "HISTORY_FIXES FAIL");

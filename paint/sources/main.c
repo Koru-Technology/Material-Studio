@@ -23,7 +23,6 @@
 #include "io/import_font.c"
 #include "io/import_json_material.c"
 #include "io/import_keymap.c"
-#include "io/import_legacy.c"
 #include "io/import_lut.c"
 #include "io/import_mesh.c"
 #include "io/import_obj.c"
@@ -266,6 +265,7 @@
 #include "timeline_ops.c"
 #include "timeline_tiles.c"
 #include "timeline_io.c"
+#include "history_io.c"
 #include "keymap.c"
 #include "logic_node.c"
 #include "minic_impl.c"
@@ -296,6 +296,7 @@
 #include "util/util_test.c"
 #include "io/export_tiled.c"
 #include "app_api_export.c"
+#include "util/util_layer_resolution.c"
 
 #ifdef WITH_PLUGINS
 void plugins_init();

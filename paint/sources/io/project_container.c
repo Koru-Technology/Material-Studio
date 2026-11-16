@@ -1,6 +1,6 @@
 #include "../global.h"
 
-// Project files, version 31 with project_v31 on: a container of chunks (history_store.c), read lazily, saved by
+// Project files: a container of chunks (history_store.c), read lazily, saved by
 // appending. Little endian:
 //   "MSPJ" u32 31, 8 bytes 0
 //   chunks: "CHNK" ... (HSTORE_CHUNK_HEADER): the referenced blobs of the store, among them the tile maps of the live
@@ -72,6 +72,7 @@ typedef struct pc_writer {
 	i32                         maps_count;
 	i32                         maps_cap;
 	bool                        no_history; // A copy without history: the live layers' tile maps only
+	bool                        session;    // A session head (project_session_write): no file, no packed assets
 } pc_writer_t;
 
 static pc_writer_t *pc_w = NULL;
@@ -274,8 +275,8 @@ static hash128_t pc_hash_at(u8_array_t *a, i32 i) {
 	return h;
 }
 
-// The project of a container: layers with their raster chunks as texpaint* (LZ4 as in version 30, masks R8),
-// packed assets with their bytes. NULL when no footer checks out.
+// The project of a container: layers name the tile maps of their states (restored by the load from the store), packed
+// assets with their bytes. NULL when no footer checks out.
 static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 	pc_footer_t f;
 	u64         at;
@@ -292,38 +293,18 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 	free(raw_index);
 
 	buffer_t   hb      = {.buffer = head, .length = (u32)f.head_len, .capacity = (u32)f.head_len};
-	project_t *project = import_arm_is_old(&hb) ? import_arm_from_old(&hb) : armpack_decode(&hb);
+	project_t *project = import_arm_decode(&hb);
 	free(head);
 	if (project == NULL) {
 		free(index);
 		return NULL;
 	}
 
-	if (project->layer_datas != NULL) {
-		for (i32 i = 0; i < project->layer_datas->length; ++i) {
-			layer_data_t  *ld = project->layer_datas->buffer[i];
-			buffer_t     **dst[3] = {(buffer_t **)&ld->texpaint, (buffer_t **)&ld->texpaint_nor, (buffer_t **)&ld->texpaint_pack};
-			u8_array_t    *tm     = (u8_array_t *)ld->tilemap;
-			if (tm != NULL && tm->length >= 16) { // Restored by the load from the store, empty buffers tell layers from groups
-				hstore_chunk_t chunk;
-				hash128_t      h        = pc_hash_at(tm, 0);
-				buffer_t      *b        = hash128_is_none(h) ? NULL : pc_payload(s, index, count, h, &chunk);
-				u8            *map      = b != NULL ? hstore_chunk_decode(&chunk, b->buffer, true) : NULL;
-				i32            channels = map != NULL && chunk.raw_len >= 2 ? map[1] : 3; // Map header: tag, channels
-				for (i32 c = 0; c < 3; ++c) {
-					*dst[c] = c == 0 || channels == 3 ? buffer_create(0) : NULL;
-				}
-				free(map);
-				if (b != NULL) {
-					array_free(b);
-					free(b);
-				}
-				if (st != NULL && !hash128_is_none(h)) {
-					i32 cap = st->maps_count;
-					pc_maps_push(&st->maps, &st->maps_count, &cap, h);
-				}
-				continue;
-			}
+	for (i32 i = 0; st != NULL && project->layer_datas != NULL && i < project->layer_datas->length; ++i) {
+		hash128_t h = pc_hash_at((u8_array_t *)project->layer_datas->buffer[i]->tilemap, 0); // Restored by the load from the store
+		if (!hash128_is_none(h)) {
+			i32 cap = st->maps_count;
+			pc_maps_push(&st->maps, &st->maps_count, &cap, h);
 		}
 	}
 	if (project->packed_assets != NULL) {
@@ -406,19 +387,48 @@ void project_container_attach() {
 	}
 }
 
-// The load is done: references are rebuilt from what the project holds, the live layers' maps (project_container_roots)
-// and the timelines. The file's other blobs go at the next trim.
+// The blobs the timelines and the history steps hold, appended to a list (malloc'd), for walks and rebuilds
+static void pc_history_roots(hash128_t **list, i32 *count, i32 *cap) {
+	i32        tl_count;
+	hash128_t *tl_roots = timeline_roots(&tl_count);
+	for (i32 i = 0; i < tl_count; ++i) {
+		pc_maps_push(list, count, cap, tl_roots[i]);
+	}
+	free(tl_roots);
+	hash128_t *h_roots = NULL;
+	i32        h_count = history_io_roots(&h_roots);
+	for (i32 i = 0; i < h_count; ++i) {
+		pc_maps_push(list, count, cap, h_roots[i]);
+	}
+	free(h_roots);
+}
+
+// The load is done: references are rebuilt from what the project holds, the live layers' maps, the timelines and the
+// history steps. The file's other blobs (and recovered ones) go at the next trim.
 void project_container_loaded() {
+	project_session_loaded();
 	if (pc.path == NULL) {
 		return;
 	}
-	i32        tl_count;
-	hash128_t *tl_roots = timeline_roots(&tl_count);
-	hash128_t *roots    = malloc(sizeof(hash128_t) * (pc.maps_count + tl_count + 1));
-	i32        n        = project_container_roots(roots, pc.maps_count);
-	memcpy(roots + n, tl_roots, sizeof(hash128_t) * tl_count);
-	hstore_rebuild_refs(roots, n + tl_count); // Each map gets the state's reference, each entry and checkpoint its own
-	free(tl_roots);
+	pc.maps_count = 0; // The live layers' maps, the file's or a recovered session's
+	i32 cap       = 0;
+	free(pc.maps);
+	pc.maps = NULL;
+	for (i32 i = 0; g_project->layer_datas != NULL && i < g_project->layer_datas->length; ++i) {
+		u8_array_t *tm = (u8_array_t *)g_project->layer_datas->buffer[i]->tilemap;
+		hash128_t   h  = pc_hash_at(tm, 0);
+		if (!hash128_is_none(h)) {
+			pc_maps_push(&pc.maps, &pc.maps_count, &cap, h);
+		}
+	}
+	hash128_t *roots = NULL;
+	i32        n     = 0;
+	i32        rcap  = 0;
+	for (i32 i = 0; i < pc.maps_count; ++i) {
+		pc_maps_push(&roots, &n, &rcap, pc.maps[i]);
+	}
+	pc_history_roots(&roots, &n, &rcap);
+	hstore_rebuild_refs(roots, n); // Each map gets the state's reference, each entry, checkpoint and step its own
 	free(roots);
 }
 
@@ -458,6 +468,24 @@ bool project_container_writing() {
 // Timelines and history blobs go in the save
 bool project_container_writing_history() {
 	return pc_w != NULL && !pc_w->no_history;
+}
+
+bool project_container_writing_session() {
+	return pc_w != NULL && pc_w->session;
+}
+
+// The history steps as bytes (project_t.history), NULL when none
+u8_array_t *project_container_history_encode() {
+	u32 len  = 0;
+	u8 *data = history_io_encode(&len);
+	if (data == NULL) {
+		return NULL;
+	}
+	u8_array_t *a = calloc(1, sizeof(u8_array_t));
+	a->buffer     = data;
+	a->length     = len;
+	a->capacity   = len;
+	return a;
 }
 
 // A chunk of the save: written unless the file or this save has it, listed in the new index either way
@@ -501,7 +529,7 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
 	}
-	timeline_t *tl = timeline_active() && !pc_w->no_history ? timeline_of(l) : NULL; // A copy: full maps, no delta chains
+	timeline_t *tl = !pc_w->no_history ? timeline_of(l) : NULL; // A copy: full maps, no delta chains
 	hash128_t   h  = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE;
 	if (!hash128_is_none(h) && hstore_has(h)) {
 		hstore_ref(h);
@@ -560,6 +588,9 @@ void project_container_unpack_assets(project_t *p) {
 
 // A blob the walk reached: written unless the file has it. The file has its children too (pc_carry), the walk stops.
 static bool pc_put_blob(hash128_t h, void *ud) {
+	if (hstore_kind_of(h) == HSTORE_SESSION) {
+		return false; // Journal only: the saved file is the session's state
+	}
 	if (pc_find(pc_w->old, pc_w->old_count, h) != NULL) {
 		pc_put(0, 0, h, 0, NULL, 0);
 		return false;
@@ -611,6 +642,44 @@ static bool pc_can_append(char *path) {
 
 i32 project_container_last_save_appended = 0; // 1 when the last save appended (tests)
 
+// Live layer bytes: 4 times them, 1 GB at least, is the default history budget
+static i64 pc_live_layer_bytes() {
+	i64 n = 0;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t  *l     = g_project->_->layers->buffer[i];
+		gpu_texture_t *ts[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
+		for (i32 c = 0; c < 3; ++c) {
+			if (ts[c] != NULL) {
+				n += (i64)ts[c]->width * ts[c]->height * gpu_texture_format_size(ts[c]->format);
+			}
+		}
+	}
+	return n;
+}
+
+i64 project_container_history_budget() {
+	if (g_config->history_budget_mb > 0) {
+		return (i64)g_config->history_budget_mb * 1024 * 1024;
+	}
+	i64 b = 4 * pc_live_layer_bytes();
+	return b > (i64)1024 * 1024 * 1024 ? b : (i64)1024 * 1024 * 1024;
+}
+
+// A save keeps the history within its budget: the undo track thins it (history_io_thin)
+static void pc_history_fit() {
+	i64 budget = project_container_history_budget();
+	if (hstore_live_bytes() > budget) {
+		history_io_thin(budget);
+		hstore_trim(false);
+	}
+}
+
+// Clear history: steps and checkpoints go, timeline entries stay (hi-res export replays them)
+void project_clear_history() {
+	history_io_clear();
+	hstore_trim(false);
+}
+
 static bool pc_save(char *path, bool copy) {
 	bool                append = !copy && pc_can_append(path);
 	char               *target = append ? path : string_copy(string("%s.saving", path));
@@ -631,8 +700,9 @@ static bool pc_save(char *path, bool copy) {
 	}
 
 	history_flush_restores(NULL); // Deferred undo restores land: the live layers are the ones shown
-	if (timeline_active()) {
-		timeline_finalize(); // Pending entry states captured
+	timeline_finalize(); // Pending entry states captured
+	if (!copy) {
+		pc_history_fit();
 	}
 	pc_writer_t w = {.s = s, .old = append ? pc.index : NULL, .old_count = append ? pc.count : 0, .no_history = copy};
 	pc_w          = &w;
@@ -644,17 +714,15 @@ static bool pc_save(char *path, bool copy) {
 	if (copy) {
 		project_uuid = uuid;
 	}
-	i32        tl_count = 0;
-	hash128_t *tl_roots = copy ? NULL : timeline_roots(&tl_count);
-	for (i32 i = 0; i < tl_count; ++i) {
-		pc_maps_push(&w.maps, &w.maps_count, &w.maps_cap, tl_roots[i]); // Roots of the walk, not referenced by the save
+	i32 live_maps = w.maps_count;
+	if (!copy) {
+		pc_history_roots(&w.maps, &w.maps_count, &w.maps_cap); // Roots of the walk, not referenced by the save
 	}
-	free(tl_roots);
 	hstore_each(w.maps, w.maps_count, !copy, pc_put_blob, NULL); // Each blob once
 	if (append) {
 		pc_carry();
 	}
-	w.maps_count -= tl_count;
+	w.maps_count = live_maps;
 	pc_w = NULL;
 
 	qsort(w.index, w.count, sizeof(hstore_index_entry_t), pc_compare_entry);
@@ -742,11 +810,8 @@ bool project_container_save(char *path) {
 }
 
 // "Save copy without history": a container of the project and its live layers, no timelines nor history blobs, with
-// its own uuid. The session goes on saving to its file. project_v31 only.
+// its own uuid. The session goes on saving to its file.
 bool project_container_save_copy(char *path) {
-	if (!g_config->project_v31) {
-		return false;
-	}
 	return pc_save(path, true);
 }
 
@@ -792,7 +857,7 @@ void hstore_journal_delete_for_file(char *path) {
 	}
 }
 
-// ---- Test hooks (paint/tests/legacy_upgrade.c, paint/tests/project_container.c) ----
+// ---- Test hooks (paint/tests/project_roundtrip.c, paint/tests/project_container.c) ----
 
 i32 project_container_test_reads() {
 	return (i32)pc_reads;
@@ -829,12 +894,9 @@ i32 project_test_res(i32 axis) {
 	return axis == 0 ? config_get_texture_res_x() : config_get_texture_res_y();
 }
 
-// Layers resized to w x h (the Custom resolution of the layers tab), on the next frame
+// Layers to w x h now (the Custom resolution of the layers tab), not an undo step
 void project_test_set_res(i32 w, i32 h) {
-	base_res   = TEXTURE_RES_CUSTOM;
-	base_res_x = (f32)w;
-	base_res_y = (f32)h;
-	layers_on_resized();
+	layers_resolution_apply(w, h);
 }
 
 // 31 bits of the content hash of the pixels of layer i's texture: 0 base (mask: its value), 1 normal, 2 pack. 0 for none.
@@ -876,4 +938,196 @@ i32 project_test_mask_unequal(i32 i) {
 	}
 	gpu_release_texture_pixels(t);
 	return n;
+}
+
+// ---- Session heads: unsaved work recovered after a crash ----
+//
+// An HSTORE_SESSION blob, journaled: u32 count, count roots (hash128: the live layers' tile maps, the timelines' and
+// history steps' blobs, its children), then the head as a container save writes it without meshes, packed assets and
+// material previews (recovery takes those from the saved file). Written at most every PC_SESSION_SECONDS after the
+// history changes, and when the app goes to the background without saving. The newest one after the journal's last
+// mark (a save) is the unsaved work: project_session_recover opens the saved file with it laid over.
+
+#define PC_SESSION_SECONDS 5.0
+
+static hash128_t pc_session      = {0, 0}; // The last session head written, referenced
+static u64       pc_session_sig  = 0;      // History when it was written
+static f64       pc_session_time = 0.0;
+static bool      pc_recovering   = false;
+
+static void pc_session_children(const u8 *data, u32 len, hstore_visit_fn visit, void *ud) {
+	u32 n = 0;
+	if (len < 4) {
+		return;
+	}
+	memcpy(&n, data, 4);
+	for (u32 i = 0; i < n && 4 + (i + 1) * 16 <= len; ++i) {
+		hash128_t h;
+		memcpy(&h.lo, data + 4 + i * 16, 8);
+		memcpy(&h.hi, data + 4 + i * 16 + 8, 8);
+		visit(h, ud);
+	}
+}
+
+static void pc_session_register() {
+	hstore_set_children(HSTORE_SESSION, pc_session_children);
+}
+
+// Changes of the history: steps, undos, redos and the last step
+static u64 pc_history_signature() {
+	u64 h = HASH_FNV1A_BASIS;
+	i32 n = history_steps != NULL ? history_steps->length : 0;
+	h     = hash_fnv1a_i32(h, n);
+	h     = hash_fnv1a_i32(h, history_undos);
+	h     = hash_fnv1a_i32(h, history_redos);
+	h     = hash_fnv1a_i32(h, n > 0 ? (i32)history_steps->buffer[n - 1]->serial : 0);
+	return h;
+}
+
+// Session heads are written for projects whose layers have timelines: their live states are tile maps already, a
+// head costs no readback
+static bool pc_session_on() {
+	return g_context->paint_object != NULL;
+}
+
+// Journals the session head now, true when it was written
+bool project_session_write() {
+	if (!pc_session_on() || pc_w != NULL) {
+		return false;
+	}
+	pc_session_register();
+	history_flush_restores(NULL);
+	timeline_finalize();
+	pc_writer_t w = {.session = true};
+	pc_w          = &w;
+	buffer_t *head = export_arm_encode_project(g_project->_->filepath);
+	pc_w           = NULL;
+	i32 live_maps  = w.maps_count;
+	pc_history_roots(&w.maps, &w.maps_count, &w.maps_cap);
+
+	u32 len  = 4 + (u32)w.maps_count * 16 + head->length;
+	u8 *blob = malloc(len);
+	u32 n    = (u32)w.maps_count;
+	memcpy(blob, &n, 4);
+	for (i32 i = 0; i < w.maps_count; ++i) {
+		memcpy(blob + 4 + i * 16, &w.maps[i].lo, 8);
+		memcpy(blob + 4 + i * 16 + 8, &w.maps[i].hi, 8);
+	}
+	memcpy(blob + 4 + n * 16, head->buffer, head->length);
+	hash128_t h = hstore_put(HSTORE_SESSION, blob, len); // References its roots
+	free(blob);
+	array_free(head);
+	free(head);
+	for (i32 i = 0; i < live_maps; ++i) {
+		hstore_unref(w.maps[i]); // Held by the head now
+	}
+	free(w.maps);
+	free(w.index);
+	hstore_unref(pc_session); // The one before (the same one stays referenced: put took another)
+	pc_session      = h;
+	pc_session_sig  = pc_history_signature();
+	pc_session_time = iron_time();
+	hstore_flush(); // On disk before a crash can take it
+	return true;
+}
+
+// The history changed since the last session head (resign-active writes it then, whenever)
+bool project_session_changed() {
+	return pc_session_on() && pc_history_signature() != pc_session_sig;
+}
+
+// The session head is due: the history changed PC_SESSION_SECONDS ago or more, nothing is painting
+bool project_session_due() {
+	return pc_session_on() && g_context->brush_time == 0 && pc_history_signature() != pc_session_sig &&
+	       iron_time() - pc_session_time >= PC_SESSION_SECONDS;
+}
+
+// From the update loop
+void project_session_update() {
+	if (project_session_due()) {
+		project_session_write();
+	}
+}
+
+// A new project or an open: the session head belongs to the one before (hstore_reset dropped it)
+void project_session_forget() {
+	pc_session      = HASH128_NONE;
+	pc_session_sig  = pc_history_signature();
+	pc_session_time = 0.0;
+}
+
+// The load is done: the history it decoded is the opened state, not a change to journal. A head of it would be the
+// newest one, and would hide the unsaved work of an earlier session from recovery.
+void project_session_loaded() {
+	pc_session_sig  = pc_history_signature();
+	pc_session_time = 0.0;
+}
+
+// The journal of the project in path (a container) has a session head after its last save
+bool project_session_pending(char *path) {
+	char *uuid = project_file_uuid(path);
+	return uuid != NULL && hstore_journal_pending(uuid);
+}
+
+bool project_session_recovering() {
+	return pc_recovering;
+}
+
+// Opens the project in path with its unsaved work: the newest session head after the last save, laid over the file.
+// False when there is none.
+bool project_session_recover(char *path) {
+	if (!project_session_pending(path)) {
+		return false;
+	}
+	pc_recovering = true;
+	import_arm_run_project(path);
+	pc_recovering = false;
+	project_modified = true; // Not saved yet
+	return true;
+}
+
+// Lays the newest recovered session head over p (the saved file's project): layers, materials, brushes, swatches,
+// camera, uids, timelines, history. Meshes, assets and packed assets stay the file's. False without one.
+bool project_session_overlay(project_t *p) {
+	pc_session_register();
+	hash128_t h   = hstore_recovered_last(HSTORE_SESSION);
+	u32       len = 0;
+	u8       *b   = hash128_is_none(h) ? NULL : hstore_get(h, &len);
+	if (b == NULL || len < 4) {
+		free(b);
+		return false;
+	}
+	u32 n;
+	memcpy(&n, b, 4);
+	u32 off = 4 + n * 16;
+	if (off > len) {
+		free(b);
+		return false;
+	}
+	buffer_t   hb = {.buffer = b + off, .length = len - off, .capacity = len - off};
+	project_t *s  = import_arm_decode(&hb);
+	if (s == NULL || s->layer_datas == NULL || s->layer_datas->length == 0) {
+		free(b);
+		return false;
+	}
+	p->assets                 = s->assets;
+	p->swatches               = s->swatches;
+	p->brush_nodes            = s->brush_nodes;
+	p->brush_icons            = s->brush_icons;
+	p->material_nodes         = s->material_nodes;
+	p->material_groups        = s->material_groups;
+	p->material_icons         = s->material_icons; // Empty: previews render again
+	p->material_datas         = s->material_datas;
+	p->font_assets            = s->font_assets;
+	p->layer_datas            = s->layer_datas;
+	p->camera_world           = s->camera_world;
+	p->camera_origin          = s->camera_origin;
+	p->camera_fov             = s->camera_fov;
+	p->linear_blending        = s->linear_blending;
+	p->id_map                 = s->id_map;
+	p->mesh_maps              = s->mesh_maps;
+	p->next_uid               = s->next_uid;
+	p->timelines              = s->timelines;
+	p->history                = s->history;
+	return true; // b stays: the decoded head may point into it
 }

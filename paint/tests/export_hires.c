@@ -1,10 +1,11 @@
 #include "global.h"
 
 // Tiled export above the working resolution (io/export_tiled.c): from a 2048 project at 4096, fill layers and mask
-// generators render at 4096 and come out as the same project resized to 4096 exports them; paint layers come from their
-// timelines restored at 2048 and scaled up, and are listed as not upscaled.
+// generators render at 4096 and come out as the same project changed to 4096 (layers_resolution_apply) exports them;
+// paint layers come from their timelines restored at 2048 and scaled up, and are listed as not upscaled. Tiles larger than
+// the working resolution (3072 px) render the fill layer as 1024 px tiles do.
 
-char *root = "/tmp/materialstudio_export_hires";
+char *root = "";
 
 int fails  = 0;
 int checks = 0;
@@ -83,21 +84,23 @@ void next() {
 		}
 		check(has_paint && !has_fill, string("%d layers not upscaled: the paint layer, not the fill layer", n));
 
-		config_t *cfg     = script_get_config();
-		cfg->export_tiled = 1;
 		export_texture_test_options("generic", 0, 0, 8, 0);
 		export_tiled_test_tile(1024);
 		export_tiled_set_resolution(4096, 4096);
 		export_texture_run(fresh_dir("t"), 0);
 		check(export_tiled_stat(4) == 5 && export_tiled_stat(11) > 0, string("4096: %d files, %d fill tiles rendered", export_tiled_stat(4), export_tiled_stat(11)));
 		check(export_tiled_stat(9) > 0 && export_tiled_stat(10) == 0, string("paint layer tiles from the timeline at 2048, scaled (%d, %d fell back)", export_tiled_stat(9), export_tiled_stat(10)));
+		export_tiled_test_tile(3072); // Tiles larger than the working resolution (4096 tiles exceed the budget)
+		export_texture_run(fresh_dir("w"), 0);
+		check(export_tiled_stat(2) == 4 && export_tiled_stat(11) > 0, string("3072 px tiles: %d tiles, %d fill tiles", export_tiled_stat(2), export_tiled_stat(11)));
+		export_tiled_test_tile(1024);
+		int d = script_diff_images(string("%s/w/untitled_base.png", root), string("%s/t/untitled_base.png", root), 1.0);
+		check(d >= 0 && d <= 4096 * 4096 * 4 / 10000, string("base color of 3072 px tiles as 1024 px tiles (%d values over 1/255, max %.1f)", d, script_diff_max()));
 		export_tiled_test_no_fill(1);
 		export_texture_run(fresh_dir("bl"), 0);
 		export_tiled_test_no_fill(0);
 		export_tiled_set_resolution(0, 0);
-		cfg->export_tiled = 0;
-		config_set_texture_res(1); // The project at 4096: fill layers and masks render there natively
-		layers_on_resized();
+		layers_resolution_apply(4096, 4096); // The project at 4096: fill layers and masks render there natively
 	}
 	else if (step == 2) {
 		export_texture_run(fresh_dir("l"), 0);
@@ -113,7 +116,6 @@ void next() {
 	else {
 		export_tiled_test_tile(0);
 		config_t *cfg        = script_get_config();
-		cfg->timeline_shadow = 0;
 		printf("[export_hires] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "EXPORT_HIRES PASS" : "EXPORT_HIRES FAIL");
 		script_quit();
@@ -126,7 +128,6 @@ void next() {
 void main() {
 	root = script_tmp_dir("materialstudio_export_hires"); // Per run: suites of several worktrees run at once
 	config_t *cfg        = script_get_config();
-	cfg->timeline_shadow = 1;
 	script_project_new();
 	iron_create_directory(root);
 	script_notify_on_next_frame(next);

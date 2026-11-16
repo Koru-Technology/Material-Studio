@@ -440,32 +440,6 @@ void box_preferences_usage_tab() {
 	if (g_config->undo_memory_mb < 64) {
 		g_config->undo_memory_mb = 64;
 	}
-	ui_slider_int(&g_config->undo_steps, tr("Undo Steps"), 1, 64, false, true, UI_ALIGN_RIGHT, true);
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Whole layer copies for undoing masks, cleared layers and layer conversions, up to 64 paint strokes are kept besides"));
-	}
-	if (g_config->undo_steps < 1) {
-		g_config->undo_steps = 1;
-	}
-	if (ui_item_changed()) {
-		draw_saved_t saved_draw = draw_suspend();
-
-		if (history_undo_layers != NULL) {
-			while (history_undo_layers->length < g_config->undo_steps) {
-				i32           len = history_undo_layers->length;
-				slot_layer_t *l   = slot_layer_create_undo(string("_undo%s", i32_to_string(len)));
-				any_array_push(history_undo_layers, l);
-			}
-			while (history_undo_layers->length > g_config->undo_steps) {
-				slot_layer_t *l = array_pop(history_undo_layers);
-				slot_layer_unload(l);
-			}
-		}
-
-		history_reset();
-		draw_resume(saved_draw);
-	}
-
 	ui_slider_int(&g_config->dilate_radius, tr("Dilate Radius"), 0.0, 16.0, true, true, UI_ALIGN_RIGHT, true);
 	if (g_ui->is_hovered) {
 		ui_tooltip(tr("Dilate painted textures to prevent seams"));

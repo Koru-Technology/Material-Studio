@@ -193,7 +193,6 @@ static void script_paint_begin_stroke(void) {
 	if (script_paint_active) {
 		return;
 	}
-	base_init_undo_layers(); // Allocated on the first stroke, a new project has none yet
 	if (make_material_paint_pending()) {
 		make_material_paint_ready(-1.0); // A material just picked: its shader compiles on a thread, the stroke waits for it
 	}
@@ -204,9 +203,7 @@ static void script_paint_begin_stroke(void) {
 	render_path_base_draw_gbuffer();
 
 	history_push_undo = true;
-	if (history_undo_layers != NULL) {
-		history_paint();
-	}
+	history_paint();
 
 	script_paint_active         = true;
 	script_paint_first          = true;
@@ -308,9 +305,7 @@ void script_fill_layer(void) {
 	}
 
 	history_push_undo = true;
-	if (history_undo_layers != NULL) {
-		history_paint();
-	}
+	history_paint();
 	layers_update_fill_layer(true);
 	g_context->layer_preview_dirty = true;
 	g_context->rtdirty             = 1;

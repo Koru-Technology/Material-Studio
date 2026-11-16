@@ -199,10 +199,7 @@ static void make_paint_glsl_note(shader_context_t *scon, char *glsl) {
 // The texel of tex the fragment paints. With resolved dabs a fetch: targets of any size (replay tiles) read it exactly,
 // a sample at the texel's center rounds when the size is not a power of two.
 static char *make_paint_texel(char *tex) {
-	if (paint_exec_resolved_config()) {
-		return string_tmp("texelFetch(sampler2D(%s, sampler_linear), ivec2(int(gl_FragCoord.x), int(gl_FragCoord.y)), 0)", tex);
-	}
-	return string_tmp("textureLod(sampler2D(%s, sampler_linear), sample_tc, 0.0)", tex);
+	return string_tmp("texelFetch(sampler2D(%s, sampler_linear), ivec2(int(gl_FragCoord.x), int(gl_FragCoord.y)), 0)", tex);
 }
 
 // The paint shader reads the material from its cache (util_material_cache.c)
@@ -258,7 +255,7 @@ static bool make_paint_batch_eligible() {
 
 // Brush draws read their dabs resolved to world space (paint_exec.c) instead of the depth and gbuffer under the screen point
 static bool make_paint_resolved_eligible(bool is_atlas) {
-	if (is_atlas || !paint_exec_resolved_config() || g_context->pick_pos_nor_tex || g_context->layer == NULL || g_context->layer->fill_material != NULL) {
+	if (is_atlas || g_context->pick_pos_nor_tex || g_context->layer == NULL || g_context->layer->fill_material != NULL) {
 		return false;
 	}
 	tool_type_t tool = g_context->tool;
@@ -838,10 +835,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	}
 
 	if (make_paint_batched) { // Coverage of every dab, see make_brush_run_batched_coverage
-		shader->frag_wvpposition = true;
-		node_shader_write_frag(shader,
-		                       "vec2 sample_tc = vec2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
-		node_shader_write_frag(shader, "sample_tc.y = 1.0 - sample_tc.y;");
 		node_shader_add_texture(shader, "paintmask", NULL);
 		node_shader_write_frag(shader, string_tmp("float sample_mask = %s.r;", make_paint_texel("paintmask")));
 		node_shader_write_frag(shader, "float cov = sample_mask;");
@@ -865,10 +858,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	}
 
 	// Manual blending to preserve memory
-	shader->frag_wvpposition = true;
-	node_shader_write_frag(shader,
-	                       "vec2 sample_tc = vec2(input.wvpposition.x / input.wvpposition.w, input.wvpposition.y / input.wvpposition.w) * 0.5 + 0.5;");
-	node_shader_write_frag(shader, "sample_tc.y = 1.0 - sample_tc.y;");
 	node_shader_add_texture(shader, "paintmask", NULL);
 	node_shader_write_frag(shader, string_tmp("float sample_mask = %s.r;", make_paint_texel("paintmask")));
 	if (accum) {

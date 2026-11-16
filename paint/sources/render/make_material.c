@@ -121,9 +121,7 @@ void make_material_parse_mesh_material() {
 	g_context->ddirty  = 2;
 	g_context->rtdirty = 1;
 
-	if (g_project->_->translucency || paint_exec_resolved_config()) { // The depth painting reads, see render_path_base_has_paint_depth
-		make_material_parse_depth_material();
-	}
+	make_material_parse_depth_material(); // The depth painting reads, see render_path_base_has_paint_depth
 }
 
 void make_material_parse_mesh_preview_material() {

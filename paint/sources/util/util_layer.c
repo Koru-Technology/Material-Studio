@@ -101,16 +101,9 @@ void layers_init() {
 	                 layers_default_rough, 0.0);
 }
 
-// Timelines keep the states of the old size: restores across the change fail and log, they come with the
-// non-destructive resolution change (export track, phase 6)
+// The layers of a new project to the working resolution (project_new). Changes of an open project's resolution keep
+// detail and are undoable: layers_resolution_begin (util/util_layer_resolution.c).
 void layers_resize() {
-	// Fewer whole layer copies at 8K and above to save memory, the undo steps preference is kept
-	i32 ring = g_config->undo_steps;
-	if (config_get_texture_res_x() >= 8192 || config_get_texture_res_y() >= 8192) {
-		i32 cap = config_get_texture_res_x() == 8192 ? 4 : 1;
-		ring    = ring < cap ? ring : cap;
-	}
-	history_ring_set_size(ring);
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_resize_and_set_bits(l);
@@ -122,21 +115,11 @@ void layers_resize() {
 	layers_crop                = false;
 }
 
-// Undo layers, live layer and paint targets that follow the texture resolution
+// Live layer and paint targets that follow the texture resolution (layers out of the project for undo are records,
+// without textures)
 void layers_resize_targets() {
 	stroke_refine_reset(); // Records of the old size go
 	material_cache_reset(); // And material caches
-	if (history_undo_layers != NULL) {
-		for (i32 i = 0; i < history_undo_layers->length; ++i) {
-			slot_layer_t *l = history_undo_layers->buffer[i];
-			slot_layer_resize_and_set_bits(l);
-		}
-	}
-
-	slot_layer_t_array_t *saved = history_merge_saved_layers();
-	for (i32 i = 0; i < saved->length; ++i) {
-		slot_layer_resize_and_set_bits(saved->buffer[i]);
-	}
 
 	any_map_t *rts = render_path_render_targets;
 
@@ -161,14 +144,6 @@ void layers_set_bits() {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_resize_and_set_bits(l);
-	}
-	for (i32 i = 0; i < history_undo_layers->length; ++i) {
-		slot_layer_t *l = history_undo_layers->buffer[i];
-		slot_layer_resize_and_set_bits(l);
-	}
-	slot_layer_t_array_t *saved = history_merge_saved_layers();
-	for (i32 i = 0; i < saved->length; ++i) {
-		slot_layer_resize_and_set_bits(saved->buffer[i]);
 	}
 }
 
@@ -333,35 +308,6 @@ void layers_history_with_prev(void (*push)(void)) {
 	if (history_steps->length > before && history_steps->length > 1) {
 		history_steps->buffer[history_steps->length - 1]->with_prev = true;
 	}
-}
-
-void layers_on_resized_on_next_frame(void *_) {
-	layers_resize();
-	slot_layer_t    *_layer    = g_context->layer;
-	slot_material_t *_material = g_context->material;
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->fill_material != NULL) {
-			g_context->layer    = l;
-			g_context->material = l->fill_material;
-			layers_set_object_mask();
-			layers_update_fill_layer(true);
-		}
-	}
-	g_context->layer    = _layer;
-	g_context->material = _material;
-	layers_set_object_mask();
-	make_material_parse_paint_material(true);
-}
-
-void layers_on_resized() {
-	sys_notify_on_next_frame(&layers_on_resized_on_next_frame, NULL);
-	util_uv_uvmap              = NULL;
-	util_uv_uvmap_cached       = false;
-	util_uv_trianglemap        = NULL;
-	util_uv_trianglemap_cached = false;
-	util_uv_dilatemap_cached   = false;
-	render_path_raytrace_ready = false;
 }
 
 // Layer, Layer Mask and Mesh Displace nodes hold a position in the layer stack. The stack as those positions were last

@@ -1,13 +1,6 @@
 
 #include "../global.h"
 
-// Compressed layer pixels, without keeping the full size readback in memory
-static buffer_t *export_arm_encode_layer_texture(gpu_texture_t *t) {
-	buffer_t *b = lz4_encode(gpu_get_texture_pixels(t));
-	gpu_release_texture_pixels(t);
-	return b;
-}
-
 // A material preview (RGBA64) compressed, in RGBA order
 static buffer_t *export_arm_encode_icon(gpu_texture_t *t) {
 #ifdef IRON_BGRA
@@ -134,16 +127,6 @@ string_array_t *export_arm_fonts_to_files(char *project_path, slot_font_t_array_
 }
 
 static bool export_arm_show_progress = false;
-static bool export_arm_v30           = false; // Save as v30: readable by builds from before 31, uids are not saved
-
-// Version files are written in. 31 only with project_v31 on (or env PROJECT_V31=1 for test runs): builds from before
-// it, installed on the same device, cannot open it
-static char *export_arm_version() {
-	char *e   = getenv("PROJECT_V31");
-	bool  v31 = g_config->project_v31 || (e != NULL && atoi(e) != 0);
-	return v31 && !export_arm_v30 ? manifest_version_project : "30";
-}
-
 static void export_arm_progress(f32 progress) {
 	if (export_arm_show_progress) {
 		ui_header_draw_progress(progress);
@@ -237,17 +220,17 @@ buffer_t *export_arm_encode_project(char *path) {
 	i32 bpp      = bits_pos == TEXTURE_BITS_BITS8 ? 8 : bits_pos == TEXTURE_BITS_BITS16 ? 16 : 32;
 
 	layer_data_t_array_t *ld        = any_array_create_from_raw((void *[]){}, 0);
-	bool                  container = project_container_writing(); // Pixels go in chunks (io/project_container.c)
 	export_arm_progress(0.1);
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		export_arm_progress(0.1 + 0.6 * i / (f32)g_project->_->layers->length);
 		slot_layer_t *l       = g_project->_->layers->buffer[i];
-		u8_array_t   *tilemap = container ? project_container_layer_tilemap(l) : NULL;
+		u8_array_t   *tilemap = project_container_layer_tilemap(l); // Pixels go in chunks (io/project_container.c)
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
-		                              .res                = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
+		                              .type               = slot_layer_is_group(l) ? LAYER_SLOT_TYPE_GROUP : slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER,
+		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
+		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
 		                              .bpp                = bpp,
-		                              .texpaint           = l->texpaint != NULL && !container ? export_arm_encode_layer_texture(l->texpaint) : NULL,
 		                              .uv_scale           = l->scale,
 		                              .uv_rot             = l->angle,
 		                              .uv_type            = l->uv_type,
@@ -259,9 +242,6 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .blending           = l->blending,
 		                              .parent             = l->parent != NULL ? array_index_of(g_project->_->layers, l->parent) : -1,
 		                              .visible            = l->visible,
-		                              .texpaint_nor       = l->texpaint_nor != NULL && !container ? export_arm_encode_layer_texture(l->texpaint_nor) : NULL,
-		                              .texpaint_pack      = l->texpaint_pack != NULL && !container ? export_arm_encode_layer_texture(l->texpaint_pack) : NULL,
-		                              .texpaint_sculpt    = NULL, // Sculpting was removed, the field stays for file compatibility
 		                              .paint_base         = l->paint_base,
 		                              .paint_opac         = l->paint_opac,
 		                              .paint_occ          = l->paint_occ,
@@ -289,9 +269,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .mask_effects           = mask_stack_anchors_to_index(l->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length),
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
 		                              .uid                = l->uid,
-		                              .timeline           = container && !project_container_writing_history() ? 0 : l->timeline,
-		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
-		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
+		                              .timeline           = project_container_writing_history() ? l->timeline : 0,
 		                              .tilemap            = tilemap});
 		any_array_push(ld, d);
 	}
@@ -303,7 +281,7 @@ buffer_t *export_arm_encode_project(char *path) {
 	bool same_drive = g_project->envmap != NULL ? char_at(relative_to, 0)[0] == char_at(g_project->envmap, 0)[0] : true;
 #endif
 
-	g_project->version                = string_copy(export_arm_version());
+	g_project->version                = string_copy(manifest_version_project);
 	g_project->uuid                   = project_uuid_get();
 	g_project->next_uid               = project_uid_next;
 	g_project->material_groups        = mgroups;
@@ -363,7 +341,7 @@ buffer_t *export_arm_encode_project(char *path) {
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
 		buffer_t        *icon;
-		if (m->preview_ready && m->image != NULL) {
+		if (m->preview_ready && m->image != NULL && !project_container_writing_session()) { // Recovery renders them again
 			icon = export_arm_encode_icon(m->image);
 			gpu_release_texture_pixels(m->image);
 		}
@@ -386,30 +364,46 @@ buffer_t *export_arm_encode_project(char *path) {
 	g_project->is_bgra = false;
 #endif
 
-	bool pack_assets = g_context->pack_assets_on_save;
+	bool pack_assets = g_context->pack_assets_on_save && !project_container_writing_session();
 	export_arm_progress(0.7);
 	if (pack_assets) {
 		export_arm_pack_assets(g_project, g_project->_->assets);
 	}
 
 	export_arm_progress(0.8);
-	if (container) {
+	// Container and session heads: packed assets as hashes, timelines and history steps (their blobs are written with
+	// the store's). A session head leaves out what recovery takes from the saved file: meshes and packed assets.
+	bool                    session        = project_container_writing_session();
+	mesh_data_t_array_t    *session_meshes = g_project->mesh_datas;
+	buffer_t_array_t       *session_icons  = g_project->mesh_icons;
+	packed_asset_t_array_t *session_packed = g_project->packed_assets;
+	if (session) {
+		g_project->mesh_datas    = NULL;
+		g_project->mesh_icons    = NULL;
+		g_project->packed_assets = NULL;
+	}
+	else {
 		project_container_pack_assets(g_project);
-		g_project->timelines = project_container_writing_history() ? timeline_io_encode() : NULL; // Their blobs are written with the store's
 	}
-	buffer_t *buffer = util_encode_project(g_project);
-	if (container) {
+	bool history         = project_container_writing_history();
+	g_project->timelines = history ? timeline_io_encode() : NULL;
+	g_project->history   = history ? project_container_history_encode() : NULL;
+	buffer_t *buffer     = util_encode_project(g_project);
+	if (session) {
+		g_project->mesh_datas    = session_meshes;
+		g_project->mesh_icons    = session_icons;
+		g_project->packed_assets = session_packed;
+	}
+	else {
 		project_container_unpack_assets(g_project);
-		export_arm_free_buffer(g_project->timelines);
-		g_project->timelines = NULL;
 	}
+	export_arm_free_buffer(g_project->timelines);
+	export_arm_free_buffer(g_project->history);
+	g_project->timelines = NULL;
+	g_project->history   = NULL;
 
 	for (i32 i = 0; i < ld->length; ++i) {
 		layer_data_t *d = ld->buffer[i];
-		export_arm_free_buffer(d->texpaint);
-		export_arm_free_buffer(d->texpaint_nor);
-		export_arm_free_buffer(d->texpaint_pack);
-		export_arm_free_buffer(d->texpaint_sculpt);
 		export_arm_free_buffer(d->tilemap);
 		if (d->decal_mat != NULL) {
 			array_free(d->decal_mat);
@@ -429,28 +423,10 @@ buffer_t *export_arm_encode_project(char *path) {
 	return buffer;
 }
 
-// A project file older builds open (version 30): no uids, layers saved square (their width)
-void export_arm_run_project_v30(char *path) {
-	export_arm_v30 = true;
-	export_arm_run_project(path);
-	export_arm_v30 = false;
-}
-
 void export_arm_run_project(char *path) {
 	history_flush_restores(NULL); // Deferred undo restores land: the layers saved are the ones shown
 	export_arm_show_progress = true;
-	bool saved;
-	if (string_equals(export_arm_version(), "31")) {
-		saved = project_container_save(path); // Appends to the file when it can
-	}
-	else {
-		buffer_t *buffer = export_arm_encode_project(path);
-		export_arm_progress(0.9);
-		saved = iron_file_save_bytes(path, buffer, 0);
-		array_free(buffer);
-		free(buffer);
-	}
-	if (!saved) {
+	if (!project_container_save(path)) { // Appends to the file when it can
 		console_error(string("Could not save %s.", path)); // Still modified, saved again later
 	}
 	else if (string_equals(path, g_project->_->filepath)) {
@@ -585,7 +561,7 @@ void export_arm_run_material(char *path) {
                                                          });
 	any_array_push(mdata2, md2);
 
-	project_t *raw = ALLOC_INIT(project_t, {.version         = export_arm_version(),
+	project_t *raw = ALLOC_INIT(project_t, {.version         = manifest_version_project,
 	                                        .material_nodes  = mnodes,
 	                                        .material_groups = mgroups,
 	                                        .material_icons  = micons,
@@ -648,7 +624,7 @@ buffer_t *export_arm_encode_library_material(slot_material_t *m) {
                                                          });
 	any_array_push(mdata2, md2);
 
-	project_t *raw = ALLOC_INIT(project_t, {.version        = export_arm_version(),
+	project_t *raw = ALLOC_INIT(project_t, {.version        = manifest_version_project,
 	                                        .material_nodes = mnodes,
 	                                        .material_icons = any_array_create_from_raw((void *[]){icon}, 1),
 	                                        .material_datas = mdata2,
@@ -710,7 +686,7 @@ void export_arm_run_swatches(char *path) {
 	if (!ends_with(path, ".arm")) {
 		path = string("%s.arm", path);
 	}
-	project_t *raw    = ALLOC_INIT(project_t, {.version = export_arm_version(), .swatches = g_project->swatches});
+	project_t *raw    = ALLOC_INIT(project_t, {.version = manifest_version_project, .swatches = g_project->swatches});
 	buffer_t  *buffer = util_encode_project(raw);
 	if (!iron_file_save_bytes(path, buffer, 0)) {
 		console_error(string("Could not save %s.", path));

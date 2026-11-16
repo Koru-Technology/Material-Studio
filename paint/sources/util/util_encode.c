@@ -113,45 +113,15 @@ i32 util_encode_f32_arrays_size(f32_array_t_array_t *arrays) {
 	return size;
 }
 
-i32 util_encode_layer_data_size(layer_data_t_array_t *datas) {
-	if (datas == NULL) {
-		return 0;
-	}
-	i32 size = 0;
-	for (i32 i = 0; i < datas->length; ++i) {
-		buffer_t *tp = datas->buffer[i]->texpaint;
-		if (tp != NULL) {
-			size += tp->length;
-		}
-
-		buffer_t *tp_nor = datas->buffer[i]->texpaint_nor;
-		if (tp_nor != NULL) {
-			size += tp_nor->length;
-		}
-
-		buffer_t *tp_pack = datas->buffer[i]->texpaint_pack;
-		if (tp_pack != NULL) {
-			size += tp_pack->length;
-		}
-
-		buffer_t *tp_sculpt = datas->buffer[i]->texpaint_sculpt;
-		if (tp_sculpt != NULL) {
-			size += tp_sculpt->length;
-		}
-	}
-	return size;
-}
-
 buffer_t *util_encode_project(project_t *raw) {
-	i32 size = 32 * 1024 * 1024 + util_encode_layer_data_size(raw->layer_datas) + util_encode_mesh_data_size(raw->mesh_datas) +
+	i32 size = 32 * 1024 * 1024 + util_encode_mesh_data_size(raw->mesh_datas) +
 	           util_encode_packed_assets_size(raw->packed_assets) + util_encode_buffers_size(raw->brush_icons) + util_encode_buffers_size(raw->material_icons) +
 	           util_encode_buffers_size(raw->mesh_icons) + util_encode_f32_arrays_size(raw->mesh_transforms) +
 	           (raw->timelines != NULL ? raw->timelines->length : 0) + (raw->history != NULL ? raw->history->length : 0);
 	buffer_t *encoded = buffer_create(size);
-	bool      v30     = raw->version != NULL && string_equals(raw->version, "30"); // Save as v30: without the fields added in 31
 
 	armpack_encode_start(encoded->buffer);
-	armpack_encode_map(v30 ? 33 : 37);
+	armpack_encode_map(37);
 
 	armpack_encode_string("version");
 	armpack_encode_string(raw->version);
@@ -281,7 +251,7 @@ buffer_t *util_encode_project(project_t *raw) {
 	if (raw->material_datas != NULL) {
 		armpack_encode_array(raw->material_datas->length);
 		for (i32 i = 0; i < raw->material_datas->length; ++i) {
-			armpack_encode_map(v30 ? 11 : 12);
+			armpack_encode_map(12);
 			armpack_encode_string("paint_base");
 			armpack_encode_bool(raw->material_datas->buffer[i]->paint_base);
 			armpack_encode_string("paint_opac");
@@ -304,10 +274,8 @@ buffer_t *util_encode_project(project_t *raw) {
 			armpack_encode_f32(raw->material_datas->buffer[i]->uv_scale);
 			armpack_encode_string("uv_angle");
 			armpack_encode_f32(raw->material_datas->buffer[i]->uv_angle);
-			if (!v30) {
-				armpack_encode_string("uid");
-				armpack_encode_i32((i32)raw->material_datas->buffer[i]->uid);
-			}
+			armpack_encode_string("uid");
+			armpack_encode_i32((i32)raw->material_datas->buffer[i]->uid);
 		}
 	}
 	else {
@@ -321,15 +289,17 @@ buffer_t *util_encode_project(project_t *raw) {
 	if (raw->layer_datas != NULL) {
 		armpack_encode_array(raw->layer_datas->length);
 		for (i32 i = 0; i < raw->layer_datas->length; ++i) {
-			armpack_encode_map(v30 ? 44 : 49);
+			armpack_encode_map(45);
 			armpack_encode_string("name");
 			armpack_encode_string(raw->layer_datas->buffer[i]->name);
-			armpack_encode_string("res");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->res);
+			armpack_encode_string("type");
+			armpack_encode_i32(raw->layer_datas->buffer[i]->type);
+			armpack_encode_string("res_x");
+			armpack_encode_i32(raw->layer_datas->buffer[i]->res_x);
+			armpack_encode_string("res_y");
+			armpack_encode_i32(raw->layer_datas->buffer[i]->res_y);
 			armpack_encode_string("bpp");
 			armpack_encode_i32(raw->layer_datas->buffer[i]->bpp);
-			armpack_encode_string("texpaint");
-			armpack_encode_array_u8(raw->layer_datas->buffer[i]->texpaint);
 			armpack_encode_string("uv_scale");
 			armpack_encode_f32(raw->layer_datas->buffer[i]->uv_scale);
 			armpack_encode_string("uv_rot");
@@ -350,12 +320,6 @@ buffer_t *util_encode_project(project_t *raw) {
 			armpack_encode_i32(raw->layer_datas->buffer[i]->parent);
 			armpack_encode_string("visible");
 			armpack_encode_bool(raw->layer_datas->buffer[i]->visible);
-			armpack_encode_string("texpaint_nor");
-			armpack_encode_array_u8(raw->layer_datas->buffer[i]->texpaint_nor);
-			armpack_encode_string("texpaint_pack");
-			armpack_encode_array_u8(raw->layer_datas->buffer[i]->texpaint_pack);
-			armpack_encode_string("texpaint_sculpt");
-			armpack_encode_array_u8(raw->layer_datas->buffer[i]->texpaint_sculpt);
 			armpack_encode_string("paint_base");
 			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_base);
 			armpack_encode_string("paint_opac");
@@ -410,18 +374,12 @@ buffer_t *util_encode_project(project_t *raw) {
 			armpack_encode_f32(raw->layer_datas->buffer[i]->height_blend_reach);
 			armpack_encode_string("mask_effects");
 			armpack_encode_array_f32(raw->layer_datas->buffer[i]->mask_effects);
-			if (!v30) {
-				armpack_encode_string("uid");
-				armpack_encode_i32((i32)raw->layer_datas->buffer[i]->uid);
-				armpack_encode_string("res_x");
-				armpack_encode_i32(raw->layer_datas->buffer[i]->res_x);
-				armpack_encode_string("res_y");
-				armpack_encode_i32(raw->layer_datas->buffer[i]->res_y);
-				armpack_encode_string("timeline");
-				armpack_encode_i32((i32)raw->layer_datas->buffer[i]->timeline);
-				armpack_encode_string("tilemap");
-				armpack_encode_array_u8(raw->layer_datas->buffer[i]->tilemap);
-			}
+			armpack_encode_string("uid");
+			armpack_encode_i32((i32)raw->layer_datas->buffer[i]->uid);
+			armpack_encode_string("timeline");
+			armpack_encode_i32((i32)raw->layer_datas->buffer[i]->timeline);
+			armpack_encode_string("tilemap");
+			armpack_encode_array_u8(raw->layer_datas->buffer[i]->tilemap);
 		}
 	}
 	else {
@@ -468,16 +426,14 @@ buffer_t *util_encode_project(project_t *raw) {
 	armpack_encode_string(raw->id_map);
 	armpack_encode_string("mesh_maps");
 	armpack_encode_array_string(raw->mesh_maps);
-	if (!v30) {
-		armpack_encode_string("uuid");
-		armpack_encode_string(raw->uuid);
-		armpack_encode_string("next_uid");
-		armpack_encode_i32((i32)raw->next_uid);
-		armpack_encode_string("timelines");
-		armpack_encode_array_u8(raw->timelines);
-		armpack_encode_string("history");
-		armpack_encode_array_u8(raw->history);
-	}
+	armpack_encode_string("uuid");
+	armpack_encode_string(raw->uuid);
+	armpack_encode_string("next_uid");
+	armpack_encode_i32((i32)raw->next_uid);
+	armpack_encode_string("timelines");
+	armpack_encode_array_u8(raw->timelines);
+	armpack_encode_string("history");
+	armpack_encode_array_u8(raw->history);
 
 	i32 ei          = armpack_encode_end();
 	encoded->length = ei;

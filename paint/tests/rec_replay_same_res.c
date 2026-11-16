@@ -5,7 +5,7 @@
 // state before the stroke and replays its record into the layer: the hashes must match, no replay may fall back.
 // Cases: batched stamps, unbatched stamps, flow below 1, jitter (seeded), symmetry, a continuous brush, the eraser over a
 // stroke, a stroke through the per frame path (mouse events, tail and in-stroke dilation), a mask, a brush tip. Then a stroke replays
-// the same after the project is saved (project_v31) and opened again.
+// the same after the project is saved and opened again.
 
 int fails  = 0;
 int checks = 0;
@@ -58,12 +58,14 @@ char *case_name(int k) {
 	if (k == 11) {
 		return "taper";
 	}
+	if (k == 12) {
+		return "8 samples on a layer with a white mask";
+	}
 	return "saved and opened";
 }
 
 int   uid   = 0;
 char *dir   = "/tmp/materialstudio_rec_replay";
-int   v31   = 0;
 
 char *hash_of(gpu_texture_t *t) {
 	return t != NULL ? script_texture_hash(t) : "";
@@ -100,8 +102,22 @@ void setup(int k) {
 	if (k == 8) {
 		script_layer_set(script_layer_new_mask(script_get_context()->layer, 0)); // Black, the stroke reveals
 	}
+	if (k == 12) { // As undo_deep paints: the depth the draws read was recorded at the wrong size (the dab pass's)
+		slot_layer_t *l = script_get_context()->layer;
+		script_layer_new_mask(l, 1);
+		script_layer_set(l);
+		ctx->brush_radius = 0.15;
+	}
 	make_paint_set_batching(k != 1); // Parses the paint material again
 	render_path_paint_set_stamp_seed(4242);
+}
+
+void stroke_deep() {
+	for (int k = 0; k < 8; ++k) {
+		float t = k / 7.0;
+		script_paint(0.6 + 0.2 * t, 0.328 + 0.05 * t);
+	}
+	script_paint_end();
 }
 
 void stroke(float y) {
@@ -168,7 +184,12 @@ void next() {
 		check(string_equals(h0, hash_of(find_uid(uid)->texpaint)), "the layer as saved");
 	}
 	else if (frame == 6 && kase != 7) {
-		stroke(0.45);
+		if (kase == 12) {
+			stroke_deep();
+		}
+		else {
+			stroke(0.45);
+		}
 		paint_rec_flush();
 		note();
 	}
@@ -189,12 +210,9 @@ void next() {
 		compare(kase);
 		kase  = kase + 1;
 		frame = 0;
-		if (kase == 12) {
+		if (kase == 13) {
 			check(paint_rec_test_stored() >= 11, string("strokes stored (%d)", paint_rec_test_stored()));
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
-			script_get_config()->paint_resolved_dabs = 0;
-			script_get_config()->timeline_shadow     = 0;
-			script_get_config()->project_v31         = v31;
 			printf("[rec_replay] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "REC_REPLAY PASS" : "REC_REPLAY FAIL");
 			script_quit();
@@ -206,10 +224,6 @@ void next() {
 
 void main() {
 	dir = script_tmp_dir("materialstudio_rec_replay"); // Per run: suites of several worktrees run at once
-	script_get_config()->paint_resolved_dabs = 1;
-	script_get_config()->timeline_shadow     = 1;
-	v31                                      = script_get_config()->project_v31;
-	script_get_config()->project_v31         = 1;
 	script_brush_defaults();
 	script_project_new();
 	slot_material_t *m   = script_material_create("rec_replay_blue");

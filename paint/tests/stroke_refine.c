@@ -460,12 +460,23 @@ void next() {
 		if (frame == 3) {
 			int d = layer_differ(base_b, base_n, base_p, 0);
 			check(d == 0, string("two undos remove both strokes (%d samples differ)", d));
-			script_material_set(heavy);
+			script_material_set(heavy); // Its buffers full again before the reference (the other material may have had them go)
+			phase = 35;
+			frame = 0;
+		}
+	}
+	else if (phase == 35) {
+		if (frame > 3 && mm_buffers_stat(11) == 0) {
 			stroke_b1();
 			script_material_set(plain);
 			stroke_b2();
 			phase = 34;
 			frame = 0;
+		}
+		else if (frame > 3600) {
+			check(false, "the heavy material's buffers are full again");
+			finish();
+			return;
 		}
 	}
 	else if (phase == 34) {
@@ -533,8 +544,6 @@ void next() {
 }
 
 void main() {
-	script_get_config()->paint_resolved_dabs = 1; // Strokes recorded: they sharpen by replay
-	script_get_config()->timeline_shadow     = 1;
 	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	script_project_new();
 	render_path_paint_set_stamp_seed(4242);

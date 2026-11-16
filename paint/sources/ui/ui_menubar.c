@@ -375,20 +375,12 @@ void ui_menubar_draw_category_items() {
 		g_ui->enabled = true;
 		ui_menu_separator();
 
-		// History steps, every one kept (empty entries below while there are few)
-		i32  history_max     = history_steps->length > g_config->undo_steps + 1 ? history_steps->length : g_config->undo_steps + 1;
+		// History steps, every one kept
 		i32  history_active  = history_steps->length - 1 - history_redos;
 		i32  history_index   = history_active;
 		bool history_changed = false;
-		for (i32 i = 0; i < history_max; ++i) {
-			if (i < history_steps->length) {
-				ui_radio(&history_index, i, history_steps->buffer[i]->name, "");
-			}
-			else {
-				g_ui->enabled = false;
-				ui_radio(&history_index, i, tr("History"), "");
-				g_ui->enabled = true;
-			}
+		for (i32 i = 0; i < history_steps->length; ++i) {
+			ui_radio(&history_index, i, history_steps->buffer[i]->name, "");
 			history_changed |= ui_item_changed();
 		}
 		if (history_changed) {

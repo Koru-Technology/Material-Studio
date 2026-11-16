@@ -473,8 +473,7 @@ void util_render_brush_scene_begin(util_render_brush_scene_t *sc) {
 	render_path_paint_use_live_layer(true);
 	make_material_parse_paint_material(false);
 
-	i32 hid = history_ring_prev();
-	any_map_set(render_path_render_targets, string("texpaint_undo%d", hid), any_map_get(render_path_render_targets, "empty_black"));
+	history_tiles_source_set(render_path_find_image("empty_black"), NULL, NULL); // Drawn over nothing
 
 	// Set plane mesh
 	sc->paint_object = g_context->paint_object;

@@ -95,7 +95,6 @@ void next() {
 	else if (step == 1) { // Start, a few units of work over frames, cancel during the tiles
 		hashes = layer_hashes();
 		config_t *cfg     = script_get_config();
-		cfg->export_tiled = 1;
 		export_texture_test_options("generic", 0, 1, 8, 0);
 		export_tiled_test_tile(256);
 		export_tiled_test_mm(1);
@@ -142,7 +141,6 @@ void next() {
 	}
 	else {
 		config_t *cfg     = script_get_config();
-		cfg->export_tiled = 0;
 		export_tiled_test_mm(0);
 		export_tiled_test_tile(0);
 		printf("[export_cancel] %d checks, %d failures", checks, fails);

@@ -148,8 +148,9 @@ static u16 paint_rec_cam_index(paint_rec_t *r) {
 	memset(&c, 0, sizeof(c));
 	c.v     = scene_camera->v;
 	c.p     = scene_camera->p;
-	c.w     = render_path_current_w;
-	c.h     = render_path_current_h;
+	gpu_texture_t *depth = render_path_target_image("main_paint"); // The depth the draw reads (not the target drawn into)
+	c.w                  = depth != NULL ? depth->width : render_path_current_w;
+	c.h                  = depth != NULL ? depth->height : render_path_current_h;
 	c.frame = scene_camera->frame;
 	c.right = camera_object_right_world(scene_camera);
 	c.up    = camera_object_up_world(scene_camera);

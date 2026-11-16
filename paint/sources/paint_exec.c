@@ -1,7 +1,7 @@
 #include "global.h"
 
 // The paint executor: the GPU work of painting (draws, dilation, the stroke coverage clear, the clone source) as ops,
-// executed in the order the stroke model emits them. With a paint shader reading resolved dabs (paint_resolved_dabs,
+// executed in the order the stroke model emits them. With a paint shader reading resolved dabs (brush tools,
 // make_paint_resolved), a draw keeps the brush state it was emitted with in its dabs and its op, the ops of a frame wait
 // for the end of the outermost paint_exec_begin / paint_exec_end, one pass resolves every dab of them to world space
 // (render/make_dab_resolve.c), then they draw. The brush uniforms (uniforms.c) read the op being executed.
@@ -58,15 +58,6 @@ static paint_exec_ctx_t paint_exec_ctx_now() {
 		c.rt[2] = any_map_get(render_path_render_targets, string_tmp("texpaint_pack%d", l->id));
 	}
 	return c;
-}
-
-// paint_resolved_dabs, or IRON_PAINT_RESOLVED set: the test suites run with it on, the saved config stays as it is
-bool paint_exec_resolved_config() {
-	static i32 env = -1;
-	if (env < 0) {
-		env = getenv("IRON_PAINT_RESOLVED") != NULL ? 1 : 0;
-	}
-	return g_config->paint_resolved_dabs || env == 1;
 }
 
 bool paint_exec_on() {

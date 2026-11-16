@@ -28,7 +28,6 @@ ui_node_socket_t *ui_get_socket(ui_node_t_array_t *nodes, i32 id);
 void      export_arm_run_mesh(char *path, mesh_object_t_array_t *paint_objects);
 buffer_t *export_arm_encode_project(char *path);
 void      export_arm_run_project(char *path);
-void      export_arm_run_project_v30(char *path);
 void      export_arm_run_material(char *path);
 buffer_t *export_arm_encode_library_material(slot_material_t *m);
 void      export_arm_pack_assets(project_t *raw, asset_t_array_t *assets);
@@ -52,7 +51,6 @@ void export_texture_test_options(char *preset, i32 layers_export, bool padding, 
 // ---- io/import_arm_assets.c ----
 char           *import_arm_abs(char *file, char *base);
 void            import_arm_make_pink(char *abs);
-void            import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha);
 bool            import_arm_texture_has_alpha(gpu_texture_t *t);
 void            import_arm_init_nodes(ui_node_t_array_t *nodes);
 packed_asset_t *import_arm_take_packed_asset(project_t *project, char *abs, char *file, bool copy);
@@ -63,7 +61,8 @@ char           *import_arm_load_asset(project_t *project, char *file, char *base
 void import_arm_set_preview_given(slot_material_t *m);
 bool import_arm_take_preview_given(slot_material_t *m);
 void import_arm_run_project(char *path);
-bool import_arm_has_version(buffer_t *b);
+bool       import_arm_has_version(buffer_t *b);
+project_t *import_arm_decode(buffer_t *b);
 
 // ---- io/import_arm_library.c ----
 void import_arm_run_material_from_project_on_next_frame(slot_material_t_array_t *imported);
@@ -71,7 +70,7 @@ void import_arm_material_data(slot_material_t *m, material_data2_t *md);
 void import_arm_import_materials(project_t *project, char *path, i32_array_t *selected, bool delete_blob);
 void import_arm_run_material_from_project(project_t *project, char *path);
 void import_arm_run_swatches_from_project(project_t *project, char *path, bool replace_existing);
-void import_arm_run_material(char *path);
+bool import_arm_run_material(char *path);
 void import_arm_run_brush(char *path);
 void import_arm_run_brush_from_project(project_t *project, char *path);
 void import_arm_run_swatches(char *path, bool replace_existing);
@@ -109,10 +108,6 @@ void import_json_material_run(char *path);
 
 // ---- io/import_keymap.c ----
 void import_keymap_run(char *path);
-
-// ---- io/import_legacy.c ----
-bool       import_arm_is_old(buffer_t *b);
-project_t *import_arm_from_old(buffer_t *b);
 
 // ---- io/import_lut.c ----
 void import_lut_free();
@@ -887,7 +882,6 @@ slot_font_t *slot_font_create(char *name, draw_font_t *font, char *file);
 char                 *blend_type_name(blend_type_t type);
 void                  slot_layer_alloc_textures(slot_layer_t *raw);
 char                 *slot_layer_unique_name(slot_layer_t *self, char *name);
-slot_layer_t         *slot_layer_create_undo(char *ext);
 slot_layer_t         *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t *parent);
 slot_layer_t         *slot_layer_find_uid(u32 uid); // Layers of the project, NULL if none has it
 void                  slot_layer_delete(slot_layer_t *raw);
@@ -952,7 +946,6 @@ gpu_texture_t *box_bake_maps_inpaint_overlay();
 i32            box_bake_maps_inpaint_color();
 
 // ---- ui/box_export.c ----
-void box_export_textures_run(char *path, bool bake_material);
 void box_export_tiled_update(void *_);
 void box_export_fetch_presets();
 void box_export_parse_preset();
@@ -1164,7 +1157,9 @@ void ui_menu_sub_end();
 extern i32      history_tiles_size;
 extern i32      history_tiles_block;
 extern i32      history_tiles_blocks;
-void            history_tiles_set_enabled(bool on);
+i32             history_tiles_test_memory_kb();
+i32             history_tiles_test_steps();
+void            history_tiles_source_set(gpu_texture_t *base, gpu_texture_t *nor, gpu_texture_t *pack);
 bool            history_tiles_supported(slot_layer_t *l);
 i64             history_tiles_memory();
 void            history_tiles_reset();
@@ -1349,7 +1344,6 @@ void layers_enable_translucency();
 void layers_set_object_mask();
 void tab_layers_apply_filter(i32 filter);
 void layers_history_with_prev(void (*push)(void));
-void layers_on_resized();
 bool layers_sync_nodes();
 slot_layer_t_array_t *tab_layers_init_layer_map();
 void                  tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers);
@@ -1690,7 +1684,6 @@ void            base_on_open_file(char *path);
 bool            base_startup_covering();
 bool            base_startup_loading();
 void            base_startup_cover_done();
-void            base_init_undo_layers();
 char           *base_ui_font_file();
 void            base_init();
 i32             base_w();
@@ -1901,22 +1894,16 @@ extern bool    context_script_touch;
 bool           context_finger_paint_blocked();
 
 // ---- history.c ----
-bool            history_v2_active(); // history_v2 as it was at the last history_reset
 void            history_flush_restores(slot_layer_t *l);
 bool            history_busy();
 i32             history_test_restore_runs();
 i32             history_test_undos();
 void            history_on_memory_warning();
-i32             history_ring_size();
-void            history_ring_set_size(i32 n);
-i32             history_ring_prev();
-i32             history_ring_next();
 void            history_drop_oldest();
+void            history_step_dispose(history_step_t *step);
+u32             history_serial_peek();
+void            history_steps_replace(any_array_t *steps, i32 undos, i32 redos, u32 serial_next);
 void            history_undo();
-slot_layer_t   *history_undo_slot(i32 i);
-void            history_copy_to_undo(i32 from_id, i32 to_id, bool is_mask);
-void            history_copy_merging_layers2(slot_layer_t_array_t *layers);
-void            history_swap_active();
 void            history_redo();
 void            history_reset();
 history_step_t *history_push(history_action_t action);
@@ -1925,7 +1912,9 @@ history_step_t *history_push(history_action_t action);
 slot_layer_t_array_t *history_merge_saved_layers();
 void                  history_swap_merge(history_step_t *step, bool undo);
 void                  history_records_take(history_step_t *step);
+void                  history_records_copy(history_step_t *step, slot_layer_t_array_t *layers, i32 start, i32 end);
 void                  history_record_children(const u8 *data, u32 len, void (*visit)(hash128_t child, void *ud), void *ud);
+slot_layer_t         *history_record_layer(hash128_t record);
 void                  history_records_free(history_step_t *step);
 void                  history_swap_order(history_step_t *step);
 void                  history_get_height_blend(slot_layer_t *l, f32 *out);
@@ -1942,13 +1931,19 @@ void                  history_swap_canvas(history_step_t *step);
 struct timeline;
 struct tl_entry;
 struct paint_target;
-bool        timeline_active(); // Timelines record: timeline_shadow or history_v2
 bool        timeline_layer_paints(slot_layer_t *l);
 void        timeline_allow_fill(bool on);
 void        timeline_truncate(struct timeline *tl);
 void        timeline_truncate_all();
 void        timeline_checkpoint_set(struct timeline *tl, i32 pos, hash128_t tilemap, bool pinned);
 hash128_t   timeline_state(struct timeline *tl, i32 pos);
+hash128_t   timeline_state_at(struct timeline *tl, i32 pos, i32 w, i32 h);
+struct timeline *timeline_find_layer(u32 layer_uid);
+bool        timeline_entry_replays(struct timeline *tl, i32 i);
+i32         timeline_floor(struct timeline *tl, i32 pos);
+bool        timeline_upscalable(struct timeline *tl, i32 pos);
+gpu_pipeline_t *timeline_copy_pipe(gpu_texture_t *t);
+bool        timeline_state_resample(hash128_t h, struct paint_target *t);
 void        timeline_target_live(slot_layer_t *l, struct paint_target *t);
 struct timeline *timeline_ensure(slot_layer_t *l);
 struct tl_entry *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, const f32 *uv_bounds, u16 flags);
@@ -1964,15 +1959,36 @@ i32         timeline_test_kind(slot_layer_t *l, i32 i);
 i32         timeline_test_cursor(slot_layer_t *l);
 i32         timeline_test_states(slot_layer_t *l);
 bool        timeline_test_materialize(slot_layer_t *l, i32 pos);
+bool        timeline_test_render(slot_layer_t *l, i32 pos, i32 res_w, i32 res_h, f32 u0, f32 v0, f32 u1, f32 v1);
+bool        timeline_test_scale_live(slot_layer_t *l, i32 res_w, i32 res_h);
+gpu_texture_t *timeline_test_out(i32 k);
+i32         timeline_test_quadrants(slot_layer_t *l, i32 res, i32 tol);
+i32         timeline_test_floor(slot_layer_t *l);
+bool        timeline_test_upscalable(slot_layer_t *l);
+void        timeline_test_keep(i32 slot);
+void        timeline_set_keep_recent(i32 n);
+i32         timeline_thin_all(i32 round);
+void        timeline_clear_states_all();
+i32         timeline_test_checkpoints(slot_layer_t *l);
+gpu_texture_t *timeline_test_kept(i32 slot, i32 k);
 
 // ---- timeline_ops.c ----
 void timeline_retag_last(slot_layer_t *l, i32 kind, const void *params, u32 len, u16 flags);
 void timeline_entry_upgrade(struct timeline *tl, i32 index, i32 kind, hash128_t payload);
+void timeline_ops_children(const u8 *data, u32 len, void (*visit)(hash128_t child, void *ud), void *ud);
+void timeline_record_to_fill(slot_layer_t *l, slot_material_t *m);
+void timeline_record_image(slot_layer_t *l, asset_t *asset);
+bool timeline_ops_replays(struct timeline *tl, i32 index);
+bool timeline_ops_overwrites(struct timeline *tl, i32 index);
+void timeline_ops_reset();
 
 // ---- timeline_tiles.c ----
 void timeline_tiles_cache_reset();
 bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 *channels);
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, struct paint_target *dst);
+bool timeline_tiles_uniform(hash128_t h);
+bool timeline_tiles_base(hash128_t h, hash128_t base);
+hash128_t timeline_tiles_rebase(hash128_t h, hash128_t base);
 i32  timeline_tiles_test(slot_layer_t *l);
 
 // ---- history_steps.c ----
@@ -2017,6 +2033,7 @@ void            history_delete_material();
 void            history_duplicate_material();
 void            history_delete_material_group(node_group_t *group);
 void            history_mask_stack();
+void            history_resolution(i32 w0, i32 h0, i32 w1, i32 h1);
 
 // ---- keymap.c ----
 void       keymap_load();
@@ -2380,6 +2397,9 @@ char *hstore_journal_path(char *uuid);
 void  hstore_journal_mark_saved();
 bool  hstore_journal_pending(char *uuid);
 i32   hstore_recover();
+i64   hstore_live_bytes();
+i32   hstore_kind_of(hash128_t h);
+hash128_t hstore_recovered_last(i32 kind);
 void  hstore_recover_end();
 void  hstore_journal_delete(char *uuid);
 void  hstore_journal_rebind(char *old_uuid);
@@ -2419,6 +2439,20 @@ bool        project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, b
 i32         project_container_roots(hash128_t *out, i32 cap);
 void        project_container_loaded();
 i32         project_container_test_index_count(i32 kind);
+bool        project_container_writing_session();
+u8_array_t *project_container_history_encode();
+i64         project_container_history_budget();
+void        project_clear_history();
+bool        project_session_write();
+bool        project_session_due();
+bool        project_session_changed();
+void        project_session_update();
+void        project_session_forget();
+void        project_session_loaded();
+bool        project_session_pending(char *path);
+bool        project_session_recovering();
+bool        project_session_recover(char *path);
+bool        project_session_overlay(project_t *p);
 void        project_container_pack_assets(project_t *p);
 void        project_container_unpack_assets(project_t *p);
 bool        project_container_save(char *path);
@@ -2462,6 +2496,7 @@ bool           export_tiled_start(char *path, bool bake_material);
 bool           export_tiled_step(f64 budget_ms);
 void           export_tiled_cancel();
 bool           export_tiled_running();
+bool           export_tiled_frozen();
 f32            export_tiled_progress();
 void           export_tiled_run(char *path, bool bake_material);
 void           export_tiled_set_resolution(i32 w, i32 h);
@@ -2469,6 +2504,7 @@ i32            export_tiled_not_upscaled(i32 w, i32 h);
 char          *export_tiled_not_upscaled_name(i32 i);
 void           export_tiled_test_no_fill(bool on);
 void           export_tiled_test_whole(bool on);
+void           export_tiled_set_mode(i32 mode);
 void           export_tiled_test_tile(i32 size);
 void           export_tiled_test_raster(bool on);
 void           export_tiled_test_mm(bool on);
@@ -2476,7 +2512,7 @@ i32            export_tiled_stat(i32 what);
 gpu_texture_t *export_tiled_test_coverage();
 
 // ---- paint_exec.c ----
-// Resolved dabs. With paint_resolved_dabs, a paint draw reads its dabs from _texpaintdabs, the target of the dab resolve
+// Resolved dabs. A brush paint draw reads its dabs from _texpaintdabs, the target of the dab resolve
 // pass (render/make_dab_resolve.c): PAINT_DAB_TEXELS RGBA128 texels a dab, PAINT_DAB_ROW dabs a row, dab k at
 // x = (k % PAINT_DAB_ROW) * PAINT_DAB_TEXELS + t, y = k / PAINT_DAB_ROW. Texel t:
 //   0  p.xyz world position of the dab, w the homogeneous w of its unprojection (1 / clip w: camera align, decals)
@@ -2503,7 +2539,6 @@ gpu_texture_t *export_tiled_test_coverage();
 #define PAINT_DAB_MODE_BRUSH  0.0 // Off the mesh: far plane
 #define PAINT_DAB_MODE_ANCHOR 1.0 // Decal anchor, off the mesh: at the depth of the world origin, as make_texcoord_run did
 
-bool             paint_exec_resolved_config(); // paint_resolved_dabs, or IRON_PAINT_RESOLVED in the environment
 bool             paint_exec_on(); // The paint shader in use reads resolved dabs
 void             paint_exec_begin();
 void             paint_exec_end();
@@ -2588,3 +2623,20 @@ void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
 i32                   paint_exec_pending_ops();
 void                  render_path_base_draw_paint_depth_into(char *color, char *depth);
 shader_context_t     *make_material_parse_paint_kept(void);
+
+// ---- history_io.c ----
+u8  *history_io_encode(u32 *len);
+bool history_io_decode(u8 *data, u32 len);
+i32  history_io_roots(hash128_t **out);
+void history_io_thin(i64 budget);
+void history_io_clear();
+i32  history_io_test_roundtrip(i32 _);
+
+// ---- util/util_layer_resolution.c ----
+void layers_resolution_apply(i32 w, i32 h);
+bool layers_resolution_begin(i32 w, i32 h);
+bool layers_resolution_step();
+bool layers_resolution_running();
+f32  layers_resolution_progress();
+void layers_resolution_reset();
+i32  layers_resolution_test_restores();

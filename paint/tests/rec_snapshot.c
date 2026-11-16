@@ -4,7 +4,7 @@
 // reads an image, a group holding another group, a material through a Material node and a Material Maker image node's
 // file. Then the groups' and the nested material's colors are edited, the image asset is deleted (and its file), the
 // groups and the nested material are removed, the Material Maker image's file is overwritten. The state before the stroke is restored and the stroke replayed: it must be byte-equal to the live
-// stroke, without falling back. Then again after the project is saved (project_v31) and opened: the snapshot's files
+// stroke, without falling back. Then again after the project is saved and opened: the snapshot's files
 // are saved with it, as its children (and the Material Maker image is read again, from them).
 
 int fails  = 0;
@@ -14,7 +14,6 @@ int frame  = 0;
 char *dir = "";
 char *png = "";
 char *mmpng = "";
-int   v31 = 0;
 int   uid = 0;
 
 char *h0 = NULL;
@@ -222,9 +221,6 @@ void next() {
 		check(find_uid(uid) != NULL && string_equals(h0, hash_of(find_uid(uid)->texpaint)), "the layer as saved after opening");
 		compare("saved and opened");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
-		script_get_config()->paint_resolved_dabs = 0;
-		script_get_config()->timeline_shadow     = 0;
-		script_get_config()->project_v31         = v31;
 		printf("[rec_snapshot] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "REC_SNAPSHOT PASS" : "REC_SNAPSHOT FAIL");
 		script_quit();
@@ -237,10 +233,6 @@ void main() {
 	dir = script_tmp_dir("materialstudio_rec_snapshot");
 	png = string("%s/rec_snapshot.png", dir);
 	mmpng = string("%s/rec_snapshot_mm.png", dir);
-	script_get_config()->paint_resolved_dabs = 1;
-	script_get_config()->timeline_shadow     = 1;
-	v31                                      = script_get_config()->project_v31;
-	script_get_config()->project_v31         = 1;
 	script_brush_defaults();
 	script_project_new();
 	iron_create_directory(dir);

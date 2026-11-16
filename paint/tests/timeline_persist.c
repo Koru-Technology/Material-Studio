@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Timelines saved with v31 projects (timeline_io.c, timeline_shadow and project_v31 on): after a save and an open, the
+// Timelines saved with projects (timeline_io.c): after a save and an open, the
 // timelines have their entries, cursor and kept states, each position materializes to the pixels it had before the
 // save, and the cursor's state is the live layer. An appending save reads the children of the new tile maps only, a
 // whole rewrite of every reachable one.
@@ -11,8 +11,6 @@ int   step       = 0;
 int   frame      = 0;
 char *dir        = "/tmp/materialstudio_timeline_persist";
 char *file       = NULL;
-int   v31_was    = 0;
-int   shadow_was = 0;
 int   uid_a      = 0;
 int   uid_m      = 0;
 int   count_a    = 0;
@@ -25,6 +23,9 @@ char *live_m     = NULL;
 int   count2     = 0;
 char *pixels2[64];
 float decodes    = 0.0;
+int   NUNDO      = 3;
+char *undone[8]; // The layers after each of NUNDO undos, before the save
+
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -56,6 +57,15 @@ slot_layer_t *find_uid(int uid) {
 		}
 	}
 	return NULL;
+}
+
+char *all_hash() {
+	char *h = string("%d", script_layer_count());
+	for (int i = 0; i < script_layer_count(); ++i) {
+		slot_layer_t *l = script_layer_at(i);
+		h               = string("%s | %d %s", h, l->uid, layer_hash(l));
+	}
+	return h;
 }
 
 void next() {
@@ -90,6 +100,16 @@ void next() {
 		history_undo(); // A redo branch: the cursor is not at the end
 	}
 	else if (step == 6) {
+		history_flush_restores(NULL);
+		for (int i = 0; i < NUNDO; ++i) { // Undo N, noted, and back: the saved history undoes the same after reopening
+			history_undo();
+			history_flush_restores(NULL);
+			undone[i] = string_copy(all_hash());
+		}
+		for (int i = 0; i < NUNDO; ++i) {
+			history_redo();
+			history_flush_restores(NULL);
+		}
 		timeline_finalize();
 		slot_layer_t *a = find_uid(uid_a);
 		slot_layer_t *m = find_uid(uid_m);
@@ -151,6 +171,17 @@ void next() {
 			}
 		}
 		check(ok, "after a trim too");
+		timeline_test_materialize(a, cursor_a);
+		for (int i = 0; i < NUNDO; ++i) {
+			history_undo();
+			history_flush_restores(NULL);
+			check(!history_busy() && string_equals(all_hash(), undone[i]), string("undo %d after reopen", i + 1));
+		}
+		for (int i = 0; i < NUNDO; ++i) {
+			history_redo();
+			history_flush_restores(NULL);
+		}
+		check(string_equals(layer_hash(find_uid(uid_a)), live_a), "redo back to the saved state");
 	}
 	else if (step == 10) { // Saved again: the timelines' blobs are written again (whole file)
 		project_filepath_set(string("%s/copy.arm", dir));
@@ -238,8 +269,6 @@ void next() {
 		check(maps <= script_layer_count(), string("only the live layers' tile maps, full (%d)", maps));
 	}
 	else {
-		script_get_config()->project_v31     = v31_was;
-		script_get_config()->timeline_shadow = shadow_was;
 		script_project_new();
 		iron_delete_file(file);
 		iron_delete_file(string("%s/copy.arm", dir));
@@ -256,10 +285,6 @@ void next() {
 
 void main() {
 	dir = script_tmp_dir("materialstudio_timeline_persist"); // Per run: suites of several worktrees run at once
-	v31_was                              = script_get_config()->project_v31;
-	shadow_was                           = script_get_config()->timeline_shadow;
-	script_get_config()->project_v31     = 1;
-	script_get_config()->timeline_shadow = 1;
 	iron_create_directory(dir);
 	file = string("%s/timelines.arm", dir);
 	script_notify_on_next_frame(next);

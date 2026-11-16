@@ -1,8 +1,8 @@
 #include "global.h"
 
-// Resolved dabs (paint_resolved_dabs, paint_exec.c): the same seeded strokes painted with the flag off and on agree within
-// 1/255 on at least 99.9% of the channel values they paint. Each case paints a layer with the flag off, a new layer with
-// it on, then compares base, normal and pack textures. Painted layers are hidden: the normals under the brush stay the mesh's.
+// Resolved dabs (paint_exec.c): the same seeded strokes painted twice, on two new layers in the same frame, come out
+// byte for byte the same (what replay relies on). Each case paints a layer, a new layer again, then compares base,
+// normal and pack textures. Painted layers are hidden: the normals under the brush stay the mesh's.
 // Cases: batched stamps, unbatched stamps (batching off), symmetry, a tip mask (Square brush, unbatched), a decal,
 // a capsule leaving the mesh.
 
@@ -59,10 +59,9 @@ void setup_brush(int k) {
 }
 
 // A pass paints a new layer, both passes of a case in the same frame: the camera jitters by frame (TAA)
-void setup(int k, int on) {
+void setup(int k) {
 	app_layer_new(0);
-	script_get_config()->paint_resolved_dabs = on;
-	make_paint_set_batching(k != 1 && k != 3); // Parses the paint material again, with the flag
+	make_paint_set_batching(k != 1 && k != 3); // Parses the paint material again
 	render_path_paint_set_stamp_seed(4242);
 }
 
@@ -99,7 +98,7 @@ void paint(int k) {
 }
 
 int diff(gpu_texture_t *a, gpu_texture_t *b) {
-	return script_diff_textures(a, b, 1.0);
+	return script_diff_textures(a, b, 0.0);
 }
 
 void compare(int k) {
@@ -116,7 +115,7 @@ void compare(int k) {
 	}
 	float frac = painted > 0 ? over * 100.0 / painted : 100.0;
 	check(painted > 2000, string("%s: the strokes paint (%d channel values)", case_name(k), painted));
-	check(over * 1000 <= painted, string("%s: off and on agree within 1/255 (%d of %d differ, %.4f percent, max %.1f/255)", case_name(k), over, painted, frac, max));
+	check(over == 0, string("%s: painted twice, byte for byte the same (%d of %d differ, %.4f percent, max %.1f/255)", case_name(k), over, painted, frac, max));
 }
 
 void next() {
@@ -125,12 +124,12 @@ void next() {
 		setup_brush(kase);
 	}
 	else if (frame == 8) {
-		setup(kase, 0); // A first stroke leaves state the next ones start from (the stroke angle), painted over
+		setup(kase); // A first stroke leaves state the next ones start from (the stroke angle), painted over
 		paint(kase);
-		setup(kase, 0);
+		setup(kase);
 		la = script_get_context()->layer;
 		paint(kase);
-		setup(kase, 1);
+		setup(kase);
 		lb = script_get_context()->layer;
 		paint(kase);
 	}
@@ -139,7 +138,6 @@ void next() {
 		kase  = kase + 1;
 		frame = 0;
 		if (kase == 6) {
-			script_get_config()->paint_resolved_dabs = 0;
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 			printf("[dab_resolve] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "DAB_RESOLVE PASS" : "DAB_RESOLVE FAIL");

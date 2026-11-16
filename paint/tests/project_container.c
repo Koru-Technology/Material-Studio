@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Version 31 project container (io/project_container.c, project_v31 on): round trip, opening reads only the live
+// Project container (io/project_container.c): round trip, opening reads only the live
 // layers' tiles, saves append (less than 1 MB after a stroke), a torn append opens the save before, compaction rewrites
 // the file, history blobs are read from the file when used.
 
@@ -10,7 +10,6 @@ int   step   = 0;
 int   frame  = 0;
 char *dir    = "/tmp/materialstudio_project_container";
 char *file   = NULL;
-int   v31_was = 0;
 int   count  = 0;
 int   hashes[96];
 int   blob_a = -1;
@@ -180,7 +179,6 @@ void next() {
 		check(string_equals(project_file_uuid(file), uuid), "the uuid is read from the file");
 	}
 	else {
-		script_get_config()->project_v31 = v31_was;
 		script_project_new();
 		iron_delete_file(file);
 		printf("[project_container] %d checks, %d failures", checks, fails);
@@ -194,8 +192,6 @@ void next() {
 
 void main() {
 	dir = script_tmp_dir("materialstudio_project_container"); // Per run: suites of several worktrees run at once
-	v31_was                          = script_get_config()->project_v31;
-	script_get_config()->project_v31 = 1;
 	iron_create_directory(dir);
 	file = string("%s/container.arm", dir);
 	iron_delete_file(file);

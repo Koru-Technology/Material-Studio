@@ -1,8 +1,7 @@
 import SwiftUI
 
 // Texture export (app_api_export.h): the export's resolution apart from the project's, preset, layers, format and
-// padding; the layers it will scale up from the project's resolution; progress and Cancel while it runs. Only with the
-// tiled export (app_export_available), the engine's export box otherwise.
+// padding; the layers it will scale up from the project's resolution; progress and Cancel while it runs.
 struct ExportSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var options     = app_export_options_t()
