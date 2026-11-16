@@ -1068,3 +1068,8 @@ X0(script_diff_max, "f()", f)
 X0(script_diff_mean, "f()", f)
 X2(script_diff_mask, "v(p:gpu_texture_t mask,i mode)", v, p, i)
 X1(script_texture_hash, "p:char(p:gpu_texture_t t)", p, p)
+
+// History (history.c, util/util_layer_create.c) test hooks
+X2(layers_create_image_at, "v(i asset,i mask)", v, i, i)
+X0(history_ring_size, "i()", i)
+X1(history_ring_set_size, "v(i n)", v, i)

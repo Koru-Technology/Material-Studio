@@ -35,6 +35,12 @@ void history_new_layer() {
 	history_push(HISTORY_ACTION_NEW_LAYER);
 }
 
+// After the layer or mask asset is drawn into was created and selected
+void history_new_image_layer(asset_t *asset) {
+	history_step_t *step = history_push(HISTORY_ACTION_NEW_LAYER);
+	step->image_file     = string_copy(asset->file);
+}
+
 void history_new_black_mask() {
 	history_push(HISTORY_ACTION_NEW_BLACK_MASK);
 }
@@ -115,7 +121,9 @@ static void history_merge_capture(slot_layer_t *top, i32 start) {
 	step->merge_length           = layers->length;
 	for (i32 i = start; i <= end; ++i) {
 		slot_layer_t *l = layers->buffer[i];
-		any_array_push(step->merge_layers, slot_layer_clone(l));
+		slot_layer_t *c = slot_layer_clone(l);
+		c->uid          = l->uid; // Back in place of l on undo
+		any_array_push(step->merge_layers, c);
 		i32_array_push(step->merge_parents, l->parent != NULL ? array_index_of(layers, l->parent) : -1);
 	}
 }
@@ -174,6 +182,7 @@ static void history_to_paint(history_action_t action) {
 	history_copy_to_undo(g_context->layer->id, history_undo_i, action == HISTORY_ACTION_TO_PAINT_MASK);
 	history_step_t *step = history_push(action);
 	step->material       = array_index_of(g_project->_->materials, g_context->layer->fill_material);
+	step->material_uid   = g_context->layer->fill_material != NULL ? g_context->layer->fill_material->uid : 0;
 }
 
 void history_to_paint_layer() {
@@ -239,6 +248,7 @@ void history_layer_fill_material(slot_layer_t *l) {
 	g_context->layer     = l;
 	history_step_t *step = history_push(HISTORY_ACTION_LAYER_FILL_MATERIAL);
 	step->material       = array_index_of(g_project->_->materials, l->fill_material);
+	step->material_uid   = l->fill_material != NULL ? l->fill_material->uid : 0;
 	g_context->layer     = _layer;
 }
 

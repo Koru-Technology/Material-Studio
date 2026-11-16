@@ -1343,6 +1343,7 @@ slot_layer_t *layers_new_text_layer();
 void          layers_create_filter();
 void          layers_create_image_mask(asset_t *asset);
 void          layers_create_image_layer(asset_t *asset);
+void          layers_create_image_at(i32 i, bool mask);
 void          layers_create_color_layer(i32 base_color, f32 occlusion, f32 roughness, f32 metallic, i32 position);
 void          layers_duplicate_layer(slot_layer_t *l);
 
@@ -1873,6 +1874,8 @@ extern bool    context_script_touch;
 bool           context_finger_paint_blocked();
 
 // ---- history.c ----
+i32             history_ring_size();
+void            history_ring_set_size(i32 n);
 i32             history_ring_prev();
 i32             history_ring_next();
 void            history_drop_oldest();
@@ -1903,6 +1906,7 @@ void                  history_swap_canvas(history_step_t *step);
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
 void            history_paint();
 void            history_new_layer();
+void            history_new_image_layer(asset_t *asset);
 void            history_new_black_mask();
 void            history_new_white_mask();
 void            history_new_fill_mask();
