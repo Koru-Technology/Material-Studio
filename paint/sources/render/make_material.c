@@ -13,13 +13,7 @@ bool make_material_is_default(shader_data_t *m) {
 }
 
 bool make_material_get_mout() {
-	for (i32 i = 0; i < g_context->material->canvas->nodes->length; ++i) {
-		ui_node_t *n = g_context->material->canvas->nodes->buffer[i];
-		if (string_equals(n->type, "OUTPUT_MATERIAL_PBR")) {
-			return true;
-		}
-	}
-	return false;
+	return util_nodes_find_type(g_context->material->canvas, "OUTPUT_MATERIAL_PBR") != NULL;
 }
 
 void make_material_delete_context_on_next_frame(shader_context_t *c) {

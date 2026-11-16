@@ -114,13 +114,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 }
 
 bool ui_nodes_has_group(ui_node_canvas_t *c) {
-	for (i32 i = 0; i < c->nodes->length; ++i) {
-		ui_node_t *n = c->nodes->buffer[i];
-		if (string_equals(n->type, "GROUP")) {
-			return true;
-		}
-	}
-	return false;
+	return util_nodes_find_type(c, "GROUP") != NULL;
 }
 
 ui_node_canvas_t *ui_nodes_get_group(ui_node_canvas_t_array_t *canvases, char *name) {

@@ -1404,13 +1404,7 @@ ui_node_t *script_material_get_node(char *type) {
 	if (canvas == NULL || type == NULL) {
 		return NULL;
 	}
-	for (i32 i = 0; i < canvas->nodes->length; ++i) {
-		ui_node_t *n = canvas->nodes->buffer[i];
-		if (string_equals(n->type, type)) {
-			return n;
-		}
-	}
-	return NULL;
+	return util_nodes_find_type(canvas, type);
 }
 
 ui_node_t *script_material_get_node_id(i32 id) {
@@ -1419,22 +1413,6 @@ ui_node_t *script_material_get_node_id(i32 id) {
 		return NULL;
 	}
 	return ui_get_node(canvas->nodes, id);
-}
-
-static void script_material_remove_links_to(ui_node_canvas_t *canvas, i32 to_id, i32 to_socket) {
-	i32 i = 0;
-	while (i < canvas->links->length) {
-		ui_node_link_t *l = canvas->links->buffer[i];
-		if (l->to_id == to_id && l->to_socket == to_socket) {
-			for (i32 j = i; j < canvas->links->length - 1; ++j) {
-				canvas->links->buffer[j] = canvas->links->buffer[j + 1];
-			}
-			canvas->links->length--;
-		}
-		else {
-			i++;
-		}
-	}
 }
 
 void script_material_connect(ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket) {
@@ -1449,7 +1427,7 @@ void script_material_connect(ui_node_t *from, i32 from_socket, ui_node_t *to, i3
 		return;
 	}
 
-	script_material_remove_links_to(canvas, to->id, to_socket);
+	util_nodes_unlink_input(canvas, to, to_socket);
 
 	ui_node_link_t *link = project_create_node_link(canvas->links, from->id, from_socket, to->id, to_socket);
 	any_array_push(canvas->links, link);
@@ -1464,7 +1442,7 @@ void script_material_disconnect(ui_node_t *to, i32 to_socket) {
 	if (canvas == NULL || to == NULL) {
 		return;
 	}
-	script_material_remove_links_to(canvas, to->id, to_socket);
+	util_nodes_unlink_input(canvas, to, to_socket);
 	if (ui_nodes_hwnd != NULL) {
 		ui_nodes_hwnd->redraws = 2;
 	}
@@ -1583,7 +1561,7 @@ void script_canvas_connect(ui_node_canvas_t *canvas, ui_node_t *from, i32 from_s
 	    to_socket >= to->inputs->length) {
 		return;
 	}
-	script_material_remove_links_to(canvas, to->id, to_socket);
+	util_nodes_unlink_input(canvas, to, to_socket);
 	any_array_push(canvas->links, project_create_node_link(canvas->links, from->id, from_socket, to->id, to_socket));
 }
 

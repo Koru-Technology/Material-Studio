@@ -104,16 +104,8 @@ static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_m
 	// Update fill layers which are using materials containing a PICKER node
 	slot_material_t *_material = g_context->material;
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		slot_material_t *m          = g_project->_->materials->buffer[i];
-		bool             has_picker = false;
-		for (i32 j = 0; j < m->canvas->nodes->length; ++j) {
-			ui_node_t *node = m->canvas->nodes->buffer[j];
-			if (string_equals(node->type, "PICKER")) {
-				has_picker = true;
-				break;
-			}
-		}
-		if (has_picker) {
+		slot_material_t *m = g_project->_->materials->buffer[i];
+		if (util_nodes_find_type(m->canvas, "PICKER") != NULL) {
 			g_context->material = m;
 			layers_update_fill_layers();
 			util_render_make_material_preview();
