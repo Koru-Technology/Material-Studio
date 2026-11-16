@@ -87,7 +87,7 @@ void render_path_paint_set_band(i32 y, i32 w, i32 h) {
 }
 
 static void render_path_paint_draw_material(mesh_object_t *o) {
-	i32 need = mm_buffers_require(render_path_paint_live_brush ? 0 : g_context->tool == TOOL_TYPE_BAKE ? MM_BUFFERS_FULL : MM_BUFFERS_TINY);
+	i32 need = mm_buffers_require(render_path_paint_live_brush ? 0 : g_context->tool == TOOL_TYPE_BAKE || paint_exec_replay ? MM_BUFFERS_FULL : MM_BUFFERS_TINY);
 	if (render_path_paint_band_h > 0) {
 		gpu_scissor(0, render_path_paint_band_y, render_path_paint_band_w, render_path_paint_band_h);
 	}
@@ -525,7 +525,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		return;
 	}
 
-	if (g_context->brush_time == 0 && g_context->tool != TOOL_TYPE_PARTICLE && !g_context->pick_pos_nor_tex) {
+	if (g_context->brush_time == 0 && g_context->tool != TOOL_TYPE_PARTICLE && !g_context->pick_pos_nor_tex && !paint_exec_replay) {
 		stroke_refine_fold(); // Before this draw (live brush preview, fill layer) adds to the coverage of the stroke that ended
 		g_context->brush_blend_dirty = true;
 	}
@@ -1265,10 +1265,15 @@ void render_path_paint_dilate_after_paint_now() {
 		render_path_paint_dilate_base_pending = true;
 		return;
 	}
-	render_path_paint_dilate(true, false);
+	render_path_paint_dilate_now(true, false);
 }
 
+// Dilation, an op of the paint executor
 void render_path_paint_dilate(bool base, bool nor_pack) {
+	paint_exec_dilate(base, nor_pack);
+}
+
+void render_path_paint_dilate_now(bool base, bool nor_pack) {
 	if (g_config->dilate_radius > 0 && !g_context->paint2d) {
 		util_uv_cache_dilate_map();
 		layers_make_temp_img();

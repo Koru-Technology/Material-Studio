@@ -178,6 +178,34 @@ node_shader_context_t *make_paint_run(material_t *data) {
 
 static node_shader_context_t *make_paint_run_context_internal(material_t *data, char *context_id, bool is_atlas);
 
+// Hashes of the GLSL of the latest paint shaders (stroke records keep the one they painted with, replay checks it)
+#define MAKE_PAINT_GLSL_NOTES 16
+
+static shader_context_t *make_paint_glsl_scons[MAKE_PAINT_GLSL_NOTES];
+static u64               make_paint_glsl_hashes[MAKE_PAINT_GLSL_NOTES];
+static i32               make_paint_glsl_next = 0;
+
+static void make_paint_glsl_note(shader_context_t *scon, char *glsl) {
+	for (i32 i = 0; i < MAKE_PAINT_GLSL_NOTES; ++i) {
+		if (make_paint_glsl_scons[i] == scon) {
+			make_paint_glsl_scons[i] = NULL;
+		}
+	}
+	make_paint_glsl_scons[make_paint_glsl_next]  = scon;
+	make_paint_glsl_hashes[make_paint_glsl_next] = hash128(glsl, strlen(glsl)).lo;
+	make_paint_glsl_next                         = (make_paint_glsl_next + 1) % MAKE_PAINT_GLSL_NOTES;
+}
+
+// hash128(glsl).lo of a paint shader made by make_paint_run_context, 0 when unknown
+u64 make_paint_glsl_hash(shader_context_t *scon) {
+	for (i32 i = 0; scon != NULL && i < MAKE_PAINT_GLSL_NOTES; ++i) {
+		if (make_paint_glsl_scons[i] == scon) {
+			return make_paint_glsl_hashes[i];
+		}
+	}
+	return 0;
+}
+
 // The paint shader being generated paints a batch of dabs per draw, the render path asks the shader in use (render_path_paint_batched)
 bool make_paint_batched = false;
 
@@ -993,8 +1021,10 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	parser_material_sample_keep_aspect = false;
 
 	con_paint->data->shader_from_source = true;
-	make_paint_create_shaders(node_shader_get(shader), &con_paint->data->vertex_shader, &con_paint->data->fragment_shader,
-	                          &con_paint->data->_->vertex_shader_size, &con_paint->data->_->fragment_shader_size);
+	char *glsl                          = node_shader_get(shader);
+	make_paint_glsl_note(con_paint->data, glsl);
+	make_paint_create_shaders(glsl, &con_paint->data->vertex_shader, &con_paint->data->fragment_shader, &con_paint->data->_->vertex_shader_size,
+	                          &con_paint->data->_->fragment_shader_size);
 
 	return con_paint;
 }

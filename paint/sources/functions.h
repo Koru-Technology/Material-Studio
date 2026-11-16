@@ -2511,3 +2511,31 @@ void make_dab_resolve_run(i32 count);
 void make_dab_resolve_prewarm();
 void make_dab_resolve_prewarm_on_next_frame(void *_);
 char *make_brush_dab(char *k, i32 t);
+
+// ---- paint_rec.c ----
+bool paint_rec_recording();
+void paint_rec_foreign();
+void paint_state_capture(paint_state_t *s, hash128_t material);
+i32  paint_rec_flush_dabs(i32 count);
+void paint_rec_op(paint_exec_op_t *op, i32 base);
+void paint_rec_op_done(paint_exec_op_t *op);
+bool paint_rec_decode(const u8 *b, u32 len, paint_rec_t *r);
+void paint_rec_free(paint_rec_t *r);
+void paint_rec_finish();
+void paint_rec_flush(); // stroke_rec.h, for scripts
+i32  paint_rec_test_stored();
+u64  make_paint_glsl_hash(shader_context_t *scon);
+void paint_mat_snapshot_reset();
+void render_path_paint_dilate_now(bool base, bool nor_pack);
+
+// ---- paint_replay.c ----
+extern gpu_texture_t *paint_replay_s0[3];
+extern mat4_t         paint_replay_obj;
+extern mat4_t         paint_replay_obj_inv;
+i32                   paint_replay_test_fallbacks();
+i32                   paint_replay_test_count();
+bool                  paint_replay_test_entry(slot_layer_t *l, i32 index);
+void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
+i32                   paint_exec_pending_ops();
+void                  render_path_base_draw_paint_depth();
+shader_context_t     *make_material_parse_paint_kept(void);

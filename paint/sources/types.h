@@ -1327,3 +1327,108 @@ typedef struct paint_exec_op {
 	quat_t rot;
 	vec4_t scale;
 } paint_exec_op_t;
+
+// ---- Stroke records (paint_rec.c, paint_replay.c) ----
+// What makes a paint shader and the uniforms of its draws besides their dabs: the context it was parsed in. Persisted in
+// stroke records (HSTORE_STROKE), fixed size, no pointers: append fields at the end, bump PAINT_REC_VERSION.
+typedef struct paint_state {
+	u64       glsl;     // hash128(glsl).lo of the paint shader
+	hash128_t material; // HSTORE_SNAPSHOT (paint_mat_snapshot.c)
+	i32       tool;
+	i32       blending;
+	i32       uv_type; // brush_paint
+	i32       uv_map;
+	i32       mask;    // The layer is a mask
+	i32       picker_material_mask;
+	i32       picker_color_mask;
+	i32       materialid_picked;
+	f32       picker_color_mask_tolerance;
+	i32       xray;
+	i32       directional;
+	i32       rotation;
+	i32       camera_align;
+	i32       tilt_shading;
+	f32       roundness;
+	f32       angle_reject_dot;
+	f32       brush_angle;
+	f32       nodes_angle;
+	f32       jitter_angle;
+	i32       sym; // Bits 0-2 x y z, radial count from bit 8
+	i32       sym_center;
+	i32       sym_radial_axis;
+	f32       mask_value;
+	f32       brush_scale;
+	f32       nodes_scale;
+	i32       depth_reject;
+	i32       angle_reject;
+	f32       alpha_discard;
+	i32       linear_blending;
+	i32       translucency;
+	i32       batching; // make_paint_batching
+	i32       dilate_radius;
+} paint_state_t;
+
+typedef struct paint_rec_cam {
+	mat4_t v;
+	mat4_t p; // As drawn, the jitter included
+	i32    w; // render_path_current_w / _h
+	i32    h;
+	i32    frame; // scene_camera->frame
+	i32    pad;
+} paint_rec_cam_t;
+
+typedef struct paint_rec_xform {
+	vec4_t loc;
+	quat_t rot;
+	vec4_t scale;
+} paint_rec_xform_t;
+
+typedef struct paint_rec_op {
+	u8     kind;  // paint_op_kind_t
+	u8     flags; // 1 dilation, 2 base, 4 nor_pack, 8 batched
+	u16    state;
+	u16    cam;
+	u16    xform;
+	u32    dab_first;
+	u32    dab_count;
+	f32    brush_time;
+	f32    down;
+	u8     mm_tier;
+	vec4_t direction;
+	vec4_t pixel_snap_uv;
+} paint_rec_op_t;
+
+// A stroke being recorded, or a stored one decoded (paint_rec.c)
+typedef struct paint_rec {
+	bool               active;
+	bool               replayable;
+	u32                layer_uid;
+	u32                tl_uid;
+	i32                index;  // Its timeline entry
+	u32                serial; // And the entry's step
+	i32                res_w;
+	i32                res_h;
+	i32                channels;
+	i32                mm_tier;
+	mat4_t             obj; // world_unpack of the paint target when recorded
+	mat4_t             obj_inv;
+	hash128_t          material; // Snapshot of material_of
+	slot_material_t   *material_of;
+	paint_state_t     *states;
+	i32                n_states;
+	i32                c_states;
+	paint_rec_cam_t   *cams;
+	i32                n_cams;
+	i32                c_cams;
+	paint_rec_xform_t *xforms;
+	i32                n_xforms;
+	i32                c_xforms;
+	paint_rec_op_t    *ops;
+	i32                n_ops;
+	i32                c_ops;
+	f32               *dabs; // PAINT_DAB_TEXELS * 4 floats a dab, the resolved texels
+	i32                n_dabs;
+	i32                c_dabs;
+	i32                pending; // Readbacks not landed
+	u32                token;
+} paint_rec_t;
