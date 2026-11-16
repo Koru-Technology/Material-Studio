@@ -260,6 +260,7 @@
 #include "history.c"
 #include "history_swap.c"
 #include "history_steps.c"
+#include "history_store.c"
 #include "keymap.c"
 #include "logic_node.c"
 #include "minic_impl.c"
@@ -281,6 +282,7 @@
 #include "translator.c"
 #include "uniforms.c"
 #include "viewport.c"
+#include "util/util_test.c"
 
 #ifdef WITH_PLUGINS
 void plugins_init();

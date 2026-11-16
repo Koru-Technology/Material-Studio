@@ -915,6 +915,8 @@ char            *slot_material_unique_name(ui_node_canvas_t *self, char *name);
 slot_material_t *slot_material_create(shader_data_t *m, ui_node_canvas_t *c);
 slot_material_t *slot_material_find_uid(u32 uid);
 u32              project_uid_take(); // Next stable uid of a layer or material (slot_layer_t.uid, slot_material_t.uid)
+char            *project_uuid_get(); // Random 128-bit id of the project in hex, names its history journal
+void             project_uuid_new();
 void             slot_material_unload(slot_material_t *raw);
 void             slot_material_delete(slot_material_t *raw);
 
@@ -1388,6 +1390,8 @@ bool layers_fill_paint_needs_new_layer();
 bool layers_fill_paint_to_new_layer();
 void layers_fill_paint_confirm_new_layer();
 bool layers_fill_paint_to_mask();
+bool layers_fill_paint_needs_mask();
+void layers_fill_paint_confirm_mask();
 bool layers_fill_paint_tool(i32 tool);
 void layers_create_fill_layer(uv_type_t uv_type, mat4_t decal_mat, i32 position);
 
@@ -1611,6 +1615,11 @@ i32            material_cache_stat(i32 what);
 char *util_texture_packed_name(char *basename);
 void  util_copy_texture(gpu_texture_t *dst, gpu_texture_t *src, gpu_pipeline_t *pipe);
 void  util_texture_capture_output(gpu_texture_t *img, char *basename);
+bool  util_texture_ensure_target(gpu_texture_t **t, i32 w, i32 h, gpu_texture_format_t format);
+void  util_texture_release_target(gpu_texture_t **t);
+i64   util_texture_tracked_bytes();
+i64   util_texture_tracked_peak();
+void  util_texture_tracked_peak_reset();
 
 // ---- util/util_touch.c ----
 void util_touch_update();
@@ -2285,3 +2294,36 @@ void           bake_maps_inpaint_clear(void);
 bool           bake_maps_inpaint_apply(char *path, i32 mode, bool vector);
 void           bake_maps_inpaint_end(void);
 #endif
+
+// ---- history_store.c ----
+void  hstore_chunk_header_write(u8 *p, u8 kind, u8 codec, u16 flags, hash128_t h, u32 raw_len, u32 comp_len);
+bool  hstore_chunk_header_read(const u8 *p, hstore_chunk_t *c);
+u8   *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify);
+char *hstore_journal_path(char *uuid);
+void  hstore_journal_mark_saved();
+bool  hstore_journal_pending(char *uuid);
+i32   hstore_recover();
+void  hstore_recover_end();
+void  hstore_journal_delete(char *uuid);
+void  hstore_journal_rebind(char *old_uuid);
+i32   hstore_test_put(i32 kind, i32 seed, i32 len, bool noise);
+i32   hstore_test_get(i32 id, i32 seed, i32 len, bool noise);
+bool  hstore_test_has(i32 id);
+void  hstore_test_ref(i32 id);
+void  hstore_test_unref(i32 id);
+f32   hstore_test_stat(i32 field);
+void  hstore_drop_tier(i32 tier);
+void  hstore_test_flush();
+void  hstore_test_trim(bool memory_warning);
+void  hstore_test_reset();
+void  hstore_test_crash();
+void  hstore_test_tear(i32 bytes);
+char *hstore_test_journal_path();
+
+// ---- util/util_test.c ----
+i32   script_diff_images(char *path_a, char *path_b, f32 tol);
+i32   script_diff_textures(gpu_texture_t *a, gpu_texture_t *b, f32 tol);
+f32   script_diff_max();
+f32   script_diff_mean();
+void  script_diff_mask(gpu_texture_t *mask, i32 mode);
+char *script_texture_hash(gpu_texture_t *t);

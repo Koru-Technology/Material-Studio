@@ -89,6 +89,7 @@ typedef enum {
 	APP_VIEWPORT_PATH_TRACE    = 16,
 } app_viewport_mode_t;
 
+void app_wake(void); // Keeps the engine's frames running: work an action queued for the next frame happens, not after the next touch
 void app_cycle_view_mode(void);       // 3D, 2D alone, both side by side
 void app_set_viewport_mode(int32_t mode); // app_viewport_mode_t
 void app_view_face(int32_t face);     // 0 right, 1 left, 2 back, 3 front, 4 top, 5 bottom

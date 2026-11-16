@@ -7,7 +7,6 @@ struct MaterialRow: Identifiable, Equatable {
 	let previewVersion: UInt32
 	let selected: Bool
 	let previewReady: Bool
-	let canOpenStudio: Bool
 	let name: String
 }
 
@@ -159,7 +158,7 @@ final class MaterialsStore: ChangeOnly {
 		var info = app_material_info_t()
 		for i in 0..<app_material_count() where app_material_info(i, &info) {
 			rows.append(MaterialRow(id: info.id, previewVersion: info.preview_version, selected: info.selected,
-			                        previewReady: info.preview_ready, canOpenStudio: info.can_open_studio,
+			                        previewReady: info.preview_ready,
 			                        name: String(cString: info.name)))
 		}
 		let ids = Set(rows.map(\.id))

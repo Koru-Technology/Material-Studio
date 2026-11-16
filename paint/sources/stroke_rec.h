@@ -29,12 +29,21 @@ typedef enum hstore_kind { // Frozen
 	HSTORE_CANVAS       = 8, // Node canvas (history steps)
 } hstore_kind_t;
 
+// Bit of hash128_t.hi: set on inline uniform tiles (encoded by timeline_tiles.c, never stored), always clear on stored
+// content hashes (hstore_hash)
+#define HASH128_INLINE_BIT (1ULL << 63)
+
 typedef struct hstore_stats {
 	i64 blobs;
-	i64 ram_bytes;  // Compressed bytes held in RAM
-	i64 disk_bytes; // Bytes in the journal
+	i64 ram_bytes;   // Compressed bytes held in RAM
+	i64 disk_bytes;  // Bytes in the journal
+	i64 dirty_bytes; // Compressed bytes only in RAM, not journaled yet
+	i64 dead_bytes;  // Journal bytes of blobs no longer stored (compaction reclaims them)
+	i64 ram_budget;  // Bytes, history_ram_mb (and 1/10 of the available memory on iOS)
+	i64 disk_budget; // Bytes, history_disk_mb
 } hstore_stats_t;
 
+hash128_t      hstore_hash(const void *data, u32 len); // hash128 with HASH128_INLINE_BIT cleared, what hstore_put returns
 hash128_t      hstore_put(hstore_kind_t kind, const void *data, u32 len); // Adds a reference (stores it the first time)
 u8            *hstore_get(hash128_t h, u32 *len);                          // malloc'd copy, the caller frees; NULL if missing
 bool           hstore_has(hash128_t h);

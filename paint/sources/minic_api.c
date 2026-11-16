@@ -960,6 +960,8 @@ void minic_register_builtins() {
 	MINIC_B(timeline_shadow);
 	MINIC_B(history_v2);
 	MINIC_B(export_tiled);
+	MINIC_I(history_ram_mb);
+	MINIC_I(history_disk_mb);
 	MINIC_B(paint_resolved_dabs);
 	MINIC_END();
 
