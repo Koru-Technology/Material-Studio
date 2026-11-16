@@ -2,7 +2,6 @@
 
 #include "app_api.h"
 #include "app_api_scripts.h"
-#include "util/util_hash.h"
 
 #define APP_SAME(a, b) ((i32)(a) == (i32)(b))
 _Static_assert(APP_SAME(APP_TOOL_BRUSH, TOOL_TYPE_BRUSH) && APP_SAME(APP_TOOL_ERASER, TOOL_TYPE_ERASER) && APP_SAME(APP_TOOL_FILL, TOOL_TYPE_FILL) &&
@@ -154,7 +153,7 @@ static void app_texel(gpu_texture_t *t, uint8_t *px, i32 i, float *c) {
 	case GPU_TEXTURE_FORMAT_RGBA64: { // Reads back in RGBA order
 		uint16_t *s = (uint16_t *)px + i * 4;
 		for (i32 k = 0; k < 4; ++k) {
-			f32 v = f16_to_f32(s[k]);
+			f32 v = half_to_float(s[k]);
 			c[k]  = app_clamp01(v == v ? v : 0.0f); // NaN reads as 0
 		}
 		break;

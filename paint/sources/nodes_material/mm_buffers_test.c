@@ -22,14 +22,14 @@ static float *mm_buffers_read(gpu_texture_t *t, bool greyscale) {
 	for (i32 i = 0; i < n; ++i) {
 		float v[4] = {0, 0, 0, 1};
 		if (t->format == GPU_TEXTURE_FORMAT_R16) {
-			v[0] = f16_to_f32(((uint16_t *)raw)[i]);
+			v[0] = half_to_float(((uint16_t *)raw)[i]);
 		}
 		else if (t->format == GPU_TEXTURE_FORMAT_R32) {
 			v[0] = ((float *)raw)[i];
 		}
 		else if (t->format == GPU_TEXTURE_FORMAT_RGBA64) {
 			for (i32 c = 0; c < 4; ++c) {
-				v[c] = f16_to_f32(((uint16_t *)raw)[i * 4 + c]);
+				v[c] = half_to_float(((uint16_t *)raw)[i * 4 + c]);
 			}
 		}
 		else if (t->format == GPU_TEXTURE_FORMAT_RGBA128) {

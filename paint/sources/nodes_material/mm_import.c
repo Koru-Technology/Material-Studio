@@ -1,5 +1,4 @@
 #include "../global.h"
-#include "../util/util_hash.h"
 #include "../material_maker/mm_internal.h"
 
 // Material Maker graphs (.ptex) imported as materials, their MM Material node in mm_material_node.c.
@@ -493,7 +492,7 @@ static buffer_t *mm_import_texels(gpu_texture_t *t) {
 	buffer_t *o = buffer_create(n * 4);
 	for (i32 i = 0; i < n * 4; ++i) {
 		uint16_t h   = b->buffer[i * 2] | (b->buffer[i * 2 + 1] << 8);
-		f32      v   = f16_to_f32(h);
+		f32      v   = half_to_float(h);
 		v            = v == v ? v : (h & 0x8000) ? -65504.0f : 65504.0f; // NaN reads as the largest half, as it always did
 		o->buffer[i] = (u8)(math_max(0.0, math_min(1.0, v)) * 255.0 + 0.5);
 	}

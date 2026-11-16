@@ -1,6 +1,5 @@
 
 #include "../global.h"
-#include "../util/util_hash.h"
 
 f32 render_path_raytrace_uv_scale = 1.0;
 
@@ -45,9 +44,9 @@ static void render_path_raytrace_env_luma_pixels(uint8_t *px, int32_t w, int32_t
 					float  r, g, b;
 					if (f16) {
 						uint16_t *p = (uint16_t *)(px + o);
-						r           = f16_to_f32(p[0]);
-						g           = f16_to_f32(p[1]);
-						b           = f16_to_f32(p[2]);
+						r           = half_to_float(p[0]);
+						g           = half_to_float(p[1]);
+						b           = half_to_float(p[2]);
 					}
 					else {
 						r = px[o + 0] / 255.0f;
