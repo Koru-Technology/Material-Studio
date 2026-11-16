@@ -170,22 +170,12 @@ void _import_mesh_make_mesh_clear_layers(void *_) {
 	layers_init();
 }
 
-bool _import_mesh_is_unique_name(char *s) {
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		if (string_equals(p->base->name, s)) {
-			return false;
-		}
-	}
-	return true;
-}
-
 char *_import_mesh_unique_name(char *name) {
 	// Returns the name or the next free .00X variant
 	char *base;
 	i32   i   = strings_split_number_ext(name, &base);
 	char *res = i == 0 ? base : string_tmp("%s%s", base, strings_number_ext(i));
-	if (_import_mesh_is_unique_name(res)) {
+	if (!import_arm_object_name_exists(res)) {
 		return res;
 	}
 

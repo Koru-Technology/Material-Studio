@@ -604,7 +604,6 @@ void                   import_mesh_run(char *path, bool _clear_layers, bool repl
 void                   import_mesh_finish_import(void *_);
 void                   import_mesh_make_mesh(raw_mesh_t *mesh);
 void                   import_mesh_add_mesh(raw_mesh_t *mesh);
-bool                   _import_mesh_is_unique_name(char *s);
 char                  *_import_mesh_unique_name(char *name);
 mesh_data_t           *import_mesh_raw_mesh(raw_mesh_t *mesh);
 void                   ui_menubar_init();
@@ -634,7 +633,6 @@ void                   import_arm_make_pink(char *abs);
 void                   import_arm_init_nodes(ui_node_t_array_t *nodes);
 void                   import_arm_unpack_asset(project_t *project, char *abs, char *file, bool copy);
 void                   import_arm_run_material_from_project_on_next_frame(slot_material_t_array_t *imported);
-bool                   import_arm_group_exists(char *name);
 void                   import_arm_rename_group(char *name, char *new_name, slot_material_t_array_t *materials, ui_node_canvas_t_array_t *groups);
 void                   import_arm_run_material_from_project(project_t *project, char *path);
 void                   import_arm_run_swatches_from_project(project_t *project, char *path, bool replace_existing);
