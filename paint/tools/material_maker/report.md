@@ -827,7 +827,7 @@ Shader that does not compile, or hangs the GPU (by id in overrides.json).
 
 ## Left out: too heavy for the iPad (88)
 
-They hang the GPU or crash the app on the iPad (the bulk test of the material controls, tests/material_controls_all.c).
+They hang the GPU or crash the app on the iPad.
 
 - 215 "MDF Board" by unfa
 - 223 "Grassy Ground" by rovacado
