@@ -106,6 +106,11 @@ void compare(char *name, float tol, char *what) {
 	check(ok, string("%s: %d files, max diff %.2f/255 (%s)", name, n, max, what));
 }
 
+void cfg_shadow_off() {
+	config_t *cfg        = script_get_config();
+	cfg->timeline_shadow = 0;
+}
+
 char *layer_hashes() {
 	char *s = "";
 	for (int i = 0; i < script_layer_count(); ++i) {
@@ -252,7 +257,7 @@ void next() {
 		compare("udim_visible", 1.0, "udim atlas whole");
 		script_layer_set_object(layer_fill, NULL);
 	}
-	else if (step == 8 && !baseline) { // Padding: live layers untouched, islands as legacy
+	else if (step == 9 && !baseline) { // Padding, after the other comparisons (the legacy padding dilates the live layers): live layers untouched, islands as legacy
 		export_texture_test_options("generic", 0, 1, 8, 0);
 		hashes_before = layer_hashes();
 		set_tiled(1); // TILED
@@ -276,7 +281,15 @@ void next() {
 		script_diff_mask(NULL, 0);
 		export_texture_test_options("generic", 0, 0, 8, 0);
 	}
-	else if (step == 9 && !baseline) { // Export resolution above the working one: files at that size, the Material Maker cap raised
+	else if (step == 8 && !baseline) { // One tile for the whole texture: paint layers come from their timelines (timeline_shadow)
+		export_texture_test_options("generic", 0, 0, 8, 0);
+		export_tiled_test_tile(0); // TILED
+		export_both("timeline", 0, 0);
+		compare("timeline", 1.0, "layers from their timelines");
+		check(export_tiled_stat(9) > 0 && export_tiled_stat(10) == 0, string("%d layer tiles from timelines, %d fell back", export_tiled_stat(9), export_tiled_stat(10))); // TILED
+		export_tiled_test_tile(512); // TILED
+	}
+	else if (step == 10 && !baseline) { // Export resolution above the working one: files at that size, the Material Maker cap raised
 		set_tiled(1); // TILED
 		export_tiled_set_resolution(4096, 4096); // TILED
 		export_texture_run(fresh_dir("hires_t"), 0); // TILED
@@ -288,6 +301,7 @@ void next() {
 	}
 	else {
 		set_tiled(0);
+		cfg_shadow_off();
 		printf("[export_tiled] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "EXPORT_TILED PASS" : "EXPORT_TILED FAIL");
 		script_quit();
@@ -298,6 +312,8 @@ void next() {
 }
 
 void main() {
+	config_t *cfg        = script_get_config();
+	cfg->timeline_shadow = 1; // Paint layers record their timelines, the tiled export reads them
 	script_project_new();
 	iron_create_directory(root);
 	script_notify_on_next_frame(next);

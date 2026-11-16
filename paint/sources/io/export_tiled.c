@@ -112,7 +112,7 @@ static gpu_transfer_t *et_xfer = NULL;
 static i32  et_test_tile   = 0;     // Tests: tile core size, 0 the default
 static bool et_test_raster = false; // Tests: uv coverage rasterized per tile also at the working resolution
 static bool et_test_mm     = false; // Tests: the Material Maker export cap also at the working resolution
-static i64  et_stats[6];            // Peak tile target bytes, budget, tiles rendered, skipped, files, mm cap
+static i64  et_stats[11]; // export_tiled_stat
 static bool et_mm_capped = false;
 static i32  et_res_w     = 0; // The export resolution, 0 the working one
 static i32  et_res_h     = 0;
@@ -311,10 +311,19 @@ static gpu_texture_t *export_tiled_source_target(gpu_texture_t **t, gpu_texture_
 	return *t;
 }
 
-// The plug-in point: layer l's pixels for the tile, into t->out. Today the live layer's (at the working resolution,
-// scaled when the output's differs). Next: paint layers from their timeline, timeline_materialize(tl, tl->cursor, t),
-// fill layers rendered for t->uv_rect (layers_update_fill_layer through the paint track's uv tile transform).
+// The plug-in point: layer l's pixels for the tile, into t->out. Paint layers from their timeline (stroke_rec.h) at the
+// state they show; otherwise, or when it can not (today: restoring kept states only, at their own size), the live
+// layer's pixels (scaled when the output's resolution differs). Next: fill layers rendered for t->uv_rect
+// (layers_update_fill_layer through the paint track's uv tile transform).
 static bool export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i32 hy, paint_target_t *t) {
+	timeline_t *tl = m.mode == 0 ? timeline_of(l) : NULL; // Udim maps: the live layer for now
+	if (tl != NULL) {
+		if (timeline_materialize(tl, tl->cursor, t)) {
+			et_stats[9]++;
+			return true;
+		}
+		et_stats[10]++;
+	}
 	gpu_texture_t *live[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
 	for (i32 k = 0; k < t->channels; ++k) {
 		export_tiled_blit(t->out[k], live[k], m, hx, hy);
@@ -844,6 +853,7 @@ bool export_tiled_start(char *path, bool bake_material) {
 		export_tiled_cancel();
 	}
 	export_texture_init_preset();
+	timeline_finalize(); // Strokes still being recorded land in their timelines
 	memset(&et, 0, sizeof(et));
 	memset(et_stats, 0, sizeof(et_stats));
 	et.path    = string_copy(path);
@@ -1017,7 +1027,8 @@ void export_tiled_test_mm(bool on) {
 }
 
 // 0 peak tile target KB of the last export, 1 its budget KB, 2 tiles rendered, 3 tiles skipped, 4 files, 5 mm cap,
-// 6 tile target KB held now, 7 1 while a spool file is open, 8 files written by the export in progress
+// 6 tile target KB held now, 7 1 while a spool file is open, 8 files written by the export in progress, 9 layer tiles
+// from timelines, 10 layer tiles with a timeline it could not materialize (the live layer instead)
 i32 export_tiled_stat(i32 what) {
 	if (what == 6) {
 		i64 kb = 0;
@@ -1033,7 +1044,7 @@ i32 export_tiled_stat(i32 what) {
 	if (what == 8) {
 		return et.written != NULL ? et.written->length : 0;
 	}
-	return what >= 0 && what < 6 ? (i32)et_stats[what] : 0;
+	return what >= 0 && what < 11 ? (i32)et_stats[what] : 0;
 }
 
 // The uv coverage the legacy padding dilates with
