@@ -87,6 +87,13 @@ static gpu_texture_t *import_arm_texture_from_lz4(buffer_t *b, i32 w, i32 h, i32
 	return texture;
 }
 
+// Whether a loaded texture has texels that are not opaque
+bool import_arm_texture_has_alpha(gpu_texture_t *t) {
+	bool alpha = import_arm_has_alpha(gpu_get_texture_pixels(t), t->format);
+	gpu_release_texture_pixels(t);
+	return alpha;
+}
+
 // dst of a loaded layer becomes its saved texture
 void import_arm_layer_texture(gpu_texture_t *dst, buffer_t *b, i32 w, i32 h, i32 bytes_per_texel, i32 format, bool *has_alpha) {
 	gpu_texture_t *t = import_arm_texture_from_lz4(b, w, h, bytes_per_texel, format, has_alpha);

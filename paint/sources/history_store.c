@@ -24,6 +24,7 @@
 
 enum {
 	HSTORE_E_RECOVERED = 1, // Indexed by hstore_recover, kept by trim until hstore_recover_end
+	HSTORE_E_MARK      = 2, // Reached by hstore_each
 };
 
 typedef struct hstore_entry {
@@ -873,19 +874,48 @@ void hstore_attach_project(char *path, const hstore_index_entry_t *entries, i32 
 	}
 }
 
-// Blobs a save writes: the referenced ones
-void hstore_each(void (*fn)(hash128_t h, void *ud), void *ud) {
-	u32              n;
-	hstore_entry_t **list = hstore_collect(hstore_is_referenced, NULL, &n);
-	hash128_t       *hs   = malloc(sizeof(hash128_t) * (n > 0 ? n : 1));
-	for (u32 i = 0; i < n; ++i) {
-		hs[i] = list[i]->h;
+static void hstore_visit_mark(hash128_t child, void *ud) {
+	hstore_entry_t *e = hstore_find(child);
+	if (e != NULL && (e->state & HSTORE_E_MARK) == 0) {
+		e->state |= HSTORE_E_MARK;
+		hstore_list_push(ud, child);
 	}
-	free(list);
-	for (u32 i = 0; i < n; ++i) {
-		fn(hs[i], ud);
+}
+
+// Blobs a save writes: the roots, the referenced blobs and what they own (children), each once. Refs alone miss
+// children a blob recovered or read from a project file owns: their refs come back with hstore_rebuild_refs only.
+void hstore_each(const hash128_t *roots, i32 n, void (*fn)(hash128_t h, void *ud), void *ud) {
+	hstore_list_t work = {0};
+	hstore_list_t all  = {0};
+	for (u32 i = 0; i < hstore_cap; ++i) {
+		hstore_table[i].state &= ~HSTORE_E_MARK;
 	}
-	free(hs);
+	for (i32 i = 0; i < n; ++i) {
+		hstore_visit_mark(roots[i], &work);
+	}
+	for (u32 i = 0; i < hstore_cap; ++i) {
+		if (!hash128_is_none(hstore_table[i].h) && hstore_table[i].refs > 0) {
+			hstore_visit_mark(hstore_table[i].h, &work);
+		}
+	}
+	while (work.n > 0) {
+		hash128_t h = work.h[--work.n];
+		hstore_list_push(&all, h);
+		hstore_entry_t    *e  = hstore_find(h);
+		hstore_children_fn fn_children = hstore_children_of(e->kind);
+		if (fn_children != NULL) {
+			u8 *raw = hstore_entry_bytes(e, true);
+			if (raw != NULL) {
+				fn_children(raw, e->raw_len, hstore_visit_mark, &work);
+				free(raw);
+			}
+		}
+	}
+	free(work.h);
+	for (u32 i = 0; i < all.n; ++i) {
+		fn(all.h[i], ud);
+	}
+	free(all.h);
 }
 
 // The chunk of a stored blob: its header fields and its payload as stored (malloc'd), NULL when missing or unreadable
