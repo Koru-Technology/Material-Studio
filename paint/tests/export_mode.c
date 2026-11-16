@@ -97,7 +97,6 @@ void next() {
 		build_scene();
 	}
 	else if (step == 1) { // The same export without and with export mode
-		cfg->export_tiled = 1;
 		export_texture_test_options("generic", 0, 1, 8, 0);
 		export_tiled_test_tile(512);
 		hashes = layer_hashes();
@@ -139,7 +138,6 @@ void next() {
 	else {
 		export_tiled_set_mode(2);
 		export_tiled_test_tile(0);
-		cfg->export_tiled = 0;
 		printf("[export_mode] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "EXPORT_MODE PASS" : "EXPORT_MODE FAIL");
 		script_quit();

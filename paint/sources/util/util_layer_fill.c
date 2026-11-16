@@ -225,6 +225,12 @@ bool layers_render_fill_rect(slot_layer_t *l, paint_target_t *t, gpu_texture_t *
 	paint_exec_uv_tile = (vec4_t){t->uv_rect[0], t->uv_rect[1], 1.0 / (t->uv_rect[2] - t->uv_rect[0]), 1.0 / (t->uv_rect[3] - t->uv_rect[1])};
 	paint_exec_res0    = (vec2_t){(f32)t->res_w, (f32)t->res_h};
 	i32 need           = mm_buffers_require(MM_BUFFERS_FULL); // Material Maker buffers full now, as for a bake
+	// The stroke coverage targets are attachments of the pass too: at t's size, Metal clips the render area to the
+	// smallest attachment (a tile larger than the working resolution would only get its top left part)
+	render_target_t *blend   = any_map_get(render_path_render_targets, "texpaint_blend0");
+	i32              blend_w = blend->width;
+	i32              blend_h = blend->height;
+	render_path_paint_scratch_resize(t->w, t->h);
 
 	make_material_parse_paint_material(false);
 	render_path_paint_commands_paint(false);
@@ -232,6 +238,7 @@ bool layers_render_fill_rect(slot_layer_t *l, paint_target_t *t, gpu_texture_t *
 		render_path_end();
 	}
 
+	render_path_paint_scratch_resize(blend_w, blend_h);
 	mm_buffers_require(need);
 	paint_exec_uv_tile   = _uv_tile;
 	paint_exec_res0      = _res0;

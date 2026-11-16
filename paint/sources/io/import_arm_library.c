@@ -168,24 +168,19 @@ void import_arm_run_swatches_from_project(project_t *project, char *path, bool r
 	data_delete_blob(path);
 }
 
-void import_arm_run_material(char *path) {
+// False when the file can not be read (missing, or saved by an older version)
+bool import_arm_run_material(char *path) {
 	buffer_t *b = data_get_blob(path);
 	if (b == NULL) {
-		return;
+		return false;
 	}
-	project_t *project;
-	if (import_arm_is_old(b)) {
-		project = import_arm_from_old(b);
-	}
-	else {
-		project = armpack_decode(b);
-	}
-
-	if (project == NULL || project->version == NULL) {
+	project_t *project = import_arm_decode(b);
+	if (project == NULL) {
 		data_delete_blob(path);
-		return;
+		return false;
 	}
 	import_arm_run_material_from_project(project, path);
+	return true;
 }
 
 void import_arm_run_brush(char *path) {
@@ -193,8 +188,8 @@ void import_arm_run_brush(char *path) {
 	if (b == NULL) {
 		return;
 	}
-	project_t *project = armpack_decode(b);
-	if (project == NULL || project->version == NULL) {
+	project_t *project = import_arm_decode(b);
+	if (project == NULL) {
 		data_delete_blob(path);
 		return;
 	}
@@ -229,8 +224,8 @@ void import_arm_run_swatches(char *path, bool replace_existing) {
 	if (b == NULL) {
 		return;
 	}
-	project_t *project = armpack_decode(b);
-	if (project == NULL || project->version == NULL) {
+	project_t *project = import_arm_decode(b);
+	if (project == NULL) {
 		data_delete_blob(path);
 		return;
 	}

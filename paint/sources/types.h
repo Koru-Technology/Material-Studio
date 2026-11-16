@@ -373,10 +373,8 @@ typedef struct config {
 	i32                  undo_memory_mb;    // Undo steps are dropped, oldest first, above this budget
 	bool                 timeline_shadow;   // Stroke recording runs beside the old undo, nothing reads it (stroke_rec.h)
 	bool                 history_v2;        // Undo from timelines and checkpoints, the undo ring retired
-	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
-	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 	i32                  history_budget_mb; // History saved with a project, thinned above it; 0: 4x the live layers, 1 GB at least
 	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
 	i32                  history_max_steps; // history_v2: undo steps kept at most
@@ -915,8 +913,8 @@ typedef struct project {
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
 	struct string_array                         *mesh_maps;       // Asset name per mesh_map_t, "" for none, NULL when none ever set
-	char                                        *uuid;            // project_uuid, NULL before version 31
-	u32                                          next_uid;        // project_uid_next, 0 before version 31
+	char                                        *uuid;            // project_uuid
+	u32                                          next_uid;        // project_uid_next
 	struct u8_array                             *timelines;       // Timelines of the layers (timeline.c), NULL for none
 	struct u8_array                             *history;         // History steps (history*.c), NULL for none
 	project_runtime_t                           *_;
@@ -948,9 +946,10 @@ typedef struct swatch_color {
 
 typedef struct layer_data {
 	char             *name;
-	i32               res; // Width pixels
+	i32               type;  // layer_slot_type_t
+	i32               res_x; // Width and height of the textures
+	i32               res_y;
 	i32               bpp; // Bits per pixel
-	struct buffer    *texpaint;
 	f32               uv_scale;
 	f32               uv_rot;
 	i32               uv_type;
@@ -961,9 +960,6 @@ typedef struct layer_data {
 	i32               blending;
 	i32               parent;
 	bool              visible;
-	struct buffer    *texpaint_nor;
-	struct buffer    *texpaint_pack;
-	struct buffer    *texpaint_sculpt;
 	bool              paint_base;
 	bool              paint_opac;
 	bool              paint_occ;
@@ -991,11 +987,9 @@ typedef struct layer_data {
 	f32               height_blend_offset;
 	f32               height_blend_reach;
 	f32_array_t      *mask_effects; // slot_layer_t.mask_effects as is, NULL for the implicit stack
-	u32               uid;          // slot_layer_t.uid, 0 in projects before version 31
-	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
-	i32               res_y;
-	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
-	struct u8_array  *tilemap;  // v31 container: hash128 of the HSTORE_TILEMAP of the layer's state, all its channels
+	u32               uid;          // slot_layer_t.uid
+	u32               timeline;     // Uid of the layer's timeline (stroke_rec.h), 0 for none
+	struct u8_array  *tilemap;      // hash128 of the HSTORE_TILEMAP of the layer's state, all its channels; NULL for groups
 } layer_data_t;
 
 // ---- Shader outputs, export presets, neural models ----

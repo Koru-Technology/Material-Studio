@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Timelines saved with v31 projects (timeline_io.c, timeline_shadow and project_v31 on): after a save and an open, the
+// Timelines saved with projects (timeline_io.c, timeline_shadow on): after a save and an open, the
 // timelines have their entries, cursor and kept states, each position materializes to the pixels it had before the
 // save, and the cursor's state is the live layer. An appending save reads the children of the new tile maps only, a
 // whole rewrite of every reachable one.
@@ -11,7 +11,6 @@ int   step       = 0;
 int   frame      = 0;
 char *dir        = "/tmp/materialstudio_timeline_persist";
 char *file       = NULL;
-int   v31_was    = 0;
 int   shadow_was = 0;
 int   uid_a      = 0;
 int   uid_m      = 0;
@@ -272,7 +271,6 @@ void next() {
 		check(maps <= script_layer_count(), string("only the live layers' tile maps, full (%d)", maps));
 	}
 	else {
-		script_get_config()->project_v31     = v31_was;
 		script_get_config()->timeline_shadow = shadow_was;
 		script_project_new();
 		iron_delete_file(file);
@@ -291,9 +289,7 @@ void next() {
 
 void main() {
 	dir = script_tmp_dir("materialstudio_timeline_persist"); // Per run: suites of several worktrees run at once
-	v31_was                              = script_get_config()->project_v31;
 	shadow_was                           = script_get_config()->timeline_shadow;
-	script_get_config()->project_v31     = 1;
 	script_get_config()->timeline_shadow = 1;
 	v2_was                               = script_get_config()->history_v2;
 	script_get_config()->history_v2      = 1; // Saved steps undo from timelines

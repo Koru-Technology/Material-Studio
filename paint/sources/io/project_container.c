@@ -1,6 +1,6 @@
 #include "../global.h"
 
-// Project files, version 31 with project_v31 on: a container of chunks (history_store.c), read lazily, saved by
+// Project files: a container of chunks (history_store.c), read lazily, saved by
 // appending. Little endian:
 //   "MSPJ" u32 31, 8 bytes 0
 //   chunks: "CHNK" ... (HSTORE_CHUNK_HEADER): the referenced blobs of the store, among them the tile maps of the live
@@ -275,8 +275,8 @@ static hash128_t pc_hash_at(u8_array_t *a, i32 i) {
 	return h;
 }
 
-// The project of a container: layers with their raster chunks as texpaint* (LZ4 as in version 30, masks R8),
-// packed assets with their bytes. NULL when no footer checks out.
+// The project of a container: layers name the tile maps of their states (restored by the load from the store), packed
+// assets with their bytes. NULL when no footer checks out.
 static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 	pc_footer_t f;
 	u64         at;
@@ -293,38 +293,18 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 	free(raw_index);
 
 	buffer_t   hb      = {.buffer = head, .length = (u32)f.head_len, .capacity = (u32)f.head_len};
-	project_t *project = import_arm_is_old(&hb) ? import_arm_from_old(&hb) : armpack_decode(&hb);
+	project_t *project = import_arm_decode(&hb);
 	free(head);
 	if (project == NULL) {
 		free(index);
 		return NULL;
 	}
 
-	if (project->layer_datas != NULL) {
-		for (i32 i = 0; i < project->layer_datas->length; ++i) {
-			layer_data_t  *ld = project->layer_datas->buffer[i];
-			buffer_t     **dst[3] = {(buffer_t **)&ld->texpaint, (buffer_t **)&ld->texpaint_nor, (buffer_t **)&ld->texpaint_pack};
-			u8_array_t    *tm     = (u8_array_t *)ld->tilemap;
-			if (tm != NULL && tm->length >= 16) { // Restored by the load from the store, empty buffers tell layers from groups
-				hstore_chunk_t chunk;
-				hash128_t      h        = pc_hash_at(tm, 0);
-				buffer_t      *b        = hash128_is_none(h) ? NULL : pc_payload(s, index, count, h, &chunk);
-				u8            *map      = b != NULL ? hstore_chunk_decode(&chunk, b->buffer, true) : NULL;
-				i32            channels = map != NULL && chunk.raw_len >= 2 ? map[1] : 3; // Map header: tag, channels
-				for (i32 c = 0; c < 3; ++c) {
-					*dst[c] = c == 0 || channels == 3 ? buffer_create(0) : NULL;
-				}
-				free(map);
-				if (b != NULL) {
-					array_free(b);
-					free(b);
-				}
-				if (st != NULL && !hash128_is_none(h)) {
-					i32 cap = st->maps_count;
-					pc_maps_push(&st->maps, &st->maps_count, &cap, h);
-				}
-				continue;
-			}
+	for (i32 i = 0; st != NULL && project->layer_datas != NULL && i < project->layer_datas->length; ++i) {
+		hash128_t h = pc_hash_at((u8_array_t *)project->layer_datas->buffer[i]->tilemap, 0); // Restored by the load from the store
+		if (!hash128_is_none(h)) {
+			i32 cap = st->maps_count;
+			pc_maps_push(&st->maps, &st->maps_count, &cap, h);
 		}
 	}
 	if (project->packed_assets != NULL) {
@@ -426,6 +406,7 @@ static void pc_history_roots(hash128_t **list, i32 *count, i32 *cap) {
 // The load is done: references are rebuilt from what the project holds, the live layers' maps, the timelines and the
 // history steps. The file's other blobs (and recovered ones) go at the next trim.
 void project_container_loaded() {
+	project_session_loaded();
 	if (pc.path == NULL) {
 		return;
 	}
@@ -831,11 +812,8 @@ bool project_container_save(char *path) {
 }
 
 // "Save copy without history": a container of the project and its live layers, no timelines nor history blobs, with
-// its own uuid. The session goes on saving to its file. project_v31 only.
+// its own uuid. The session goes on saving to its file.
 bool project_container_save_copy(char *path) {
-	if (!g_config->project_v31) {
-		return false;
-	}
 	return pc_save(path, true);
 }
 
@@ -881,7 +859,7 @@ void hstore_journal_delete_for_file(char *path) {
 	}
 }
 
-// ---- Test hooks (paint/tests/legacy_upgrade.c, paint/tests/project_container.c) ----
+// ---- Test hooks (paint/tests/project_roundtrip.c, paint/tests/project_container.c) ----
 
 i32 project_container_test_reads() {
 	return (i32)pc_reads;
@@ -918,12 +896,9 @@ i32 project_test_res(i32 axis) {
 	return axis == 0 ? config_get_texture_res_x() : config_get_texture_res_y();
 }
 
-// Layers resized to w x h (the Custom resolution of the layers tab), on the next frame
+// Layers to w x h now (the Custom resolution of the layers tab), not an undo step
 void project_test_set_res(i32 w, i32 h) {
-	base_res   = TEXTURE_RES_CUSTOM;
-	base_res_x = (f32)w;
-	base_res_y = (f32)h;
-	layers_on_resized();
+	layers_resolution_apply(w, h);
 }
 
 // 31 bits of the content hash of the pixels of layer i's texture: 0 base (mask: its value), 1 normal, 2 pack. 0 for none.
@@ -1011,10 +986,10 @@ static u64 pc_history_signature() {
 	return h;
 }
 
-// Session heads are written for v31 projects whose layers have timelines: their live states are tile maps already, a
+// Session heads are written for projects whose layers have timelines: their live states are tile maps already, a
 // head costs no readback
 static bool pc_session_on() {
-	return g_config->project_v31 && timeline_active() && g_context->paint_object != NULL;
+	return timeline_active() && g_context->paint_object != NULL;
 }
 
 // Journals the session head now, true when it was written
@@ -1085,7 +1060,14 @@ void project_session_forget() {
 	pc_session_time = 0.0;
 }
 
-// The journal of the project in path (a v31 file) has a session head after its last save
+// The load is done: the history it decoded is the opened state, not a change to journal. A head of it would be the
+// newest one, and would hide the unsaved work of an earlier session from recovery.
+void project_session_loaded() {
+	pc_session_sig  = pc_history_signature();
+	pc_session_time = 0.0;
+}
+
+// The journal of the project in path (a container) has a session head after its last save
 bool project_session_pending(char *path) {
 	char *uuid = project_file_uuid(path);
 	return uuid != NULL && hstore_journal_pending(uuid);
@@ -1127,7 +1109,7 @@ bool project_session_overlay(project_t *p) {
 		return false;
 	}
 	buffer_t   hb = {.buffer = b + off, .length = len - off, .capacity = len - off};
-	project_t *s  = import_arm_is_old(&hb) ? import_arm_from_old(&hb) : armpack_decode(&hb);
+	project_t *s  = import_arm_decode(&hb);
 	if (s == NULL || s->layer_datas == NULL || s->layer_datas->length == 0) {
 		free(b);
 		return false;
@@ -1151,20 +1133,5 @@ bool project_session_overlay(project_t *p) {
 	p->next_uid               = s->next_uid;
 	p->timelines              = s->timelines;
 	p->history                = s->history;
-	for (i32 i = 0; i < p->layer_datas->length; ++i) { // Layers from groups: empty pixel buffers, as pc_load
-		layer_data_t *ld = p->layer_datas->buffer[i];
-		u8_array_t   *tm = (u8_array_t *)ld->tilemap;
-		if (tm == NULL || tm->length < 16) {
-			continue;
-		}
-		hash128_t mh       = pc_hash_at(tm, 0);
-		u32       mlen     = 0;
-		u8       *map      = hash128_is_none(mh) ? NULL : hstore_get(mh, &mlen);
-		i32       channels = map != NULL && mlen >= 2 ? map[1] : 3; // Map header: tag, channels
-		free(map);
-		ld->texpaint      = (struct buffer *)buffer_create(0);
-		ld->texpaint_nor  = channels == 3 ? (struct buffer *)buffer_create(0) : NULL;
-		ld->texpaint_pack = channels == 3 ? (struct buffer *)buffer_create(0) : NULL;
-	}
 	return true; // b stays: the decoded head may point into it
 }

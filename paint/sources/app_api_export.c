@@ -7,10 +7,6 @@ _Static_assert((i32)APP_EXPORT_LAYERS_PER_UDIM == (i32)EXPORT_MODE_PER_UDIM_TILE
 static i32             app_export_size = 0;
 static string_array_t *app_export_names = NULL; // Not upscaled at app_export_size
 
-bool app_export_available(void) {
-	return g_config->export_tiled;
-}
-
 static void app_export_presets() {
 	if (box_export_files == NULL) {
 		box_export_fetch_presets();
@@ -110,7 +106,7 @@ static void app_export_path_picked(char *path) {
 }
 
 bool app_export_start(void) {
-	if (!g_config->export_tiled || export_tiled_running()) {
+	if (export_tiled_running()) {
 		return false;
 	}
 	g_context->layers_destination = EXPORT_DESTINATION_DISK;
@@ -132,7 +128,7 @@ void app_export_cancel(void) {
 }
 
 void app_resolution_get(app_resolution_t *out) {
-	*out = (app_resolution_t){.width = config_get_texture_res_x(), .height = config_get_texture_res_y(), .keeps_detail = g_config->export_tiled};
+	*out = (app_resolution_t){.width = config_get_texture_res_x(), .height = config_get_texture_res_y()};
 #ifdef IRON_IOS
 	out->max_size = 8192;
 #else
@@ -148,19 +144,12 @@ bool app_resolution_set(int32_t size) {
 	if (r.running || size < 512 || size > r.max_size || (size == r.width && size == r.height)) {
 		return false;
 	}
-	if (g_config->export_tiled) {
-		return layers_resolution_begin(size, size);
-	}
-	base_res_x = size;
-	base_res_y = size;
-	base_res   = config_get_texture_res_pos(size);
-	layers_on_resized();
-	return true;
+	return layers_resolution_begin(size, size);
 }
 
 void app_history_info(app_history_info_t *out) {
 	hstore_stats_t s = hstore_stats();
-	*out = (app_history_info_t){.ram_bytes = s.ram_bytes, .disk_bytes = s.disk_bytes, .blobs = (int32_t)s.blobs, .can_save_copy = g_config->project_v31};
+	*out = (app_history_info_t){.ram_bytes = s.ram_bytes, .disk_bytes = s.disk_bytes, .blobs = (int32_t)s.blobs};
 }
 
 void app_history_clear(void) {
@@ -179,9 +168,6 @@ static void app_history_copy_picked(char *path) {
 }
 
 bool app_history_save_copy(void) {
-	if (!g_config->project_v31) {
-		return false;
-	}
 #ifdef IRON_IOS
 	char *dir = iron_save_dialog("", ""); // The documents folder, as Save As (project.c)
 	dir       = string_copy(substring(dir, 0, string_length(dir) - 8)); // Strip /"untitled"
