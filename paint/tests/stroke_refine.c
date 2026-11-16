@@ -202,6 +202,7 @@ void log_progress() {
 }
 
 void finish() {
+	material_cache_set_enabled(1);
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 	printf("[refine] %d checks, %d failures", checks, fails);
 	printf(fails == 0 ? "REFINE PASS" : "REFINE FAIL");
@@ -544,6 +545,7 @@ void next() {
 }
 
 void main() {
+	material_cache_set_enabled(0); // References painted from the material evaluated, as replays paint (a cache may build while they wait)
 	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	script_project_new();
 	render_path_paint_set_stamp_seed(4242);

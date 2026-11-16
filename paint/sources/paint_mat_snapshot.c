@@ -11,10 +11,8 @@
 // Image and Material nodes index the snapshot's tables: images its files in order, materials its canvases of kinds 2
 // and 3 in order from 1. Replay parses with the project's group, material and asset lists swapped for the snapshot's
 // (paint_mat_snapshot_parse_begin) and reads Material Maker files from their blobs (paint_mat_snapshot_replay_begin).
-// "PMS1" blobs of early records hold the canvas alone.
 
-#define PAINT_MAT_SNAPSHOT_MAGIC  0x31534d50 // "PMS1"
-#define PAINT_MAT_SNAPSHOT_MAGIC2 0x32534d50 // "PMS2"
+#define PAINT_MAT_SNAPSHOT_MAGIC 0x32534d50 // "PMS2"
 
 typedef struct paint_mat_snapshot_head {
 	u32 magic;
@@ -23,7 +21,7 @@ typedef struct paint_mat_snapshot_head {
 	f32 uv_angle;
 	u8  paint[9]; // base opac occ rough met nor height emis subs
 	u8  pad[3];
-	u32 canvas_len; // PMS1 the canvas's bytes, PMS2 the number of canvases (the number of files follows, a u32)
+	u32 n_canvases; // The number of files follows, a u32
 } paint_mat_snapshot_head_t;
 
 #define PAINT_MAT_SNAPSHOT_SCRATCH (4 * 1024 * 1024)
@@ -339,12 +337,12 @@ static u32 pms_encode(slot_material_t *m, pms_closure_t *cl, bool put, hash128_t
 	if (paint_mat_snapshot_scratch == NULL) {
 		paint_mat_snapshot_scratch = malloc(PAINT_MAT_SNAPSHOT_SCRATCH);
 	}
-	paint_mat_snapshot_head_t h = {.magic = PAINT_MAT_SNAPSHOT_MAGIC2, .id = m->id, .uv_scale = m->uv_scale, .uv_angle = m->uv_angle};
+	paint_mat_snapshot_head_t h = {.magic = PAINT_MAT_SNAPSHOT_MAGIC, .id = m->id, .uv_scale = m->uv_scale, .uv_angle = m->uv_angle};
 	bool flags[9] = {m->paint_base, m->paint_opac, m->paint_occ, m->paint_rough, m->paint_met, m->paint_nor, m->paint_height, m->paint_emis, m->paint_subs};
 	for (i32 i = 0; i < 9; ++i) {
 		h.paint[i] = flags[i];
 	}
-	h.canvas_len = cl->n;
+	h.n_canvases = cl->n;
 	memcpy(paint_mat_snapshot_scratch, &h, sizeof(h));
 	u8 *p       = paint_mat_snapshot_scratch + sizeof(h);
 	u32 n_files = cl->n_images + cl->n_mm;
@@ -385,17 +383,17 @@ static u32 pms_encode(slot_material_t *m, pms_closure_t *cl, bool put, hash128_t
 	return (u32)(p - paint_mat_snapshot_scratch);
 }
 
-// The files listed by a snapshot blob, *cur past them; false when it is not a PMS2 blob that holds them
+// The files listed by a snapshot blob, *cur past them; false when it is not one
 static bool pms_files(const u8 *data, u32 len, u32 *cur, u32 *n_canvases, u32 *n_files) {
 	paint_mat_snapshot_head_t h;
 	if (len < sizeof(h) + 4) {
 		return false;
 	}
 	memcpy(&h, data, sizeof(h));
-	if (h.magic != PAINT_MAT_SNAPSHOT_MAGIC2) {
+	if (h.magic != PAINT_MAT_SNAPSHOT_MAGIC) {
 		return false;
 	}
-	*n_canvases = h.canvas_len;
+	*n_canvases = h.n_canvases;
 	memcpy(n_files, data + sizeof(h), 4);
 	*cur = sizeof(h) + 4;
 	return true;
@@ -512,90 +510,82 @@ static slot_material_t *pms_decode(u8 *data, u32 len, paint_mat_snapshot_deps_t 
 	memcpy(&head, data, sizeof(head));
 	ui_node_canvas_t          *canvas = NULL;
 	paint_mat_snapshot_deps_t *deps   = NULL;
-	if (head.magic == PAINT_MAT_SNAPSHOT_MAGIC) {
-		if (sizeof(head) + head.canvas_len > len) {
-			return NULL;
-		}
-		canvas = pms_decode_canvas(data + sizeof(head), head.canvas_len);
+	u32 cur, nc, nf;
+	if (!pms_files(data, len, &cur, &nc, &nf) || nc == 0) {
+		return NULL;
 	}
-	else {
-		u32 cur, nc, nf;
-		if (!pms_files(data, len, &cur, &nc, &nf) || nc == 0) {
-			return NULL;
+	deps         = calloc(1, sizeof(paint_mat_snapshot_deps_t));
+	deps->groups = any_array_create_from_raw((void *[]){}, 0);
+	deps->mats   = any_array_create_from_raw((void *[]){}, 0);
+	deps->assets = any_array_create_from_raw((void *[]){}, 0);
+	any_array_push(deps->mats, NULL); // The project's first material, when parsing
+	bool ok = true;
+	for (u32 i = 0; i < nf && ok; ++i) {
+		hash128_t fh;
+		u16       nl;
+		ok = cur + 20 <= len;
+		if (!ok) {
+			break;
 		}
-		deps         = calloc(1, sizeof(paint_mat_snapshot_deps_t));
-		deps->groups = any_array_create_from_raw((void *[]){}, 0);
-		deps->mats   = any_array_create_from_raw((void *[]){}, 0);
-		deps->assets = any_array_create_from_raw((void *[]){}, 0);
-		any_array_push(deps->mats, NULL); // The project's first material, when parsing
-		bool ok = true;
-		for (u32 i = 0; i < nf && ok; ++i) {
-			hash128_t fh;
-			u16       nl;
-			ok = cur + 20 <= len;
-			if (!ok) {
-				break;
-			}
-			memcpy(&fh, data + cur, sizeof(fh));
-			u8 kind = data[cur + 16];
-			memcpy(&nl, data + cur + 18, 2);
-			ok = cur + 20 + nl <= len;
-			if (!ok) {
-				break;
-			}
-			char *name = calloc(1, nl + 1);
-			memcpy(name, data + cur + 20, nl);
-			cur += 20 + nl;
-			if (kind == 0) {
-				char *key = hash128_is_none(fh) ? "" : pms_image_texture(fh, name);
-				ok        = key != NULL;
-				if (ok) {
-					asset_t *a = ALLOC_INIT(asset_t, {.id = -1, .name = name, .file = key, .image = key[0] != 0 ? any_map_get(data_cached_textures, key) : NULL});
-					any_array_push(deps->assets, a);
-				}
-			}
-			else {
-				ok              = hash128_is_none(fh) || hstore_has(fh);
-				deps->mm_paths  = realloc(deps->mm_paths, sizeof(char *) * (deps->n_mm + 1));
-				deps->mm_files  = realloc(deps->mm_files, sizeof(hash128_t) * (deps->n_mm + 1));
-				deps->mm_paths[deps->n_mm] = name;
-				deps->mm_files[deps->n_mm] = fh;
-				deps->n_mm++;
+		memcpy(&fh, data + cur, sizeof(fh));
+		u8 kind = data[cur + 16];
+		memcpy(&nl, data + cur + 18, 2);
+		ok = cur + 20 + nl <= len;
+		if (!ok) {
+			break;
+		}
+		char *name = calloc(1, nl + 1);
+		memcpy(name, data + cur + 20, nl);
+		cur += 20 + nl;
+		if (kind == 0) {
+			char *key = hash128_is_none(fh) ? "" : pms_image_texture(fh, name);
+			ok        = key != NULL;
+			if (ok) {
+				asset_t *a = ALLOC_INIT(asset_t, {.id = -1, .name = name, .file = key, .image = key[0] != 0 ? any_map_get(data_cached_textures, key) : NULL});
+				any_array_push(deps->assets, a);
 			}
 		}
-		for (u32 i = 0; i < nc && ok; ++i) {
-			u32 clen = 0;
-			ok       = cur + 8 <= len;
-			if (!ok) {
-				break;
-			}
-			u8 kind = data[cur];
-			memcpy(&clen, data + cur + 4, 4);
-			ok = cur + 8 + clen <= len && (i == 0) == (kind == 0);
-			if (!ok) {
-				break;
-			}
-			ui_node_canvas_t *c = kind != 3 ? pms_decode_canvas(data + cur + 8, clen) : NULL;
-			cur += 8 + clen;
-			if (kind == 0) {
-				canvas = c;
-			}
-			else if (kind == 1) {
-				node_group_t *g = ALLOC_INIT(node_group_t, {.nodes = ui_nodes_create(), .canvas = c});
-				any_array_push(deps->groups, g);
-			}
-			else {
-				slot_material_t *nm = calloc(1, sizeof(slot_material_t));
-				nm->canvas          = kind == 3 ? canvas : c;
-				any_array_push(deps->mats, nm);
-			}
+		else {
+			ok              = hash128_is_none(fh) || hstore_has(fh);
+			deps->mm_paths  = realloc(deps->mm_paths, sizeof(char *) * (deps->n_mm + 1));
+			deps->mm_files  = realloc(deps->mm_files, sizeof(hash128_t) * (deps->n_mm + 1));
+			deps->mm_paths[deps->n_mm] = name;
+			deps->mm_files[deps->n_mm] = fh;
+			deps->n_mm++;
 		}
-		if (!ok || canvas == NULL) {
-			return NULL; // Leaks what was made, a corrupt or incomplete snapshot is rare
+	}
+	for (u32 i = 0; i < nc && ok; ++i) {
+		u32 clen = 0;
+		ok       = cur + 8 <= len;
+		if (!ok) {
+			break;
 		}
-		if (deps->groups->length == 0 && deps->mats->length == 1 && deps->assets->length == 0 && deps->n_mm == 0) {
-			deps = NULL;
+		u8 kind = data[cur];
+		memcpy(&clen, data + cur + 4, 4);
+		ok = cur + 8 + clen <= len && (i == 0) == (kind == 0);
+		if (!ok) {
+			break;
 		}
+		ui_node_canvas_t *c = kind != 3 ? pms_decode_canvas(data + cur + 8, clen) : NULL;
+		cur += 8 + clen;
+		if (kind == 0) {
+			canvas = c;
+		}
+		else if (kind == 1) {
+			node_group_t *g = ALLOC_INIT(node_group_t, {.nodes = ui_nodes_create(), .canvas = c});
+			any_array_push(deps->groups, g);
+		}
+		else {
+			slot_material_t *nm = calloc(1, sizeof(slot_material_t));
+			nm->canvas          = kind == 3 ? canvas : c;
+			any_array_push(deps->mats, nm);
+		}
+	}
+	if (!ok || canvas == NULL) {
+		return NULL; // Leaks what was made, a corrupt or incomplete snapshot is rare
+	}
+	if (deps->groups->length == 0 && deps->mats->length == 1 && deps->assets->length == 0 && deps->n_mm == 0) {
+		deps = NULL;
 	}
 	slot_material_t *m = slot_material_create(g_project->_->materials->buffer[0]->data, canvas);
 	m->id              = head.id;
