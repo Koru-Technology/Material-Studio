@@ -19,7 +19,7 @@ slot_layer_t_array_t *history_merge_saved_layers() {
 	return saved;
 }
 
-// Layer records (history_v2): a layer out of the project for a step (deleted, merged) keeps its props in its struct and
+// Layer records: a layer out of the project for a step (deleted, merged) keeps its props in its struct and
 // its pixels as an HSTORE_LAYER_RECORD: u32 uid, u32 timeline, hash128 tile map (NONE for fill layers, they render
 // again, and groups), u32 layer_slot_type_t (the kind of a layer is told by its textures, they go); then u32 length and
 // the layer's props as an armpack map (history_record_layer makes the layer again from them: a saved history loaded).
@@ -200,7 +200,8 @@ slot_layer_t *history_record_layer(hash128_t record) {
 	return l;
 }
 
-static hash128_t history_record_out(slot_layer_t *l) {
+// The record of l as it is now, the layer keeps its textures
+static hash128_t history_record_make(slot_layer_t *l) {
 	hash128_t   map = HASH128_NONE;
 	timeline_t *tl  = l->texpaint != NULL ? timeline_of(l) : NULL; // Groups: props only
 	if (tl != NULL) {
@@ -224,6 +225,12 @@ static hash128_t history_record_out(slot_layer_t *l) {
 	hash128_t h = hstore_put(HSTORE_LAYER_RECORD, b, HISTORY_RECORD_LEN + 4 + plen); // Takes its own reference on the map
 	free(b);
 	hstore_unref(map);
+	return h;
+}
+
+// The layer leaves the project as its record, its textures go
+static hash128_t history_record_out(slot_layer_t *l) {
+	hash128_t h = history_record_make(l);
 	if (l->texpaint == NULL) {
 		return h; // A group: nothing to unload
 	}
@@ -274,15 +281,32 @@ static void history_record_in(slot_layer_t *l, hash128_t record) {
 	mask_stack_mark_dirty(l);
 }
 
-// history_v2: the layers of a delete or merge step leave the project as records
+// The layers of a delete or merge step leave the project as records
 void history_records_take(history_step_t *step) {
-	if (!history_v2_active() || step->merge_layers == NULL) {
+	if (step->merge_layers == NULL) {
 		return;
 	}
 	free(step->records);
 	step->records = calloc(step->merge_layers->length > 0 ? step->merge_layers->length : 1, sizeof(hash128_t));
 	for (i32 i = 0; i < step->merge_layers->length; ++i) {
 		step->records[i] = history_record_out(step->merge_layers->buffer[i]);
+	}
+}
+
+// A merge step keeps the layers it merges as records of them made now, and copies made from the records (props, no
+// textures). The layers stay in the project for the merge.
+void history_records_copy(history_step_t *step, slot_layer_t_array_t *layers, i32 start, i32 end) {
+	step->merge_layers  = any_array_create_from_raw((void *[]){}, 0);
+	step->merge_parents = i32_array_create(0);
+	free(step->records);
+	step->records = calloc(end - start + 1 > 0 ? end - start + 1 : 1, sizeof(hash128_t));
+	for (i32 i = start; i <= end; ++i) {
+		slot_layer_t *l = layers->buffer[i];
+		hash128_t     h = history_record_make(l);
+		slot_layer_t *c = history_record_layer(h);
+		step->records[step->merge_layers->length] = h;
+		any_array_push(step->merge_layers, c);
+		i32_array_push(step->merge_parents, l->parent != NULL ? array_index_of(layers, l->parent) : -1);
 	}
 }
 

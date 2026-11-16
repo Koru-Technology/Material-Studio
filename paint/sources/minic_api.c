@@ -942,7 +942,6 @@ void minic_register_builtins() {
 	MINIC_O(recent_projects, string_array_t);
 	MINIC_S(keymap);
 	MINIC_S(theme);
-	MINIC_I(undo_steps);
 	MINIC_F(camera_fov);
 	MINIC_I(layer_res);
 	MINIC_B(brush_live);
@@ -958,8 +957,6 @@ void minic_register_builtins() {
 	MINIC_I(pencil_squeeze);
 	MINIC_I(undo_memory_mb);
 	MINIC_I(dilate_radius);
-	MINIC_B(timeline_shadow);
-	MINIC_B(history_v2);
 	MINIC_I(history_ram_mb);
 	MINIC_I(history_disk_mb);
 	MINIC_B(paint_resolved_dabs);

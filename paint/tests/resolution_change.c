@@ -2,7 +2,7 @@
 
 // Working resolution changes that keep detail (util/util_layer_resolution.c), a layer a frame: 2K to 4K and back to 2K
 // gives the layers back byte for byte, a change is a history step undone and redone exactly, and undo works across it
-// (a stroke before and one after the change). Undo through timelines (history_v2): the legacy tile pool holds one size,
+// (a stroke before and one after the change). Undo through timelines: the legacy tile pool holds one size,
 // a stroke at the new size drops the tiles of strokes at the old one.
 
 int fails  = 0;
@@ -162,8 +162,6 @@ void next() {
 	else {
 		layers_resolution_apply(2048, 2048);
 		config_t *cfg        = script_get_config();
-		cfg->history_v2      = 0;
-		cfg->timeline_shadow = 0;
 		printf("[resolution_change] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "RESOLUTION_CHANGE PASS" : "RESOLUTION_CHANGE FAIL");
 		script_quit();
@@ -175,8 +173,6 @@ void next() {
 
 void main() {
 	config_t *cfg        = script_get_config();
-	cfg->history_v2      = 1;
-	cfg->timeline_shadow = 1;
 	script_project_new();
 	script_notify_on_next_frame(next);
 }

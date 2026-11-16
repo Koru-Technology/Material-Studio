@@ -37,9 +37,7 @@ typedef struct tl_tiles_map {
 
 static tl_tiles_map_t  tl_tiles_cache[TL_TILES_CACHE];
 static i32             tl_tiles_cache_next = 0;
-#ifdef IRON_METAL
 static gpu_transfer_t *tl_tiles_transfer = NULL;
-#endif
 
 static i32 tl_tiles_per_channel() {
 	return HISTORY_TILES_GRID * HISTORY_TILES_GRID;
@@ -408,7 +406,6 @@ static bool tl_tiles_target_ok(paint_target_t *t) {
 }
 
 hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 *dirty) {
-#ifdef IRON_METAL
 	if (!tl_tiles_target_ok(src)) {
 		return HASH128_NONE;
 	}
@@ -525,16 +522,12 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 	free(read);
 	free(changed);
 	return result;
-#else
-	return HASH128_NONE;
-#endif
 }
 
 // Writes the tiles of map into dst, only the ones that differ from prev when dst holds prev now (NONE: every tile).
 // dst may cover a part of the layer (uv_rect) at the map's resolution, or reach past its edge: tiles go at an offset,
 // texels outside the layer are cleared.
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *dst) {
-#ifdef IRON_METAL
 	if (!tl_tiles_target_ok(dst)) {
 		return false;
 	}
@@ -632,9 +625,6 @@ bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *
 	free(want);
 	free(have);
 	return ok;
-#else
-	return false;
-#endif
 }
 
 bool timeline_tiles_restore(hash128_t tilemap, paint_target_t *dst) {
@@ -644,7 +634,6 @@ bool timeline_tiles_restore(hash128_t tilemap, paint_target_t *dst) {
 // Scripts: a capture of a 100 x 80 part of l (partial tiles) restores byte for byte, a capture of l restores into a part
 // of it and past its edge. Mismatches found, -1 when it could not run.
 i32 timeline_tiles_test(slot_layer_t *l) {
-#ifdef IRON_METAL
 	if (l == NULL || l->texpaint == NULL) {
 		return -1;
 	}
@@ -713,9 +702,6 @@ i32 timeline_tiles_test(slot_layer_t *l) {
 	gpu_delete_texture(c);
 	draw_resume(save);
 	return bad;
-#else
-	return -1;
-#endif
 }
 
 // The uv box of the tiles that differ between two maps of the same size, grown by a texel (u0 v0 u1 v1). False when one

@@ -104,13 +104,6 @@ void layers_init() {
 // The layers of a new project to the working resolution (project_new). Changes of an open project's resolution keep
 // detail and are undoable: layers_resolution_begin (util/util_layer_resolution.c).
 void layers_resize() {
-	// Fewer whole layer copies at 8K and above to save memory, the undo steps preference is kept
-	i32 ring = g_config->undo_steps;
-	if (config_get_texture_res_x() >= 8192 || config_get_texture_res_y() >= 8192) {
-		i32 cap = config_get_texture_res_x() == 8192 ? 4 : 1;
-		ring    = ring < cap ? ring : cap;
-	}
-	history_ring_set_size(ring);
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_resize_and_set_bits(l);
@@ -122,21 +115,11 @@ void layers_resize() {
 	layers_crop                = false;
 }
 
-// Undo layers, live layer and paint targets that follow the texture resolution
+// Live layer and paint targets that follow the texture resolution (layers out of the project for undo are records,
+// without textures)
 void layers_resize_targets() {
 	stroke_refine_reset(); // Records of the old size go
 	material_cache_reset(); // And material caches
-	if (history_undo_layers != NULL) {
-		for (i32 i = 0; i < history_undo_layers->length; ++i) {
-			slot_layer_t *l = history_undo_layers->buffer[i];
-			slot_layer_resize_and_set_bits(l);
-		}
-	}
-
-	slot_layer_t_array_t *saved = history_merge_saved_layers();
-	for (i32 i = 0; i < saved->length; ++i) {
-		slot_layer_resize_and_set_bits(saved->buffer[i]);
-	}
 
 	any_map_t *rts = render_path_render_targets;
 
@@ -161,14 +144,6 @@ void layers_set_bits() {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_resize_and_set_bits(l);
-	}
-	for (i32 i = 0; i < history_undo_layers->length; ++i) {
-		slot_layer_t *l = history_undo_layers->buffer[i];
-		slot_layer_resize_and_set_bits(l);
-	}
-	slot_layer_t_array_t *saved = history_merge_saved_layers();
-	for (i32 i = 0; i < saved->length; ++i) {
-		slot_layer_resize_and_set_bits(saved->buffer[i]);
 	}
 }
 

@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Timelines saved with projects (timeline_io.c, timeline_shadow on): after a save and an open, the
+// Timelines saved with projects (timeline_io.c): after a save and an open, the
 // timelines have their entries, cursor and kept states, each position materializes to the pixels it had before the
 // save, and the cursor's state is the live layer. An appending save reads the children of the new tile maps only, a
 // whole rewrite of every reachable one.
@@ -11,7 +11,6 @@ int   step       = 0;
 int   frame      = 0;
 char *dir        = "/tmp/materialstudio_timeline_persist";
 char *file       = NULL;
-int   shadow_was = 0;
 int   uid_a      = 0;
 int   uid_m      = 0;
 int   count_a    = 0;
@@ -24,7 +23,6 @@ char *live_m     = NULL;
 int   count2     = 0;
 char *pixels2[64];
 float decodes    = 0.0;
-int   v2_was     = 0;
 int   NUNDO      = 3;
 char *undone[8]; // The layers after each of NUNDO undos, before the save
 
@@ -271,13 +269,11 @@ void next() {
 		check(maps <= script_layer_count(), string("only the live layers' tile maps, full (%d)", maps));
 	}
 	else {
-		script_get_config()->timeline_shadow = shadow_was;
 		script_project_new();
 		iron_delete_file(file);
 		iron_delete_file(string("%s/copy.arm", dir));
 		iron_delete_file(string("%s/copy2.arm", dir));
 		iron_delete_file(string("%s/nohistory.arm", dir));
-		script_get_config()->history_v2 = v2_was;
 		printf("[timeline_persist] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "TIMELINE_PERSIST PASS" : "TIMELINE_PERSIST FAIL");
 		script_quit();
@@ -289,10 +285,6 @@ void next() {
 
 void main() {
 	dir = script_tmp_dir("materialstudio_timeline_persist"); // Per run: suites of several worktrees run at once
-	shadow_was                           = script_get_config()->timeline_shadow;
-	script_get_config()->timeline_shadow = 1;
-	v2_was                               = script_get_config()->history_v2;
-	script_get_config()->history_v2      = 1; // Saved steps undo from timelines
 	iron_create_directory(dir);
 	file = string("%s/timelines.arm", dir);
 	script_notify_on_next_frame(next);

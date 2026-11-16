@@ -192,7 +192,6 @@ void layers_create_image_at(i32 i, bool mask) {
 		return;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	if (mask) {
 		layers_create_image_mask(g_project->_->assets->buffer[i]);
 	}

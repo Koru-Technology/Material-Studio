@@ -304,11 +304,9 @@ static void ui_id_mask_build(void *_m) {
 	// The black mask is undone to, redo brings the picked parts back
 	slot_layer_t *_layer = g_context->layer;
 	g_context->layer     = m;
-	if (history_undo_layers != NULL) {
-		history_paint();
-		history_steps->buffer[history_steps->length - 1]->name = tr("ID Mask");
-		timeline_retag_last(m, TL_ID_MASK, NULL, 0, 0);
-	}
+	history_paint();
+	history_steps->buffer[history_steps->length - 1]->name = tr("ID Mask");
+	timeline_retag_last(m, TL_ID_MASK, NULL, 0, 0);
 	g_context->layer = _layer;
 
 	if (map != NULL) {

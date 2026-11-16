@@ -29,7 +29,6 @@ static slot_layer_t *layers_op_new_cleared(i32 base_color, f32 occlusion, f32 ro
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_t *l = layers_new_layer(false, -1, NULL);
 	if (l != NULL) {
 		history_new_layer();
@@ -53,7 +52,6 @@ slot_layer_t *layers_op_new_fill(void) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_t *l = layers_new_layer(false, -1, NULL);
 	if (l != NULL) {
 		history_new_layer();
@@ -72,7 +70,6 @@ void layers_op_delete(slot_layer_t *l) {
 		return;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	tab_layers_delete_layer(l);
 	draw_resume(gpu);
 }
@@ -110,7 +107,6 @@ slot_layer_t *layers_op_new_mask(slot_layer_t *l, i32 type) {
 		l = l->parent;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	context_set_layer(l);
 	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
 	slot_layer_t         *m        = layers_new_mask(false, l, -1);
@@ -146,7 +142,6 @@ slot_layer_t *layers_op_new_group(slot_layer_t *l) {
 		l = l->parent;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
 	slot_layer_t         *group    = layers_new_group();
 	if (group != NULL) {
@@ -206,7 +201,6 @@ bool layers_op_move(slot_layer_t *l, i32 to) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_move(l, to);
 	make_material_parse_mesh_material();
 	draw_resume(gpu);
@@ -299,7 +293,6 @@ slot_layer_t *layers_op_duplicate(slot_layer_t *l) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	context_set_layer(l);
 	history_duplicate_layer();
 	layers_duplicate_layer(l);
@@ -312,7 +305,6 @@ slot_layer_t *layers_op_merge_down(slot_layer_t *l) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	context_set_layer(l);
 	history_merge_layers();
 	layers_merge_down();
@@ -328,7 +320,6 @@ slot_layer_t *layers_op_merge_group(slot_layer_t *group) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	if (slot_layer_shows(group) || tab_layers_can_delete(group)) {
 		history_merge_group(group);
 	}
@@ -345,7 +336,6 @@ void layers_op_clear(slot_layer_t *l) {
 		return;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	context_set_layer(l);
 	if (slot_layer_is_group(l)) {
 		slot_layer_t_array_t *children = slot_layer_get_children(l);
@@ -373,7 +363,6 @@ bool layers_op_invert_mask(slot_layer_t *m) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	context_set_layer(m);
 	history_invert_mask();
 	slot_layer_invert_mask(m);
@@ -386,7 +375,6 @@ slot_layer_t *layers_op_apply_mask(slot_layer_t *m) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_t *parent = m->parent;
 	g_context->layer     = m;
 	history_apply_mask();
@@ -401,7 +389,6 @@ bool layers_op_to_fill(slot_layer_t *l) {
 	if (slot_layer_alive(l) && slot_layer_is_layer(l) && l->fill_material != NULL && g_context->material != NULL &&
 	    l->fill_material != g_context->material) {
 		draw_saved_t gpu = draw_suspend();
-		base_init_undo_layers();
 		slot_layer_set_fill_material(l, g_context->material);
 		layers_op_end(gpu);
 		return true;
@@ -410,7 +397,6 @@ bool layers_op_to_fill(slot_layer_t *l) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	context_set_layer(l);
 	slot_layer_is_layer(l) ? history_to_fill_layer() : history_to_fill_mask();
 	slot_layer_to_fill_layer(l);
@@ -423,7 +409,6 @@ bool layers_op_to_paint(slot_layer_t *l) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	if (slot_layer_is_filter(l)) {
 		slot_layer_relocate(l, array_index_of(g_project->_->layers, l->parent));
 		l->parent = l->parent->parent;
@@ -443,7 +428,6 @@ slot_layer_t *layers_op_new_path(bool curved) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_t *l = layers_new_path_layer(curved);
 	if (l != NULL) {
 		history_new_layer();
@@ -458,7 +442,6 @@ slot_layer_t *layers_op_new_text(char *text) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_t *l = layers_new_text_layer();
 	if (l != NULL) {
 		history_new_layer();

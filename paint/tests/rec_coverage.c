@@ -91,7 +91,6 @@ void next() {
 		if (kase == 7) {
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 			script_get_config()->paint_resolved_dabs = 0;
-			script_get_config()->timeline_shadow     = 0;
 			printf("[rec_coverage] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "REC_COVERAGE PASS" : "REC_COVERAGE FAIL");
 			script_quit();
@@ -102,7 +101,6 @@ void next() {
 }
 
 void main() {
-	script_get_config()->timeline_shadow = 1;
 	script_brush_defaults();
 	script_project_new();
 	app_layer_new(0);
