@@ -1419,6 +1419,7 @@ void layers_create_fill_layer(uv_type_t uv_type, mat4_t decal_mat, i32 position)
 void           layers_merge_down();
 slot_layer_t  *layers_merge_group(slot_layer_t *l);
 void           layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask);
+gpu_pipeline_t *layers_pipe_for(gpu_pipeline_t *base, gpu_texture_format_t format);
 void           layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer, gpu_texture_t *below);
 void           layers_merge_mask_ex(gpu_texture_t *dst, gpu_texture_t *temp, slot_layer_t *m, gpu_texture_t *mask_tex, slot_layer_t *layer, gpu_texture_t *below,
                                     gpu_texture_t *coverage);
@@ -2445,6 +2446,9 @@ f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
 i32   script_diff_files(char *path_a, char *path_b);
+void  script_texture_read(gpu_texture_t *t);
+bool  script_image_read(char *path);
+f32   script_texel(f32 u, f32 v, i32 c);
 
 // ---- timeline_io.c ----
 u8_array_t *timeline_io_encode();

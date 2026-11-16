@@ -329,32 +329,10 @@ static void export_texture_clear(gpu_texture_t **acc) {
 	gpu_end();
 }
 
-// Pipelines are made for one target format (Metal): pipes_merge and its write masked variants (mask 0 rgba, 1 r, 2 g,
-// 3 b, 4 a) for a composite of format, the 16 and 32 bit ones made here
-static gpu_pipeline_t *export_texture_merge_pipes[2][5];
-
+// pipes_merge and its write masked variants (mask 0 rgba, 1 r, 2 g, 3 b, 4 a) for a composite of format
 static gpu_pipeline_t *export_texture_merge_pipe(gpu_texture_format_t format, i32 mask) {
-	if (format != GPU_TEXTURE_FORMAT_RGBA64 && format != GPU_TEXTURE_FORMAT_RGBA128) {
-		return mask == 0 ? pipes_merge : mask == 1 ? pipes_get_merge_r() : mask == 2 ? pipes_get_merge_g() : mask == 3 ? pipes_get_merge_b() : pipes_get_merge_a();
-	}
-	i32 f = format == GPU_TEXTURE_FORMAT_RGBA64 ? 0 : 1;
-	if (export_texture_merge_pipes[f][mask] == NULL) {
-		gpu_pipeline_t *pipe       = gpu_create_pipeline();
-		pipe->vertex_shader        = sys_get_shader("layer_merge.vert");
-		pipe->fragment_shader      = sys_get_shader("layer_merge.frag");
-		gpu_vertex_structure_t *vs = ALLOC_INIT(gpu_vertex_structure_t, {0});
-		gpu_vertex_structure_add(vs, "pos", GPU_VERTEX_DATA_F32_2X);
-		pipe->input_layout              = vs;
-		pipe->color_attachment_count    = 1;
-		pipe->color_attachment[0]       = format;
-		pipe->color_write_mask_red[0]   = mask == 0 || mask == 1;
-		pipe->color_write_mask_green[0] = mask == 0 || mask == 2;
-		pipe->color_write_mask_blue[0]  = mask == 0 || mask == 3;
-		pipe->color_write_mask_alpha[0] = mask == 0 || mask == 4;
-		gpu_pipeline_compile(pipe);
-		export_texture_merge_pipes[f][mask] = pipe;
-	}
-	return export_texture_merge_pipes[f][mask];
+	gpu_pipeline_t *base = mask == 0 ? pipes_merge : mask == 1 ? pipes_get_merge_r() : mask == 2 ? pipes_get_merge_g() : mask == 3 ? pipes_get_merge_b() : pipes_get_merge_a();
+	return layers_pipe_for(base, format);
 }
 
 // A copy pipeline into a target of format
