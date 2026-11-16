@@ -70,7 +70,7 @@ int32_t app_mask_effect_type_count(void) {
 }
 
 const char *app_mask_effect_type_name(int32_t type) {
-	return type >= 0 && type < MASK_EFFECT_COUNT ? tr(mask_effect_name(type)) : NULL;
+	return type >= 0 && type < MASK_EFFECT_COUNT ? tr(mask_effect_name(type)) : "";
 }
 
 bool app_mask_effect_type_is_filter(int32_t type) {
@@ -110,7 +110,7 @@ int32_t app_mask_blending_count(void) {
 }
 
 const char *app_mask_blending_name(int32_t blending) {
-	return blending >= 0 && blending < MASK_BLEND_COUNT ? tr(mask_blend_name(blending)) : NULL;
+	return blending >= 0 && blending < MASK_BLEND_COUNT ? tr(mask_blend_name(blending)) : "";
 }
 
 int32_t app_mask_add_effect(int32_t id, int32_t type) {

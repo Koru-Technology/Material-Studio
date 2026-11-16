@@ -67,13 +67,13 @@ typedef struct {
 int32_t     app_mask_effect_count(int32_t id); // 0 for anything but a mask
 bool        app_mask_effect(int32_t id, int32_t index, app_mask_effect_t *out);
 int32_t     app_mask_effect_type_count(void);
-const char *app_mask_effect_type_name(int32_t type); // "Fill", "Edge Wear", ..., NULL past the last
+const char *app_mask_effect_type_name(int32_t type); // "Fill", "Edge Wear", ..., "" past the last
 bool        app_mask_effect_type_is_filter(int32_t type);    // The Add Effect menu: sources (neither), filters, generators
 bool        app_mask_effect_type_is_generator(int32_t type);
 int32_t     app_mask_effect_param_count(int32_t type);
 bool        app_mask_effect_param(int32_t type, int32_t p, app_mask_param_t *out);
 int32_t     app_mask_blending_count(void);
-const char *app_mask_blending_name(int32_t blending); // "Normal", ..., NULL past the last
+const char *app_mask_blending_name(int32_t blending); // "Normal", ..., "" past the last
 
 // An ID Selection starts picking its parts (app_mask_effect_pick_ids) when added
 int32_t app_mask_add_effect(int32_t id, int32_t type);  // On top. Its index (0), -1: refused

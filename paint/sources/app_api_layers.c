@@ -169,10 +169,7 @@ int32_t app_layer_blending_count(void) {
 }
 
 const char *app_layer_blending_name(int32_t blending) {
-	if (blending < 0 || blending >= BLEND_TYPE_COUNT) {
-		return NULL;
-	}
-	return tr(blend_type_name(blending));
+	return blending >= 0 && blending < BLEND_TYPE_COUNT ? tr(blend_type_name(blending)) : "";
 }
 
 bool app_layer_pick(int32_t id) {

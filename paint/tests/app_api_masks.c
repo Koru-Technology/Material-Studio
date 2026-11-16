@@ -144,7 +144,7 @@ void next() {
 
 	if (step == 0) {
 		check(app_mask_effect_type_count() == TYPES, "fifteen effect types");
-		check(app_mask_effect_type_name(ANCHOR) != NULL && app_mask_effect_type_name(TYPES) == NULL, "type names, none past the last");
+		check(!string_equals(app_mask_effect_type_name(ANCHOR), "") && string_equals(app_mask_effect_type_name(TYPES), ""), "type names, empty past the last");
 		bool classified = true;
 		for (int t = 0; t <= TYPES; ++t) {
 			bool filter    = t == LEVELS || t == INVERT || t == HISTOGRAM || t == BLUR;
