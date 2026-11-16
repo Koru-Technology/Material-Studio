@@ -92,8 +92,7 @@ typedef enum {
 void app_cycle_view_mode(void);       // 3D, 2D alone, both side by side
 void app_set_viewport_mode(int32_t mode); // app_viewport_mode_t
 void app_view_face(int32_t face);     // 0 right, 1 left, 2 back, 3 front, 4 top, 5 bottom
-void app_view_orbit(float x, float y); // Turns the camera by these angles (radians) around the world up axis and its right axis
-void app_view_turn(float x, float y);  // As app_view_orbit around the camera's own up and right axes, the view cube drag
+void app_view_orbit(float x, float y); // Turns the camera by these angles (radians) around its own up and right axes, the view cube drag
 void app_view_roll(float radians, bool held); // Rolls the view clockwise on screen as a two finger twist, held: a finger is still down
 void app_set_camera_fov(float fov);    // The view keeps its framing: the camera moves to make up for it
 void app_set_camera_pivot(int32_t pivot);

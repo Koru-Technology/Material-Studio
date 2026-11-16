@@ -1695,6 +1695,8 @@ string_array_t *base_get_viewport_mode_shortcuts();
 // ---- camera.c ----
 void camera_orbit_drag();
 void camera_roll(f32 radians, bool held);
+void camera_turn(f32 x, f32 y, vec4_t pivot);
+vec4_t camera_view_pivot();
 void camera_init();
 i32  camera_index();
 void camera_update(void *_);
@@ -2234,7 +2236,6 @@ void viewport_reset();
 void viewport_frame();
 void viewport_set_view(f32 x, f32 y, f32 z, f32 rx, f32 ry, f32 rz);
 void viewport_orbit(f32 x, f32 y);
-void viewport_turn(f32 x, f32 y);
 void viewport_orbit_opposite();
 void viewport_zoom(f32 f);
 void viewport_update_camera_type(i32 camera_type);

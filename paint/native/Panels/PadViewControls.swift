@@ -142,7 +142,7 @@ struct ViewCube: View {
 				else {
 					let dx = -Float(g.location.x - last.x) * 0.02 // Drag right turns the view right
 					let dy = -Float(g.location.y - last.y) * 0.02 // Drag up turns the view up
-					store.perform { app_view_turn(dx, dy) }
+					store.perform { app_view_orbit(dx, dy) }
 				}
 				last = g.location
 			}

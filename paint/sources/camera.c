@@ -31,6 +31,43 @@ static bool camera_wrap_mouse() {
 	return true;
 }
 
+// Turns the camera and the orbit pivot around an axis through a point: the scene seems to turn the other way around it
+static void camera_turn_around(vec4_t axis, f32 angle, vec4_t point) {
+	camera_object_t *camera = scene_camera;
+	transform_t     *t      = camera->base->transform;
+	quat_t           q      = quat_from_axis_angle(axis, angle);
+	vec4_t           loc    = vec4_apply_quat(vec4_sub(t->loc, point), q);
+	vec4_t           origin = vec4_apply_quat(vec4_sub(camera_origins[camera_index()], point), q);
+	t->loc                  = (vec4_t){point.x + loc.x, point.y + loc.y, point.z + loc.z, 1.0};
+	camera_origins[camera_index()] = (vec4_t){point.x + origin.x, point.y + origin.y, point.z + origin.z, 1.0};
+	t->rot                  = quat_mult(q, t->rot);
+	transform_build_matrix(t);
+	camera_object_build_mat(camera);
+}
+
+// Trackball: turns the camera around the pivot about its own up (x) and right (y) axes, so a drag turns the view the same
+// way whatever it looks at. Around the world up axis instead, a sideways drag rolls the view seen from below or above.
+void camera_turn(f32 x, f32 y, vec4_t pivot) {
+	camera_object_t *camera = scene_camera;
+	f32              angle  = math_sqrt(x * x + y * y);
+	if (angle == 0.0) {
+		return;
+	}
+	vec4_t up    = camera_object_up_world(camera);
+	vec4_t right = camera_object_right_world(camera);
+	vec4_t axis  = vec4_norm((vec4_t){up.x * x + right.x * y, up.y * x + right.y * y, up.z * x + right.z * y, 0.0});
+	camera_turn_around(axis, angle, pivot);
+}
+
+// The orbit pivot of the view: on the look direction, the camera distance ahead
+vec4_t camera_view_pivot() {
+	camera_object_t *camera = scene_camera;
+	vec4_t           look   = camera_object_look_world(camera);
+	vec4_t           loc    = camera->base->transform->loc;
+	f32              dist   = camera_distance();
+	return (vec4_t){loc.x + look.x * dist, loc.y + look.y * dist, loc.z + look.z * dist, 1.0};
+}
+
 static void camera_orbit_action(bool modif, bool default_keymap, bool ruler) {
 	camera_object_t *camera = scene_camera;
 	camera_redraws          = 2;
@@ -57,57 +94,19 @@ static void camera_orbit_action(bool modif, bool default_keymap, bool ruler) {
 		if (pivot_valid) {
 			f32 angle_x = -mouse_movement_x / 100.0 * g_config->camera_rotation_speed;
 			f32 angle_y = -move_y / 100.0 * g_config->camera_rotation_speed;
-
-			transform_rotate(camera->base->transform, vec4_z_axis(), angle_x);
-			vec4_t right = camera_object_right_world(camera);
-			transform_rotate(camera->base->transform, right, angle_y);
-			vec4_t up_world = camera_object_up_world(camera);
-			if (up_world.z < 0 && !g_config->camera_upside_down) {
-				transform_rotate(camera->base->transform, right, -angle_y);
-				angle_y = 0.0;
-			}
-
-			vec4_t offset =
-			    (vec4_t){camera->base->transform->loc.x - pivot_x, camera->base->transform->loc.y - pivot_y, camera->base->transform->loc.z - pivot_z, 0.0};
-			quat_t q_x                     = quat_from_axis_angle(vec4_z_axis(), angle_x);
-			quat_t q_y                     = quat_from_axis_angle(right, angle_y);
-			offset                         = vec4_apply_quat(offset, q_x);
-			offset                         = vec4_apply_quat(offset, q_y);
-			camera->base->transform->loc.x = pivot_x + offset.x;
-			camera->base->transform->loc.y = pivot_y + offset.y;
-			camera->base->transform->loc.z = pivot_z + offset.z;
-			camera_object_build_mat(camera);
+			camera_turn(angle_x, angle_y, (vec4_t){pivot_x, pivot_y, pivot_z, 1.0});
 		}
 		return;
 	}
 
-	f32 dist = camera_distance();
-	transform_move(camera->base->transform, camera_object_look_world(camera), dist);
-	transform_rotate(camera->base->transform, vec4_z_axis(), -mouse_movement_x / 100.0 * g_config->camera_rotation_speed);
-	transform_rotate(camera->base->transform, camera_object_right_world(camera), -move_y / 100.0 * g_config->camera_rotation_speed);
-	vec4_t up_world = camera_object_up_world(camera);
-	if (up_world.z < 0 && !g_config->camera_upside_down) {
-		transform_rotate(camera->base->transform, camera_object_right_world(camera), move_y / 100.0 * g_config->camera_rotation_speed);
-	}
-	transform_move(camera->base->transform, camera_object_look_world(camera), -dist);
+	camera_turn(-mouse_movement_x / 100.0 * g_config->camera_rotation_speed, -move_y / 100.0 * g_config->camera_rotation_speed, camera_view_pivot());
 }
 
 // Orbits around the view origin with the mouse movement, used by the view cube
 void camera_orbit_drag() {
-	camera_object_t *camera = scene_camera;
-	camera_redraws          = 2;
-	f32 dist                = camera_distance();
-	f32 angle_x             = -mouse_movement_x / 100.0 * g_config->camera_rotation_speed;
-	f32 angle_y             = -mouse_movement_y / 100.0 * g_config->camera_rotation_speed;
-	transform_move(camera->base->transform, camera_object_look_world(camera), dist);
-	transform_rotate(camera->base->transform, vec4_z_axis(), angle_x);
-	transform_rotate(camera->base->transform, camera_object_right_world(camera), angle_y);
-	vec4_t up_world = camera_object_up_world(camera);
-	if (up_world.z < 0 && !g_config->camera_upside_down) {
-		transform_rotate(camera->base->transform, camera_object_right_world(camera), -angle_y);
-	}
-	transform_move(camera->base->transform, camera_object_look_world(camera), -dist);
-	camera_object_build_mat(camera);
+	camera_redraws = 2;
+	camera_turn(-mouse_movement_x / 100.0 * g_config->camera_rotation_speed, -mouse_movement_y / 100.0 * g_config->camera_rotation_speed,
+	            camera_view_pivot());
 	g_context->ddirty = 2;
 }
 
@@ -341,19 +340,20 @@ static bool camera_roll_held = false;
 static bool camera_rolling   = false;
 static f64  camera_roll_time = 0.0;
 
-void camera_roll(f32 radians, bool held) {
-	camera_roll_held = held;
-	if (radians == 0.0) {
-		return;
-	}
-	camera_object_t *camera = scene_camera;
-	vec4_t           look   = vec4_norm(transform_look(camera->base->transform));
-	transform_rotate(camera->base->transform, look, -radians);
-	camera_object_build_mat(camera);
+// Around the line along the look direction through a point, it stays in place on the screen
+static void camera_roll_around(f32 radians, vec4_t point) {
+	camera_turn_around(camera_object_look_world(scene_camera), -radians, point);
 	camera_redraws    = 2;
 	g_context->ddirty = 2; // The rest of the camera update may not run without a button down
 	camera_rolling    = true;
 	camera_roll_time  = sys_time();
+}
+
+void camera_roll(f32 radians, bool held) {
+	camera_roll_held = held;
+	if (radians != 0.0) {
+		camera_roll_around(radians, camera_view_pivot());
+	}
 }
 
 #ifdef IRON_IOS
@@ -362,7 +362,21 @@ static void camera_twist() {
 	camera_object_t *camera = scene_camera;
 	vec4_t           look   = vec4_norm(transform_look(camera->base->transform));
 	if (mouse_twist_delta != 0.0 && context_in_3d_view() && base_ui_enabled && !base_paint_in_2d()) {
-		camera_roll(mouse_twist_delta, false);
+		// Like a map: around the point between the fingers, at the depth of the pivot
+		vec4_t point = camera_view_pivot();
+		if (mouse_down("right")) {
+			vec4_t view = camera_object_look_world(camera);
+			ray_t *ray  = raycast_get_ray(mouse_view_x(), mouse_view_y(), camera);
+			vec4_t dir  = vec4_norm(ray->dir);
+			f32    d    = vec4_dot(dir, view);
+			if (d > 0.1) {
+				vec4_t o = ray->origin;
+				f32    t = vec4_dot(vec4_sub(point, o), view) / d; // Where the ray meets the plane of the pivot
+				point    = (vec4_t){o.x + dir.x * t, o.y + dir.y * t, o.z + dir.z * t, 1.0};
+			}
+		}
+		camera_roll_held = false;
+		camera_roll_around(mouse_twist_delta, point);
 	}
 	else if (camera_rolling && !camera_roll_held && !mouse_down("right") && sys_time() - camera_roll_time > 0.25) {
 		camera_rolling = false;

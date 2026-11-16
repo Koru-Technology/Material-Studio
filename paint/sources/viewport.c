@@ -97,28 +97,9 @@ void viewport_set_view(f32 x, f32 y, f32 z, f32 rx, f32 ry, f32 rz) {
 	render_path_raytrace_ready     = false;
 }
 
+// Trackball: around the camera's own up and right axes (camera_turn)
 void viewport_orbit(f32 x, f32 y) {
-	camera_object_t *cam  = scene_camera;
-	f32              dist = camera_distance();
-	transform_move(cam->base->transform, camera_object_look_world(cam), dist);
-	transform_rotate(cam->base->transform, (vec4_t){0, 0, 1, 1.0}, x);
-	transform_rotate(cam->base->transform, camera_object_right_world(cam), y);
-	transform_move(cam->base->transform, camera_object_look_world(cam), -dist);
-	g_context->ddirty = 2;
-}
-
-// Turns the camera around the pivot about its own up and right axes, a trackball: a drag turns the view the same way
-// whatever it looks at, from below or above too (orbiting around the world up axis rolls the view there)
-void viewport_turn(f32 x, f32 y) {
-	camera_object_t *cam   = scene_camera;
-	f32              dist  = camera_distance();
-	vec4_t           up    = camera_object_up_world(cam);
-	vec4_t           right = camera_object_right_world(cam);
-	transform_move(cam->base->transform, camera_object_look_world(cam), dist);
-	transform_rotate(cam->base->transform, up, x);
-	transform_rotate(cam->base->transform, right, y);
-	transform_move(cam->base->transform, camera_object_look_world(cam), -dist);
-	camera_object_build_mat(cam);
+	camera_turn(x, y, camera_view_pivot());
 	g_context->ddirty = 2;
 }
 

@@ -343,14 +343,6 @@ void app_view_orbit(float x, float y) {
 	iron_delay_idle_sleep();
 }
 
-void app_view_turn(float x, float y) {
-	if (!app_ready()) {
-		return;
-	}
-	viewport_turn(x, y);
-	iron_delay_idle_sleep();
-}
-
 void app_view_roll(float radians, bool held) {
 	if (!app_ready()) {
 		return;
