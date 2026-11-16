@@ -272,34 +272,6 @@ void layers_set_object_mask() {
 	util_uv_dilatemap_cached = false;
 }
 
-void tab_layers_apply_filter(i32 filter) {
-	g_context->layer_filter = filter;
-	char *filter_name       = NULL;
-	if (filter > 0 && filter <= g_project->_->paint_objects->length) {
-		filter_name = g_project->_->paint_objects->buffer[filter - 1]->base->name;
-	}
-	else if (filter > g_project->_->paint_objects->length) {
-		string_array_t *atlases = project_get_used_atlases();
-		if (atlases != NULL) {
-			filter_name = atlases->buffer[filter - g_project->_->paint_objects->length - 1];
-		}
-	}
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		p->base->visible = filter == 0 || (filter_name != NULL && string_equals(p->base->name, filter_name)) || project_is_atlas_object(p);
-	}
-	if (filter == 0 && g_context->merged_object_is_atlas) {
-		util_mesh_merge(NULL);
-	}
-	else if (filter > g_project->_->paint_objects->length) {
-		util_mesh_merge(util_mesh_get_visible());
-	}
-	layers_set_object_mask();
-	util_uv_uvmap_cached       = false;
-	g_context->ddirty          = 2;
-	render_path_raytrace_ready = false;
-}
-
 // Pushes a history step that undoes and redoes together with the one before it (one undo for several steps of one
 // action). Nothing is linked when the push added no step.
 void layers_history_with_prev(void (*push)(void)) {

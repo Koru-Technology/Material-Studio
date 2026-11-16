@@ -1196,12 +1196,6 @@ void tab_layers_draw_layer_context_menu_draw() {
 			ui_menu_keep_open = true;
 		}
 	}
-
-	// Touch: the layers popover has no Edit button, its project settings are here
-	if (ui_popovers_enabled()) {
-		ui_menu_separator();
-		tab_layers_draw_edit();
-	}
 }
 
 void tab_layers_draw_layer_context_menu(slot_layer_t *l, bool mini) {
@@ -1598,7 +1592,7 @@ void tab_layers_draw_edit() {
 	}
 }
 
-static void tab_layers_draw_content(bool popover) {
+static void tab_layers_draw_content() {
 	{
 		bool in_window = ui_input_in_rect(g_ui->_window_x, g_ui->_window_y, g_ui->_window_w, g_ui->_window_h);
 
@@ -1610,31 +1604,18 @@ static void tab_layers_draw_content(bool popover) {
 		}
 
 		ui_begin_sticky();
-		if (popover) {
-			// Touch popover: title with a + button, no filter, the Edit items are in the layer menu, 2D view is the
-			// floating button by the view cube
-			if (g_context->layer_filter != 0) { // Nothing to pick it back with, all layers show
-				g_context->layer_filter = 0;
-				tab_layers_apply_filter(0);
-			}
-			if (ui_popovers_title(tr("Layers"), true)) {
-				ui_menu_draw(&tab_layers_button_new_menu, -1, -1);
-			}
-		}
-		else {
-			f32_array_t *row = f32_array_create_from_raw_tmp(
-			    (f32[]){
-			        -64,
-			        -64,
-			        -64,
-			    },
-			    3);
-			ui_row(row);
-			tab_layers_button_new(tr("New"));
-			tab_layers_button_2d_view();
-			if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
-				ui_menu_draw(&tab_layers_draw_edit, -1, -1);
-			}
+		f32_array_t *row = f32_array_create_from_raw_tmp(
+		    (f32[]){
+		        -64,
+		        -64,
+		        -64,
+		    },
+		    3);
+		ui_row(row);
+		tab_layers_button_new(tr("New"));
+		tab_layers_button_2d_view();
+		if (ui_icon_button(tr("Edit"), ICON_EDIT, UI_ALIGN_CENTER)) {
+			ui_menu_draw(&tab_layers_draw_edit, -1, -1);
 		}
 
 		if (tab_layers_search_show) {
@@ -1708,14 +1689,8 @@ static void tab_layers_draw_content(bool popover) {
 
 void tab_layers_draw_full(i32 *htab) {
 	if (ui_tab(htab, tr("Layers"), false, -1, false)) {
-		tab_layers_draw_content(ui_popovers_enabled());
+		tab_layers_draw_content();
 	}
-}
-
-// Touch popover, the only content so no tab above it
-void tab_layers_draw_popover() {
-	ui_set_hovered_tab_name(tr("Layers")); // Drops and the long press menu look for the tab name, see context_in_layers()
-	tab_layers_draw_content(true);
 }
 
 void tab_layers_draw(i32 *htab) {

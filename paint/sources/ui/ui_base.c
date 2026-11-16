@@ -162,7 +162,6 @@ void ui_base_update(void *_) {
 	ui_sidebar_w_mini = math_floor(ui_base_sidebar_mini_w(g_config->large_asset_previews) * UI_SCALE());
 
 	ui_base_panel_update_grab();
-	ui_popovers_update(); // A touch outside an open popover closes it
 	if (base_ui_enabled && !ui_base_panel_grab && !ui_brush_creator_shown()) {
 		render_gizmo_update();
 		util_layer_update_path();
@@ -240,7 +239,6 @@ void ui_base_update(void *_) {
 	ui_menubar_render_ui();
 	ui_header_render_ui();
 	ui_panels_render_ui();
-	ui_popovers_render_ui();
 	ui_material_studio_render_ui();
 	ui_dock_render_resize_line();
 	ui_brush_creator_render_ui(); // Over everything
@@ -461,27 +459,6 @@ static void ui_base_panel_update_grab() {
 }
 
 // Window holding a panel of size w x h, the window is larger by the shadow on the right (or left) and bottom
-gpu_texture_t *ui_base_panel_backdrop = NULL; // Frosted glass: blurred image of what is under the next panel window, NULL for an opaque one
-
-// The backdrop inside the rounded panel: the rows of the rounded ends one at a time, the middle at once
-static void ui_base_draw_backdrop(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h, f32 r, i32 corners) {
-	f32 su = img->width / w;
-	f32 sv = img->height / h;
-	i32 ri = (i32)r;
-	draw_set_color(0xffffffff);
-	for (i32 i = 0; i < ri; ++i) {
-		f32 c  = r - i - 0.5f;
-		f32 d  = r - sqrtf(r * r - c * c);
-		f32 lt = (corners & UI_BASE_CORNER_TL) ? d : 0;
-		f32 rt = (corners & UI_BASE_CORNER_TR) ? d : 0;
-		f32 lb = (corners & UI_BASE_CORNER_BL) ? d : 0;
-		f32 rb = (corners & UI_BASE_CORNER_BR) ? d : 0;
-		draw_scaled_sub_image(img, lt * su, i * sv, (w - lt - rt) * su, sv, x + lt, y + i, w - lt - rt, 1);
-		draw_scaled_sub_image(img, lb * su, (h - 1 - i) * sv, (w - lb - rb) * su, sv, x + lb, y + h - 1 - i, w - lb - rb, 1);
-	}
-	draw_scaled_sub_image(img, 0, ri * sv, img->width, (h - ri * 2) * sv, x, y + ri, w, h - ri * 2);
-}
-
 bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 corners, bool shadow_left) {
 	ui_base_panel_add_rect(x, y, w, h);
 	i32 s      = ui_base_panel_shadow();
@@ -501,13 +478,7 @@ bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 c
 		draw_set_color(0x0c000000);
 		ui_base_fill_round_rect(px - i, i / 2 - i, w + i * 2, h + i * 2, r + i, corners);
 	}
-	if (ui_base_panel_backdrop != NULL) {
-		ui_base_draw_backdrop(ui_base_panel_backdrop, px, 0, w, h, r, corners);
-		draw_set_color((g_theme->WINDOW_BG_COL & 0x00ffffff) | 0xd0000000); // Tinted glass over it, mostly opaque
-	}
-	else {
-		draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker
-	}
+	draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker
 	ui_base_fill_round_rect(px, 0, w, h, r, corners);
 	draw_set_color(0xffffffff);
 

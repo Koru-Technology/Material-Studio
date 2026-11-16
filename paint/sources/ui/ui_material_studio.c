@@ -713,7 +713,6 @@ void material_studio_open(slot_material_t *m) {
 		studio_known_vars = studio_hash_vars(m->canvas);
 		studio_landed     = mm_buffers_landed_count();
 	}
-	ui_popovers_close();
 	ui_menu_show         = false;
 	studio_material      = m;
 	material_studio_show = true;
@@ -1861,7 +1860,6 @@ void ui_material_studio_render_ui() {
 	g_ui->input_enabled = material_studio_show && !ui_menu_show && g_ui->combo_selected_id == 0;
 
 	// Opaque panel over everything
-	ui_base_panel_backdrop = NULL;
 	ui_base_panel_window(studio_back_handle, x, y, w, h, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR, true);
 	ui_window_composite_alpha = k;
 	ui_window_composite_scale = 0.96 + 0.04 * k;

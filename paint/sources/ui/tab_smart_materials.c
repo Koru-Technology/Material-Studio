@@ -25,9 +25,7 @@ static slot_layer_t *tab_smart_materials_target() {
 // Applying and saving draw to layers and export materials, they run when the frame starts, not while the UI is drawn
 
 static void tab_smart_materials_apply_next(void *name) {
-	if (smart_materials_apply(name) != NULL && ui_popovers_enabled()) {
-		ui_popovers_show(1); // The layers, its top layer selected
-	}
+	smart_materials_apply(name);
 }
 
 static void tab_smart_materials_save_next(void *name) {

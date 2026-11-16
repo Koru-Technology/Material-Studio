@@ -138,7 +138,6 @@ static ui_state_t tab_brushes_group_button(char *name, i32 icon, bool selected, 
 }
 
 static void tab_brushes_redraw() {
-	ui_popovers_redraw(-1);
 	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
@@ -323,34 +322,17 @@ static void tab_brushes_draw_rows() {
 	g_ui->_y = left_end > right_end ? left_end : right_end;
 }
 
-static void tab_brushes_draw_slots(bool popover) {
+// Brushes tab content
+void tab_brushes_draw_content() {
 	ui_begin_sticky();
-	if (popover) {
-		if (ui_popovers_title(tr("Brushes"), true)) {
-			ui_menu_draw(&tab_brushes_plus_menu, -1, -1);
-		}
-	}
-	else {
-		f32_array_t *row = f32_array_create_from_raw_tmp((f32[]){-64}, 1);
-		ui_row(row);
-		if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
-			ui_menu_draw(&tab_brushes_plus_menu, -1, -1);
-		}
+	f32_array_t *row = f32_array_create_from_raw_tmp((f32[]){-64}, 1);
+	ui_row(row);
+	if (ui_icon_button(tr("New"), ICON_PLUS, UI_ALIGN_CENTER)) {
+		ui_menu_draw(&tab_brushes_plus_menu, -1, -1);
 	}
 	ui_end_sticky();
 	ui_separator(3, false);
 	tab_brushes_draw_rows();
-}
-
-// Brushes tab content
-void tab_brushes_draw_content() {
-	tab_brushes_draw_slots(false);
-}
-
-// Touch popover, the only content so no tab above it: title with the + button
-void tab_brushes_draw_popover() {
-	ui_set_hovered_tab_name(tr("Brushes"));
-	tab_brushes_draw_slots(true);
 }
 
 void tab_brushes_draw(i32 *htab) {

@@ -164,7 +164,6 @@ static void tab_materials_edit(void *m) {
 		material_studio_open(m);
 	}
 	else {
-		ui_popovers_close();
 		ui_nodes_edit_material(m);
 	}
 }

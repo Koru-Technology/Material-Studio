@@ -80,7 +80,6 @@ static void bc_open(brush_def_t *d, brush_def_t *target, i32 group) {
 	bc_closing       = false;
 	bc_anim_start    = iron_time();
 	bc_slider_active = -1;
-	ui_popovers_redraw(-1);
 	brush_pad_reset();
 	bc_changed(true);
 }
@@ -105,7 +104,6 @@ static void bc_close() {
 	g_context->brush_dab_x = -1.0;
 	g_context->brush_dab_y = -1.0;
 	g_context->ddirty      = 3;
-	ui_popovers_redraw(-1);
 	base_redraw_ui();
 }
 
@@ -278,6 +276,21 @@ static char *bc_tab_title(i32 tab) {
 	return titles[tab];
 }
 
+// Large left aligned title
+static void bc_title(char *title) {
+	draw_font_t *font = g_ui->ops->font;
+	i32          size = g_ui->font_size * 4;
+	f32          th   = draw_font_height(font, size);
+	f32          h    = math_floor(th + 8 * UI_SCALE());
+	if (ui_is_visible(h)) {
+		draw_set_color(g_theme->TEXT_COL);
+		draw_set_font(font, size);
+		draw_string(title, g_ui->_x + 6 * UI_SCALE(), g_ui->_y + (h - th) / 2.0);
+		draw_set_font(font, g_ui->font_size);
+	}
+	ui_end_element_of_size(h);
+}
+
 static void bc_draw_sidebar(f32 x, f32 y, f32 w, f32 h) {
 	f32 s = bc_scale();
 	draw_set_color(BC_COL_PANEL);
@@ -287,7 +300,7 @@ static void bc_draw_sidebar(f32 x, f32 y, f32 w, f32 h) {
 	g_ui->_x = x + pad;
 	g_ui->_y = y + pad;
 	g_ui->_w = w - pad * 2;
-	ui_popovers_title(tr("Brush Creator"), false);
+	bc_title(tr("Brush Creator"));
 	g_ui->_y += 8 * s;
 
 	f32 row_h = math_floor(UI_ELEMENT_H() * 1.7);
@@ -633,7 +646,6 @@ void ui_brush_creator_render_ui() {
 	if (bc_closing && t >= 1.0) {
 		bc_show    = false;
 		bc_closing = false;
-		ui_popovers_redraw(-1);
 		base_redraw_ui();
 		return;
 	}

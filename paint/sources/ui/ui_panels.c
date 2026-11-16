@@ -466,77 +466,20 @@ static void ui_panels_draw_frame_button(i32 cube_x, i32 cube_y) {
 	}
 }
 
-// Touch: 3D -> 2D -> both -> 3D, the icon shows what a tap switches to
-static void ui_panels_draw_view_mode_button(i32 x, i32 y) {
-	static ui_window_t *hwnd = NULL;
-	if (hwnd == NULL) {
-		hwnd = ui_window_create();
-	}
-	i32 size = math_floor(30 * UI_SCALE());
-	ui_base_panel_add_rect(x, y, size, size);
-	static i32 last_mode = -1; // The icon follows the mode however it was changed
-	if (ui_base_view_mode() != last_mode) {
-		last_mode     = ui_base_view_mode();
-		hwnd->redraws = 2;
-	}
-	u32  bg                = g_theme->WINDOW_BG_COL;
-	g_theme->WINDOW_BG_COL = 0x00000000;
-	bool draw              = ui_window(hwnd, x, y, size, size, false);
-	g_theme->WINDOW_BG_COL = bg;
-	if (draw) {
-		bool  only3d = base_view3d_show && !ui_view2d_show;
-		bool  only2d = !base_view3d_show && ui_view2d_show;
-		i32   icon   = only3d ? ICON_IMAGE : only2d ? ICON_WORKSPACE : ICON_CUBE;
-		char *tip    = only3d ? tr("2D View") : only2d ? tr("2D and 3D View") : tr("3D View");
-		gpu_texture_t *img       = resource_get("icons.k");
-		rect_t        *rect      = resource_tile50(img, icon);
-		g_ui->image_scroll_align = false;
-		if (ui_sub_image(img, 0xffaaaaaa, size, rect->x, rect->y, rect->w, rect->h) == UI_STATE_RELEASED) {
-			ui_base_cycle_view_mode();
-			hwnd->redraws = 2;
-		}
-		if (g_ui->is_hovered) {
-			ui_tooltip(tip);
-		}
-		g_ui->image_scroll_align = true;
-	}
-}
-
 static void ui_panels_draw_view_tools() {
-	// A popover covers them, touches on it must not turn the view
-	if (ui_popovers_current() != 0) {
-		return;
-	}
 	i32 margin = math_floor(12 * UI_SCALE());
 	i32 size   = ui_view_cube_size();
 	i32 x      = base_view_x(0) + base_w() - size - margin; // Clear of the sidebar
 	i32 y      = base_y() + margin;
-	if (ui_popovers_bar_bottom() > 0) {
-		y = ui_popovers_bar_bottom() + margin; // Below the bar of the popovers
-	}
 	if (g_context->show_compass) {
 		ui_panels_draw_view_cube(x, y);
 	}
 	ui_panels_draw_frame_button(x, y);
-	if (ui_popovers_enabled()) {
-		// Under the frame button
-		i32 bsize = math_floor(30 * UI_SCALE());
-		f32 scale = size * 0.3;
-		i32 fx    = x + size / 2 - scale * 1.5 - bsize;
-		i32 fy    = y + size / 2 - scale - bsize * 0.08;
-		ui_panels_draw_view_mode_button(fx, fy + bsize + math_floor(10 * UI_SCALE()));
-	}
 }
 
 void ui_panels_render_ui() {
 	if (base_view3d_show && !base_is_split() && !g_context->capturing_screenshot) {
 		ui_panels_draw_view_tools();
-	}
-	// 2D view alone: no cube, the view button stays at the top right
-	else if (!base_view3d_show && ui_view2d_show && ui_popovers_enabled() && ui_popovers_current() == 0) {
-		i32 margin = math_floor(12 * UI_SCALE());
-		i32 bsize  = math_floor(30 * UI_SCALE());
-		ui_panels_draw_view_mode_button(iron_window_width() - bsize - margin * 2, ui_popovers_bar_bottom() + margin);
 	}
 	if (!ui_panels_show()) {
 		return;

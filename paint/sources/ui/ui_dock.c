@@ -78,17 +78,10 @@ static i32 dock_collect_leaves(dock_node_t *n, dock_node_t **out, i32 count) {
 	return dock_collect_leaves(n->b, out, count);
 }
 
-// Tabs hidden whatever the layout says: Scripts unless enabled in the preferences, the sidebar tabs on touch (they are popovers)
-static bool dock_tab_hidden(i32 id) {
-	if (ui_popovers_enabled() && ui_popovers_has_tab(id)) {
-		return true;
-	}
-	return false;
-}
 
 static bool dock_tab_open(i32 id) {
 	tab_draw_t *tab = ui_base_get_tab(id);
-	return tab != NULL && !tab->closed && !dock_tab_hidden(id);
+	return tab != NULL && !tab->closed;
 }
 
 static i32 dock_leaf_open_count(dock_node_t *l) {
@@ -758,7 +751,6 @@ void ui_dock_show_view(i32 id, bool show) {
 
 // Redraw the tabs which are docked in the given tab area by default
 void ui_dock_redraw(i32 area) {
-	ui_popovers_redraw(area);
 	dock_node_t *leaves[DOCK_MAX_LEAVES];
 	i32          count = dock_collect_leaves(ui_dock_root, leaves, 0);
 	for (i32 i = 0; i < count; ++i) {
