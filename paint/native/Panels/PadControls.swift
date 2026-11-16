@@ -47,27 +47,29 @@ struct PadControls: View {
 }
 
 // One popover of the controls at a time, by name. A tap on another control's button switches in one tap: the open
-// popover lets the controls behind it take taps (padPopover), it closes, and the next one opens once it has gone
-// (presenting while the other one is still closing does nothing). PadControls catches taps on the canvas.
+// popover lets the controls behind it take taps (padPopover), so the tap reaches the button, and the same tap closes
+// the popover. Presenting while one is still closing does nothing, so the next one opens once the closing one has gone.
+// A tap on the open popover's own button only closes it. PadControls catches taps on the canvas.
 @Observable
 final class PadPopovers {
 	static let shared = PadPopovers()
 
 	// Launch argument "-NativeShow Layers" opens that popover (screenshots from scripted runs)
 	private(set) var shown: String? = UserDefaults.standard.string(forKey: "NativeShow")
-	@ObservationIgnored private var pending: String?
+	@ObservationIgnored private var closing: String? // Going away, until its content has disappeared
+	@ObservationIgnored private var pending: String? // Opens once the closing one has gone
 
+	// The button's tap: the outside tap may have closed its popover just before (closing), or closes it just after
 	func toggle(_ name: String) {
 		if shown == name {
 			close()
 		}
+		else if let c = closing {
+			pending = c == name ? nil : name // Its own button: it stays closed
+		}
 		else if shown != nil {
 			pending = name
-			shown   = nil
-			// In case the closed one never reports it has gone (it was not up yet)
-			DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-				self?.openPending()
-			}
+			startClosing()
 		}
 		else {
 			shown = name
@@ -76,21 +78,36 @@ final class PadPopovers {
 
 	func close() {
 		pending = nil
-		shown   = nil
+		startClosing()
 	}
 
 	func isPresented(_ name: String) -> Binding<Bool> {
-		Binding(get: { self.shown == name }, set: { if !$0 && self.shown == name { self.shown = nil } })
+		Binding(get: { self.shown == name }, set: { if !$0 && self.shown == name { self.startClosing() } })
 	}
 
-	// The popover's content is gone: the one asked for meanwhile opens
-	func disappeared() {
-		DispatchQueue.main.async { [weak self] in
-			self?.openPending()
+	private func startClosing() {
+		guard let name = shown else {
+			return
+		}
+		closing = name
+		shown   = nil
+		// In case it never reports it has gone (it was not up yet)
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+			if self?.closing == name {
+				self?.gone()
+			}
 		}
 	}
 
-	private func openPending() {
+	// The popover's content disappeared: the one asked for meanwhile opens
+	func disappeared() {
+		DispatchQueue.main.async { [weak self] in
+			self?.gone()
+		}
+	}
+
+	private func gone() {
+		closing = nil
 		if shown == nil, let p = pending {
 			pending = nil
 			shown   = p
