@@ -373,10 +373,8 @@ typedef struct config {
 	i32                  undo_memory_mb;    // Undo steps are dropped, oldest first, above this budget
 	bool                 timeline_shadow;   // Stroke recording runs beside the old undo, nothing reads it (stroke_rec.h)
 	bool                 history_v2;        // Undo from timelines and checkpoints, the undo ring retired
-	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
-	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 	i32                  history_budget_mb; // History saved with a project, thinned above it; 0: 4x the live layers, 1 GB at least
 	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
 	i32                  history_max_steps; // history_v2: undo steps kept at most

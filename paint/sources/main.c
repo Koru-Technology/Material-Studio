@@ -23,7 +23,6 @@
 #include "io/import_font.c"
 #include "io/import_json_material.c"
 #include "io/import_keymap.c"
-#include "io/import_legacy.c"
 #include "io/import_lut.c"
 #include "io/import_mesh.c"
 #include "io/import_obj.c"

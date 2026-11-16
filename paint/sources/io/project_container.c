@@ -1,6 +1,6 @@
 #include "../global.h"
 
-// Project files, version 31 with project_v31 on: a container of chunks (history_store.c), read lazily, saved by
+// Project files: a container of chunks (history_store.c), read lazily, saved by
 // appending. Little endian:
 //   "MSPJ" u32 31, 8 bytes 0
 //   chunks: "CHNK" ... (HSTORE_CHUNK_HEADER): the referenced blobs of the store, among them the tile maps of the live
@@ -293,7 +293,7 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 	free(raw_index);
 
 	buffer_t   hb      = {.buffer = head, .length = (u32)f.head_len, .capacity = (u32)f.head_len};
-	project_t *project = import_arm_is_old(&hb) ? import_arm_from_old(&hb) : armpack_decode(&hb);
+	project_t *project = import_arm_decode(&hb);
 	free(head);
 	if (project == NULL) {
 		free(index);
@@ -831,11 +831,8 @@ bool project_container_save(char *path) {
 }
 
 // "Save copy without history": a container of the project and its live layers, no timelines nor history blobs, with
-// its own uuid. The session goes on saving to its file. project_v31 only.
+// its own uuid. The session goes on saving to its file.
 bool project_container_save_copy(char *path) {
-	if (!g_config->project_v31) {
-		return false;
-	}
 	return pc_save(path, true);
 }
 
@@ -918,12 +915,9 @@ i32 project_test_res(i32 axis) {
 	return axis == 0 ? config_get_texture_res_x() : config_get_texture_res_y();
 }
 
-// Layers resized to w x h (the Custom resolution of the layers tab), on the next frame
+// Layers to w x h now (the Custom resolution of the layers tab), not an undo step
 void project_test_set_res(i32 w, i32 h) {
-	base_res   = TEXTURE_RES_CUSTOM;
-	base_res_x = (f32)w;
-	base_res_y = (f32)h;
-	layers_on_resized();
+	layers_resolution_apply(w, h);
 }
 
 // 31 bits of the content hash of the pixels of layer i's texture: 0 base (mask: its value), 1 normal, 2 pack. 0 for none.
@@ -1011,10 +1005,10 @@ static u64 pc_history_signature() {
 	return h;
 }
 
-// Session heads are written for v31 projects whose layers have timelines: their live states are tile maps already, a
+// Session heads are written for projects whose layers have timelines: their live states are tile maps already, a
 // head costs no readback
 static bool pc_session_on() {
-	return g_config->project_v31 && timeline_active() && g_context->paint_object != NULL;
+	return timeline_active() && g_context->paint_object != NULL;
 }
 
 // Journals the session head now, true when it was written
@@ -1127,7 +1121,7 @@ bool project_session_overlay(project_t *p) {
 		return false;
 	}
 	buffer_t   hb = {.buffer = b + off, .length = len - off, .capacity = len - off};
-	project_t *s  = import_arm_is_old(&hb) ? import_arm_from_old(&hb) : armpack_decode(&hb);
+	project_t *s  = import_arm_decode(&hb);
 	if (s == NULL || s->layer_datas == NULL || s->layer_datas->length == 0) {
 		free(b);
 		return false;

@@ -188,15 +188,12 @@ void import_arm_run_project(char *path) {
 		scene_t *scene_raw = armpack_decode(b);
 		project            = ALLOC_INIT(project_t, {.mesh_datas = scene_raw->mesh_datas});
 	}
-	else if (import_arm_is_old(b)) {
-		project = import_arm_from_old(b);
-	}
 	else {
-		project = armpack_decode(b);
+		project = import_arm_decode(b);
 	}
 
-	if (project == NULL) { // A version this build does not know
-		console_error(string("Could not open file %s.", path));
+	if (project == NULL) {
+		console_error(string(import_arm_has_version(b) && !project_container_is(path) ? "Could not open file %s, it was saved by an older version." : "Could not open file %s.", path));
 		return;
 	}
 
@@ -647,7 +644,32 @@ void import_arm_run_project(char *path) {
 	iron_profile_mark("project load end");
 }
 
+// A file with a version: a project head, material, brush or swatches. Meshes have none.
 bool import_arm_has_version(buffer_t *b) {
-	bool has_version = b != NULL && b->length > 10 && b->buffer[10] == 118; // 'v';
-	return has_version;
+	// 0xdf map, i32 count, 0xdb string, i32 len, "version"
+	return b != NULL && b->length > 10 && b->buffer[10] == 'v';
+}
+
+static bool import_arm_is_version(buffer_t *b, char *n) {
+	// 0xdf map, i32 count, 0xdb string, i32 len, "version", 0xdb string, i32 len, version value
+	if (!import_arm_has_version(b) || b->length < 22) {
+		return false;
+	}
+	u32 len = *(u32 *)(b->buffer + 18); // version value length
+	if (len > b->length - 22) {
+		return false;
+	}
+	return strlen(n) == len && memcmp(b->buffer + 22, n, len) == 0;
+}
+
+// A project head, material, brush or swatches file of this build's version (manifest_version_project), NULL for
+// others: files of older builds do not open
+project_t *import_arm_decode(buffer_t *b) {
+	if (!import_arm_is_version(b, manifest_version_project)) {
+		if (import_arm_has_version(b)) {
+			iron_log("Saved by an older version, not read");
+		}
+		return NULL;
+	}
+	return armpack_decode(b);
 }

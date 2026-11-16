@@ -1068,8 +1068,7 @@ X1(hstore_test_put_list, "i(i kind)", i, i)
 X0(hstore_test_rebuild, "v()", v)
 X1(hstore_test_refs, "i(i id)", i, i)
 
-// io/project_container.c, io/export_arm.c
-X1(export_arm_run_project_v30, "v(p:char path)", v, p)
+// io/project_container.c
 X1(project_test_layer_uid, "i(i i)", i, i)
 X1(project_test_material_uid, "i(i i)", i, i)
 X0(project_test_uid_next, "i()", i)
@@ -1116,7 +1115,6 @@ X2(timeline_io_test_state, "i(p:slot_layer_t l,i pos)", i, p, i)
 
 // Texture export (io/export_texture.c, ui/box_export.c) test hooks
 X5(export_texture_test_options, "v(p:char preset,i layers_export,b padding,i bits,i format)", v, p, i, b, i, i)
-X2(box_export_textures_run, "v(p:char path,b bake_material)", v, p, b)
 X2(export_tiled_run, "v(p:char path,b bake_material)", v, p, b)
 X2(export_tiled_start, "b(p:char path,b bake_material)", b, p, b)
 X1(export_tiled_step, "b(f budget_ms)", b, f)
@@ -1147,7 +1145,6 @@ X1(timeline_tiles_test, "i(p:slot_layer_t l)", i, p)
 X2(export_tiled_not_upscaled, "i(i w,i h)", i, i, i)
 X1(export_tiled_not_upscaled_name, "p:char(i i)", p, i)
 X1(export_tiled_test_no_fill, "v(b on)", v, b)
-X0(layers_on_resized, "v()", v)
 
 // paint_rec.c, paint_replay.c
 X0(paint_rec_flush, "v()", v)
