@@ -586,6 +586,19 @@ static u64 render_path_base_paint_depth_key() {
 	return h;
 }
 
+// The geometry-only paint depth from the camera as it is, alone (replays draw it from their recorded camera)
+void render_path_base_draw_paint_depth() {
+	if (any_map_get(render_path_render_targets, "main_paint") == NULL) {
+		render_path_base_init_paint_depth();
+	}
+	if (make_material_depth_scon == NULL) {
+		make_material_parse_depth_material();
+	}
+	render_path_set_target("gbuffer0", NULL, "main_paint", GPU_CLEAR_DEPTH, 0, 1.0);
+	render_path_base_draw_meshes(make_material_depth_scon, false);
+	render_path_base_paint_depth_drawn = 0; // Drawn again for the live camera
+}
+
 void render_path_base_draw_gbuffer() {
 	string_array_t *additional = any_array_create_from_raw_tmp(
 	    (void *[]){

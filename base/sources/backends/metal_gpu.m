@@ -1275,6 +1275,96 @@ void gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *dst, int dx
 	          destinationOrigin:MTLOriginMake(dx, dy, 0)];
 }
 
+// Readback queue: a ring of committed transfers, each done once the command buffer holding its copies completed
+typedef struct {
+	gpu_transfer_t *t;
+	void (*done)(gpu_transfer_t *t, void *ud);
+	void         *ud;
+	void         *cb; // id<MTLCommandBuffer>, retained
+	unsigned      id;
+} gpu_transfer_pending_t;
+
+static gpu_transfer_pending_t gpu_transfer_ring[GPU_TRANSFER_INFLIGHT];
+static atomic_uint            gpu_transfer_landed[GPU_TRANSFER_INFLIGHT]; // Highest id landed in a slot: a late handler of a
+static int                    gpu_transfer_first = 0;                     // transfer waited for does not mark the next one
+static int                    gpu_transfer_count = 0;
+static unsigned               gpu_transfer_ids   = 0;
+
+static void gpu_transfer_land(int slot, unsigned tid) {
+	unsigned v = atomic_load(&gpu_transfer_landed[slot]);
+	while (v < tid && !atomic_compare_exchange_weak(&gpu_transfer_landed[slot], &v, tid)) {
+	}
+}
+
+// Waits for the command buffer of a pending transfer, submitting it first when it is the one being recorded
+static void gpu_transfer_wait_one(gpu_transfer_pending_t *p, int slot) {
+	id<MTLCommandBuffer> cb = (__bridge id<MTLCommandBuffer>)p->cb;
+	if (cb == command_buffer) {
+		if (gpu_in_use) {
+			gpu_execute_and_wait();
+		}
+		else {
+			gpu_commit(NULL, NULL);
+		}
+	}
+	[cb waitUntilCompleted];
+	gpu_transfer_land(slot, p->id);
+}
+
+int gpu_transfer_pending(void) {
+	return gpu_transfer_count;
+}
+
+// Runs the done of the oldest pending transfers that completed, in order
+static void gpu_transfer_run_done(bool wait) {
+	while (gpu_transfer_count > 0) {
+		gpu_transfer_pending_t *p = &gpu_transfer_ring[gpu_transfer_first];
+		if (atomic_load(&gpu_transfer_landed[gpu_transfer_first]) < p->id) {
+			if (!wait) {
+				return;
+			}
+			gpu_transfer_wait_one(p, gpu_transfer_first);
+		}
+		id<MTLCommandBuffer> cb = (__bridge_transfer id<MTLCommandBuffer>)p->cb;
+		cb                      = nil;
+		p->cb                   = NULL;
+		gpu_transfer_first      = (gpu_transfer_first + 1) % GPU_TRANSFER_INFLIGHT;
+		gpu_transfer_count--;
+		p->done(p->t, p->ud); // May commit another
+	}
+}
+
+void gpu_transfer_commit(gpu_transfer_t *t, void (*done)(gpu_transfer_t *t, void *ud), void *ud) {
+	if (gpu_transfer_count == GPU_TRANSFER_INFLIGHT) { // Full: the oldest first
+		gpu_transfer_wait_one(&gpu_transfer_ring[gpu_transfer_first], gpu_transfer_first);
+		gpu_transfer_run_done(false);
+	}
+	end_kept_encoder();
+	if (command_buffer == nil) {
+		command_buffer = [get_metal_queue() commandBuffer];
+	}
+	int                     i = (gpu_transfer_first + gpu_transfer_count) % GPU_TRANSFER_INFLIGHT;
+	gpu_transfer_pending_t *p = &gpu_transfer_ring[i];
+	p->t                      = t;
+	p->done                   = done;
+	p->ud                     = ud;
+	p->cb                     = (__bridge_retained void *)command_buffer;
+	p->id                     = ++gpu_transfer_ids;
+	gpu_transfer_count++;
+	unsigned tid = p->id;
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+	  gpu_transfer_land(i, tid);
+	}];
+}
+
+void gpu_transfer_poll(void) {
+	gpu_transfer_run_done(false);
+}
+
+void gpu_transfer_wait(void) {
+	gpu_transfer_run_done(true);
+}
+
 // Small textures read back without waiting: copied into a shared buffer with the frame's commands, the data is there once
 // the gpu finished the frame. One request at a time, a new one replaces the pending one.
 static id<MTLBuffer> async_readback_buffer  = nil;

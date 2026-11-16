@@ -23,6 +23,9 @@ void history_paint() {
 		history_tiles_begin(step, g_context->layer);
 	}
 	timeline_stroke_begin(step, g_context->layer);
+	if (timeline_active() && paint_exec_resolved_config()) {
+		paint_rec_stroke_begin(step, g_context->layer); // The stroke recorded for replay (paint_rec.c)
+	}
 
 	// Erasing the bottom layer makes the mesh see-through
 	if (g_context->tool == TOOL_TYPE_ERASER && g_context->layer == g_project->_->layers->buffer[0]) {

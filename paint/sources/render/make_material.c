@@ -321,6 +321,18 @@ static void make_material_parse_paint_material_now(bool bake_previews) {
 
 static void make_material_pending_drop(void);
 
+// A paint shader for the context as it is now, compiled now and kept by the caller: the current one stays (replays)
+shader_context_t *make_material_parse_paint_kept(void) {
+	shader_context_t *current = make_material_paint_scon;
+	shader_context_t *saved   = make_material_saved_scon;
+	make_material_saved_scon  = current; // Not deleted by the parse
+	make_material_parse_paint_material_now(false);
+	shader_context_t *kept   = make_material_paint_scon;
+	make_material_paint_scon = current;
+	make_material_saved_scon = saved;
+	return kept != current ? kept : NULL;
+}
+
 // The paint shader of the context, compiled now. A paint shader still compiling for an earlier context
 // (make_material_parse_paint_material_async) is dropped: this one is newer.
 void make_material_parse_paint_material(bool bake_previews) {
