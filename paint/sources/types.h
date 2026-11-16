@@ -5,6 +5,7 @@
 #include "enums.h"
 #include "minic.h"
 
+// ---- Brushes and strokes ----
 typedef struct slot_brush {
 	struct ui_nodes       *nodes;
 	struct ui_node_canvas *canvas;
@@ -149,6 +150,7 @@ typedef struct render_path_paint_filter {
 	f32  y2;
 } render_path_paint_filter_t;
 
+// ---- Meshes ----
 typedef struct mesh_nodes {
 	i32                    uid; // Object
 	struct ui_nodes       *nodes;
@@ -181,6 +183,7 @@ typedef struct mesh_geo_image {
 	i32  channel; // 0 - 3 reads that channel in all four, -1 rgba
 } mesh_geo_image_t;
 
+// ---- Layers, masks and fonts ----
 typedef struct slot_layer {
 	i32                   id;
 	char                 *name;
@@ -272,6 +275,7 @@ typedef struct slot_font {
 	char               *file;
 } slot_font_t;
 
+// ---- Config ----
 typedef struct config {
 	char *version;
 	char *sha; // Commit id
@@ -367,6 +371,7 @@ typedef struct config {
 	i32                  undo_memory_mb;    // Undo steps are dropped, oldest first, above this budget
 } config_t;
 
+// ---- Materials ----
 typedef struct slot_material {
 	struct ui_nodes       *nodes;
 	struct ui_node_canvas *canvas;
@@ -388,6 +393,7 @@ typedef struct slot_material {
 	f32                    uv_angle;
 } slot_material_t;
 
+// ---- Tabs, docking and render passes ----
 typedef struct tab_draw {
 	void (*f)(i32 *);
 	i32   id;   // tab_id_t
@@ -428,6 +434,7 @@ typedef struct render_pass {
 	shader_context_t   *scon;
 } render_pass_t;
 
+// ---- Context ----
 typedef struct context {
 	struct asset        *texture;
 	struct mesh_object  *paint_object;
@@ -718,6 +725,7 @@ typedef struct context {
 	struct any_map *keymap;
 } context_t;
 
+// ---- Node shaders ----
 typedef struct node_shader {
 	struct node_shader_context *context;
 	struct string_array        *ins;
@@ -767,6 +775,7 @@ typedef struct node_shader_context {
 	struct material       *material;
 } node_shader_context_t;
 
+// ---- History ----
 typedef struct history_step {
 	char                        *name;
 	history_action_t             action;
@@ -806,6 +815,7 @@ typedef struct history_step {
 	i32                          undo_tiles_gen;
 } history_step_t;
 
+// ---- Logic nodes and node groups ----
 typedef struct logic_node {
 	struct logic_node_input_t_array *inputs;
 	struct logic_node_t_array       *outputs;
@@ -836,6 +846,7 @@ typedef struct node_group {
 	struct ui_node_canvas *canvas;
 } node_group_t;
 
+// ---- Project, assets and saved layers ----
 typedef struct {
 	struct asset_t_array         *assets;
 	struct slot_material_t_array *materials;
@@ -957,6 +968,7 @@ typedef struct layer_data {
 	f32_array_t      *mask_effects; // slot_layer_t.mask_effects as is, NULL for the implicit stack
 } layer_data_t;
 
+// ---- Shader outputs, export presets, neural models ----
 typedef struct shader_out {
 	char *out_basecol;
 	char *out_roughness;
@@ -1004,6 +1016,7 @@ typedef struct float_node {
 	struct gpu_texture *image;
 } float_node_t;
 
+// ---- Arrays ----
 typedef struct node_group_t_array {
 	node_group_t **buffer;
 	int            length;
@@ -1204,6 +1217,7 @@ typedef struct swatch_color_t_array {
 	int              capacity;
 } swatch_color_t_array_t;
 
+// ---- Node editor, material library and studio ----
 // Per node ui state of the custom node editors (ui_nodes_editor_state())
 typedef struct ui_nodes_editor_state {
 	i32              channel;
