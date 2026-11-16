@@ -1,7 +1,7 @@
 #include "global.h"
 
-// Undo over a long session: 1000 strokes on 3 layers and a mask with small budgets (16 MB of RAM for the store, 64 MB of
-// GPU undo tiles). Old tile blobs leave RAM for the journal, GPU tiles of old steps are released, and undoing to the
+// Undo over a long session: 1000 strokes on 3 layers and a mask with small budgets (2 MB of RAM for the store, under the
+// preference's minimum, and 64 MB of GPU undo tiles). Old tile blobs leave RAM for the journal, GPU tiles of old steps are released, and undoing to the
 // start and redoing to the end still gives every layer back byte for byte.
 
 int fails  = 0;
@@ -154,7 +154,7 @@ void next() {
 void main() {
 	ram_was                             = script_get_config()->history_ram_mb;
 	gpu_was                             = script_get_config()->undo_memory_mb;
-	script_get_config()->history_ram_mb = 16;
+	script_get_config()->history_ram_mb = 2;
 	script_get_config()->undo_memory_mb = 64;
 	script_brush_defaults();
 	script_project_new();

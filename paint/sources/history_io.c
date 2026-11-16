@@ -479,7 +479,6 @@ bool history_io_decode(u8 *data, u32 len) {
 	history_steps_replace(kept, undos - first, end > undos ? end - undos : 0, (u32)armpack_map_get_i32(m, "serial_next"));
 	array_free(kept);
 	free(kept);
-	project_session_forget(); // The loaded steps are the opened state, not unsaved work: no session head is due for them
 	return true;
 }
 

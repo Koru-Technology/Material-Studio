@@ -141,7 +141,7 @@ void next() {
 		history_undo();
 		history_undo();
 	}
-	else if (step == 9) {
+	else if (step == 11) {
 		history_flush_restores(NULL);
 		slot_layer_t *a = find_uid(uid_a);
 		check(find_uid(uid_b) == NULL, "undo after recovery: the new layer goes");
@@ -150,14 +150,14 @@ void next() {
 		history_redo();
 		history_redo();
 	}
-	else if (step == 10) {
+	else if (step == 12) {
 		history_flush_restores(NULL);
 		slot_layer_t *a = find_uid(uid_a);
 		check(a != NULL && string_equals(layer_hash(a), live_a) && find_uid(uid_b) != NULL, "redo after recovery");
 		project_filepath_set(file);
 		project_save(0);
 	}
-	else if (step == 11) {
+	else if (step == 13) {
 		check(!project_session_pending(file), "saving ends the pending state");
 	}
 	else {
