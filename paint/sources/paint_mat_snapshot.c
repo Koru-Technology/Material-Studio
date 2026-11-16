@@ -121,3 +121,102 @@ slot_material_t *paint_mat_snapshot_instantiate(hash128_t h) {
 void paint_mat_snapshot_reset() {
 	paint_mat_snapshot_count = 0;
 }
+
+// Brush tips and stencils of recorded strokes (HSTORE_ASSET): the texture's texels as painted with, after a header. A tip
+// generated in code has no file, an imported image is kept as it was decoded (and BC7 compressed): the bytes replay reads.
+#define PAINT_ASSET_MAGIC 0x31534150 // "PAS1"
+
+typedef struct paint_asset_head {
+	u32 magic;
+	i32 width;
+	i32 height;
+	i32 format;
+} paint_asset_head_t;
+
+typedef struct {
+	gpu_texture_t *t;
+	hash128_t      h;
+	bool           own; // Made from the blob here
+} paint_asset_entry_t;
+
+static paint_asset_entry_t paint_assets[64];
+static i32                 paint_asset_count = 0;
+
+// The asset of a texture painted with, a reference held for the session (kept by the texture's entry)
+hash128_t paint_asset_intern(gpu_texture_t *t) {
+	if (t == NULL) {
+		return HASH128_NONE;
+	}
+	for (i32 i = 0; i < paint_asset_count; ++i) {
+		if (paint_assets[i].t == t) {
+			return paint_assets[i].h;
+		}
+	}
+	buffer_t *px  = gpu_get_texture_pixels(t);
+	i32       fmt = t->format;
+#ifdef WITH_BC7
+	if (fmt == GPU_TEXTURE_FORMAT_RGBA32_BC7) {
+		fmt = GPU_TEXTURE_FORMAT_RGBA32; // Decompressed by the read
+	}
+#endif
+	u32                len  = sizeof(paint_asset_head_t) + px->length;
+	u8                *blob = malloc(len);
+	paint_asset_head_t head = {.magic = PAINT_ASSET_MAGIC, .width = t->width, .height = t->height, .format = fmt};
+	memcpy(blob, &head, sizeof(head));
+	memcpy(blob + sizeof(head), px->buffer, px->length);
+	hash128_t h = hstore_put(HSTORE_ASSET, blob, len);
+	free(blob);
+	if (paint_asset_count == 64) { // Oldest entry goes, its reference with it
+		hstore_unref(paint_assets[0].h);
+		memmove(paint_assets, paint_assets + 1, sizeof(paint_asset_entry_t) * 63);
+		paint_asset_count--;
+	}
+	paint_assets[paint_asset_count++] = (paint_asset_entry_t){.t = t, .h = h, .own = false};
+	return h;
+}
+
+// The texture of an asset: one painted with this session, or made from its blob
+gpu_texture_t *paint_asset_texture(hash128_t h) {
+	if (hash128_is_none(h)) {
+		return NULL;
+	}
+	for (i32 i = 0; i < paint_asset_count; ++i) {
+		if (hash128_eq(paint_assets[i].h, h)) {
+			return paint_assets[i].t;
+		}
+	}
+	u32 len  = 0;
+	u8 *blob = hstore_get(h, &len);
+	if (blob == NULL || len < sizeof(paint_asset_head_t)) {
+		free(blob);
+		return NULL;
+	}
+	paint_asset_head_t head;
+	memcpy(&head, blob, sizeof(head));
+	if (head.magic != PAINT_ASSET_MAGIC || sizeof(head) + (u64)gpu_texture_format_size(head.format) * head.width * head.height > len) {
+		free(blob);
+		return NULL;
+	}
+	buffer_t       b = {.buffer = blob + sizeof(head), .length = len - sizeof(head)};
+	gpu_texture_t *t = gpu_create_texture_from_bytes_raw(&b, head.width, head.height, head.format);
+	free(blob);
+	if (paint_asset_count < 64) {
+		hstore_ref(h);
+		paint_assets[paint_asset_count++] = (paint_asset_entry_t){.t = t, .h = h, .own = true};
+	}
+	return t;
+}
+
+// A stroke starts: textures painted with are read again (a tip may be drawn again into the same texture)
+void paint_asset_stroke_begin() {
+	i32 kept = 0;
+	for (i32 i = 0; i < paint_asset_count; ++i) {
+		if (paint_assets[i].own) {
+			paint_assets[kept++] = paint_assets[i];
+		}
+		else {
+			hstore_unref(paint_assets[i].h);
+		}
+	}
+	paint_asset_count = kept;
+}

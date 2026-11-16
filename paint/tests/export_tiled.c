@@ -222,7 +222,20 @@ void next() {
 		compare("selected", 1.0, "selected layer");
 		export_texture_test_options("generic", 0, 0, 16, 0);
 		export_both("exr16", 0, 0);
-		compare("exr16", 1.0, "16 bit exr, names only");
+		compare("exr16", 1.0, "16 bit exr, names");
+		if (!baseline) { // Streamed in bands of tiles, the same bytes as encoded whole
+			set_tiled(1); // TILED
+			export_tiled_test_whole(1); // TILED
+			export_texture_run(fresh_dir("exr16w_t"), 0); // TILED
+			export_tiled_test_whole(0); // TILED
+			set_tiled(0); // TILED
+			any_array_t *files = file_read_directory(string("%s/exr16_t", root));
+			int          bad   = 0;
+			for (int i = 0; files != NULL && i < files->length; ++i) {
+				bad = bad + (script_diff_files(string("%s/exr16w_t/%s", root, files->buffer[i]), string("%s/exr16_t/%s", root, files->buffer[i])) != 0);
+			}
+			check(files != NULL && files->length == 5 && bad == 0, string("streamed exr files byte equal to whole ones (%d differ)", bad));
+		}
 		export_texture_test_options("generic", 0, 0, 8, 0);
 	}
 	else if (step == 3) { // Bake material
@@ -329,6 +342,7 @@ void next() {
 }
 
 void main() {
+	root = script_tmp_dir("materialstudio_export_tiled"); // Per run: suites of several worktrees run at once
 	config_t *cfg        = script_get_config();
 	cfg->timeline_shadow = 1; // Paint layers record their timelines, the tiled export reads them
 	script_project_new();

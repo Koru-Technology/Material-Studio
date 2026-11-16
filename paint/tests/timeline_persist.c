@@ -255,6 +255,7 @@ void next() {
 }
 
 void main() {
+	dir = script_tmp_dir("materialstudio_timeline_persist"); // Per run: suites of several worktrees run at once
 	v31_was                              = script_get_config()->project_v31;
 	shadow_was                           = script_get_config()->timeline_shadow;
 	script_get_config()->project_v31     = 1;

@@ -36,6 +36,8 @@ void      export_arm_run_swatches(char *path);
 
 // ---- io/export_exr.c ----
 buffer_t *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 type, i32 off);
+FILE     *export_exr_begin(char *path, i32 width, i32 height, i32 bits);
+void      export_exr_band(FILE *f, buffer_t *src, i32 width, i32 y0, i32 rows, i32 bits, i32 type, i32 off);
 
 // ---- io/export_mesh.c ----
 void export_mesh_run(char *path, mesh_object_t_array_t *paint_objects);
@@ -832,6 +834,7 @@ void render_path_paint_commands_cursor();
 
 // ---- render/render_path_paint_stroke.c ----
 void render_path_paint_set_stamp_seed(i32 seed);
+void render_path_paint_test_set_taper(f32 start, f32 end, f32 size, f32 opacity);
 bool render_path_paint_filter_on();
 void render_path_paint_filter_apply(render_path_paint_filter_t *f, f32 *x, f32 *y, f32 dt);
 f32  render_path_paint_spacing();
@@ -1417,6 +1420,7 @@ void layers_create_fill_layer(uv_type_t uv_type, mat4_t decal_mat, i32 position)
 void           layers_merge_down();
 slot_layer_t  *layers_merge_group(slot_layer_t *l);
 void           layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask);
+gpu_pipeline_t *layers_pipe_for(gpu_pipeline_t *base, gpu_texture_format_t format);
 void           layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer, gpu_texture_t *below);
 void           layers_merge_mask_ex(gpu_texture_t *dst, gpu_texture_t *temp, slot_layer_t *m, gpu_texture_t *mask_tex, slot_layer_t *layer, gpu_texture_t *below,
                                     gpu_texture_t *coverage);
@@ -2452,12 +2456,17 @@ void project_test_set_res(i32 w, i32 h);
 i32  project_test_layer_hash(i32 i, i32 channel);
 
 // ---- util/util_test.c ----
+char *script_tmp_dir(char *name);
 i32   script_diff_images(char *path_a, char *path_b, f32 tol);
 i32   script_diff_textures(gpu_texture_t *a, gpu_texture_t *b, f32 tol);
 f32   script_diff_max();
 f32   script_diff_mean();
 void  script_diff_mask(gpu_texture_t *mask, i32 mode);
 char *script_texture_hash(gpu_texture_t *t);
+i32   script_diff_files(char *path_a, char *path_b);
+void  script_texture_read(gpu_texture_t *t);
+bool  script_image_read(char *path);
+f32   script_texel(f32 u, f32 v, i32 c);
 
 // ---- timeline_io.c ----
 u8_array_t *timeline_io_encode();
@@ -2476,6 +2485,7 @@ void           export_tiled_set_resolution(i32 w, i32 h);
 i32            export_tiled_not_upscaled(i32 w, i32 h);
 char          *export_tiled_not_upscaled_name(i32 i);
 void           export_tiled_test_no_fill(bool on);
+void           export_tiled_test_whole(bool on);
 void           export_tiled_test_tile(i32 size);
 void           export_tiled_test_raster(bool on);
 void           export_tiled_test_mm(bool on);
@@ -2553,7 +2563,12 @@ void paint_rec_finish();
 void paint_rec_init();
 void paint_rec_flush(); // stroke_rec.h, for scripts
 i32  paint_rec_test_stored();
+f32  paint_rec_test_bounds(slot_layer_t *l, i32 index, i32 c);
+bool timeline_tiles_changed_bounds(hash128_t prev, hash128_t cur, f32 out[4]);
+hash128_t timeline_state(struct timeline *tl, i32 pos);
 u64  make_paint_glsl_hash(shader_context_t *scon);
+bool make_paint_scon_uses_matcache(shader_context_t *scon);
+gpu_texture_t *paint_replay_dilate_map(i32 w, i32 h, const f32 *uv_rect);
 void paint_mat_snapshot_reset();
 void render_path_paint_dilate_now(bool base, bool nor_pack);
 
@@ -2561,12 +2576,18 @@ void render_path_paint_dilate_now(bool base, bool nor_pack);
 extern gpu_texture_t *paint_replay_s0[3];
 extern mat4_t         paint_replay_obj;
 extern mat4_t         paint_replay_obj_inv;
+extern paint_rec_cam_t paint_replay_cam;
+hash128_t             paint_asset_intern(gpu_texture_t *t);
+gpu_texture_t        *paint_asset_texture(hash128_t h);
+void                  paint_asset_stroke_begin();
 i32                   paint_replay_test_fallbacks();
 i32                   paint_replay_test_count();
 bool                  paint_replay_test_entry(slot_layer_t *l, i32 index);
+bool                  paint_replay_test_into(slot_layer_t *src, i32 index, slot_layer_t *dst);
+bool                  paint_replay_test_tiles(slot_layer_t *src, i32 index, slot_layer_t *dst, i32 n, i32 halo);
 void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
 i32                   paint_exec_pending_ops();
-void                  render_path_base_draw_paint_depth();
+void                  render_path_base_draw_paint_depth_into(char *color, char *depth);
 shader_context_t     *make_material_parse_paint_kept(void);
 
 // ---- history_io.c (undo track; history_io_stub.c until it lands) ----

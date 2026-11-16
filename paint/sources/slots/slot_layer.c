@@ -307,11 +307,11 @@ void layers_apply_mask(slot_layer_t *l, slot_layer_t *m) {
 	layers_make_temp_img();
 
 	// Copy layer to temp
-	util_copy_texture(layers_temp_image, l->texpaint, pipes_copy);
+	util_copy_texture(layers_temp_image, l->texpaint, layers_pipe_for(pipes_copy, layers_temp_image->format));
 
 	// Apply mask
 	_gpu_begin(l->texpaint, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	gpu_set_pipeline(pipes_apply_mask);
+	gpu_set_pipeline(layers_pipe_for(pipes_apply_mask, l->texpaint->format));
 	gpu_set_texture(pipes_tex0_mask, layers_temp_image);
 	gpu_set_texture(pipes_texa_mask, mask_tex);
 	gpu_set_float(pipes_opac_apply_mask, mask_opac);
@@ -355,7 +355,7 @@ static slot_layer_t *slot_layer_copy(slot_layer_t *raw) {
 		}
 	}
 	else if (slot_layer_is_mask(raw)) {
-		util_copy_texture(l->texpaint, raw->texpaint, pipes_copy); // Masks are RGBA32
+		util_copy_texture(l->texpaint, raw->texpaint, layers_pipe_for(pipes_copy, l->texpaint->format)); // Masks are RGBA32
 	}
 
 	if (l->texpaint_preview != NULL) {
