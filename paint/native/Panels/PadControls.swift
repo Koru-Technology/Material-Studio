@@ -217,6 +217,7 @@ func run(_ command: app_command_t) {
 
 struct PadMenuBar: View {
 	private var store = AppStore.shared
+	@State private var exporting = false // The export sheet (tiled export), the engine's export box otherwise
 
 	var body: some View {
 		GlassEffectContainer(spacing: 8) {
@@ -238,7 +239,9 @@ struct PadMenuBar: View {
 						Button("Swatches…", systemImage: "swatchpalette") { run(APP_COMMAND_IMPORT_SWATCHES) }
 					}
 					Menu("Export", systemImage: "square.and.arrow.up") {
-						Button("Textures…", systemImage: "photo.stack") { run(APP_COMMAND_EXPORT_TEXTURES) }
+						Button("Textures…", systemImage: "photo.stack") {
+							if app_export_available() { exporting = true } else { run(APP_COMMAND_EXPORT_TEXTURES) }
+						}
 						Button("Mesh…", systemImage: "cube") { run(APP_COMMAND_EXPORT_MESH) }
 						Button("Swatches…", systemImage: "swatchpalette") { run(APP_COMMAND_EXPORT_SWATCHES) }
 					}
@@ -262,6 +265,9 @@ struct PadMenuBar: View {
 			}
 		}
 		.foregroundStyle(.primary)
+		.sheet(isPresented: $exporting) {
+			ExportSheet()
+		}
 	}
 }
 
