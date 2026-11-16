@@ -286,6 +286,8 @@
 #include "translator.c"
 #include "uniforms.c"
 #include "viewport.c"
+#include "paint_exec.c"
+#include "render/make_dab_resolve.c"
 #include "util/util_test.c"
 #include "io/export_tiled.c"
 

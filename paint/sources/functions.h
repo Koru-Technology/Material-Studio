@@ -2430,3 +2430,56 @@ void           export_tiled_test_raster(bool on);
 void           export_tiled_test_mm(bool on);
 i32            export_tiled_stat(i32 what);
 gpu_texture_t *export_tiled_test_coverage();
+
+// ---- paint_exec.c ----
+// Resolved dabs. With paint_resolved_dabs, a paint draw reads its dabs from _texpaintdabs, the target of the dab resolve
+// pass (render/make_dab_resolve.c): PAINT_DAB_TEXELS RGBA128 texels a dab, PAINT_DAB_ROW dabs a row, dab k at
+// x = (k % PAINT_DAB_ROW) * PAINT_DAB_TEXELS + t, y = k / PAINT_DAB_ROW. Texel t:
+//   0  p.xyz world position of the dab, w the homogeneous w of its unprojection (1 / clip w: camera align, decals)
+//   1  p_last.xyz, w_last: the other end of the capsule
+//   2  normal at p, octahedral xy on a 1/32767 grid; z 1 when p is off the mesh, w 1 when p_last is
+//   3  radius, opacity, hardness, flow
+//   4  s.xy, s_last.xy: the screen points the dab was resolved from (0-1, y down)
+//   5  uv at s, uv at s_last (gbuffer2: pixel snap)
+//   6  tip mask rotation cos, sin (brush angle and dab angle), tilt shape xy (util_brush_tilt_shape)
+//   7  brush angle cos, sin, dab angle cos, sin
+// On the mesh, p and p_last are quantized: object space of the paint target (world_unpack), PAINT_DAB_QUANT steps an axis
+// over its bounds (paint_exec_space: -1.01 to 1.01, positions are packed normalized), back to world. Off the mesh they are the unquantized far plane point (a decal
+// anchor: at the depth of the world origin), recordings keep them as floats. The input of the pass (CPU, the same layout):
+// t0 s.xy s_last.xy, t1.x the mode, t3, t6, t7; the pass writes the rest.
+#define PAINT_DAB_TEXELS      8
+#define PAINT_DAB_ROW         64
+#define PAINT_DAB_MAX         2048 // A flush of the executor resolves at most this many
+#define PAINT_DAB_QUANT       2097151.0 // 2^21 - 1
+#define PAINT_DAB_QUANT_S     "2097151.0" // In GLSL
+#define PAINT_DAB_TEXELS_S    "8"
+#define PAINT_DAB_MODE_BRUSH  0.0 // Off the mesh: far plane
+#define PAINT_DAB_MODE_ANCHOR 1.0 // Decal anchor, off the mesh: at the depth of the world origin, as make_texcoord_run did
+
+bool             paint_exec_resolved_config(); // paint_resolved_dabs, or IRON_PAINT_RESOLVED in the environment
+bool             paint_exec_on(); // The paint shader in use reads resolved dabs
+void             paint_exec_begin();
+void             paint_exec_end();
+void             paint_exec_draw(bool dilation);
+void             paint_exec_batch_add();
+void             paint_exec_batch_flush(bool dilation);
+void             paint_exec_dilate(bool base, bool nor_pack);
+void             paint_exec_dilate_after_paint();
+void             paint_exec_clear_blend();
+void             paint_exec_clone_flatten();
+paint_exec_op_t *paint_exec_current(); // The op being executed, NULL outside of them
+f32             *paint_exec_dab(i32 k); // PAINT_DAB_TEXELS * 4 floats of input of dab k
+gpu_texture_t   *paint_exec_dabs_in();
+void             paint_exec_space(mat4_t *obj, mat4_t *obj_inv, vec4_t *bmin, vec4_t *bsize);
+void             render_path_paint_commands_paint_now(bool dilation);
+void             render_path_paint_dilate_after_paint_now();
+void             render_path_paint_clear_blend_now();
+void             render_path_paint_clone_snapshot();
+void             render_path_paint_scratch_resize(i32 w, i32 h);
+bool             render_path_paint_resolved();
+vec4_t           uniforms_brush_direction_now();
+vec4_t           uniforms_pixel_snap_uv();
+
+// ---- render/make_dab_resolve.c ----
+void make_dab_resolve_run(i32 count);
+char *make_brush_dab(char *k, i32 t);

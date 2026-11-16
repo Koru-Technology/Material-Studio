@@ -1,8 +1,18 @@
 
 #include "global.h"
 
-// Brush state as the paint shaders see it, also read by the dab batches (render_path_paint_batch_add)
+// Brush state as the paint shaders see it, also read by the dab batches (render_path_paint_batch_add). While the paint
+// executor runs a draw, the state it was emitted with: its first dab (paint_exec.c).
+static f32 *uniforms_exec_dab() {
+	paint_exec_op_t *op = paint_exec_current();
+	return op != NULL ? paint_exec_dab(op->dab_first) : NULL;
+}
+
 f32 uniforms_brush_radius() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return d[12];
+	}
 	bool decal                   = context_is_decal();
 	bool decal_mask              = context_is_decal_mask_paint_pass();
 	f32  brush_decal_mask_radius = g_context->brush_decal_mask_radius;
@@ -26,17 +36,29 @@ f32 uniforms_brush_radius() {
 }
 
 f32 uniforms_brush_flow() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return d[15];
+	}
 	bool stamps = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
 	return stamps && !slot_layer_is_path(g_context->layer) ? g_context->brush_flow * util_brush_dynamic(g_context->brush_pressure_flow, 0.0, false) : 1.0;
 }
 
 f32 uniforms_brush_opacity() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return d[13];
+	}
 	f32 val = g_context->brush_opacity * g_context->brush_nodes_opacity * g_context->brush_dab_opacity;
 	val *= util_brush_dynamic(g_context->brush_pressure_opacity, g_context->brush_tilt_opacity, false);
 	return math_max(0.0, math_min(1.0, val));
 }
 
 f32 uniforms_brush_hardness() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return d[14];
+	}
 	bool decal_mask = context_is_decal_mask_paint_pass();
 	if (g_context->tool != TOOL_TYPE_BRUSH && g_context->tool != TOOL_TYPE_ERASER && g_context->tool != TOOL_TYPE_CLONE && !decal_mask) {
 		return 1.0;
@@ -51,21 +73,37 @@ f32 uniforms_brush_hardness() {
 }
 
 vec2_t uniforms_brush_dab_angle() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return (vec2_t){d[30], d[31]};
+	}
 	return (vec2_t){math_cos(-g_context->brush_dab_angle), math_sin(-g_context->brush_dab_angle)};
 }
 
 vec2_t uniforms_brush_angle() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return (vec2_t){d[28], d[29]};
+	}
 	f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle * (math_pi() / 180.0) : util_brush_tip_angle();
 	return (vec2_t){math_cos(-angle), math_sin(-angle)};
 }
 
 vec4_t uniforms_input_brush() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return (vec4_t){d[0], d[1], paint_exec_current()->down, 0.0};
+	}
 	bool   down = mouse_down("left") || pen_down("tip");
 	vec4_t v    = (vec4_t){g_context->paint_vec.x, g_context->paint_vec.y, down ? 1.0 : 0.0, 0.0};
 	return v;
 }
 
 vec4_t uniforms_input_brush_last() {
+	f32 *d = uniforms_exec_dab();
+	if (d != NULL) {
+		return (vec4_t){d[2], d[3], paint_exec_current()->down, 0.0};
+	}
 	bool   down = mouse_down("left") || pen_down("tip");
 	vec4_t v    = (vec4_t){g_context->last_paint_vec_x, g_context->last_paint_vec_y, down ? 1.0 : 0.0, 0.0};
 	return v;
@@ -173,7 +211,12 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		return sc.z * 0.5;
 	}
 	else if (string_equals(link, "_paint_dab_count")) {
-		return render_path_paint_batch_drawn;
+		paint_exec_op_t *op = paint_exec_current();
+		return op != NULL ? op->dab_count : render_path_paint_batch_drawn;
+	}
+	else if (string_equals(link, "_paint_dab_first")) {
+		paint_exec_op_t *op = paint_exec_current();
+		return op != NULL ? op->dab_first : 0.0;
 	}
 	else if (string_equals(link, "_brush_camera_align")) {
 		return context_is_brush_camera_align() ? 1.0f : 0.0f;
@@ -243,7 +286,14 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 		return uniforms_brush_angle();
 	}
 	else if (string_equals(link, "_brush_tilt")) {
-		return util_brush_tilt_shape();
+		f32 *d = uniforms_exec_dab();
+		return d != NULL ? (vec2_t){d[26], d[27]} : util_brush_tilt_shape();
+	}
+	else if (string_equals(link, "_paint_res0")) { // The resolution recorded with the stroke, live the layer's
+		if (paint_exec_res0.x > 0.0) {
+			return paint_exec_res0;
+		}
+		return (vec2_t){config_get_texture_res_x(), config_get_texture_res_y()};
 	}
 	else if (string_equals(link, "_undo_tile_size")) {
 		return (vec2_t){(f32)history_tiles_block, (f32)history_tiles_blocks};
@@ -251,21 +301,38 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 	return vec2_nan();
 }
 
+// Direction of a directional brush from the previous dab, moves the previous dab on: the paint executor asks once per dab
+vec4_t uniforms_brush_direction_now() {
+	// Discard first paint for directional brush (no prev position yet)
+	bool allow_paint = g_context->prev_paint_vec_x > 0 && g_context->prev_paint_vec_y > 0 &&
+	                   (g_context->prev_paint_vec_x != g_context->paint_vec.x || g_context->prev_paint_vec_y != g_context->paint_vec.y);
+	f32    x                    = g_context->paint_vec.x;
+	f32    y                    = g_context->paint_vec.y;
+	f32    lastx                = g_context->prev_paint_vec_x;
+	f32    lasty                = g_context->prev_paint_vec_y;
+	f32    angle                = math_atan2(-y + lasty, x - lastx) - math_pi() / 2.0;
+	vec4_t v                    = (vec4_t){math_cos(angle), math_sin(angle), allow_paint ? 1 : 0, 1.0};
+	g_context->prev_paint_vec_x = g_context->last_paint_vec_x;
+	g_context->prev_paint_vec_y = g_context->last_paint_vec_y;
+	return v;
+}
+
+vec4_t uniforms_pixel_snap_uv() {
+	if (!g_context->paint2d_view) {
+		return (vec4_t){0.0, 0.0, 0.0, 0.0};
+	}
+	f32 tx, ty, tw, th;
+	ui_view2d_tex_rect(config_get_texture_res_y() / (float)config_get_texture_res_x(), &tx, &ty, &tw, &th);
+	f32 top = ui_view2d_top();
+	return (vec4_t){(g_context->paint_vec.x * base_w() - tx) / tw, (g_context->paint_vec.y * base_h() + top - ty) / th,
+	                (g_context->last_paint_vec_x * base_w() - tx) / tw, (g_context->last_paint_vec_y * base_h() + top - ty) / th};
+}
+
 vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) {
 	vec4_t v = vec4_nan();
 	if (string_equals(link, "_brush_direction")) {
-		// Discard first paint for directional brush (no prev position yet)
-		bool allow_paint = g_context->prev_paint_vec_x > 0 && g_context->prev_paint_vec_y > 0 &&
-		                   (g_context->prev_paint_vec_x != g_context->paint_vec.x || g_context->prev_paint_vec_y != g_context->paint_vec.y);
-		f32 x                       = g_context->paint_vec.x;
-		f32 y                       = g_context->paint_vec.y;
-		f32 lastx                   = g_context->prev_paint_vec_x;
-		f32 lasty                   = g_context->prev_paint_vec_y;
-		f32 angle                   = math_atan2(-y + lasty, x - lastx) - math_pi() / 2.0;
-		v                           = (vec4_t){math_cos(angle), math_sin(angle), allow_paint ? 1 : 0, 1.0};
-		g_context->prev_paint_vec_x = g_context->last_paint_vec_x;
-		g_context->prev_paint_vec_y = g_context->last_paint_vec_y;
-		return v;
+		paint_exec_op_t *op = paint_exec_current();
+		return op != NULL ? op->direction : uniforms_brush_direction_now(); // The executor's has no side effect
 	}
 	else if (string_equals(link, "_atlas_transform")) {
 		if (!util_mesh_udim_active() || render_path_raytrace_override_pass) {
@@ -318,14 +385,17 @@ vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) 
 
 vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) {
 	if (string_equals(link, "_pixel_snap_uv")) {
-		if (!g_context->paint2d_view) {
-			return (vec4_t){0.0, 0.0, 0.0, 0.0};
-		}
-		f32 tx, ty, tw, th;
-		ui_view2d_tex_rect(config_get_texture_res_y() / (float)config_get_texture_res_x(), &tx, &ty, &tw, &th);
-		f32 top = ui_view2d_top();
-		return (vec4_t){(g_context->paint_vec.x * base_w() - tx) / tw, (g_context->paint_vec.y * base_h() + top - ty) / th,
-		                (g_context->last_paint_vec_x * base_w() - tx) / tw, (g_context->last_paint_vec_y * base_h() + top - ty) / th};
+		paint_exec_op_t *op = paint_exec_current();
+		return op != NULL ? op->pixel_snap_uv : uniforms_pixel_snap_uv();
+	}
+	if (string_equals(link, "_paint_uv_tile")) {
+		return paint_exec_uv_tile;
+	}
+	if (string_equals(link, "_paint_dab_aabb_min") || string_equals(link, "_paint_dab_aabb_size")) {
+		mat4_t obj, obj_inv;
+		vec4_t bmin, bsize;
+		paint_exec_space(&obj, &obj_inv, &bmin, &bsize);
+		return string_equals(link, "_paint_dab_aabb_min") ? bmin : bsize;
 	}
 	if (string_equals(link, "_input_brush")) {
 		return uniforms_input_brush();
@@ -368,6 +438,12 @@ mat4_t uniforms_ext_mat4_link(object_t *object, shader_data_t *mat, char *link) 
 	}
 	if (string_equals(link, "_taa_prev_vp")) {
 		return render_path_base_taa_prev_vp;
+	}
+	if (string_equals(link, "_paint_dab_obj") || string_equals(link, "_paint_dab_obj_inv")) { // Object space of the dab resolve pass
+		mat4_t obj, obj_inv;
+		vec4_t bmin, bsize;
+		paint_exec_space(&obj, &obj_inv, &bmin, &bsize);
+		return string_equals(link, "_paint_dab_obj") ? obj : obj_inv;
 	}
 	if (string_equals(link, "_decal_layer_matrix")) { // Decal layer
 		mat4_t m            = mat4_inv(g_context->layer->decal_mat);
@@ -468,7 +544,11 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		return g_context->text_tool_image;
 	}
 	else if (string_equals(link, "_texpaintdabs")) {
-		gpu_texture_t *t = render_path_paint_batch_texture;
+		gpu_texture_t *t = paint_exec_current() != NULL ? render_path_target_image("texpaint_dabs_resolved") : render_path_paint_batch_texture;
+		return t != NULL ? t : render_path_empty_black();
+	}
+	else if (string_equals(link, "_texpaintdabsin")) {
+		gpu_texture_t *t = paint_exec_dabs_in();
 		return t != NULL ? t : render_path_empty_black();
 	}
 	else if (string_equals(link, "_texbrushmask")) {

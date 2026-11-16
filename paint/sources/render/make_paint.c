@@ -208,9 +208,19 @@ static bool make_paint_batch_eligible() {
 	       !g_context->brush_directional && g_context->brush_stencil_image == NULL;
 }
 
+// Brush draws read their dabs resolved to world space (paint_exec.c) instead of the depth and gbuffer under the screen point
+static bool make_paint_resolved_eligible(bool is_atlas) {
+	if (is_atlas || !paint_exec_resolved_config() || g_context->pick_pos_nor_tex || g_context->layer == NULL || g_context->layer->fill_material != NULL) {
+		return false;
+	}
+	tool_type_t tool = g_context->tool;
+	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR || context_is_decal();
+}
+
 node_shader_context_t *make_paint_run_context(material_t *data, char *context_id) {
-	bool is_atlas      = string_equals(context_id, "atlas");
-	make_paint_batched = !is_atlas && make_paint_batch_eligible();
+	bool is_atlas       = string_equals(context_id, "atlas");
+	make_paint_batched  = !is_atlas && make_paint_batch_eligible();
+	make_paint_resolved = make_paint_resolved_eligible(is_atlas);
 	return make_paint_run_context_internal(data, context_id, is_atlas);
 }
 
@@ -459,7 +469,14 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_vert(shader, string_tmp("vec2 atlas_uv = %s * constants.atlas_transform.z + constants.atlas_transform.xy;", tuv));
 		tuv = "atlas_uv";
 	}
-	node_shader_write_vert(shader, string_tmp("vec2 tpos = vec2(%s.x * 2.0 - 1.0, (1.0 - %s.y) * 2.0 - 1.0);", tuv, tuv));
+	if (paint_exec_resolved_config() && !is_atlas) { // The part of the layer painted (paint_exec_uv_tile), the whole layer live
+		node_shader_add_constant(shader, "vec4 paint_uv_tile", "_paint_uv_tile");
+		node_shader_write_vert(shader, string_tmp("vec2 tile_uv = (%s - constants.paint_uv_tile.xy) * constants.paint_uv_tile.zw;", tuv));
+		node_shader_write_vert(shader, "vec2 tpos = vec2(tile_uv.x * 2.0 - 1.0, (1.0 - tile_uv.y) * 2.0 - 1.0);");
+	}
+	else {
+		node_shader_write_vert(shader, string_tmp("vec2 tpos = vec2(%s.x * 2.0 - 1.0, (1.0 - %s.y) * 2.0 - 1.0);", tuv, tuv));
+	}
 
 	node_shader_write_vert(shader, "output.pos = vec4(tpos, 0.0, 1.0);");
 
@@ -489,6 +506,11 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	node_shader_write_attrib_frag(shader, "sp.y = sp.y * 0.5 + 0.5;");
 	node_shader_write_attrib_frag(shader, "sp.y = 1.0 - sp.y;");
 	node_shader_write_attrib_frag(shader, "sp.z -= 0.0001;"); // small bias
+	if (make_paint_resolved) { // The first dab of the draw, see PAINT_DAB_TEXELS
+		node_shader_add_texture(shader, "texpaintdabs", "_texpaintdabs");
+		node_shader_add_constant(shader, "float paint_dab_first", "_paint_dab_first");
+		node_shader_write_attrib_frag(shader, "int dab_k0 = int(constants.paint_dab_first);");
+	}
 
 	uv_type_t uv_type = g_context->layer->fill_material != NULL ? g_context->layer->uv_type : g_context->brush_paint;
 	if (uv_type == UV_TYPE_PROJECT) {
@@ -703,12 +725,17 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		// Project mask onto mesh surface
 		node_shader_add_texture(shader, "texbrushmask", "_texbrushmask");
 		node_shader_add_function(shader, str_octahedron_wrap);
-		node_shader_add_texture(shader, "gbuffer0", NULL);
 		node_shader_add_constant(shader, "vec3 camera_right", "_camera_right");
 		node_shader_add_constant(shader, "vec3 camera_up", "_camera_up");
 		node_shader_add_constant(shader, "float camera_align", "_brush_camera_align");
 		node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
-		node_shader_write_frag(shader, "vec2 mn0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
+		if (make_paint_resolved) {
+			node_shader_write_frag(shader, string_tmp("vec2 mn0 = %s.xy;", make_brush_dab("dab_k0", 2)));
+		}
+		else {
+			node_shader_add_texture(shader, "gbuffer0", NULL);
+			node_shader_write_frag(shader, "vec2 mn0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
+		}
 		node_shader_write_frag(shader, "vec3 mn;");
 		node_shader_write_frag(shader, "mn.z = 1.0 - abs(mn0.x) - abs(mn0.y);");
 		node_shader_write_frag(shader,

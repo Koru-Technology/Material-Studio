@@ -218,8 +218,31 @@ void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) 
 	}
 }
 
+// Scratch targets the size of the layer painted
 static void render_path_paint_ref_target(char *name, char *format) {
-	render_path_ensure_target(name, config_get_texture_res_x(), config_get_texture_res_y(), format);
+	i32 w = config_get_texture_res_x();
+	i32 h = config_get_texture_res_y();
+	if (paint_exec_resolved_config() && g_context->layer != NULL && g_context->layer->texpaint != NULL) {
+		w = g_context->layer->texpaint->width;
+		h = g_context->layer->texpaint->height;
+	}
+	render_path_ensure_target(name, w, h, format);
+}
+
+// The stroke coverage targets at w x h, the size of the layer painted
+void render_path_paint_scratch_resize(i32 w, i32 h) {
+	char *names[] = {"texpaint_blend0", "texpaint_blend1"};
+	for (i32 i = 0; i < 2; ++i) {
+		render_target_t *rt = any_map_get(render_path_render_targets, names[i]);
+		if (rt->_image != NULL && rt->width == w && rt->height == h) {
+			continue;
+		}
+		gpu_delete_texture(rt->_image);
+		rt->width  = w;
+		rt->height = h;
+		rt->_image = gpu_create_render_target(w, h, GPU_TEXTURE_FORMAT_R16);
+	}
+	g_context->brush_blend_dirty = true;
 }
 
 // Frees the full size scratch targets, they are created again when needed
@@ -270,7 +293,7 @@ static void render_path_paint_ref_snapshot(i32 tid, bool is_mask) {
 }
 
 // Clone source for the visible layers mode
-static void render_path_paint_clone_snapshot() {
+void render_path_paint_clone_snapshot() {
 	layers_flatten(false, NULL);
 	char *format = gpu_texture_format_name(layers_format(base_bits));
 	render_path_paint_ref_target("texpaint_ref", format);
@@ -299,16 +322,31 @@ static bool    render_path_paint_batch_ready  = false; // Uploaded for the next 
 gpu_texture_t *render_path_paint_batch_texture = NULL;
 f32            render_path_paint_batch_drawn   = 0.0; // Dabs in the texture
 
-// Whether the paint shader in use paints batches of dabs. Asked of the shader itself, not make_paint_batched: previews build
-// other paint shaders and restore the saved one (make_material_restore_paint_material), which leaves that flag stale.
-bool render_path_paint_batched() {
+// Whether the paint shader in use reads resolved dabs (make_paint_resolved), its draws go through the paint executor
+bool render_path_paint_resolved() {
 	shader_context_t *scon = make_material_paint_scon;
-	if (scon == NULL || scon->texture_units == NULL) {
+	if (scon == NULL || scon->constants == NULL) {
 		return false;
 	}
-	for (i32 i = 0; i < scon->texture_units->length; ++i) {
-		char *link = scon->texture_units->buffer[i]->link;
-		if (link != NULL && string_equals(link, "_texpaintdabs")) {
+	for (i32 i = 0; i < scon->constants->length; ++i) {
+		char *link = ((shader_const_t *)scon->constants->buffer[i])->link;
+		if (link != NULL && string_equals(link, "_paint_dab_first")) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Whether the paint shader in use paints batches of dabs. Asked of the shader itself, not make_paint_batched: previews build
+// other paint shaders and restore the saved one (make_material_restore_paint_material), which leaves that flag stale.
+bool render_path_paint_batched() { // Its dab count: shaders reading resolved dabs read _texpaintdabs batched or not
+	shader_context_t *scon = make_material_paint_scon;
+	if (scon == NULL || scon->constants == NULL) {
+		return false;
+	}
+	for (i32 i = 0; i < scon->constants->length; ++i) {
+		char *link = ((shader_const_t *)scon->constants->buffer[i])->link;
+		if (link != NULL && string_equals(link, "_paint_dab_count")) {
 			return true;
 		}
 	}
@@ -317,6 +355,10 @@ bool render_path_paint_batched() {
 
 // Adds a dab from the current brush state, as the uniforms of a single draw would see it
 void render_path_paint_batch_add() {
+	if (paint_exec_on()) {
+		paint_exec_batch_add();
+		return;
+	}
 	if (render_path_paint_batch_count == RENDER_PATH_PAINT_BATCH_MAX) {
 		render_path_paint_batch_flush(false);
 	}
@@ -354,7 +396,8 @@ static void render_path_paint_batch_upload() {
 
 // Only the parts of the mesh near the dabs of this draw, see paint_cull.c
 static void render_path_paint_cull(mesh_object_t *o) {
-	tool_type_t tool = g_context->tool;
+	tool_type_t      tool = g_context->tool;
+	paint_exec_op_t *op   = paint_exec_current();
 	if ((tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_BLUR) || g_context->paint2d ||
 	    context_is_decal() || g_context->xray || context_is_pixel_snap() || context_is_brush_camera_align() || g_context->pick_pos_nor_tex ||
 	    g_context->layer->fill_material != NULL) {
@@ -363,7 +406,16 @@ static void render_path_paint_cull(mesh_object_t *o) {
 	static paint_cull_dab_t dabs[RENDER_PATH_PAINT_BATCH_MAX];
 	i32                     count   = 0;
 	f32                     stretch = g_context->brush_tilt_shading ? 3.0 : 1.0;
-	if (render_path_paint_batched()) {
+	if (op != NULL) { // The dabs of the draw being executed
+		for (i32 i = 0; i < op->dab_count && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) {
+			f32 *d = paint_exec_dab(op->dab_first + i);
+			if (d[4] != PAINT_DAB_MODE_BRUSH) {
+				continue; // A decal anchor
+			}
+			dabs[count++] = (paint_cull_dab_t){d[0] * 2.0 - 1.0, 1.0 - d[1] * 2.0, d[2] * 2.0 - 1.0, 1.0 - d[3] * 2.0, d[12] * stretch};
+		}
+	}
+	else if (render_path_paint_batched()) {
 		for (i32 i = 0; i < (i32)render_path_paint_batch_drawn && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) {
 			f32 *d       = &render_path_paint_batch[i * 12];
 			dabs[count++] = (paint_cull_dab_t){d[0] * 2.0 - 1.0, 1.0 - d[1] * 2.0, d[2] * 2.0 - 1.0, 1.0 - d[3] * 2.0, d[4] * stretch};
@@ -380,6 +432,10 @@ static void render_path_paint_cull(mesh_object_t *o) {
 
 // Paints the collected dabs
 void render_path_paint_batch_flush(bool dilation) {
+	if (paint_exec_on()) {
+		paint_exec_batch_flush(dilation);
+		return;
+	}
 	if (render_path_paint_batch_count == 0) {
 		return;
 	}
@@ -412,7 +468,14 @@ static void render_path_paint_timing_flush() { // The open pass ends: what was d
 	}
 }
 
+// A paint draw, executed by the paint executor (paint_exec.c)
 void render_path_paint_commands_paint(bool dilation) {
+	paint_exec_draw(dilation);
+}
+
+// The draw itself, the paint executor's: the brush state from the uniforms, while it executes an op the op's
+void render_path_paint_commands_paint_now(bool dilation) {
+	bool exec = paint_exec_current() != NULL;
 	if (g_context->pdirty <= 0) {
 		render_path_paint_batch_count = 0;
 		render_path_paint_batch_ready = false;
@@ -423,7 +486,7 @@ void render_path_paint_commands_paint(bool dilation) {
 		g_context->layer->mask_stack_dirty = true; // The paint effect changes
 	}
 	mask_stack_layer_changed(g_context->layer); // Masks anchoring it follow the stroke
-	if (render_path_paint_batched() && !render_path_paint_batch_ready) { // Single draw, from the current brush state
+	if (!exec && render_path_paint_batched() && !render_path_paint_batch_ready) { // Single draw, from the current brush state
 		render_path_paint_batch_count = 0;
 		render_path_paint_batch_add();
 		render_path_paint_batch_upload();
@@ -431,7 +494,7 @@ void render_path_paint_commands_paint(bool dilation) {
 	if (render_path_paint_timing < 0) {
 		render_path_paint_timing = getenv("IRON_PAINT_TIMING") != NULL ? 1 : 0;
 	}
-	if (!render_path_paint_timing || render_path_paint_band_h > 0) { // A band: its caller times it
+	if (!render_path_paint_timing || render_path_paint_band_h > 0 || exec) { // A band: its caller times it, the executor its ops
 		render_path_paint_commands_paint_internal(dilation);
 		render_path_paint_batch_ready = false;
 		return;
@@ -725,6 +788,7 @@ void render_path_paint_commands_symmetry() {
 	}
 	vec4_t sc = (vec4_t){c.x * s0.x, c.y * s0.y, c.z * s0.z, 0.0}; // Center in scaled object space
 
+	paint_exec_begin(); // The copies resolve their dabs together, with the paint object back in place
 	i32    radial = g_context->sym_radial > 1 ? g_context->sym_radial : 1;
 	vec4_t axis   = g_context->sym_radial_axis == 0   ? (vec4_t){1.0, 0.0, 0.0, 0.0}
 	                : g_context->sym_radial_axis == 1 ? (vec4_t){0.0, 1.0, 0.0, 0.0}
@@ -753,6 +817,7 @@ void render_path_paint_commands_symmetry() {
 	t->rot   = rot0;
 	t->scale = s0;
 	transform_build_matrix(t);
+	paint_exec_end();
 }
 
 void render_path_paint_commands_live_brush() {
@@ -874,7 +939,7 @@ void render_path_paint_begin() {
 	bool stroke = g_context->brush_time > 0;
 	bool due    = !stroke || render_path_paint_dilate_frame % 6 == 0;
 	if (due && (!render_path_paint_dilated || render_path_paint_dilate_base_pending)) {
-		render_path_paint_dilate(render_path_paint_dilate_base_pending, !render_path_paint_dilated);
+		paint_exec_dilate(render_path_paint_dilate_base_pending, !render_path_paint_dilated);
 		render_path_paint_dilated             = true;
 		render_path_paint_dilate_base_pending = false;
 	}
@@ -894,7 +959,7 @@ void render_path_paint_begin() {
 	if (history_push_undo && history_undo_layers != NULL) {
 		history_paint();
 		if (g_context->tool == TOOL_TYPE_CLONE && g_context->clone_layers == CLONE_LAYERS_VISIBLE) {
-			render_path_paint_clone_snapshot();
+			paint_exec_clone_flatten();
 		}
 	}
 
@@ -998,6 +1063,10 @@ void render_path_paint_draw_bake_derivative(void *_) {
 }
 
 void render_path_paint_clear_blend() {
+	paint_exec_clear_blend();
+}
+
+void render_path_paint_clear_blend_now() {
 	if (g_context->brush_blend_dirty) {
 		g_context->brush_blend_dirty = false;
 		if (g_context->brush_time == 0) {
@@ -1019,6 +1088,7 @@ void render_path_paint_draw() {
 		render_path_paint_commands_live_brush();
 	}
 
+	paint_exec_begin(); // The draws of the frame resolve their dabs together
 	if (history_undo_layers != NULL && render_path_paint_tail_pending) {
 		// The brush was released, the stamps the end taper kept back paint now. Painted as part of the stroke: its paint so far
 		// is kept, the coverage clears after this draw.
@@ -1120,6 +1190,7 @@ void render_path_paint_draw() {
 			render_path_paint_commands_paint(true);
 		}
 	}
+	paint_exec_end();
 
 	render_path_paint_clear_blend();
 
@@ -1186,6 +1257,10 @@ void render_path_paint_live_layer_release_idle() {
 
 // Base dilation after painting, deferred to render_path_paint_begin while a stroke is in progress
 void render_path_paint_dilate_after_paint() {
+	paint_exec_dilate_after_paint();
+}
+
+void render_path_paint_dilate_after_paint_now() {
 	if (g_context->brush_time > 0) {
 		render_path_paint_dilate_base_pending = true;
 		return;
