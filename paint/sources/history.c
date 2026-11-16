@@ -347,8 +347,8 @@ static void history_restore_run(history_restore_t *r) {
 	}
 	paint_target_t t;
 	timeline_target_live(l, &t);
-	hash128_t to   = timeline_state(tl, r->pos);
-	hash128_t from = r->live >= 0 ? timeline_state(tl, r->live) : HASH128_NONE;
+	hash128_t to   = timeline_state_at(tl, r->pos, t.res_w, t.res_h);
+	hash128_t from = r->live >= 0 ? timeline_state_at(tl, r->live, t.res_w, t.res_h) : HASH128_NONE;
 	bool      ok   = !hash128_is_none(to) ? timeline_tiles_restore_from(to, from, &t) : timeline_materialize(tl, r->pos, &t);
 	if (!ok) {
 		iron_log("Undo could not restore the pixels of %s", l->name);

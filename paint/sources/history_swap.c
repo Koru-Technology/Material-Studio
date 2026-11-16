@@ -94,7 +94,7 @@ static void history_record_in(slot_layer_t *l, hash128_t record) {
 	l->texpaint_preview = gpu_create_render_target(util_render_layer_preview_size, util_render_layer_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
 	paint_target_t t;
 	timeline_target_live(l, &t);
-	if (hash128_is_none(map) || !timeline_tiles_restore(map, &t)) {
+	if (hash128_is_none(map) || !timeline_state_resample(map, &t)) { // Scaled when the project's resolution changed since
 		draw_saved_t saved = draw_suspend();
 		slot_layer_clear(l, slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 		draw_resume(saved);

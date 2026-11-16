@@ -160,14 +160,15 @@ void timeline_append(timeline_t *tl, tl_entry_t *e) {
 	tl->cost_since_cp += e->cost_ms;
 }
 
-// The checkpoint at pos is tilemap (the reference handed over), one there already is replaced
+// The checkpoint at pos of the tile map's size is tilemap (the reference handed over), one there already is replaced.
+// A position keeps a state per resolution: a resolution change goes back to the state it left byte for byte.
 void timeline_checkpoint_set(timeline_t *tl, i32 pos, hash128_t tilemap, bool pinned) {
 	i32 w = 0, h = 0, format = 0, channels = 0;
 	timeline_tiles_info(tilemap, &w, &h, &format, &channels);
 	tl_checkpoint_t cp = {.pos = pos, .w = w, .h = h, .format = format, .tilemap = tilemap, .exact_tier = 0, .pinned = pinned};
 	tl->cost_since_cp  = 0.0;
 	for (i32 i = 0; i < tl->cp_count; ++i) {
-		if (tl->cps[i].pos == pos) {
+		if (tl->cps[i].pos == pos && tl->cps[i].w == w && tl->cps[i].h == h) {
 			hstore_unref(tl->cps[i].tilemap);
 			cp.pinned  = pinned || tl->cps[i].pinned;
 			tl->cps[i] = cp;
@@ -185,10 +186,28 @@ void timeline_checkpoint_set(timeline_t *tl, i32 pos, hash128_t tilemap, bool pi
 	tl->cps[i] = cp;
 }
 
-// Tile map of the state at pos when one is kept (a TL_RASTER payload or a checkpoint), NONE otherwise
-hash128_t timeline_state(timeline_t *tl, i32 pos) {
+// Tile map of the state at pos at w x h when one is kept (a checkpoint, a TL_RASTER payload), NONE otherwise
+hash128_t timeline_state_at(timeline_t *tl, i32 pos, i32 w, i32 h) {
 	if (tl == NULL || pos < 0 || pos > tl->count) {
 		return HASH128_NONE;
+	}
+	for (i32 i = 0; i < tl->cp_count; ++i) {
+		if (tl->cps[i].pos == pos && tl->cps[i].w == w && tl->cps[i].h == h) {
+			return tl->cps[i].tilemap;
+		}
+	}
+	tl_entry_t *e = pos > 0 ? &tl->entries[pos - 1] : NULL;
+	if (e != NULL && e->kind == TL_RASTER && !hash128_is_none(e->payload) && e->res_w == w && e->res_h == h) {
+		return e->payload;
+	}
+	return HASH128_NONE;
+}
+
+// Tile map of the state at pos when one is kept, at the working resolution first, NONE otherwise
+hash128_t timeline_state(timeline_t *tl, i32 pos) {
+	hash128_t s = timeline_state_at(tl, pos, config_get_texture_res_x(), config_get_texture_res_y());
+	if (!hash128_is_none(s) || tl == NULL || pos < 0 || pos > tl->count) {
+		return s;
 	}
 	for (i32 i = 0; i < tl->cp_count; ++i) {
 		if (tl->cps[i].pos == pos) {
@@ -324,12 +343,19 @@ void timeline_finalize() {
 		tl_pending_t p = timeline_pending[i];
 		timeline_t  *tl = timeline_find(p.tl);
 		slot_layer_t *l = slot_layer_find_uid(p.layer);
-		if (tl == NULL || l == NULL || l->timeline != tl->uid || p.index >= tl->count || !timeline_layer_paints(l)) {
-			continue; // Gone or turned procedural meanwhile, the entry stays without a state
+		if (tl == NULL || l == NULL || l->timeline != tl->uid || p.index >= tl->count) {
+			continue; // Gone meanwhile, the entry stays without a state
+		}
+		bool was         = timeline_fill_ok;
+		timeline_fill_ok = was || tl->entries[p.index].kind == TL_FILL; // To fill: the layer shows the fill the entry renders
+		bool paints      = timeline_layer_paints(l);
+		timeline_fill_ok = was;
+		if (!paints) {
+			continue; // Turned procedural meanwhile
 		}
 		paint_target_t t;
 		timeline_target_live(l, &t);
-		hash128_t prev = timeline_state(tl, p.index);
+		hash128_t prev = timeline_state_at(tl, p.index, t.res_w, t.res_h);
 		hash128_t h    = timeline_tiles_capture(&t, prev, p.has_dirty ? p.dirty : NULL);
 		tl_entry_t *e  = &tl->entries[p.index];
 		if (e->kind == TL_RASTER && hash128_is_none(e->payload)) {
@@ -384,6 +410,91 @@ void timeline_fork(slot_layer_t *src, slot_layer_t *dst) {
 	}
 }
 
+// Replays that failed (a stroke whose shader no longer hashes as recorded, a record missing): the entry is a floor from
+// then on, materialize starts after it. Runtime only, until the project is reset.
+static u64 *timeline_failed       = NULL; // uid << 32 | index
+static i32  timeline_failed_count = 0;
+static i32  timeline_failed_cap   = 0;
+
+static bool timeline_entry_failed(timeline_t *tl, i32 i) {
+	u64 key = (u64)tl->uid << 32 | (u32)i;
+	for (i32 k = 0; k < timeline_failed_count; ++k) {
+		if (timeline_failed[k] == key) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void timeline_entry_fail(timeline_t *tl, i32 i) {
+	if (timeline_entry_failed(tl, i)) {
+		return;
+	}
+	if (timeline_failed_count == timeline_failed_cap) {
+		timeline_failed_cap = timeline_failed_cap == 0 ? 16 : timeline_failed_cap * 2;
+		timeline_failed     = realloc(timeline_failed, sizeof(u64) * timeline_failed_cap);
+	}
+	timeline_failed[timeline_failed_count++] = (u64)tl->uid << 32 | (u32)i;
+	iron_log("[timeline] entry %d of timeline %u does not replay, it is a floor now", i, tl->uid);
+}
+
+// Entry i can be re-rendered at any resolution: a recorded stroke, an op with what it needs (timeline_ops_replays)
+bool timeline_entry_replays(timeline_t *tl, i32 i) {
+	tl_entry_t *e = &tl->entries[i];
+	if (timeline_entry_failed(tl, i)) {
+		return false;
+	}
+	if (e->kind == TL_STROKE) {
+		return !hash128_is_none(e->payload);
+	}
+	return timeline_ops_replays(tl, i);
+}
+
+// The last position at or before pos that can not be re-rendered: after the last entry that does not replay (TL_RASTER
+// among them), 0 when every entry does. A state of another resolution is resampled there.
+i32 timeline_floor(timeline_t *tl, i32 pos) {
+	if (tl == NULL) {
+		return 0;
+	}
+	pos = pos < tl->count ? pos : tl->count;
+	for (i32 i = pos - 1; i >= 0; --i) {
+		if (!timeline_entry_replays(tl, i)) {
+			return i + 1;
+		}
+	}
+	return 0;
+}
+
+// The state the floor of pos starts from: kept at the floor at any resolution (the working one first), else the
+// earliest kept after it. -1 when none is.
+static i32 timeline_floor_state(timeline_t *tl, i32 fl, i32 pos, hash128_t *out) {
+	for (i32 p = fl; p <= pos; ++p) {
+		hash128_t h = timeline_state(tl, p);
+		if (!hash128_is_none(h)) {
+			*out = h;
+			return p;
+		}
+	}
+	*out = HASH128_NONE;
+	return -1;
+}
+
+// The state at pos re-renders at any resolution without loss: its floor state is uniform tiles (a new layer's base),
+// or an op that writes every texel (clear, fill, image) replays after the floor
+bool timeline_upscalable(timeline_t *tl, i32 pos) {
+	if (tl == NULL || pos < 0 || pos > tl->count) {
+		return false;
+	}
+	i32 fl = timeline_floor(tl, pos);
+	for (i32 i = fl; i < pos; ++i) {
+		if (timeline_ops_overwrites(tl, i)) {
+			return true;
+		}
+	}
+	hash128_t h;
+	return timeline_floor_state(tl, fl, pos, &h) == fl && timeline_tiles_uniform(h);
+}
+
 // Entry i applied to t: a stroke replayed (paint_replay.c), an op re-rendered (timeline_ops.c). False when it can not be.
 bool timeline_entry_replay(timeline_t *tl, i32 i, paint_target_t *t) {
 	if (tl->entries[i].kind == TL_STROKE) {
@@ -393,25 +504,102 @@ bool timeline_entry_replay(timeline_t *tl, i32 i, paint_target_t *t) {
 	return timeline_ops_replay(tl, i, t);
 }
 
-// Writes the state at pos into t: the best kept state at pos or before, the entries after it replayed
+static gpu_texture_t *timeline_lo[3]; // Part of a state at its own resolution, resampled into a target
+
+gpu_pipeline_t *timeline_copy_pipe(gpu_texture_t *t) {
+	switch (t->format) {
+	case GPU_TEXTURE_FORMAT_R8:
+		return pipes_copy8;
+	case GPU_TEXTURE_FORMAT_RGBA64:
+		return pipes_copy64;
+	case GPU_TEXTURE_FORMAT_RGBA128:
+		return pipes_copy128;
+	default:
+		return pipes_copy;
+	}
+}
+
+// State h written into t at t's resolution: restored when it has it, otherwise the part t covers (and a texel around,
+// bilinear reads it) restored at h's own resolution and scaled into t
+bool timeline_state_resample(hash128_t h, paint_target_t *t) {
+	i32 sw = 0, sh = 0, format = 0, channels = 0;
+	if (!timeline_tiles_info(h, &sw, &sh, &format, &channels) || channels != t->channels) {
+		return false;
+	}
+	if (sw == t->res_w && sh == t->res_h) {
+		return timeline_tiles_restore(h, t);
+	}
+	f32            u0 = t->uv_rect[0], v0 = t->uv_rect[1], u1 = t->uv_rect[2], v1 = t->uv_rect[3];
+	i32            x0 = (i32)floorf(u0 * sw) - 1, y0 = (i32)floorf(v0 * sh) - 1;
+	i32            x1 = (i32)ceilf(u1 * sw) + 1, y1 = (i32)ceilf(v1 * sh) + 1;
+	paint_target_t lo = {.w = x1 - x0, .h = y1 - y0, .res_w = sw, .res_h = sh, .channels = channels};
+	lo.uv_rect[0]     = x0 / (f32)sw;
+	lo.uv_rect[1]     = y0 / (f32)sh;
+	lo.uv_rect[2]     = x1 / (f32)sw;
+	lo.uv_rect[3]     = y1 / (f32)sh;
+	for (i32 k = 0; k < channels; ++k) {
+		util_texture_ensure_target(&timeline_lo[k], lo.w, lo.h, format);
+		lo.out[k] = timeline_lo[k];
+	}
+	if (!timeline_tiles_restore(h, &lo)) {
+		return false;
+	}
+	draw_saved_t saved = draw_suspend();
+	for (i32 k = 0; k < channels; ++k) {
+		draw_begin(t->out[k], false, 0);
+		draw_set_pipeline(timeline_copy_pipe(t->out[k]));
+		draw_scaled_sub_image(timeline_lo[k], u0 * sw - x0, v0 * sh - y0, (u1 - u0) * sw, (v1 - v0) * sh, 0, 0, t->w, t->h);
+		draw_set_pipeline(NULL);
+		draw_end();
+	}
+	draw_resume(saved);
+	return true;
+}
+
+// Writes the state at pos into t, at t's resolution for its uv_rect. It starts from the latest of: a state kept at t's
+// resolution, an op writing every texel; at the floor or after it. Without one the floor's state of another resolution
+// is resampled. The entries after the start replay at t's resolution, one that fails becomes a floor and it starts again.
 bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
 	if (tl == NULL || pos < 0 || pos > tl->count) {
 		return false;
 	}
 	timeline_finalize();
-	i32 from = pos;
-	while (from >= 0 && hash128_is_none(timeline_state(tl, from))) {
-		from--;
-	}
-	if (from < 0 || !timeline_tiles_restore(timeline_state(tl, from), t)) {
-		return false;
-	}
-	for (i32 i = from; i < pos; ++i) {
-		if (!timeline_entry_replay(tl, i, t)) {
+	while (true) {
+		i32       fl = timeline_floor(tl, pos);
+		i32       from  = -1;
+		hash128_t h     = HASH128_NONE;
+		for (i32 p = pos; p >= fl && from < 0; --p) {
+			h = timeline_state_at(tl, p, t->res_w, t->res_h);
+			if (!hash128_is_none(h)) {
+				from = p;
+			}
+			else if (p < pos && timeline_ops_overwrites(tl, p)) {
+				from = p; // Replaying it writes every texel, nothing to restore
+			}
+		}
+		bool ok = true;
+		if (from < 0) {
+			from = timeline_floor_state(tl, fl, pos, &h);
+			ok   = from >= 0 && timeline_state_resample(h, t);
+		}
+		else if (!hash128_is_none(h)) {
+			ok = timeline_tiles_restore(h, t);
+		}
+		if (!ok) {
 			return false;
 		}
+		bool again = false;
+		for (i32 i = from; i < pos; ++i) {
+			if (!timeline_entry_replay(tl, i, t)) {
+				timeline_entry_fail(tl, i);
+				again = true;
+				break;
+			}
+		}
+		if (!again) {
+			return true;
+		}
 	}
-	return true;
 }
 
 // The live layer of tl goes from the state at its cursor to the one at pos, only the tiles that differ are written
@@ -422,8 +610,8 @@ bool timeline_materialize_live(timeline_t *tl, slot_layer_t *l, i32 pos) {
 	timeline_finalize();
 	paint_target_t t;
 	timeline_target_live(l, &t);
-	hash128_t to   = timeline_state(tl, pos);
-	hash128_t from = timeline_state(tl, tl->cursor);
+	hash128_t to   = timeline_state_at(tl, pos, t.res_w, t.res_h);
+	hash128_t from = timeline_state_at(tl, tl->cursor, t.res_w, t.res_h);
 	bool      ok   = !hash128_is_none(to) ? timeline_tiles_restore_from(to, from, &t) : timeline_materialize(tl, pos, &t);
 	tl->cursor     = pos;
 	return ok;
@@ -431,6 +619,7 @@ bool timeline_materialize_live(timeline_t *tl, slot_layer_t *l, i32 pos) {
 
 void timeline_reset_all() {
 	timeline_pending_count = 0;
+	timeline_failed_count  = 0;
 	while (timeline_all_count > 0) {
 		timeline_t *tl = timeline_all[--timeline_all_count];
 		timeline_free(tl);
@@ -439,6 +628,7 @@ void timeline_reset_all() {
 		g_project->_->layers->buffer[i]->timeline = 0;
 	}
 	timeline_tiles_cache_reset();
+	timeline_ops_reset();
 }
 
 // Scripts: entries of the timeline of l, the kind of entry i, the cursor, kept states
@@ -477,4 +667,140 @@ bool timeline_test_materialize(slot_layer_t *l, i32 pos) {
 	paint_target_t t;
 	timeline_target_live(l, &t);
 	return timeline_materialize(tl, pos, &t);
+}
+
+// Scripts: renders at another resolution and uv rectangle, into textures of the layer's format timeline_test_out reads
+static gpu_texture_t *timeline_test_tex[3];
+static gpu_texture_t *timeline_test_part[3];
+
+static bool timeline_test_target(slot_layer_t *l, gpu_texture_t **tex, i32 res_w, i32 res_h, f32 u0, f32 v0, f32 u1, f32 v1, paint_target_t *t) {
+	memset(t, 0, sizeof(paint_target_t));
+	t->w          = (i32)roundf((u1 - u0) * res_w);
+	t->h          = (i32)roundf((v1 - v0) * res_h);
+	t->uv_rect[0] = u0;
+	t->uv_rect[1] = v0;
+	t->uv_rect[2] = u1;
+	t->uv_rect[3] = v1;
+	t->res_w      = res_w;
+	t->res_h      = res_h;
+	t->channels   = slot_layer_is_mask(l) ? 1 : 3;
+	gpu_texture_t *live[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
+	for (i32 k = 0; k < t->channels; ++k) {
+		util_texture_ensure_target(&tex[k], t->w, t->h, live[k]->format);
+		t->out[k] = tex[k];
+	}
+	return t->w > 0 && t->h > 0;
+}
+
+// The timeline of l at pos (-1: its cursor) at res_w x res_h for the uv rectangle
+bool timeline_test_render(slot_layer_t *l, i32 pos, i32 res_w, i32 res_h, f32 u0, f32 v0, f32 u1, f32 v1) {
+	timeline_t    *tl = timeline_of(l);
+	paint_target_t t;
+	if (tl == NULL || !timeline_test_target(l, timeline_test_tex, res_w, res_h, u0, v0, u1, v1, &t)) {
+		return false;
+	}
+	return timeline_materialize(tl, pos < 0 ? tl->cursor : pos, &t);
+}
+
+// The live textures of l scaled (bilinear) to res_w x res_h, what a resolution change did before timelines
+bool timeline_test_scale_live(slot_layer_t *l, i32 res_w, i32 res_h) {
+	paint_target_t t;
+	if (!timeline_test_target(l, timeline_test_tex, res_w, res_h, 0, 0, 1, 1, &t)) {
+		return false;
+	}
+	paint_target_t live;
+	timeline_target_live(l, &live);
+	hash128_t h  = timeline_tiles_capture(&live, HASH128_NONE, NULL);
+	bool      ok = timeline_state_resample(h, &t);
+	hstore_unref(h);
+	return ok;
+}
+
+gpu_texture_t *timeline_test_out(i32 k) {
+	return k >= 0 && k < 3 ? timeline_test_tex[k] : NULL;
+}
+
+// Rendering l at its cursor in four quadrants at res x res gives the render of the whole: channel values (8 bit
+// textures) more than tol apart, -1 when it can not run
+i32 timeline_test_quadrants(slot_layer_t *l, i32 res, i32 tol) {
+	if (!timeline_test_render(l, -1, res, res, 0, 0, 1, 1)) {
+		return -1;
+	}
+	i32 channels = slot_layer_is_mask(l) ? 1 : 3;
+	i32 bpt      = gpu_texture_format_size(timeline_test_tex[0]->format);
+	if (bpt != 4 && bpt != 1) {
+		return -1;
+	}
+	u8 *whole[3] = {NULL, NULL, NULL};
+	for (i32 k = 0; k < channels; ++k) {
+		draw_saved_t saved = draw_suspend();
+		buffer_t    *b     = gpu_get_texture_pixels(timeline_test_tex[k]);
+		draw_resume(saved);
+		whole[k] = malloc(b->length);
+		memcpy(whole[k], b->buffer, b->length);
+		gpu_release_texture_pixels(timeline_test_tex[k]);
+	}
+	timeline_t *tl   = timeline_of(l);
+	i32         bad  = 0;
+	i32         half = res / 2;
+	for (i32 q = 0; q < 4 && bad >= 0; ++q) {
+		f32            u0 = (q % 2) * 0.5, v0 = (q / 2) * 0.5;
+		paint_target_t t;
+		if (!timeline_test_target(l, timeline_test_part, res, res, u0, v0, u0 + 0.5, v0 + 0.5, &t) || !timeline_materialize(tl, tl->cursor, &t)) {
+			bad = -1;
+			break;
+		}
+		for (i32 k = 0; k < channels; ++k) {
+			draw_saved_t saved = draw_suspend();
+			u8          *p     = gpu_get_texture_pixels(timeline_test_part[k])->buffer;
+			draw_resume(saved);
+			for (i32 y = 0; y < half; ++y) {
+				u8 *a = whole[k] + ((size_t)(y + (q / 2) * half) * res + (q % 2) * half) * bpt;
+				u8 *b = p + (size_t)y * half * bpt;
+				for (i32 x = 0; x < half * bpt; ++x) {
+					bad += abs((i32)a[x] - (i32)b[x]) > tol;
+				}
+			}
+			gpu_release_texture_pixels(timeline_test_part[k]);
+		}
+	}
+	for (i32 k = 0; k < channels; ++k) {
+		free(whole[k]);
+	}
+	return bad;
+}
+
+i32 timeline_test_floor(slot_layer_t *l) {
+	timeline_t *tl = timeline_of(l);
+	return tl != NULL ? timeline_floor(tl, tl->cursor) : -1;
+}
+
+bool timeline_test_upscalable(slot_layer_t *l) {
+	timeline_t *tl = timeline_of(l);
+	return tl != NULL && timeline_upscalable(tl, tl->cursor);
+}
+
+// Scripts: the test textures kept in slot (a project can be replaced meanwhile), and read back
+static gpu_texture_t *timeline_test_kept_tex[8][3];
+
+void timeline_test_keep(i32 slot) {
+	if (slot < 0 || slot >= 8) {
+		return;
+	}
+	draw_saved_t saved = draw_suspend();
+	for (i32 k = 0; k < 3; ++k) {
+		gpu_texture_t *t = timeline_test_tex[k];
+		if (t == NULL) {
+			continue;
+		}
+		util_texture_ensure_target(&timeline_test_kept_tex[slot][k], t->width, t->height, t->format);
+		gpu_copy_regions_begin();
+		gpu_copy_region(timeline_test_kept_tex[slot][k], 0, 0, t, 0, 0, t->width, t->height);
+		gpu_copy_regions_end();
+	}
+	draw_resume(saved);
+}
+
+gpu_texture_t *timeline_test_kept(i32 slot, i32 k) {
+	return slot >= 0 && slot < 8 && k >= 0 && k < 3 ? timeline_test_kept_tex[slot][k] : NULL;
 }

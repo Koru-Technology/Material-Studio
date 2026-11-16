@@ -53,6 +53,7 @@ static void tl_tiles_register() {
 	if (!registered) {
 		hstore_set_children(HSTORE_TILEMAP, timeline_tiles_children);
 		hstore_set_children(HSTORE_LAYER_RECORD, history_record_children);
+		hstore_set_children(HSTORE_PARAMS, timeline_ops_children);
 		registered = true;
 	}
 }
@@ -236,6 +237,23 @@ bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 
 	*height   = m->height;
 	*format   = m->format;
 	*channels = m->channels;
+	return true;
+}
+
+// Each channel of map h is one value (its tiles inline and equal): a state that scales to any resolution as it is
+bool timeline_tiles_uniform(hash128_t h) {
+	tl_tiles_map_t *m = tl_tiles_resolve(h);
+	if (m == NULL) {
+		return false;
+	}
+	i32 per = tl_tiles_per_channel();
+	for (i32 i = 0; i < m->channels * per; ++i) {
+		hash128_t first = m->tiles[i - i % per];
+		bool      empty = m->tiles[i].lo == 0 && m->tiles[i].hi == HASH128_INLINE_BIT; // A tile of no texels
+		if (!tl_tiles_inline(m->tiles[i]) || (!empty && !hash128_eq(m->tiles[i], first))) {
+			return false;
+		}
+	}
 	return true;
 }
 

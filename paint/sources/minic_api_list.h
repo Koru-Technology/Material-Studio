@@ -1151,3 +1151,13 @@ X0(paint_rec_test_stored, "i()", i)
 X0(paint_replay_test_fallbacks, "i()", i)
 X0(paint_replay_test_count, "i()", i)
 X2(paint_replay_test_entry, "b(p:slot_layer_t l,i index)", b, p, i)
+
+// timeline.c: materialize at any resolution
+X8(timeline_test_render, "b(p:slot_layer_t l,i pos,i res_w,i res_h,f u0,f v0,f u1,f v1)", b, p, i, i, i, f, f, f, f)
+X3(timeline_test_scale_live, "b(p:slot_layer_t l,i res_w,i res_h)", b, p, i, i)
+X1(timeline_test_out, "p:gpu_texture_t(i k)", p, i)
+X3(timeline_test_quadrants, "i(p:slot_layer_t l,i res,i tol)", i, p, i, i)
+X1(timeline_test_floor, "i(p:slot_layer_t l)", i, p)
+X1(timeline_test_upscalable, "b(p:slot_layer_t l)", b, p)
+X1(timeline_test_keep, "v(i slot)", v, i)
+X2(timeline_test_kept, "p:gpu_texture_t(i slot,i k)", p, i, i)
