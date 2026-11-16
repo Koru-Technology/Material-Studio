@@ -2471,6 +2471,7 @@ i32            export_tiled_not_upscaled(i32 w, i32 h);
 char          *export_tiled_not_upscaled_name(i32 i);
 void           export_tiled_test_no_fill(bool on);
 void           export_tiled_test_whole(bool on);
+void           export_tiled_set_mode(i32 mode);
 void           export_tiled_test_tile(i32 size);
 void           export_tiled_test_raster(bool on);
 void           export_tiled_test_mm(bool on);
