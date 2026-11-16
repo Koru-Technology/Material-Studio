@@ -2,7 +2,7 @@
 
 // Layer merges at 16 and 32 bit (util/util_layer_merge.c, slots/slot_layer.c): the GPU passes into 16 and 32 bit
 // layers use pipelines of those formats (Metal draws nothing or garbage otherwise). The same scene at 8, 16 and 32 bit:
-// the legacy texture export with a masked layer, apply mask, merge down, merge group and flatten give the 8 bit results
+// the texture export with a masked layer, apply mask, merge down, merge group and flatten give the 8 bit results
 // within its quantization.
 
 char *root = "/tmp/materialstudio_merge_bits";
@@ -82,7 +82,7 @@ void next() {
 	else if (step == 1) {
 		build_scene();
 	}
-	else if (step == 2) { // Legacy export: the masked layer composited
+	else if (step == 2) { // Texture export: the masked layer composited
 		char *dir = string("%s/d%d", root, depth);
 		iron_create_directory(dir);
 		export_texture_run(dir, 0);
