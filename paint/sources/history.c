@@ -35,8 +35,6 @@ char *history_action_to_string(history_action_t action) {
 		return tr("Apply Mask");
 	case HISTORY_ACTION_INVERT_MASK:
 		return tr("Invert Mask");
-	case HISTORY_ACTION_APPLY_FILTER:
-		return tr("Apply Filter");
 	case HISTORY_ACTION_TO_FILL_LAYER:
 		return tr("To Fill Layer");
 	case HISTORY_ACTION_TO_FILL_MASK:
