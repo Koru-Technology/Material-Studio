@@ -481,6 +481,11 @@ static void paint_rec_children(const u8 *data, u32 len, hstore_visit_fn visit, v
 	}
 }
 
+// At startup: stored records own their material snapshots (before a project's blobs are counted at its opening)
+void paint_rec_init() {
+	hstore_set_children(HSTORE_STROKE, paint_rec_children);
+}
+
 // The stroke ended: stored, its entry a TL_STROKE when it replays
 void paint_rec_finish() {
 	paint_rec_t *r = &paint_rec;
@@ -489,11 +494,6 @@ void paint_rec_finish() {
 	}
 	if (r->pending > 0) {
 		gpu_transfer_wait();
-	}
-	static bool children = false;
-	if (!children) {
-		children = true;
-		hstore_set_children(HSTORE_STROKE, paint_rec_children);
 	}
 	timeline_t *tl = timeline_find(r->tl_uid);
 	bool        ok = r->replayable && r->pending == 0 && r->n_ops > 0 && tl != NULL && r->index < tl->count &&

@@ -4,7 +4,8 @@
 // a stroke on a new layer with resolved dabs and timelines on, notes the hash of the layer's textures, then restores the
 // state before the stroke and replays its record into the layer: the hashes must match, no replay may fall back.
 // Cases: batched stamps, unbatched stamps, flow below 1, jitter (seeded), symmetry, a continuous brush, the eraser over a
-// stroke, a stroke through the per frame path (mouse events, tail and in-stroke dilation).
+// stroke, a stroke through the per frame path (mouse events, tail and in-stroke dilation), a mask. Then a stroke replays
+// the same after the project is saved (project_v31) and opened again.
 
 int fails  = 0;
 int checks = 0;
@@ -45,7 +46,30 @@ char *case_name(int k) {
 	if (k == 6) {
 		return "eraser";
 	}
-	return "live stroke";
+	if (k == 7) {
+		return "live stroke";
+	}
+	if (k == 8) {
+		return "mask";
+	}
+	return "saved and opened";
+}
+
+int   uid   = 0;
+char *dir   = "/tmp/materialstudio_rec_replay";
+int   v31   = 0;
+
+char *hash_of(gpu_texture_t *t) {
+	return t != NULL ? script_texture_hash(t) : "";
+}
+
+slot_layer_t *find_uid(int u) {
+	for (int i = 0; i < script_layer_count(); ++i) {
+		if (script_layer_at(i)->uid == u) {
+			return script_layer_at(i);
+		}
+	}
+	return NULL;
 }
 
 void setup(int k) {
@@ -61,6 +85,9 @@ void setup(int k) {
 	ctx->sym_x                = k == 4;
 	context_select_tool(TOOL_TYPE_BRUSH);
 	app_layer_new(0);
+	if (k == 8) {
+		script_layer_set(script_layer_new_mask(script_get_context()->layer, 0)); // Black, the stroke reveals
+	}
 	make_paint_set_batching(k != 1); // Parses the paint material again
 	render_path_paint_set_stamp_seed(4242);
 }
@@ -74,13 +101,14 @@ void stroke(float y) {
 
 void note() {
 	slot_layer_t *l = script_get_context()->layer;
-	h0              = script_texture_hash(l->texpaint);
-	h1              = script_texture_hash(l->texpaint_nor);
-	h2              = script_texture_hash(l->texpaint_pack);
+	h0              = hash_of(l->texpaint);
+	h1              = hash_of(l->texpaint_nor);
+	h2              = hash_of(l->texpaint_pack);
+	uid             = l->uid;
 }
 
 void compare(int k) {
-	slot_layer_t *l    = script_get_context()->layer;
+	slot_layer_t *l    = find_uid(uid);
 	int           n    = timeline_test_count(l);
 	int           kind = timeline_test_kind(l, n - 1);
 	check(kind == 1, string("%s: the stroke is a TL_STROKE (kind %d, %d entries)", case_name(k), kind, n));
@@ -88,9 +116,9 @@ void compare(int k) {
 	check(!string_equals(h0, script_texture_hash(l->texpaint)), string("%s: the state before the stroke differs", case_name(k)));
 	int fb  = paint_replay_test_fallbacks();
 	int ok  = paint_replay_test_entry(l, n - 1);
-	int eq0 = string_equals(h0, script_texture_hash(l->texpaint));
-	int eq1 = string_equals(h1, script_texture_hash(l->texpaint_nor));
-	int eq2 = string_equals(h2, script_texture_hash(l->texpaint_pack));
+	int eq0 = string_equals(h0, hash_of(l->texpaint));
+	int eq1 = string_equals(h1, hash_of(l->texpaint_nor));
+	int eq2 = string_equals(h2, hash_of(l->texpaint_pack));
 	check(ok && paint_replay_test_fallbacks() == fb, string("%s: it replays", case_name(k)));
 	check(eq0 && eq1 && eq2, string("%s: the replay is byte-equal to the live stroke (base %d, nor %d, pack %d)", case_name(k), eq0, eq1, eq2));
 }
@@ -107,7 +135,22 @@ void next() {
 			make_paint_set_batching(1);
 		}
 	}
-	else if (frame == 6 && kase < 7) {
+	else if (kase == 9 && frame == 7) { // Saved, a new project, opened again
+		iron_create_directory(dir);
+		project_filepath_set(string("%s/rec.arm", dir));
+		project_save(0);
+	}
+	else if (kase == 9 && frame == 9) {
+		script_project_new();
+	}
+	else if (kase == 9 && frame == 11) {
+		script_project_open(string("%s/rec.arm", dir));
+	}
+	else if (kase == 9 && frame == 14) {
+		check(find_uid(uid) != NULL, "the layer is there after opening");
+		check(string_equals(h0, hash_of(find_uid(uid)->texpaint)), "the layer as saved");
+	}
+	else if (frame == 6 && kase != 7) {
 		stroke(0.45);
 		paint_rec_flush();
 		note();
@@ -125,15 +168,16 @@ void next() {
 		paint_rec_flush();
 		note();
 	}
-	else if ((kase < 7 && frame == 10) || frame == 44) {
+	else if ((kase != 7 && kase != 9 && frame == 10) || (kase == 7 && frame == 44) || (kase == 9 && frame == 16)) {
 		compare(kase);
 		kase  = kase + 1;
 		frame = 0;
-		if (kase == 8) {
-			check(paint_rec_test_stored() >= 8, string("strokes stored (%d)", paint_rec_test_stored()));
+		if (kase == 10) {
+			check(paint_rec_test_stored() >= 9, string("strokes stored (%d)", paint_rec_test_stored()));
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 			script_get_config()->paint_resolved_dabs = 0;
 			script_get_config()->timeline_shadow     = 0;
+			script_get_config()->project_v31         = v31;
 			printf("[rec_replay] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "REC_REPLAY PASS" : "REC_REPLAY FAIL");
 			script_quit();
@@ -146,6 +190,8 @@ void next() {
 void main() {
 	script_get_config()->paint_resolved_dabs = 1;
 	script_get_config()->timeline_shadow     = 1;
+	v31                                      = script_get_config()->project_v31;
+	script_get_config()->project_v31         = 1;
 	script_brush_defaults();
 	script_project_new();
 	slot_material_t *m   = script_material_create("rec_replay_blue");

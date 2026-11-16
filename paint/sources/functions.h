@@ -2522,6 +2522,7 @@ void paint_rec_op_done(paint_exec_op_t *op);
 bool paint_rec_decode(const u8 *b, u32 len, paint_rec_t *r);
 void paint_rec_free(paint_rec_t *r);
 void paint_rec_finish();
+void paint_rec_init();
 void paint_rec_flush(); // stroke_rec.h, for scripts
 i32  paint_rec_test_stored();
 u64  make_paint_glsl_hash(shader_context_t *scon);

@@ -67,6 +67,7 @@ void render_path_paint_init() {
 	render_path_load_shader("Scene/dilate_pass/dilate_pass");
 	render_path_load_shader("Scene/dilate_pass/dilateRGBA64_pass");
 	render_path_load_shader("Scene/dilate_pass/dilateRGBA128_pass");
+	paint_rec_init();
 }
 
 // Paint draws write layers: Material Maker buffers the material samples render first when missing (mm_buffers_require),
