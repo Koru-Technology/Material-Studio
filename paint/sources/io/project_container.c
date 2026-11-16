@@ -45,7 +45,7 @@ typedef struct pc_src {
 typedef struct pc_state {
 	char                 *path;
 	i64                   size;
-	i64                   mtime;
+	u8                    footer[PC_FOOTER]; // Bytes of the last footer: the file is unchanged when it still ends with them
 	u64                   footer_off;
 	hstore_index_entry_t *index;
 	i32                   count;
@@ -309,7 +309,7 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 				hash128_t      h        = pc_hash_at(tm, 0);
 				buffer_t      *b        = hash128_is_none(h) ? NULL : pc_payload(s, index, count, h, &chunk);
 				u8            *map      = b != NULL ? hstore_chunk_decode(&chunk, b->buffer, true) : NULL;
-				i32            channels = map != NULL && chunk.raw_len >= 2 ? map[1] : tm->length >= 17 ? tm->buffer[16] : 3; // Map header: tag, channels
+				i32            channels = map != NULL && chunk.raw_len >= 2 ? map[1] : 3; // Map header: tag, channels
 				for (i32 c = 0; c < 3; ++c) {
 					*dst[c] = c == 0 || channels == 3 ? buffer_create(0) : NULL;
 				}
@@ -353,6 +353,7 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 		st->index      = index;
 		st->count      = count;
 		st->footer_off = at;
+		pc_read(s, at, PC_FOOTER, st->footer);
 		i64 live       = PC_HEADER + f.head_len + f.index_len + PC_FOOTER;
 		for (i32 i = 0; i < count; ++i) {
 			live += HSTORE_CHUNK_HEADER + index[i].comp_len;
@@ -363,10 +364,6 @@ static project_t *pc_load(pc_src_t *s, pc_state_t *st) {
 		free(index);
 	}
 	return project;
-}
-
-static i64 pc_mtime_of(struct stat *st) {
-	return (i64)st->st_mtimespec.tv_sec * 1000000000 + st->st_mtimespec.tv_nsec;
 }
 
 // The project of a container file, NULL when it does not open. Its index is kept for project_container_attach.
@@ -384,7 +381,6 @@ project_t *project_container_open(char *path) {
 	if (project != NULL) {
 		pc_opened.path  = string_copy(path);
 		pc_opened.size  = (i64)st.st_size;
-		pc_opened.mtime = pc_mtime_of(&st);
 	}
 	return project;
 }
@@ -514,11 +510,8 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 		paint_target_t t;
 		timeline_target_live(l, &t);
 		h = timeline_tiles_capture(&t, HASH128_NONE, NULL); // Full: older saves' tiles go dead, unchanged ones dedupe
-		if (hash128_is_none(h)) { // Below the tile size: saved without pixels, still a layer (NONE, then its channels)
-			iron_log("Layer %s could not be cut in tiles, it is saved empty", l->name);
-			u8_array_t *a = u8_array_create(17);
-			a->buffer[16] = (u8)t.channels;
-			return a;
+		if (hash128_is_none(h)) {
+			iron_log("Layer %s could not be captured, it is saved empty", l->name);
 		}
 	}
 	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
@@ -602,14 +595,16 @@ static bool pc_local(char *path) {
 #endif
 }
 
-// Whether a save of path appends: the file is the one opened or saved last, unchanged since, local, and mostly live
+// Whether a save of path appends: the file is the one opened or saved last, unchanged since (its size, and its end is
+// the footer it had: no timestamps), local, and mostly live
 static bool pc_can_append(char *path) {
-	struct stat st;
-	if (pc.path == NULL || !string_equals(pc.path, path) || stat(path, &st) != 0) {
+	if (pc.path == NULL || !string_equals(pc.path, path)) {
 		return false;
 	}
-	if ((i64)st.st_size != pc.size || pc_mtime_of(&st) != pc.mtime) {
-		return false; // Changed by something else, or a failed append
+	u8 tail[PC_FOOTER];
+	if (iron_file_size(path) != pc.size || pc.footer_off + PC_FOOTER != (u64)pc.size ||
+	    !iron_file_read_range(path, pc.size - PC_FOOTER, PC_FOOTER, tail) || memcmp(tail, pc.footer, PC_FOOTER) != 0) {
+		return false; // Changed by something else, a failed append or a torn tail
 	}
 	return pc.live >= pc.size * 6 / 10 && pc_local(path);
 }
@@ -728,7 +723,7 @@ static bool pc_save(char *path, bool copy) {
 	pc.maps       = w.maps;
 	pc.maps_count = w.maps_count;
 	pc.size       = (i64)st.st_size;
-	pc.mtime      = pc_mtime_of(&st);
+	memcpy(pc.footer, footer, PC_FOOTER);
 	pc.footer_off = footer_off;
 	pc.index      = w.index;
 	pc.count      = n;
