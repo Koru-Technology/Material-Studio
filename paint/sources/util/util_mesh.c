@@ -468,7 +468,6 @@ static void _util_mesh_merge(mesh_object_t_array_t *paint_objects, bool paintabl
 			util_mesh_remove_merged();
 			util_mesh_merged_toggled();
 		}
-		util_mesh_merged_stale = false;
 		array_delete(paintable);
 		return;
 	}
@@ -479,7 +478,6 @@ static void _util_mesh_merge(mesh_object_t_array_t *paint_objects, bool paintabl
 	mesh_data_t *raw            = util_mesh_build_merged_data(paint_objects, g_context->paint_object->base->name, parent);
 
 	util_mesh_remove_merged();
-	util_mesh_merged_stale = false;
 	if (util_mesh_merged_objects == NULL) {
 		util_mesh_merged_objects = any_array_create(0);
 	}
