@@ -186,7 +186,6 @@ void next() {
 		check(size_is(4096) && string_equals(layer_hashes(), h4k), "redo the stroke and the change");
 	}
 	else if (step == 15) { // Up against live: a new project, a seeded stroke at 2K
-		script_get_config()->paint_resolved_dabs = 1; // Strokes record world space dabs: they replay at any resolution
 		script_brush_defaults();
 		script_project_new();
 	}
@@ -227,7 +226,6 @@ void next() {
 	}
 	else {
 		layers_resolution_apply(2048, 2048);
-		script_get_config()->paint_resolved_dabs = 0;
 		printf("[resolution_change] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "RESOLUTION_CHANGE PASS" : "RESOLUTION_CHANGE FAIL");
 		script_quit();
