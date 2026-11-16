@@ -54,6 +54,16 @@ timeline_t *timeline_find(u32 uid) {
 	return NULL;
 }
 
+// The timeline made for the layer of uid last, NULL for none: a layer made again by redo takes its timeline back
+timeline_t *timeline_find_layer(u32 layer_uid) {
+	for (i32 i = timeline_all_count - 1; layer_uid != 0 && i >= 0; --i) {
+		if (timeline_all[i]->layer_uid == layer_uid) {
+			return timeline_all[i];
+		}
+	}
+	return NULL;
+}
+
 static bool timeline_fill_ok = false; // timeline_allow_fill
 
 // Paint layers and paint masks have a timeline, fill layers, fill masks and groups not

@@ -11,7 +11,6 @@
 //   TL_IMAGE      children[0] the image file's bytes (HSTORE_ASSET), then its file extension (decoder), 0 ended
 //   TL_FILL       children[0] the material snapshot, then tl_fill_params_t (the layer's uv props)
 //   TL_ID_MASK    picked colors, not replayed yet
-// Params without the magic (early dev files) are kept but do not replay, the entry is a floor.
 // TL_INVERT and TL_REFINE replay without params. TL_APPLY_MASK, TL_MERGE, TL_ID_MASK, TL_PATH, TL_BAKE_OPAC: floors.
 
 #define TL_PARAMS_MAGIC 0x31504c54 // "TLP1"

@@ -119,6 +119,10 @@ static bool history_in(i32 i, i32 length) {
 static void history_restore_uid(slot_layer_t *l, u32 uid) {
 	if (uid != 0 && slot_layer_find_uid(uid) == NULL) {
 		l->uid = uid;
+		if (l->timeline == 0) { // The redone steps of the layer move its timeline
+			timeline_t *tl = timeline_find_layer(uid);
+			l->timeline    = tl != NULL ? tl->uid : 0;
+		}
 	}
 }
 
@@ -1091,9 +1095,7 @@ static history_step_t *history_base_step() {
 
 // The steps become a base and steps (taken over), undos of them done (history_io.c: a saved history loaded)
 void history_steps_replace(any_array_t *steps, i32 undos, i32 redos, u32 serial_next) {
-	history_flush_restores(NULL);
-	history_tiles_finalize();
-	timeline_finalize();
+	history_restore_count = 0; // Restores of the steps going
 	for (i32 i = 0; history_steps != NULL && i < history_steps->length; ++i) {
 		history_step_free(history_steps->buffer[i]);
 	}

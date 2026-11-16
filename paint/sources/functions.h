@@ -1955,6 +1955,7 @@ void        timeline_truncate_all();
 void        timeline_checkpoint_set(struct timeline *tl, i32 pos, hash128_t tilemap, bool pinned);
 hash128_t   timeline_state(struct timeline *tl, i32 pos);
 hash128_t   timeline_state_at(struct timeline *tl, i32 pos, i32 w, i32 h);
+struct timeline *timeline_find_layer(u32 layer_uid);
 bool        timeline_entry_replays(struct timeline *tl, i32 i);
 i32         timeline_floor(struct timeline *tl, i32 pos);
 bool        timeline_upscalable(struct timeline *tl, i32 pos);

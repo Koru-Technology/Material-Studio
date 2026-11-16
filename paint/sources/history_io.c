@@ -130,7 +130,7 @@ static void hio_swatch(swatch_color_t *s, f32 *out) {
 
 #define HISTORY_IO_STEP_KEYS 41
 
-static void history_io_encode_step(history_step_t *s) {
+static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	armpack_encode_map(HISTORY_IO_STEP_KEYS);
 	hio_str("name", s->name);
 	hio_i32("action", s->action);
@@ -188,13 +188,7 @@ static void history_io_encode_step(history_step_t *s) {
 	hio_i32("material_uid", (i32)s->material_uid);
 	hio_str("image_file", s->image_file);
 	hio_i32s("tl_moves", s->tl_moves);
-	hash128_t canvas = HASH128_NONE;
-	if (s->canvas != NULL) {
-		canvas = history_io_canvas_put(s->canvas);
-		history_io_canvases                            = realloc(history_io_canvases, sizeof(hash128_t) * (history_io_canvas_count + 1));
-		history_io_canvases[history_io_canvas_count++] = canvas;
-	}
-	hio_hashes("canvas", &canvas, s->canvas != NULL ? 1 : 0);
+	hio_hashes("canvas", &canvas, hash128_is_none(canvas) ? 0 : 1);
 	i32 fill[2] = {(i32)s->fill_uids[0], (i32)s->fill_uids[1]};
 	i32_array_t fa = {.buffer = fill, .length = 2, .capacity = 2};
 	hio_i32s("fill_uids", &fa);
@@ -216,7 +210,6 @@ static u32 history_io_step_size(history_step_t *s) {
 
 u8 *history_io_encode(u32 *len) {
 	timeline_finalize();
-	history_tiles_finalize();
 	i32 first, end, undos, redos;
 	history_io_range(&first, &end, &undos, &redos);
 	u32 size = 1024;
@@ -228,6 +221,16 @@ u8 *history_io_encode(u32 *len) {
 	history_io_canvases     = NULL;
 	history_io_canvas_count = 0;
 
+	// Canvases first: their encoding uses the encoder too
+	hash128_t *canvases = calloc(end - first + 1, sizeof(hash128_t));
+	for (i32 i = first; i < end; ++i) {
+		history_step_t *s = history_steps->buffer[i];
+		if (s->canvas != NULL) {
+			canvases[i - first]                            = history_io_canvas_put(s->canvas);
+			history_io_canvases                            = realloc(history_io_canvases, sizeof(hash128_t) * (history_io_canvas_count + 1));
+			history_io_canvases[history_io_canvas_count++] = canvases[i - first];
+		}
+	}
 	u8 *b = malloc(size);
 	armpack_encode_start(b);
 	armpack_encode_map(5);
@@ -238,9 +241,10 @@ u8 *history_io_encode(u32 *len) {
 	hio_key("steps");
 	armpack_encode_array(end - first);
 	for (i32 i = first; i < end; ++i) {
-		history_io_encode_step(history_steps->buffer[i]);
+		history_io_encode_step(history_steps->buffer[i], canvases[i - first]);
 	}
 	*len = armpack_encode_end();
+	free(canvases);
 	for (i32 i = 0; i < old_count; ++i) {
 		hstore_unref(old[i]);
 	}
@@ -479,6 +483,7 @@ bool history_io_decode(u8 *data, u32 len) {
 	history_steps_replace(kept, undos - first, end > undos ? end - undos : 0, (u32)armpack_map_get_i32(m, "serial_next"));
 	array_free(kept);
 	free(kept);
+	project_session_forget(); // The loaded steps are the opened state, not unsaved work: no session head is due for them
 	return true;
 }
 
@@ -552,6 +557,8 @@ void history_io_clear() {
 // Scripts: the history encoded, dropped and decoded again as a project open does (the blobs it holds kept meanwhile).
 // Encoded bytes, -1 when the decode failed.
 i32 history_io_test_roundtrip(i32 _) {
+	history_flush_restores(NULL);
+	history_tiles_finalize();
 	u32        len   = 0;
 	u8        *b     = history_io_encode(&len);
 	hash128_t *roots = NULL;
