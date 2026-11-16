@@ -498,4 +498,5 @@ bool   make_paint_resolved = false;                // The paint shader being gen
 bool   paint_exec_replay   = false;                // The executor flushes recorded dabs and ops (paint_replay.c)
 bool   paint_replay_uncached = false; // Paint shaders parsed without the material cache (a replay at another size)
 char  *paint_replay_depth    = NULL;  // Depth target replay draws read, from the recorded camera
+char  *paint_replay_uv       = NULL;  // and its uv map
 gpu_texture_t *paint_replay_dilatemap = NULL; // UV islands of the replay's target

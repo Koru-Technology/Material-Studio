@@ -255,7 +255,7 @@ typedef struct paint_asset_head {
 } paint_asset_head_t;
 
 static u8 *paint_asset_texels(gpu_texture_t *t, u32 *len) {
-	buffer_t *px  = gpu_get_texture_pixels(t);
+	buffer_t *px  = gpu_get_texture_pixels_rgba8(t); // RGBA: a render target may hold BGRA, a texture made from bytes does not
 	i32       fmt = t->format;
 #ifdef WITH_BC7
 	if (fmt == GPU_TEXTURE_FORMAT_RGBA32_BC7) {
@@ -812,4 +812,21 @@ void paint_asset_stroke_begin() {
 		}
 	}
 	paint_asset_count = kept;
+}
+
+// Tests: t's texels as an asset blob and back (paint_asset_texture): 1 when the texture made from the blob reads back the
+// same colors (in RGBA order, as sampled)
+bool paint_asset_test_roundtrip(gpu_texture_t *t) {
+	u32                len  = 0;
+	u8                *blob = paint_asset_texels(t, &len);
+	paint_asset_head_t head;
+	memcpy(&head, blob, sizeof(head));
+	buffer_t       b    = {.buffer = blob + sizeof(head), .length = len - sizeof(head)};
+	gpu_texture_t *c    = gpu_create_texture_from_bytes_raw(&b, head.width, head.height, head.format);
+	buffer_t      *back = gpu_get_texture_pixels_rgba8(c);
+	bool           eq   = back->length == b.length && memcmp(back->buffer, b.buffer, b.length) == 0;
+	iron_log("[asset] roundtrip %dx%d format %d: %d of %d bytes, %s", head.width, head.height, head.format, back->length, b.length, eq ? "equal" : "different");
+	gpu_delete_texture(c);
+	free(blob);
+	return eq;
 }

@@ -367,6 +367,7 @@ void render_path_base_init_ssao() {
 // Depth with translucent surfaces included, read by painting - created once translucency gets enabled and kept
 void render_path_base_init_paint_depth() {
 	render_path_add_target("main_paint", 0, 0, "D32", render_path_base_get_super_sampling());
+	render_path_add_target("paint_uv", 0, 0, "RGBA64", render_path_base_get_super_sampling()); // Its uv map (make_depth_run)
 }
 
 // Always: the dab resolve pass reads the mesh alone, translucent and hidden materials included
@@ -662,7 +663,7 @@ void render_path_base_draw_gbuffer() {
 	if (render_path_base_has_paint_depth()) {
 		u64 key = render_path_base_paint_depth_key();
 		if (key != render_path_base_paint_depth_drawn) {
-			render_path_set_target("gbuffer0", NULL, "main_paint", GPU_CLEAR_DEPTH, 0, 1.0);
+			render_path_set_target("paint_uv", NULL, "main_paint", GPU_CLEAR_COLOR | GPU_CLEAR_DEPTH, 0x00000000, 1.0);
 			render_path_base_draw_meshes(make_material_depth_scon, false);
 			render_path_base_paint_depth_drawn = key;
 		}

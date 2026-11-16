@@ -21,6 +21,15 @@ static char *render_path_paint_depth() {
 	return render_path_base_has_paint_depth() ? "main_paint" : "main";
 }
 
+// The uv coordinates under the screen points clone and smudge read: the paint depth's uv map (make_depth_run), from the
+// recorded camera replaying; gbuffer2 before a paint depth is drawn
+char *render_path_paint_uv_target() {
+	if (paint_exec_replay && paint_replay_uv != NULL) {
+		return paint_replay_uv;
+	}
+	return render_path_base_has_paint_depth() ? "paint_uv" : "gbuffer2";
+}
+
 static bool render_path_paint_uses_gbuffer0() {
 	if (g_context->xray || g_config->brush_angle_reject || context_is_decal()) {
 		return true;
@@ -278,12 +287,14 @@ void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) 
 }
 
 // Scratch targets the size of the layer painted
+// The size of the target painted: the layer's, a replay's own (paint_replay.c swaps it in)
 static void render_path_paint_ref_target(char *name, char *format) {
-	i32 w = config_get_texture_res_x();
-	i32 h = config_get_texture_res_y();
-	if (g_context->layer != NULL && g_context->layer->texpaint != NULL) {
-		w = g_context->layer->texpaint->width;
-		h = g_context->layer->texpaint->height;
+	i32            w = config_get_texture_res_x();
+	i32            h = config_get_texture_res_y();
+	gpu_texture_t *t = g_context->layer != NULL ? render_path_target_image(string_tmp("texpaint%d", g_context->layer->id)) : NULL;
+	if (t != NULL) {
+		w = t->width;
+		h = t->height;
 	}
 	render_path_ensure_target(name, w, h, format);
 }
@@ -317,6 +328,13 @@ void render_path_paint_release_scratch() {
 }
 
 static i32 render_path_paint_ref_frame = -1; // Blur snapshot once per frame, the dabs of a frame blur the same source
+bool       render_path_paint_ref_taken = false; // A snapshot was taken (recorded with the draw: its replay takes it again)
+
+// The next blur draw takes its snapshot again (a replayed draw that took one live)
+void render_path_paint_ref_invalidate() {
+	render_path_paint_ref_frame = -1;
+}
+
 static i32 render_path_paint_ref_tid   = -1;
 
 static void render_path_paint_ref_snapshot(i32 tid, bool is_mask) {
@@ -326,6 +344,7 @@ static void render_path_paint_ref_snapshot(i32 tid, bool is_mask) {
 	}
 	render_path_paint_ref_frame = render_path_paint_dilate_frame;
 	render_path_paint_ref_tid   = tid;
+	render_path_paint_ref_taken = true;
 	if (is_mask) {
 		render_path_paint_ref_target("texpaint_ref", "RGBA32");
 		render_path_set_target("texpaint_ref", NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
@@ -720,7 +739,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			}
 			render_path_bind_target("texpaint_blend1", "paintmask");
 			if (read_tc) {
-				render_path_bind_target("gbuffer2", "gbuffer2");
+				render_path_bind_target(render_path_paint_uv_target(), "gbuffer2");
 			}
 			if (mesh_fill) {
 				render_path_paint_draw_fill_object();

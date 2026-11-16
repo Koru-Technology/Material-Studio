@@ -8,11 +8,11 @@
 // Blob, sections 4-byte aligned, structs of arrays (the store compresses it):
 //   paint_rec_head_t, states (paint_state_t), cams (paint_rec_cam_t), xforms (paint_rec_xform_t),
 //   ops: kind u8, flags u8, mm_tier u8 (padded), state u16, cam u16, xform u16 (padded), dab_first u32, dab_count u32,
-//        brush_time f32, down f32, direction 4 f32, pixel_snap_uv 4 f32, each an array of n_ops,
+//        brush_time f32, down f32, direction 4 f32, pixel_snap_uv 4 f32, decal_mask 4 f32, each an array of n_ops,
 //   dabs: PAINT_DAB_TEXELS * 4 arrays of n_dabs f32, the resolved texels component by component.
 
 #define PAINT_REC_MAGIC   0x31435250 // "PRC1"
-#define PAINT_REC_VERSION 4
+#define PAINT_REC_VERSION 6
 
 typedef struct paint_rec_head {
 	u32 magic;
@@ -71,7 +71,12 @@ void paint_rec_foreign() {
 static bool paint_rec_tool_replayable() {
 	tool_type_t tool = g_context->tool;
 	slot_layer_t *l  = g_context->layer;
-	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_FILL) && l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
+	if (tool == TOOL_TYPE_CLONE && g_context->clone_layers == CLONE_LAYERS_VISIBLE) {
+		return false; // Reads the other layers: a keyframe
+	}
+	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_FILL || tool == TOOL_TYPE_DECAL || tool == TOOL_TYPE_TEXT ||
+	        tool == TOOL_TYPE_BLUR || tool == TOOL_TYPE_CLONE) &&
+	       l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
 	       !context_is_pixel_snap() && !g_context->pick_pos_nor_tex;
 }
 
@@ -124,6 +129,11 @@ void paint_state_capture(paint_state_t *s, hash128_t material) {
 	s->fill_type       = g_context->fill_type;
 	s->fill_object     = picks ? array_index_of(g_project->_->paint_objects, render_path_paint_fill_object) : -1;
 	s->fill_tri        = picks ? render_path_paint_fill_tri : -1;
+	s->brush_scale_x   = g_context->brush_scale_x;
+	s->blur_type       = g_context->blur_type;
+	s->clone_delta[0]  = g_context->clone_delta_x;
+	s->clone_delta[1]  = g_context->clone_delta_y;
+	s->text            = g_context->tool == TOOL_TYPE_TEXT ? paint_asset_intern(g_context->text_tool_image) : HASH128_NONE;
 }
 
 static u16 paint_rec_state_index(paint_rec_t *r) {
@@ -155,7 +165,8 @@ static u16 paint_rec_cam_index(paint_rec_t *r) {
 	gpu_texture_t *depth = render_path_target_image("main_paint"); // The depth the draw reads (not the target drawn into)
 	c.w                  = depth != NULL ? depth->width : render_path_current_w;
 	c.h                  = depth != NULL ? depth->height : render_path_current_h;
-	c.frame = scene_camera->frame;
+	c.frame  = scene_camera->frame;
+	c.aspect = sys_aspect();
 	c.right = camera_object_right_world(scene_camera);
 	c.up    = camera_object_up_world(scene_camera);
 	if (r->n_cams > 0 && memcmp(&r->cams[r->n_cams - 1], &c, sizeof(c)) == 0) {
@@ -301,13 +312,18 @@ void paint_rec_op(paint_exec_op_t *op, i32 base) {
 		o->down          = op->down;
 		o->direction     = op->direction;
 		o->pixel_snap_uv = op->pixel_snap_uv;
+		o->decal_mask    = op->decal_mask;
 	}
 }
 
-// After a draw ran: the lowest Material Maker tier it sampled
+// After a draw ran: the lowest Material Maker tier it sampled, whether it took a blur snapshot
 void paint_rec_op_done(paint_exec_op_t *op) {
 	if (!paint_rec_recording() || op->kind != PAINT_OP_DRAW || paint_rec.n_ops == 0) {
 		return;
+	}
+	if (render_path_paint_ref_taken) {
+		paint_rec.ops[paint_rec.n_ops - 1].flags |= 16;
+		render_path_paint_ref_taken = false;
 	}
 	u64 keys[64];
 	i32 n    = mm_buffers_paint_keys(make_material_paint_scon, keys, 64);
@@ -336,7 +352,7 @@ static u8 *paint_rec_encode(paint_rec_t *r, u32 *len) {
 	u32 a  = (n + 3) & ~3u;     // u8 arrays padded
 	u32 a2 = (n * 2 + 3) & ~3u; // u16 arrays padded
 	u32 size = sizeof(paint_rec_head_t) + r->n_states * sizeof(paint_state_t) + r->n_cams * sizeof(paint_rec_cam_t) +
-	           r->n_xforms * sizeof(paint_rec_xform_t) + a * 3 + a2 * 3 + n * 4 * 4 + n * 4 * 8 + nd * PAINT_DAB_TEXELS * 4 * 4;
+	           r->n_xforms * sizeof(paint_rec_xform_t) + a * 3 + a2 * 3 + n * 4 * 4 + n * 4 * 12 + nd * PAINT_DAB_TEXELS * 4 * 4;
 	u8 *b  = calloc(1, size);
 	u8 *p  = b;
 	paint_rec_head_t h = {.magic      = PAINT_REC_MAGIC,
@@ -385,12 +401,14 @@ static u8 *paint_rec_encode(paint_rec_t *r, u32 *len) {
 		f[n + i] = r->ops[i].down;
 		f32 *d   = &r->ops[i].direction.x;
 		f32 *ps  = &r->ops[i].pixel_snap_uv.x;
+		f32 *dm  = &r->ops[i].decal_mask.x;
 		for (i32 c = 0; c < 4; ++c) {
-			f[n * (2 + c) + i] = d[c];
-			f[n * (6 + c) + i] = ps[c];
+			f[n * (2 + c) + i]  = d[c];
+			f[n * (6 + c) + i]  = ps[c];
+			f[n * (10 + c) + i] = dm[c];
 		}
 	}
-	p += n * 4 * 10;
+	p += n * 4 * 14;
 	f = (f32 *)p;
 	i32 comps = PAINT_DAB_TEXELS * 4;
 	for (u32 k = 0; k < nd; ++k) {
@@ -417,7 +435,7 @@ bool paint_rec_decode(const u8 *b, u32 len, paint_rec_t *r) {
 	u32 n = h.n_ops, nd = h.n_dabs;
 	u32 a = (n + 3) & ~3u, a2 = (n * 2 + 3) & ~3u;
 	u64 need = sizeof(h) + (u64)h.n_states * sizeof(paint_state_t) + (u64)h.n_cams * sizeof(paint_rec_cam_t) + (u64)h.n_xforms * sizeof(paint_rec_xform_t) +
-	           a * 3 + a2 * 3 + (u64)n * 4 * 12 + (u64)nd * PAINT_DAB_TEXELS * 4 * 4;
+	           a * 3 + a2 * 3 + (u64)n * 4 * 16 + (u64)nd * PAINT_DAB_TEXELS * 4 * 4;
 	if (need > len) {
 		return false;
 	}
@@ -466,12 +484,14 @@ bool paint_rec_decode(const u8 *b, u32 len, paint_rec_t *r) {
 		r->ops[i].down       = f[n + i];
 		f32 *d               = &r->ops[i].direction.x;
 		f32 *ps              = &r->ops[i].pixel_snap_uv.x;
+		f32 *dm              = &r->ops[i].decal_mask.x;
 		for (i32 c = 0; c < 4; ++c) {
 			d[c]  = f[n * (2 + c) + i];
 			ps[c] = f[n * (6 + c) + i];
+			dm[c] = f[n * (10 + c) + i];
 		}
 	}
-	p += n * 4 * 10;
+	p += n * 4 * 14;
 	f         = (const f32 *)p;
 	i32 comps = PAINT_DAB_TEXELS * 4;
 	r->n_dabs = r->c_dabs = nd;
@@ -517,6 +537,9 @@ static void paint_rec_children(const u8 *data, u32 len, hstore_visit_fn visit, v
 		}
 		if (!hash128_is_none(s.stencil)) {
 			visit(s.stencil, ud);
+		}
+		if (!hash128_is_none(s.text)) {
+			visit(s.text, ud);
 		}
 	}
 }
@@ -587,7 +610,11 @@ void paint_rec_finish() {
 		free(blob);
 		timeline_entry_upgrade(tl, r->index, TL_STROKE, h);
 		tl_entry_t *e = &tl->entries[r->index];
-		e->flags      = TL_FLAG_LOCAL | TL_FLAG_UPSCALABLE;
+		bool nonlocal = false; // Blur, smudge and clone read the layer anywhere
+		for (u32 k = 0; k < r->n_states; ++k) {
+			nonlocal = nonlocal || r->states[k].tool == TOOL_TYPE_BLUR || r->states[k].tool == TOOL_TYPE_CLONE;
+		}
+		e->flags = (nonlocal ? TL_FLAG_NONLOCAL : TL_FLAG_LOCAL) | TL_FLAG_UPSCALABLE;
 		e->mm_tier    = r->mm_tier;
 		if (r->mm_tier < MM_BUFFERS_FULL) {
 			paint_refine_note(tl, r->index, paint_rec_keys, paint_rec_nkeys); // Sharpens by replay once they are full

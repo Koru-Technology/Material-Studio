@@ -822,6 +822,18 @@ void                  render_path_paint_dilate_stroke(bool base, bool nor_pack);
 
 // ---- render/render_path_paint_picker.c ----
 void           context_set_fill_type(i32 type);
+void           script_camera_turn(f32 x, f32 y);
+void           script_set_stencil(gpu_texture_t *t);
+void           script_set_text(char *text);
+void           script_set_blur_type(i32 type);
+void           script_camera_save();
+bool           paint_asset_test_roundtrip(gpu_texture_t *t);
+void           script_camera_restore();
+void           script_set_clone_delta(f32 x, f32 y);
+vec4_t         uniforms_decal_mask();
+char          *render_path_paint_uv_target();
+void           render_path_paint_ref_invalidate();
+extern bool    render_path_paint_ref_taken;
 bool           render_path_paint_fill_picks();
 void           render_path_paint_fill_pick_now();
 extern mesh_object_t *render_path_paint_fill_object;

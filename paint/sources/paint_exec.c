@@ -125,7 +125,11 @@ static void paint_exec_run(paint_exec_op_t *op, i32 rec_base) {
 			t->scale = op->scale;
 			transform_build_matrix(t);
 		}
-		paint_exec_op = op;
+		paint_exec_op               = op;
+		render_path_paint_ref_taken = false;
+		if (paint_exec_replay && op->ref_snapshot) {
+			render_path_paint_ref_invalidate(); // Took a blur snapshot live: again
+		}
 		render_path_paint_commands_paint_now(op->dilation);
 		if (rec) {
 			paint_rec_op_done(op);
@@ -314,6 +318,7 @@ static void paint_exec_draw_state(paint_exec_op_t *op) {
 	op->down          = uniforms_input_brush().z;
 	op->direction     = paint_exec_direction();
 	op->pixel_snap_uv = uniforms_pixel_snap_uv();
+	op->decal_mask    = context_is_decal() ? uniforms_decal_mask() : (vec4_t){0.0, 0.0, 0.0, 0.0};
 }
 
 void paint_exec_draw(bool dilation) {

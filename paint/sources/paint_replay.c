@@ -70,6 +70,13 @@ static void paint_replay_state_apply(paint_state_t *s) {
 	g_context->brush_stencil_scale         = s->stencil_transform[2];
 	g_context->brush_stencil_angle         = s->stencil_transform[3];
 	g_context->fill_type                   = s->fill_type;
+	g_context->brush_scale_x               = s->brush_scale_x;
+	g_context->blur_type                   = s->blur_type;
+	g_context->clone_delta_x               = s->clone_delta[0];
+	g_context->clone_delta_y               = s->clone_delta[1];
+	if (!hash128_is_none(s->text)) {
+		g_context->text_tool_image = paint_asset_texture(s->text);
+	}
 	mesh_object_t_array_t *objects         = g_project->_->paint_objects;
 	render_path_paint_fill_object          = s->fill_object >= 0 && s->fill_object < objects->length ? objects->buffer[s->fill_object] : NULL;
 	render_path_paint_fill_tri             = s->fill_tri;
@@ -132,7 +139,8 @@ static shader_context_t *paint_replay_shader(paint_state_t *s) {
 }
 
 // The camera of a draw, and the geometry-only depth from it at the viewport's size then (depth reject reads it at the
-// fragment's screen point): main_paint when it has that size, else a target of the replay's own
+// fragment's screen point) with its uv map (clone and smudge): main_paint when it has that size, else targets of the
+// replay's own
 static void paint_replay_camera(paint_rec_cam_t *c) {
 	scene_camera->v     = c->v;
 	scene_camera->p     = c->p;
@@ -142,12 +150,14 @@ static void paint_replay_camera(paint_rec_cam_t *c) {
 	render_target_t *main = any_map_get(render_path_render_targets, "main_paint");
 	if (main != NULL && main->_image != NULL && main->_image->width == c->w && main->_image->height == c->h) {
 		paint_replay_depth = "main_paint";
-		render_path_base_draw_paint_depth_into("gbuffer0", "main_paint");
+		paint_replay_uv    = "paint_uv";
+		render_path_base_draw_paint_depth_into("paint_uv", "main_paint");
 		return;
 	}
 	render_path_ensure_target("replay_depth", c->w, c->h, "D32");
 	render_path_ensure_target("replay_depth_color", c->w, c->h, "RGBA64"); // The depth pipeline's attachment
 	paint_replay_depth = "replay_depth";
+	paint_replay_uv    = "replay_depth_color";
 	render_path_base_draw_paint_depth_into("replay_depth_color", "replay_depth");
 }
 
@@ -297,6 +307,7 @@ static bool paint_replay_ops(paint_rec_t *r, paint_target_t *t, bool fast) {
 			op.base       = (p->flags & 2) != 0;
 			op.nor_pack   = (p->flags & 4) != 0;
 			op.batched    = (p->flags & 8) != 0;
+			op.ref_snapshot = (p->flags & 16) != 0;
 			op.brush_time = p->brush_time;
 			if (p->kind == PAINT_OP_DRAW) {
 				paint_rec_xform_t *x = &r->xforms[p->xform];
@@ -305,6 +316,7 @@ static bool paint_replay_ops(paint_rec_t *r, paint_target_t *t, bool fast) {
 				op.down              = p->down;
 				op.direction         = p->direction;
 				op.pixel_snap_uv     = p->pixel_snap_uv;
+				op.decal_mask        = p->decal_mask;
 				op.loc               = x->loc;
 				op.rot               = x->rot;
 				op.scale             = x->scale;
@@ -453,6 +465,7 @@ static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const 
 	}
 	paint_replay_uncached  = false;
 	paint_replay_depth     = NULL;
+	paint_replay_uv        = NULL;
 	paint_replay_dilatemap = NULL;
 	if (!prepare) {
 		render_path_paint_scratch_resize(live_w, live_h);

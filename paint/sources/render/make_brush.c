@@ -107,7 +107,7 @@ void make_brush_run(node_shader_t *shader, bool depth_reject) {
 
 	node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
 	node_shader_add_constant(shader, "vec3 camera_up", "_camera_up");
-	node_shader_add_constant(shader, "float aspect_ratio", "_aspect_ratio_window");
+	node_shader_add_constant(shader, "float aspect_ratio", "_paint_aspect");
 	node_shader_add_constant(shader, "float camera_align", "_brush_camera_align");
 
 	if (context_is_pixel_snap()) {

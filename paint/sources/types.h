@@ -1308,12 +1308,14 @@ typedef struct paint_exec_op {
 	bool   base;     // DILATE: the base texture, the normal and pack textures
 	bool   nor_pack;
 	bool   batched;  // DRAW: one draw paints its dabs in order, else dab_count is 1 (2 for a decal: the dab and its anchor)
+	bool   ref_snapshot; // DRAW: blur and smudge read the layer as it was before it (a snapshot taken once a frame live)
 	i32    dab_first;
 	i32    dab_count;
 	f32    down;          // Input pressed, inp.z
 	f64    brush_time;    // As it was when the draw was emitted (the end of a stroke paints its tail with a time of its own)
 	vec4_t direction;     // _brush_direction: x, y the stroke direction, z 0 drops the dab
 	vec4_t pixel_snap_uv; // _pixel_snap_uv
+	vec4_t decal_mask;    // _decal_mask: decals, the anchor on screen, the mask pass, the radius
 	vec4_t loc;           // Transform of the paint object, mirrored and turned for symmetry copies
 	quat_t rot;
 	vec4_t scale;
@@ -1366,6 +1368,11 @@ typedef struct paint_state {
 	i32       fill_type;
 	i32       fill_object; // Fills that pick: the paint object picked (its place in paint_objects, -1 none) and its triangle
 	i32       fill_tri;
+	f32       brush_scale_x; // Decal and text aspect
+	hash128_t text;          // HSTORE_ASSET of the text tool's image, NONE for other tools
+	i32       blur_type;     // Blur or smudge
+	f32       clone_delta[2];
+	i32       pad;
 } paint_state_t;
 
 typedef struct paint_rec_cam {
@@ -1374,7 +1381,7 @@ typedef struct paint_rec_cam {
 	i32    w; // Size of the paint depth the draws read (main_paint)
 	i32    h;
 	i32    frame; // scene_camera->frame
-	i32    pad;
+	f32    aspect; // sys_aspect(): screen space as the window was (brush and stencil shapes, decals off the mesh)
 	vec4_t right; // _camera_right, _camera_up (from the camera's transform, tips and stencils turn with them)
 	vec4_t up;
 } paint_rec_cam_t;
@@ -1387,7 +1394,7 @@ typedef struct paint_rec_xform {
 
 typedef struct paint_rec_op {
 	u8     kind;  // paint_op_kind_t
-	u8     flags; // 1 dilation, 2 base, 4 nor_pack, 8 batched
+	u8     flags; // 1 dilation, 2 base, 4 nor_pack, 8 batched, 16 a blur snapshot before it
 	u16    state;
 	u16    cam;
 	u16    xform;
@@ -1398,6 +1405,7 @@ typedef struct paint_rec_op {
 	u8     mm_tier;
 	vec4_t direction;
 	vec4_t pixel_snap_uv;
+	vec4_t decal_mask;
 } paint_rec_op_t;
 
 // A stroke being recorded, or a stored one decoded (paint_rec.c)

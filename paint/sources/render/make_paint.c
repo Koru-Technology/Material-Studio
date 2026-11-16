@@ -573,7 +573,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 
 	node_shader_add_constant(shader, "vec4 inp", "_input_brush");
 	node_shader_add_constant(shader, "vec4 inplast", "_input_brush_last");
-	node_shader_add_constant(shader, "float aspect_ratio", "_aspect_ratio_window");
+	node_shader_add_constant(shader, "float aspect_ratio", "_paint_aspect");
 	node_shader_write_frag(shader, "vec2 bsp = sp.xy * 2.0 - 1.0;");
 	node_shader_write_frag(shader, "bsp.x *= constants.aspect_ratio;");
 	node_shader_write_frag(shader, "bsp = bsp * 0.5 + 0.5;");

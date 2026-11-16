@@ -22,27 +22,34 @@ node_shader_context_t *make_depth_run(material_t *data) {
 
 	node_shader_write_vert(shader, "output.pos = constants.VP * vec4(output.wposition.xyz, 1.0);");
 
+	// The uv coordinates under each pixel, as gbuffer2 has them (half floats: a coarse part and a residual): clone and
+	// smudge read the layer where the brush's screen points are, from this camera (render_path_paint_uv_target)
+	node_shader_add_out(shader, "vec2 paint_uv");
+	node_shader_write_vert(shader, "output.paint_uv = input.tex;");
+	node_shader_write_frag(shader, "vec2 paint_uv_hi = floor(input.paint_uv * 256.0) / 256.0;");
+	node_shader_write_frag(shader, "output = vec4(input.paint_uv - paint_uv_hi, paint_uv_hi);");
+
 	con_depth->data->color_writes_red = u8_array_create_from_raw(
 	    (u8[]){
-	        false,
+	        true,
 	    },
 	    1);
 
 	con_depth->data->color_writes_green = u8_array_create_from_raw(
 	    (u8[]){
-	        false,
+	        true,
 	    },
 	    1);
 
 	con_depth->data->color_writes_blue = u8_array_create_from_raw(
 	    (u8[]){
-	        false,
+	        true,
 	    },
 	    1);
 
 	con_depth->data->color_writes_alpha = u8_array_create_from_raw(
 	    (u8[]){
-	        false,
+	        true,
 	    },
 	    1);
 

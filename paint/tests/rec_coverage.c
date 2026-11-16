@@ -1,8 +1,8 @@
 #include "global.h"
 
 // Every stroke painted with timelines on adds one entry to its layer's timeline (history_paint): a TL_STROKE when its
-// record replays (brush, eraser), a TL_RASTER (its tile state) otherwise: the tools wave 2 does not replay yet (fill,
-// decal, blur, clone).
+// record replays (every tool here: brush, eraser, fill, decal, blur, clone of the layer), a TL_RASTER (its tile state)
+// otherwise (clone of the visible layers, which reads the other layers).
 
 int fails  = 0;
 int checks = 0;
@@ -79,7 +79,7 @@ void next() {
 	else if (frame == 8) {
 		int n    = timeline_test_count(l);
 		int kind = timeline_test_kind(l, n - 1);
-		int want = kase <= 1 ? 1 : 12;
+		int want = 1;
 		check(n == before + 1, string("%s: one entry (%d to %d)", name_of(kase), before, n));
 		check(kind == want, string("%s: a %s entry (kind %d)", name_of(kase), want == 1 ? "TL_STROKE" : "TL_RASTER", kind));
 		kase  = kase + 1;
