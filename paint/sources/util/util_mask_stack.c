@@ -375,12 +375,7 @@ static void mask_stack_alloc_texture(slot_layer_t *m) {
 	if (m->texmask != NULL) {
 		return;
 	}
-	render_target_t *t = render_target_create();
-	t->name            = string("texmask%s", m->ext);
-	t->width           = m->texpaint->width;
-	t->height          = m->texpaint->height;
-	t->format          = string_copy("RGBA32");
-	m->texmask         = render_path_create_render_target(t)->_image;
+	m->texmask = render_path_add_target(string("texmask%s", m->ext), m->texpaint->width, m->texpaint->height, "RGBA32", 1.0)->_image;
 }
 
 gpu_texture_t *mask_stack_get_scratch(i32 w, i32 h) {

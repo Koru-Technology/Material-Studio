@@ -117,12 +117,7 @@ static void history_tiles_ensure_snapshot() {
 			rt = NULL;
 		}
 		if (rt == NULL) {
-			render_target_t *t = render_target_create();
-			t->name            = history_tiles_snap_names[i];
-			t->width           = history_tiles_layer_w;
-			t->height          = history_tiles_layer_h;
-			t->format          = history_tiles_format_name(history_tiles_format);
-			render_path_create_render_target(t);
+			render_path_add_target(history_tiles_snap_names[i], history_tiles_layer_w, history_tiles_layer_h, history_tiles_format_name(history_tiles_format), 1.0);
 		}
 	}
 }
@@ -224,12 +219,7 @@ void history_tiles_finalize() {
 		diff = NULL;
 	}
 	if (diff == NULL) {
-		diff         = render_target_create();
-		diff->name   = "undo_tiles_diff";
-		diff->width  = history_tiles_blocks;
-		diff->height = history_tiles_blocks;
-		diff->format = "RGBA32";
-		render_path_create_render_target(diff);
+		diff = render_path_add_target("undo_tiles_diff", history_tiles_blocks, history_tiles_blocks, "RGBA32", 1.0);
 	}
 	render_path_set_target("undo_tiles_diff", NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 	render_path_bind_target("undo_snap0", "tex0");

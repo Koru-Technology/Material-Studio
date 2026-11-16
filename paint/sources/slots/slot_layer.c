@@ -24,30 +24,11 @@ void slot_layer_alloc_textures(slot_layer_t *raw) {
 	char *ext    = raw->ext;
 	char *format = layers_format_name(base_bits);
 
-	{
-		render_target_t *t = render_target_create();
-		t->name            = string("texpaint%s", ext);
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = string_copy(format);
-		raw->texpaint      = render_path_create_render_target(t)->_image;
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = string("texpaint_nor%s", ext);
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = string_copy(format);
-		raw->texpaint_nor  = render_path_create_render_target(t)->_image;
-	}
-	{
-		render_target_t *t = render_target_create();
-		t->name            = string("texpaint_pack%s", ext);
-		t->width           = config_get_texture_res_x();
-		t->height          = config_get_texture_res_y();
-		t->format          = string_copy(format);
-		raw->texpaint_pack = render_path_create_render_target(t)->_image;
-	}
+	i32 w              = config_get_texture_res_x();
+	i32 h              = config_get_texture_res_y();
+	raw->texpaint      = render_path_add_target(string("texpaint%s", ext), w, h, format, 1.0)->_image;
+	raw->texpaint_nor  = render_path_add_target(string("texpaint_nor%s", ext), w, h, format, 1.0)->_image;
+	raw->texpaint_pack = render_path_add_target(string("texpaint_pack%s", ext), w, h, format, 1.0)->_image;
 }
 
 static bool slot_layer_is_unique_name(slot_layer_t *self, char *name) {
@@ -164,14 +145,7 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 		char *format  = "RGBA32"; // Full bits for undo support, R8 is used
 		raw->blending = BLEND_TYPE_MIX;
 
-		{
-			render_target_t *t = render_target_create();
-			t->name            = string("texpaint%s", ext);
-			t->width           = config_get_texture_res_x();
-			t->height          = config_get_texture_res_y();
-			t->format          = string_copy(format);
-			raw->texpaint      = render_path_create_render_target(t)->_image;
-		}
+		raw->texpaint = render_path_add_target(string("texpaint%s", ext), config_get_texture_res_x(), config_get_texture_res_y(), format, 1.0)->_image;
 
 		raw->texpaint_preview = gpu_create_render_target(util_render_layer_preview_size, util_render_layer_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
 	}

@@ -198,14 +198,7 @@ void layers_make_temp_img() {
 	}
 
 	if (layers_temp_image == NULL) {
-		char            *format = layers_format_name(base_bits);
-		render_target_t *t      = render_target_create();
-		t->name                 = "temptex0";
-		t->width                = l->texpaint->width;
-		t->height               = l->texpaint->height;
-		t->format               = string_copy(format);
-		render_target_t *rt     = render_path_create_render_target(t);
-		layers_temp_image       = rt->_image;
+		layers_temp_image = render_path_add_target("temptex0", l->texpaint->width, l->texpaint->height, layers_format_name(base_bits), 1.0)->_image;
 	}
 }
 
@@ -241,33 +234,11 @@ void layers_make_export_img() {
 	}
 	if (layers_expa == NULL) {
 		char *format = layers_format_name(base_bits);
-		{
-			render_target_t *t  = render_target_create();
-			t->name             = "expa";
-			t->width            = l->texpaint->width;
-			t->height           = l->texpaint->height;
-			t->format           = string_copy(format);
-			render_target_t *rt = render_path_create_render_target(t);
-			layers_expa         = rt->_image;
-		}
-		{
-			render_target_t *t  = render_target_create();
-			t->name             = "expb";
-			t->width            = l->texpaint->width;
-			t->height           = l->texpaint->height;
-			t->format           = string_copy(format);
-			render_target_t *rt = render_path_create_render_target(t);
-			layers_expb         = rt->_image;
-		}
-		{
-			render_target_t *t  = render_target_create();
-			t->name             = "expc";
-			t->width            = l->texpaint->width;
-			t->height           = l->texpaint->height;
-			t->format           = string_copy(format);
-			render_target_t *rt = render_path_create_render_target(t);
-			layers_expc         = rt->_image;
-		}
+		i32   w      = l->texpaint->width;
+		i32   h      = l->texpaint->height;
+		layers_expa  = render_path_add_target("expa", w, h, format, 1.0)->_image;
+		layers_expb  = render_path_add_target("expb", w, h, format, 1.0)->_image;
+		layers_expc  = render_path_add_target("expc", w, h, format, 1.0)->_image;
 	}
 }
 

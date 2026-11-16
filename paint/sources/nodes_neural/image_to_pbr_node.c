@@ -91,28 +91,10 @@ void image_to_pbr_node_run_da3(bool tile, int width, int height, void (*done)(gp
 }
 
 void image_to_pbr_node_all_done(void *_) {
-	int              res_w = image_to_pbr_node_result_height->width;
-	int              res_h = image_to_pbr_node_result_height->height;
-	render_target_t *occmap;
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "occmap";
-		t->width           = res_w;
-		t->height          = res_h;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-		occmap = t;
-	}
-	render_target_t *normmap;
-	{
-		render_target_t *t = render_target_create();
-		t->name            = "normmap";
-		t->width           = res_w;
-		t->height          = res_h;
-		t->format          = "RGBA32";
-		render_path_create_render_target(t);
-		normmap = t;
-	}
+	int              res_w   = image_to_pbr_node_result_height->width;
+	int              res_h   = image_to_pbr_node_result_height->height;
+	render_target_t *occmap  = render_path_add_target("occmap", res_w, res_h, "RGBA32", 1.0);
+	render_target_t *normmap = render_path_add_target("normmap", res_w, res_h, "RGBA32", 1.0);
 	{
 		render_target_t *t = render_target_create();
 		t->name            = "_height_map";
