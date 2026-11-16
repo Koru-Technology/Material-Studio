@@ -5,6 +5,7 @@ import SwiftUI
 struct MaterialsLibraryView: View {
 	var onUse: () -> Void = {}
 	@Bindable private var store = MaterialsStore.shared
+	@State private var searchFocused = false
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -26,20 +27,27 @@ struct MaterialsLibraryView: View {
 				HStack(spacing: 6) {
 					Image(systemName: "magnifyingglass")
 						.foregroundStyle(.secondary)
+#if os(iOS)
+					PlainTextField(placeholder: "Search", text: $store.librarySearch, focused: $searchFocused)
+#else
 					TextField("Search", text: $store.librarySearch)
 						.textFieldStyle(.plain)
 						.autocorrectionDisabled()
-#if os(iOS)
-						.textInputAutocapitalization(.never)
 #endif
-					if !store.librarySearch.isEmpty {
+					if !store.librarySearch.isEmpty || searchFocused {
+						// Clears and puts the keyboard away. Its target is as tall as the field and wider than the symbol.
 						Button {
 							store.librarySearch = ""
+							searchFocused       = false
 						} label: {
 							Image(systemName: "xmark.circle.fill")
 								.foregroundStyle(.tertiary)
+								.frame(width: 36, height: 36)
+								.contentShape(.rect)
 						}
 						.buttonStyle(.plain)
+						.padding(.vertical, -7)
+						.padding(.trailing, -10)
 						.accessibilityLabel("Clear Search")
 					}
 				}
