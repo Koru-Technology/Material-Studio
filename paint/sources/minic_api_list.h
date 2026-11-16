@@ -1107,3 +1107,23 @@ X0(history_tiles_reset, "v()", v)
 
 // timeline_io.c
 X2(timeline_io_test_state, "i(p:slot_layer_t l,i pos)", i, p, i)
+
+// Texture export (io/export_texture.c, ui/box_export.c) test hooks
+X5(export_texture_test_options, "v(p:char preset,i layers_export,b padding,i bits,i format)", v, p, i, b, i, i)
+X2(box_export_textures_run, "v(p:char path,b bake_material)", v, p, b)
+X2(export_tiled_run, "v(p:char path,b bake_material)", v, p, b)
+X2(export_tiled_start, "b(p:char path,b bake_material)", b, p, b)
+X1(export_tiled_step, "b(f budget_ms)", b, f)
+X0(export_tiled_cancel, "v()", v)
+X0(export_tiled_running, "b()", b)
+X0(export_tiled_progress, "f()", f)
+X1(export_tiled_test_tile, "v(i size)", v, i)
+X1(export_tiled_test_raster, "v(b on)", v, b)
+X1(export_tiled_test_mm, "v(b on)", v, b)
+X1(export_tiled_stat, "i(i what)", i, i)
+X0(export_tiled_test_coverage, "p:gpu_texture_t()", p)
+X2(mm_buffers_test_export, "i(i max_size,i budget_kb)", i, i, i)
+X1(mm_buffers_test_tex_size, "i(i map)", i, i)
+X0(mm_buffers_export_end, "v()", v)
+X0(mm_buffers_export_largest, "i()", i)
+X2(export_tiled_set_resolution, "v(i w,i h)", v, i, i)

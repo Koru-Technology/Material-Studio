@@ -377,6 +377,7 @@ typedef struct config {
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
 	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
+	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
 } config_t;
 
 // ---- Materials ----
@@ -1298,3 +1299,29 @@ typedef struct hstore_index_entry {
 	u8        kind;
 	u8        codec;
 } hstore_index_entry_t;
+// ---- Paint executor (paint_exec.c) ----
+typedef enum paint_op_kind {
+	PAINT_OP_DRAW         = 1, // A paint draw of dabs [dab_first, dab_first + dab_count), the blur snapshot of the frame with it
+	PAINT_OP_DILATE       = 2, // Dilation in a stroke (every few frames) or once it ends
+	PAINT_OP_DILATE_AFTER = 3, // Dilation after the dabs of a frame, deferred to the next frame while the stroke goes on
+	PAINT_OP_CLEAR_BLEND  = 4, // The stroke coverage clears
+	PAINT_OP_CLONE_FLATTEN = 5, // Clone source of the visible layers mode, at stroke start
+} paint_op_kind_t;
+
+// What a paint draw reads that changes from draw to draw: the brush state is in its dabs (PAINT_DAB_* in functions.h)
+typedef struct paint_exec_op {
+	i32    kind;     // paint_op_kind_t
+	bool   dilation; // DRAW: dilates after
+	bool   base;     // DILATE: the base texture, the normal and pack textures
+	bool   nor_pack;
+	bool   batched;  // DRAW: one draw paints its dabs in order, else dab_count is 1 (2 for a decal: the dab and its anchor)
+	i32    dab_first;
+	i32    dab_count;
+	f32    down;          // Input pressed, inp.z
+	f64    brush_time;    // As it was when the draw was emitted (the end of a stroke paints its tail with a time of its own)
+	vec4_t direction;     // _brush_direction: x, y the stroke direction, z 0 drops the dab
+	vec4_t pixel_snap_uv; // _pixel_snap_uv
+	vec4_t loc;           // Transform of the paint object, mirrored and turned for symmetry copies
+	quat_t rot;
+	vec4_t scale;
+} paint_exec_op_t;

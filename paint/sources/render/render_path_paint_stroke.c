@@ -181,6 +181,7 @@ static void render_path_paint_tail_release(f32 len, f32 taper_end) {
 
 // The stroke ended: its kept back stamps paint, tapered towards the end
 void render_path_paint_tail_flush() {
+	paint_exec_begin(); // The dabs resolve together (paint_exec.c)
 	f32 taper_end = render_path_paint_taper_end();
 	f32 len       = g_context->brush_stroke_length;
 	for (i32 i = 0; i < render_path_paint_tail_count; ++i) {
@@ -195,6 +196,7 @@ void render_path_paint_tail_flush() {
 	if (render_path_paint_batched()) {
 		render_path_paint_batch_flush(true);
 	}
+	paint_exec_end();
 	g_context->brush_dab_radius  = 1.0;
 	g_context->brush_dab_opacity = 1.0;
 	g_context->brush_dab_angle   = 0.0;
@@ -277,6 +279,7 @@ void render_path_paint_commands_stamps() {
 	if (g_context->pdirty <= 0) {
 		return;
 	}
+	paint_exec_begin();
 	f32 cx       = g_context->paint_vec.x;
 	f32 cy       = g_context->paint_vec.y;
 	f32 aspect   = base_paint_view_aspect();
@@ -315,6 +318,7 @@ void render_path_paint_commands_stamps() {
 	else if (stamps > 0) {
 		render_path_paint_dilate_after_paint();
 	}
+	paint_exec_end();
 
 	g_context->paint_vec.x       = cx;
 	g_context->paint_vec.y       = cy;
@@ -460,6 +464,7 @@ void render_path_paint_samples_reset() {
 void render_path_paint_commands_samples() {
 	render_path_paint_point_t pts[RENDER_PATH_PAINT_POINTS_MAX];
 	i32                       count = render_path_paint_points(pts);
+	paint_exec_begin();
 	if (!render_path_paint_samples_started) {
 		render_path_paint_samples_last    = pts[0];
 		render_path_paint_samples_started = true;
@@ -484,6 +489,7 @@ void render_path_paint_commands_samples() {
 	if (render_path_paint_batched()) {
 		render_path_paint_batch_flush(true);
 	}
+	paint_exec_end();
 	render_path_paint_point_clear();
 	g_context->paint_vec.x     = cx;
 	g_context->paint_vec.y     = cy;
@@ -500,6 +506,7 @@ void render_path_paint_commands_samples_stamps() {
 	f32                       step     = math_max(render_path_paint_spacing() * diameter, 0.0005);
 	i32                       stamps   = 0;
 	i32                       first    = 0;
+	paint_exec_begin();
 
 	if (g_context->brush_dab_x < 0.0 || !render_path_paint_samples_started) { // First stamp of the stroke
 		render_path_paint_point_use(&pts[0]);
@@ -542,6 +549,7 @@ void render_path_paint_commands_samples_stamps() {
 	if (stamps > 0) {
 		render_path_paint_dilate_after_paint();
 	}
+	paint_exec_end();
 
 	render_path_paint_point_clear();
 	g_context->paint_vec.x       = cx;

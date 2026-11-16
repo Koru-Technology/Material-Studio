@@ -162,6 +162,7 @@ typedef struct mm_buffers_recipe {
 	bool                      rendering;
 	i32                       rendered;      // Generation it was last rendered
 	i32                       rendered_call; // mm_buffers_render call it was last rendered by (the stats)
+	bool                      pinned;        // Kept for an export (mm_buffers_export_begin)
 } mm_buffers_recipe_t;
 
 // A pipeline's state: new (nothing made), queued for a worker or being made by one, ready (compiled, or failed: !ok)
@@ -290,8 +291,20 @@ static gpu_texture_format_t mm_buffers_format(mm_buffers_recipe_t *r) {
 	return f32 ? GPU_TEXTURE_FORMAT_RGBA128 : GPU_TEXTURE_FORMAT_RGBA64;
 }
 
-// The full size of a pass: its own, at most the project's texture resolution and MM_BUFFERS_MAX_SIZE
+// Export (io/export_tiled.c): full sizes up to this instead of MM_BUFFERS_MAX_SIZE and the project's resolution, 0 none
+static i32 mm_buffers_export_cap = 0;
+
+void mm_buffers_set_export_cap(i32 cap) {
+	mm_buffers_export_cap = cap > 0 ? cap : 0;
+}
+
+// The full size of a pass: its own, at most the project's texture resolution and MM_BUFFERS_MAX_SIZE (the export cap
+// instead while one is set)
 static i32 mm_buffers_full_size(mm_buffers_recipe_t *r) {
+	if (mm_buffers_export_cap > 0) {
+		i32 s = r->own > mm_buffers_export_cap ? mm_buffers_export_cap : r->own;
+		return s < 1 ? 1 : s;
+	}
 	i32 s   = r->own > MM_BUFFERS_MAX_SIZE ? MM_BUFFERS_MAX_SIZE : r->own;
 	i32 res = mm_buffers_project_res();
 	s       = res > 0 && s > res ? res : s;
@@ -613,6 +626,24 @@ static i64 mm_buffers_budget(void) {
 	return budget;
 }
 
+// The memory an export may give its full size buffers: on iOS a third of what the system still lets the app use (reserved:
+// bytes about to be allocated, the export's tiles) up to 1.5 GB, 4 GB elsewhere
+i64 mm_buffers_export_budget(i64 reserved) {
+	const i64 mb = 1024 * 1024;
+#ifdef IRON_IOS
+	i64 budget = 1536 * mb;
+	if (__builtin_available(iOS 13.0, *)) {
+		i64 avail = (i64)os_proc_available_memory() - reserved;
+		if (avail > 0 && budget > avail / 3) {
+			budget = avail / 3;
+		}
+	}
+	return budget;
+#else
+	return 4096 * mb;
+#endif
+}
+
 static void mm_buffers_scratch_free(void);
 
 // iOS memory warning (base_on_memory_warning): frees every texture the last render did not use. Recipes stay, a texture
@@ -620,7 +651,7 @@ static void mm_buffers_scratch_free(void);
 void mm_buffers_trim(void) {
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
 		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
-			if (r->tex != NULL && r->used < mm_buffers_gen && !r->rendering && !r->job && !r->queued[0] && !r->queued[1] && !r->queued[2]) {
+			if (r->tex != NULL && r->used < mm_buffers_gen && !r->rendering && !r->job && !r->queued[0] && !r->queued[1] && !r->queued[2] && !r->pinned) {
 				mm_buffers_texture_free(r->tex);
 				r->tex = NULL;
 			}
@@ -633,7 +664,7 @@ void mm_buffers_trim(void) {
 static void mm_buffers_keep_pending(void) {
 	for (i32 b = 0; b < MM_BUFFERS_BUCKETS; ++b) {
 		for (mm_buffers_recipe_t *r = mm_buffers_table[b]; r != NULL; r = r->next) {
-			if (r->job || r->job_cur != NULL || r->queued[0] || r->queued[1] || r->queued[2] || r->rendering) {
+			if (r->job || r->job_cur != NULL || r->queued[0] || r->queued[1] || r->queued[2] || r->rendering || r->pinned) {
 				r->used = mm_buffers_gen;
 				mm_buffers_touch(r); // Its inputs' recipes too
 			}
