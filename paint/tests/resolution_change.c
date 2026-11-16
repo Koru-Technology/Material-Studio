@@ -2,8 +2,9 @@
 
 // Working resolution changes that keep detail (util/util_layer_resolution.c), a layer a frame: 2K to 4K and back to 2K
 // gives the layers back byte for byte, a change is a history step undone and redone exactly, and undo works across it
-// (a stroke before and one after the change). Undo through timelines: the legacy tile pool holds one size,
-// a stroke at the new size drops the tiles of strokes at the old one.
+// (a stroke before and one after the change). Undo through timelines: the legacy tile pool holds one size, a stroke
+// at the new size drops the tiles of strokes at the old one. Up, recorded strokes replay at the new size: a stroke
+// painted at 2K with a material of 4K detail and taken to 4K is close to the same stroke painted live at 4K.
 
 int fails  = 0;
 int checks = 0;
@@ -17,6 +18,9 @@ char         *h4k;   // after 2K to 4K
 char         *hpaint; // after a stroke at 2K
 int           steps_before;
 int           progress_seen = 0;
+slot_layer_t *layer_rec;   // A stroke at 2K, taken to 4K
+slot_layer_t *layer_live;  // The stroke painted live at 4K
+slot_layer_t *layer_blank;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -60,6 +64,28 @@ void stroke(float y) {
 		script_paint(0.3 + i * 0.04, y + i * 0.01);
 	}
 	script_paint_end();
+}
+
+void seeded_stroke() {
+	render_path_paint_set_stamp_seed(4242);
+	for (int i = 0; i < 30; ++i) {
+		script_paint(0.35 + i * 0.01, 0.45 + (i % 7) * 0.004);
+	}
+	script_paint_end();
+	paint_rec_flush();
+}
+
+slot_layer_t *new_layer() {
+	app_layer_new(0);
+	make_paint_set_batching(1); // Parses the paint material again
+	return script_get_context()->layer;
+}
+
+int diff3(slot_layer_t *a, slot_layer_t *b, float tol) {
+	int n = script_diff_textures(a->texpaint, b->texpaint, tol);
+	n     = n + script_diff_textures(a->texpaint_nor, b->texpaint_nor, tol);
+	n     = n + script_diff_textures(a->texpaint_pack, b->texpaint_pack, tol);
+	return n;
 }
 
 void build_scene() {
@@ -159,9 +185,49 @@ void next() {
 	else if (step == 14) {
 		check(size_is(4096) && string_equals(layer_hashes(), h4k), "redo the stroke and the change");
 	}
+	else if (step == 15) { // Up against live: a new project, a seeded stroke at 2K
+		script_get_config()->paint_resolved_dabs = 1; // Strokes record world space dabs: they replay at any resolution
+		script_brush_defaults();
+		script_project_new();
+	}
+	else if (step == 16) {
+		slot_material_t *m     = script_material_create("rc_fine");
+		ui_node_t       *noise = script_material_create_node_at("TEX_NOISE", -600.0, 0.0);
+		script_material_set_float(noise, 1, 1, 60.0); // Detail of 4K texels: scaling 2K up would lose it
+		script_material_connect(noise, 0, script_material_get_node("OUTPUT_MATERIAL_PBR"), 0);
+		script_material_update();
+		context_t *ctx     = script_get_context();
+		ctx->brush_radius  = 0.3;
+		ctx->brush_spacing = 0.05;
+		context_select_tool(TOOL_TYPE_BRUSH);
+		layers_resolution_apply(2048, 2048); // A new project keeps the size of the one before
+		layer_rec = new_layer();
+		seeded_stroke();
+	}
+	else if (step == 17) {
+		check(width_of(layer_rec) == 2048, "the stroke painted at 2K");
+		layers_resolution_begin(4096, 4096);
+	}
+	else if (step == 18) {
+		layer_live = new_layer();
+		seeded_stroke();
+		layer_blank = new_layer();
+	}
+	else if (step == 19) {
+		script_diff_mask(export_tiled_test_coverage(), 1); // Inside the uv islands: the padding around them dilates apart
+		int painted = diff3(layer_live, layer_blank, 1.0);
+		int over1   = diff3(layer_live, layer_rec, 1.0);
+		int over24  = diff3(layer_live, layer_rec, 24.0);
+		script_diff_mask(NULL, 0);
+		printf("[resolution_change] 2K stroke taken to 4K against live 4K: of %d painted channel values %d over 1/255, %d over 24/255", painted, over1, over24);
+		check(width_of(layer_rec) == 4096 && painted > 10000, string("the live stroke at 4K paints (%d)", painted));
+		// The dabs were resolved to world space at 2K: the stroke's edge texels at 4K sit a fraction of a texel apart from
+		// live ones, everything else matches
+		check(over1 * 20 <= painted && over24 * 100 <= painted, string("2K to 4K replays the stroke: as live 4K but edge texels (%d over 1/255, %d over 24/255, of %d)", over1, over24, painted));
+	}
 	else {
 		layers_resolution_apply(2048, 2048);
-		config_t *cfg        = script_get_config();
+		script_get_config()->paint_resolved_dabs = 0;
 		printf("[resolution_change] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "RESOLUTION_CHANGE PASS" : "RESOLUTION_CHANGE FAIL");
 		script_quit();
@@ -172,7 +238,6 @@ void next() {
 }
 
 void main() {
-	config_t *cfg        = script_get_config();
 	script_project_new();
 	script_notify_on_next_frame(next);
 }
