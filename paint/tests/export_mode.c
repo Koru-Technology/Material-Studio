@@ -11,6 +11,7 @@ int   checks = 0;
 int   step   = 0;
 int   frame  = 0;
 char *hashes;
+int   layers_before = 0;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -122,12 +123,18 @@ void next() {
 	else if (step == 3) { // While it runs the layers are away; a cancel brings them back
 		export_tiled_set_mode(1);
 		int before = export_tiled_stat(13);
+		layers_before = before;
 		export_tiled_start(fresh_dir("cancel"), 0);
 		export_tiled_step(1.0);
 		int during = export_tiled_stat(13);
 		check(during * 100 < before, string("during the export the live layers hold %d KB (%d KB before)", during, before));
+		check(export_tiled_frozen(), "the viewport keeps its last frame");
+	}
+	else if (step == 4) { // Frames rendered meanwhile (frozen), then a cancel
+		check(export_tiled_running() && export_tiled_frozen(), "frames went by during the export");
 		export_tiled_cancel();
-		check(string_equals(hashes, layer_hashes()) && export_tiled_stat(13) == before, "cancelled: the live layers came back exactly");
+		check(!export_tiled_frozen(), "the viewport renders again");
+		check(string_equals(hashes, layer_hashes()) && export_tiled_stat(13) == layers_before, "cancelled: the live layers came back exactly");
 	}
 	else {
 		export_tiled_set_mode(2);

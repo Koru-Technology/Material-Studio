@@ -1420,7 +1420,7 @@ bool export_tiled_start(char *path, bool bake_material) {
 	et_predicted_bytes = export_tiled_predict();
 	if (export_tiled_mode_wanted()) {
 		hstore_flush(); // The only copy of unsaved pixels goes to the store: on disk first, a kill keeps them
-		// TODO: project_session_write_now() once the store track's session head lands, the journal is then recoverable
+		project_session_write(); // And the session head: the journal recovers them
 		export_tiled_evict();
 	}
 
@@ -1536,6 +1536,11 @@ void export_tiled_cancel() {
 	if (et.active) {
 		export_tiled_finish(true);
 	}
+}
+
+// Export mode is on: the viewport keeps its last frame (render_path_base_commands)
+bool export_tiled_frozen() {
+	return et_nevicted > 0;
 }
 
 bool export_tiled_running() {

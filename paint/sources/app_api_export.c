@@ -130,3 +130,30 @@ void app_export_cancel(void) {
 		export_tiled_set_resolution(0, 0);
 	}
 }
+
+void app_resolution_get(app_resolution_t *out) {
+	*out = (app_resolution_t){.width = config_get_texture_res_x(), .height = config_get_texture_res_y(), .keeps_detail = g_config->export_tiled};
+#ifdef IRON_IOS
+	out->max_size = 8192;
+#else
+	out->max_size = 16384;
+#endif
+	out->running  = layers_resolution_running();
+	out->progress = layers_resolution_progress();
+}
+
+bool app_resolution_set(int32_t size) {
+	app_resolution_t r;
+	app_resolution_get(&r);
+	if (r.running || size < 512 || size > r.max_size || (size == r.width && size == r.height)) {
+		return false;
+	}
+	if (g_config->export_tiled) {
+		return layers_resolution_begin(size, size);
+	}
+	base_res_x = size;
+	base_res_y = size;
+	base_res   = config_get_texture_res_pos(size);
+	layers_on_resized();
+	return true;
+}

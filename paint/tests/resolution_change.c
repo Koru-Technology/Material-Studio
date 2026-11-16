@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Working resolution changes that keep detail (util/util_layer_resolution.c, with export_tiled): 2K to 4K and back to 2K
+// Working resolution changes that keep detail (util/util_layer_resolution.c, with export_tiled), a layer a frame: 2K to 4K and back to 2K
 // gives the layers back byte for byte, a change is a history step undone and redone exactly, and undo works across it
 // (a stroke before and one after the change). Undo through timelines (history_v2): the legacy tile pool holds one size,
 // a stroke at the new size drops the tiles of strokes at the old one.
@@ -16,6 +16,7 @@ char         *h2k;   // Layer hashes at 2K before any change
 char         *h4k;   // after 2K to 4K
 char         *hpaint; // after a stroke at 2K
 int           steps_before;
+int           progress_seen = 0;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -85,6 +86,12 @@ void next() {
 		return;
 	}
 	frame = 0;
+	if (layers_resolution_running()) { // A layer a frame
+		float p = layers_resolution_progress();
+		progress_seen = progress_seen || (p > 0.0 && p < 1.0);
+		script_notify_on_next_frame(next);
+		return;
+	}
 
 	if (step == 0) {
 		build_scene();
@@ -96,7 +103,8 @@ void next() {
 	}
 	else if (step == 2) {
 		check(size_is(4096) && config_get_texture_res_x() == 4096, "2K to 4K: layers and the project at 4096");
-		check(history_test_undos() == steps_before + 1, "the change is a history step");
+		check(history_test_undos() == steps_before + 1, "the change is a history step, pushed once done");
+		check(progress_seen, "it ran over frames, with progress");
 		h4k = layer_hashes();
 		layers_resolution_begin(2048, 2048);
 	}

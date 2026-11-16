@@ -2480,6 +2480,7 @@ bool           export_tiled_start(char *path, bool bake_material);
 bool           export_tiled_step(f64 budget_ms);
 void           export_tiled_cancel();
 bool           export_tiled_running();
+bool           export_tiled_frozen();
 f32            export_tiled_progress();
 void           export_tiled_run(char *path, bool bake_material);
 void           export_tiled_set_resolution(i32 w, i32 h);
@@ -2601,7 +2602,10 @@ void history_io_clear();
 
 // ---- util/util_layer_resolution.c ----
 void layers_resolution_apply(i32 w, i32 h);
-void layers_resolution_begin(i32 w, i32 h);
+bool layers_resolution_begin(i32 w, i32 h);
+bool layers_resolution_step();
+bool layers_resolution_running();
+f32  layers_resolution_progress();
 void layers_on_resized_by_user();
 void layers_resolution_reset();
 i32  layers_resolution_test_restores();

@@ -49,3 +49,17 @@ const char *app_export_not_upscaled_name(int32_t i);
 bool  app_export_start(void);
 float app_export_progress(void); // 0 to 1, 1 when none is in progress
 void  app_export_cancel(void);
+
+// Project resolution (util/util_layer_resolution.c). With the tiled export the change keeps painted detail, runs over
+// frames (a layer each, app_resolution_get().progress) and is one undo step; otherwise the layers are resampled at once.
+typedef struct {
+	int32_t width; // The working resolution
+	int32_t height;
+	int32_t max_size;     // 8192 on iOS, 16384 elsewhere
+	bool    keeps_detail; // The change keeps detail and can be undone
+	bool    running;
+	float   progress; // 0 to 1, 1 when none runs
+} app_resolution_t;
+
+void app_resolution_get(app_resolution_t *out);
+bool app_resolution_set(int32_t size); // Square, from 512 to max_size; false when it is the current one or one runs

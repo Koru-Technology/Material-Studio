@@ -164,45 +164,56 @@ static void layers_resolution_layer(slot_layer_t *l, i32 w0, i32 h0, i32 w1, i32
 	mask_stack_layer_changed(l);
 }
 
-// The project's layers to w x h now. Not a history step: undo and redo call it.
-void layers_resolution_apply(i32 w, i32 h) {
-	if (g_project->_->layers->length == 0) {
-		return;
+// The change runs as a job, a layer a step (layers_resolution_step, each frame): the step is pushed once all are done.
+// Undo and redo run it at once (layers_resolution_apply).
+
+static struct layers_resolution_job {
+	bool active;
+	bool push; // A history step when done (not for undo and redo)
+	i32  w0;
+	i32  h0;
+	i32  w1;
+	i32  h1;
+	i32  next; // Layer index
+} lr;
+
+static void layers_resolution_update(void *_);
+
+static bool layers_resolution_start(i32 w, i32 h, bool push) {
+	if (lr.active || g_project->_->layers->length == 0) {
+		return false;
 	}
 	slot_layer_t *first = g_project->_->layers->buffer[0];
-	i32           w0    = first->texpaint->width;
-	i32           h0    = first->texpaint->height;
-	base_res_x          = w;
-	base_res_y          = h;
-	base_res            = w == h ? config_get_texture_res_pos(w) : TEXTURE_RES_CUSTOM;
-	if (w == w0 && h == h0) {
-		return;
+	lr                  = (struct layers_resolution_job){.active = true, .push = push, .w0 = first->texpaint->width, .h0 = first->texpaint->height, .w1 = w, .h1 = h};
+	if (w == lr.w0 && h == lr.h0) {
+		lr.active = false;
+		return false;
 	}
 	timeline_finalize();
 	history_flush_restores(NULL);
-	draw_saved_t saved = draw_suspend();
-	i32          n     = g_project->_->layers->length;
-	i32          ring  = g_config->undo_steps; // Fewer whole layer copies at 8K and above, as layers_resize
+	return true;
+}
+
+// The rest once every layer is at the new size: the project's resolution, targets that follow it, fill layers
+static void layers_resolution_finish() {
+	i32 w = lr.w1, h = lr.h1;
+	base_res_x = w;
+	base_res_y = h;
+	base_res   = w == h ? config_get_texture_res_pos(w) : TEXTURE_RES_CUSTOM;
+	i32 ring   = g_config->undo_steps; // Fewer whole layer copies at 8K and above, as layers_resize
 	if (w >= 8192 || h >= 8192) {
 		i32 cap = w == 8192 ? 4 : 1;
 		ring    = ring < cap ? ring : cap;
 	}
 	history_ring_set_size(ring);
-	for (i32 i = 0; i < n; ++i) {
-		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if ((slot_layer_is_layer(l) || slot_layer_is_mask(l)) && l->texpaint != NULL) {
-			layers_resolution_layer(l, l->texpaint->width, l->texpaint->height, w, h);
-		}
-	}
 	layers_resize_targets(); // Undo ring, live layer, paint scratch
 	render_path_raytrace_ready = false;
 	g_context->ddirty          = 2;
 	layers_crop                = false;
 
-	// Fill layers render at the new size
 	slot_layer_t    *_layer    = g_context->layer;
 	slot_material_t *_material = g_context->material;
-	for (i32 i = 0; i < n; ++i) {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		if (l->fill_material != NULL) {
 			g_context->layer    = l;
@@ -215,32 +226,71 @@ void layers_resolution_apply(i32 w, i32 h) {
 	g_context->material = _material;
 	layers_set_object_mask();
 	make_material_parse_paint_material(true);
-	draw_resume(saved);
 	g_context->layer_preview_dirty = true;
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
+	lr.active = false;
+	if (lr.push) {
+		history_resolution(lr.w0, lr.h0, lr.w1, lr.h1);
+	}
 }
 
-static i32 layers_resolution_pending_w = 0;
-static i32 layers_resolution_pending_h = 0;
+// Converts the next layer, finishes after the last. True once the change is done.
+bool layers_resolution_step() {
+	if (!lr.active) {
+		return true;
+	}
+	draw_saved_t saved = draw_suspend();
+	while (lr.next < g_project->_->layers->length) {
+		slot_layer_t *l = g_project->_->layers->buffer[lr.next++];
+		if ((slot_layer_is_layer(l) || slot_layer_is_mask(l)) && l->texpaint != NULL && (l->texpaint->width != lr.w1 || l->texpaint->height != lr.h1)) {
+			layers_resolution_layer(l, l->texpaint->width, l->texpaint->height, lr.w1, lr.h1);
+			break; // One a step
+		}
+	}
+	if (lr.next >= g_project->_->layers->length) {
+		layers_resolution_finish();
+	}
+	draw_resume(saved);
+	return !lr.active;
+}
 
-static void layers_resolution_run(void *_) {
-	i32 w0 = g_project->_->layers->buffer[0]->texpaint->width;
-	i32 h0 = g_project->_->layers->buffer[0]->texpaint->height;
-	i32 w1 = layers_resolution_pending_w;
-	i32 h1 = layers_resolution_pending_h;
-	if (w1 == w0 && h1 == h0) {
+bool layers_resolution_running() {
+	return lr.active;
+}
+
+f32 layers_resolution_progress() {
+	i32 n = g_project->_->layers->length;
+	return !lr.active || n == 0 ? 1.0 : lr.next / (f32)(n + 1);
+}
+
+// The project's layers to w x h now (undo and redo of the step)
+void layers_resolution_apply(i32 w, i32 h) {
+	if (lr.active) { // One in progress ends first
+		while (!layers_resolution_step()) {
+		}
+		sys_remove_update(&layers_resolution_update);
+	}
+	if (!layers_resolution_start(w, h, false)) {
 		return;
 	}
-	history_resolution(w0, h0, w1, h1);
-	layers_resolution_apply(w1, h1);
+	while (!layers_resolution_step()) {
+	}
 }
 
-// The working resolution set (base_res_x, base_res_y) changes on the next frame, undoable. The resolution controls call it
-// instead of layers_on_resized with the tiled export.
-void layers_resolution_begin(i32 w, i32 h) {
-	layers_resolution_pending_w = w;
-	layers_resolution_pending_h = h;
-	sys_notify_on_next_frame(&layers_resolution_run, NULL);
+static void layers_resolution_update(void *_) {
+	if (layers_resolution_step()) {
+		sys_remove_update(&layers_resolution_update);
+	}
+}
+
+// The working resolution goes to w x h over the next frames, a layer each, undoable once done. The resolution controls
+// call it instead of layers_on_resized with the tiled export.
+bool layers_resolution_begin(i32 w, i32 h) {
+	if (!layers_resolution_start(w, h, true)) {
+		return false;
+	}
+	sys_notify_on_update(&layers_resolution_update, NULL);
+	return true;
 }
 
 // The resolution controls: base_res_x and base_res_y set
