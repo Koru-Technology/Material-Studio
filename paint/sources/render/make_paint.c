@@ -469,7 +469,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_vert(shader, string_tmp("vec2 atlas_uv = %s * constants.atlas_transform.z + constants.atlas_transform.xy;", tuv));
 		tuv = "atlas_uv";
 	}
-	if (paint_exec_resolved_config() && !is_atlas) { // The part of the layer painted (paint_exec_uv_tile), the whole layer live
+	if (!is_atlas) { // The part of the layer painted (paint_exec_uv_tile: export tiles, replay), the whole layer live (0 0 1 1, exact)
 		node_shader_add_constant(shader, "vec4 paint_uv_tile", "_paint_uv_tile");
 		node_shader_write_vert(shader, string_tmp("vec2 tile_uv = (%s - constants.paint_uv_tile.xy) * constants.paint_uv_tile.zw;", tuv));
 		node_shader_write_vert(shader, "vec2 tpos = vec2(tile_uv.x * 2.0 - 1.0, (1.0 - tile_uv.y) * 2.0 - 1.0);");
