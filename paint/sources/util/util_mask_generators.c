@@ -24,6 +24,7 @@ static i32                    mask_gen_pos_inv;
 static i32                    mask_gen_type;
 static i32                    mask_gen_uv_map;
 static i32                    mask_gen_noise_inv;
+static i32                    mask_gen_uv_rect;
 static i32                    mask_gen_radius_loc;
 static i32                    mask_gen_size_loc;
 static i32                    mask_gen_render_count = 0; // Generator passes so far (tests)
@@ -186,6 +187,7 @@ static gpu_pipeline_t *mask_gen_pipeline(mesh_data_t *md) {
 	mask_gen_type      = pipes_get_constant_location("int");
 	mask_gen_uv_map    = pipes_get_constant_location("int");
 	mask_gen_noise_inv = pipes_get_constant_location("float");
+	mask_gen_uv_rect   = pipes_get_constant_location("float4");
 	return pipe;
 }
 
@@ -222,8 +224,9 @@ static void mask_gen_timing_done(void *data, f64 gpu_ms) {
 	free(p);
 }
 
-// Generator e of m into dst: the mesh into scratch (R value, A coverage), dilated into dst. No pass may be open.
-static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *scratch, gpu_texture_t *dst) {
+// Generator e of m into dst: the mesh into scratch (R value, A coverage), dilated into dst. rect: the part of the mask
+// dst shows (u0, v0, du, dv), NULL the whole. No pass may be open.
+static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *scratch, gpu_texture_t *dst, f32 *rect) {
 	slot_layer_t *owner  = mask_gen_owner(m);
 	bool          no_map = e->type == MASK_EFFECT_THICKNESS && project_get_image(mesh_maps_get_asset(MESH_MAP_THICKNESS)) == NULL;
 	if (util_mesh_udim_layer(owner) || no_map) { // Not supported yet, or no thickness map (its neutral white would read thick): black
@@ -271,6 +274,12 @@ static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *sc
 	gpu_set_int(mask_gen_type, e->type);
 	gpu_set_int(mask_gen_uv_map, tex1 ? 1 : 0);
 	gpu_set_float(mask_gen_noise_inv, 1.0 / emax);
+	if (rect != NULL) {
+		gpu_set_float4(mask_gen_uv_rect, rect[0], rect[1], rect[2], rect[3]);
+	}
+	else {
+		gpu_set_float4(mask_gen_uv_rect, 0.0, 0.0, 1.0, 1.0);
+	}
 	gpu_set_texture(0, mesh_maps_texture_model(MESH_MAP_CURVATURE));
 	gpu_set_texture(1, mesh_maps_texture_model(MESH_MAP_AO));
 	gpu_set_texture(2, mesh_maps_texture_model(MESH_MAP_THICKNESS));
@@ -369,7 +378,7 @@ void mask_gen_update(slot_layer_t *m) {
 		if (tex[i] == NULL) {
 			tex[i] = gpu_create_render_target(w, h, GPU_TEXTURE_FORMAT_R8);
 		}
-		mask_gen_render(m, &effs[i], mask_stack_get_scratch(w, h), tex[i]);
+		mask_gen_render(m, &effs[i], mask_stack_get_scratch(w, h), tex[i], NULL);
 	}
 
 	mask_gen_free(m);
@@ -389,6 +398,12 @@ gpu_texture_t *mask_gen_texture(slot_layer_t *m, mask_effect_t e) {
 		}
 	}
 	return render_path_empty_black();
+}
+
+// Export (io/export_tiled.c): generator e of m rendered for a part of the mask (rect: u0, v0, du, dv) into dst (R8),
+// scratch an RGBA32 target of dst's size. Not cached. No pass may be open.
+void mask_gen_render_rect(slot_layer_t *m, mask_effect_t e, gpu_texture_t *scratch, gpu_texture_t *dst, f32 *rect) {
+	mask_gen_render(m, &e, scratch, dst, rect);
 }
 
 // Frees the cached outputs of m, they render again on its next evaluation

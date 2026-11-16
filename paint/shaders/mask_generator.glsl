@@ -15,6 +15,7 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 144) int type;        // mask_effect_type_t
 	layout(offset = 148) int uv_map;      // 1: the second uv set, in_tex.zw
 	layout(offset = 152) float noise_inv; // 1 / largest extent, isotropic noise
+	layout(offset = 160) vec4 uv_rect;    // The part of the mask drawn (u0, v0, du, dv), 0 0 1 1 the whole (export tiles)
 } constants;
 
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
@@ -35,7 +36,8 @@ layout(location = 2) in vec4 in_tex; // tex, and tex1 in zw when the mesh has a 
 
 void main() {
 	vec2 t      = constants.uv_map == 1 ? in_tex.zw : in_tex.xy;
-	gl_Position = vec4(t.x * 2.0 - 1.0, (1.0 - t.y) * 2.0 - 1.0, 0.0, 1.0);
+	vec2 r      = (t - constants.uv_rect.xy) / constants.uv_rect.zw;
+	gl_Position = vec4(r.x * 2.0 - 1.0, (1.0 - r.y) * 2.0 - 1.0, 0.0, 1.0);
 	vout.pos    = in_pos.xyz;
 	vout.nor    = vec3(in_nor.xy, in_pos.w);
 	vout.uv     = in_tex.xy;

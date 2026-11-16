@@ -1398,6 +1398,8 @@ void layers_update_fill_layers();
 bool layers_is_path_material();
 void layers_update_path_layers();
 void layers_update_fill_layer(bool parse_paint);
+struct paint_target; // stroke_rec.h
+bool layers_render_fill_rect(slot_layer_t *l, struct paint_target *t, gpu_texture_t **scratch);
 void layers_refresh_fill_layer(slot_layer_t *l);
 void layers_refresh_fill_layer_later(slot_layer_t *l);
 void layers_update_linked_layers();
@@ -1452,6 +1454,10 @@ void                 mask_stack_anchors_from_index(f32_array_t *effects, slot_la
 gpu_texture_t       *slot_layer_mask_texture(slot_layer_t *m);
 void                 mask_stack_evaluate_dirty();
 void                 mask_stack_evaluate(slot_layer_t *m);
+bool                 mask_stack_blur_prefix(slot_layer_t *m, i32 index, gpu_texture_t **out);
+void                 mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t *scratch, gpu_texture_t *gen_out, gpu_texture_t *gen_scratch, f32 *rect,
+                                              gpu_texture_t *(*src)(slot_layer_t *, mask_effect_t *, i32, void *), void *data);
+slot_layer_t        *mask_stack_anchor_target(slot_layer_t *m, mask_effect_t *e, i32 *kind);
 void                 mask_stack_free_texture(slot_layer_t *m);
 
 // ---- util/util_mask_generators.c ----
@@ -1460,6 +1466,7 @@ i32            mask_gen_renders();
 bool           mask_gen_stale(slot_layer_t *m);
 void           mask_gen_update(slot_layer_t *m);
 gpu_texture_t *mask_gen_texture(slot_layer_t *m, mask_effect_t e);
+void           mask_gen_render_rect(slot_layer_t *m, mask_effect_t e, gpu_texture_t *scratch, gpu_texture_t *dst, f32 *rect);
 void           mask_gen_free(slot_layer_t *m);
 void           mask_gen_trim();
 
@@ -2431,6 +2438,9 @@ bool           export_tiled_running();
 f32            export_tiled_progress();
 void           export_tiled_run(char *path, bool bake_material);
 void           export_tiled_set_resolution(i32 w, i32 h);
+i32            export_tiled_not_upscaled(i32 w, i32 h);
+char          *export_tiled_not_upscaled_name(i32 i);
+void           export_tiled_test_no_fill(bool on);
 void           export_tiled_test_tile(i32 size);
 void           export_tiled_test_raster(bool on);
 void           export_tiled_test_mm(bool on);

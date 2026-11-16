@@ -141,6 +141,114 @@ void layers_update_fill_layer(bool parse_paint) {
 	draw_resume(saved_draw);
 }
 
+// The render targets the paint pass reads by name, pointed at other textures for a while
+typedef struct layers_fill_swap {
+	char            *name;
+	render_target_t *was;
+	render_target_t  rt;
+} layers_fill_swap_t;
+
+static void layers_fill_swap(layers_fill_swap_t *s, char *name, gpu_texture_t *t) {
+	s->name = string_copy(name);
+	s->was  = any_map_get(render_path_render_targets, s->name);
+	s->rt   = (render_target_t){.name = s->name, .width = t->width, .height = t->height, .format = gpu_texture_format_name(t->format), .scale = 1.0, ._image = t};
+	any_map_set(render_path_render_targets, s->name, &s->rt);
+}
+
+static void layers_fill_unswap(layers_fill_swap_t *s) {
+	if (s->was != NULL) {
+		any_map_set(render_path_render_targets, s->name, s->was);
+	}
+	else {
+		map_delete(render_path_render_targets, s->name);
+	}
+}
+
+// Fill layer or fill mask l rendered into t (base, normal, pack; a mask: out[0]) for its uv rectangle at t->res_w x
+// t->res_h, as layers_update_fill_layer does for the whole layer (without its dilation): the paint shader's uv tile
+// transform (paint_exec_uv_tile) maps the rectangle to t. scratch, textures of t's size: [0..2] the layer before as the
+// pass reads it (cleared here as slot_layer_clear does), [3..4] for a mask the normal and pack outputs of the pass (the
+// formats of the masked layer's). The live layer, and the selected layer and material, stay as they are.
+bool layers_render_fill_rect(slot_layer_t *l, paint_target_t *t, gpu_texture_t **scratch) {
+	if (l == NULL || l->fill_material == NULL || t->w <= 0 || t->h <= 0) {
+		return false;
+	}
+	bool          mask = slot_layer_is_mask(l);
+	slot_layer_t *p    = l;
+	if (mask) { // The paint pass writes the normal and pack of the masked layer too
+		p = l->parent;
+		if (p != NULL && slot_layer_is_group(p)) {
+			slot_layer_t_array_t *children = slot_layer_get_children(p);
+			p                              = children != NULL && children->length > 0 ? children->buffer[0] : NULL;
+		}
+		if (p == NULL || p->texpaint_nor == NULL) {
+			return false;
+		}
+	}
+	draw_saved_t saved_draw = draw_suspend();
+
+	// The layer before: cleared as slot_layer_clear does, the pass blends over it
+	gpu_texture_t *base   = t->out[0];
+	gpu_texture_t *nor    = mask ? scratch[3] : t->out[1];
+	gpu_texture_t *pack   = mask ? scratch[4] : t->out[2];
+	u32            clr[3] = {0x00000000, color_from_floats(0.5, 0.5, 1.0, 0.0), color_from_floats(1.0, layers_default_rough, 0.0, 0.0)};
+	gpu_texture_t *out[3] = {base, nor, pack};
+	for (i32 k = 0; k < 3; ++k) {
+		_gpu_begin(out[k], NULL, NULL, GPU_CLEAR_COLOR, clr[k], 0.0);
+		gpu_end();
+		_gpu_begin(scratch[k], NULL, NULL, GPU_CLEAR_COLOR, clr[k], 0.0);
+		gpu_end();
+	}
+
+	i32                hid = history_ring_prev();
+	layers_fill_swap_t swaps[6];
+	layers_fill_swap(&swaps[0], string_tmp("texpaint%d", l->id), base);
+	layers_fill_swap(&swaps[1], string_tmp("texpaint_nor%d", p->id), nor);
+	layers_fill_swap(&swaps[2], string_tmp("texpaint_pack%d", p->id), pack);
+	layers_fill_swap(&swaps[3], string_tmp("texpaint_undo%d", hid), scratch[0]);
+	layers_fill_swap(&swaps[4], string_tmp("texpaint_nor_undo%d", hid), scratch[1]);
+	layers_fill_swap(&swaps[5], string_tmp("texpaint_pack_undo%d", hid), scratch[2]);
+
+	slot_layer_t    *_layer     = g_context->layer;
+	slot_material_t *_material  = g_context->material;
+	tool_type_t      _tool      = g_context->tool;
+	i32              _fill_type = g_context->fill_type;
+	i32              _pdirty    = g_context->pdirty;
+	vec4_t           _uv_tile   = paint_exec_uv_tile;
+	vec2_t           _res0      = paint_exec_res0;
+	g_context->layer            = l;
+	g_context->material         = l->fill_material;
+	g_context->tool             = TOOL_TYPE_FILL;
+	g_context->fill_type        = FILL_TYPE_OBJECT;
+	g_context->pdirty           = 1;
+	layers_set_object_mask();
+	paint_exec_uv_tile = (vec4_t){t->uv_rect[0], t->uv_rect[1], 1.0 / (t->uv_rect[2] - t->uv_rect[0]), 1.0 / (t->uv_rect[3] - t->uv_rect[1])};
+	paint_exec_res0    = (vec2_t){(f32)t->res_w, (f32)t->res_h};
+	i32 need           = mm_buffers_require(MM_BUFFERS_FULL); // Material Maker buffers full now, as for a bake
+
+	make_material_parse_paint_material(false);
+	render_path_paint_commands_paint(false);
+	if (_render_path_current_image != NULL) {
+		render_path_end();
+	}
+
+	mm_buffers_require(need);
+	paint_exec_uv_tile   = _uv_tile;
+	paint_exec_res0      = _res0;
+	g_context->layer     = _layer;
+	g_context->material  = _material;
+	g_context->tool      = _tool;
+	g_context->fill_type = _fill_type;
+	g_context->pdirty    = _pdirty;
+	for (i32 i = 5; i >= 0; --i) {
+		layers_fill_unswap(&swaps[i]);
+	}
+	layers_set_object_mask();
+	make_material_parse_paint_material(false);
+	draw_resume(saved_draw);
+	return true;
+}
+
 // Repaints fill layer l with its own material, the selected layer and material stay
 void layers_refresh_fill_layer(slot_layer_t *l) {
 	if (l == NULL || l->fill_material == NULL || array_index_of(g_project->_->layers, l) == -1) {
