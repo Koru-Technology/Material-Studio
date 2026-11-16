@@ -31,6 +31,7 @@
 #include "io/import_text.c"
 #include "io/import_texture.c"
 #include "io/import_theme.c"
+#include "io/project_container.c"
 
 #include "nodes_brush/boolean_node.c"
 #include "nodes_brush/brush_output_node.c"
@@ -261,6 +262,9 @@
 #include "history_swap.c"
 #include "history_steps.c"
 #include "history_store.c"
+#include "timeline.c"
+#include "timeline_ops.c"
+#include "timeline_tiles.c"
 #include "keymap.c"
 #include "logic_node.c"
 #include "minic_impl.c"

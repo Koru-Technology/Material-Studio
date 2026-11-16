@@ -307,6 +307,7 @@ static void ui_id_mask_build(void *_m) {
 	if (history_undo_layers != NULL) {
 		history_paint();
 		history_steps->buffer[history_steps->length - 1]->name = tr("ID Mask");
+		timeline_retag_last(m, TL_ID_MASK, NULL, 0, 0);
 	}
 	g_context->layer = _layer;
 

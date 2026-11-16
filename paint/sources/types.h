@@ -245,6 +245,7 @@ typedef struct slot_layer {
 	u32                  revision;        // Bumped when the pixels change, the masks anchoring the layer evaluate again
 	u64                  mask_inputs_key; // Anchored layers and ID map texmask was last evaluated with
 	bool                 mask_evaluating; // Cycle guard: a mask anchoring one being evaluated reads its last texmask
+	u32                  timeline;        // Uid of its timeline (stroke_rec.h), 0 for none
 } slot_layer_t;
 
 // One effect of a mask stack, unpacked from slot_layer_t.mask_effects (mask_stack_get / mask_stack_set)
@@ -375,6 +376,7 @@ typedef struct config {
 	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
+	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 } config_t;
 
 // ---- Materials ----
@@ -825,6 +827,7 @@ typedef struct history_step {
 	u32                          parent_uid;   // 0 when none
 	u32                          material_uid;
 	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
+	i32_array_t                 *tl_moves;     // Timeline cursors the step moved: uid, before, after (timeline.c)
 } history_step_t;
 
 // ---- Logic nodes and node groups ----
@@ -906,6 +909,10 @@ typedef struct project {
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
 	struct string_array                         *mesh_maps;       // Asset name per mesh_map_t, "" for none, NULL when none ever set
+	char                                        *uuid;            // project_uuid, NULL before version 31
+	u32                                          next_uid;        // project_uid_next, 0 before version 31
+	struct u8_array                             *timelines;       // Timelines of the layers (timeline.c), NULL for none
+	struct u8_array                             *history;         // History steps (history*.c), NULL for none
 	project_runtime_t                           *_;
 } project_t;
 
@@ -978,6 +985,10 @@ typedef struct layer_data {
 	f32               height_blend_offset;
 	f32               height_blend_reach;
 	f32_array_t      *mask_effects; // slot_layer_t.mask_effects as is, NULL for the implicit stack
+	u32               uid;          // slot_layer_t.uid, 0 in projects before version 31
+	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
+	i32               res_y;
+	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
 } layer_data_t;
 
 // ---- Shader outputs, export presets, neural models ----
@@ -1203,6 +1214,7 @@ typedef struct material_data2 {
 	bool paint_subs;
 	f32  uv_scale;
 	f32  uv_angle;
+	u32  uid; // slot_material_t.uid, 0 in projects before version 31 and in material files
 } material_data2_t;
 
 typedef struct material_data2_t_array {

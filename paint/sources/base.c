@@ -75,6 +75,7 @@ void base_save_and_quit_callback(bool save) {
 		project_save(true);
 	}
 	else {
+		hstore_journal_delete(project_uuid_get()); // Changes discarded: nothing to recover
 		iron_stop();
 	}
 }
