@@ -882,40 +882,39 @@ static void hstore_visit_mark(hash128_t child, void *ud) {
 	}
 }
 
-// Blobs a save writes: the roots, the referenced blobs and what they own (children), each once. Refs alone miss
+static i64 hstore_each_decodes = 0; // Blobs hstore_each read children from
+
+// Blobs a save writes: the roots, the referenced blobs (unless !referenced) and what they own (children), each once. Refs alone miss
 // children a blob recovered or read from a project file owns: their refs come back with hstore_rebuild_refs only.
-void hstore_each(const hash128_t *roots, i32 n, void (*fn)(hash128_t h, void *ud), void *ud) {
+// fn returns whether to go into the children of a blob (not for one the file has with its children already).
+void hstore_each(const hash128_t *roots, i32 n, bool referenced, bool (*fn)(hash128_t h, void *ud), void *ud) {
 	hstore_list_t work = {0};
-	hstore_list_t all  = {0};
 	for (u32 i = 0; i < hstore_cap; ++i) {
 		hstore_table[i].state &= ~HSTORE_E_MARK;
 	}
 	for (i32 i = 0; i < n; ++i) {
 		hstore_visit_mark(roots[i], &work);
 	}
-	for (u32 i = 0; i < hstore_cap; ++i) {
+	for (u32 i = 0; referenced && i < hstore_cap; ++i) {
 		if (!hash128_is_none(hstore_table[i].h) && hstore_table[i].refs > 0) {
 			hstore_visit_mark(hstore_table[i].h, &work);
 		}
 	}
 	while (work.n > 0) {
-		hash128_t h = work.h[--work.n];
-		hstore_list_push(&all, h);
-		hstore_entry_t    *e  = hstore_find(h);
-		hstore_children_fn fn_children = hstore_children_of(e->kind);
-		if (fn_children != NULL) {
+		hash128_t          h           = work.h[--work.n];
+		bool               descend     = fn(h, ud); // Writes, the table does not change
+		hstore_entry_t    *e           = hstore_find(h);
+		hstore_children_fn fn_children = e != NULL ? hstore_children_of(e->kind) : NULL;
+		if (descend && fn_children != NULL) {
 			u8 *raw = hstore_entry_bytes(e, true);
 			if (raw != NULL) {
+				hstore_each_decodes++;
 				fn_children(raw, e->raw_len, hstore_visit_mark, &work);
 				free(raw);
 			}
 		}
 	}
 	free(work.h);
-	for (u32 i = 0; i < all.n; ++i) {
-		fn(all.h[i], ud);
-	}
-	free(all.h);
 }
 
 // The chunk of a stored blob: its header fields and its payload as stored (malloc'd), NULL when missing or unreadable
@@ -1110,7 +1109,8 @@ void hstore_test_unref(i32 id) {
 }
 
 // Field of hstore_stats in KB: 0 blobs (a count), 1 ram, 2 disk, 3 dirty, 4 dead, 5 ram budget, 6 disk budget,
-// 7 duration of the last flush in ms, 8 chunks read from the journal (a count)
+// 7 duration of the last flush in ms, 8 chunks read from the journal or project (a count), 9 blobs saves read the
+// children of (a count)
 f32 hstore_test_stat(i32 field) {
 	hstore_stats_t s = hstore_stats();
 	switch (field) {
@@ -1132,6 +1132,8 @@ f32 hstore_test_stat(i32 field) {
 		return (f32)hstore_flush_ms;
 	case 8:
 		return (f32)hstore_disk_reads;
+	case 9:
+		return (f32)hstore_each_decodes;
 	}
 	return 0.0f;
 }

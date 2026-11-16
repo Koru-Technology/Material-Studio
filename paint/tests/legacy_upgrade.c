@@ -95,10 +95,10 @@ void next() {
 
 	if (step == 0) {
 		script_project_new();
-		project_test_set_res(1024, 512);
+		project_test_set_res(1000, 600); // Custom: tiles at the edges are partial
 	}
 	else if (step == 1) {
-		check(project_test_res(0) == 1024 && project_test_res(1) == 512, "non-square project");
+		check(project_test_res(0) == 1000 && project_test_res(1) == 600, "non-square project");
 		make_layers();
 	}
 	else if (step == 2) {
@@ -116,7 +116,7 @@ void next() {
 		script_project_open(file31);
 	}
 	else if (step == 5) {
-		check(project_test_res(0) == 1024 && project_test_res(1) == 512, string("non-square size kept (%d x %d)", project_test_res(0), project_test_res(1)));
+		check(project_test_res(0) == 1000 && project_test_res(1) == 600, string("non-square size kept (%d x %d)", project_test_res(0), project_test_res(1)));
 		check(same_pixels(), "version 31 round trip keeps the pixels");
 		int same = script_layer_count() == count;
 		for (int i = 0; i < count && same; ++i) {

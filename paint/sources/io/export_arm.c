@@ -242,7 +242,7 @@ buffer_t *export_arm_encode_project(char *path) {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		export_arm_progress(0.1 + 0.6 * i / (f32)g_project->_->layers->length);
 		slot_layer_t *l       = g_project->_->layers->buffer[i];
-		u8_array_t   *tilemap = container ? project_container_layer_tilemap(l) : NULL; // Whole textures where tiles do not fit
+		u8_array_t   *tilemap = container ? project_container_layer_tilemap(l) : NULL;
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
 		                              .res                = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
@@ -289,10 +289,9 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .mask_effects           = mask_stack_anchors_to_index(l->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length),
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
 		                              .uid                = l->uid,
-		                              .timeline           = l->timeline,
+		                              .timeline           = container && !project_container_writing_history() ? 0 : l->timeline,
 		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
 		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
-		                              .rasters            = container && tilemap == NULL ? project_container_layer_rasters(l) : NULL,
 		                              .tilemap            = tilemap});
 		any_array_push(ld, d);
 	}
@@ -396,7 +395,7 @@ buffer_t *export_arm_encode_project(char *path) {
 	export_arm_progress(0.8);
 	if (container) {
 		project_container_pack_assets(g_project);
-		g_project->timelines = timeline_io_encode(); // Their blobs are written with the store's
+		g_project->timelines = project_container_writing_history() ? timeline_io_encode() : NULL; // Their blobs are written with the store's
 	}
 	buffer_t *buffer = util_encode_project(g_project);
 	if (container) {
@@ -411,7 +410,6 @@ buffer_t *export_arm_encode_project(char *path) {
 		export_arm_free_buffer(d->texpaint_nor);
 		export_arm_free_buffer(d->texpaint_pack);
 		export_arm_free_buffer(d->texpaint_sculpt);
-		export_arm_free_buffer(d->rasters);
 		export_arm_free_buffer(d->tilemap);
 		if (d->decal_mat != NULL) {
 			array_free(d->decal_mat);
@@ -439,6 +437,7 @@ void export_arm_run_project_v30(char *path) {
 }
 
 void export_arm_run_project(char *path) {
+	history_flush_restores(NULL); // Deferred undo restores land: the layers saved are the ones shown
 	export_arm_show_progress = true;
 	bool saved;
 	if (string_equals(export_arm_version(), "31")) {

@@ -831,6 +831,7 @@ typedef struct history_step {
 	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
 	i32_array_t                 *tl_moves;     // Timeline cursors the step moved: uid, before, after (timeline.c)
 	struct hash128              *records;      // history_v2: HSTORE_LAYER_RECORD of each of merge_layers, their textures freed
+	u32                          fill_uids[2]; // Apply mask (history_v2): fill material of the mask and of its layer, 0 when painted
 } history_step_t;
 
 // ---- Logic nodes and node groups ----
@@ -992,7 +993,6 @@ typedef struct layer_data {
 	i32               res_x;        // Width and height of the textures, 0 before version 31 (res is both)
 	i32               res_y;
 	u32               timeline; // Uid of the layer's timeline (stroke_rec.h), 0 for none
-	struct u8_array  *rasters;  // v31 container, sizes tiles do not fit: hash128 of the HSTORE_RASTER chunks of the textures
 	struct u8_array  *tilemap;  // v31 container: hash128 of the HSTORE_TILEMAP of the layer's state, all its channels
 } layer_data_t;
 

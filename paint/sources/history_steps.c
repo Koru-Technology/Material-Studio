@@ -193,8 +193,14 @@ void history_apply_mask() {
 	history_get_height_blend(m, step->layer_height_blend);
 	step->mask_effects = mask_stack_copy_effects(m->mask_effects);
 
-	// The layers the mask is applied to keep its timeline
-	timeline_t           *src   = timeline_of(m);
+	// The layers the mask is applied to keep its timeline. A fill mask or fill layer starts one from its render (history_v2
+	// brings them back from it, fill again).
+	if (history_v2_active()) {
+		step->fill_uids[0] = m->fill_material != NULL ? m->fill_material->uid : 0;
+		step->fill_uids[1] = m->parent->fill_material != NULL ? m->parent->fill_material->uid : 0;
+		timeline_allow_fill(true);
+	}
+	timeline_t           *src   = timeline_ensure(m);
 	slot_layer_t_array_t *dests = slot_layer_is_group(m->parent) ? slot_layer_get_children(m->parent) : NULL;
 	for (i32 i = 0; i < (dests != NULL ? dests->length : 1); ++i) {
 		tl_entry_t *e = timeline_record(dests != NULL ? dests->buffer[i] : m->parent, TL_APPLY_MASK, HASH128_NONE, NULL, 0);
@@ -204,6 +210,7 @@ void history_apply_mask() {
 			timeline_ref(src);
 		}
 	}
+	timeline_allow_fill(false);
 }
 
 void history_invert_mask() {
