@@ -92,7 +92,7 @@ vec2_t uniforms_brush_angle() {
 vec4_t uniforms_input_brush() {
 	f32 *d = uniforms_exec_dab();
 	if (d != NULL) {
-		return (vec4_t){d[0], d[1], paint_exec_current()->down, 0.0};
+		return (vec4_t){d[16], d[17], paint_exec_current()->down, 0.0};
 	}
 	bool   down = mouse_down("left") || pen_down("tip");
 	vec4_t v    = (vec4_t){g_context->paint_vec.x, g_context->paint_vec.y, down ? 1.0 : 0.0, 0.0};
@@ -102,7 +102,7 @@ vec4_t uniforms_input_brush() {
 vec4_t uniforms_input_brush_last() {
 	f32 *d = uniforms_exec_dab();
 	if (d != NULL) {
-		return (vec4_t){d[2], d[3], paint_exec_current()->down, 0.0};
+		return (vec4_t){d[18], d[19], paint_exec_current()->down, 0.0};
 	}
 	bool   down = mouse_down("left") || pen_down("tip");
 	vec4_t v    = (vec4_t){g_context->last_paint_vec_x, g_context->last_paint_vec_y, down ? 1.0 : 0.0, 0.0};
@@ -213,6 +213,9 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	else if (string_equals(link, "_paint_dab_count")) {
 		paint_exec_op_t *op = paint_exec_current();
 		return op != NULL ? op->dab_count : render_path_paint_batch_drawn;
+	}
+	else if (string_equals(link, "_paint_dab_replay")) {
+		return paint_exec_replay ? 1.0 : 0.0;
 	}
 	else if (string_equals(link, "_paint_dab_first")) {
 		paint_exec_op_t *op = paint_exec_current();
@@ -492,6 +495,10 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		return material_cache_texture(link[9] - '0');
 	}
 	// The layer before the stroke: the snapshot of a tiled paint step, the newest whole layer copy otherwise
+	if (paint_exec_replay && (string_equals(link, "_texpaint_undo") || string_equals(link, "_texpaint_nor_undo") || string_equals(link, "_texpaint_pack_undo"))) {
+		i32 i = string_equals(link, "_texpaint_undo") ? 0 : string_equals(link, "_texpaint_nor_undo") ? 1 : 2; // Replaying: the target before the stroke
+		return paint_replay_s0[i] != NULL ? paint_replay_s0[i] : paint_replay_s0[0];
+	}
 	if (string_equals(link, "_texpaint_undo") || string_equals(link, "_texpaint_nor_undo") || string_equals(link, "_texpaint_pack_undo")) {
 		gpu_texture_t *snap = history_tiles_stroke_source(string_equals(link, "_texpaint_undo") ? 0 : string_equals(link, "_texpaint_nor_undo") ? 1 : 2);
 		if (snap != NULL) {

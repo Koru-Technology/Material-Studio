@@ -1954,6 +1954,7 @@ struct tl_entry *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, c
 void        timeline_stroke_begin(history_step_t *step, slot_layer_t *l);
 void        timeline_stroke_dirty(history_step_t *step, i32_array_t *tiles);
 void        timeline_finalize();
+bool        timeline_entry_replay(struct timeline *tl, i32 i, struct paint_target *t);
 void        timeline_step_apply(history_step_t *step, bool undo);
 void        timeline_fork(slot_layer_t *src, slot_layer_t *dst);
 bool        timeline_materialize_live(struct timeline *tl, slot_layer_t *l, i32 pos);
@@ -2481,16 +2482,19 @@ gpu_texture_t *export_tiled_test_coverage();
 //   5  uv at s, uv at s_last (gbuffer2: pixel snap)
 //   6  tip mask rotation cos, sin (brush angle and dab angle), tilt shape xy (util_brush_tilt_shape)
 //   7  brush angle cos, sin, dab angle cos, sin
+//   8  q of p (PAINT_DAB_QUANT steps an axis, as floats), w 0; off the mesh (not quantized) p itself, w 1
+//   9  q of p_last, the same
 // On the mesh, p and p_last are quantized: object space of the paint target (world_unpack), PAINT_DAB_QUANT steps an axis
 // over its bounds (paint_exec_space: -1.01 to 1.01, positions are packed normalized), back to world. Off the mesh they are the unquantized far plane point (a decal
 // anchor: at the depth of the world origin), recordings keep them as floats. The input of the pass (CPU, the same layout):
-// t0 s.xy s_last.xy, t1.x the mode, t3, t6, t7; the pass writes the rest.
-#define PAINT_DAB_TEXELS      8
+// t0 s.xy s_last.xy, t1.x the mode, t3, t6, t7; the pass writes the rest. Replaying (paint_exec_replay), the input is a
+// recorded row: t0 and t1 are made again from q (t8, t9) when quantized, the rest is copied.
+#define PAINT_DAB_TEXELS      10
 #define PAINT_DAB_ROW         64
 #define PAINT_DAB_MAX         2048 // A flush of the executor resolves at most this many
 #define PAINT_DAB_QUANT       2097151.0 // 2^21 - 1
 #define PAINT_DAB_QUANT_S     "2097151.0" // In GLSL
-#define PAINT_DAB_TEXELS_S    "8"
+#define PAINT_DAB_TEXELS_S    "10"
 #define PAINT_DAB_MODE_BRUSH  0.0 // Off the mesh: far plane
 #define PAINT_DAB_MODE_ANCHOR 1.0 // Decal anchor, off the mesh: at the depth of the world origin, as make_texcoord_run did
 
@@ -2523,3 +2527,32 @@ void make_dab_resolve_run(i32 count);
 void make_dab_resolve_prewarm();
 void make_dab_resolve_prewarm_on_next_frame(void *_);
 char *make_brush_dab(char *k, i32 t);
+
+// ---- paint_rec.c ----
+bool paint_rec_recording();
+void paint_rec_foreign();
+void paint_state_capture(paint_state_t *s, hash128_t material);
+i32  paint_rec_flush_dabs(i32 count);
+void paint_rec_op(paint_exec_op_t *op, i32 base);
+void paint_rec_op_done(paint_exec_op_t *op);
+bool paint_rec_decode(const u8 *b, u32 len, paint_rec_t *r);
+void paint_rec_free(paint_rec_t *r);
+void paint_rec_finish();
+void paint_rec_init();
+void paint_rec_flush(); // stroke_rec.h, for scripts
+i32  paint_rec_test_stored();
+u64  make_paint_glsl_hash(shader_context_t *scon);
+void paint_mat_snapshot_reset();
+void render_path_paint_dilate_now(bool base, bool nor_pack);
+
+// ---- paint_replay.c ----
+extern gpu_texture_t *paint_replay_s0[3];
+extern mat4_t         paint_replay_obj;
+extern mat4_t         paint_replay_obj_inv;
+i32                   paint_replay_test_fallbacks();
+i32                   paint_replay_test_count();
+bool                  paint_replay_test_entry(slot_layer_t *l, i32 index);
+void                  paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs);
+i32                   paint_exec_pending_ops();
+void                  render_path_base_draw_paint_depth();
+shader_context_t     *make_material_parse_paint_kept(void);

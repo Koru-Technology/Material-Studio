@@ -501,3 +501,4 @@ f32            viewport_video_grain    = 0.0;
 vec4_t paint_exec_uv_tile  = {0.0, 0.0, 1.0, 1.0}; // _paint_uv_tile: the part of the layer painted (u0 v0 and scale), 0 0 1 1 live
 vec2_t paint_exec_res0     = {0.0, 0.0};           // _paint_res0: resolution of the layer when recorded, 0 0 the layer's own
 bool   make_paint_resolved = false;                // The paint shader being generated reads resolved dabs (paint_exec.c)
+bool   paint_exec_replay   = false;                // The executor flushes recorded dabs and ops (paint_replay.c)

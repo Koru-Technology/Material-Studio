@@ -20,9 +20,8 @@ float dab_off(vec2 s, float mode) {\n\
 	}\n\
 	return depth >= 1.0 ? 1.0 : 0.0;\n\
 }\n\
-vec4 dab_resolve(vec2 s, float mode) {\n\
+vec4 dab_unproject(vec2 s, float mode) {\n\
 	float depth = dab_depth(s);\n\
-	bool on_mesh = depth < 1.0;\n\
 	if (mode > 0.5) {\n\
 		vec4 origin_clip = constants.VP * vec4(0.0, 0.0, 0.0, 1.0);\n\
 		if (depth >= 1.0 && origin_clip.w > 0.0) { depth = origin_clip.z / origin_clip.w; }\n\
@@ -30,11 +29,19 @@ vec4 dab_resolve(vec2 s, float mode) {\n\
 	vec4 w = vec4(vec2(s.x, 1.0 - s.y) * 2.0 - 1.0, depth, 1.0);\n\
 	w = constants.invVP * w;\n\
 	w.xyz = w.xyz / w.w;\n\
-	if (on_mesh) {\n\
-		vec3 o = (constants.obj_inv * vec4(w.xyz, 1.0)).xyz;\n\
-		vec3 q = floor(clamp((o - constants.aabb_min.xyz) / constants.aabb_size.xyz, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)) * " PAINT_DAB_QUANT_S " + vec3(0.5, 0.5, 0.5));\n\
-		w.xyz = dab_dequantize(q);\n\
-	}\n\
+	return w;\n\
+}\n\
+// q of the point on the mesh, w 0; off the mesh its world position, w 1\n\
+vec4 dab_quantize(vec2 s, float mode) {\n\
+	vec4 w = dab_unproject(s, mode);\n\
+	if (dab_depth(s) >= 1.0) { return vec4(w.xyz, 1.0); }\n\
+	vec3 o = (constants.obj_inv * vec4(w.xyz, 1.0)).xyz;\n\
+	return vec4(floor(clamp((o - constants.aabb_min.xyz) / constants.aabb_size.xyz, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)) * " PAINT_DAB_QUANT_S " + vec3(0.5, 0.5, 0.5)), 0.0);\n\
+}\n\
+vec4 dab_resolve(vec2 s, float mode) {\n\
+	vec4 w = dab_unproject(s, mode);\n\
+	vec4 q = dab_quantize(s, mode);\n\
+	if (q.w < 0.5) { w.xyz = dab_dequantize(q.xyz); }\n\
 	return w;\n\
 }\n\
 vec2 dab_uv(vec2 s) {\n\
@@ -48,6 +55,15 @@ void main() {\n\
 	int t = fc.x % " PAINT_DAB_TEXELS_S ";\n\
 	ivec2 base = ivec2(fc.x - t, fc.y);\n\
 	vec4 i0 = texelFetch(sampler2D(dabsin, sampler_linear), base, 0);\n\
+	if (constants.replay > 0.5) { // The input is a recorded row: positions from q again, the rest as it was\n\
+		vec4 r = texelFetch(sampler2D(dabsin, sampler_linear), fc, 0);\n\
+		if (t <= 1) {\n\
+			vec4 q = texelFetch(sampler2D(dabsin, sampler_linear), base + ivec2(8 + t, 0), 0);\n\
+			if (q.w < 0.5) { r.xyz = dab_dequantize(q.xyz); }\n\
+		}\n\
+		frag_out = r;\n\
+		return;\n\
+	}\n\
 	float mode = texelFetch(sampler2D(dabsin, sampler_linear), base + ivec2(1, 0), 0).x;\n\
 	if (t == 0) { frag_out = dab_resolve(i0.xy, mode); }\n\
 	else if (t == 1) { frag_out = dab_resolve(i0.zw, mode); }\n\
@@ -58,6 +74,8 @@ void main() {\n\
 	}\n\
 	else if (t == 4) { frag_out = i0; }\n\
 	else if (t == 5) { frag_out = vec4(dab_uv(i0.xy), dab_uv(i0.zw)); }\n\
+	else if (t == 8) { frag_out = dab_quantize(i0.xy, mode); }\n\
+	else if (t == 9) { frag_out = dab_quantize(i0.zw, mode); }\n\
 	else { frag_out = texelFetch(sampler2D(dabsin, sampler_linear), fc, 0); }\n\
 }\n\
 #endif\n";
@@ -125,6 +143,7 @@ void make_dab_resolve_prewarm() {
 	make_dab_resolve_const(scon, "aabb_min", "float4", "_paint_dab_aabb_min");
 	make_dab_resolve_const(scon, "aabb_size", "float4", "_paint_dab_aabb_size");
 	make_dab_resolve_const(scon, "gbuffer_size", "float2", "_gbuffer_size");
+	make_dab_resolve_const(scon, "replay", "float", "_paint_dab_replay");
 
 	// The constants block, offsets as the engine computes them (render_pass.c)
 	char *consts = "";
@@ -133,7 +152,7 @@ void make_dab_resolve_prewarm() {
 		shader_const_t *c    = scon->constants->buffer[i];
 		i32             size = shader_context_type_size(c->type);
 		offset += shader_context_type_pad(offset, size);
-		char *t = string_equals(c->type, "float4x4") ? "mat4" : string_equals(c->type, "float2") ? "vec2" : "vec4";
+		char *t = string_equals(c->type, "float4x4") ? "mat4" : string_equals(c->type, "float2") ? "vec2" : string_equals(c->type, "float") ? "float" : "vec4";
 		consts  = string("%s\tlayout(offset = %d) %s %s;\n", consts, offset, t, c->name);
 		offset += size;
 	}

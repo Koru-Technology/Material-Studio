@@ -50,8 +50,8 @@ void paint_exec_space(mat4_t *obj, mat4_t *obj_inv, vec4_t *bmin, vec4_t *bsize)
 	if (o == NULL) {
 		o = g_context->paint_object;
 	}
-	*obj     = o->base->transform->world_unpack;
-	*obj_inv = mat4_inv(*obj);
+	*obj     = paint_exec_replay ? paint_replay_obj : o->base->transform->world_unpack; // Replaying: as recorded
+	*obj_inv = paint_exec_replay ? paint_replay_obj_inv : mat4_inv(*obj);
 	*bmin    = (vec4_t){-1.01, -1.01, -1.01, 0.0};
 	*bsize   = (vec4_t){2.02, 2.02, 2.02, 0.0};
 }
@@ -72,7 +72,10 @@ static void paint_exec_timing_done(void *data, f64 gpu_ms) {
 	free(p);
 }
 
-static void paint_exec_run(paint_exec_op_t *op) {
+static void paint_exec_run(paint_exec_op_t *op, i32 rec_base) {
+	if (!paint_exec_replay) {
+		paint_rec_op(op, rec_base);
+	}
 	f64 brush_time        = g_context->brush_time;
 	g_context->brush_time = op->brush_time;
 	if (op->kind == PAINT_OP_DRAW) {
@@ -90,6 +93,9 @@ static void paint_exec_run(paint_exec_op_t *op) {
 		}
 		paint_exec_op = op;
 		render_path_paint_commands_paint_now(op->dilation);
+		if (!paint_exec_replay) {
+			paint_rec_op_done(op);
+		}
 		paint_exec_op = NULL;
 		if (moved) {
 			t->loc   = loc0;
@@ -99,7 +105,7 @@ static void paint_exec_run(paint_exec_op_t *op) {
 		}
 	}
 	else if (op->kind == PAINT_OP_DILATE) {
-		render_path_paint_dilate(op->base, op->nor_pack);
+		render_path_paint_dilate_now(op->base, op->nor_pack);
 	}
 	else if (op->kind == PAINT_OP_DILATE_AFTER) {
 		render_path_paint_dilate_after_paint_now();
@@ -144,11 +150,12 @@ static void paint_exec_flush() {
 		paint_exec_in_tex = gpu_create_texture_from_bytes(&b, PAINT_DAB_ROW * PAINT_DAB_TEXELS, rows, GPU_TEXTURE_FORMAT_RGBA128);
 		make_dab_resolve_run(ndabs);
 	}
+	i32 rec_base = paint_exec_replay ? -1 : paint_rec_flush_dabs(ndabs); // The stroke's record reads them back
 
 	i32 nops        = paint_exec_nops;
 	paint_exec_nops = 0; // Ops emitted while these execute (none should) run at once
 	for (i32 i = 0; i < nops; ++i) {
-		paint_exec_run(&paint_exec_ops[i]);
+		paint_exec_run(&paint_exec_ops[i], rec_base);
 	}
 
 	// The batch being collected moves to the front
@@ -220,6 +227,10 @@ static i32 paint_exec_dab_add(f32 x, f32 y, f32 last_x, f32 last_y, f32 mode) {
 	d[2]         = last_x;
 	d[3]         = last_y;
 	d[4]         = mode;
+	d[16]        = x; // t4, as the pass writes it: replaying, t0 holds the position
+	d[17]        = y;
+	d[18]        = last_x;
+	d[19]        = last_y;
 	d[12]        = uniforms_brush_radius();
 	d[13]        = uniforms_brush_opacity();
 	d[14]        = uniforms_brush_hardness();
@@ -265,6 +276,9 @@ static void paint_exec_draw_state(paint_exec_op_t *op) {
 
 void paint_exec_draw(bool dilation) {
 	if (paint_exec_op != NULL || !paint_exec_on()) { // The old path, or a draw of an op being executed
+		if (paint_exec_op == NULL && g_context->pdirty > 0) {
+			paint_rec_foreign(); // Not replayable yet
+		}
 		paint_exec_flush();
 		render_path_paint_commands_paint_now(dilation);
 		return;
@@ -307,6 +321,17 @@ void paint_exec_draw(bool dilation) {
 	}
 }
 
+// Replay: an op of a record, its dabs written to the input already, ndabs of them so far
+void paint_exec_replay_push(paint_exec_op_t *op, i32 ndabs) {
+	paint_exec_op_t *o = paint_exec_push(op->kind);
+	*o                 = *op;
+	paint_exec_ndabs   = ndabs;
+}
+
+i32 paint_exec_pending_ops() {
+	return paint_exec_nops;
+}
+
 void paint_exec_batch_add() {
 	if (paint_exec_batch_first >= 0 && paint_exec_ndabs - paint_exec_batch_first == 64) { // As many as a draw of the old path
 		paint_exec_draw(false);
@@ -329,18 +354,20 @@ void paint_exec_batch_flush(bool dilation) {
 }
 
 // Ops other than draws wait behind the draws emitted before them
-static bool paint_exec_pending() {
-	return paint_exec_op == NULL && paint_exec_nops > 0;
+static bool paint_exec_pending() { // Or a stroke is recorded: they are ops of the record
+	return paint_exec_op == NULL && (paint_exec_nops > 0 || paint_rec_recording());
 }
 
 void paint_exec_dilate(bool base, bool nor_pack) {
 	if (!paint_exec_pending()) {
-		render_path_paint_dilate(base, nor_pack);
+		render_path_paint_dilate_now(base, nor_pack);
 		return;
 	}
 	paint_exec_op_t *op = paint_exec_push(PAINT_OP_DILATE);
 	op->base            = base;
-	op->nor_pack        = nor_pack;
+	op->nor_pack        = nor_pack;	if (paint_exec_depth == 0) {
+		paint_exec_flush();
+	}
 }
 
 void paint_exec_dilate_after_paint() {
@@ -349,6 +376,9 @@ void paint_exec_dilate_after_paint() {
 		return;
 	}
 	paint_exec_push(PAINT_OP_DILATE_AFTER);
+	if (paint_exec_depth == 0) {
+		paint_exec_flush();
+	}
 }
 
 void paint_exec_clear_blend() {
@@ -357,6 +387,9 @@ void paint_exec_clear_blend() {
 		return;
 	}
 	paint_exec_push(PAINT_OP_CLEAR_BLEND);
+	if (paint_exec_depth == 0) {
+		paint_exec_flush();
+	}
 }
 
 void paint_exec_clone_flatten() {
@@ -365,4 +398,7 @@ void paint_exec_clone_flatten() {
 		return;
 	}
 	paint_exec_push(PAINT_OP_CLONE_FLATTEN);
+	if (paint_exec_depth == 0) {
+		paint_exec_flush();
+	}
 }

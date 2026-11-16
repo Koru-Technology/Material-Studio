@@ -1144,5 +1144,14 @@ X2(export_tiled_not_upscaled, "i(i w,i h)", i, i, i)
 X1(export_tiled_not_upscaled_name, "p:char(i i)", p, i)
 X1(export_tiled_test_no_fill, "v(b on)", v, b)
 X0(layers_on_resized, "v()", v)
+
+// paint_rec.c, paint_replay.c
+X0(paint_rec_flush, "v()", v)
+X0(paint_rec_test_stored, "i()", i)
+X0(paint_replay_test_fallbacks, "i()", i)
+X0(paint_replay_test_count, "i()", i)
+X2(paint_replay_test_entry, "b(p:slot_layer_t l,i index)", b, p, i)
+
+// Texture export, more
 X2(script_diff_files, "i(p:char path_a,p:char path_b)", i, p, p)
 X1(export_tiled_test_whole, "v(b on)", v, b)

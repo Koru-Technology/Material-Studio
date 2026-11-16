@@ -1,0 +1,321 @@
+#include "global.h"
+
+// Replay of recorded strokes (stroke_rec.h): a TL_STROKE entry painted again into a paint target with the code that
+// painted it live. The paint executor (paint_exec.c) runs the record's ops, its dabs go through the resolve pass in replay
+// mode (positions from their quantized object space points), each draw with the paint state and camera it had: the paint
+// shader is parsed again from the state and must hash as recorded, a geometry-only depth is drawn from the camera.
+// The stroke starts from the target's own contents (S0, copied before), every scratch target has the target's size.
+
+static i32 paint_replay_fallbacks = 0; // Replays that could not run (a shader that differs, a record this build does not read)
+static i32 paint_replay_count     = 0;
+
+gpu_texture_t *paint_replay_s0[3] = {NULL, NULL, NULL}; // The target before the stroke: what _texpaint_undo reads replaying
+mat4_t         paint_replay_obj;                        // The paint target's object space when recorded
+mat4_t         paint_replay_obj_inv;
+
+// Paint shaders parsed for replays, by GLSL hash, kept for the next replays
+#define PAINT_REPLAY_SCONS 8
+
+static shader_context_t *paint_replay_scons[PAINT_REPLAY_SCONS];
+static u64               paint_replay_scon_hashes[PAINT_REPLAY_SCONS];
+static i32               paint_replay_scon_next = 0;
+
+static void paint_replay_fail(char *why) {
+	paint_replay_fallbacks++;
+	iron_log("[replay] stroke not replayed: %s", why);
+}
+
+// The context a paint state was recorded in
+static void paint_replay_state_apply(paint_state_t *s) {
+	g_context->tool                        = s->tool;
+	g_context->brush_blending              = s->blending;
+	g_context->brush_paint                 = s->uv_type;
+	g_context->picker_material_mask        = s->picker_material_mask;
+	g_context->picker_color_mask           = s->picker_color_mask;
+	g_context->materialid_picked           = s->materialid_picked;
+	g_context->picker_color_mask_tolerance = s->picker_color_mask_tolerance;
+	g_context->xray                        = s->xray;
+	g_context->brush_directional           = s->directional;
+	g_context->brush_rotation              = s->rotation;
+	g_context->brush_camera_align          = s->camera_align;
+	g_context->brush_tilt_shading          = s->tilt_shading;
+	g_context->brush_roundness             = s->roundness;
+	g_context->brush_angle_reject_dot      = s->angle_reject_dot;
+	g_context->brush_angle                 = s->brush_angle;
+	g_context->brush_nodes_angle           = s->nodes_angle;
+	g_context->brush_jitter_angle          = s->jitter_angle;
+	g_context->sym_x                       = (s->sym & 1) != 0;
+	g_context->sym_y                       = (s->sym & 2) != 0;
+	g_context->sym_z                       = (s->sym & 4) != 0;
+	g_context->sym_radial                  = s->sym >> 8;
+	g_context->sym_center                  = s->sym_center;
+	g_context->sym_radial_axis             = s->sym_radial_axis;
+	g_context->mask_value                  = s->mask_value;
+	g_context->brush_scale                 = s->brush_scale;
+	g_context->brush_nodes_scale           = s->nodes_scale;
+	g_config->brush_depth_reject           = s->depth_reject;
+	g_config->brush_angle_reject           = s->angle_reject;
+	g_config->brush_alpha_discard          = s->alpha_discard;
+	g_config->dilate_radius                = s->dilate_radius;
+	g_project->linear_blending             = s->linear_blending;
+	g_project->_->translucency             = s->translucency;
+	make_paint_batching                    = s->batching;
+}
+
+// The paint shader of a state, NULL when it does not hash as recorded
+static shader_context_t *paint_replay_shader(paint_state_t *s) {
+	for (i32 i = 0; i < PAINT_REPLAY_SCONS; ++i) {
+		if (paint_replay_scons[i] != NULL && paint_replay_scon_hashes[i] == s->glsl) {
+			return paint_replay_scons[i];
+		}
+	}
+	shader_context_t *scon = make_material_parse_paint_kept();
+	if (scon == NULL || make_paint_glsl_hash(scon) != s->glsl) {
+		if (scon != NULL) {
+			make_material_free_paint_scon(scon);
+		}
+		return NULL;
+	}
+	i32 i = paint_replay_scon_next;
+	if (paint_replay_scons[i] != NULL) {
+		make_material_free_paint_scon(paint_replay_scons[i]);
+	}
+	paint_replay_scons[i]       = scon;
+	paint_replay_scon_hashes[i] = s->glsl;
+	paint_replay_scon_next      = (i + 1) % PAINT_REPLAY_SCONS;
+	return scon;
+}
+
+static void paint_replay_camera(paint_rec_cam_t *c) {
+	scene_camera->v     = c->v;
+	scene_camera->p     = c->p;
+	scene_camera->vp    = mat4_mult_mat(c->v, c->p);
+	scene_camera->frame = c->frame;
+	render_path_base_draw_paint_depth(); // Depth reject reads it at the fragment's screen point
+}
+
+// Render targets named as the layer's textures, pointing at t: the paint draws write t
+typedef struct {
+	char            *name;
+	render_target_t *saved;
+	render_target_t  rt;
+} paint_replay_swap_t;
+
+static void paint_replay_swap(paint_replay_swap_t *s, char *name, gpu_texture_t *tex) {
+	s->name  = name;
+	s->saved = any_map_get(render_path_render_targets, name);
+	s->rt    = (render_target_t){.name = name, .width = tex->width, .height = tex->height, ._image = tex};
+	any_map_set(render_path_render_targets, name, &s->rt);
+}
+
+static void paint_replay_s0_make(paint_target_t *t) {
+	for (i32 i = 0; i < t->channels; ++i) {
+		util_texture_ensure_target(&paint_replay_s0[i], t->w, t->h, t->out[i]->format);
+	}
+	if (_render_path_current_image != NULL) {
+		render_path_end();
+	}
+	gpu_copy_regions_begin();
+	for (i32 i = 0; i < t->channels; ++i) {
+		gpu_copy_region(paint_replay_s0[i], 0, 0, t->out[i], 0, 0, t->w, t->h);
+	}
+	gpu_copy_regions_end();
+}
+
+// The record's ops in runs the executor flushes together: the same state and camera, room for their dabs
+static bool paint_replay_ops(paint_rec_t *r) {
+	i32 state = -1;
+	i32 cam   = -1;
+	i32 i     = 0;
+	while (i < r->n_ops) {
+		paint_rec_op_t *o = &r->ops[i];
+		if (o->kind == PAINT_OP_DRAW && o->state != state) {
+			paint_replay_state_apply(&r->states[o->state]);
+			shader_context_t *scon = paint_replay_shader(&r->states[o->state]);
+			if (scon == NULL) {
+				paint_replay_fail("its paint shader is not the one recorded");
+				return false;
+			}
+			make_material_paint_scon = scon;
+			state                    = o->state;
+		}
+		if (o->kind == PAINT_OP_DRAW && o->cam != cam) {
+			paint_replay_camera(&r->cams[o->cam]);
+			cam = o->cam;
+		}
+		// The run: ops up to the next change of state or camera
+		paint_exec_begin();
+		i32 ndabs = 0;
+		while (i < r->n_ops) {
+			paint_rec_op_t *p = &r->ops[i];
+			if (p->kind == PAINT_OP_DRAW && (p->state != state || p->cam != cam || ndabs + (i32)p->dab_count > PAINT_DAB_MAX)) {
+				break;
+			}
+			if (paint_exec_pending_ops() >= 256) { // Room in the executor's ops
+				break;
+			}
+			paint_exec_op_t op;
+			memset(&op, 0, sizeof(op));
+			op.kind       = p->kind;
+			op.dilation   = (p->flags & 1) != 0;
+			op.base       = (p->flags & 2) != 0;
+			op.nor_pack   = (p->flags & 4) != 0;
+			op.batched    = (p->flags & 8) != 0;
+			op.brush_time = p->brush_time;
+			if (p->kind == PAINT_OP_DRAW) {
+				paint_rec_xform_t *x = &r->xforms[p->xform];
+				op.dab_first         = ndabs;
+				op.dab_count         = p->dab_count;
+				op.down              = p->down;
+				op.direction         = p->direction;
+				op.pixel_snap_uv     = p->pixel_snap_uv;
+				op.loc               = x->loc;
+				op.rot               = x->rot;
+				op.scale             = x->scale;
+				memcpy(paint_exec_dab(ndabs), &r->dabs[(size_t)p->dab_first * PAINT_DAB_TEXELS * 4],
+				       sizeof(f32) * PAINT_DAB_TEXELS * 4 * p->dab_count);
+				ndabs += p->dab_count;
+			}
+			paint_exec_replay_push(&op, ndabs);
+			i++;
+		}
+		paint_exec_end();
+	}
+	return true;
+}
+
+bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const paint_replay_opts_t *o) {
+	if (tl == NULL || index < 0 || index >= tl->count || tl->entries[index].kind != TL_STROKE) {
+		return false;
+	}
+	slot_layer_t *l = slot_layer_find_uid(tl->layer_uid);
+	if (l == NULL) {
+		paint_replay_fail("its layer is gone");
+		return false;
+	}
+	u32 len  = 0;
+	u8 *blob = hstore_get(tl->entries[index].payload, &len);
+	paint_rec_t r;
+	bool        ok = blob != NULL && paint_rec_decode(blob, len, &r);
+	free(blob);
+	if (!ok) {
+		paint_replay_fail("its record is missing or of another version");
+		return false;
+	}
+	if (r.n_states == 0 || hash128_is_none(r.states[0].material)) {
+		paint_rec_free(&r);
+		paint_replay_fail("no material");
+		return false;
+	}
+	slot_material_t *m = paint_mat_snapshot_instantiate(r.states[0].material);
+	if (m == NULL) {
+		paint_rec_free(&r);
+		paint_replay_fail("its material snapshot is missing");
+		return false;
+	}
+
+	// Everything the replay changes, restored after
+	context_t        saved_ctx    = *g_context;
+	config_t         saved_cfg    = *g_config;
+	bool             saved_linear = g_project->linear_blending;
+	bool             saved_transl = g_project->_->translucency;
+	shader_context_t *saved_scon  = make_material_paint_scon;
+	bool             saved_flags[5] = {make_material_height_used, make_material_emis_used, make_material_subs_used, make_paint_batched, make_paint_resolved};
+	bool             saved_batching = make_paint_batching;
+	mat4_t           saved_v = scene_camera->v, saved_p = scene_camera->p, saved_vp = scene_camera->vp;
+	i32              saved_frame = scene_camera->frame;
+	vec4_t           saved_tile  = paint_exec_uv_tile;
+	vec2_t           saved_res0  = paint_exec_res0;
+	draw_saved_t     saved_draw  = draw_suspend();
+	render_target_t *blend0      = any_map_get(render_path_render_targets, "texpaint_blend0");
+	i32              live_w = blend0->width, live_h = blend0->height;
+
+	g_context->layer     = l;
+	g_context->material  = m;
+	g_context->pdirty    = 1;
+	g_context->paint2d   = false;
+	g_context->brush_mask_image    = NULL;
+	g_context->brush_stencil_image = NULL;
+	paint_replay_obj     = r.obj;
+	paint_replay_obj_inv = mat4_inv(r.obj);
+	paint_exec_res0      = (vec2_t){(f32)r.res_w, (f32)r.res_h};
+	f32 du               = t->uv_rect[2] - t->uv_rect[0];
+	f32 dv               = t->uv_rect[3] - t->uv_rect[1];
+	paint_exec_uv_tile   = (vec4_t){t->uv_rect[0], t->uv_rect[1], du > 0.0 ? 1.0 / du : 1.0, dv > 0.0 ? 1.0 / dv : 1.0};
+
+	paint_replay_swap_t swaps[3];
+	i32                 nswaps = 0;
+	// The map keeps its keys: the names render_path_paint.c keeps (render_path_paint_key), same translation unit
+	paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint%d", l->id), t->out[0]);
+	if (t->channels == 3) {
+		paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint_nor%d", l->id), t->out[1]);
+		paint_replay_swap(&swaps[nswaps++], render_path_paint_key("texpaint_pack%d", l->id), t->out[2]);
+	}
+	paint_replay_s0_make(t);
+	render_path_paint_scratch_resize(t->w, t->h);
+	g_context->brush_blend_dirty = true;
+	render_path_paint_clear_blend_now(); // The stroke's coverage starts empty
+
+	paint_exec_replay = true;
+	i32 need          = mm_buffers_require(MM_BUFFERS_FULL);
+	ok                = paint_replay_ops(&r);
+	mm_buffers_require(need);
+	paint_exec_replay = false;
+	if (_render_path_current_image != NULL) {
+		render_path_end();
+	}
+
+	for (i32 i = nswaps - 1; i >= 0; --i) {
+		any_map_set(render_path_render_targets, swaps[i].name, swaps[i].saved);
+	}
+	render_path_paint_scratch_resize(live_w, live_h);
+	*g_context                     = saved_ctx;
+	*g_config                      = saved_cfg;
+	g_project->linear_blending     = saved_linear;
+	g_project->_->translucency     = saved_transl;
+	make_material_paint_scon       = saved_scon;
+	make_material_height_used      = saved_flags[0];
+	make_material_emis_used        = saved_flags[1];
+	make_material_subs_used        = saved_flags[2];
+	make_paint_batched             = saved_flags[3];
+	make_paint_resolved            = saved_flags[4];
+	make_paint_batching            = saved_batching;
+	scene_camera->v                = saved_v;
+	scene_camera->p                = saved_p;
+	scene_camera->vp               = saved_vp;
+	scene_camera->frame            = saved_frame;
+	paint_exec_uv_tile             = saved_tile;
+	paint_exec_res0                = saved_res0;
+	g_context->brush_blend_dirty   = true; // The live coverage was the replay's
+	g_context->ddirty              = 2;
+	draw_resume(saved_draw);
+	paint_rec_free(&r);
+	if (ok) {
+		paint_replay_count++;
+	}
+	return ok;
+}
+
+i32 paint_replay_halo_px(const tl_entry_t *e, i32 res_w) {
+	return (i32)ceilf(e->halo_uv * res_w);
+}
+
+// Scripts: replays that fell back, and that ran
+i32 paint_replay_test_fallbacks() {
+	return paint_replay_fallbacks;
+}
+
+i32 paint_replay_test_count() {
+	return paint_replay_count;
+}
+
+// Scripts: replays entry index of the timeline of l into l itself, the state before it restored first
+bool paint_replay_test_entry(slot_layer_t *l, i32 index) {
+	timeline_t *tl = timeline_of(l);
+	if (tl == NULL || !timeline_test_materialize(l, index)) {
+		return false;
+	}
+	paint_target_t t;
+	timeline_target_live(l, &t);
+	return paint_replay_entry(tl, index, &t, NULL);
+}
