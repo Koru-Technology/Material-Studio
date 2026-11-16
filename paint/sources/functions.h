@@ -2554,6 +2554,11 @@ u64  make_paint_glsl_hash(shader_context_t *scon);
 bool make_paint_scon_uses_matcache(shader_context_t *scon);
 gpu_texture_t *paint_replay_dilate_map(i32 w, i32 h, const f32 *uv_rect);
 void paint_mat_snapshot_reset();
+void paint_mat_snapshot_init();
+void paint_mat_snapshot_parse_begin(slot_material_t *m);
+void paint_mat_snapshot_parse_end();
+void paint_mat_snapshot_replay_begin(slot_material_t *m);
+void paint_mat_snapshot_replay_end();
 void render_path_paint_dilate_now(bool base, bool nor_pack);
 
 // ---- paint_replay.c ----

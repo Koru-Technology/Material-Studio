@@ -539,9 +539,10 @@ f32 paint_rec_test_bounds(slot_layer_t *l, i32 index, i32 c) {
 	return tl != NULL && index >= 0 && index < tl->count && c >= 0 && c < 4 ? tl->entries[index].uv_bounds[c] : -1.0;
 }
 
-// At startup: stored records own their material snapshots (before a project's blobs are counted at its opening)
+// At startup: stored records own their material snapshots, snapshots their files (before a project's blobs are counted at its opening)
 void paint_rec_init() {
 	hstore_set_children(HSTORE_STROKE, paint_rec_children);
+	paint_mat_snapshot_init();
 }
 
 // The stroke ended: stored, its entry a TL_STROKE when it replays

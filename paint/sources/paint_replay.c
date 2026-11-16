@@ -71,18 +71,40 @@ static void paint_replay_state_apply(paint_state_t *s) {
 	g_context->brush_stencil_angle         = s->stencil_transform[3];
 }
 
-// The paint shader of a state, NULL when it does not hash as recorded. A stroke that read the material from its cache
-// (addressed by texel of the live layer) replays at another size with the material evaluated: that shader is not the
-// recorded one, the hash is not checked.
-static shader_context_t *paint_replay_shader(paint_state_t *s) {
-	bool verify = !(paint_replay_uncached && s->matcache);
-	u64  key    = verify ? s->glsl : s->glsl ^ 0x9e3779b97f4a7c15ull;
-	for (i32 i = 0; i < PAINT_REPLAY_SCONS; ++i) {
-		if (paint_replay_scons[i] != NULL && paint_replay_scon_hashes[i] == key) {
-			return paint_replay_scons[i];
+// A kept shader's images are still the textures loaded under their files: reloaded (an asset imported again), or false
+// when one is gone (an asset deleted, a snapshot's image dropped with its project)
+static bool paint_replay_scon_textures(shader_context_t *scon) {
+	if (scon->bind_textures == NULL || scon->bind_textures->length == 0) {
+		return true;
+	}
+	for (i32 i = 0; i < scon->bind_textures->length; ++i) {
+		bind_tex_t *tex = scon->bind_textures->buffer[i];
+		if (strcmp(tex->file, "") != 0 && (data_cached_textures == NULL || any_map_get(data_cached_textures, tex->file) == NULL)) {
+			return false;
 		}
 	}
+	shader_context_load_textures(scon);
+	return true;
+}
+
+// The paint shader of a state, NULL when it does not hash as recorded. A stroke that read the material from its cache
+// (addressed by texel of the live layer) replays at another size with the material evaluated: that shader is not the
+// recorded one, the hash is not checked. Kept by GLSL and material snapshot: the same GLSL can read other images.
+static shader_context_t *paint_replay_shader(paint_state_t *s) {
+	bool verify = !(paint_replay_uncached && s->matcache);
+	u64  key    = (verify ? s->glsl : s->glsl ^ 0x9e3779b97f4a7c15ull) ^ s->material.lo ^ (s->material.hi * 0xff51afd7ed558ccdull);
+	for (i32 i = 0; i < PAINT_REPLAY_SCONS; ++i) {
+		if (paint_replay_scons[i] != NULL && paint_replay_scon_hashes[i] == key) {
+			if (paint_replay_scon_textures(paint_replay_scons[i])) {
+				return paint_replay_scons[i];
+			}
+			make_material_free_paint_scon(paint_replay_scons[i]);
+			paint_replay_scons[i] = NULL;
+		}
+	}
+	paint_mat_snapshot_parse_begin(g_context->material);
 	shader_context_t *scon = make_material_parse_paint_kept();
+	paint_mat_snapshot_parse_end();
 	if (scon == NULL || (verify && make_paint_glsl_hash(scon) != s->glsl)) {
 		if (scon != NULL) {
 			make_material_free_paint_scon(scon);
@@ -352,9 +374,11 @@ bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const pain
 	render_path_paint_clear_blend_now(); // The stroke's coverage starts empty
 
 	paint_exec_replay = true;
+	paint_mat_snapshot_replay_begin(m);
 	i32 need          = mm_buffers_require(MM_BUFFERS_FULL);
 	ok                = paint_replay_ops(&r);
 	mm_buffers_require(need);
+	paint_mat_snapshot_replay_end();
 	paint_exec_replay = false;
 	if (_render_path_current_image != NULL) {
 		render_path_end();
