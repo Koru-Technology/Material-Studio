@@ -157,3 +157,43 @@ bool app_resolution_set(int32_t size) {
 	layers_on_resized();
 	return true;
 }
+
+void app_history_info(app_history_info_t *out) {
+	hstore_stats_t s = hstore_stats();
+	*out = (app_history_info_t){.ram_bytes = s.ram_bytes, .disk_bytes = s.disk_bytes, .blobs = (int32_t)s.blobs, .can_save_copy = g_config->project_v31};
+}
+
+void app_history_clear(void) {
+	project_clear_history();
+}
+
+static void app_history_copy_picked(char *path) {
+	char *name = string_equals(ui_files_filename, "") ? tr("untitled") : ui_files_filename;
+	char *file = string("%s%s%s", path, PATH_SEP, name);
+	if (!ends_with(file, ".arm")) {
+		file = string("%s.arm", file);
+	}
+	if (!project_container_save_copy(file)) {
+		console_error(string("Could not save %s.", file));
+	}
+}
+
+bool app_history_save_copy(void) {
+	if (!g_config->project_v31) {
+		return false;
+	}
+#ifdef IRON_IOS
+	char *dir = iron_save_dialog("", ""); // The documents folder, as Save As (project.c)
+	dir       = string_copy(substring(dir, 0, string_length(dir) - 8)); // Strip /"untitled"
+	char *f   = string("%s/%s copy.arm", dir, sys_title());
+	if (!project_container_save_copy(f)) {
+		console_error(string("Could not save %s.", f));
+		return false;
+	}
+	console_info(tr("Copy saved"));
+	return true;
+#else
+	ui_files_show("arm", true, false, &app_history_copy_picked);
+	return true;
+#endif
+}

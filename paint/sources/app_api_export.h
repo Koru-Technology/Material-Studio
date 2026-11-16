@@ -63,3 +63,15 @@ typedef struct {
 
 void app_resolution_get(app_resolution_t *out);
 bool app_resolution_set(int32_t size); // Square, from 512 to max_size; false when it is the current one or one runs
+
+// Project history (the undo history saved in the project, phase 5b)
+typedef struct {
+	int64_t ram_bytes;     // History blobs held in memory (compressed)
+	int64_t disk_bytes;    // and in the session journal
+	int32_t blobs;
+	bool    can_save_copy; // Projects are written as version 31 (the project_v31 preference)
+} app_history_info_t;
+
+void app_history_info(app_history_info_t *out);
+void app_history_clear(void);     // Steps and checkpoints go, timelines stay (hi-res export keeps working)
+bool app_history_save_copy(void); // A copy of the project without its history: asks where (iOS: next to the projects)

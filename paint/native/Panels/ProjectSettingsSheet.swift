@@ -1,11 +1,13 @@
 import SwiftUI
 
-// The project's working resolution (app_api_export.h, app_resolution_*): with the tiled export the change keeps painted
-// detail and is one undo step, running a layer a frame with its progress here
-struct ResolutionSheet: View {
+// Project settings (app_api_export.h): the working resolution (with the tiled export the change keeps painted detail
+// and is one undo step, running a layer a frame with its progress here) and the history saved in the project
+struct ProjectSettingsSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var info     = app_resolution_t()
+	@State private var history  = app_history_info_t()
 	@State private var selected = Int32(2048)
+	@State private var clearing = false
 
 	private var sizes: [Int32] {
 		[1024, 2048, 4096, 8192, 16384].filter { $0 <= info.max_size }
@@ -21,6 +23,8 @@ struct ResolutionSheet: View {
 						}
 					}
 					.disabled(info.running)
+				} header: {
+					Text("Resolution")
 				} footer: {
 					Text(info.keeps_detail
 					     ? "Painted detail is kept: going back to a resolution brings the layers back as they were. Undo reverts the change."
@@ -31,9 +35,31 @@ struct ResolutionSheet: View {
 						ProgressView(value: info.progress)
 					}
 				}
+				Section {
+					LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: history.ram_bytes + history.disk_bytes, countStyle: .file))
+					Button("Clear History", role: .destructive) {
+						clearing = true
+					}
+					Button("Save a Copy Without History…") {
+						AppStore.shared.perform { app_history_save_copy() }
+					}
+					.disabled(!history.can_save_copy)
+				} header: {
+					Text("History")
+				} footer: {
+					Text("The undo history is saved with the project. Clearing it keeps the layers and their detail for export.")
+				}
+			}
+			.confirmationDialog("Clear the undo history?", isPresented: $clearing, titleVisibility: .visible) {
+				Button("Clear History", role: .destructive) {
+					AppStore.shared.perform { app_history_clear() }
+					app_history_info(&history)
+				}
+			} message: {
+				Text("Undo can not go back past this point afterwards.")
 			}
 			.formStyle(.grouped)
-			.navigationTitle("Project Resolution")
+			.navigationTitle("Project Settings")
 #if os(iOS)
 			.navigationBarTitleDisplayMode(.inline)
 #endif
@@ -54,6 +80,7 @@ struct ResolutionSheet: View {
 		}
 		.onAppear {
 			app_resolution_get(&info)
+			app_history_info(&history)
 			selected = info.width
 		}
 		.task {
@@ -62,6 +89,7 @@ struct ResolutionSheet: View {
 				var r = app_resolution_t()
 				app_resolution_get(&r)
 				info = r
+				app_history_info(&history)
 			}
 		}
 	}
