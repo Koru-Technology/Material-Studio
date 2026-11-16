@@ -88,7 +88,6 @@ void next() {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[undo_coalesce] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO_COALESCE PASS" : "UNDO_COALESCE FAIL");
-		script_get_config()->history_v2 = false;
 		script_quit();
 		return;
 	}
@@ -97,7 +96,6 @@ void next() {
 }
 
 void main() {
-	script_get_config()->history_v2 = true;
 	script_brush_defaults();
 	script_project_new();
 	hashes               = string_array_create(0);

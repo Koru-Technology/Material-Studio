@@ -193,7 +193,6 @@ void next() {
 			check(paint_rec_test_stored() >= 11, string("strokes stored (%d)", paint_rec_test_stored()));
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 			script_get_config()->paint_resolved_dabs = 0;
-			script_get_config()->timeline_shadow     = 0;
 			script_get_config()->project_v31         = v31;
 			printf("[rec_replay] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "REC_REPLAY PASS" : "REC_REPLAY FAIL");
@@ -207,7 +206,6 @@ void next() {
 void main() {
 	dir = script_tmp_dir("materialstudio_rec_replay"); // Per run: suites of several worktrees run at once
 	script_get_config()->paint_resolved_dabs = 1;
-	script_get_config()->timeline_shadow     = 1;
 	v31                                      = script_get_config()->project_v31;
 	script_get_config()->project_v31         = 1;
 	script_brush_defaults();

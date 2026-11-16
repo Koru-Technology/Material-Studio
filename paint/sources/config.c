@@ -35,12 +35,11 @@ static void config_save_now();
 
 // Flags of the stroke recording subsystem as loaded. A script saves these instead of its own: suites turn them on, and a
 // run that ends before turning them off must not leave them on in the user's config
-static bool config_script_flags[5];
+static bool config_script_flags[3];
 
 static void config_script_flags_swap() {
-	bool *f[5] = {&g_config->timeline_shadow, &g_config->history_v2, &g_config->export_tiled, &g_config->project_v31,
-	              &g_config->paint_resolved_dabs};
-	for (i32 i = 0; i < 5; ++i) {
+	bool *f[3] = {&g_config->export_tiled, &g_config->project_v31, &g_config->paint_resolved_dabs};
+	for (i32 i = 0; i < 3; ++i) {
 		bool t                 = *f[i];
 		*f[i]                  = config_script_flags[i];
 		config_script_flags[i] = t;
@@ -106,7 +105,6 @@ void config_brush_save_update() {
 	X(STRINGS, bookmarks, CONFIG_ANY)                                                            \
 	X(STRING, keymap, CONFIG_ANY)                                                                \
 	X(STRING, theme, CONFIG_ANY)                                                                 \
-	X(I32, undo_steps, 1, 1000)                                                                  \
 	X(F32, camera_fov, 0.01, 3.1)                                                                \
 	X(F32, camera_pan_speed, CONFIG_ANY)                                                         \
 	X(F32, camera_zoom_speed, CONFIG_ANY)                                                        \
@@ -165,8 +163,6 @@ void config_brush_save_update() {
 	X(I32, pencil_squeeze, PENCIL_ACTION_SYSTEM, PENCIL_ACTION_OFF)                              \
 	X(I32S, quick_menu_slots, CONFIG_ANY)                                                        \
 	X(I32, undo_memory_mb, 1, 1048576)                                                           \
-	X(BOOL, timeline_shadow, CONFIG_ANY)                                                         \
-	X(BOOL, history_v2, CONFIG_ANY)                                                              \
 	X(BOOL, export_tiled, CONFIG_ANY)                                                            \
 	X(I32, history_ram_mb, 16, 1048576)                                                          \
 	X(I32, history_disk_mb, 64, 1048576)                                                         \
@@ -321,11 +317,6 @@ config_t *config_create_default() {
 	c->keymap = "default.json";
 #endif
 	c->theme  = "default.json";
-#if defined(IRON_IOS)
-	c->undo_steps = 4;
-#else
-	c->undo_steps = 6;
-#endif
 	c->pressure_sensitivity = 1.0;
 	c->camera_fov           = 0.69;
 #if defined(IRON_IOS)
@@ -441,11 +432,9 @@ void config_init() {
 	base_res = g_config->layer_res;
 	config_set_texture_res(g_config->layer_res);
 	keymap_load();
-	config_script_flags[0] = g_config->timeline_shadow; // The flags as loaded, see config_save
-	config_script_flags[1] = g_config->history_v2;
-	config_script_flags[2] = g_config->export_tiled;
-	config_script_flags[3] = g_config->project_v31;
-	config_script_flags[4] = g_config->paint_resolved_dabs;
+	config_script_flags[0] = g_config->export_tiled; // The flags as loaded, see config_save
+	config_script_flags[1] = g_config->project_v31;
+	config_script_flags[2] = g_config->paint_resolved_dabs;
 }
 
 // A config from the keys of a loaded one: missing keys and numbers out of their range get the default value, unknown

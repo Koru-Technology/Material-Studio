@@ -113,7 +113,6 @@ void next() {
 	else {
 		export_tiled_test_tile(0);
 		config_t *cfg        = script_get_config();
-		cfg->timeline_shadow = 0;
 		printf("[export_hires] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "EXPORT_HIRES PASS" : "EXPORT_HIRES FAIL");
 		script_quit();
@@ -126,7 +125,6 @@ void next() {
 void main() {
 	root = script_tmp_dir("materialstudio_export_hires"); // Per run: suites of several worktrees run at once
 	config_t *cfg        = script_get_config();
-	cfg->timeline_shadow = 1;
 	script_project_new();
 	iron_create_directory(root);
 	script_notify_on_next_frame(next);

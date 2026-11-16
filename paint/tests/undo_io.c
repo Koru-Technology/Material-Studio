@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Saved undo history (history_io.c), history_v2: strokes on two layers and a mask, a clear, a mask invert, a layer
+// Saved undo history (history_io.c): strokes on two layers and a mask, a clear, a mask invert, a layer
 // deleted, a node edit. The history is encoded, dropped and decoded again as a project open does (its GPU undo tiles
 // gone): undoing step by step gives each state back as it was before, redoing gives the end back. Then clear history
 // keeps the layers and the timelines.
@@ -142,7 +142,6 @@ void next() {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		printf("[undo_io] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO_IO PASS" : "UNDO_IO FAIL");
-		script_get_config()->history_v2 = false;
 		script_quit();
 		return;
 	}
@@ -151,7 +150,6 @@ void next() {
 }
 
 void main() {
-	script_get_config()->history_v2 = true;
 	script_brush_defaults();
 	script_project_new();
 	states               = string_array_create(0);

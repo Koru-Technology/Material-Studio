@@ -139,7 +139,7 @@ static void tl_ops_record_fill(slot_layer_t *l, slot_material_t *m, f32 scale, f
 }
 
 void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32 len, const f32 *uv_bounds, u16 flags) {
-	if (!timeline_active() || !timeline_layer_paints(l)) {
+	if (!timeline_layer_paints(l)) {
 		return;
 	}
 	if (kind == TL_FILL && params == NULL) { // To paint: the fill it was, the step keeps its material
@@ -161,7 +161,7 @@ void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32
 
 // To fill: the conversion renders material m, scaled and rotated as it was painted with
 void timeline_record_to_fill(slot_layer_t *l, slot_material_t *m) {
-	if (!timeline_active() || !timeline_layer_paints(l) || m == NULL) {
+	if (!timeline_layer_paints(l) || m == NULL) {
 		return;
 	}
 	tl_ops_record_fill(l, m, m->uv_scale, m->uv_angle);
@@ -182,7 +182,7 @@ static buffer_t *tl_ops_asset_bytes(asset_t *asset, bool *owned) {
 
 // A layer or mask drawn from an image asset: its bytes by content hash, it replays when the file is gone
 void timeline_record_image(slot_layer_t *l, asset_t *asset) {
-	if (!timeline_active() || !timeline_layer_paints(l) || asset == NULL) {
+	if (!timeline_layer_paints(l) || asset == NULL) {
 		return;
 	}
 	bool      owned = false;

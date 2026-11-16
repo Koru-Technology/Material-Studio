@@ -200,14 +200,11 @@ bool layers_render_fill_rect(slot_layer_t *l, paint_target_t *t, gpu_texture_t *
 		gpu_end();
 	}
 
-	i32                hid = history_ring_prev();
-	layers_fill_swap_t swaps[6];
+	layers_fill_swap_t swaps[3];
 	layers_fill_swap(&swaps[0], string_tmp("texpaint%d", l->id), base);
 	layers_fill_swap(&swaps[1], string_tmp("texpaint_nor%d", p->id), nor);
 	layers_fill_swap(&swaps[2], string_tmp("texpaint_pack%d", p->id), pack);
-	layers_fill_swap(&swaps[3], string_tmp("texpaint_undo%d", hid), scratch[0]);
-	layers_fill_swap(&swaps[4], string_tmp("texpaint_nor_undo%d", hid), scratch[1]);
-	layers_fill_swap(&swaps[5], string_tmp("texpaint_pack_undo%d", hid), scratch[2]);
+	history_tiles_source_set(scratch[0], scratch[1], scratch[2]); // The fill blends over the cleared scratch
 
 	slot_layer_t    *_layer     = g_context->layer;
 	slot_material_t *_material  = g_context->material;
@@ -240,7 +237,8 @@ bool layers_render_fill_rect(slot_layer_t *l, paint_target_t *t, gpu_texture_t *
 	g_context->tool      = _tool;
 	g_context->fill_type = _fill_type;
 	g_context->pdirty    = _pdirty;
-	for (i32 i = 5; i >= 0; --i) {
+	history_tiles_source_set(NULL, NULL, NULL);
+	for (i32 i = 2; i >= 0; --i) {
 		layers_fill_unswap(&swaps[i]);
 	}
 	layers_set_object_mask();

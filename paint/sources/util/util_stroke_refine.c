@@ -447,7 +447,7 @@ static bool stroke_refine_eligible(slot_layer_t *l) {
 		return false;
 	}
 	if (g_context->brush_blending != BLEND_TYPE_MIX || g_context->brush_paint != UV_TYPE_UVMAP || context_is_decal() || g_context->picker_material_mask ||
-	    g_context->picker_color_mask || util_mesh_udim_layer(l) || history_undo_layers == NULL) {
+	    g_context->picker_color_mask || util_mesh_udim_layer(l)) {
 		return false;
 	}
 	return (i32)l->texpaint->width == config_get_texture_res_x() && (i32)l->texpaint->height == config_get_texture_res_y();

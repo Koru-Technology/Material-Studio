@@ -289,7 +289,6 @@ bool app_layer_new(int32_t kind) {
 	}
 	case APP_LAYER_NEW_TEXT: {
 		draw_saved_t gpu = draw_suspend();
-		base_init_undo_layers();
 		ok = layers_new_text_layer() != NULL;
 		if (ok) {
 			history_new_layer();
@@ -447,7 +446,6 @@ static bool app_layer_can_reparent(slot_layer_t *l, slot_layer_t *parent) {
 
 static bool app_layer_reparent(slot_layer_t *l, slot_layer_t *parent) {
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_t_array_t *pointers   = tab_layers_init_layer_map();
 	slot_layer_t         *old_parent = l->parent;
 	context_set_layer(l);
@@ -615,7 +613,6 @@ bool app_layer_set_fill_material(int32_t id, int32_t material_index) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
-	base_init_undo_layers();
 	slot_layer_set_fill_material(l, m);
 	layers_op_end(gpu);
 	return app_layer_done(true);

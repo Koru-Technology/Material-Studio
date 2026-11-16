@@ -100,7 +100,7 @@ bool render_path_raytrace_bake_commands(void (*parse_paint_material)(bool)) {
 			g_context->layer->texpaint = _texpaint;
 		}
 		else {
-			tex2 = render_path_target_image(string_tmp("texpaint_undo%d", history_undo_i));
+			tex2 = render_path_find_image("empty_black"); // Read by the lightmap kernel only
 		}
 
 		gpu_texture_t *env_cdf                 = g_context->bake_type == BAKE_TYPE_LIGHTMAP ? render_path_raytrace_update_env_cdf() : NULL;

@@ -548,7 +548,7 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
 	}
-	timeline_t *tl = timeline_active() && !pc_w->no_history ? timeline_of(l) : NULL; // A copy: full maps, no delta chains
+	timeline_t *tl = !pc_w->no_history ? timeline_of(l) : NULL; // A copy: full maps, no delta chains
 	hash128_t   h  = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE;
 	if (!hash128_is_none(h) && hstore_has(h)) {
 		hstore_ref(h);
@@ -719,9 +719,7 @@ static bool pc_save(char *path, bool copy) {
 	}
 
 	history_flush_restores(NULL); // Deferred undo restores land: the live layers are the ones shown
-	if (timeline_active()) {
-		timeline_finalize(); // Pending entry states captured
-	}
+	timeline_finalize(); // Pending entry states captured
 	if (!copy) {
 		pc_history_fit();
 	}
@@ -1014,7 +1012,7 @@ static u64 pc_history_signature() {
 // Session heads are written for v31 projects whose layers have timelines: their live states are tile maps already, a
 // head costs no readback
 static bool pc_session_on() {
-	return g_config->project_v31 && timeline_active() && g_context->paint_object != NULL;
+	return g_config->project_v31 && g_context->paint_object != NULL;
 }
 
 // Journals the session head now, true when it was written
@@ -1024,9 +1022,7 @@ bool project_session_write() {
 	}
 	pc_session_register();
 	history_flush_restores(NULL);
-	if (timeline_active()) {
-		timeline_finalize();
-	}
+	timeline_finalize();
 	pc_writer_t w = {.session = true};
 	pc_w          = &w;
 	buffer_t *head = export_arm_encode_project(g_project->_->filepath);

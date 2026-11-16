@@ -494,30 +494,15 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 	if (starts_with(link, "_matcache")) { // The current material's outputs, see util_material_cache.c
 		return material_cache_texture(link[9] - '0');
 	}
-	// The layer before the stroke: the snapshot of a tiled paint step, the newest whole layer copy otherwise
-	if (paint_exec_replay && (string_equals(link, "_texpaint_undo") || string_equals(link, "_texpaint_nor_undo") || string_equals(link, "_texpaint_pack_undo"))) {
-		i32 i = string_equals(link, "_texpaint_undo") ? 0 : string_equals(link, "_texpaint_nor_undo") ? 1 : 2; // Replaying: the target before the stroke
-		return paint_replay_s0[i] != NULL ? paint_replay_s0[i] : paint_replay_s0[0];
-	}
+	// The layer before the stroke: replaying, the target as it was, else history_tiles_stroke_source
 	if (string_equals(link, "_texpaint_undo") || string_equals(link, "_texpaint_nor_undo") || string_equals(link, "_texpaint_pack_undo")) {
-		gpu_texture_t *snap = history_tiles_stroke_source(string_equals(link, "_texpaint_undo") ? 0 : string_equals(link, "_texpaint_nor_undo") ? 1 : 2);
-		if (snap != NULL) {
-			return snap;
+		i32 i = string_equals(link, "_texpaint_undo") ? 0 : string_equals(link, "_texpaint_nor_undo") ? 1 : 2;
+		if (paint_exec_replay) {
+			return paint_replay_s0[i] != NULL ? paint_replay_s0[i] : paint_replay_s0[0];
 		}
+		return history_tiles_stroke_source(i);
 	}
-	if (string_equals(link, "_texpaint_undo")) {
-		i32 i = history_ring_prev();
-		return _uniforms_ext_get_target(string_tmp("texpaint_undo%d", i));
-	}
-	else if (string_equals(link, "_texpaint_nor_undo")) {
-		i32 i = history_ring_prev();
-		return _uniforms_ext_get_target(string_tmp("texpaint_nor_undo%d", i));
-	}
-	else if (string_equals(link, "_texpaint_pack_undo")) {
-		i32 i = history_ring_prev();
-		return _uniforms_ext_get_target(string_tmp("texpaint_pack_undo%d", i));
-	}
-	else if (string_equals(link, "_texpaint_ref")) {
+	if (string_equals(link, "_texpaint_ref")) {
 		return _uniforms_ext_get_target("texpaint_ref");
 	}
 	else if (string_equals(link, "_texpaint_nor_ref")) {

@@ -312,7 +312,6 @@ typedef struct config {
 	struct string_array *bookmarks;       // Bookmarked folders in browser
 	char                *keymap;          // Link to keymap file
 	char                *theme;           // Link to theme file
-	i32                  undo_steps;      // Number of undo steps to preserve
 	f32                  camera_fov;
 	f32                  camera_pan_speed;
 	f32                  camera_zoom_speed;
@@ -371,15 +370,13 @@ typedef struct config {
 	i32                  pencil_squeeze;
 	struct i32_array    *quick_menu_slots;  // Quick menu items clockwise from the top, see quick_menu_item_t
 	i32                  undo_memory_mb;    // Undo steps are dropped, oldest first, above this budget
-	bool                 timeline_shadow;   // Stroke recording runs beside the old undo, nothing reads it (stroke_rec.h)
-	bool                 history_v2;        // Undo from timelines and checkpoints, the undo ring retired
 	bool                 export_tiled;      // Textures export in tiles at any resolution (io/export_tiled.c)
 	i32                  history_ram_mb;    // Compressed history blobs kept in RAM (history_store.c), the rest is journaled
 	i32                  history_disk_mb;   // History journal size above which it is compacted
 	bool                 project_v31;       // Projects are written as version 31, older builds cannot open them
 	i32                  history_budget_mb; // History saved with a project, thinned above it; 0: 4x the live layers, 1 GB at least
 	bool                 paint_resolved_dabs; // Paint draws read dabs resolved to world space by a pass of their own (paint_exec.c)
-	i32                  history_max_steps; // history_v2: undo steps kept at most
+	i32                  history_max_steps; // Undo steps kept at most
 } config_t;
 
 // ---- Materials ----
@@ -821,7 +818,6 @@ typedef struct history_step {
 	i32                          merge_start;
 	i32                          merge_length;
 	bool                         with_prev; // Undone and redone together with the previous step
-	i32                          undo_ring;      // Whole layer copies the step keeps in the undo layers (history_copy_to_undo)
 	bool                         undo_tiled;     // Paint step undone from its tiles, see history_tiles.c
 	i32_array_t                 *undo_tiles;     // Tile and pool slot pairs, NULL until the stroke is over
 	i32                          undo_tiles_gen;
@@ -831,8 +827,8 @@ typedef struct history_step {
 	u32                          material_uid;
 	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
 	i32_array_t                 *tl_moves;     // Timeline cursors the step moved: uid, before, after (timeline.c)
-	struct hash128              *records;      // history_v2: HSTORE_LAYER_RECORD of each of merge_layers, their textures freed
-	u32                          fill_uids[2]; // Apply mask (history_v2): fill material of the mask and of its layer, 0 when painted
+	struct hash128              *records;      // HSTORE_LAYER_RECORD of each of merge_layers, their textures freed
+	u32                          fill_uids[2]; // Apply mask: fill material of the mask and of its layer, 0 when painted
 	i32                          resolution[4]; // Resolution change: width and height before, after
 } history_step_t;
 

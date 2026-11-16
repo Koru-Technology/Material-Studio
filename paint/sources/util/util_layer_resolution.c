@@ -200,13 +200,7 @@ static void layers_resolution_finish() {
 	base_res_x = w;
 	base_res_y = h;
 	base_res   = w == h ? config_get_texture_res_pos(w) : TEXTURE_RES_CUSTOM;
-	i32 ring   = g_config->undo_steps; // Fewer whole layer copies at 8K and above, as layers_resize
-	if (w >= 8192 || h >= 8192) {
-		i32 cap = w == 8192 ? 4 : 1;
-		ring    = ring < cap ? ring : cap;
-	}
-	history_ring_set_size(ring);
-	layers_resize_targets(); // Undo ring, live layer, paint scratch
+	layers_resize_targets(); // Live layer, paint scratch
 	render_path_raytrace_ready = false;
 	g_context->ddirty          = 2;
 	layers_crop                = false;

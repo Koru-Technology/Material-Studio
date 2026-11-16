@@ -1,6 +1,6 @@
 #include "global.h"
 
-// Crash recovery (io/project_container.c session heads, timeline_shadow and project_v31 on): work after the last save is
+// Crash recovery (io/project_container.c session heads, project_v31 on): work after the last save is
 // journaled as a session head; after a crash, opening the file gives the saved state and the journal stays, recovering
 // gives the unsaved layers, pixels and timelines back. Saving ends the pending state.
 
@@ -11,7 +11,6 @@ int   frame      = 0;
 char *dir        = NULL;
 char *file       = NULL;
 int   v31_was    = 0;
-int   shadow_was = 0;
 int   uid_a      = 0;
 int   uid_b      = 0;
 char *saved_a    = NULL;
@@ -22,7 +21,6 @@ int   cursor_a   = 0;
 int   layers     = 0;
 int   states[64];
 char *before_a   = NULL; // a before its second stroke
-int   v2_was     = 0;
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -156,8 +154,6 @@ void next() {
 	}
 	else {
 		script_get_config()->project_v31     = v31_was;
-		script_get_config()->timeline_shadow = shadow_was;
-		script_get_config()->history_v2      = v2_was;
 		script_project_new();
 		iron_delete_file(file);
 		printf("[session_recovery] %d checks, %d failures", checks, fails);
@@ -171,11 +167,7 @@ void next() {
 
 void main() {
 	v31_was                              = script_get_config()->project_v31;
-	shadow_was                           = script_get_config()->timeline_shadow;
 	script_get_config()->project_v31     = 1;
-	script_get_config()->timeline_shadow = 1;
-	v2_was                               = script_get_config()->history_v2;
-	script_get_config()->history_v2      = 1; // Saved steps undo from timelines
 	dir = script_tmp_dir("materialstudio_session_recovery"); // Per run: suites of several worktrees run at once
 	iron_create_directory(dir);
 	file = string("%s/recover.arm", dir);

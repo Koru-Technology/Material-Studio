@@ -45,9 +45,6 @@ f32_array_t     *render_path_paint_saved_ortho           = NULL;
 render_target_t *_render_path_paint_texpaint;
 render_target_t *_render_path_paint_texpaint_nor;
 render_target_t *_render_path_paint_texpaint_pack;
-render_target_t *_render_path_paint_texpaint_undo;
-render_target_t *_render_path_paint_texpaint_nor_undo;
-render_target_t *_render_path_paint_texpaint_pack_undo;
 bake_type_t      _render_path_paint_bake_type;
 
 void render_path_paint_init() {
@@ -723,32 +720,23 @@ static char *render_path_paint_key(char *format, i32 id) {
 }
 
 void render_path_paint_use_live_layer(bool use) {
-	i32 tid = g_context->layer->id;
-	i32 hid = history_ring_prev();
+	slot_layer_t *l   = g_context->layer;
+	i32           tid = l->id;
 	if (use) {
-		_render_path_paint_texpaint           = any_map_get(render_path_render_targets, string_tmp("texpaint%d", tid));
-		_render_path_paint_texpaint_undo      = any_map_get(render_path_render_targets, string_tmp("texpaint_undo%d", hid));
-		_render_path_paint_texpaint_nor_undo  = any_map_get(render_path_render_targets, string_tmp("texpaint_nor_undo%d", hid));
-		_render_path_paint_texpaint_pack_undo = any_map_get(render_path_render_targets, string_tmp("texpaint_pack_undo%d", hid));
-		_render_path_paint_texpaint_nor       = any_map_get(render_path_render_targets, string_tmp("texpaint_nor%d", tid));
-		_render_path_paint_texpaint_pack      = any_map_get(render_path_render_targets, string_tmp("texpaint_pack%d", tid));
-		any_map_set(render_path_render_targets, render_path_paint_key("texpaint_undo%d", hid), any_map_get(render_path_render_targets, string_tmp("texpaint%d", tid)));
+		_render_path_paint_texpaint      = any_map_get(render_path_render_targets, string_tmp("texpaint%d", tid));
+		_render_path_paint_texpaint_nor  = any_map_get(render_path_render_targets, string_tmp("texpaint_nor%d", tid));
+		_render_path_paint_texpaint_pack = any_map_get(render_path_render_targets, string_tmp("texpaint_pack%d", tid));
+		history_tiles_source_set(l->texpaint, l->texpaint_nor, l->texpaint_pack); // The preview blends over the layer as it is
 		any_map_set(render_path_render_targets, render_path_paint_key("texpaint%d", tid), any_map_get(render_path_render_targets, "texpaint_live"));
-		if (slot_layer_is_layer(g_context->layer)) {
-			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor_undo%d", hid),
-			            any_map_get(render_path_render_targets, string_tmp("texpaint_nor%d", tid)));
-			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack_undo%d", hid),
-			            any_map_get(render_path_render_targets, string_tmp("texpaint_pack%d", tid)));
+		if (slot_layer_is_layer(l)) {
 			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor%d", tid), any_map_get(render_path_render_targets, "texpaint_nor_live"));
 			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack%d", tid), any_map_get(render_path_render_targets, "texpaint_pack_live"));
 		}
 	}
 	else {
+		history_tiles_source_set(NULL, NULL, NULL);
 		any_map_set(render_path_render_targets, render_path_paint_key("texpaint%d", tid), _render_path_paint_texpaint);
-		any_map_set(render_path_render_targets, render_path_paint_key("texpaint_undo%d", hid), _render_path_paint_texpaint_undo);
-		if (slot_layer_is_layer(g_context->layer)) {
-			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor_undo%d", hid), _render_path_paint_texpaint_nor_undo);
-			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack_undo%d", hid), _render_path_paint_texpaint_pack_undo);
+		if (slot_layer_is_layer(l)) {
 			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_nor%d", tid), _render_path_paint_texpaint_nor);
 			any_map_set(render_path_render_targets, render_path_paint_key("texpaint_pack%d", tid), _render_path_paint_texpaint_pack);
 		}
@@ -960,7 +948,7 @@ void render_path_paint_begin() {
 
 	render_path_paint_push_undo_last = history_push_undo;
 
-	if (history_push_undo && history_undo_layers != NULL) {
+	if (history_push_undo && history_steps != NULL) {
 		history_paint();
 		if (g_context->tool == TOOL_TYPE_CLONE && g_context->clone_layers == CLONE_LAYERS_VISIBLE) {
 			paint_exec_clone_flatten();
@@ -1093,7 +1081,7 @@ void render_path_paint_draw() {
 	}
 
 	paint_exec_begin(); // The draws of the frame resolve their dabs together
-	if (history_undo_layers != NULL && render_path_paint_tail_pending) {
+	if (history_steps != NULL && render_path_paint_tail_pending) {
 		// The brush was released, the stamps the end taper kept back paint now. Painted as part of the stroke: its paint so far
 		// is kept, the coverage clears after this draw.
 		f64 brush_time        = g_context->brush_time;
@@ -1101,7 +1089,7 @@ void render_path_paint_draw() {
 		render_path_paint_tail_flush();
 		g_context->brush_time = brush_time;
 	}
-	else if (history_undo_layers != NULL) {
+	else if (history_steps != NULL) {
 		bool stamps  = render_path_paint_stamps();
 		bool samples = render_path_paint_use_samples();
 		if (!stamps && !samples) {
