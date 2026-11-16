@@ -673,7 +673,7 @@ static char *render_path_paint_key(char *format, i32 id) {
 
 void render_path_paint_use_live_layer(bool use) {
 	i32 tid = g_context->layer->id;
-	i32 hid = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+	i32 hid = history_ring_prev();
 	if (use) {
 		_render_path_paint_texpaint           = any_map_get(render_path_render_targets, string_tmp("texpaint%d", tid));
 		_render_path_paint_texpaint_undo      = any_map_get(render_path_render_targets, string_tmp("texpaint_undo%d", hid));

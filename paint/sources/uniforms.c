@@ -423,15 +423,15 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		}
 	}
 	if (string_equals(link, "_texpaint_undo")) {
-		i32 i = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+		i32 i = history_ring_prev();
 		return _uniforms_ext_get_target(string_tmp("texpaint_undo%d", i));
 	}
 	else if (string_equals(link, "_texpaint_nor_undo")) {
-		i32 i = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+		i32 i = history_ring_prev();
 		return _uniforms_ext_get_target(string_tmp("texpaint_nor_undo%d", i));
 	}
 	else if (string_equals(link, "_texpaint_pack_undo")) {
-		i32 i = history_undo_i - 1 < 0 ? g_config->undo_steps - 1 : history_undo_i - 1;
+		i32 i = history_ring_prev();
 		return _uniforms_ext_get_target(string_tmp("texpaint_pack_undo%d", i));
 	}
 	else if (string_equals(link, "_texpaint_ref")) {
