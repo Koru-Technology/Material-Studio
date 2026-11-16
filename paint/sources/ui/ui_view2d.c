@@ -15,7 +15,6 @@ i32                  _ui_view2d_tex_w          = 0;
 bool                 ui_view2d_layer_touched   = false;
 gpu_texture_t       *ui_view2d_tex             = NULL;
 i32                  ui_view2d_tex_channel     = 0;
-bool                 ui_view2d_tex_bgra        = false;
 char                *ui_view2d_layer_name_prev = NULL;
 
 void ui_view2d_init() {
@@ -39,7 +38,7 @@ void ui_view2d_init() {
 
 void ui_view2d_capture_output(void *_) {
 	if (ui_view2d_tex == NULL || ui_view2d_tex_channel == 0) {
-		util_texture_capture_output(ui_view2d_tex, "tex_capture", ui_view2d_tex_bgra);
+		util_texture_capture_output(ui_view2d_tex, "tex_capture");
 		return;
 	}
 	// Single channel views carry no usable alpha, bake the displayed channel into an opaque image
@@ -50,7 +49,7 @@ void ui_view2d_capture_output(void *_) {
 	draw_scaled_image(ui_view2d_tex, 0, 0, rt->width, rt->height);
 	draw_end();
 	draw_set_pipeline(NULL);
-	util_texture_capture_output(rt, "tex_capture", false);
+	util_texture_capture_output(rt, "tex_capture");
 	gpu_delete_texture(rt);
 }
 
@@ -840,12 +839,6 @@ void ui_view2d_update(void *_) {
 			if (ui_icon_button("Edit", ICON_EDIT, UI_ALIGN_CENTER)) {
 				ui_view2d_tex         = tex;
 				ui_view2d_tex_channel = ui_view2d_type == VIEW_2D_TYPE_LAYER ? channel : 0;
-#ifdef IRON_BGRA
-				// Layers are render targets and read back as bgra, assets and node images are textures from pixels
-				ui_view2d_tex_bgra = ui_view2d_type == VIEW_2D_TYPE_ASSET  ? true
-				                     : ui_view2d_type == VIEW_2D_TYPE_NODE ? ui_nodes_node_preview_is_bgra(ui_view2d_get_selected_node())
-				                                                           : false;
-#endif
 				ui_menu_draw(&ui_view2d_draw_edit, -1, -1);
 			}
 			g_ui->_x += ew * 0.7 + 3;
