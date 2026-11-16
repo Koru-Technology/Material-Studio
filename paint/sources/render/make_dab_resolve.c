@@ -38,12 +38,6 @@ vec4 dab_quantize(vec2 s, float mode) {\n\
 	vec3 o = (constants.obj_inv * vec4(w.xyz, 1.0)).xyz;\n\
 	return vec4(floor(clamp((o - constants.aabb_min.xyz) / constants.aabb_size.xyz, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)) * " PAINT_DAB_QUANT_S " + vec3(0.5, 0.5, 0.5)), 0.0);\n\
 }\n\
-vec4 dab_resolve(vec2 s, float mode) {\n\
-	vec4 w = dab_unproject(s, mode);\n\
-	vec4 q = dab_quantize(s, mode);\n\
-	if (q.w < 0.5) { w.xyz = dab_dequantize(q.xyz); }\n\
-	return w;\n\
-}\n\
 vec2 dab_uv(vec2 s) {\n\
 	vec4 pg = texelFetch(sampler2D(gbuffer2, sampler_linear), ivec2(uint(s.x * constants.gbuffer_size.x), uint(s.y * constants.gbuffer_size.y)), 0);\n\
 	return pg.ba + pg.rg;\n\
@@ -55,27 +49,37 @@ void main() {\n\
 	int t = fc.x % " PAINT_DAB_TEXELS_S ";\n\
 	ivec2 base = ivec2(fc.x - t, fc.y);\n\
 	vec4 i0 = texelFetch(sampler2D(dabsin, sampler_linear), base, 0);\n\
-	if (constants.replay > 0.5) { // The input is a recorded row: positions from q again, the rest as it was\n\
-		vec4 r = texelFetch(sampler2D(dabsin, sampler_linear), fc, 0);\n\
-		if (t <= 1) {\n\
-			vec4 q = texelFetch(sampler2D(dabsin, sampler_linear), base + ivec2(8 + t, 0), 0);\n\
-			if (q.w < 0.5) { r.xyz = dab_dequantize(q.xyz); }\n\
+	if (t <= 1 || t >= 8) { // A point and its q: one code path for p (t 0) and q (t 8), live or replaying, each fragment\n\
+		// computes the same q (two call sites may round the quantization apart, a step off: the iPad did)\n\
+		int e = t >= 8 ? t - 8 : t;\n\
+		vec4 w;\n\
+		vec4 q;\n\
+		if (constants.replay > 0.5) { // The input is a recorded row: positions from q again\n\
+			w = texelFetch(sampler2D(dabsin, sampler_linear), base + ivec2(e, 0), 0);\n\
+			q = texelFetch(sampler2D(dabsin, sampler_linear), base + ivec2(8 + e, 0), 0);\n\
 		}\n\
-		frag_out = r;\n\
+		else {\n\
+			float mode = texelFetch(sampler2D(dabsin, sampler_linear), base + ivec2(1, 0), 0).x;\n\
+			vec2 s = e == 0 ? i0.xy : i0.zw;\n\
+			w = dab_unproject(s, mode);\n\
+			q = dab_quantize(s, mode);\n\
+		}\n\
+		if (q.w < 0.5) { w.xyz = dab_dequantize(q.xyz); }\n\
+		frag_out = t >= 8 ? q : w;\n\
+		return;\n\
+	}\n\
+	if (constants.replay > 0.5) { // The rest as it was\n\
+		frag_out = texelFetch(sampler2D(dabsin, sampler_linear), fc, 0);\n\
 		return;\n\
 	}\n\
 	float mode = texelFetch(sampler2D(dabsin, sampler_linear), base + ivec2(1, 0), 0).x;\n\
-	if (t == 0) { frag_out = dab_resolve(i0.xy, mode); }\n\
-	else if (t == 1) { frag_out = dab_resolve(i0.zw, mode); }\n\
-	else if (t == 2) {\n\
+	if (t == 2) {\n\
 		vec2 g0 = textureLod(sampler2D(gbuffer0, sampler_linear), i0.xy, 0.0).rg;\n\
 		g0 = floor(clamp(g0, vec2(-1.0, -1.0), vec2(1.0, 1.0)) * 32767.0 + vec2(0.5, 0.5)) / 32767.0;\n\
 		frag_out = vec4(g0, dab_off(i0.xy, mode), dab_off(i0.zw, mode));\n\
 	}\n\
 	else if (t == 4) { frag_out = i0; }\n\
 	else if (t == 5) { frag_out = vec4(dab_uv(i0.xy), dab_uv(i0.zw)); }\n\
-	else if (t == 8) { frag_out = dab_quantize(i0.xy, mode); }\n\
-	else if (t == 9) { frag_out = dab_quantize(i0.zw, mode); }\n\
 	else { frag_out = texelFetch(sampler2D(dabsin, sampler_linear), fc, 0); }\n\
 }\n\
 #endif\n";

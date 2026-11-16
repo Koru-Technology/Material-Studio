@@ -17,6 +17,7 @@
 // other providers) are written whole, next to the file and moved over it.
 
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -619,8 +620,15 @@ static void pc_carry() {
 // Appends go to local files only: providers (iCloud Drive and others) sync whole files
 static bool pc_local(char *path) {
 #ifdef IRON_IOS
-	char *home = getenv("HOME"); // The app's container
-	return home != NULL && starts_with(path, home);
+	// The app's container. Resolved: its paths come as /var/mobile/... or /private/var/mobile/... (/var is a link)
+	char *home = getenv("HOME");
+	char  home_real[PATH_MAX];
+	char  path_real[PATH_MAX];
+	if (home == NULL || realpath(home, home_real) == NULL || realpath(path, path_real) == NULL) {
+		return false;
+	}
+	size_t n = strlen(home_real);
+	return strncmp(path_real, home_real, n) == 0 && path_real[n] == '/';
 #else
 	return strstr(path, "/Library/Mobile Documents/") == NULL && strstr(path, "/Library/CloudStorage/") == NULL;
 #endif

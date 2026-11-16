@@ -121,7 +121,7 @@ static gpu_transfer_t *et_xfer = NULL;
 static i32  et_test_tile   = 0;     // Tests: tile core size, 0 the default
 static bool et_test_raster = false; // Tests: uv coverage rasterized per tile also at the working resolution
 static bool et_test_mm     = false; // Tests: the Material Maker export cap also at the working resolution
-static i64  et_stats[12]; // export_tiled_stat
+static i64  et_stats[16]; // export_tiled_stat
 static bool et_mm_capped = false;
 static i32  et_res_w     = 0; // The export resolution, 0 the working one
 static i32  et_res_h     = 0;
@@ -1027,13 +1027,19 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	// Tile size: the platform's largest, halved while the targets exceed the budget
 	i32 s = et.w > et.h ? et.w : et.h;
 	s     = s > EXPORT_TILED_MAX_TILE ? EXPORT_TILED_MAX_TILE : s;
+	i32 largest = s; // The largest core size the cap and budget allow (tests)
+	while (largest > 256 && export_tiled_target_bytes(largest, et.halo, et.format) > export_tiled_budget()) {
+		largest--;
+	}
 	if (et_test_tile > 0 && et_test_tile < s) {
 		s = et_test_tile;
 	}
 	while (s > 256 && export_tiled_target_bytes(s, et.halo, et.format) > export_tiled_budget()) {
 		s /= 2;
 	}
-	et.size = s;
+	et.size      = s;
+	et_stats[14] = s;
+	et_stats[15] = largest;
 	export_tiled_targets(s, et.halo);
 
 	i32 nx    = (et.w + s - 1) / s;
@@ -1593,7 +1599,8 @@ void export_tiled_set_mode(i32 mode) {
 // 0 peak tile target KB of the last export, 1 its budget KB, 2 tiles rendered, 3 tiles skipped, 4 files, 5 mm cap,
 // 6 tile target KB held now, 7 1 while a spool file is open, 8 files written by the export in progress, 9 layer tiles
 // from timelines, 10 layer tiles with a timeline it could not materialize (the live layer instead), 11 fill layer and
-// mask tiles rendered, 12 KB of live layers evicted (export mode), 13 KB of live layer textures held now
+// mask tiles rendered, 12 KB of live layers evicted (export mode), 13 KB of live layer textures held now, 14 tile core
+// size of the last job, 15 the largest core size the platform allows it (tile cap and budget, to the texel)
 i32 export_tiled_stat(i32 what) {
 	if (what == 6) {
 		i64 kb = 0;
@@ -1615,7 +1622,7 @@ i32 export_tiled_stat(i32 what) {
 	if (what == 13) {
 		return (i32)(export_tiled_layers_bytes() / 1024);
 	}
-	return what >= 0 && what < 12 ? (i32)et_stats[what] : 0;
+	return what >= 0 && what < 16 ? (i32)et_stats[what] : 0;
 }
 
 // The uv coverage of the working resolution (util_uv_cache_dilate_map)

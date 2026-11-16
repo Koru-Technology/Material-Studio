@@ -557,7 +557,8 @@ gpu_pipeline_t *timeline_copy_pipe(gpu_texture_t *t) {
 }
 
 // State h written into t at t's resolution: restored when it has it, otherwise the part t covers (and a texel around,
-// bilinear reads it) restored at h's own resolution and scaled into t
+// bilinear reads it) restored at h's own resolution and scaled into t. As the live layer scales (export_tiled_blit): the
+// layer's edge texels repeat up to its edge, texels of t past it are cleared.
 bool timeline_state_resample(hash128_t h, paint_target_t *t) {
 	i32 sw = 0, sh = 0, format = 0, channels = 0;
 	if (!timeline_tiles_info(h, &sw, &sh, &format, &channels) || channels != t->channels) {
@@ -566,9 +567,28 @@ bool timeline_state_resample(hash128_t h, paint_target_t *t) {
 	if (sw == t->res_w && sh == t->res_h) {
 		return timeline_tiles_restore(h, t);
 	}
-	f32            u0 = t->uv_rect[0], v0 = t->uv_rect[1], u1 = t->uv_rect[2], v1 = t->uv_rect[3];
-	i32            x0 = (i32)floorf(u0 * sw) - 1, y0 = (i32)floorf(v0 * sh) - 1;
-	i32            x1 = (i32)ceilf(u1 * sw) + 1, y1 = (i32)ceilf(v1 * sh) + 1;
+	f32 u0 = t->uv_rect[0], v0 = t->uv_rect[1], u1 = t->uv_rect[2], v1 = t->uv_rect[3];
+	// The texels of t inside the layer
+	f32 ox = u0 * t->res_w, oy = v0 * t->res_h; // t's origin in texels of the layer at t's resolution
+	i32 dx0 = (i32)fmaxf(0.0, ceilf(-ox)), dy0 = (i32)fmaxf(0.0, ceilf(-oy));
+	i32 dx1 = (i32)fminf((f32)t->w, floorf(t->res_w - ox)), dy1 = (i32)fminf((f32)t->h, floorf(t->res_h - oy));
+	if (dx1 <= dx0 || dy1 <= dy0) { // All past the edge
+		draw_saved_t saved = draw_suspend();
+		for (i32 k = 0; k < channels; ++k) {
+			draw_begin(t->out[k], true, 0x00000000);
+			draw_end();
+		}
+		draw_resume(saved);
+		return true;
+	}
+	f32 kx = sw / (f32)t->res_w, ky = sh / (f32)t->res_h;
+	f32 su0 = (ox + dx0) * kx, sv0 = (oy + dy0) * ky, su1 = (ox + dx1) * kx, sv1 = (oy + dy1) * ky; // In h's texels
+	i32 x0 = (i32)floorf(su0) - 1, y0 = (i32)floorf(sv0) - 1;
+	i32 x1 = (i32)ceilf(su1) + 1, y1 = (i32)ceilf(sv1) + 1;
+	x0 = x0 < 0 ? 0 : x0; // Within the layer: the sampler repeats its edge
+	y0 = y0 < 0 ? 0 : y0;
+	x1 = x1 > sw ? sw : x1;
+	y1 = y1 > sh ? sh : y1;
 	paint_target_t lo = {.w = x1 - x0, .h = y1 - y0, .res_w = sw, .res_h = sh, .channels = channels};
 	lo.uv_rect[0]     = x0 / (f32)sw;
 	lo.uv_rect[1]     = y0 / (f32)sh;
@@ -581,11 +601,12 @@ bool timeline_state_resample(hash128_t h, paint_target_t *t) {
 	if (!timeline_tiles_restore(h, &lo)) {
 		return false;
 	}
+	bool         full  = dx0 == 0 && dy0 == 0 && dx1 == t->w && dy1 == t->h;
 	draw_saved_t saved = draw_suspend();
 	for (i32 k = 0; k < channels; ++k) {
-		draw_begin(t->out[k], false, 0);
+		draw_begin(t->out[k], !full, 0x00000000);
 		draw_set_pipeline(timeline_copy_pipe(t->out[k]));
-		draw_scaled_sub_image(timeline_lo[k], u0 * sw - x0, v0 * sh - y0, (u1 - u0) * sw, (v1 - v0) * sh, 0, 0, t->w, t->h);
+		draw_scaled_sub_image(timeline_lo[k], su0 - x0, sv0 - y0, su1 - su0, sv1 - sv0, dx0, dy0, dx1 - dx0, dy1 - dy0);
 		draw_set_pipeline(NULL);
 		draw_end();
 	}
