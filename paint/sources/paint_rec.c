@@ -12,7 +12,7 @@
 //   dabs: PAINT_DAB_TEXELS * 4 arrays of n_dabs f32, the resolved texels component by component.
 
 #define PAINT_REC_MAGIC   0x31435250 // "PRC1"
-#define PAINT_REC_VERSION 1
+#define PAINT_REC_VERSION 3
 
 typedef struct paint_rec_head {
 	u32 magic;
@@ -65,7 +65,7 @@ static bool paint_rec_tool_replayable() {
 	tool_type_t tool = g_context->tool;
 	slot_layer_t *l  = g_context->layer;
 	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER) && l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
-	       !context_is_pixel_snap() && g_context->brush_mask_image == NULL && g_context->brush_stencil_image == NULL && !g_context->pick_pos_nor_tex;
+	       !context_is_pixel_snap() && !g_context->pick_pos_nor_tex;
 }
 
 void paint_state_capture(paint_state_t *s, hash128_t material) {
@@ -104,6 +104,15 @@ void paint_state_capture(paint_state_t *s, hash128_t material) {
 	s->translucency    = g_project->_->translucency;
 	s->batching        = make_paint_batching;
 	s->dilate_radius   = g_config->dilate_radius;
+	s->matcache        = make_material_paint_scon != NULL && make_paint_scon_uses_matcache(make_material_paint_scon);
+	s->tip             = paint_asset_intern(g_context->brush_mask_image);
+	s->tip_alpha       = g_context->brush_mask_image_is_alpha;
+	s->stencil         = paint_asset_intern(g_context->brush_stencil_image);
+	s->stencil_alpha   = g_context->brush_stencil_image_is_alpha;
+	s->stencil_transform[0] = g_context->brush_stencil_x;
+	s->stencil_transform[1] = g_context->brush_stencil_y;
+	s->stencil_transform[2] = g_context->brush_stencil_scale;
+	s->stencil_transform[3] = g_context->brush_stencil_angle;
 }
 
 static u16 paint_rec_state_index(paint_rec_t *r) {
@@ -135,6 +144,8 @@ static u16 paint_rec_cam_index(paint_rec_t *r) {
 	c.w     = render_path_current_w;
 	c.h     = render_path_current_h;
 	c.frame = scene_camera->frame;
+	c.right = camera_object_right_world(scene_camera);
+	c.up    = camera_object_up_world(scene_camera);
 	if (r->n_cams > 0 && memcmp(&r->cams[r->n_cams - 1], &c, sizeof(c)) == 0) {
 		return r->n_cams - 1;
 	}
@@ -162,6 +173,7 @@ void paint_rec_stroke_begin(history_step_t *step, slot_layer_t *l) {
 	if (tl == NULL || tl->count == 0 || !paint_rec_tool_replayable()) {
 		return;
 	}
+	paint_asset_stroke_begin();
 	paint_rec_t *r = &paint_rec;
 	r->active      = true;
 	r->replayable  = true;
@@ -478,7 +490,53 @@ static void paint_rec_children(const u8 *data, u32 len, hstore_visit_fn visit, v
 		if (!hash128_is_none(s.material)) {
 			visit(s.material, ud);
 		}
+		if (!hash128_is_none(s.tip)) {
+			visit(s.tip, ud);
+		}
+		if (!hash128_is_none(s.stencil)) {
+			visit(s.stencil, ud);
+		}
 	}
+}
+
+// Strokes stored whose uv bounds wait for the state after them to be captured (timeline_finalize)
+typedef struct {
+	u32 tl;
+	i32 index;
+	u32 serial;
+} paint_rec_bounds_t;
+
+static paint_rec_bounds_t paint_rec_bounds[64];
+static i32                paint_rec_bounds_count = 0;
+
+// The uv box of the tiles a stored stroke changed, once both states are kept
+static void paint_rec_bounds_update() {
+	i32 kept = 0;
+	for (i32 i = 0; i < paint_rec_bounds_count; ++i) {
+		paint_rec_bounds_t *b  = &paint_rec_bounds[i];
+		timeline_t         *tl = timeline_find(b->tl);
+		if (tl == NULL || b->index >= tl->count || tl->entries[b->index].step_serial != b->serial || tl->entries[b->index].kind != TL_STROKE) {
+			continue; // Gone
+		}
+		hash128_t before = timeline_state(tl, b->index);
+		hash128_t after  = timeline_state(tl, b->index + 1);
+		if (hash128_is_none(before) || hash128_is_none(after)) {
+			paint_rec_bounds[kept++] = *b; // Not captured yet
+			continue;
+		}
+		f32 box[4];
+		if (timeline_tiles_changed_bounds(before, after, box)) {
+			memcpy(tl->entries[b->index].uv_bounds, box, sizeof(box));
+		}
+	}
+	paint_rec_bounds_count = kept;
+}
+
+// Scripts: the uv bounds of entry index of the timeline of l, component c
+f32 paint_rec_test_bounds(slot_layer_t *l, i32 index, i32 c) {
+	paint_rec_bounds_update();
+	timeline_t *tl = timeline_of(l);
+	return tl != NULL && index >= 0 && index < tl->count && c >= 0 && c < 4 ? tl->entries[index].uv_bounds[c] : -1.0;
 }
 
 // At startup: stored records own their material snapshots (before a project's blobs are counted at its opening)
@@ -507,8 +565,16 @@ void paint_rec_finish() {
 		tl_entry_t *e = &tl->entries[r->index];
 		e->flags      = TL_FLAG_LOCAL | TL_FLAG_UPSCALABLE;
 		e->mm_tier    = r->mm_tier;
-		e->halo_uv    = 0.0;
+		// Reads around what it writes: dilation's neighbours (blur's kernel, once replayed)
+		i32 reach  = r->n_states > 0 ? r->states[0].dilate_radius : 0;
+		e->halo_uv = (f32)(reach + 1) / (f32)r->res_w;
 		paint_rec_stored++;
+		if (paint_rec_bounds_count == 64) {
+			paint_rec_bounds_update();
+		}
+		if (paint_rec_bounds_count < 64) {
+			paint_rec_bounds[paint_rec_bounds_count++] = (paint_rec_bounds_t){.tl = r->tl_uid, .index = r->index, .serial = r->serial};
+		}
 	}
 	hstore_unref(r->material); // The blob holds it now
 	paint_rec_clear(r);
@@ -516,6 +582,7 @@ void paint_rec_finish() {
 
 // Before undo, save, export: the readbacks of the stroke land, a stroke that ended is stored
 void paint_rec_flush() {
+	paint_rec_bounds_update();
 	if (paint_rec.active && paint_rec.pending > 0) {
 		gpu_transfer_wait();
 	}

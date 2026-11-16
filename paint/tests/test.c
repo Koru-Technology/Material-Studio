@@ -1806,6 +1806,7 @@ void next_frame() {
 }
 
 void main() {
+	tmp_root = script_tmp_dir("materialstudio"); // Per run: suites of several worktrees run at once
 	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	for (int i = 0; i < 3 && ui_base_view_mode() != 0; ++i) { // The 3D view alone, the checks measure it
 		ui_base_cycle_view_mode();

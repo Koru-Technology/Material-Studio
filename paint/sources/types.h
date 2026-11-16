@@ -1367,6 +1367,12 @@ typedef struct paint_state {
 	i32       translucency;
 	i32       batching; // make_paint_batching
 	i32       dilate_radius;
+	i32       matcache; // The material came from its cache (util_material_cache.c)
+	hash128_t tip;      // HSTORE_ASSET of the brush tip (brush_mask_image), NONE for round
+	i32       tip_alpha;
+	hash128_t stencil; // HSTORE_ASSET of the stencil
+	i32       stencil_alpha;
+	f32       stencil_transform[4]; // x, y, scale, angle
 } paint_state_t;
 
 typedef struct paint_rec_cam {
@@ -1376,6 +1382,8 @@ typedef struct paint_rec_cam {
 	i32    h;
 	i32    frame; // scene_camera->frame
 	i32    pad;
+	vec4_t right; // _camera_right, _camera_up (from the camera's transform, tips and stencils turn with them)
+	vec4_t up;
 } paint_rec_cam_t;
 
 typedef struct paint_rec_xform {

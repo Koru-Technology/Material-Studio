@@ -191,7 +191,7 @@ void next() {
 		int read = (int)(hstore_test_stat(9) - decodes);
 		int maps = project_container_test_index_count(2);
 		check(project_container_test_appended() == 1, "saved by appending");
-		check(read >= 1 && read <= 4 && maps >= 6, string("an append reads the new tile maps only (%d of %d maps)", read, maps));
+		check(read >= 1 && read <= 6 && maps >= 6, string("an append reads the new blobs only (%d, %d maps in the file)", read, maps)); // Maps, strokes
 		decodes = hstore_test_stat(9);
 		project_filepath_set(string("%s/copy2.arm", dir)); // Save As: whole
 		project_save(0);
@@ -200,7 +200,7 @@ void next() {
 		int read = (int)(hstore_test_stat(9) - decodes);
 		int maps = project_container_test_index_count(2);
 		check(project_container_test_appended() == 0, "a new file is written whole");
-		check(read == maps, string("a whole rewrite reads every reachable tile map (%d of %d)", read, maps));
+		check(read >= maps, string("a whole rewrite reads every reachable tile map (%d blobs, %d maps)", read, maps)); // And strokes
 		script_project_new();
 	}
 	else if (step == 17) {
@@ -255,6 +255,7 @@ void next() {
 }
 
 void main() {
+	dir = script_tmp_dir("materialstudio_timeline_persist"); // Per run: suites of several worktrees run at once
 	v31_was                              = script_get_config()->project_v31;
 	shadow_was                           = script_get_config()->timeline_shadow;
 	script_get_config()->project_v31     = 1;

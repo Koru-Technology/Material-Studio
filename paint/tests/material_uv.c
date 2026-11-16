@@ -164,6 +164,7 @@ void next() {
 }
 
 void main() {
+	tmp_root = script_tmp_dir("materialstudio_uv"); // Per run: suites of several worktrees run at once
 	script_brush_defaults(); // A plain round brush, whatever the user left picked
 	char *save = script_save_path();
 	if (string_index_of(save, "/var/mobile/") >= 0) { // ios, /tmp is outside the sandbox

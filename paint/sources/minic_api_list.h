@@ -1152,6 +1152,7 @@ X0(paint_replay_test_fallbacks, "i()", i)
 X0(paint_replay_test_count, "i()", i)
 X2(paint_replay_test_entry, "b(p:slot_layer_t l,i index)", b, p, i)
 
+X1(script_tmp_dir, "p:char(p:char name)", p, p)
 // Texture export, more
 X2(script_diff_files, "i(p:char path_a,p:char path_b)", i, p, p)
 X1(export_tiled_test_whole, "v(b on)", v, b)
@@ -1159,6 +1160,13 @@ X1(script_texture_read, "v(p:gpu_texture_t t)", v, p)
 X1(script_image_read, "b(p:char path)", b, p)
 X3(script_texel, "f(f u,f v,i c)", f, f, f, i)
 X2(layers_flatten, "p:slot_layer_t(b height_to_normal,p:slot_layer_t_array_t layers)", p, b, p)
+
+X3(paint_replay_test_into, "b(p:slot_layer_t src,i index,p:slot_layer_t dst)", b, p, i, p)
+X5(paint_replay_test_tiles, "b(p:slot_layer_t src,i index,p:slot_layer_t dst,i n,i halo)", b, p, i, p, i, i)
+X3(paint_rec_test_bounds, "f(p:slot_layer_t l,i index,i c)", f, p, i, i)
+X4(render_path_paint_test_set_taper, "v(f start,f end,f size,f opacity)", v, f, f, f, f)
+
+// Working resolution change (util/util_layer_resolution.c)
 X2(layers_resolution_begin, "v(i w,i h)", v, i, i)
 X2(layers_resolution_apply, "v(i w,i h)", v, i, i)
 X0(layers_resolution_test_restores, "i()", i)

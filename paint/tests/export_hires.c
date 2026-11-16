@@ -124,6 +124,7 @@ void next() {
 }
 
 void main() {
+	root = script_tmp_dir("materialstudio_export_hires"); // Per run: suites of several worktrees run at once
 	config_t *cfg        = script_get_config();
 	cfg->timeline_shadow = 1;
 	script_project_new();
