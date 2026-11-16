@@ -1077,6 +1077,7 @@ void history_on_memory_warning() {
 
 void history_reset() {
 	project_modified = false;
+	layers_resolution_reset(); // The states resolution changes kept
 	if (history_steps != NULL) {
 		for (i32 i = 0; i < history_steps->length; ++i) {
 			history_step_free(history_steps->buffer[i]);

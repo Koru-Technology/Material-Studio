@@ -48,8 +48,12 @@ static void layers_resolution_keep(u32 uid, i32 w, i32 h, hash128_t at, i32 to_w
 	*k = (layers_resolution_kept_t){.uid = uid, .w = w, .h = h, .at = at, .to_w = to_w, .to_h = to_h, .to = to};
 }
 
-// New project: the kept states go (the blob store is reset with it)
+// History reset (new or opened project, mesh import): the kept states go, their blobs can be collected
 void layers_resolution_reset() {
+	for (i32 i = 0; i < layers_resolution_nkept; ++i) {
+		hstore_unref(layers_resolution_kept[i].at);
+		hstore_unref(layers_resolution_kept[i].to);
+	}
 	free(layers_resolution_kept);
 	layers_resolution_kept  = NULL;
 	layers_resolution_nkept = 0;

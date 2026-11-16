@@ -147,6 +147,7 @@ void next() {
 }
 
 void main() {
+	root = script_tmp_dir("materialstudio_merge_bits"); // Per run: suites of several worktrees run at once
 	iron_create_directory(root);
 	s8  = f32_array_create(0);
 	s16 = f32_array_create(0);
