@@ -1,6 +1,8 @@
 import SwiftUI
 
 #if os(iOS)
+import UIKit
+
 // iPad: the canvas fills the screen, the controls float over it on Liquid Glass.
 // Top left: actions and viewport menus. Top right: library popovers. Left: tools, size, opacity.
 // Bottom left: undo, redo. Bottom right: frame, views, view cube.
@@ -56,7 +58,7 @@ final class PadPopovers {
 
 	// Launch argument "-NativeShow Layers" opens that popover (screenshots from scripted runs)
 	private(set) var shown: String? = UserDefaults.standard.string(forKey: "NativeShow")
-	@ObservationIgnored private var closing: String? // Going away, until its content has disappeared
+	@ObservationIgnored private var closing: String? // Going away, until UIKit presents nothing any more
 	@ObservationIgnored private var pending: String? // Opens once the closing one has gone
 
 	// The button's tap: the outside tap may have closed its popover just before (closing), or closes it just after
@@ -91,27 +93,36 @@ final class PadPopovers {
 		}
 		closing = name
 		shown   = nil
-		// In case it never reports it has gone (it was not up yet)
-		DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-			if self?.closing == name {
-				self?.gone()
+		waitUntilGone(name, polls: 0)
+	}
+
+	// The closing popover is gone once UIKit presents nothing any more (SwiftUI's onDisappear comes before its
+	// dismissal ends, a popover opened then is dropped): the one asked for meanwhile opens then
+	private func waitUntilGone(_ name: String, polls: Int) {
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0) { [weak self] in
+			guard let self, self.closing == name else {
+				return
+			}
+			if Self.presenting() && polls < 90 { // 1.5 s at most
+				self.waitUntilGone(name, polls: polls + 1)
+				return
+			}
+			self.closing = nil
+			if self.shown == nil, let p = self.pending {
+				self.pending = nil
+				self.shown   = p
 			}
 		}
 	}
 
-	// The popover's content disappeared: the one asked for meanwhile opens
-	func disappeared() {
-		DispatchQueue.main.async { [weak self] in
-			self?.gone()
+	// A popover (or another presentation) is up or still going away
+	private static func presenting() -> Bool {
+		for scene in UIApplication.shared.connectedScenes {
+			for window in (scene as? UIWindowScene)?.windows ?? [] where window.rootViewController?.presentedViewController != nil {
+				return true
+			}
 		}
-	}
-
-	private func gone() {
-		closing = nil
-		if shown == nil, let p = pending {
-			pending = nil
-			shown   = p
-		}
+		return false
 	}
 }
 
@@ -122,9 +133,6 @@ extension View {
 			content()
 				.presentationCompactAdaptation(.popover)
 				.presentationBackgroundInteraction(.enabled)
-				.onDisappear {
-					PadPopovers.shared.disappeared()
-				}
 		}
 	}
 }
