@@ -376,11 +376,11 @@ vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) 
 		return v;
 	}
 	else if (string_equals(link, "_camera_right")) {
-		v = camera_object_right_world(scene_camera);
+		v = paint_exec_replay ? paint_replay_cam.right : camera_object_right_world(scene_camera); // Replaying: as recorded
 		return v;
 	}
 	else if (string_equals(link, "_camera_up")) {
-		v = camera_object_up_world(scene_camera);
+		v = paint_exec_replay ? paint_replay_cam.up : camera_object_up_world(scene_camera);
 		return v;
 	}
 	return v;
@@ -575,6 +575,9 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 			sys_notify_on_next_frame(&uniforms_ext_cache_triangle_map, NULL);
 		}
 		return util_uv_trianglemap;
+	}
+	else if (string_equals(link, "_texdilatemap") && paint_exec_replay && paint_replay_dilatemap != NULL) {
+		return paint_replay_dilatemap;
 	}
 	else if (string_equals(link, "_texdilatemap")) {
 		if (util_uv_dilatemap_cached) {

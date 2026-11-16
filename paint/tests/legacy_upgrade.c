@@ -165,6 +165,7 @@ void next() {
 }
 
 void main() {
+	dir = script_tmp_dir("materialstudio_legacy_upgrade"); // Per run: suites of several worktrees run at once
 	v31_was = script_get_config()->project_v31;
 	iron_create_directory(dir);
 	file31 = string("%s/v31.arm", dir);

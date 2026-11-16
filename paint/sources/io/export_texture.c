@@ -329,6 +329,17 @@ static void export_texture_clear(gpu_texture_t **acc) {
 	gpu_end();
 }
 
+// pipes_merge and its write masked variants (mask 0 rgba, 1 r, 2 g, 3 b, 4 a) for a composite of format
+static gpu_pipeline_t *export_texture_merge_pipe(gpu_texture_format_t format, i32 mask) {
+	gpu_pipeline_t *base = mask == 0 ? pipes_merge : mask == 1 ? pipes_get_merge_r() : mask == 2 ? pipes_get_merge_g() : mask == 3 ? pipes_get_merge_b() : pipes_get_merge_a();
+	return layers_pipe_for(base, format);
+}
+
+// A copy pipeline into a target of format
+static gpu_pipeline_t *export_texture_copy_pipe(gpu_texture_format_t format) {
+	return format == GPU_TEXTURE_FORMAT_RGBA64 ? pipes_copy64 : format == GPU_TEXTURE_FORMAT_RGBA128 ? pipes_copy128 : format == GPU_TEXTURE_FORMAT_R8 ? pipes_copy8 : pipes_copy;
+}
+
 // layers_commands_merge_pack with temp as the target's copy
 static void export_texture_merge_pack(gpu_texture_t *temp, gpu_pipeline_t *pipe, gpu_texture_t *i0, gpu_texture_t *i1, gpu_texture_t *i1pack,
                                       f32 i1mask_opacity, gpu_texture_t *i1texmask, i32 i1blending) {
@@ -350,12 +361,13 @@ static void export_texture_merge_pack(gpu_texture_t *temp, gpu_pipeline_t *pipe,
 // Composites layer l1, index i of the job's count layers, into acc (base, normal, pack) through mask. temp: a scratch of
 // acc's size and format. Every pass is a screen quad: acc can be a whole texture or a tile of one (io/export_tiled.c).
 static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp, slot_layer_t *l1, gpu_texture_t *mask, i32 i, i32 count) {
-	gpu_texture_t *empty = render_path_empty_white();
+	gpu_texture_t       *empty = render_path_empty_white();
+	gpu_texture_format_t f     = acc[0]->format;
 	if (l1->paint_base || l1->paint_opac) {
-		util_copy_texture(temp, acc[0], pipes_copy); // Copy to temp
+		util_copy_texture(temp, acc[0], export_texture_copy_pipe(f)); // Copy to temp
 
 		_gpu_begin(acc[0], NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-		gpu_set_pipeline(l1->paint_base ? pipes_merge : pipes_get_merge_a());
+		gpu_set_pipeline(export_texture_merge_pipe(f, l1->paint_base ? 0 : 4));
 		gpu_set_texture(pipes_tex0, l1->texpaint);
 		gpu_set_texture(pipes_tex1, empty);
 		gpu_set_texture(pipes_texmask, mask);
@@ -370,10 +382,10 @@ static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp,
 	}
 
 	if (l1->paint_nor) {
-		util_copy_texture(temp, acc[1], pipes_copy);
+		util_copy_texture(temp, acc[1], export_texture_copy_pipe(f));
 
 		_gpu_begin(acc[1], NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-		gpu_set_pipeline(pipes_merge);
+		gpu_set_pipeline(export_texture_merge_pipe(f, 0));
 		gpu_set_texture(pipes_tex0, l1->texpaint);
 		gpu_set_texture(pipes_tex1, l1->texpaint_nor);
 		gpu_set_texture(pipes_texmask, mask);
@@ -388,24 +400,24 @@ static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp,
 	}
 
 	if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
-		util_copy_texture(temp, acc[2], pipes_copy);
+		util_copy_texture(temp, acc[2], export_texture_copy_pipe(f));
 
 		// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
 		bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
 		i32  pack_mode  = pack_blend ? 300 + slot_layer_get_blending(l1) : 101;
 		if (l1->paint_occ && l1->paint_rough && l1->paint_met && l1->paint_height) {
-			export_texture_merge_pack(temp, pipes_merge, acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+			export_texture_merge_pack(temp, export_texture_merge_pipe(f, 0), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
 			                           pack_blend ? (l1->paint_height_blend ? 400 : 300) + slot_layer_get_blending(l1) : l1->paint_height_blend ? 103 : 101);
 		}
 		else {
 			if (l1->paint_occ)
-				export_texture_merge_pack(temp, pipes_get_merge_r(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 1), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 			if (l1->paint_rough)
-				export_texture_merge_pack(temp, pipes_get_merge_g(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 2), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 			if (l1->paint_met)
-				export_texture_merge_pack(temp, pipes_get_merge_b(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 3), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 			if (l1->paint_height)
-				export_texture_merge_pack(temp, pipes_get_merge_a(), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 4), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
 				                           l1->paint_height_blend ? 103 : 101);
 		}
 	}

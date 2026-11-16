@@ -47,7 +47,8 @@ static void export_exr_write_single(i32 off, i32 pos, i32 byte_size) {
 	_export_exr_write_line(pos + off * byte_size);
 }
 
-buffer_t *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 type, i32 off) {
+// The header and the line offset table of an uncompressed scanline file: B, G, R of half (bits 16) or float
+static u8_array_t *export_exr_header(i32 width, i32 height, i32 bits) {
 	u8_array_t *out = u8_array_create_from_raw((u8[]){}, 0);
 	u8_array_push(out, 0x76); // magic
 	u8_array_push(out, 0x2f);
@@ -279,30 +280,30 @@ buffer_t *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 typ
 
 	u8_array_push(out, 0); // end of header
 
-	i32 channels              = 4;
 	i32 byte_size             = bits == 16 ? 2 : 4;
-	i32 k_header_size         = out->length;
-	i32 k_scanline_table_size = 8 * height;
-	i32 pixel_row_size        = width * 3 * byte_size;
-	i32 full_row_size         = pixel_row_size + 8;
+	i64 k_header_size         = out->length;
+	i64 k_scanline_table_size = 8 * (i64)height;
+	i64 pixel_row_size        = (i64)width * 3 * byte_size;
+	i64 full_row_size         = pixel_row_size + 8;
 
-	// line offset table
-	i32 ofs = k_header_size + k_scanline_table_size;
+	// line offset table (64 bit offsets: past 2 GB at 16k and 32 bit)
+	i64 ofs = k_header_size + k_scanline_table_size;
 	for (i32 y = 0; y < height; ++y) {
-		u8_array_push(out, ofs & 0xff);
-		u8_array_push(out, (ofs >> 8) & 0xff);
-		u8_array_push(out, (ofs >> 16) & 0xff);
-		u8_array_push(out, (ofs >> 24) & 0xff);
-		u8_array_push(out, 0);
-		u8_array_push(out, 0);
-		u8_array_push(out, 0);
-		u8_array_push(out, 0);
+		for (i32 b = 0; b < 8; ++b) {
+			u8_array_push(out, (ofs >> (8 * b)) & 0xff);
+		}
 		ofs += full_row_size;
 	}
+	return out;
+}
 
-	// scanline data
-	i32 stride = channels * byte_size;
-	i32 pos    = 0;
+// Scanlines y0 to y0 + rows of the file appended to out, from src: rows x width texels of 4 channels (native order)
+static void export_exr_rows(u8_array_t *out, buffer_t *src, i32 width, i32 y0, i32 rows, i32 bits, i32 type, i32 off) {
+	i32 channels       = 4;
+	i32 byte_size      = bits == 16 ? 2 : 4;
+	i32 pixel_row_size = width * 3 * byte_size;
+	i32 stride         = channels * byte_size;
+	i32 pos            = 0;
 
 	_export_exr_width                 = width;
 	_export_exr_stride                = stride;
@@ -311,7 +312,7 @@ buffer_t *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 typ
 	_export_exr_write_line            = bits == 16 ? export_exr_write_line16 : export_exr_write_line32;
 	void (*write_data)(i32, i32, i32) = type == 1 || type == 3 ? export_exr_write_bgr : export_exr_write_single; // RGB1, RGBA
 
-	for (i32 y = 0; y < height; ++y) {
+	for (i32 y = y0; y < y0 + rows; ++y) {
 		// coordinate
 		u8_array_push(out, y & 0xff);
 		u8_array_push(out, (y >> 8) & 0xff);
@@ -326,6 +327,31 @@ buffer_t *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 typ
 		write_data(off, pos, byte_size);
 		pos += width * stride;
 	}
+}
 
+buffer_t *export_exr_run(i32 width, i32 height, buffer_t *src, i32 bits, i32 type, i32 off) {
+	u8_array_t *out = export_exr_header(width, height, bits);
+	export_exr_rows(out, src, width, 0, height, bits, type, off);
 	return out;
+}
+
+// Streaming (io/export_tiled.c): the header, then bands of scanlines top to bottom, each written as it comes
+FILE *export_exr_begin(char *path, i32 width, i32 height, i32 bits) {
+	FILE *f = fopen(path, "wb");
+	if (f == NULL) {
+		return NULL;
+	}
+	u8_array_t *h = export_exr_header(width, height, bits);
+	fwrite(h->buffer, 1, h->length, f);
+	array_free(h);
+	free(h);
+	return f;
+}
+
+void export_exr_band(FILE *f, buffer_t *src, i32 width, i32 y0, i32 rows, i32 bits, i32 type, i32 off) {
+	u8_array_t *out = u8_array_create_from_raw((u8[]){}, 0);
+	export_exr_rows(out, src, width, y0, rows, bits, type, off);
+	fwrite(out->buffer, 1, out->length, f);
+	array_free(out);
+	free(out);
 }

@@ -155,6 +155,7 @@ void next() {
 }
 
 void main() {
+	root = script_tmp_dir("materialstudio_export_cancel"); // Per run: suites of several worktrees run at once
 	script_project_new();
 	iron_create_directory(root);
 	script_notify_on_next_frame(next);

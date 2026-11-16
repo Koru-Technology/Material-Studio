@@ -1152,6 +1152,20 @@ X0(paint_replay_test_fallbacks, "i()", i)
 X0(paint_replay_test_count, "i()", i)
 X2(paint_replay_test_entry, "b(p:slot_layer_t l,i index)", b, p, i)
 
+X1(script_tmp_dir, "p:char(p:char name)", p, p)
+// Texture export, more
+X2(script_diff_files, "i(p:char path_a,p:char path_b)", i, p, p)
+X1(export_tiled_test_whole, "v(b on)", v, b)
+X1(script_texture_read, "v(p:gpu_texture_t t)", v, p)
+X1(script_image_read, "b(p:char path)", b, p)
+X3(script_texel, "f(f u,f v,i c)", f, f, f, i)
+X2(layers_flatten, "p:slot_layer_t(b height_to_normal,p:slot_layer_t_array_t layers)", p, b, p)
+
+X3(paint_replay_test_into, "b(p:slot_layer_t src,i index,p:slot_layer_t dst)", b, p, i, p)
+X5(paint_replay_test_tiles, "b(p:slot_layer_t src,i index,p:slot_layer_t dst,i n,i halo)", b, p, i, p, i, i)
+X3(paint_rec_test_bounds, "f(p:slot_layer_t l,i index,i c)", f, p, i, i)
+X4(render_path_paint_test_set_taper, "v(f start,f end,f size,f opacity)", v, f, f, f, f)
+
 // timeline.c: materialize at any resolution
 X8(timeline_test_render, "b(p:slot_layer_t l,i pos,i res_w,i res_h,f u0,f v0,f u1,f v1)", b, p, i, i, i, f, f, f, f)
 X3(timeline_test_scale_live, "b(p:slot_layer_t l,i res_w,i res_h)", b, p, i, i)
