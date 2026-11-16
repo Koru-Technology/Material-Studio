@@ -25,7 +25,7 @@ static ui_node_t *ui_node_params_source() {
 		return NULL;
 	}
 	for (i32 t = 0; t < 2; ++t) {
-		ui_node_t *n = util_nodes_find_type(canvas, types[t]);
+		ui_node_t *n = ui_canvas_find_type(canvas, types[t]);
 		if (n != NULL) {
 			return n;
 		}
@@ -151,7 +151,7 @@ static void ui_node_params_set_texture(i32 index) {
 	    index >= g_project->_->assets->length) {
 		return;
 	}
-	ui_node_link_t *link = util_nodes_link(canvas, node, ui_node_params_socket);
+	ui_node_link_t *link = ui_canvas_input_link(canvas, node, ui_node_params_socket);
 	ui_node_t      *from = link != NULL ? ui_get_node(canvas->nodes, link->from_id) : NULL;
 	if (index == -1 && link == NULL) {
 		return;
@@ -190,7 +190,7 @@ static void ui_node_params_draw_socket(ui_node_t *node, i32 socket) {
 	g_ui->_w = ui_node_params_socket_w() - 2 * UI_SCALE();
 	if (ui_button("", UI_ALIGN_CENTER, "")) {
 		ui_node_canvas_t *canvas = ui_node_params_get_canvas();
-		ui_node_link_t   *link   = util_nodes_link(canvas, node, socket);
+		ui_node_link_t   *link   = ui_canvas_input_link(canvas, node, socket);
 		ui_node_t        *from   = link != NULL ? ui_get_node(canvas->nodes, link->from_id) : NULL;
 		asset_t          *asset  = from != NULL && string_equals(from->type, "TEX_IMAGE") ? ui_node_params_tex_image_asset(from) : NULL;
 		ui_node_params_node      = node->id;
@@ -264,7 +264,7 @@ static void ui_node_params_draw_inputs(ui_node_t *node) {
 	}
 	for (i32 i = 0; i < count; ++i) {
 		ui_node_socket_t *inp  = node->inputs->buffer[i];
-		ui_node_link_t   *link = util_nodes_link(canvas, node, i);
+		ui_node_link_t   *link = ui_canvas_input_link(canvas, node, i);
 		ui_node_params_draw_socket(node, i);
 		if (link != NULL) {
 			ui_node_t *from = ui_get_node(canvas->nodes, link->from_id);

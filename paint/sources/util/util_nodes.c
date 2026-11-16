@@ -114,7 +114,7 @@ gpu_texture_t *ui_nodes_get_node_preview_image(ui_node_t *n) {
 }
 
 bool ui_nodes_has_group(ui_node_canvas_t *c) {
-	return util_nodes_find_type(c, "GROUP") != NULL;
+	return ui_canvas_find_type(c, "GROUP") != NULL;
 }
 
 ui_node_canvas_t *ui_nodes_get_group(ui_node_canvas_t_array_t *canvases, char *name) {
@@ -463,52 +463,4 @@ ui_node_t *ui_nodes_make_node(ui_node_t *n, ui_nodes_t *nodes, ui_node_canvas_t 
 	mm_node_created(node);
 	ui_nodes_node_changed = node;
 	return node;
-}
-
-// First node of the type in the canvas, NULL when there is none
-ui_node_t *util_nodes_find_type(ui_node_canvas_t *c, char *type) {
-	for (i32 i = 0; i < c->nodes->length; ++i) {
-		if (string_equals(c->nodes->buffer[i]->type, type)) {
-			return c->nodes->buffer[i];
-		}
-	}
-	return NULL;
-}
-
-// Removes the links into input `in` of the node
-void util_nodes_unlink_input(ui_node_canvas_t *c, ui_node_t *to, i32 in) {
-	for (i32 i = c->links->length - 1; i >= 0; --i) {
-		ui_node_link_t *l = c->links->buffer[i];
-		if (l->to_id == to->id && l->to_socket == in) {
-			array_splice(c->links, i, 1);
-		}
-	}
-}
-
-// Removes the node and its links, without the node editor's callbacks (ui_remove_node): for graphs edited in code
-void util_nodes_remove_node(ui_node_canvas_t *c, ui_node_t *n) {
-	if (n == NULL) {
-		return;
-	}
-	for (i32 i = c->links->length - 1; i >= 0; --i) {
-		ui_node_link_t *l = c->links->buffer[i];
-		if (l->from_id == n->id || l->to_id == n->id) {
-			array_splice(c->links, i, 1);
-		}
-	}
-	i32 i = array_index_of(c->nodes, n);
-	if (i >= 0) {
-		array_splice(c->nodes, i, 1);
-	}
-}
-
-// The link into input `socket` of the node, NULL when unlinked
-ui_node_link_t *util_nodes_link(ui_node_canvas_t *c, ui_node_t *node, i32 socket) {
-	for (i32 i = 0; i < c->links->length; ++i) {
-		ui_node_link_t *l = c->links->buffer[i];
-		if (l->to_id == node->id && l->to_socket == socket) {
-			return l;
-		}
-	}
-	return NULL;
 }

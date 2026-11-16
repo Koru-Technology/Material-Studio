@@ -194,7 +194,7 @@ bool mm_import_graph(mm_json_t *graph, slot_material_t *target) {
 		return false;
 	}
 	ui_node_canvas_t *canvas = target->canvas;
-	ui_node_t        *output = util_nodes_find_type(canvas, "OUTPUT_MATERIAL_PBR");
+	ui_node_t        *output = ui_canvas_find_type(canvas, "OUTPUT_MATERIAL_PBR");
 	canvas->nodes->length    = 0; // Only the output node stays
 	canvas->links->length    = 0;
 	if (output != NULL) {

@@ -1377,7 +1377,7 @@ void ui_nodes_update(void *_) {
 		ui_nodes_make_node_preview(sel);
 
 		// If script node is present, update selected node preview on every frame
-		if (util_nodes_find_type(g_context->material->canvas, "SCRIPT_CPU") != NULL) {
+		if (ui_canvas_find_type(g_context->material->canvas, "SCRIPT_CPU") != NULL) {
 			ui_nodes_last_node_selected_id = -1;
 			ui_view2d_hwnd->redraws        = 2;
 			iron_delay_idle_sleep();

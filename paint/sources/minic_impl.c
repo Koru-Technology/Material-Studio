@@ -1404,7 +1404,7 @@ ui_node_t *script_material_get_node(char *type) {
 	if (canvas == NULL || type == NULL) {
 		return NULL;
 	}
-	return util_nodes_find_type(canvas, type);
+	return ui_canvas_find_type(canvas, type);
 }
 
 ui_node_t *script_material_get_node_id(i32 id) {
@@ -1427,7 +1427,7 @@ void script_material_connect(ui_node_t *from, i32 from_socket, ui_node_t *to, i3
 		return;
 	}
 
-	util_nodes_unlink_input(canvas, to, to_socket);
+	ui_canvas_unlink_input(canvas, to, to_socket);
 
 	ui_node_link_t *link = project_create_node_link(canvas->links, from->id, from_socket, to->id, to_socket);
 	any_array_push(canvas->links, link);
@@ -1442,7 +1442,7 @@ void script_material_disconnect(ui_node_t *to, i32 to_socket) {
 	if (canvas == NULL || to == NULL) {
 		return;
 	}
-	util_nodes_unlink_input(canvas, to, to_socket);
+	ui_canvas_unlink_input(canvas, to, to_socket);
 	if (ui_nodes_hwnd != NULL) {
 		ui_nodes_hwnd->redraws = 2;
 	}
@@ -1561,7 +1561,7 @@ void script_canvas_connect(ui_node_canvas_t *canvas, ui_node_t *from, i32 from_s
 	    to_socket >= to->inputs->length) {
 		return;
 	}
-	util_nodes_unlink_input(canvas, to, to_socket);
+	ui_canvas_unlink_input(canvas, to, to_socket);
 	any_array_push(canvas->links, project_create_node_link(canvas->links, from->id, from_socket, to->id, to_socket));
 }
 

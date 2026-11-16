@@ -63,7 +63,7 @@ bool studio_graph_read(ui_node_canvas_t *c, studio_graph_t *g) {
 	if (c == NULL) {
 		return false;
 	}
-	g->output = util_nodes_find_type(c, "OUTPUT_MATERIAL_PBR");
+	g->output = ui_canvas_find_type(c, "OUTPUT_MATERIAL_PBR");
 	for (i32 i = 0; i < c->nodes->length; ++i) {
 		ui_node_t *n    = c->nodes->buffer[i];
 		i32        role = studio_role(n);
@@ -98,7 +98,7 @@ bool studio_graph_is(ui_node_canvas_t *c) {
 static ui_node_canvas_t *sg_c = NULL;
 
 static void sg_link(ui_node_t *from, i32 out, ui_node_t *to, i32 in) {
-	util_nodes_unlink_input(sg_c, to, in);
+	ui_canvas_unlink_input(sg_c, to, in);
 	any_array_push(sg_c->links, project_create_node_link(sg_c->links, from->id, out, to->id, in));
 }
 
@@ -171,12 +171,12 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 		sg_link(pat, 0, n[STUDIO_ROLE_ALPHA], 0);
 	}
 	else {
-		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_RAMP], 0);
-		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_ROUGH], 0);
-		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_HEIGHT], 0);
-		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_METAL], 0);
-		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_OCC], 0);
-		util_nodes_unlink_input(sg_c, n[STUDIO_ROLE_ALPHA], 0);
+		ui_canvas_unlink_input(sg_c, n[STUDIO_ROLE_RAMP], 0);
+		ui_canvas_unlink_input(sg_c, n[STUDIO_ROLE_ROUGH], 0);
+		ui_canvas_unlink_input(sg_c, n[STUDIO_ROLE_HEIGHT], 0);
+		ui_canvas_unlink_input(sg_c, n[STUDIO_ROLE_METAL], 0);
+		ui_canvas_unlink_input(sg_c, n[STUDIO_ROLE_OCC], 0);
+		ui_canvas_unlink_input(sg_c, n[STUDIO_ROLE_ALPHA], 0);
 	}
 	sg_link(n[STUDIO_ROLE_RAMP], 0, mix, MIX_IN_B + 0);
 	sg_link(n[STUDIO_ROLE_ROUGH], 0, mix, MIX_IN_B + 1);
@@ -185,7 +185,7 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 	sg_link(n[STUDIO_ROLE_OCC], 0, mix, MIX_IN_B + 4);
 	sg_link(n[STUDIO_ROLE_ALPHA], 0, mix, MIX_IN_B + 7);
 	if (mask == NULL || k == 0) {
-		util_nodes_unlink_input(sg_c, mix, MIX_IN_MASK);
+		ui_canvas_unlink_input(sg_c, mix, MIX_IN_MASK);
 		return;
 	}
 	sg_link(mask, 0, mix, MIX_IN_MASK);
@@ -194,7 +194,7 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 			sg_link(pat, 0, mask, 0);
 		}
 		else {
-			util_nodes_unlink_input(sg_c, mask, 0);
+			ui_canvas_unlink_input(sg_c, mask, 0);
 		}
 	}
 	else if (string_equals(mask->type, "CURVATURE_MASK")) { // Dirt also settles in the recesses of the base pattern
@@ -203,7 +203,7 @@ static void sg_wire_layer(studio_graph_t *g, i32 k) {
 			sg_link(base, 0, mask, 4);
 		}
 		else {
-			util_nodes_unlink_input(sg_c, mask, 4);
+			ui_canvas_unlink_input(sg_c, mask, 4);
 		}
 	}
 }
@@ -218,7 +218,7 @@ static void sg_wire(studio_graph_t *g) {
 				sg_link(g->layers[k - 1].n[STUDIO_ROLE_MIX], ch, mix, MIX_IN_A + ch);
 			}
 			else {
-				util_nodes_unlink_input(sg_c, mix, MIX_IN_A + ch);
+				ui_canvas_unlink_input(sg_c, mix, MIX_IN_A + ch);
 			}
 		}
 	}
@@ -333,8 +333,8 @@ void studio_graph_set_pattern(ui_node_canvas_t *c, i32 k, char *type) {
 	ui_node_t **n   = g.layers[k].n;
 	ui_node_t  *old = n[STUDIO_ROLE_PATTERN];
 	if (type == NULL) {
-		util_nodes_remove_node(sg_c, old);
-		util_nodes_remove_node(sg_c, n[STUDIO_ROLE_CELLVAR]);
+		ui_canvas_remove_node(sg_c, old, false);
+		ui_canvas_remove_node(sg_c, n[STUDIO_ROLE_CELLVAR], false);
 		n[STUDIO_ROLE_PATTERN] = n[STUDIO_ROLE_CELLVAR] = NULL;
 		sg_in(n[STUDIO_ROLE_RAMP], 0)[0]   = 1.0;
 		sg_in(n[STUDIO_ROLE_ROUGH], 0)[0]  = 1.0;
@@ -344,7 +344,7 @@ void studio_graph_set_pattern(ui_node_canvas_t *c, i32 k, char *type) {
 		sg_in(n[STUDIO_ROLE_ALPHA], 0)[0]  = 1.0;
 		ui_node_t *mask = n[STUDIO_ROLE_MASK];
 		if (mask != NULL && string_equals(mask->type, "HEIGHT_MASK")) { // A pattern mask needs the pattern
-			util_nodes_remove_node(sg_c, mask);
+			ui_canvas_remove_node(sg_c, mask, false);
 		}
 	}
 	else if (old == NULL || !string_equals(old->type, type)) {
@@ -367,7 +367,7 @@ void studio_graph_set_pattern(ui_node_canvas_t *c, i32 k, char *type) {
 					l->to_id = pat->id;
 				}
 			}
-			util_nodes_remove_node(sg_c, old);
+			ui_canvas_remove_node(sg_c, old, false);
 		}
 		if (n[STUDIO_ROLE_CELLVAR] == NULL) {
 			studio_mix_rgb(&g, k);
@@ -387,7 +387,7 @@ void studio_graph_set_mask(ui_node_canvas_t *c, i32 k, i32 mask) {
 	f32        amount = old != NULL ? studio_graph_get(c, k, STUDIO_VALUE_MASK_AMOUNT) : 0.5;
 	f32        soft   = old != NULL ? studio_graph_get(c, k, STUDIO_VALUE_MASK_SOFT) : 0.35;
 	f32        brk    = old != NULL ? studio_graph_get(c, k, STUDIO_VALUE_MASK_BREAKUP) : 0.5;
-	util_nodes_remove_node(sg_c, old);
+	ui_canvas_remove_node(sg_c, old, false);
 	g.layers[k].n[STUDIO_ROLE_MASK] = NULL;
 	if (mask == STUDIO_MASK_PATTERN && g.layers[k].n[STUDIO_ROLE_PATTERN] == NULL) {
 		mask = STUDIO_MASK_FULL;
@@ -449,7 +449,7 @@ void studio_graph_remove_layer(ui_node_canvas_t *c, i32 k) {
 		return;
 	}
 	for (i32 r = 1; r < STUDIO_ROLE_COUNT; ++r) {
-		util_nodes_remove_node(sg_c, g.layers[k].n[r]);
+		ui_canvas_remove_node(sg_c, g.layers[k].n[r], false);
 	}
 	for (i32 j = k + 1; j < g.count; ++j) {
 		for (i32 r = 1; r < STUDIO_ROLE_COUNT; ++r) {
