@@ -1390,6 +1390,8 @@ bool layers_fill_paint_needs_new_layer();
 bool layers_fill_paint_to_new_layer();
 void layers_fill_paint_confirm_new_layer();
 bool layers_fill_paint_to_mask();
+bool layers_fill_paint_needs_mask();
+void layers_fill_paint_confirm_mask();
 bool layers_fill_paint_tool(i32 tool);
 void layers_create_fill_layer(uv_type_t uv_type, mat4_t decal_mat, i32 position);
 

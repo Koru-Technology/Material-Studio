@@ -373,7 +373,11 @@ bool app_material_apply_to_fill(int32_t id) {
 
 int32_t app_material_thumbnail(int32_t id, int32_t max_size, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
 	slot_material_t *m = app_mat_by_id(id);
-	if (m == NULL || !m->preview_ready) {
+	if (m == NULL) {
+		return 0;
+	}
+	if (!m->preview_ready) {
+		iron_delay_idle_sleep(); // It renders in the engine's frames, they must not stop while the tile waits
 		return 0;
 	}
 	return app_read_rgba8(m->image, max_size, true, out, capacity, w, h);
@@ -693,6 +697,9 @@ int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t 
 		break;
 	}
 	if (icon == NULL) {
+		// Requested: it loads in the engine's frames, which stop when the engine idles. Touches on the native popover
+		// do not reach the engine, so scrolling the library alone would not wake it.
+		iron_delay_idle_sleep();
 		return 0;
 	}
 	return app_read_rgba8(icon, 128, true, out, capacity, w, h);

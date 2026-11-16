@@ -338,6 +338,11 @@ void util_brush_update() {
 							util_brush_stroke_dropped = true;
 							return;
 						}
+						if (layers_fill_paint_needs_mask()) {
+							layers_fill_paint_confirm_mask();
+							util_brush_stroke_dropped = true;
+							return;
+						}
 						layers_fill_paint_to_mask();
 					}
 
