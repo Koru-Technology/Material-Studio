@@ -195,23 +195,33 @@ static mat4_t minic_get_mat4(void *p) {
 	return value;
 }
 
-// A call may pass too few arguments or the wrong kind
-static void *minic_arg_ptr(minic_val_t *a, int c, int i) {
-	return (i < c && a[i].type == MINIC_T_PTR) ? a[i].p : NULL;
-}
+// Argument and return conversions of the wrappers (minic_val_t *a, int n): MINIC_ARG_<sig type>(k), MINIC_RET_<sig type>(call)
+#define MINIC_ARG_i(k) minic_arg_i(a, n, k)
+#define MINIC_ARG_f(k) minic_arg_f(a, n, k)
+#define MINIC_ARG_p(k) minic_arg_p(a, n, k)
+#define MINIC_ARG_b(k) minic_arg_i(a, n, k)
+#define MINIC_ARG_c(k) minic_arg_i(a, n, k)
 
-static float minic_arg_float(minic_val_t *a, int c, int i) {
-	return i < c ? (float)minic_val_to_d(a[i]) : 0.0f;
-}
+#define MINIC_RET_i(call) return minic_val_int((int)(call))
+#define MINIC_RET_f(call) return minic_val_float(call)
+#define MINIC_RET_d(call) return minic_val_double(call)
+#define MINIC_RET_p(call) return minic_val_ptr((void *)(call)) // Strings returned as const char * too
+#define MINIC_RET_b(call) return minic_val_int((call) ? 1 : 0)
+#define MINIC_RET_c(call) return minic_val_int((int)(call))
+#define MINIC_RET_v(call)        \
+	do {                         \
+		call;                    \
+		return minic_val_int(0); \
+	} while (0)
 
-// Argument accessors for the wrapper table
-#define V2(i) minic_get_vec2(minic_arg_ptr(_a, _c, i))
-#define V4(i) minic_get_vec4(minic_arg_ptr(_a, _c, i))
-#define QT(i) minic_get_quat(minic_arg_ptr(_a, _c, i))
-#define M3(i) minic_get_mat3(minic_arg_ptr(_a, _c, i))
-#define M4(i) minic_get_mat4(minic_arg_ptr(_a, _c, i))
-#define AF(i) minic_arg_float(_a, _c, i)
-#define AP(i) minic_arg_ptr(_a, _c, i)
+// Argument accessors for the math wrapper table
+#define V2(i) minic_get_vec2(MINIC_ARG_p(i))
+#define V4(i) minic_get_vec4(MINIC_ARG_p(i))
+#define QT(i) minic_get_quat(MINIC_ARG_p(i))
+#define M3(i) minic_get_mat3(MINIC_ARG_p(i))
+#define M4(i) minic_get_mat4(MINIC_ARG_p(i))
+#define AF(i) MINIC_ARG_f(i)
+#define AP(i) MINIC_ARG_p(i)
 
 // One X(return-kind, name, sig, call) line per math function; expanded twice:
 // once to define the mn_* wrappers, once to register them
@@ -307,30 +317,29 @@ static float minic_arg_float(minic_val_t *a, int c, int i) {
 	X(VOID, draw_set_transform, "v(s:mat3_t matrix)", draw_set_transform(M3(0)))
 
 // Wrapper generators per return kind
-#define MN_HEAD(n)                                       \
-	static minic_val_t mn_##n(minic_val_t *_a, int _c) { \
-		(void)_a;                                        \
-		(void)_c;
-#define MN_F(n, e)             \
-	MN_HEAD(n)                 \
-	return minic_val_float(e); \
+#define MN_HEAD(name)                                     \
+	static minic_val_t mn_##name(minic_val_t *a, int n) { \
+		(void)a;                                          \
+		(void)n;
+#define MN_F(name, e) \
+	MN_HEAD(name)     \
+	MINIC_RET_f(e);   \
 	}
-#define MN_I(n, e)           \
-	MN_HEAD(n)               \
-	return minic_val_int(e); \
+#define MN_I(name, e) \
+	MN_HEAD(name)     \
+	MINIC_RET_i(e);   \
 	}
-#define MN_P(n, e)           \
-	MN_HEAD(n)               \
-	return minic_val_ptr(e); \
+#define MN_P(name, e) \
+	MN_HEAD(name)     \
+	MINIC_RET_p(e);   \
 	}
-#define MN_VOID(n, e)        \
-	MN_HEAD(n)               \
-	e;                       \
-	return minic_val_void(); \
+#define MN_VOID(name, e) \
+	MN_HEAD(name)        \
+	MINIC_RET_v(e);      \
 	}
 // Return a native-layout value owned by the script arena.
-#define MN_VALUE(n, e, type)                               \
-	MN_HEAD(n)                                             \
+#define MN_VALUE(name, e, type)                            \
+	MN_HEAD(name)                                          \
 	type *result = (type *)minic_alloc((int)sizeof(type)); \
 	if (result == NULL) {                                  \
 		return minic_val_ptr(NULL);                        \
@@ -422,24 +431,6 @@ static const char *minic_api_sig_hint(const char *name) {
 	}
 	return NULL;
 }
-
-#define MINIC_ARG_i(k) minic_arg_i(a, n, k)
-#define MINIC_ARG_f(k) minic_arg_f(a, n, k)
-#define MINIC_ARG_p(k) minic_arg_p(a, n, k)
-#define MINIC_ARG_b(k) minic_arg_i(a, n, k)
-#define MINIC_ARG_c(k) minic_arg_i(a, n, k)
-
-#define MINIC_RET_i(call) return minic_val_int((int)(call))
-#define MINIC_RET_f(call) return minic_val_float(call)
-#define MINIC_RET_d(call) return minic_val_double(call)
-#define MINIC_RET_p(call) return minic_val_ptr((void *)(call)) // Strings returned as const char * too
-#define MINIC_RET_b(call) return minic_val_int((call) ? 1 : 0)
-#define MINIC_RET_c(call) return minic_val_int((int)(call))
-#define MINIC_RET_v(call)        \
-	do {                         \
-		call;                    \
-		return minic_val_int(0); \
-	} while (0)
 
 // The argument list of a call, minic_val_t a[] converted by the sig types (minic_api_list.h): MINIC_ARGS<n>(t0, t1, ...)
 #define MINIC_ARGS1(t0)                                      MINIC_ARG_##t0(0)
