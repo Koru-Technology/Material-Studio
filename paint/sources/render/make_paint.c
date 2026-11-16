@@ -259,7 +259,8 @@ static bool make_paint_resolved_eligible(bool is_atlas) {
 		return false;
 	}
 	tool_type_t tool = g_context->tool;
-	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR || context_is_decal();
+	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_FILL || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR ||
+	       context_is_decal();
 }
 
 node_shader_context_t *make_paint_run_context(material_t *data, char *context_id) {
@@ -501,8 +502,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	bool cache_emis     = false; // The material's outputs come from its cache (util_material_cache.c)
 	bool cache_subs     = false;
 	bool cache_height   = false;
-	bool face_fill      = g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_FACE;
-	bool uv_island_fill = g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_UV_ISLAND;
 	bool decal          = context_is_decal();
 
 	bool  accum         = g_context->tool == TOOL_TYPE_BLUR;
@@ -613,15 +612,9 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	else { // Fill, Bake
 		node_shader_write_frag(shader, "float dist = 0.0;");
 		bool angle_fill = g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_ANGLE;
-		if (angle_fill) {
-			node_shader_add_function(shader, str_octahedron_wrap);
-			node_shader_add_texture(shader, "gbuffer0", NULL);
-			node_shader_write_frag(shader, "vec2 g0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
-			node_shader_write_frag(shader, "vec3 wn;");
-			node_shader_write_frag(shader, "wn.z = 1.0 - abs(g0.x) - abs(g0.y);");
-			node_shader_write_frag(shader,
-			                       "if (wn.z >= 0.0) { wn.x = g0.x; wn.y = g0.y; } else { vec2 f2 = octahedron_wrap(g0.xy); wn.x = f2.x; wn.y = f2.y; }");
-			node_shader_write_frag(shader, "wn = normalize(wn);");
+		if (angle_fill) { // The world normal of the triangle picked (render_path_paint_fill_pick_now), recorded with the stroke
+			node_shader_add_constant(shader, "vec4 fill_normal", "_fill_normal");
+			node_shader_write_frag(shader, "vec3 wn = constants.fill_normal.xyz;");
 			shader->frag_n = true;
 			f32 angle    = g_context->brush_angle_reject_dot;
 			node_shader_write_frag(shader, string_tmp("if (dot(wn, n) < %s) { discard; }", f32_to_string(angle)));
@@ -629,17 +622,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		bool stencil_fill = g_context->tool == TOOL_TYPE_FILL && g_context->brush_stencil_image != NULL;
 		if (stencil_fill) {
 			node_shader_write_frag(shader, "if (sp.z > textureLod(sampler2D(gbufferD, sampler_linear), sp.xy, 0.0).r - 0.00005) { discard; }");
-		}
-	}
-
-	if (face_fill || uv_island_fill) {
-		node_shader_add_out(shader, "vec2 tex_coord_pick");
-		node_shader_write_vert(shader, udim ? "output.tex_coord_pick = atlas_uv;" : "output.tex_coord_pick = input.tex;");
-		if (face_fill) {
-			make_discard_face(shader);
-		}
-		else if (uv_island_fill) {
-			make_discard_uv_island(shader);
 		}
 	}
 

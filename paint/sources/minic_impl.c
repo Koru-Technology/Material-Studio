@@ -204,6 +204,9 @@ static void script_paint_begin_stroke(void) {
 
 	history_push_undo = true;
 	history_paint();
+	if (render_path_paint_fill_picks()) { // At its first draw, as util_brush.c
+		render_path_paint_fill_pick = true;
+	}
 
 	script_paint_active         = true;
 	script_paint_first          = true;

@@ -394,6 +394,10 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 	if (string_equals(link, "_paint_uv_tile")) {
 		return paint_exec_uv_tile;
 	}
+	if (string_equals(link, "_fill_normal")) { // Angle fill: the picked triangle's (render_path_paint.c)
+		mesh_object_t *o = render_path_paint_fill_object;
+		return o != NULL ? util_mesh_triangle_normal(o, render_path_paint_fill_tri) : (vec4_t){0.0, 0.0, 0.0, 0.0};
+	}
 	if (string_equals(link, "_paint_dab_aabb_min") || string_equals(link, "_paint_dab_aabb_size")) {
 		mat4_t obj, obj_inv;
 		vec4_t bmin, bsize;
@@ -460,16 +464,8 @@ mat4_t uniforms_ext_mat4_link(object_t *object, shader_data_t *mat, char *link) 
 	return mat4_nan();
 }
 
-void uniforms_ext_cache_uv_island_map(void *_) {
-	util_uv_cache_uv_island_map();
-}
-
 void uniforms_ext_cache_dilate_map(void *_) {
 	util_uv_cache_dilate_map();
-}
-
-void uniforms_ext_cache_triangle_map(void *_) {
-	util_uv_cache_triangle_map();
 }
 
 void uniforms_ext_cache_uv_map(void *_) {
@@ -555,12 +551,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		}
 		return util_uv_uvmap;
 	}
-	else if (string_equals(link, "_textrianglemap")) {
-		if (!util_uv_trianglemap_cached) {
-			sys_notify_on_next_frame(&uniforms_ext_cache_triangle_map, NULL);
-		}
-		return util_uv_trianglemap;
-	}
 	else if (string_equals(link, "_texdilatemap") && paint_exec_replay && paint_replay_dilatemap != NULL) {
 		return paint_replay_dilatemap;
 	}
@@ -570,15 +560,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		}
 		sys_notify_on_next_frame(&uniforms_ext_cache_dilate_map, NULL);
 		return render_path_empty_white();
-	}
-	else if (string_equals(link, "_texuvislandmap")) {
-		sys_notify_on_next_frame(&uniforms_ext_cache_uv_island_map, NULL);
-		if (util_uv_uvislandmap_cached) {
-			return util_uv_uvislandmap;
-		}
-		else {
-			return render_path_empty_black();
-		}
 	}
 	else if (string_equals(link, "_texdilatemap")) {
 		return util_uv_dilatemap;

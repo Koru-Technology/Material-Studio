@@ -12,7 +12,7 @@
 //   dabs: PAINT_DAB_TEXELS * 4 arrays of n_dabs f32, the resolved texels component by component.
 
 #define PAINT_REC_MAGIC   0x31435250 // "PRC1"
-#define PAINT_REC_VERSION 3
+#define PAINT_REC_VERSION 4
 
 typedef struct paint_rec_head {
 	u32 magic;
@@ -71,7 +71,7 @@ void paint_rec_foreign() {
 static bool paint_rec_tool_replayable() {
 	tool_type_t tool = g_context->tool;
 	slot_layer_t *l  = g_context->layer;
-	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER) && l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
+	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_FILL) && l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
 	       !context_is_pixel_snap() && !g_context->pick_pos_nor_tex;
 }
 
@@ -120,6 +120,10 @@ void paint_state_capture(paint_state_t *s, hash128_t material) {
 	s->stencil_transform[1] = g_context->brush_stencil_y;
 	s->stencil_transform[2] = g_context->brush_stencil_scale;
 	s->stencil_transform[3] = g_context->brush_stencil_angle;
+	bool picks         = render_path_paint_fill_picks();
+	s->fill_type       = g_context->fill_type;
+	s->fill_object     = picks ? array_index_of(g_project->_->paint_objects, render_path_paint_fill_object) : -1;
+	s->fill_tri        = picks ? render_path_paint_fill_tri : -1;
 }
 
 static u16 paint_rec_state_index(paint_rec_t *r) {

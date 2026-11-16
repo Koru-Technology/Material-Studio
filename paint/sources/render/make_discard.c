@@ -1,27 +1,6 @@
 
 #include "../global.h"
 
-void make_discard_face(node_shader_t *shader) {
-	node_shader_add_texture(shader, "gbuffer2", NULL);
-	node_shader_add_texture(shader, "textrianglemap", "_textrianglemap");
-	node_shader_add_constant(shader, "vec2 textrianglemap_size", "_texpaint_size");
-	node_shader_add_constant(shader, "vec2 gbuffer_size", "_gbuffer_size");
-	// node_shader_write_frag(shader, "float2 tex_coord_inp = gbuffer2[uint2(constants.inp.x * constants.gbuffer_size.x, constants.inp.y *
-	// constants.gbuffer_size.y)].ba;");
-	node_shader_write_frag(
-	    shader, "vec4 tex_coord_inp4 = texelFetch(sampler2D(gbuffer2, sampler_linear), ivec2(uint(constants.inp.x * constants.gbuffer_size.x), uint(constants.inp.y * constants.gbuffer_size.y)), 0);");
-	node_shader_write_frag(shader, "vec2 tex_coord_inp = tex_coord_inp4.ba + tex_coord_inp4.rg;");
-	node_shader_write_frag(shader, "vec4 face_c1 = texelFetch(sampler2D(textrianglemap, sampler_linear), ivec2(uint(tex_coord_inp.x * constants.textrianglemap_size.x), "
-	                             "uint(tex_coord_inp.y * constants.textrianglemap_size.y)), 0);");
-	node_shader_write_frag(shader, "vec4 face_c2 = textureLod(sampler2D(textrianglemap, sampler_linear), input.tex_coord_pick, 0.0);");
-	node_shader_write_frag(shader, "if (face_c1.x != face_c2.x || face_c1.y != face_c2.y || face_c1.z != face_c2.z || face_c1.w != face_c2.w) { discard; }");
-}
-
-void make_discard_uv_island(node_shader_t *shader) {
-	node_shader_add_texture(shader, "texuvislandmap", "_texuvislandmap");
-	node_shader_write_frag(shader, "if (textureLod(sampler2D(texuvislandmap, sampler_linear), input.tex_coord_pick, 0.0).r == 0.0) { discard; }");
-}
-
 void make_discard_material_id(node_shader_t *shader, char *tex_coord) {
 	char *tc;
 	if (tex_coord == NULL) {

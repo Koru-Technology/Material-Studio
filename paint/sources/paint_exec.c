@@ -317,6 +317,9 @@ static void paint_exec_draw_state(paint_exec_op_t *op) {
 }
 
 void paint_exec_draw(bool dilation) {
+	if (render_path_paint_fill_pick && paint_exec_op == NULL && !paint_exec_replay && render_path_paint_fill_picks()) {
+		render_path_paint_fill_pick_now(); // What a fill paints, with the live camera: recorded in its state
+	}
 	if (paint_exec_op != NULL || !paint_exec_on()) { // The old path, or a draw of an op being executed
 		if (paint_exec_op == NULL && g_context->pdirty > 0 && paint_exec_isolated == 0) {
 			paint_rec_foreign(); // Not replayable yet

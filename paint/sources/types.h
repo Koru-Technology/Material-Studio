@@ -543,7 +543,6 @@ typedef struct context {
 	f32                         picker_color_mask_tolerance;
 	bool                        picker_hide_other_materials;
 	bool                        pick_pos_nor_tex;
-	bool                        pick_object_id;
 	f32                         posx_picked;
 	f32                         posy_picked;
 	f32                         posz_picked;
@@ -1364,6 +1363,9 @@ typedef struct paint_state {
 	hash128_t stencil; // HSTORE_ASSET of the stencil
 	i32       stencil_alpha;
 	f32       stencil_transform[4]; // x, y, scale, angle
+	i32       fill_type;
+	i32       fill_object; // Fills that pick: the paint object picked (its place in paint_objects, -1 none) and its triangle
+	i32       fill_tri;
 } paint_state_t;
 
 typedef struct paint_rec_cam {

@@ -1,50 +1,6 @@
 #include "../global.h"
 
-// Picking: the paint object under the cursor, the color picker and its values read back from the GPU
-
-// Renders object ids and returns the paint object under the cursor, NULL on a miss.
-// Expects the cursor tool with pick_object_id set, the paint material is parsed for it here.
-mesh_object_t *render_path_paint_pick_object() {
-	viewport_mode_t _viewport_mode = g_context->viewport_mode;
-	g_context->viewport_mode       = VIEWPORT_MODE_OBJECT_ID;
-	make_material_parse_mesh_material();
-
-	// Objects with assigned material do not write object id
-	shader_data_t *base_material     = g_project->_->materials->buffer[0]->data;
-	any_array_t   *_object_materials = any_array_create(g_project->_->paint_objects->length);
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *o             = g_project->_->paint_objects->buffer[i];
-		_object_materials->buffer[i] = o->material;
-		o->material                  = base_material;
-	}
-
-	render_path_base_draw_gbuffer();
-
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		g_project->_->paint_objects->buffer[i]->material = _object_materials->buffer[i];
-	}
-
-	g_context->viewport_mode = _viewport_mode;
-	make_material_parse_mesh_material();
-
-	g_context->pdirty = 1;
-	make_material_parse_paint_material(false);
-	render_path_set_target("texpaint_picker", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	render_path_bind_target("gbuffer1", "gbuffer1");
-	render_path_bind_target("gbuffer2", "gbuffer2");
-	render_path_paint_draw_fullscreen_triangle();
-
-	buffer_t *pixel = gpu_get_texture_pixels_rgba8(render_path_target_image("texpaint_picker"));
-	if (buffer_get_u8(pixel, 3) > 0) {
-		i32 r_byte = buffer_get_u8(pixel, 0);
-		i32 g_byte = buffer_get_u8(pixel, 1);
-		i32 index  = r_byte + g_byte * 256 - 1;
-		if (index >= 0 && index < g_project->_->paint_objects->length) {
-			return g_project->_->paint_objects->buffer[index];
-		}
-	}
-	return NULL;
-}
+// Picking: the color picker and its values read back from the GPU
 
 // Dabs painted by one draw when the paint shader is batched (render_path_paint_batched): the stamps or samples of a frame
 

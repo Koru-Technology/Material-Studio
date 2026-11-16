@@ -258,12 +258,8 @@ i32   util_render_default_envmap_w      = 512;
 // ---- util/util_uv.c ----
 gpu_texture_t *util_uv_uvmap              = NULL;
 bool           util_uv_uvmap_cached       = false;
-gpu_texture_t *util_uv_trianglemap        = NULL;
-bool           util_uv_trianglemap_cached = false;
 gpu_texture_t *util_uv_dilatemap          = NULL;
 bool           util_uv_dilatemap_cached   = false;
-gpu_texture_t *util_uv_uvislandmap        = NULL;
-bool           util_uv_uvislandmap_cached = false;
 bool           util_uv_seammap_cached     = false;
 
 // ---- util/util_uv_unwrap.c ----

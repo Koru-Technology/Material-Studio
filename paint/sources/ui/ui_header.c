@@ -484,13 +484,6 @@ void ui_header_draw_tool_properties() {
 			    6);
 			ui_combo(&g_context->fill_type, fill_mode_combo, tr("Fill Mode"), false, UI_ALIGN_LEFT, true);
 			if (ui_item_changed()) {
-				if (g_context->fill_type == FILL_TYPE_FACE) {
-					draw_saved_t saved_draw = draw_suspend();
-					// cache_uv_map();
-					util_uv_cache_triangle_map();
-					draw_resume(saved_draw);
-					// draw_wireframe = true;
-				}
 				make_material_parse_paint_material(true);
 				make_material_parse_mesh_material();
 			}

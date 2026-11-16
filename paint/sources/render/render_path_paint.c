@@ -28,9 +28,6 @@ static bool render_path_paint_uses_gbuffer0() {
 	if (g_context->brush_mask_image != NULL && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER)) {
 		return true;
 	}
-	if (g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_ANGLE) {
-		return true;
-	}
 	return false;
 }
 
@@ -131,44 +128,105 @@ void render_path_paint_draw_target() {
 	render_path_end();
 }
 
-static mesh_object_t *render_path_paint_fill_object  = NULL; // Picked on mesh fill stroke start
-static gpu_buffer_t  *render_path_paint_fill_indices = NULL; // Submesh fill, triangles connected to the clicked one
+// Fills that pick what they paint (mesh, submesh, face, uv island, angle): the paint object and its triangle under the
+// brush, picked once a stroke with the live camera (render_path_paint_fill_pick_now), recorded in the paint state and
+// set again by replays (paint_replay.c). Mesh fill draws the object, submesh the triangles connected to the one picked,
+// face that triangle, uv island the triangles of its island in the layer's uv map (util_mesh_uv_island_indices: its
+// topology, any resolution); angle fill compares normals with the picked triangle's.
+mesh_object_t        *render_path_paint_fill_object  = NULL;
+i32                   render_path_paint_fill_tri     = -1;
+static gpu_buffer_t  *render_path_paint_fill_indices = NULL; // The triangles drawn, NULL: the whole object
+static u64            render_path_paint_fill_key     = 0;    // What they are of
 
-static void render_path_paint_pick_fill_submesh() {
+bool render_path_paint_fill_picks() {
+	fill_type_t t = g_context->fill_type;
+	return g_context->tool == TOOL_TYPE_FILL && t != FILL_TYPE_OBJECT;
+}
+
+// Fill draws only the picked object: mesh, submesh, face and uv island fills
+static bool render_path_paint_fill_draws_object() {
+	fill_type_t t = g_context->fill_type;
+	return g_context->tool == TOOL_TYPE_FILL && (t == FILL_TYPE_MESH || t == FILL_TYPE_SUBMESH || t == FILL_TYPE_FACE || t == FILL_TYPE_UV_ISLAND);
+}
+
+// The fill's object and triangle under the brush, with the live camera: the nearest hit of the visible paint objects
+void render_path_paint_fill_pick_now() {
+	render_path_paint_fill_pick   = false;
+	render_path_paint_fill_object = NULL;
+	render_path_paint_fill_tri    = -1;
+	ray_t *ray                    = raycast_get_ray(g_context->paint_vec.x * sys_w(), g_context->paint_vec.y * sys_h(), scene_camera); // Where it paints
+	f32    best                   = 0.0;
+	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
+		mesh_object_t *o = g_project->_->paint_objects->buffer[i];
+		if (!o->base->visible) {
+			continue;
+		}
+		i32 tri = util_mesh_raycast_triangle(o, ray);
+		if (tri < 0) {
+			continue;
+		}
+		f32 d = util_mesh_raycast_triangle_dist(o, ray, tri);
+		if (render_path_paint_fill_object == NULL || d < best) {
+			render_path_paint_fill_object = o;
+			render_path_paint_fill_tri    = tri;
+			best                          = d;
+		}
+	}
+}
+
+// The index buffer of the triangles the fill draws, made again when its object, triangle, type or uv map changed
+static gpu_buffer_t *render_path_paint_fill_triangles() {
+	mesh_object_t *o   = render_path_paint_fill_object;
+	fill_type_t    t   = g_context->fill_type;
+	i32            map = g_context->layer->uv_map;
+	u64            key = (u64)(uintptr_t)o ^ ((u64)(u32)render_path_paint_fill_tri << 20) ^ ((u64)t << 52) ^ ((u64)map << 60) ^ (u64)(uintptr_t)o->data;
+	if (key == render_path_paint_fill_key && render_path_paint_fill_indices != NULL) {
+		return render_path_paint_fill_indices;
+	}
 	if (render_path_paint_fill_indices != NULL) {
 		gpu_delete_buffer(render_path_paint_fill_indices);
 		render_path_paint_fill_indices = NULL;
 	}
-	mesh_object_t *o = render_path_paint_fill_object;
-	if (o == NULL) {
-		return;
+	render_path_paint_fill_key = key;
+	i32          tri           = render_path_paint_fill_tri;
+	u32_array_t *indices       = NULL;
+	if (t == FILL_TYPE_SUBMESH) {
+		indices = util_mesh_connected_indices(o->data, tri);
 	}
-	ray_t *ray = raycast_get_ray(mouse_view_x(), mouse_view_y(), scene_camera);
-	i32    tri = util_mesh_raycast_triangle(o, ray);
-	if (tri < 0) {
-		return;
+	else if (t == FILL_TYPE_UV_ISLAND) {
+		indices = util_mesh_uv_island_indices(o->data, tri, map);
 	}
-	u32_array_t *indices           = util_mesh_connected_indices(o->data, tri);
+	else if (t == FILL_TYPE_FACE && tri >= 0 && (tri + 1) * 3 <= (i32)o->data->index_array->length) {
+		indices = u32_array_create(0);
+		for (i32 k = 0; k < 3; ++k) {
+			u32_array_push(indices, o->data->index_array->buffer[tri * 3 + k]);
+		}
+	}
+	if (indices == NULL) {
+		return NULL;
+	}
 	render_path_paint_fill_indices = gpu_create_index_buffer(indices->length);
 	mesh_data_build_indices(render_path_paint_fill_indices, indices);
 	array_delete(indices);
+	return render_path_paint_fill_indices;
 }
 
-// Mesh fill, only the clicked paint object is drawn, submesh fill only its clicked connected part
+// Mesh fill draws the picked paint object, the other fills of the object some of its triangles
 static void render_path_paint_draw_fill_object() {
 	mesh_object_t *o       = render_path_paint_fill_object;
 	mesh_object_t *target  = render_path_paint_target();
 	bool           merged  = target != NULL && target == g_context->merged_object;
 	bool           painted = o != NULL && (merged || o == target) && array_index_of(g_project->_->paint_objects, o) >= 0;
-	bool           submesh = g_context->fill_type == FILL_TYPE_SUBMESH;
-	if (submesh && render_path_paint_fill_indices == NULL) {
-		painted = false;
+	gpu_buffer_t  *subset  = NULL;
+	if (painted && g_context->fill_type != FILL_TYPE_MESH) {
+		subset  = render_path_paint_fill_triangles();
+		painted = subset != NULL;
 	}
 	if (painted && o->base->visible && make_material_is_default(o->material) && make_material_paint_scon != NULL) {
 		_mesh_object_last_pipeline = NULL;
 		gpu_buffer_t *indices      = o->data->_->index_buffer;
-		if (submesh) {
-			o->data->_->index_buffer = render_path_paint_fill_indices;
+		if (subset != NULL) {
+			o->data->_->index_buffer = subset;
 		}
 		render_path_paint_draw_material(o);
 		o->data->_->index_buffer = indices;
@@ -616,24 +674,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		}
 	}
 	else {
-		bool mesh_fill = g_context->tool == TOOL_TYPE_FILL && (g_context->fill_type == FILL_TYPE_MESH || g_context->fill_type == FILL_TYPE_SUBMESH);
-		if (mesh_fill && render_path_paint_fill_pick) {
-			// Pick the clicked mesh once per stroke
-			render_path_paint_fill_pick   = false;
-			i32 _pdirty                   = g_context->pdirty;
-			g_context->tool               = TOOL_TYPE_CURSOR;
-			g_context->pick_object_id     = true;
-			render_path_paint_fill_object = render_path_paint_pick_object();
-			if (g_context->fill_type == FILL_TYPE_SUBMESH) {
-				render_path_paint_pick_fill_submesh();
-			}
-			g_context->pick_object_id = false;
-			g_context->tool           = TOOL_TYPE_FILL;
-			g_context->pdirty         = _pdirty;
-			make_material_parse_paint_material(false);
-			render_path_base_draw_gbuffer();
-		}
-
+		bool mesh_fill = render_path_paint_fill_draws_object();
 		char *texpaint = string_tmp("texpaint%d", tid);
 		if (g_context->tool == TOOL_TYPE_BAKE && g_context->brush_time == sys_delta()) {
 			// Clear to black on bake start
@@ -646,7 +687,7 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 		bool is_mask = slot_layer_is_mask(g_context->layer);
 
 		// Read texcoords from gbuffer
-		bool read_tc = (g_context->tool == TOOL_TYPE_FILL && g_context->fill_type == FILL_TYPE_FACE) || g_context->tool == TOOL_TYPE_CLONE ||
+		bool read_tc = g_context->tool == TOOL_TYPE_CLONE ||
 		               g_context->tool == TOOL_TYPE_BLUR || context_is_pixel_snap();
 
 		if (g_context->tool == TOOL_TYPE_BLUR) {

@@ -69,6 +69,10 @@ static void paint_replay_state_apply(paint_state_t *s) {
 	g_context->brush_stencil_y             = s->stencil_transform[1];
 	g_context->brush_stencil_scale         = s->stencil_transform[2];
 	g_context->brush_stencil_angle         = s->stencil_transform[3];
+	g_context->fill_type                   = s->fill_type;
+	mesh_object_t_array_t *objects         = g_project->_->paint_objects;
+	render_path_paint_fill_object          = s->fill_object >= 0 && s->fill_object < objects->length ? objects->buffer[s->fill_object] : NULL;
+	render_path_paint_fill_tri             = s->fill_tri;
 }
 
 // A kept shader's images are still the textures loaded under their files: reloaded (an asset imported again), or false
@@ -367,6 +371,8 @@ static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const 
 	i32              saved_frame = scene_camera->frame;
 	vec4_t           saved_tile  = paint_exec_uv_tile;
 	vec2_t           saved_res0  = paint_exec_res0;
+	mesh_object_t   *saved_fill_object = render_path_paint_fill_object;
+	i32              saved_fill_tri    = render_path_paint_fill_tri;
 	draw_saved_t     saved_draw  = draw_suspend();
 	render_target_t *blend0      = any_map_get(render_path_render_targets, "texpaint_blend0");
 	i32              live_w = blend0->width, live_h = blend0->height;
@@ -468,6 +474,8 @@ static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const 
 	scene_camera->frame            = saved_frame;
 	paint_exec_uv_tile             = saved_tile;
 	paint_exec_res0                = saved_res0;
+	render_path_paint_fill_object  = saved_fill_object;
+	render_path_paint_fill_tri     = saved_fill_tri;
 	if (!prepare) {
 		g_context->brush_blend_dirty = true; // The live coverage was the replay's
 		g_context->ddirty            = 2;

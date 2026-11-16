@@ -76,7 +76,6 @@ void context_init() {
 	g_context->picker_color_mask_tolerance  = 0.0;
 	g_context->picker_hide_other_materials  = false;
 	g_context->pick_pos_nor_tex             = false;
-	g_context->pick_object_id               = false;
 	g_context->posx_picked                  = 0.0;
 	g_context->posy_picked                  = 0.0;
 	g_context->posz_picked                  = 0.0;
@@ -310,7 +309,6 @@ void context_select_paint_object(mesh_object_t *o) {
 	ui_header_handle->redraws  = 2;
 	g_context->paint_object    = o;
 	util_uv_uvmap_cached       = false;
-	util_uv_trianglemap_cached = false;
 	util_uv_dilatemap_cached   = false;
 }
 
@@ -532,4 +530,10 @@ bool context_finger_paint_blocked() {
 		return false;
 	}
 	return g_config->finger_paint == 2 || (g_config->finger_paint == 0 && g_context->pen_painting_only);
+}
+
+// Scripts: the fill tool's mode, the paint shader parsed for it
+void context_set_fill_type(i32 type) {
+	g_context->fill_type = type;
+	make_material_parse_paint_material(false);
 }

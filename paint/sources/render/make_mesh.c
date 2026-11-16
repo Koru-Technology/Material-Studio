@@ -719,12 +719,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		}
 		else if (g_context->viewport_mode == VIEWPORT_MODE_OBJECT_ID) {
 			node_shader_add_constant(shader, "float object_id", "_object_id");
-			if (g_context->pick_object_id) {
-				// Low byte in r, high byte in g
-				node_shader_write_frag(shader, "float id1 = constants.object_id + 1.0;");
-				node_shader_write_frag(shader, "output[1] = vec4(mod(id1, 256.0) / 255.0, floor(id1 / 256.0) / 255.0, 0.0, 1.0);");
-			}
-			else {
+			{
 				node_shader_write_frag(shader, "float obid = constants.object_id + 1.0 / 255.0;");
 				node_shader_write_frag(shader, "float id_r = fract(sin(dot(vec2(obid, obid * 20.0), vec2(12.9898, 78.233))) * 43758.5453);");
 				node_shader_write_frag(shader, "float id_g = fract(sin(dot(vec2(obid * 20.0, obid), vec2(12.9898, 78.233))) * 43758.5453);");

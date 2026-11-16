@@ -672,8 +672,6 @@ void make_curvature_bake_mesh(char *id, mesh_object_t_array_t *objs, i32 res_x, 
 node_shader_context_t *make_depth_run(material_t *data);
 
 // ---- render/make_discard.c ----
-void make_discard_face(node_shader_t *shader);
-void make_discard_uv_island(node_shader_t *shader);
 void make_discard_material_id(node_shader_t *shader, char *tex_coord);
 void make_discard_picked_color(node_shader_t *shader, char *tex_src, char *tex_src_link);
 
@@ -823,7 +821,11 @@ void                  render_path_paint_dilate(bool base, bool nor_pack);
 void                  render_path_paint_dilate_stroke(bool base, bool nor_pack);
 
 // ---- render/render_path_paint_picker.c ----
-mesh_object_t *render_path_paint_pick_object();
+void           context_set_fill_type(i32 type);
+bool           render_path_paint_fill_picks();
+void           render_path_paint_fill_pick_now();
+extern mesh_object_t *render_path_paint_fill_object;
+extern i32            render_path_paint_fill_tri;
 void           render_path_paint_picker_poll();
 void           render_path_paint_picker_read(bool is_mask);
 
@@ -1498,6 +1500,9 @@ void                   util_mesh_uv_unwrap(mesh_object_t_array_t *objects);
 void                   util_mesh_sort_hierarchy();
 u32_array_t           *util_mesh_connected_indices(mesh_data_t *g, i32 tri);
 i32                    util_mesh_raycast_triangle(mesh_object_t *o, ray_t *ray);
+u32_array_t           *util_mesh_uv_island_indices(mesh_data_t *g, i32 tri, i32 uv_map);
+vec4_t                 util_mesh_triangle_normal(mesh_object_t *o, i32 tri);
+f32                    util_mesh_raycast_triangle_dist(mesh_object_t *o, ray_t *ray, i32 tri);
 
 // ---- util/util_mesh_maps.c ----
 char          *mesh_map_name(i32 type);
@@ -1676,9 +1681,7 @@ void    ui_base_set_viewport_col(i32 col);
 
 // ---- util/util_uv.c ----
 void util_uv_cache_uv_map();
-void util_uv_cache_triangle_map();
 void util_uv_cache_dilate_map();
-void util_uv_cache_uv_island_map();
 void util_uv_cache_seam_map(i32 res_x, i32 res_y);
 void util_uv_blur_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t *src, i32 passes);
 
