@@ -512,8 +512,11 @@ void project_reimport_texture_load_on_next_frame(void *_) {
 }
 
 void project_reimport_texture_load(char *path, asset_t *asset) {
+	i32 i = array_index_of(g_project->_->assets, asset);
+	if (i < 0) { // Removed while the file was picked
+		return;
+	}
 	asset->file = string_copy(path);
-	i32 i       = array_index_of(g_project->_->assets, asset);
 	data_delete_texture(asset->file);
 	asset_t *old_asset = g_project->_->assets->buffer[i];
 	array_splice(g_project->_->assets, i, 1);

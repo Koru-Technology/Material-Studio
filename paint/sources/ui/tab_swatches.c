@@ -152,6 +152,9 @@ static gpu_texture_t *tab_swatches_sphere_get(i32 i, swatch_color_t *s) {
 
 void tab_swatches_delete_swatch(swatch_color_t *swatch) {
 	i32 i = array_index_of(g_project->swatches, swatch);
+	if (i < 0) {
+		return;
+	}
 	history_delete_swatch(swatch);
 	g_context->swatch = g_project->swatches->buffer[i == g_project->swatches->length - 1 ? i - 1 : i + 1];
 	array_splice(g_project->swatches, i, 1);
