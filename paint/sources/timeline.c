@@ -52,9 +52,17 @@ timeline_t *timeline_find(u32 uid) {
 	return NULL;
 }
 
+static bool timeline_fill_ok = false; // timeline_allow_fill
+
 // Paint layers and paint masks have a timeline, fill layers, fill masks and groups not
 bool timeline_layer_paints(slot_layer_t *l) {
-	return l != NULL && l->texpaint != NULL && l->fill_material == NULL && (slot_layer_is_mask(l) || (l->texpaint_nor != NULL && l->texpaint_pack != NULL));
+	return l != NULL && l->texpaint != NULL && (l->fill_material == NULL || timeline_fill_ok) &&
+	       (slot_layer_is_mask(l) || (l->texpaint_nor != NULL && l->texpaint_pack != NULL));
+}
+
+// A fill layer or mask about to be painted into (apply mask) gets a timeline too: its render is the state it starts from
+void timeline_allow_fill(bool on) {
+	timeline_fill_ok = on;
 }
 
 timeline_t *timeline_of(slot_layer_t *l) {

@@ -482,6 +482,15 @@ static void history_v2_unapply_mask(history_step_t *step) {
 		src->cursor = src_pos;
 	}
 	history_restore_applied_mask(step, m);
+	// Fill again: the mask, the layer it was applied to
+	slot_material_t *fills[2] = {slot_material_find_uid(step->fill_uids[0]), slot_material_find_uid(step->fill_uids[1])};
+	slot_layer_t    *owners[2] = {m, current};
+	for (i32 i = 0; i < 2; ++i) {
+		if (step->fill_uids[i] != 0 && fills[i] != NULL && !slot_layer_is_group(owners[i])) {
+			owners[i]->fill_material = fills[i];
+			sys_notify_on_next_frame(&history_v2_refresh_fill, owners[i]);
+		}
+	}
 	g_context->layers_preview_dirty = true;
 	context_set_layer(m);
 }
@@ -489,6 +498,9 @@ static void history_v2_unapply_mask(history_step_t *step) {
 static void history_v2_apply_mask(history_step_t *step) {
 	slot_layer_t *m      = g_project->_->layers->buffer[step->layer];
 	slot_layer_t *parent = m->parent;
+	if (parent->fill_material != NULL && !slot_layer_is_group(parent)) {
+		slot_layer_to_paint_layer(parent); // As apply mask did, its pixels come from its timeline
+	}
 	history_defer_moves(step, false, false);
 	history_flush_restores(NULL);
 	slot_layer_delete(m);
@@ -1074,7 +1086,9 @@ void history_reset() {
 	history_undo_i = 0;
 	history_ring_pending = 0;
 #ifdef IRON_METAL
-	history_v2_on = g_config->history_v2; // Steps of both kinds never mix
+	// Steps of both kinds never mix. Env HISTORY_V2=1 turns it on for test runs, the saved config stays as it is.
+	char *env     = getenv("HISTORY_V2");
+	history_v2_on = g_config->history_v2 || (env != NULL && atoi(env) != 0);
 #else
 	history_v2_on = false; // Tile transfers are Metal only
 #endif
