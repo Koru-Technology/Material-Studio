@@ -355,7 +355,7 @@ void tab_brushes_draw_content() {
 
 // Touch popover, the only content so no tab above it: title with the + button
 void tab_brushes_draw_popover() {
-	ui_set_hovered_tab_name(tr("Brushes")); // See context_in_brushes()
+	ui_set_hovered_tab_name(tr("Brushes"));
 	tab_brushes_draw_slots(true);
 }
 

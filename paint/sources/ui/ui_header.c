@@ -95,10 +95,6 @@ void ui_header_particle_menu_draw() {
 	}
 }
 
-void ui_header_draw_tool_properties_layer_preview_dirty(void *_) {
-	g_context->layer_preview_dirty = true;
-}
-
 void ui_header_draw_tool_properties_color_picker_normal() {
 	ui_fill(0, 0, g_ui->_w / (float)UI_SCALE(), g_theme->ELEMENT_H * 9, g_theme->SEPARATOR_COL);
 	g_ui->changed = false;

@@ -917,13 +917,6 @@ void library_pick_folder() {
 	iron_folder_pick(&library_folder_picked);
 }
 
-void library_forget() {
-	iron_folder_forget();
-	g_config->materials_folder = "";
-	library_root               = NULL;
-	config_save();
-}
-
 // Restores access to the folder picked last time and refreshes it
 void library_init() {
 	if (string_equals(g_config->materials_folder, "")) {

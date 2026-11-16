@@ -27,25 +27,6 @@ mesh_object_t_array_t *util_mesh_get_visible() {
 	return ar;
 }
 
-mesh_object_t_array_t *util_mesh_dedup_data(mesh_object_t_array_t *objects) {
-	mesh_object_t_array_t *ar = any_array_create_from_raw((void *[]){}, 0);
-	for (i32 i = 0; i < objects->length; ++i) {
-		mesh_object_t *p    = objects->buffer[i];
-		bool           seen = false;
-		for (i32 j = 0; j < ar->length && !seen; ++j) {
-			seen = ar->buffer[j]->data == p->data;
-		}
-		if (!seen) {
-			any_array_push(ar, p);
-		}
-	}
-	return ar;
-}
-
-mesh_object_t_array_t *util_mesh_get_unique_data() {
-	return util_mesh_dedup_data(g_project->_->paint_objects);
-}
-
 mesh_object_t_array_t *util_mesh_get_hierarchy(mesh_object_t *o) {
 	// The object and all its descendants, one object per mesh data
 	mesh_object_t_array_t *ar = any_array_create_from_raw((void *[]){}, 0);
@@ -73,26 +54,6 @@ i32 util_mesh_data_owner(mesh_data_t *data) {
 		}
 	}
 	return -1;
-}
-
-bool util_mesh_data_is_shared(mesh_data_t *data) {
-	i32 users = 0;
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		if (g_project->_->paint_objects->buffer[i]->data == data) {
-			users++;
-		}
-	}
-	return users > 1;
-}
-
-void util_mesh_sync_scale_world(mesh_data_t *data) {
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		if (p->data == data && p->base->transform->scale_world != data->scale_pos) {
-			p->base->transform->scale_world = data->scale_pos;
-			transform_build_matrix(p->base->transform);
-		}
-	}
 }
 
 char *util_mesh_link_name(i32 source_index, char *object_name) {
@@ -260,28 +221,6 @@ void util_mesh_remove_objects(mesh_object_t_array_t *objects, mesh_object_t *kee
 	}
 	array_free(datas);
 	free(datas);
-}
-
-mesh_data_t *util_mesh_data_duplicate(mesh_data_t *source) {
-	mesh_data_t *raw = calloc(1, sizeof(mesh_data_t));
-	raw->name        = string_copy(source->name);
-	raw->scale_pos   = source->scale_pos;
-	raw->scale_tex   = source->scale_tex;
-
-	raw->vertex_arrays = (vertex_array_t_array_t *)any_array_create_from_raw((void *[]){}, 0);
-	for (i32 i = 0; i < source->vertex_arrays->length; ++i) {
-		vertex_array_t *src = source->vertex_arrays->buffer[i];
-		vertex_array_t *va =
-		    ALLOC_INIT(vertex_array_t,
-		               {.attrib = string_copy(src->attrib), .data = string_copy(src->data), .values = i16_array_create_from_array(src->values)});
-		any_array_push(raw->vertex_arrays, va);
-	}
-
-	raw->index_array = u32_array_create_from_array(source->index_array);
-
-	mesh_data_t *md    = mesh_data_create(raw);
-	md->_->owns_arrays = true;
-	return md;
 }
 
 static f32 util_mesh_pack_merged_positions(mesh_object_t_array_t *paint_objects, object_t *parent, i16_array_t *va0, i16_array_t *va1) {
@@ -516,12 +455,6 @@ bool util_mesh_merged_partial() {
 
 void util_mesh_merge(mesh_object_t_array_t *paint_objects) {
 	_util_mesh_merge(paint_objects, true);
-}
-
-void util_mesh_merge_all() {
-	if (g_context->merged_object == NULL || util_mesh_merged_objects == NULL || util_mesh_merged_objects->length != g_project->_->paint_objects->length) {
-		_util_mesh_merge(NULL, false);
-	}
 }
 
 bool util_mesh_merge_refresh() {
@@ -807,7 +740,7 @@ static i32 *_util_mesh_connected(mesh_data_t *g) {
 	return uf;
 }
 
-// Triangles connected to triangle tri, the same surface util_mesh_split separates
+// Triangles connected to triangle tri (one surface)
 u32_array_t *util_mesh_connected_indices(mesh_data_t *g, i32 tri) {
 	u32_array_t *inda     = g->index_array;
 	i32          num_inds = math_floor(inda->length / 3.0) * 3;
@@ -852,36 +785,4 @@ i32 util_mesh_raycast_triangle(mesh_object_t *o, ray_t *ray) {
 		}
 	}
 	return closest;
-}
-
-static bool util_mesh_is_unique_name(mesh_object_t *self, char *name) {
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		if (p != self && string_equals(p->base->name, name)) {
-			return false;
-		}
-	}
-	return true;
-}
-
-char *util_mesh_unique_name(mesh_object_t *self, char *name) {
-	if (util_mesh_is_unique_name(self, name)) {
-		return name;
-	}
-	char *base;
-	i32   i   = strings_split_number_ext(name, &base);
-	char *res = string_tmp("%s%s", base, strings_number_ext(++i));
-	while (!util_mesh_is_unique_name(self, res)) {
-		res = string_tmp("%s%s", base, strings_number_ext(++i));
-	}
-	return res;
-}
-
-void util_mesh_rename(mesh_object_t *o, char *name) {
-	name = string_copy(name);
-	o->base->name = name;
-	// Mesh data shared by linked duplicates is named after the object holding it
-	if (o->data != NULL && util_mesh_data_owner(o->data) == array_index_of(g_project->_->paint_objects, o)) {
-		o->data->name = string_copy(name);
-	}
 }

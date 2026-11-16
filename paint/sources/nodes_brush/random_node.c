@@ -40,10 +40,6 @@ void random_node_set_seed(i32 seed) {
 	}
 }
 
-i32 random_node_get_seed() {
-	return random_node_d;
-}
-
 f32 random_node_get_float() {
 	return random_node_get_int() / (float)0x7fffffff;
 }

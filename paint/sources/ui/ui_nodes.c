@@ -47,35 +47,6 @@ ui_nodes_editor_state_t *ui_nodes_editor_state(ui_node_t *node) {
 }
 
 
-// Row toggling the code area of a node, the state is saved with the node
-bool ui_nodes_code_panel(ui_node_t *node) {
-	bool expanded = !(node->flags & UI_NODE_FLAG_CODE_HIDE);
-	if (ui_is_visible(UI_ELEMENT_H())) {
-		if (ui_get_released(UI_ELEMENT_H())) {
-			expanded = !expanded;
-		}
-		// Down or right pointing triangle
-		f32 x = g_ui->_x + g_ui->arrow_offset_x;
-		f32 y = g_ui->_y + g_ui->arrow_offset_y;
-		f32 s = UI_ARROW_SIZE();
-		draw_set_color(g_ui->ops->theme->LABEL_COL);
-		if (expanded) {
-			draw_filled_triangle(x, y, x + s, y, x + s / 2.0, y + s);
-		}
-		else {
-			draw_filled_triangle(x, y, x + s, y + s / 2.0, x, y + s);
-		}
-	}
-	ui_end_element();
-	if (expanded) {
-		node->flags &= ~UI_NODE_FLAG_CODE_HIDE;
-	}
-	else {
-		node->flags |= UI_NODE_FLAG_CODE_HIDE;
-	}
-	return expanded;
-}
-
 void ui_viewnodes_on_link_drag_on_node_search_done() {
 	ui_nodes_t *ui_nodes = ui_nodes_get_nodes();
 

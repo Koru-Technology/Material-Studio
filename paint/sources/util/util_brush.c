@@ -50,10 +50,6 @@ static bool util_brush_finger_allowed(bool paint_down) {
 // until it lifts. The dab it painted while resting is taken back.
 static i32 util_brush_hold_tool = -1; // Tool to go back to, -1 when not picking
 
-bool util_brush_hold_picking() {
-	return util_brush_hold_tool >= 0;
-}
-
 #ifdef IRON_IOS // Fingers only
 static f64             util_brush_hold_time  = 0;
 static f32             util_brush_hold_x     = 0;
@@ -148,13 +144,6 @@ f32 util_brush_pen_azimuth() {
 		return 0.0f;
 	}
 	return -(util_brush_sample_altitude >= 0.0f ? util_brush_sample_azimuth : pen_azimuth); // Screen y points down
-}
-
-f32 util_brush_pen_roll() {
-	if (!util_brush_pen_active()) {
-		return 0.0f;
-	}
-	return util_brush_sample_altitude >= 0.0f ? util_brush_sample_roll : pen_roll;
 }
 
 // Rotation of the brush tip on screen, radians: its angle, turned with the stroke or the pen by the brush's rotation

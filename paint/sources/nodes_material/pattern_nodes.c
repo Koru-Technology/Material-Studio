@@ -1116,10 +1116,6 @@ i32 pattern_node_index(char *type) {
 	return -1;
 }
 
-bool pattern_node_is(ui_node_t *node) {
-	return node != NULL && pattern_node_index(node->type) >= 0;
-}
-
 static char *pattern_eval(ui_node_t *node) {
 	char *store = parser_material_store_var_name(node);
 	if (string_array_index_of(parser_material_parsed, store) >= 0) {

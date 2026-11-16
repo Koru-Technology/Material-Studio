@@ -13,18 +13,6 @@ char *neural_node_vector(ui_node_t *node, ui_node_socket_t *socket) {
 	return string("%s.rgb", texstore);
 }
 
-char *neural_node_value(ui_node_t *node, ui_node_socket_t *socket) {
-	gpu_texture_t *result = any_imap_get(neural_node_results, socket->id);
-	if (result == NULL) {
-		return "0.0";
-	}
-	char *tex_name = string_copy(parser_material_node_name(node, NULL));
-	any_map_set(data_cached_textures, tex_name, result);
-	bind_tex_t *tex      = parser_material_make_bind_tex(tex_name, tex_name);
-	char       *texstore = parser_material_texture_store(node, tex, tex_name, COLOR_SPACE_AUTO);
-	return string("%s.r", texstore);
-}
-
 ui_node_t *neural_from_node(ui_node_socket_t *inp, i32 socket) {
 	ui_node_t        *result = NULL;
 	ui_node_canvas_t *canvas = ui_nodes_get_canvas(true);
@@ -106,10 +94,6 @@ i32 neural_node_prompt_lines(char *prompt) {
 
 char *neural_node_iris_bin() {
 	return "iris";
-}
-
-char *neural_node_llama_bin() {
-	return "llama_metal";
 }
 
 char *neural_node_dir() {

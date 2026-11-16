@@ -26,10 +26,6 @@ node_shader_t *node_shader_create(node_shader_context_t *ctx) {
 	return raw;
 }
 
-void node_shader_add_in(node_shader_t *raw, char *s) {
-	any_array_push(raw->ins, s);
-}
-
 void node_shader_add_out(node_shader_t *raw, char *s) {
 	any_array_push(raw->outs, s);
 }

@@ -47,14 +47,6 @@ bool script_is_running(void) {
 	return script_update_fn != NULL || script_next_frame_fn != NULL;
 }
 
-void script_stop(void) {
-	if (script_update_fn != NULL) {
-		sys_remove_update(script_on_update);
-		script_update_fn = NULL;
-	}
-	script_next_frame_fn = NULL;
-}
-
 void *_ui_files_done;
 void  _ui_files_show_done(char *path) {
     minic_val_t args[1] = {minic_val_ptr(path)};

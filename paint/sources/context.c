@@ -233,25 +233,6 @@ void context_set_material(slot_material_t *m) {
 	}
 }
 
-void context_select_brush(i32 i) {
-	if (i < 0 || i >= g_project->_->brushes->length) {
-		return;
-	}
-	context_set_brush(g_project->_->brushes->buffer[i]);
-}
-
-void context_set_brush(slot_brush_t *b) {
-	if (array_index_of(g_project->_->brushes, b) == -1) {
-		return;
-	}
-	g_context->brush = b;
-	make_material_parse_brush();
-	brush_output_node_parse_inputs();
-	make_material_parse_paint_material(false);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	ui_nodes_hwnd->redraws = 2;
-}
-
 void context_set_font(slot_font_t *f) {
 	if (array_index_of(g_project->_->fonts, f) == -1) {
 		return;
@@ -376,11 +357,6 @@ bool context_in_materials() {
 bool context_in_swatches() {
 	char *tab = ui_hovered_tab_name();
 	return string_equals(tab, tr("Swatches"));
-}
-
-bool context_in_brushes() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Brushes"));
 }
 
 bool context_in_fonts() {

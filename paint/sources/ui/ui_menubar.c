@@ -173,44 +173,6 @@ viewport_mode_t ui_menubar_string_to_viewport_mode(char *s) {
 	return VIEWPORT_MODE_LIT;
 }
 
-char *ui_menubar_viewport_mode_to_string(viewport_mode_t m) {
-	if (m == VIEWPORT_MODE_LIT)
-		return "Lit";
-	if (m == VIEWPORT_MODE_BASE_COLOR)
-		return "Base Color";
-	if (m == VIEWPORT_MODE_NORMAL_MAP)
-		return "Normal";
-	if (m == VIEWPORT_MODE_OCCLUSION)
-		return "Occlusion";
-	if (m == VIEWPORT_MODE_ROUGHNESS)
-		return "Roughness";
-	if (m == VIEWPORT_MODE_METALLIC)
-		return "Metallic";
-	if (m == VIEWPORT_MODE_OPACITY)
-		return "Opacity";
-	if (m == VIEWPORT_MODE_HEIGHT)
-		return "Height";
-	if (m == VIEWPORT_MODE_EMISSION)
-		return "Emission";
-	if (m == VIEWPORT_MODE_SUBSURFACE)
-		return "Subsurface";
-	if (m == VIEWPORT_MODE_TEXCOORD)
-		return "TexCoord";
-	if (m == VIEWPORT_MODE_OBJECT_NORMAL)
-		return "Object Normal";
-	if (m == VIEWPORT_MODE_WORLD_NORMAL)
-		return "World Normal";
-	if (m == VIEWPORT_MODE_MATERIAL_ID)
-		return "Material ID";
-	if (m == VIEWPORT_MODE_OBJECT_ID)
-		return "Object ID";
-	if (m == VIEWPORT_MODE_MASK)
-		return "Mask";
-	if (m == VIEWPORT_MODE_PATH_TRACE)
-		return "Path Traced";
-	return "Lit";
-}
-
 static void ui_menubar_delete_unused(void *_) {
 	tab_materials_delete_unused();
 	tab_textures_delete_unused();

@@ -58,11 +58,6 @@ void parser_material_init() {
 	mm_buffers_batch_begin(); // Its buffer renders share one generation, eviction waits for the finalize
 }
 
-bool parser_material_is_default_normal(char *s) {
-	// Enable height socket when normal map socket is not connected for now
-	return string_equals(s, "vec3(0.500000, 0.500000, 1.000000)");
-}
-
 void parse_normal_map_color_input(ui_node_socket_t *inp) {
 	parser_material_shader->frag_write_normal++;
 	parser_material_out_normaltan = parser_material_parse_vector_input(inp);
@@ -112,25 +107,6 @@ shader_out_t *parser_material_parse_shader(ui_node_t *node, ui_node_socket_t *so
 		}
 	}
 	return sout;
-}
-
-shader_out_t *parser_material_parse_shader_input(ui_node_socket_t *inp) {
-	ui_node_link_t *l         = parser_material_get_input_link(inp);
-	ui_node_t      *from_node = l != NULL ? parser_material_get_node(l->from_id) : NULL;
-	if (from_node != NULL) {
-		return parser_material_parse_shader(from_node, from_node->outputs->buffer[l->from_socket]);
-	}
-	else {
-		shader_out_t *sout = TMP_ALLOC_INIT(shader_out_t, {.out_basecol    = "vec3(0.8, 0.8, 0.8)",
-		                                                   .out_roughness  = "0.0",
-		                                                   .out_metallic   = "0.0",
-		                                                   .out_occlusion  = "1.0",
-		                                                   .out_opacity    = "1.0",
-		                                                   .out_height     = "0.0",
-		                                                   .out_emission   = "0.0",
-		                                                   .out_subsurface = "0.0"});
-		return sout;
-	}
 }
 
 shader_out_t *parser_material_parse_output_pbr(ui_node_t *node) {
@@ -805,10 +781,6 @@ void parser_material_live_begin(ui_node_canvas_t *canvas, i32 table) {
 
 void parser_material_live_end() {
 	parser_material_live_canvas = NULL;
-}
-
-i32 parser_material_live_entries(i32 table) {
-	return parser_material_live_count[table];
 }
 
 // Texture of the "_texlive<table>" link

@@ -1,8 +1,6 @@
 
 #include "global.h"
 
-char *console_progress_text = NULL;
-
 void console_draw_toast(char *s) {
 	draw_begin(NULL, false, 0);
 	draw_set_color(0x55000000);
@@ -27,31 +25,6 @@ void console_toast(char *s) {
 	console_draw_toast(s);
 	if (in_use)
 		draw_begin(current, false, 0);
-}
-
-void console_draw_progress(void *_) {
-	console_draw_toast(console_progress_text);
-}
-
-void console_progress(char *s) {
-	// Keep popup message displayed until s == NULL
-	if (s == NULL) {
-		sys_remove_update(console_draw_progress);
-	}
-	else if (console_progress_text == NULL) {
-		sys_notify_on_update(console_draw_progress, NULL);
-	}
-	if (s != NULL) {
-		console_log(s);
-	}
-	console_progress_text = string_copy(s);
-
-	// Pass one frame to immediately show the message
-	draw_end();
-	sys_render();
-	draw_begin(NULL, false, 0);
-	gpu_present();
-	ui_end_input();
 }
 
 void console_info(char *s) {

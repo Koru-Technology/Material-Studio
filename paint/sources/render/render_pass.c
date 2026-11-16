@@ -174,12 +174,6 @@ void render_pass_remove(render_pass_t *p) {
 	g_context->ddirty = 2;
 }
 
-void render_pass_remove_all() {
-	if (render_pass_list != NULL) {
-		render_pass_list->length = 0;
-	}
-}
-
 bool render_pass_any() {
 	return render_pass_list != NULL && render_pass_list->length > 0;
 }

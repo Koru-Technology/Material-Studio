@@ -552,13 +552,6 @@ void tab_layers_draw_layer_context_menu_apply(void *_) {
 	g_context->layers_preview_dirty = true;
 }
 
-void tab_layers_draw_layer_context_menu_invert(void *_) {
-	slot_layer_t *l = tab_layers_l;
-	context_set_layer(l);
-	history_invert_mask();
-	slot_layer_invert_mask(l);
-}
-
 void tab_layers_draw_layer_context_menu_clear(void *_) {
 	slot_layer_t *l = tab_layers_l;
 	if (!slot_layer_is_group(l)) {
@@ -1121,7 +1114,7 @@ void tab_layers_draw_layer_context_menu_draw() {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_clear, NULL);
 	}
 	if (slot_layer_is_mask(l)) {
-		tab_layers_draw_mask_effect_menu(l); // Invert is an effect now, tab_layers_draw_layer_context_menu_invert bakes it
+		tab_layers_draw_mask_effect_menu(l); // Invert is an effect now
 	}
 	if (slot_layer_is_mask(l) && ui_menu_button(tr("Apply"), "", ICON_CHECK)) {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_apply, NULL);
