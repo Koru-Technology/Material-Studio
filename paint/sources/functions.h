@@ -2018,6 +2018,7 @@ void            history_delete_material();
 void            history_duplicate_material();
 void            history_delete_material_group(node_group_t *group);
 void            history_mask_stack();
+void            history_resolution(i32 w0, i32 h0, i32 w1, i32 h1);
 
 // ---- keymap.c ----
 void       keymap_load();
@@ -2596,3 +2597,10 @@ bool history_io_decode(u8 *data, u32 len);
 i32  history_io_roots(hash128_t **out);
 void history_io_thin(i64 budget);
 void history_io_clear();
+
+// ---- util/util_layer_resolution.c ----
+void layers_resolution_apply(i32 w, i32 h);
+void layers_resolution_begin(i32 w, i32 h);
+void layers_on_resized_by_user();
+void layers_resolution_reset();
+i32  layers_resolution_test_restores();

@@ -1169,3 +1169,9 @@ X3(paint_replay_test_into, "b(p:slot_layer_t src,i index,p:slot_layer_t dst)", b
 X5(paint_replay_test_tiles, "b(p:slot_layer_t src,i index,p:slot_layer_t dst,i n,i halo)", b, p, i, p, i, i)
 X3(paint_rec_test_bounds, "f(p:slot_layer_t l,i index,i c)", f, p, i, i)
 X4(render_path_paint_test_set_taper, "v(f start,f end,f size,f opacity)", v, f, f, f, f)
+
+// Working resolution change (util/util_layer_resolution.c)
+X2(layers_resolution_begin, "v(i w,i h)", v, i, i)
+X2(layers_resolution_apply, "v(i w,i h)", v, i, i)
+X0(layers_resolution_test_restores, "i()", i)
+X0(config_get_texture_res_x, "i()", i)
