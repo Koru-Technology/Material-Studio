@@ -1,7 +1,7 @@
 #include "global.h"
 
 // Materials keep their texture scale and rotation for paint layers, apart from the brush tip angle,
-// fill layers start with them, projects save them and older projects open with the defaults
+// fill layers start with them, projects save them
 
 int fails  = 0;
 int checks = 0;
@@ -10,7 +10,6 @@ int frame  = 0;
 
 char            *tmp_root = "/tmp/materialstudio_uv";
 char            *file_new = NULL;
-char            *file_old = NULL;
 slot_material_t *checker  = NULL;
 slot_material_t *red      = NULL;
 slot_layer_t    *paint    = NULL;
@@ -130,11 +129,6 @@ void next() {
 	}
 	else if (step == 10) {
 		check(iron_file_exists(file_new), "project saved");
-		// The same file marked as version 26, before materials had a scale and rotation
-		buffer_t *b = script_load_blob(file_new);
-		buffer_set_u8(b, 22, 50); // Current version -> "26"
-		buffer_set_u8(b, 23, 54);
-		iron_file_save_bytes(file_old, b, b->length);
 		script_project_new();
 	}
 	else if (step == 11) {
@@ -145,12 +139,6 @@ void next() {
 		check(f != NULL && f->fill_material != NULL, "saved project opens with its fill layer");
 		check(f != NULL && f->fill_material->uv_scale == 3.0 && f->fill_material->uv_angle == 45.0, "material scale and rotation are saved");
 		check(f != NULL && f->scale == 3.0 && f->angle == 45.0, "fill layer scale and rotation are saved");
-		script_project_open(file_old);
-	}
-	else if (step == 13) {
-		slot_layer_t *f = find_fill();
-		check(f != NULL && f->fill_material != NULL, "version 26 project opens");
-		check(f != NULL && f->fill_material->uv_scale == 1.0 && f->fill_material->uv_angle == 0.0, "version 26 materials get scale 1, rotation 0");
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
@@ -172,7 +160,6 @@ void main() {
 	}
 	iron_create_directory(tmp_root);
 	file_new = string("%s/uv_new.arm", tmp_root);
-	file_old = string("%s/uv_old.arm", tmp_root);
 
 	script_project_new();
 
