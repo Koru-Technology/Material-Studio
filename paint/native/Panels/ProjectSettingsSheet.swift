@@ -25,8 +25,6 @@ struct ProjectSettingsSheet: View {
 					.disabled(info.running)
 				} header: {
 					Text("Resolution")
-				} footer: {
-					Text("Painted detail is kept: going back to a resolution brings the layers back as they were. Undo reverts the change.")
 				}
 				if info.running {
 					Section("Changing resolution") {
@@ -43,8 +41,6 @@ struct ProjectSettingsSheet: View {
 					}
 				} header: {
 					Text("History")
-				} footer: {
-					Text("The undo history is saved with the project. Clearing it keeps the layers and their detail for export.")
 				}
 			}
 			.confirmationDialog("Clear the undo history?", isPresented: $clearing, titleVisibility: .visible) {

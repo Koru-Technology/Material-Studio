@@ -67,8 +67,6 @@ struct FillSections: View {
 				}
 			} header: {
 				Text("Channels")
-			} footer: {
-				Text("Each channel takes its own source, the eye hides it. A material is rendered once into a tile and projected like an image.")
 			}
 		}
 	}
@@ -100,10 +98,6 @@ struct FillSections: View {
 			}
 		} header: {
 			Text(layer.kind == .mask ? "Fill Mask" : "Fill")
-		} footer: {
-			if f.projection == Int32(APP_FILL_PROJECTION_PLANAR.rawValue) || f.projection == Int32(APP_FILL_PROJECTION_DECAL.rawValue) {
-				Text("Move, turn and size the projection with the gizmo in the viewport.")
-			}
 		}
 	}
 }
@@ -240,19 +234,12 @@ struct FillSourceEditor: View {
 
 	@ViewBuilder
 	private func texture(_ s: FillSource) -> some View {
-		if layers.imageNames.isEmpty {
-			Text("Import an image into the project to use it here.")
-				.font(.callout)
-				.foregroundStyle(.secondary)
-		}
-		else {
-			Picker("Image", selection: Binding(get: { s.image }, set: { v in
-				AppStore.shared.perform { _ = app_layer_set_fill_image(layer.id, channel, v) }
-			})) {
-				Text("None").tag(Int32(-1))
-				ForEach(Array(layers.imageNames.enumerated()), id: \.offset) { i, name in
-					Text(name).tag(Int32(i))
-				}
+		Picker("Image", selection: Binding(get: { s.image }, set: { v in
+			AppStore.shared.perform { _ = app_layer_set_fill_image(layer.id, channel, v) }
+		})) {
+			Text("None").tag(Int32(-1))
+			ForEach(Array(layers.imageNames.enumerated()), id: \.offset) { i, name in
+				Text(name).tag(Int32(i))
 			}
 		}
 		if !isColor {

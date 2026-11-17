@@ -69,8 +69,6 @@ struct ExportSheet: View {
 								.foregroundStyle(.secondary)
 								.lineLimit(3)
 						}
-					} footer: {
-						Text("Their strokes can't be painted again at a higher resolution yet: they are scaled up.")
 					}
 				}
 				if running {

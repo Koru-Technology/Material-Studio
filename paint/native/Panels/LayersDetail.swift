@@ -105,8 +105,6 @@ struct LayerDetailSections: View {
 			}
 		} header: {
 			Text("Height Blend")
-		} footer: {
-			Text("The mask edge follows the height of the layer, tall details like fur strands reach past it.")
 		}
 	}
 

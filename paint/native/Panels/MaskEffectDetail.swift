@@ -20,8 +20,6 @@ struct MaskEffectsSection: View {
 			addMenu
 		} header: {
 			Text("Effects")
-		} footer: {
-			Text("Brush strokes paint the Paint effect.")
 		}
 	}
 
@@ -211,10 +209,6 @@ private struct MaskEffectSections: View {
 					}
 				}
 			}
-		} footer: {
-			if effect.isPaint {
-				Text("Brush strokes paint this effect.")
-			}
 		}
 
 		if effect.type == Int32(APP_MASK_EFFECT_ID_SELECTION.rawValue) {
@@ -226,10 +220,6 @@ private struct MaskEffectSections: View {
 				}
 			} header: {
 				Text("Settings")
-			} footer: {
-				if effect.needsIDMap {
-					Text("This project has no ID map yet: picking asks to import one.")
-				}
 			}
 		}
 
@@ -243,16 +233,6 @@ private struct MaskEffectSections: View {
 				}
 			} header: {
 				Text("Settings")
-			} footer: {
-				if effect.needsAO {
-					Text(effect.type == Int32(APP_MASK_EFFECT_DIRT.rawValue) ? "No AO map: cavity only" : "No AO map")
-				}
-				else if effect.needsThickness {
-					Text("No thickness map")
-				}
-				else if effect.type == Int32(APP_MASK_EFFECT_ANCHOR.rawValue) {
-					Text("Uses another layer's mask, height, opacity or occlusion")
-				}
 			}
 		}
 
