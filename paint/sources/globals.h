@@ -39,14 +39,6 @@ any_map_t *import_texture_importers;
 bool           bake_texture_node_baking   = false;
 gpu_texture_t *bake_texture_node_texpaint = NULL;
 
-// ---- nodes_neural/neural_node.c ----
-any_imap_t *neural_node_results;
-ui_node_t  *neural_node_current;
-i32         neural_node_downloading = 0;
-
-// ---- nodes_neural/neural_node_models.c ----
-neural_node_model_t_array_t *neural_node_models = NULL;
-
 // ---- render/make_material.c ----
 shader_context_t *make_material_paint_scon  = NULL; // Texture space paint pass
 shader_context_t *make_material_depth_scon  = NULL;
@@ -96,9 +88,6 @@ i32              box_export_preset_index;
 export_preset_t *box_export_preset = NULL;
 string_array_t  *box_export_channels;
 string_array_t  *box_export_color_spaces;
-
-// ---- ui/box_preferences.c ----
-i32 box_preferences_tab;
 
 // ---- ui/box_projects.c ----
 i32   box_projects_tab_index;
@@ -282,7 +271,6 @@ ui_node_t_array_t   *nodes_material_input;
 ui_node_t_array_t   *nodes_material_texture;
 ui_node_t_array_t   *nodes_material_color;
 ui_node_t_array_t   *nodes_material_utilities;
-ui_node_t_array_t   *nodes_material_neural;
 ui_node_t_array_t   *nodes_material_group;
 node_list_t_array_t *nodes_material_list = NULL;
 

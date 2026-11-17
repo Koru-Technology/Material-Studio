@@ -36,6 +36,7 @@ typedef struct {
 	int32_t  camera_type;     // 0 perspective, 1 orthographic
 	bool     projects_shown;     // iPad: the projects screen is up, the native UI shows it
 	uint32_t projects_signature; // The recent projects list
+	int32_t  finger_paint;       // 0 auto (fingers paint until the pencil is used), 1 always, 2 never
 } app_state_t;
 
 void app_get_state(app_state_t *out);
@@ -98,6 +99,7 @@ void app_set_camera_fov(float fov);    // The view keeps its framing: the camera
 void app_set_camera_pivot(int32_t pivot);
 void app_set_camera_controls(int32_t controls);
 void app_set_camera_type(int32_t type);
+void app_set_finger_paint(int32_t mode); // A setting, saved
 
 // Menu commands, run like the old menus run them (some open the engine's dialogs)
 typedef enum {
@@ -118,7 +120,6 @@ typedef enum {
 	APP_COMMAND_EXPORT_SWATCHES,
 	APP_COMMAND_BAKE_MATERIAL,
 	APP_COMMAND_BAKE_MESH_MAPS,
-	APP_COMMAND_PREFERENCES,
 	APP_COMMAND_VIEW_RESET,
 	APP_COMMAND_VIEW_FRAME,
 	APP_COMMAND_ZOOM_IN,

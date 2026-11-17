@@ -612,44 +612,6 @@ void wave_texture_node_init();
 // ---- nodes_material/wireframe_node.c ----
 void wireframe_node_init();
 
-// ---- nodes_neural/edit_image_node.c ----
-void edit_image_node_init();
-
-// ---- nodes_neural/image_to_pbr_node.c ----
-void image_to_pbr_node_init();
-
-// ---- nodes_neural/neural_node.c ----
-char      *neural_node_vector(ui_node_t *node, ui_node_socket_t *socket);
-ui_node_t *neural_from_node(ui_node_socket_t *inp, i32 socket);
-char      *neural_node_model_url(char *name);
-bool       neural_node_button(ui_node_t *node, char *model);
-void       neural_node_load_result(ui_node_t *node);
-void       neural_node_check_result(ui_node_t *node);
-char      *neural_node_iris_bin();
-char      *neural_node_dir();
-void       neural_node_download_models(string_array_t *models);
-f32       *neural_node_values(ui_node_t *node, i32 count);
-i32        neural_node_model(ui_node_t *node, string_array_t *models);
-char      *neural_node_prompt(ui_node_t *node);
-char      *neural_node_prompt_area(ui_node_t *node);
-
-// ---- nodes_neural/neural_node_models.c ----
-void neural_node_models_init();
-
-// ---- nodes_neural/repeat_node.c ----
-void repeat_node_init();
-
-// ---- nodes_neural/save_image_node.c ----
-void save_image_node_run(ui_node_t *node, gpu_texture_t *result);
-void save_image_node_init();
-
-// ---- nodes_neural/text_to_image_node.c ----
-void text_to_image_node_run(ui_node_t *node, void (*callback)(ui_node_t *));
-void text_to_image_node_init();
-
-// ---- nodes_neural/upscale_image_node.c ----
-void upscale_image_node_init();
-
 // ---- render/make_bake.c ----
 void make_bake_run(node_shader_context_t *con, node_shader_t *shader);
 void make_bake_position_normal(node_shader_t *shader);
@@ -980,17 +942,6 @@ void project_import_mesh_box(char *path, bool replace_existing, bool clear_layer
 // ---- ui/box_new_project.c ----
 void project_fetch_default_meshes();
 void project_new_box();
-
-// ---- ui/box_preferences.c ----
-void  box_preferences_lut_picked(char *path);
-bool  box_preferences_model_exists(char *file_name);
-char *box_preferences_file_name_from_url(char *url);
-void  box_preferences_show();
-void  box_preferences_show_tab(i32 tab);
-void  box_preferences_fetch_themes();
-void  box_preferences_fetch_keymaps();
-i32   box_preferences_get_theme_index();
-i32   box_preferences_get_preset_index();
 
 // ---- ui/box_projects.c ----
 char *box_projects_recent_path(i32 i);
@@ -1668,7 +1619,6 @@ void                   config_apply();
 i32                    config_get_super_sample_quality(f32 f);
 f32                    config_get_super_sample_size(i32 i);
 void                   config_set_texture_res(i32 pos);
-void                   config_set_touch_ui(bool on);
 i32                    config_get_texture_res_x();
 i32                    config_get_texture_res_y();
 i32                    config_get_texture_res_pos(i32 i);

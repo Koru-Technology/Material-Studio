@@ -363,7 +363,6 @@ typedef struct config {
 	char                *blender;
 	bool                 grid_snap;
 	bool                 experimental;
-	i32                  neural_res;
 	bool                 view2d_grid_show;
 	i32                  view2d_grid_cell;
 	bool                 view2d_grid_snap;
@@ -943,7 +942,7 @@ typedef struct layer_data {
 	struct u8_array  *tilemap;      // hash128 of the HSTORE_TILEMAP of the layer's state, all its channels; NULL for groups
 } layer_data_t;
 
-// ---- Shader outputs, export presets, neural models ----
+// ---- Shader outputs, export presets ----
 typedef struct shader_out {
 	char *out_basecol;
 	char *out_roughness;
@@ -974,17 +973,6 @@ typedef struct export_preset_texture {
 	char                *color_space;
 } export_preset_texture_t;
 
-typedef struct neural_node_model {
-	char                *name;
-	char                *memory;
-	char                *size;
-	char                *nodes;
-	struct string_array *urls;
-	char                *web;
-	char                *license;
-	bool                 expanded; // Preferences panel
-} neural_node_model_t;
-
 typedef struct float_node {
 	struct logic_node  *base;
 	f32                 value;
@@ -997,12 +985,6 @@ typedef struct node_group_t_array {
 	int            length;
 	int            capacity;
 } node_group_t_array_t;
-
-typedef struct neural_node_model_t_array {
-	neural_node_model_t **buffer;
-	int                   length;
-	int                   capacity;
-} neural_node_model_t_array_t;
 
 typedef struct buffer_t_array {
 	buffer_t **buffer;

@@ -119,6 +119,7 @@ void app_get_state(app_state_t *out) {
 	out->camera_controls = g_context->camera_controls;
 	out->camera_type     = g_context->camera_type;
 	out->projects_shown  = box_projects_native_shown;
+	out->finger_paint    = g_config->finger_paint;
 	uint32_t h           = 2166136261u;
 	for (i32 i = 0; i < g_config->recent_projects->length; ++i) {
 		h = app_hash_str(h, g_config->recent_projects->buffer[i]);
@@ -385,6 +386,14 @@ void app_set_camera_controls(int32_t controls) {
 	}
 }
 
+void app_set_finger_paint(int32_t mode) {
+	if (!app_ready() || mode < 0 || mode > 2) {
+		return;
+	}
+	g_config->finger_paint = mode;
+	config_save();
+}
+
 void app_set_camera_type(int32_t type) {
 	if (!app_ready() || (type != CAMERA_TYPE_PERSPECTIVE && type != CAMERA_TYPE_ORTHOGRAPHIC)) {
 		return;
@@ -503,9 +512,6 @@ void app_command(int32_t command) {
 		break;
 	case APP_COMMAND_BAKE_MESH_MAPS:
 		box_bake_maps_show();
-		break;
-	case APP_COMMAND_PREFERENCES:
-		box_preferences_show();
 		break;
 	case APP_COMMAND_VIEW_RESET:
 		viewport_reset();

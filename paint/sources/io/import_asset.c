@@ -29,8 +29,11 @@ void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hd
 	else if (path_is_text(path)) {
 		import_text_run(path);
 	}
-	else if (path_is_lut(path)) {
-		box_preferences_lut_picked(path);
+	else if (path_is_lut(path)) { // The color grading of the viewport
+		g_config->lut_path = string_copy(path);
+		import_lut_run(path);
+		config_save();
+		g_context->ddirty = 2;
 	}
 	else if (path_is_project(path)) {
 		import_arm_run_project(path);

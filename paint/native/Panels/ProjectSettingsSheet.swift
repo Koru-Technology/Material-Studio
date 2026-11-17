@@ -1,7 +1,8 @@
 import SwiftUI
 
 // Project settings (app_api_export.h): the working resolution (with the tiled export the change keeps painted detail
-// and is one undo step, running a layer a frame with its progress here) and the history saved in the project
+// and is one undo step, running a layer a frame with its progress here), the history saved in the project, and on the
+// iPad whether fingers paint (an app setting, applied at once)
 struct ProjectSettingsSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var info     = app_resolution_t()
@@ -42,6 +43,18 @@ struct ProjectSettingsSheet: View {
 				} header: {
 					Text("History")
 				}
+#if os(iOS)
+				Section {
+					Picker("Paint with Finger", selection: Binding(get: { AppStore.shared.fingerPaint },
+					                                               set: { v in AppStore.shared.perform { app_set_finger_paint(v) } })) {
+						Text("Auto").tag(Int32(0))
+						Text("Always").tag(Int32(1))
+						Text("Never").tag(Int32(2))
+					}
+				} header: {
+					Text("Touch")
+				}
+#endif
 			}
 			.confirmationDialog("Clear the undo history?", isPresented: $clearing, titleVisibility: .visible) {
 				Button("Clear History", role: .destructive) {

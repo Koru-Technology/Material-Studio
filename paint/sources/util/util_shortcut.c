@@ -98,9 +98,6 @@ void util_shortcut_global() {
 	else if (keymap_shortcut(any_map_get(g_keymap, "file_import_assets"), SHORTCUT_TYPE_STARTED)) {
 		project_import_asset(NULL, true);
 	}
-	else if (keymap_shortcut(any_map_get(g_keymap, "edit_prefs"), SHORTCUT_TYPE_STARTED)) {
-		box_preferences_show();
-	}
 }
 
 void util_shortcut_brush() {

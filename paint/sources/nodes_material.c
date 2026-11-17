@@ -75,16 +75,6 @@ void nodes_material_init() {
 	vector_rotate_node_init();
 	vector_transform_node_init();
 
-#ifdef WITH_NEURAL
-	nodes_material_neural = any_array_create_from_raw((void *[]){}, 0);
-	edit_image_node_init();
-	image_to_pbr_node_init();
-	repeat_node_init();
-	save_image_node_init();
-	text_to_image_node_init();
-	upscale_image_node_init();
-#endif
-
 	nodes_material_mm = any_array_create_from_raw((void *[]){}, 0);
 	mm_nodes_init();
 	mm_bridge_init();
@@ -99,9 +89,6 @@ void nodes_material_init() {
 	any_array_push(nodes_material_list, nodes_material_texture);
 	any_array_push(nodes_material_list, nodes_material_color);
 	any_array_push(nodes_material_list, nodes_material_utilities);
-#ifdef WITH_NEURAL
-	any_array_push(nodes_material_list, nodes_material_neural);
-#endif
 	any_array_push(nodes_material_list, nodes_material_mm);
 	any_array_push(nodes_material_list, nodes_material_group);
 }
@@ -113,9 +100,6 @@ string_array_t *nodes_material_category_names() {
 	any_array_push(names, _tr("Texture"));
 	any_array_push(names, _tr("Color"));
 	any_array_push(names, _tr("Utilities"));
-#ifdef WITH_NEURAL
-	any_array_push(names, _tr("Neural"));
-#endif
 	any_array_push(names, _tr("Material Maker"));
 	any_array_push(names, _tr("Group"));
 	return names;

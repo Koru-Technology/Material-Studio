@@ -29,6 +29,7 @@ final class AppStore: ChangeOnly {
 	private(set) var cameraPivot: Int32    = 0
 	private(set) var cameraControls: Int32 = 0
 	private(set) var cameraType: Int32     = 0
+	private(set) var fingerPaint: Int32    = 0 // 0 auto, 1 always, 2 never
 	private(set) var cameraRotation      = SIMD4<Float>(0, 0, 0, 1)
 
 
@@ -61,6 +62,7 @@ final class AppStore: ChangeOnly {
 		update(\.cameraPivot, s.camera_pivot)
 		update(\.cameraControls, s.camera_controls)
 		update(\.cameraType, s.camera_type)
+		update(\.fingerPaint, s.finger_paint)
 		update(\.cameraRotation, SIMD4(s.camera_rot.0, s.camera_rot.1, s.camera_rot.2, s.camera_rot.3))
 		LayersStore.shared.refresh(s)
 		MaterialsStore.shared.refresh()

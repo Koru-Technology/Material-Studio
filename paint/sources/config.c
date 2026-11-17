@@ -111,7 +111,6 @@ void config_brush_save_update() {
 	X(STRING, blender, CONFIG_ANY)                                                               \
 	X(BOOL, grid_snap, CONFIG_ANY)                                                               \
 	X(BOOL, experimental, CONFIG_ANY)                                                            \
-	X(I32, neural_res, 1, 16384)                                                                 \
 	X(BOOL, view2d_grid_show, CONFIG_ANY)                                                        \
 	X(I32, view2d_grid_cell, 1, 16384)                                                           \
 	X(BOOL, view2d_grid_snap, CONFIG_ANY)                                                        \
@@ -338,7 +337,6 @@ config_t *config_create_default() {
 	c->tooltips             = true;
 #endif
 	c->experimental     = false;
-	c->neural_res       = 512;
 	c->materials_folder = "";
 	c->reload_project   = true;
 	c->brush_radius = 0.5;
@@ -724,16 +722,6 @@ i32 config_get_texture_res_x() {
 
 i32 config_get_texture_res_y() {
 	return (i32)base_res_y;
-}
-
-// The touch UI (Preferences): long press menus, its theme and scale
-void config_set_touch_ui(bool on) {
-	g_config->touch_ui = on;
-	ui_touch_control   = on;
-	config_load_theme(g_config->theme, true);
-	box_preferences_set_scale();
-	base_redraw_ui();
-	g_context->hscale_was_changed = true;
 }
 
 i32 config_get_texture_res_pos(i32 i) {

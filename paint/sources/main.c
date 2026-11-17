@@ -1,10 +1,6 @@
 
 #include "global.h"
 
-#ifdef IRON_MACOS
-#define WITH_NEURAL // Neural nodes: they run downloaded desktop binaries (nodes_neural/neural_node.c)
-#endif
-
 #include "material_maker/mm_core.c"
 
 #include "io/export_arm.c"
@@ -125,18 +121,6 @@
 #include "nodes_material/wave_texture_node.c"
 #include "nodes_material/wireframe_node.c"
 
-
-#ifdef WITH_NEURAL
-#include "nodes_neural/edit_image_node.c"
-#include "nodes_neural/image_to_pbr_node.c"
-#include "nodes_neural/neural_node.c"
-#include "nodes_neural/neural_node_models.c"
-#include "nodes_neural/repeat_node.c"
-#include "nodes_neural/save_image_node.c"
-#include "nodes_neural/text_to_image_node.c"
-#include "nodes_neural/upscale_image_node.c"
-#endif
-
 #include "render/make_bake.c"
 #include "render/make_blur.c"
 #include "render/make_brush.c"
@@ -180,7 +164,6 @@
 #include "ui/box_export.c"
 #include "ui/box_import_mesh.c"
 #include "ui/box_new_project.c"
-#include "ui/box_preferences.c"
 #include "ui/box_projects.c"
 #include "ui/ui_base.c"
 #include "ui/ui_box.c"
@@ -353,7 +336,6 @@ void _kickstart() {
 	ui_box_hwnd                   = ui_window_create();
 	render_path_raytrace_f32a     = f32_array_create(24);
 	render_path_raytrace_help_mat = mat4_identity();
-	neural_node_results           = any_imap_create();
 
 	sys_on_resize = base_on_resize;
 	sys_on_w      = base_w;

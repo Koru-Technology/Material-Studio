@@ -69,7 +69,6 @@ any_map_t *keymap_get_default() {
 	any_map_set(keymap, "file_export_textures_as", "ctrl+shift+e");
 	any_map_set(keymap, "edit_undo", "ctrl+z");
 	any_map_set(keymap, "edit_redo", "ctrl+shift+z");
-	any_map_set(keymap, "edit_prefs", "ctrl+k");
 	any_map_set(keymap, "view_reset", "0");
 	any_map_set(keymap, "view_front", "1");
 	any_map_set(keymap, "view_back", "ctrl+1");

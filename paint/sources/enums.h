@@ -463,18 +463,6 @@ typedef enum {
 } texture_res_t;
 
 typedef enum {
-	PREFERENCES_TAB_INTERFACE = 0,
-	PREFERENCES_TAB_LIBRARY   = 1,
-	PREFERENCES_TAB_THEME     = 2,
-	PREFERENCES_TAB_USAGE     = 3,
-	PREFERENCES_TAB_CAMERA    = 4,
-	PREFERENCES_TAB_PEN       = 5,
-	PREFERENCES_TAB_VIEWPORT  = 6,
-	PREFERENCES_TAB_KEYMAP    = 7,
-	PREFERENCES_TAB_NEURAL    = 8,
-} preferences_tab_t;
-
-typedef enum {
 	ICON18_EYE_ON  = 0,
 	ICON18_EYE_OFF = 1,
 } icon18_t;

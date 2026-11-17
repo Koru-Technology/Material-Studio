@@ -256,7 +256,6 @@ struct PadMenuBar: View {
 					Section {
 						Button("Capture Screenshot", systemImage: "camera") { run(APP_COMMAND_SCREENSHOT) }
 						Button("Project Settings…", systemImage: "slider.horizontal.3") { settings = true }
-						Button("Settings…", systemImage: "gear") { run(APP_COMMAND_PREFERENCES) }
 					}
 				} label: {
 					Image(systemName: "ellipsis")
