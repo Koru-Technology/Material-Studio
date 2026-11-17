@@ -267,7 +267,7 @@ static mesh_data_t *startup_make_sphere(void) {
 	for (int x = 0; x < w; ++x) {
 		cu[x] = -startup_cos(x * 64 / SPHERE_SEGS_U);
 		su[x] = startup_sin(x * 64 / SPHERE_SEGS_U);
-		tu[x] = startup_quantize(x / (float)SPHERE_SEGS_U);
+		tu[x] = startup_quantize(1.0f - x / (float)SPHERE_SEGS_U); // As geom_make_uv_sphere: images read from outside
 	}
 
 	for (int y = 0; y < h; ++y) {

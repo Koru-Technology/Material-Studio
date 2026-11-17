@@ -104,7 +104,7 @@ raw_mesh_t *geom_make_uv_sphere(f32 radius, i32 width_segments, i32 height_segme
 			mesh->posa->buffer[i4 + 3] = math_floor(nor.z * 32767);
 			mesh->nora->buffer[i2]     = math_floor(nor.x * 32767);
 			mesh->nora->buffer[i2 + 1] = math_floor(nor.y * 32767);
-			i32 tx                     = (math_floor((u + u_off) * 32767) - 1);
+			i32 tx                     = (math_floor((1.0 - u - u_off) * 32767) - 1); // Around counterclockwise seen from above: images read from outside
 			i32 ty                     = (math_floor(v_flip * 32767) - 1);
 			tx                         = tx < 0 ? 0 : (tx > 32767 ? 32767 : tx);
 			ty                         = ty < 0 ? 0 : (ty > 32767 ? 32767 : ty);
@@ -332,7 +332,7 @@ static mesh_geo_t *nodes_mesh_shape_cap(i32 segments, f32 z) {
 		g->pos[i * 3 + 2] = z;
 		g->nor[i * 3 + 2] = z > 0.0 ? 1.0 : -1.0;
 		g->tex[i * 2]     = (z > 0.0 ? 0.25 : 0.75) + g->pos[i * 3] * 0.5;
-		g->tex[i * 2 + 1] = 0.25 - g->pos[i * 3 + 1] * 0.5;
+		g->tex[i * 2 + 1] = 0.25 + (z > 0.0 ? -1.0 : 1.0) * g->pos[i * 3 + 1] * 0.5; // The top goes on up from the front, the bottom on down
 	}
 	for (i32 i = 0; i < segments; ++i) {
 		g->ind[i * 3]     = segments + 1;
@@ -342,25 +342,31 @@ static mesh_geo_t *nodes_mesh_shape_cap(i32 segments, f32 z) {
 	return g;
 }
 
+// Each face of the box as seen from outside: normal, right (u) and down (v), an image on it reads upright. The top goes
+// on up from the front face and the bottom on down, as a cross unwrap.
+static const f32 nodes_mesh_box_frames[6][3][3] = {
+    {{1, 0, 0}, {0, 1, 0}, {0, 0, -1}},  {{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}}, {{0, 1, 0}, {-1, 0, 0}, {0, 0, -1}},
+    {{0, -1, 0}, {1, 0, 0}, {0, 0, -1}}, {{0, 0, 1}, {1, 0, 0}, {0, -1, 0}},   {{0, 0, -1}, {1, 0, 0}, {0, 1, 0}},
+};
+
 static mesh_geo_t *nodes_mesh_shape_box() {
 	mesh_geo_t *g = util_geo_create(24, 36);
 	for (i32 face = 0; face < 6; ++face) {
-		i32 axis  = face / 2;
-		f32 sign  = face % 2 == 0 ? 1.0 : -1.0;
-		i32 u     = (axis + 1) % 3;
-		i32 v     = (axis + 2) % 3;
-		f32 cu[4] = {-0.5, 0.5, 0.5, -0.5};
-		f32 cv[4] = {-0.5, -0.5, 0.5, 0.5};
+		const f32 *n = nodes_mesh_box_frames[face][0];
+		const f32 *r = nodes_mesh_box_frames[face][1];
+		const f32 *d = nodes_mesh_box_frames[face][2];
+		// Right x down points into the box: in this order the corners go counterclockwise seen from outside
+		f32 cs[4] = {0.0, 0.0, 1.0, 1.0};
+		f32 ct[4] = {0.0, 1.0, 1.0, 0.0};
 		for (i32 i = 0; i < 4; ++i) {
-			i32 vi                = face * 4 + i;
-			i32 corner            = sign > 0.0 ? i : 3 - i;
-			g->pos[vi * 3 + axis] = 0.5 * sign;
-			g->pos[vi * 3 + u]    = cu[corner];
-			g->pos[vi * 3 + v]    = cv[corner];
-			g->nor[vi * 3 + axis] = sign;
+			i32 vi = face * 4 + i;
+			for (i32 k = 0; k < 3; ++k) {
+				g->pos[vi * 3 + k] = 0.5 * n[k] + (cs[i] - 0.5) * r[k] + (ct[i] - 0.5) * d[k];
+				g->nor[vi * 3 + k] = n[k];
+			}
 			// Faces are laid out in a 3x2 grid
-			g->tex[vi * 2]     = (face % 3 + cu[corner] + 0.5) / 3.0;
-			g->tex[vi * 2 + 1] = (face / 3 + 0.5 - cv[corner]) / 3.0;
+			g->tex[vi * 2]     = (face % 3 + cs[i]) / 3.0;
+			g->tex[vi * 2 + 1] = (face / 3 + ct[i]) / 3.0;
 		}
 		u32 quad[6] = {0, 1, 2, 0, 2, 3};
 		for (i32 i = 0; i < 6; ++i) {
@@ -472,7 +478,7 @@ static mesh_geo_t *_shape_make_capsule(f32 size_x, f32 size_y, f32 size_z, i32 s
 		for (i32 k = 0; k <= sides; ++k) {
 			f32    a   = k / (f32)sides * math_pi() * 2.0;
 			vec4_t nor = vec4_norm((vec4_t){math_cos(a) * cr / rx, math_sin(a) * cr / ry, sr / cap, 1.0});
-			_shape_capsule_vertex(g, vi++, math_cos(a) * cr * rx, math_sin(a) * cr * ry, z, nor, k / (f32)sides, v);
+			_shape_capsule_vertex(g, vi++, math_cos(a) * cr * rx, math_sin(a) * cr * ry, z, nor, k / (f32)sides, 1.0 - v); // v down from the top
 		}
 	}
 	for (i32 r = 0; r < rows - 1; ++r) {
