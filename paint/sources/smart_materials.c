@@ -1,6 +1,7 @@
 // Smart materials: a fill layer with its masks, or a group of layers, saved to reuse in any project.
-// smart_materials/<name>.json in the app's save folder describes the layers (kind, parent, material, uv settings,
-// blending, channels), the materials are exported next to it as <name>_m<k>.arm and <name>.png is the preview.
+// smart_materials/<name>.json in the app's save folder describes the layers (kind, parent, fill, blending, channels),
+// the materials fills take channels from are exported next to it as <name>_m<k>.arm and <name>.png is the preview. A
+// fill's images are named by their files, found again among the project's images.
 // Painted pixels belong to one mesh's uv layout and are not kept: painted masks come back black, ready to paint
 // the material in, paint layers come back empty.
 
@@ -167,7 +168,7 @@ static void smart_materials_write_icon(slot_material_t *m, char *path) {
 	free(out);
 }
 
-// Mask stacks as a string of floats, json arrays are not read back into the flat map
+// Mask stacks and fills as a string of floats, json arrays are not read back into the flat map
 static char *smart_materials_floats_to_string(f32_array_t *a) {
 	char *s = "";
 	for (i32 i = 0; i < a->length; ++i) {
@@ -176,7 +177,8 @@ static char *smart_materials_floats_to_string(f32_array_t *a) {
 	return s;
 }
 
-static f32_array_t *smart_materials_string_to_floats(char *s) {
+// A multiple of stride floats, NULL for none
+static f32_array_t *smart_materials_string_to_floats(char *s, i32 stride) {
 	if (s == NULL) {
 		return NULL;
 	}
@@ -186,7 +188,7 @@ static f32_array_t *smart_materials_string_to_floats(char *s) {
 		f32_array_push(a, f);
 		s = end;
 	}
-	if (a->length == 0 || a->length % MASK_EFFECT_STRIDE != 0) {
+	if (a->length == 0 || a->length % stride != 0) {
 		array_delete(a);
 		return NULL;
 	}
@@ -202,10 +204,17 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 	iron_create_directory(smart_materials_dir());
 	slot_layer_t_array_t    *layers    = smart_materials_subtree(root);
 	slot_material_t_array_t *materials = any_array_create_from_raw((void *[]){}, 0);
+	string_array_t          *images    = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < layers->length; ++i) {
-		slot_material_t *m = layers->buffer[i]->fill_material;
-		if (m != NULL && array_index_of(materials, m) == -1) {
-			any_array_push(materials, m);
+		for (i32 c = 0; layers->buffer[i]->fill != NULL && c < FILL_CHANNEL_COUNT; ++c) {
+			slot_material_t *m = fill_source_material(&layers->buffer[i]->fill->ch[c]);
+			if (m != NULL && array_index_of(materials, m) == -1) {
+				any_array_push(materials, m);
+			}
+			asset_t *a = fill_source_asset(&layers->buffer[i]->fill->ch[c]);
+			if (a != NULL && string_array_index_of(images, a->file) == -1) {
+				any_array_push(images, a->file);
+			}
 		}
 	}
 
@@ -223,6 +232,10 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 	for (i32 k = 0; k < materials->length; ++k) {
 		json_encode_string(string_tmp("m%d", k), materials->buffer[k]->canvas->name);
 	}
+	json_encode_i32("images", images->length);
+	for (i32 k = 0; k < images->length; ++k) {
+		json_encode_string(string_tmp("i%d", k), images->buffer[k]);
+	}
 	for (i32 i = 0; i < layers->length; ++i) {
 		slot_layer_t *l = layers->buffer[i];
 		json_encode_begin_object_key(string_tmp("l%d", i));
@@ -230,10 +243,19 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 		json_encode_i32("parent", l == root || l->parent == NULL ? -1 : array_index_of(layers, l->parent));
 		json_encode_string("name", l->name);
 		json_encode_i32("visible", l->visible);
-		json_encode_i32("material", l->fill_material != NULL ? array_index_of(materials, l->fill_material) : -1);
-		json_encode_f32("scale", l->scale);
-		json_encode_f32("angle", l->angle);
-		json_encode_i32("uv_type", l->uv_type);
+		if (l->fill != NULL) { // Materials and images by their place in the lists above
+			f32_array_t *f = fill_encode(l->fill, false);
+			for (i32 c = 0; c < FILL_CHANNEL_COUNT; ++c) {
+				f32     *src = f->buffer + FILL_ENCODE_HEAD + c * FILL_ENCODE_SOURCE;
+				asset_t *a   = fill_source_asset(&l->fill->ch[c]);
+				src[FILL_ENCODE_IMAGE]    = a != NULL ? string_array_index_of(images, a->file) : -1;
+				slot_material_t *mat      = fill_source_material(&l->fill->ch[c]);
+				src[FILL_ENCODE_MATERIAL] = mat != NULL ? array_index_of(materials, mat) : -1;
+			}
+			json_encode_string("fill", smart_materials_floats_to_string(f));
+			json_encode_string("decal_mat", smart_materials_floats_to_string(mat4_to_f32_array(l->decal_mat)));
+			array_delete(f);
+		}
 		json_encode_i32("uv_map", l->uv_map);
 		json_encode_f32("opacity", l->mask_opacity);
 		json_encode_i32("blending", l->blending);
@@ -267,7 +289,7 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 	free(json);
 
 	// Preview: the material of the root, else the first one
-	slot_material_t *icon_material = root->fill_material != NULL ? root->fill_material : materials->length > 0 ? materials->buffer[0] : NULL;
+	slot_material_t *icon_material = fill_main_material(root->fill) != NULL ? fill_main_material(root->fill) : materials->length > 0 ? materials->buffer[0] : NULL;
 	char            *icon_path     = smart_materials_path(name, ".png");
 	if (iron_file_exists(icon_path)) {
 		data_delete_texture(icon_path); // Replaced, the cached one goes
@@ -368,9 +390,6 @@ slot_layer_t *smart_materials_insert(char *name) {
 			l->name = string_copy(slot_layer_unique_name(l, lname));
 		}
 		l->visible                = smart_materials_i32(m, p, "visible", 1) != 0;
-		l->scale                  = smart_materials_f32(m, p, "scale", 1.0);
-		l->angle                  = smart_materials_f32(m, p, "angle", 0.0);
-		l->uv_type                = smart_materials_i32(m, p, "uv_type", UV_TYPE_UVMAP);
 		l->uv_map                 = smart_materials_i32(m, p, "uv_map", 0);
 		l->mask_opacity           = smart_materials_f32(m, p, "opacity", 1.0);
 		l->blending               = smart_materials_i32(m, p, "blending", BLEND_TYPE_MIX);
@@ -392,15 +411,35 @@ slot_layer_t *smart_materials_insert(char *name) {
 		l->height_blend_offset    = smart_materials_f32(m, p, "height_blend_offset", 0.0);
 		l->height_blend_reach     = smart_materials_f32(m, p, "height_blend_reach", 0.03);
 		if (slot_layer_is_mask(l)) {
-			l->mask_effects     = smart_materials_string_to_floats(smart_materials_get(m, p, "mask_effects"));
+			l->mask_effects     = smart_materials_string_to_floats(smart_materials_get(m, p, "mask_effects"), MASK_EFFECT_STRIDE);
 			l->mask_stack_dirty = l->mask_effects != NULL;
 		}
 		if (l->height_blend) {
 			make_material_height_used = true;
 		}
-		i32 mat          = smart_materials_i32(m, p, "material", -1);
-		l->fill_material = mat >= 0 && mat < mats ? materials[mat] : NULL;
-		l->object_mask   = 0;
+		f32_array_t *fill = smart_materials_string_to_floats(smart_materials_get(m, p, "fill"), FILL_ENCODE_LENGTH);
+		if (fill != NULL && fill->length >= FILL_ENCODE_LENGTH) {
+			for (i32 c = 0; c < FILL_CHANNEL_COUNT; ++c) { // Back to the uids and asset ids of this project
+				f32 *src = fill->buffer + FILL_ENCODE_HEAD + c * FILL_ENCODE_SOURCE;
+				i32  mi  = (i32)src[FILL_ENCODE_MATERIAL];
+				src[FILL_ENCODE_MATERIAL] = mi >= 0 && mi < mats && materials[mi] != NULL ? (f32)materials[mi]->uid : 0.0;
+				i32   ii   = (i32)src[FILL_ENCODE_IMAGE];
+				char *file = ii >= 0 ? any_map_get(m, string_tmp("i%d", ii)) : NULL;
+				src[FILL_ENCODE_IMAGE] = -1;
+				for (i32 k = 0; file != NULL && k < g_project->_->assets->length; ++k) {
+					if (string_equals(g_project->_->assets->buffer[k]->file, file)) {
+						src[FILL_ENCODE_IMAGE] = g_project->_->assets->buffer[k]->id;
+					}
+				}
+			}
+			l->fill       = fill_decode(fill, false);
+			l->fill_dirty = l->fill != NULL;
+		}
+		f32_array_t *decal = smart_materials_string_to_floats(smart_materials_get(m, p, "decal_mat"), 16);
+		if (decal != NULL && decal->length == 16) {
+			l->decal_mat = mat4_from_f32_array(decal, 0);
+		}
+		l->object_mask = 0;
 	}
 
 	// Pixels: fill layers and masks from their material, painted masks black, paint layers empty
@@ -415,8 +454,9 @@ slot_layer_t *smart_materials_insert(char *name) {
 		mask_stack_effects_from_file(created[i]->mask_effects, created, count); // Layer references within the smart material
 	}
 	for (i32 i = 0; i < count; ++i) {
-		if (created[i]->fill_material != NULL) {
-			layers_refresh_fill_layer(created[i]);
+		if (created[i]->fill != NULL) {
+			fill_reshaped(created[i]);
+			fill_rasterize(created[i]); // New: its pixels at once
 		}
 	}
 
@@ -472,7 +512,7 @@ slot_layer_t *smart_materials_save_target() {
 	if (l == NULL || slot_layer_is_mask(l)) {
 		return NULL;
 	}
-	return slot_layer_is_group(l) || l->fill_material != NULL ? l : NULL;
+	return slot_layer_is_group(l) || l->fill != NULL ? l : NULL;
 }
 
 static void smart_materials_save_next(void *name) {
@@ -496,6 +536,6 @@ void smart_materials_show_save() {
 	if (l == NULL) {
 		return;
 	}
-	smart_materials_save_name = string_copy(l->fill_material != NULL ? l->fill_material->canvas->name : l->name);
+	smart_materials_save_name = string_copy(fill_main_material(l->fill) != NULL ? fill_main_material(l->fill)->canvas->name : l->name);
 	ui_box_show_custom(&smart_materials_save_box, 400, 200, NULL, true, "");
 }

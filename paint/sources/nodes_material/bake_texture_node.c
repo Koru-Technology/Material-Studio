@@ -51,7 +51,7 @@ static void bake_to_target_check_result(void *_) {
 		layers_set_bits();
 	}
 
-	layers_update_fill_layers();
+	fill_tile_invalidate(NULL);
 
 	if (_bake_to_target_done != NULL) {
 		_bake_to_target_done(_bake_to_target_data);

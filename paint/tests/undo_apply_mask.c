@@ -69,17 +69,17 @@ void next() {
 	}
 	else if (step == 3) {
 		after = layer_hash(f);
-		check(f->fill_material == NULL && mask_of(f) == NULL && !string_equals(after, before), "mask applied to the fill layer, now painted");
+		check(f->fill == NULL && mask_of(f) == NULL && !string_equals(after, before), "mask applied to the fill layer, now painted");
 		history_undo();
 	}
 	else if (step == 4) {
 		m = mask_of(f);
-		check(f->fill_material != NULL, "undo: a fill layer again");
+		check(f->fill != NULL, "undo: a fill layer again");
 		check(m != NULL && string_equals(script_texture_hash(m->texpaint), mask), "undo: the mask back byte for byte");
 		history_redo();
 	}
 	else if (step == 5) {
-		check(f->fill_material == NULL && mask_of(f) == NULL && string_equals(layer_hash(f), after), "redo: the applied layer back");
+		check(f->fill == NULL && mask_of(f) == NULL && string_equals(layer_hash(f), after), "redo: the applied layer back");
 		// A fill mask onto a paint layer
 		p = script_layer_new();
 	}
@@ -91,7 +91,7 @@ void next() {
 	else if (step == 7) {
 		before = layer_hash(p);
 		mask   = script_texture_hash(m->texpaint);
-		check(m->fill_material != NULL, "a fill mask");
+		check(m->fill != NULL, "a fill mask");
 		script_layer_apply_mask(m);
 	}
 	else if (step == 8) {
@@ -101,7 +101,7 @@ void next() {
 	else if (step == 9) {
 		m = mask_of(p);
 		check(string_equals(layer_hash(p), before), "undo: the layer back byte for byte");
-		check(m != NULL && m->fill_material != NULL, "undo: a fill mask again");
+		check(m != NULL && m->fill != NULL, "undo: a fill mask again");
 		check(m != NULL && string_equals(script_texture_hash(m->texpaint), mask), "undo: the mask's render back");
 		history_redo(); // Restored at once (frames after it the selected layer may be dilated again, as after any apply)
 		check(mask_of(p) == NULL && string_equals(layer_hash(p), after), "redo: the applied layer back");

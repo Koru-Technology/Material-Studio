@@ -6,7 +6,6 @@ i32 layers_max_layers = 18;
 i32 layers_max_layers = 255;
 #endif
 
-uv_type_t _layers_uv_type;
 mat4_t    _layers_decal_mat;
 i32       _layers_position;
 i32       _layers_base_color;
@@ -95,7 +94,6 @@ void layers_resize() {
 // Live layer and paint targets that follow the texture resolution (layers out of the project for undo are records,
 // without textures)
 void layers_resize_targets() {
-	stroke_refine_reset(); // Records of the old size go
 	material_cache_reset(); // And material caches
 
 	any_map_t *rts = render_path_render_targets;

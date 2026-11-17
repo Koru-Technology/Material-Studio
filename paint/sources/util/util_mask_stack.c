@@ -600,7 +600,7 @@ static u64 mask_stack_inputs_key(slot_layer_t *m) {
 }
 
 // Masks the anchors of m read evaluate first, their passes use the same scratch. One evaluating already (a cycle) is
-// read as it was.
+// read as it was. Fill layers they or a Mask Builder's micro details read are rasterized now (util_fill.c).
 static void mask_stack_anchors_prepare(slot_layer_t *m) {
 	if (m->mask_effects == NULL) {
 		return;
@@ -608,9 +608,13 @@ static void mask_stack_anchors_prepare(slot_layer_t *m) {
 	i32 n = mask_stack_count(m);
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
+		if (e.visible) {
+			fill_ensure(mask_effect_micro_layer(&e));
+		}
 		if (!e.visible || e.type != MASK_EFFECT_ANCHOR) {
 			continue;
 		}
+		fill_ensure(mask_stack_layer_by_id((i32)e.params[0]));
 		slot_layer_t *l = mask_stack_layer_by_id((i32)e.params[0]);
 		slot_layer_t *r = l != NULL && mask_stack_anchor_reads_mask(l, &e) ? mask_stack_anchor_mask(l) : NULL;
 		if (r != NULL && r != m && !r->mask_evaluating && !mask_stack_is_trivial(r) && (r->mask_stack_dirty || r->texmask == NULL)) {

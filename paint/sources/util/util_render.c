@@ -467,8 +467,8 @@ void util_render_brush_scene_begin(util_render_brush_scene_t *sc) {
 		g_context->layer = g_context->layer->parent;
 	}
 
-	sc->fill_material               = g_context->layer->fill_material;
-	g_context->layer->fill_material = NULL;
+	sc->fill               = g_context->layer->fill;
+	g_context->layer->fill = NULL;
 
 	render_path_paint_use_live_layer(true);
 	make_material_parse_paint_material(false);
@@ -575,7 +575,7 @@ void util_render_brush_scene_end(util_render_brush_scene_t *sc) {
 	g_context->prev_paint_vec_y = -1;
 	g_context->pdirty           = sc->pdirty;
 	render_path_paint_use_live_layer(false);
-	g_context->layer->fill_material = sc->fill_material;
+	g_context->layer->fill = sc->fill;
 	g_context->layer                = sc->layer;
 	g_context->material             = sc->material;
 	g_context->tool                 = sc->tool;

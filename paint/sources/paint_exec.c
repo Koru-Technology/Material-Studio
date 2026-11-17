@@ -8,7 +8,7 @@
 // Otherwise every op runs at once, as painting did before.
 //
 // The stroke model emits into the open scope (render_path_paint_commands_paint_stroke and the other _stroke entries).
-// Work outside it (a fill layer, a fill rendered for a replay or an export tile, bakes, paths, sharpening, replays) runs
+// Work outside it (bakes, paths, sharpening, replays) runs
 // isolated (paint_exec_isolate_begin / end, which the public render_path_paint_commands_paint, _dilate and _clear_blend
 // do): at once, against the targets and context its caller set, never part of a recorded stroke, whether a scope is
 // open or not. Ops of the open scope waiting for its end run first when they paint the same targets with the same
@@ -586,23 +586,19 @@ void paint_exec_test_scope(i32 open) {
 	}
 }
 
-// Scripts: fill layer l rendered by layers_render_fill_rect at w x w (a replay or an export tile), the hashes of its
-// base, normal and pack; "" when it did not render
+// Scripts: fill layer l rendered by fill_render at w x w (a replay or an export tile), the hashes of its base, normal
+// and pack; "" when it did not render
 char *paint_exec_test_fill_rect(slot_layer_t *l, i32 w) {
-	static gpu_texture_t *out[3]     = {NULL, NULL, NULL};
-	static gpu_texture_t *scratch[5] = {NULL, NULL, NULL, NULL, NULL};
+	static gpu_texture_t *out[3] = {NULL, NULL, NULL};
 	if (l == NULL || l->texpaint == NULL || l->texpaint_nor == NULL) {
 		return "";
 	}
 	gpu_texture_t *src[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
 	for (i32 k = 0; k < 3; ++k) {
 		util_texture_ensure_target(&out[k], w, w, src[k]->format);
-		util_texture_ensure_target(&scratch[k], w, w, src[k]->format);
 	}
-	util_texture_ensure_target(&scratch[3], w, w, src[1]->format);
-	util_texture_ensure_target(&scratch[4], w, w, src[2]->format);
-	paint_target_t t = {.w = w, .h = w, .uv_rect = {0.0, 0.0, 1.0, 1.0}, .res_w = w, .res_h = w, .channels = 3, .out = {out[0], out[1], out[2]}};
-	if (!layers_render_fill_rect(l, &t, scratch)) {
+	f32 all[4] = {0.0, 0.0, 1.0, 1.0};
+	if (!fill_render(l, out, all)) {
 		return "";
 	}
 	return string("%s %s %s", script_texture_hash(out[0]), script_texture_hash(out[1]), script_texture_hash(out[2]));

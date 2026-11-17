@@ -75,13 +75,14 @@ void next() {
 	}
 	frame          = 0;
 	context_t *ctx = script_get_context();
+	fill_ensure_all(); // Fill rasters the checks read, without waiting for them to settle
 
 	if (step == 0) {
 		script_material_set(mat_checker);
 		fill = script_layer_new_fill();
 	}
 	else if (step == 1) {
-		check(fill != NULL && fill->fill_material == mat_checker, "fill layer holds the material");
+		check(fill != NULL && fill_main_material(fill->fill) == mat_checker, "fill layer holds the material");
 		layers = script_layer_count();
 		stroke(0.45);
 	}
@@ -114,16 +115,17 @@ void next() {
 	else if (step == 6) {
 		check(ctx->layer == mask, "stroke on the fill layer reuses its mask");
 		check(script_layer_count() == layers + 1, "no second mask");
-		before      = copy_pixels(fill);
-		fill->scale = 3.0;
-		script_layer_update(fill);
+		before = copy_pixels(fill);
+		app_layer_set_value(fill->id, 6, 3.0); // Scale
+		app_layer_set_value(fill->id, 7, 3.0);
+		app_drag_end();
 	}
 	else if (step == 7) {
 		int d = diff_pixels(fill, before);
 		check(d > 1000, string("uv scale changes the fill layer (%d)", d));
-		before      = copy_pixels(fill);
-		fill->angle = 45.0;
-		script_layer_update(fill);
+		before = copy_pixels(fill);
+		app_layer_set_value(fill->id, 10, 45.0); // Rotation
+		app_drag_end();
 	}
 	else if (step == 8) {
 		int d = diff_pixels(fill, before);
@@ -133,14 +135,14 @@ void next() {
 		check(script_layer_to_fill(fill), "material swap accepted");
 	}
 	else if (step == 9) {
-		check(fill->fill_material == mat_red, "fill layer has the new material");
-		check(fill->scale == 3.0 && fill->angle == 45.0, "swap keeps the layer's uv settings");
+		check(fill_main_material(fill->fill) == mat_red, "fill layer has the new material");
+		check(app_layer_value(fill->id, 6) == 3.0 && app_layer_value(fill->id, 10) == 45.0, "swap keeps the layer's uv settings");
 		int d = diff_pixels(fill, before);
 		check(d > 1000, string("swap repaints the layer (%d)", d));
 		history_undo();
 	}
 	else if (step == 10) {
-		check(fill->fill_material == mat_checker, "undo restores the material");
+		check(fill_main_material(fill->fill) == mat_checker, "undo restores the material");
 		int d = diff_pixels(fill, before);
 		check(d < 100, string("undo repaints the old material (%d)", d));
 	}

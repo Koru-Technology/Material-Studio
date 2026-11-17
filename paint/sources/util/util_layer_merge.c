@@ -74,6 +74,7 @@ static void layers_bake_opacity(slot_layer_t *l) {
 }
 
 void layers_merge_down() {
+	fill_ensure_all(); // Fills merge as their pixels
 	slot_layer_t *l1 = g_context->layer;
 	slot_layer_t *l0 = g_project->_->layers->buffer[array_index_of(g_project->_->layers, l1) - slot_layer_count_descendants(l1) - 1];
 
@@ -113,6 +114,7 @@ slot_layer_t *layers_merge_group(slot_layer_t *l) {
 	if (!slot_layer_is_group(l)) {
 		return NULL;
 	}
+	fill_ensure_all();
 
 	if (!slot_layer_shows(l)) {
 		if (layers_can_delete(l)) {
@@ -157,7 +159,7 @@ slot_layer_t *layers_merge_group(slot_layer_t *l) {
 
 	children->buffer[0]->parent = l->parent;
 	children->buffer[0]->name   = l->name;
-	if (children->buffer[0]->fill_material != NULL) {
+	if (children->buffer[0]->fill != NULL) {
 		slot_layer_to_paint_layer(children->buffer[0]);
 	}
 	slot_layer_delete(l);

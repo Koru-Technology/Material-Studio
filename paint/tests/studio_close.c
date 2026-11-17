@@ -90,15 +90,15 @@ int picked() {
 }
 
 int full() {
-	return mm_buffers_stat(11) == 0 && stroke_refine_stat(0) == 0 && stroke_refine_stat(1) == 0;
+	return mm_buffers_stat(11) == 0 && fill_stat(1) == 0;
 }
 
 void log_progress() {
 	int s = (int)(sys_time() - t0);
 	if (s != last_log) {
 		last_log = s;
-		printf("[close] %d s: %d passes queued, %d fill layers waiting, painted again %d times", s, mm_buffers_stat(11), stroke_refine_stat(1),
-		       stroke_refine_stat(3));
+		printf("[close] %d s: %d passes queued, %d fill tiles waiting, painted again %d times", s, mm_buffers_stat(11), fill_stat(1),
+		       fill_stat(3));
 	}
 }
 
@@ -153,8 +153,8 @@ void next() {
 	}
 	else if (phase == 4) {
 		if (frame == 3) {
-			printf("[close] right after close: detail %d, %d passes queued, %d fill layers waiting", detail(fill1->texpaint), mm_buffers_stat(11),
-			       stroke_refine_stat(1));
+			printf("[close] right after close: detail %d, %d passes queued, %d fill tiles waiting", detail(fill1->texpaint), mm_buffers_stat(11),
+			       fill_stat(1));
 		}
 		log_progress();
 		if (frame > 10 && (full() || sys_time() - t0 > 120.0)) {

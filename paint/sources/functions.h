@@ -470,6 +470,13 @@ char             *pattern_node_name(i32 i);
 i32               pattern_node_index(char *type);
 ui_node_button_t *nodes_material_button_def(char *name, char *type, f32 value, char *data);
 void              pattern_lib_use(i32 i);
+void              pattern_lib_add(node_shader_t *shader, i32 i);
+char             *pattern_def_fn(i32 i);
+f32               pattern_def_scale(i32 i);
+i32               pattern_def_extras(i32 i);
+char             *pattern_def_extra_name(i32 i, i32 j);
+f32               pattern_def_extra_value(i32 i, i32 j);
+f32               pattern_def_extra_max(i32 i, i32 j);
 void              pattern_nodes_init();
 
 // ---- nodes_material/picker_node.c ----
@@ -903,8 +910,7 @@ void                  slot_layer_apply_mask(slot_layer_t *raw);
 slot_layer_t         *slot_layer_duplicate(slot_layer_t *raw);
 slot_layer_t         *slot_layer_clone(slot_layer_t *raw);
 void                  slot_layer_resize_and_set_bits(slot_layer_t *raw);
-void                  slot_layer_to_fill_layer(slot_layer_t *raw);
-void                  slot_layer_set_fill_material(slot_layer_t *l, slot_material_t *m);
+void                  slot_layer_to_fill_layer(slot_layer_t *raw, fill_t *f);
 void                  slot_layer_to_paint_layer(slot_layer_t *raw);
 bool                  slot_layer_is_visible(slot_layer_t *raw);
 bool                  slot_layer_shows(slot_layer_t *raw);
@@ -1241,7 +1247,7 @@ void          layers_op_repaint_path(slot_layer_t *l);
 void layers_delete(slot_layer_t *l);
 bool layers_can_delete(slot_layer_t *l);
 bool layers_can_merge_down(slot_layer_t *l);
-void layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m);
+void layers_op_fill_material(slot_layer_t *l, slot_material_t *m);
 slot_layer_t *layers_fill_target(slot_layer_t *l);
 void          layers_repaint_text(slot_layer_t *l);
 void          layers_toggle_visible(slot_layer_t *l);
@@ -1250,24 +1256,63 @@ void          layers_export_on_file_picked(char *path);
 bool          layers_mask_has_stack(slot_layer_t *l);
 
 // ---- util/util_layer_fill.c ----
-bool layers_is_fill_material();
-void layers_update_fill_layers();
-bool layers_is_path_material();
-void layers_update_path_layers();
-void layers_update_fill_layer(bool parse_paint);
-struct paint_target; // stroke_rec.h
-bool layers_render_fill_rect(slot_layer_t *l, struct paint_target *t, gpu_texture_t **scratch);
-void layers_refresh_fill_layer(slot_layer_t *l);
-void layers_refresh_fill_layer_later(slot_layer_t *l);
-void layers_update_linked_layers();
-bool layers_fill_paint_needs_new_layer();
-bool layers_fill_paint_to_new_layer();
-void layers_fill_paint_confirm_new_layer();
-bool layers_fill_paint_to_mask();
-bool layers_fill_paint_needs_mask();
-void layers_fill_paint_confirm_mask();
-bool layers_fill_paint_tool(i32 tool);
-void layers_create_fill_layer(uv_type_t uv_type, mat4_t decal_mat, i32 position);
+bool    layers_is_path_material();
+void    layers_update_path_layers();
+void    layers_update_linked_layers();
+void    layers_fill_with_material(slot_layer_t *l);
+bool    layers_fill_paint_to_mask();
+bool    layers_fill_paint_needs_mask();
+void    layers_fill_paint_confirm_mask();
+bool    layers_fill_paint_tool(i32 tool);
+fill_t *layers_new_fill_layer_fill(void);
+fill_t *layers_new_fill_mask(void);
+mat4_t  layers_default_decal_box(void);
+void    layers_create_fill_layer(i32 projection, mat4_t decal_mat, i32 position, bool from_material);
+
+// ---- util/util_fill.c ----
+extern vec4_t    fill_uv_tile;
+void             fill_source_reset(fill_source_t *s, i32 c, i32 kind);
+void             fill_source_set_kind(fill_source_t *s, i32 c, i32 kind);
+void             fill_pattern_params_reset(fill_source_t *s);
+fill_t          *fill_create(i32 projection);
+fill_t          *fill_copy(fill_t *f);
+fill_t          *fill_from_material(slot_material_t *m, i32 projection);
+void             fill_set_material(fill_t *f, slot_material_t *m);
+slot_material_t *fill_source_material(fill_source_t *s);
+void             fill_stand_in_set(u32 uid, slot_material_t *m);
+asset_t         *fill_source_asset(fill_source_t *s);
+slot_material_t *fill_main_material(fill_t *f);
+bool             fill_uses_material(fill_t *f, slot_material_t *m);
+void             fill_material_removed(slot_material_t *m);
+f32_array_t     *fill_encode(fill_t *f, bool by_index);
+fill_t          *fill_decode_with(f32_array_t *a, bool by_index, slot_material_t_array_t *materials);
+fill_t          *fill_decode(f32_array_t *a, bool by_index);
+u64              fill_shape(slot_layer_t *l);
+void             fill_changed(slot_layer_t *l);
+void             fill_reshaped(slot_layer_t *l);
+gpu_texture_t   *fill_params_texture(void);
+void             fill_params_invalidate(void);
+gpu_texture_t   *fill_image_texture(i32 asset_id);
+gpu_texture_t   *fill_tile_texture(u32 uid, i32 k);
+void             fill_tile_invalidate(slot_material_t *m);
+i32              fill_tiles_mm_keys(u64 *out, i32 max);
+void             fill_reset(void);
+bool             fill_render(slot_layer_t *l, gpu_texture_t **out, const f32 *uv_rect);
+void             fill_rasterize(slot_layer_t *l);
+void             fill_ensure(slot_layer_t *l);
+void             fill_ensure_all(void);
+void             fill_update(void);
+i32              fill_stat(i32 what);
+char            *fill_test_shader(i32 id);
+
+// ---- render/make_fill.c ----
+char                  *make_fill_image_texture(i32 asset_id);
+char                  *make_fill_tile_texture(u32 material_uid, i32 k);
+void                   make_fill_declare(node_shader_t *shader, slot_layer_t *l);
+void                   make_fill_uses(bool *emis, bool *height);
+i32                    make_fill_texture_count(slot_layer_t *l);
+node_shader_context_t *make_fill_raster_run(material_t *data, slot_layer_t *l, char *format);
+node_shader_context_t *make_fill_tile_run(material_t *data, slot_material_t *m, char *format);
 
 // ---- util/util_layer_merge.c ----
 void           layers_merge_down();
@@ -1481,11 +1526,9 @@ i32  util_stencil_handle_size();
 void util_stencil_transform();
 
 // ---- util/util_stroke_refine.c ----
-void stroke_refine_reset(void); // util/util_stroke_refine.c: fill layers paint again as buffers land
-void stroke_refine_fill_track(slot_layer_t *l);
-i32  stroke_refine_stat(i32 what);
 
 // ---- util/util_material_cache.c ----
+u64            material_cache_graph_signature(slot_material_t *m);
 bool           material_cache_paint_info(bool is_atlas, bool *emis_used, bool *subs_used, bool *height_used); // util/util_material_cache.c
 gpu_texture_t *material_cache_texture(i32 i);
 void           material_cache_paint_check(void);
@@ -1856,7 +1899,7 @@ gpu_texture_t *timeline_test_kept(i32 slot, i32 k);
 void timeline_retag_last(slot_layer_t *l, i32 kind, const void *params, u32 len, u16 flags);
 void timeline_entry_upgrade(struct timeline *tl, i32 index, i32 kind, hash128_t payload);
 void timeline_ops_children(const u8 *data, u32 len, void (*visit)(hash128_t child, void *ud), void *ud);
-void timeline_record_to_fill(slot_layer_t *l, slot_material_t *m);
+void timeline_record_fill(slot_layer_t *l);
 void timeline_record_image(slot_layer_t *l, asset_t *asset);
 bool timeline_ops_replays(struct timeline *tl, i32 index);
 bool timeline_ops_overwrites(struct timeline *tl, i32 index);
@@ -1898,12 +1941,10 @@ void            history_layer_blending();
 void            history_layer_visible(slot_layer_t *l);
 void            history_layer_name(slot_layer_t *l, char *prev_name);
 void            history_layer_object();
-void            history_layer_scale();
-void            history_layer_angle();
 void            history_mask_height_blend();
 void            history_smart_material(char *name);
-void            history_layer_fill_material(slot_layer_t *l);
-void            history_layer_uv_type();
+void            history_layer_fill(slot_layer_t *l);
+void            history_settle(void);
 void            history_new_swatch();
 void            history_delete_swatch(swatch_color_t *swatch);
 void            history_replace_swatches(char *name);

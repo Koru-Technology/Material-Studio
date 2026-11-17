@@ -3,9 +3,8 @@
 
 void make_texcoord_run(node_shader_t *shader, bool is_atlas) {
 
-	bool      fill_layer = g_context->layer->fill_material != NULL;
-	uv_type_t uv_type    = fill_layer ? g_context->layer->uv_type : g_context->brush_paint;
-	bool      decal      = context_is_decal();
+	uv_type_t uv_type = g_context->brush_paint;
+	bool      decal   = context_is_decal();
 
 	char *scale = "1.0";
 	if (!is_atlas) {
@@ -16,27 +15,7 @@ void make_texcoord_run(node_shader_t *shader, bool is_atlas) {
 	if (uv_type == UV_TYPE_PROJECT || decal) { // TexCoords - project
 		node_shader_write_attrib_frag(shader, "vec2 uvsp = sp.xy;");
 
-		if (fill_layer) { // Decal layer
-			node_shader_write_attrib_frag(shader, "if (uvsp.x < 0.0 || uvsp.y < 0.0 || uvsp.x > 1.0 || uvsp.y > 1.0) { discard; }");
-
-			{ // Rotation is a uniform, turning it needs no new shader
-				node_shader_add_constant(shader, "vec2 uv_angle", "_uv_angle");
-				node_shader_write_attrib_frag(shader, "uvsp = vec2(uvsp.x * constants.uv_angle.x - uvsp.y * constants.uv_angle.y, uvsp.x * "
-				                                    "constants.uv_angle.y + uvsp.y * constants.uv_angle.x);");
-			}
-
-			shader->frag_n = true;
-			node_shader_add_constant(shader, "vec3 decal_layer_nor", "_decal_layer_nor");
-			f32 dot_angle = g_context->brush_angle_reject_dot;
-			node_shader_write_frag(shader, string_tmp("if (abs(dot(n, constants.decal_layer_nor) - 1.0) > %s) { discard; }", f32_to_string(dot_angle)));
-
-			shader->frag_wposition = true;
-			node_shader_add_constant(shader, "vec3 decal_layer_loc", "_decal_layer_loc");
-			node_shader_add_constant(shader, "float decal_layer_dim", "_decal_layer_dim");
-			node_shader_write_attrib_frag(
-			    shader, "if (abs(dot(constants.decal_layer_nor, constants.decal_layer_loc - input.wposition)) > constants.decal_layer_dim) { discard; }");
-		}
-		else if (decal) {
+		if (decal) {
 			shader->frag_wposition = true;
 			node_shader_add_function(shader, str_octahedron_wrap);
 			node_shader_add_constant(shader, "vec4 decal_mask", "_decal_mask");

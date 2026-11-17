@@ -422,7 +422,6 @@ any_map_t *resource_bundled;
 any_map_t *translator_translations;
 
 // ---- uniforms.c ----
-mat4_t uniforms_ext_ortho_p;
 
 // ---- viewport.c ----
 

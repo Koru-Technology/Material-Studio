@@ -139,11 +139,7 @@ void util_particle_update() {
 	if (particle_dropped && (!mouse_down("left") || mouse_started("left"))) { // Lifted, or a new touch (see util_brush.c)
 		particle_dropped = false;
 	}
-	if (mouse_started("left") && context_in_paint_area() && !g_context->paint2d && layers_fill_paint_needs_new_layer()) {
-		layers_fill_paint_confirm_new_layer();
-		particle_dropped = true;
-	}
-	else if (mouse_started("left") && context_in_paint_area() && !g_context->paint2d && layers_fill_paint_needs_mask()) {
+	if (mouse_started("left") && context_in_paint_area() && !g_context->paint2d && layers_fill_paint_needs_mask()) {
 		layers_fill_paint_confirm_mask();
 		particle_dropped = true;
 	}

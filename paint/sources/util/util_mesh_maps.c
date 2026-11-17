@@ -84,7 +84,7 @@ asset_t *mesh_maps_get_asset(i32 type) {
 static void mesh_maps_reparse(void *_) {
 	make_material_parse_paint_material(true);
 	make_material_parse_mesh_material();
-	layers_update_fill_layers();
+	fill_tile_invalidate(NULL); // Materials reading the maps
 	util_render_make_material_preview();
 }
 

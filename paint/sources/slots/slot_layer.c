@@ -58,9 +58,6 @@ slot_layer_t *slot_layer_create(char *ext, layer_slot_type_t type, slot_layer_t 
 	raw->show_panel         = true;
 	raw->blending           = BLEND_TYPE_MIX;
 	raw->object_mask        = 0;
-	raw->scale              = 1.0;
-	raw->angle              = 0.0;
-	raw->uv_type            = UV_TYPE_UVMAP;
 	raw->paint_base         = true;
 	raw->paint_opac         = true;
 	raw->paint_occ          = true;
@@ -313,7 +310,8 @@ void layers_apply_mask_pass(gpu_texture_t *dst, gpu_texture_t *temp, gpu_texture
 }
 
 void slot_layer_apply_mask(slot_layer_t *raw) {
-	if (raw->parent->fill_material != NULL) {
+	if (raw->parent->fill != NULL) {
+		fill_ensure(raw->parent); // Its pixels are the fill's from now on
 		slot_layer_to_paint_layer(raw->parent);
 	}
 	if (slot_layer_is_group(raw->parent)) {
@@ -361,13 +359,11 @@ static slot_layer_t *slot_layer_copy(slot_layer_t *raw) {
 	l->mask_opacity       = raw->mask_opacity;
 	l->mask_effects       = mask_stack_copy_effects(raw->mask_effects);
 	l->mask_stack_dirty   = true;
-	l->fill_material      = raw->fill_material;
+	l->fill               = fill_copy(raw->fill);
+	l->fill_dirty         = raw->fill_dirty;
 	l->object_mask        = raw->object_mask;
 	l->blending           = raw->blending;
-	l->uv_type            = raw->uv_type;
 	l->decal_mat          = raw->decal_mat;
-	l->scale              = raw->scale;
-	l->angle              = raw->angle;
 	l->paint_base         = raw->paint_base;
 	l->paint_opac         = raw->paint_opac;
 	l->paint_occ          = raw->paint_occ;
@@ -494,34 +490,27 @@ void slot_layer_resize_and_set_bits(slot_layer_t *raw) {
 	}
 }
 
-void slot_layer_to_fill_layer_on_next_frame(void *_) {
-	make_material_parse_paint_material(true);
+// raw becomes a fill layer or fill mask of f (owned from now on), shown live, its textures rasterized for readers
+void slot_layer_to_fill_layer(slot_layer_t *raw, fill_t *f) {
+	history_settle(); // Captures of its painted pixels taken first
+	context_set_layer(raw);
+	free(raw->fill);
+	raw->fill = f;
+	fill_reshaped(raw);
+	fill_rasterize(raw);
 	g_context->layer_preview_dirty = true;
 }
 
-void slot_layer_to_fill_layer(slot_layer_t *raw) {
-	// Starts with the texture scale and rotation the material was painted with
-	raw->scale = g_context->material->uv_scale;
-	raw->angle = g_context->material->uv_angle;
-	context_set_layer(raw);
-	raw->fill_material = g_context->material;
-	layers_update_fill_layer(true);
-	sys_notify_on_next_frame(&slot_layer_to_fill_layer_on_next_frame, NULL);
-}
-
-// Gives fill layer l another material, undoable
-void slot_layer_set_fill_material(slot_layer_t *l, slot_material_t *m) {
-	if (l == NULL || l->fill_material == NULL || m == NULL || l->fill_material == m) {
-		return;
-	}
-	history_layer_fill_material(l);
-	l->fill_material = m;
-	layers_refresh_fill_layer(l);
-}
-
+// Its pixels stay as they are, painted from now on
 void slot_layer_to_paint_layer(slot_layer_t *raw) {
 	context_set_layer(raw);
-	raw->fill_material = NULL;
+	if (raw->fill != NULL) {
+		fill_ensure(raw);
+		free(raw->fill);
+		raw->fill       = NULL;
+		raw->fill_dirty = false;
+		make_material_parse_mesh_material();
+	}
 	if (raw->path_material != NULL) {
 		raw->path_material = NULL;
 		raw->path_points   = NULL;

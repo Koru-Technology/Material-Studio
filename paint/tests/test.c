@@ -544,7 +544,7 @@ void step_layer_fill() {
 	script_material_update();
 
 	layer_fill = script_layer_new_fill();
-	int ok     = layer_fill != NULL && layer_fill->fill_material == mat_fill;
+	int ok     = layer_fill != NULL && fill_main_material(layer_fill->fill) == mat_fill;
 	check(ok, "fill layer created");
 	if (!ok) {
 		return;
@@ -803,7 +803,7 @@ void step_verify_load() {
 	slot_layer_t *fill  = script_layer_get("test_fill");
 	ok                  = red != NULL && group != NULL && fill != NULL && red->parent == group && !group->visible && !fill->visible;
 	check(ok, "layers, groups and visibility survived");
-	ok = fill != NULL && fill->fill_material != NULL && script_get_material("test_fill") != NULL;
+	ok = fill != NULL && fill->fill != NULL && script_get_material("test_fill") != NULL;
 	check(ok, "fill layer material survived");
 
 	project_t *prj = script_get_project();
@@ -1354,11 +1354,11 @@ void step_layer_fill_ops() {
 	slot_material_t *green = flat_material("test_green", 0.0, 1.0, 0.0);
 	slot_layer_t    *l     = script_layer_new();
 	check(!script_layer_to_paint(l), "a paint layer is not converted to paint");
-	int ok = script_layer_to_fill(l) && l->fill_material == green;
+	int ok = script_layer_to_fill(l) && fill_main_material(l->fill) == green;
 	check(ok && base_fraction(0x00ff00) > 0.5, "converted to a green fill layer");
 	check(!script_layer_to_fill(l), "a fill layer is not converted to fill");
 
-	ok = script_layer_to_paint(l) && l->fill_material == NULL;
+	ok = script_layer_to_paint(l) && l->fill == NULL;
 	// The paint layer keeps the green and no longer follows the material
 	ui_node_t *rgb = NULL;
 	for (int i = 0; i < green->canvas->nodes->length; ++i) {

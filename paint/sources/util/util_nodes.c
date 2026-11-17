@@ -255,10 +255,7 @@ void ui_nodes_recompile() {
 
 
 	if (ui_nodes_recompile_mat) {
-		if (layers_is_fill_material()) {
-			layers_update_fill_layers();
-		}
-		else if (layers_is_path_material()) {
+		if (layers_is_path_material()) {
 			layers_update_path_layers();
 		}
 		else {
@@ -277,10 +274,6 @@ void ui_nodes_recompile() {
 	else if (ui_nodes_recompile_mat_final) {
 		make_material_parse_paint_material(true);
 
-		if (layers_is_fill_material()) {
-			layers_update_fill_layers();
-			util_render_make_material_preview();
-		}
 		if (layers_is_path_material()) {
 			layers_update_path_layers();
 			util_render_make_material_preview();

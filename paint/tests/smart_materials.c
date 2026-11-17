@@ -97,8 +97,10 @@ void next() {
 		fill = script_layer_new_fill();
 	}
 	else if (step == 1) {
-		fill->scale = 2.0;
-		fill->angle = 30.0;
+		app_layer_set_value(fill->id, 6, 2.0); // Scale X
+		app_layer_set_value(fill->id, 7, 2.0);
+		app_layer_set_value(fill->id, 10, 30.0); // Rotation
+		app_drag_end();
 		script_layer_update(fill);
 		for (int i = 0; i < 20; ++i) { // Paints the mask
 			script_paint(0.35 + i * 0.015, 0.45 + i * 0.004);
@@ -124,8 +126,8 @@ void next() {
 	}
 	else if (step == 4) {
 		check(root != NULL && ctx->layer == root, "smart material put in a new project, top layer selected");
-		check(root != NULL && root->fill_material != NULL && string_equals(root->fill_material->canvas->name, "smart_checker"), "material came along");
-		check(root != NULL && root->scale == 2.0 && root->angle == 30.0, "uv scale and angle came along");
+		check(root != NULL && root->fill != NULL && string_equals(fill_main_material(root->fill)->canvas->name, "smart_checker"), "material came along");
+		check(root != NULL && app_layer_value(root->id, 6) == 2.0 && app_layer_value(root->id, 10) == 30.0, "uv scale and angle came along");
 		slot_layer_t *m = root != NULL ? mask_of(root) : NULL;
 		check(m != NULL, "mask came along");
 		check(m != NULL && lit(m) == 0, "mask starts black, ready to paint");
@@ -140,14 +142,14 @@ void next() {
 	else if (step == 6) {
 		check(script_layer_count() == layers + 2, "redo puts them back");
 		slot_layer_t *top = script_layer_at(script_layer_count() - 1);
-		check(top->fill_material != NULL && top->scale == 2.0, "redone layer has its settings");
+		check(top->fill != NULL && app_layer_value(top->id, 6) == 2.0, "redone layer has its settings");
 		layers = script_layer_count();
 		root   = smart_materials_apply("test_smart_group");
 	}
 	else if (step == 7) {
 		check(root != NULL && root->texpaint == NULL, "group put in");
 		slot_layer_t *c = root != NULL ? child_of(root) : NULL;
-		check(c != NULL && c->fill_material != NULL && string_equals(c->fill_material->canvas->name, "smart_red"), "group keeps its fill layer");
+		check(c != NULL && c->fill != NULL && string_equals(fill_main_material(c->fill)->canvas->name, "smart_red"), "group keeps its fill layer");
 		check(script_layer_count() == layers + 2, "group and layer added");
 		smart_materials_delete(smart_materials_find("test_smart"));
 		smart_materials_delete(smart_materials_find("test_smart_group"));

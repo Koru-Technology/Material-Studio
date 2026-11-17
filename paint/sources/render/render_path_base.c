@@ -256,6 +256,7 @@ void render_path_base_commands(void (*draw_commands)(void)) {
 		return;
 	}
 
+	fill_update();               // Fill tiles, parameters and rasters (masks may anchor fill layers)
 	mask_stack_evaluate_dirty(); // Mask stacks the viewport samples
 
 	render_path_base_begin();

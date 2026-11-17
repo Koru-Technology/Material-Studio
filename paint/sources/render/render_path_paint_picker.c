@@ -59,7 +59,7 @@ static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_m
 		slot_material_t *m = g_project->_->materials->buffer[i];
 		if (ui_canvas_find_type(m->canvas, "PICKER") != NULL) {
 			g_context->material = m;
-			layers_update_fill_layers();
+			fill_tile_invalidate(m);
 			util_render_make_material_preview();
 		}
 	}

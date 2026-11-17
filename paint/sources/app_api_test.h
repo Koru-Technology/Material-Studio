@@ -16,7 +16,8 @@ bool    app_layer_can_delete(int32_t id);
 // Layer properties (app_api_layers.h) and mask effects (app_api_masks.h)
 uint32_t app_layers_props_signature(void); // app_state_t.layer_props_signature
 bool     app_layer_expanded(int32_t id);
-int32_t  app_layer_uv_type(int32_t id);
+int32_t  app_layer_fill_projection(int32_t id);
+int32_t  app_layer_fill_kind(int32_t id, int32_t channel);
 int32_t  app_mask_effect_type(int32_t id, int32_t index); // -1: none
 bool     app_mask_effect_visible(int32_t id, int32_t index);
 int32_t  app_mask_effect_blending(int32_t id, int32_t index);

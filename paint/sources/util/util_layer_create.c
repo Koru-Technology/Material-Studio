@@ -126,8 +126,10 @@ void layers_create_filter_on_next_frame(void *_) {
 
 	slot_layer_t *l = layers_new_layer(false, -1, g_context->layer);
 	layers_history_with_prev(history_new_layer); // With the filter's new material: one undo removes the filter
+	fill_t *f = fill_create(FILL_PROJECTION_UV);
+	fill_set_material(f, g_context->material);
+	slot_layer_to_fill_layer(l, f);
 	layers_history_with_prev(history_to_fill_layer);
-	slot_layer_to_fill_layer(l);
 
 	// Filter material
 	g_context->material->canvas->name = string_copy(g_context->layer->name);
@@ -153,7 +155,7 @@ void layers_create_filter_on_next_frame(void *_) {
 		any_array_push(canvas->links, l);
 	}
 
-	layers_update_fill_layer(true);
+	fill_tile_invalidate(g_context->material);
 	util_render_make_material_preview();
 }
 
@@ -204,7 +206,6 @@ void layers_create_image_at(i32 i, bool mask) {
 void layers_create_color_layer_on_next_frame(void *_) {
 	slot_layer_t *l = layers_new_layer(false, _layers_position, NULL);
 	history_new_layer();
-	l->uv_type     = UV_TYPE_UVMAP;
 	l->object_mask = g_context->layer_filter;
 	slot_layer_clear(l, _layers_base_color, NULL, _layers_occlusion, _layers_roughness, _layers_metallic);
 }

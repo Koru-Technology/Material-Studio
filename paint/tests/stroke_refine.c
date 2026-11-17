@@ -191,7 +191,7 @@ int picked() {
 }
 
 int full() {
-	return mm_buffers_stat(11) == 0 && paint_refine_stat(0) == 0 && paint_refine_stat(1) == 0 && stroke_refine_stat(1) == 0;
+	return mm_buffers_stat(11) == 0 && paint_refine_stat(0) == 0 && paint_refine_stat(1) == 0 && fill_stat(1) == 0;
 }
 
 void log_progress() {
@@ -501,8 +501,8 @@ void next() {
 		if (picked()) {
 			t_stroke = sys_time();
 			fill1    = script_layer_new_fill();
-			printf("[refine] fill layer made %.0f ms after it started, %d fill layers waiting", (sys_time() - t_stroke) * 1000.0, stroke_refine_stat(1));
-			check(stroke_refine_stat(1) == 1, "the fill layer waits for better buffers");
+			printf("[refine] fill layer made %.0f ms after it started, %d fill tiles waiting", (sys_time() - t_stroke) * 1000.0, fill_stat(1));
+			check(fill_stat(1) == 1, "the fill layer's material tile waits for better buffers");
 			phase = 14;
 			frame = 0;
 		}
@@ -514,7 +514,7 @@ void next() {
 	}
 	else if (phase == 14) {
 		if (full() || sys_time() - t_stroke > 120.0) {
-			check(full() && stroke_refine_stat(3) >= 1, string("the fill layer was painted again %d times, the buffers are full", stroke_refine_stat(3)));
+			check(full() && fill_stat(3) >= 1, string("the material tile rendered again %d times, the buffers are full", fill_stat(3)));
 			script_layer_set(fill1);
 			phase = 15;
 			frame = 0;

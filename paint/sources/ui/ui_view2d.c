@@ -105,7 +105,7 @@ static bool          _ui_view2d_moving     = false;
 static bool          _ui_view2d_move_apply = false;
 
 static bool ui_view2d_layer_movable(slot_layer_t *l) {
-	return (slot_layer_is_layer(l) || slot_layer_is_mask(l)) && l->fill_material == NULL;
+	return (slot_layer_is_layer(l) || slot_layer_is_mask(l)) && l->fill == NULL;
 }
 
 // Shift the texture contents, pixels moved out of the texture are discarded

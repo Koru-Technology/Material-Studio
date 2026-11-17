@@ -82,7 +82,7 @@ static uint32_t app_layers_signature(void) {
 		h               = app_hash(h, l->parent != NULL ? (uint32_t)l->parent->id : 0xffffffffu);
 		h               = app_hash(h, l->visible);
 		h               = app_hash(h, (uint32_t)(l->mask_opacity * 1000.0f));
-		h               = app_hash(h, l->fill_material != NULL);
+		h               = app_hash(h, l->fill != NULL);
 		h               = app_hash_str(h, l->name);
 	}
 	h = app_hash(h, g_context->layer != NULL ? (uint32_t)g_context->layer->id : 0xffffffffu);
@@ -606,7 +606,7 @@ bool app_layer_info(int32_t index, app_layer_info_t *out) {
 	                                            : APP_LAYER_KIND_LAYER;
 	out->visible    = l->visible;
 	out->selected   = l == g_context->layer;
-	out->is_fill    = l->fill_material != NULL;
+	out->is_fill    = l->fill != NULL;
 	out->opacity    = l->mask_opacity;
 	out->name       = app_str(l->name);
 	return true;

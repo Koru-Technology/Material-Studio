@@ -593,12 +593,11 @@ static void studio_apply_paint() {
 	slot_material_t *_material = g_context->material;
 	g_context->material        = studio_material;
 	make_material_parse_paint_material(true);
-	if (layers_is_fill_material()) {
-		layers_update_fill_layers();
-	}
 	if (layers_is_path_material()) {
 		layers_update_path_layers();
 	}
+	fill_update();     // The material's fill tile again (the viewport, hidden behind the studio, does not render)
+	fill_ensure_all(); // And the rasters of the layers it fills
 	util_render_make_material_preview();
 	g_context->material = _material;
 	if (g_context->material != studio_material) {

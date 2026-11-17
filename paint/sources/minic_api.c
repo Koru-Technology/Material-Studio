@@ -698,10 +698,8 @@ void minic_register_builtins() {
 	MINIC_B(show_panel);
 	MINIC_O(parent, slot_layer_t);
 	MINIC_F(mask_opacity);
-	MINIC_O(fill_material, slot_material_t);
+	MINIC_O(fill, fill_t);
 	MINIC_I(object_mask);
-	MINIC_F(scale);
-	MINIC_F(angle);
 	MINIC_I(blending);
 	MINIC_O(path_points, f32_array_t);
 	MINIC_B(path_curved);
@@ -729,6 +727,12 @@ void minic_register_builtins() {
 	MINIC_B(mask_stack_dirty);
 	MINIC_I(revision);
 	MINIC_I(uid);
+	MINIC_END();
+
+	MINIC_STRUCT(fill_t); // Its sources through app_layer_fill_source
+	MINIC_I(projection);
+	MINIC_F(angle);
+	MINIC_F(hardness);
 	MINIC_END();
 
 	MINIC_STRUCT(ui_nodes_t);

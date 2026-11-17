@@ -42,8 +42,10 @@ void history_new_white_mask() {
 	history_push(HISTORY_ACTION_NEW_WHITE_MASK);
 }
 
+// After the new fill mask got its fill: redo makes it again with it
 void history_new_fill_mask() {
-	history_push(HISTORY_ACTION_NEW_FILL_MASK);
+	history_step_t *step = history_push(HISTORY_ACTION_NEW_FILL_MASK);
+	step->fill           = fill_encode(g_context->layer->fill, false);
 }
 
 void history_new_group() {
@@ -137,8 +139,8 @@ void history_apply_mask() {
 
 	// The layers the mask is applied to keep its timeline. A fill mask or fill layer starts one from its render (undo
 	// brings them back from it, fill again).
-	step->fill_uids[0] = m->fill_material != NULL ? m->fill_material->uid : 0;
-	step->fill_uids[1] = m->parent->fill_material != NULL ? m->parent->fill_material->uid : 0;
+	step->fills[0] = fill_encode(m->fill, false);
+	step->fills[1] = fill_encode(m->parent->fill, false);
 	timeline_allow_fill(true);
 	timeline_t           *src   = timeline_ensure(m);
 	slot_layer_t_array_t *dests = slot_layer_is_group(m->parent) ? slot_layer_get_children(m->parent) : NULL;
@@ -154,22 +156,26 @@ void history_invert_mask() {
 	timeline_record_op(g_context->layer, TL_INVERT, NULL, 0, NULL, TL_FLAG_UPSCALABLE | TL_FLAG_INVOLUTION);
 }
 
-// The layer turns procedural: its timeline ends with the conversion and waits for a conversion back
+// After the layer turned into a fill (slot_layer_to_fill_layer), the step keeps the fill for redo. Its timeline ends
+// with the conversion and waits for a conversion back.
+static void history_to_fill(history_action_t action) {
+	history_step_t *step = history_push(action);
+	step->fill           = fill_encode(g_context->layer->fill, false);
+	timeline_record_fill(g_context->layer);
+}
+
 void history_to_fill_layer() {
-	history_push(HISTORY_ACTION_TO_FILL_LAYER);
-	timeline_record_to_fill(g_context->layer, g_context->material);
+	history_to_fill(HISTORY_ACTION_TO_FILL_LAYER);
 }
 
 void history_to_fill_mask() {
-	history_push(HISTORY_ACTION_TO_FILL_MASK);
-	timeline_record_to_fill(g_context->layer, g_context->material);
+	history_to_fill(HISTORY_ACTION_TO_FILL_MASK);
 }
 
-// The step keeps the layer's fill material, not the selected one: undo gives it back
+// Before the layer turns back to paint: undo gives its fill back
 static void history_to_paint(history_action_t action) {
 	history_step_t *step = history_push(action);
-	step->material       = array_index_of(g_project->_->materials, g_context->layer->fill_material);
-	step->material_uid   = g_context->layer->fill_material != NULL ? g_context->layer->fill_material->uid : 0;
+	step->fill           = fill_encode(g_context->layer->fill, false);
 }
 
 void history_to_paint_layer() {
@@ -207,16 +213,6 @@ void history_layer_object() {
 	history_push(HISTORY_ACTION_LAYER_OBJECT);
 }
 
-void history_layer_scale() {
-	history_step_t *step = history_push(HISTORY_ACTION_LAYER_SCALE);
-	step->layer_scale    = g_context->layer->scale;
-}
-
-void history_layer_angle() {
-	history_step_t *step = history_push(HISTORY_ACTION_LAYER_ANGLE);
-	step->layer_angle    = g_context->layer->angle;
-}
-
 // Before changing the height blend settings of the current mask
 void history_mask_height_blend() {
 	history_step_t *step = history_push(HISTORY_ACTION_MASK_HEIGHT_BLEND);
@@ -229,19 +225,16 @@ void history_smart_material(char *name) {
 	step->layer_name     = string_copy(name);
 }
 
-// Before l gets another fill material
-void history_layer_fill_material(slot_layer_t *l) {
+// Before the fill of l changes (a source, the projection), its fill and decal box as they are
+void history_layer_fill(slot_layer_t *l) {
 	slot_layer_t *_layer = g_context->layer;
 	g_context->layer     = l;
-	history_step_t *step = history_push(HISTORY_ACTION_LAYER_FILL_MATERIAL);
-	step->material       = array_index_of(g_project->_->materials, l->fill_material);
-	step->material_uid   = l->fill_material != NULL ? l->fill_material->uid : 0;
-	g_context->layer     = _layer;
-}
-
-void history_layer_uv_type() {
-	history_step_t *step = history_push(HISTORY_ACTION_LAYER_UV_TYPE);
-	step->layer_uv_type  = g_context->layer->uv_type;
+	history_step_t *step = history_push(HISTORY_ACTION_LAYER_FILL);
+	step->fill           = fill_encode(l->fill, false);
+	for (i32 i = 0; i < 16; ++i) { // The decal box after the fill
+		f32_array_push(step->fill, ((f32 *)&l->decal_mat)[i]);
+	}
+	g_context->layer = _layer;
 }
 
 void history_new_swatch() {

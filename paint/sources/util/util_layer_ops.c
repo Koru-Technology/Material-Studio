@@ -47,6 +47,7 @@ slot_layer_t *layers_op_new_color(i32 base_color, f32 occlusion, f32 roughness, 
 	return layers_op_new_cleared(base_color, occlusion, roughness, metallic);
 }
 
+// A fill layer of the selected material in every channel
 slot_layer_t *layers_op_new_fill(void) {
 	if (g_context == NULL || g_context->layer == NULL || g_context->material == NULL) {
 		return NULL;
@@ -55,9 +56,8 @@ slot_layer_t *layers_op_new_fill(void) {
 	slot_layer_t *l = layers_new_layer(false, -1, NULL);
 	if (l != NULL) {
 		history_new_layer();
-		l->uv_type = UV_TYPE_UVMAP;
+		slot_layer_to_fill_layer(l, fill_from_material(g_context->material, FILL_PROJECTION_UV));
 		layers_history_with_prev(history_to_fill_layer); // One undo, as the Fill Layer menu
-		slot_layer_to_fill_layer(l);
 	}
 	draw_resume(gpu);
 	g_context->rtdirty = 1;
@@ -121,11 +121,10 @@ slot_layer_t *layers_op_new_mask(slot_layer_t *l, i32 type) {
 			slot_layer_clear(m, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
 		}
 		else {
-			history_new_fill_mask();
 			slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-			slot_layer_to_fill_layer(m);
+			slot_layer_to_fill_layer(m, layers_new_fill_mask());
+			history_new_fill_mask();
 		}
-		layers_update_fill_layers();
 	}
 	draw_resume(gpu);
 	g_context->layers_preview_dirty = true;
@@ -159,14 +158,6 @@ slot_layer_t *layers_op_new_group(slot_layer_t *l) {
 	return group;
 }
 
-static void layers_op_refill(slot_layer_t *l) {
-	slot_material_t *material = g_context->material;
-	g_context->material       = l->fill_material;
-	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-	layers_update_fill_layers();
-	context_set_material(material);
-}
-
 void layers_op_set_name(slot_layer_t *l, char *name) {
 	if (!slot_layer_alive(l) || name == NULL || name[0] == '\0') {
 		return;
@@ -179,8 +170,8 @@ void layers_op_update(slot_layer_t *l) {
 		return;
 	}
 	draw_saved_t gpu = draw_suspend();
-	if (l->fill_material != NULL) {
-		layers_op_refill(l);
+	if (l->fill != NULL) {
+		fill_changed(l);
 	}
 	if (l == g_project->_->layers->buffer[0] && l->mask_opacity < 1.0) {
 		layers_enable_translucency();
@@ -264,12 +255,10 @@ void layers_op_set_object(slot_layer_t *l, object_t *object) {
 	history_layer_object();
 	l->object_mask = mask;
 	make_material_parse_mesh_material();
-	if (l->fill_material != NULL) {
-		layers_op_refill(l);
+	if (l->fill != NULL) {
+		fill_changed(l);
 	}
-	else {
-		layers_set_object_mask();
-	}
+	layers_set_object_mask();
 	draw_resume(gpu);
 	g_context->rtdirty = 1;
 	g_context->ddirty  = 2;
@@ -306,7 +295,7 @@ slot_layer_t *layers_op_merge_down(slot_layer_t *l) {
 	context_set_layer(l);
 	history_merge_layers();
 	layers_merge_down();
-	if (g_context->layer->fill_material != NULL) {
+	if (g_context->layer->fill != NULL) {
 		slot_layer_to_paint_layer(g_context->layer);
 	}
 	layers_op_end(gpu);
@@ -330,7 +319,7 @@ slot_layer_t *layers_op_merge_group(slot_layer_t *group) {
 }
 
 void layers_op_clear(slot_layer_t *l) {
-	if (!slot_layer_alive(l) || l->fill_material != NULL) {
+	if (!slot_layer_alive(l) || l->fill != NULL) {
 		return;
 	}
 	draw_saved_t gpu = draw_suspend();
@@ -357,7 +346,7 @@ void layers_op_clear(slot_layer_t *l) {
 }
 
 bool layers_op_invert_mask(slot_layer_t *m) {
-	if (!slot_layer_alive(m) || !slot_layer_is_mask(m) || m->fill_material != NULL) {
+	if (!slot_layer_alive(m) || !slot_layer_is_mask(m) || m->fill != NULL) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
@@ -382,28 +371,48 @@ slot_layer_t *layers_op_apply_mask(slot_layer_t *m) {
 	return parent;
 }
 
+// A paint layer or mask becomes a fill of the selected material in every channel (plain colors, a pattern for a mask,
+// without one). A fill layer takes the selected material in every channel instead (as dropping the material on it).
 bool layers_op_to_fill(slot_layer_t *l) {
-	// Fills with the current material, a fill layer takes it in place of its own
-	if (slot_layer_alive(l) && slot_layer_is_layer(l) && l->fill_material != NULL && g_context->material != NULL &&
-	    l->fill_material != g_context->material) {
+	if (slot_layer_alive(l) && slot_layer_is_layer(l) && l->fill != NULL && g_context->material != NULL) {
+		bool all = true; // Already all of it: nothing to do
+		for (i32 c = 0; c < FILL_CHANNEL_COUNT; ++c) {
+			all = all && l->fill->ch[c].kind == FILL_SOURCE_MATERIAL && l->fill->ch[c].material == g_context->material->uid;
+		}
+		if (all) {
+			return false;
+		}
 		draw_saved_t gpu = draw_suspend();
-		slot_layer_set_fill_material(l, g_context->material);
+		layers_op_fill_material(l, g_context->material);
 		layers_op_end(gpu);
 		return true;
 	}
-	if (!slot_layer_alive(l) || slot_layer_is_group(l) || l->fill_material != NULL || l->path_material != NULL || g_context->material == NULL) {
+	if (!slot_layer_alive(l) || slot_layer_is_group(l) || l->fill != NULL || l->path_material != NULL) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
 	context_set_layer(l);
+	fill_t *f = g_context->material != NULL ? fill_from_material(g_context->material, FILL_PROJECTION_UV)
+	            : slot_layer_is_layer(l)  ? layers_new_fill_layer_fill()
+	                                      : layers_new_fill_mask();
+	slot_layer_to_fill_layer(l, f);
 	slot_layer_is_layer(l) ? history_to_fill_layer() : history_to_fill_mask();
-	slot_layer_to_fill_layer(l);
 	layers_op_end(gpu);
 	return true;
 }
 
+// Every channel of fill layer l from material m, an undo step
+void layers_op_fill_material(slot_layer_t *l, slot_material_t *m) {
+	if (!slot_layer_alive(l) || l->fill == NULL || m == NULL) {
+		return;
+	}
+	history_layer_fill(l);
+	fill_set_material(l->fill, m);
+	fill_reshaped(l);
+}
+
 bool layers_op_to_paint(slot_layer_t *l) {
-	if (!slot_layer_alive(l) || slot_layer_is_group(l) || (l->fill_material == NULL && l->path_material == NULL)) {
+	if (!slot_layer_alive(l) || slot_layer_is_group(l) || (l->fill == NULL && l->path_material == NULL)) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
@@ -412,9 +421,10 @@ bool layers_op_to_paint(slot_layer_t *l) {
 		l->parent = l->parent->parent;
 	}
 	context_set_layer(l);
+	fill_ensure(l);
 	slot_layer_is_layer(l) ? history_to_paint_layer() : history_to_paint_mask();
+	timeline_record_fill(l); // Painted from here on, the fill as it is now is its start
 	slot_layer_to_paint_layer(l);
-	timeline_record_op(l, TL_FILL, NULL, 0, NULL, 0); // Painted from here on, the fill as it is now is its start
 	layers_op_end(gpu);
 	return true;
 }
@@ -495,7 +505,6 @@ void layers_delete(slot_layer_t *l) {
 
 	if (slot_layer_is_mask(l)) {
 		g_context->layer = l->parent;
-		layers_update_fill_layers();
 	}
 
 	g_context->ddirty = 2;
@@ -578,32 +587,16 @@ bool layers_can_merge_down(slot_layer_t *l) {
 	return true;
 }
 
-static slot_layer_t    *layers_fill_swap_layer    = NULL;
-static slot_material_t *layers_fill_swap_material = NULL;
-
-static void layers_set_fill_material_next(void *_) {
-	if (layers_fill_swap_layer != NULL && array_index_of(g_project->_->layers, layers_fill_swap_layer) >= 0) {
-		slot_layer_set_fill_material(layers_fill_swap_layer, layers_fill_swap_material);
-	}
-	layers_fill_swap_layer = NULL;
-}
-
-// Gives fill layer l material m when the frame starts, the repaint does not run while the UI is drawn
-void layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m) {
-	layers_fill_swap_layer    = l;
-	layers_fill_swap_material = m;
-	sys_notify_on_next_frame(&layers_set_fill_material_next, NULL);
-}
 
 // The fill layer that l is or masks, NULL for others
 slot_layer_t *layers_fill_target(slot_layer_t *l) {
 	if (l == NULL) {
 		return NULL;
 	}
-	if (slot_layer_is_layer(l) && l->fill_material != NULL) {
+	if (slot_layer_is_layer(l) && l->fill != NULL) {
 		return l;
 	}
-	if (slot_layer_is_mask(l) && l->fill_material == NULL && l->parent != NULL && slot_layer_is_layer(l->parent) && l->parent->fill_material != NULL) {
+	if (slot_layer_is_mask(l) && l->fill == NULL && l->parent != NULL && slot_layer_is_layer(l->parent) && l->parent->fill != NULL) {
 		return l->parent;
 	}
 	return NULL;

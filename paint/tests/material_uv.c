@@ -58,7 +58,7 @@ buffer_t *stroke_copy() {
 slot_layer_t *find_fill() {
 	for (int i = 0; i < script_layer_count(); ++i) {
 		slot_layer_t *l = script_layer_at(i);
-		if (l->fill_material != NULL) {
+		if (l->fill != NULL) {
 			return l;
 		}
 	}
@@ -123,7 +123,7 @@ void next() {
 	}
 	else if (step == 9) {
 		slot_layer_t *f = find_fill();
-		check(f != NULL && f->scale == 3.0 && f->angle == 45.0, "fill layer starts with the material's scale and rotation");
+		check(f != NULL && app_layer_value(f->id, 6) == 3.0 && app_layer_value(f->id, 7) == 3.0 && app_layer_value(f->id, 10) == 45.0, "fill layer starts with the material's scale and rotation");
 		project_filepath_set(file_new);
 		project_save(false);
 	}
@@ -136,9 +136,9 @@ void next() {
 	}
 	else if (step == 12) {
 		slot_layer_t *f = find_fill();
-		check(f != NULL && f->fill_material != NULL, "saved project opens with its fill layer");
-		check(f != NULL && f->fill_material->uv_scale == 3.0 && f->fill_material->uv_angle == 45.0, "material scale and rotation are saved");
-		check(f != NULL && f->scale == 3.0 && f->angle == 45.0, "fill layer scale and rotation are saved");
+		check(f != NULL && f->fill != NULL, "saved project opens with its fill layer");
+		check(f != NULL && fill_main_material(f->fill)->uv_scale == 3.0 && fill_main_material(f->fill)->uv_angle == 45.0, "material scale and rotation are saved");
+		check(f != NULL && app_layer_value(f->id, 6) == 3.0 && app_layer_value(f->id, 10) == 45.0, "fill layer scale and rotation are saved");
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));

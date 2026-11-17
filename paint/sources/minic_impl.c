@@ -172,17 +172,12 @@ static bool script_paint_allowed(void) {
 		return false;
 	}
 	if (!script_paint_active && layers_fill_paint_tool(g_context->tool)) { // A fill layer is painted through its mask
-		if (layers_fill_paint_needs_new_layer()) {
-			layers_fill_paint_to_new_layer(); // Scripts answer the new fill layer dialog with yes
-		}
-		else {
-			layers_fill_paint_to_mask();
-		}
+		layers_fill_paint_to_mask();
 	}
 	if (slot_layer_is_group(g_context->layer)) {
 		return false;
 	}
-	if (g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER &&
+	if (g_context->layer->fill != NULL && g_context->tool != TOOL_TYPE_PICKER &&
 	    g_context->tool != TOOL_TYPE_COLORID) {
 		return false;
 	}
@@ -309,7 +304,7 @@ void script_fill_layer(void) {
 
 	history_push_undo = true;
 	history_paint();
-	layers_update_fill_layer(true);
+	layers_fill_with_material(g_context->layer);
 	g_context->layer_preview_dirty = true;
 	g_context->rtdirty             = 1;
 	g_context->ddirty              = 2;

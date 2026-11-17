@@ -77,7 +77,7 @@ static bool paint_rec_tool_replayable() {
 	}
 	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_FILL || tool == TOOL_TYPE_DECAL || tool == TOOL_TYPE_TEXT ||
 	        tool == TOOL_TYPE_BLUR || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_PARTICLE) &&
-	       l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
+	       l->fill == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
 	       !context_is_pixel_snap() && !g_context->pick_pos_nor_tex;
 }
 

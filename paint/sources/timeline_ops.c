@@ -9,7 +9,8 @@
 //   TL_CLEAR      tl_clear_params_t
 //   TL_TRANSLATE  f32 du, dv (the contents move by it, what leaves the layer is gone)
 //   TL_IMAGE      children[0] the image file's bytes (HSTORE_ASSET), then its file extension (decoder), 0 ended
-//   TL_FILL       children[0] the material snapshot, then tl_fill_params_t (the layer's uv props)
+//   TL_FILL       children: snapshots of the materials it reads, then tl_fill_params_t: the fill (fill_encode by id), the
+//                 layer props it renders with
 //   TL_ID_MASK    picked colors, not replayed yet
 //   TL_APPLY_MASK f32 the mask's opacity; the mask is the entry's src timeline at src_pos (no params: a mask with effects
 //                 or height blend, a floor)
@@ -29,14 +30,15 @@ typedef struct tl_clear_params {
 } tl_clear_params_t;
 
 typedef struct tl_fill_params {
-	f32 scale;
-	f32 angle;
-	i32 uv_type;
 	i32 uv_map;
 	i32 object_mask;
 	f32 decal_mat[16];
 	u8  paint[11]; // base opac occ rough met nor nor_blend height height_blend emis subs
 	u8  pad;
+	u64 material_sigs[FILL_CHANNEL_COUNT]; // Graph signature of each channel's material then, 0 for none: without a snapshot it
+	                                       // replays while it is the same
+	u32 snapshot_uids[TL_PARAMS_MAX];      // The material of each child snapshot
+	f32 fill[FILL_ENCODE_LENGTH];
 } tl_fill_params_t;
 
 typedef struct tl_merge_params {
@@ -130,26 +132,49 @@ static void tl_ops_record(slot_layer_t *l, tl_kind_t kind, const hash128_t *chil
 	timeline_record(l, kind, payload, uv_bounds, flags);
 }
 
-static history_step_t *tl_ops_last_step() {
-	return history_steps != NULL && history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
-}
-
-// The fill l renders with m (snapshot), its uv props as they are now
-static void tl_ops_record_fill(slot_layer_t *l, slot_material_t *m, f32 scale, f32 angle) {
-	hash128_t snap = paint_mat_snapshot_intern(m);
-	if (hash128_is_none(snap)) {
+// The fill of l as it is now with the layer props it renders with
+static void tl_ops_record_fill(slot_layer_t *l) {
+	if (l->fill == NULL) {
 		timeline_record(l, TL_FILL, HASH128_NONE, NULL, 0);
 		return;
 	}
-	tl_fill_params_t p = {.scale = scale, .angle = angle, .uv_type = l->uv_type, .uv_map = l->uv_map, .object_mask = l->object_mask};
+	tl_fill_params_t p = {.uv_map = l->uv_map, .object_mask = l->object_mask};
 	memcpy(p.decal_mat, &l->decal_mat, sizeof(p.decal_mat));
 	bool flags[11] = {l->paint_base, l->paint_opac,   l->paint_occ,          l->paint_rough, l->paint_met, l->paint_nor,
 	                  l->paint_nor_blend, l->paint_height, l->paint_height_blend, l->paint_emis,  l->paint_subs};
 	for (i32 i = 0; i < 11; ++i) {
 		p.paint[i] = flags[i];
 	}
-	tl_ops_record(l, TL_FILL, &snap, 1, &p, sizeof(p), NULL, TL_FLAG_UPSCALABLE);
-	hstore_unref(snap); // The params hold it
+	for (i32 c = 0; c < FILL_CHANNEL_COUNT; ++c) {
+		slot_material_t *m = fill_source_material(&l->fill->ch[c]);
+		p.material_sigs[c] = m != NULL ? material_cache_graph_signature(m) : 0;
+	}
+	f32_array_t *a = fill_encode(l->fill, false);
+	memcpy(p.fill, a->buffer, sizeof(p.fill));
+	free(a->buffer);
+	free(a);
+	// Its materials as they are now, replays render them so whatever they become
+	hash128_t snaps[TL_PARAMS_MAX];
+	u32       n = 0;
+	for (i32 c = 0; c < FILL_CHANNEL_COUNT; ++c) {
+		slot_material_t *m = fill_source_material(&l->fill->ch[c]);
+		bool             seen = m == NULL;
+		for (u32 k = 0; !seen && k < n; ++k) {
+			seen = p.snapshot_uids[k] == m->uid;
+		}
+		if (seen || n == TL_PARAMS_MAX) {
+			continue;
+		}
+		hash128_t h = paint_mat_snapshot_intern(m);
+		if (!hash128_is_none(h)) {
+			p.snapshot_uids[n] = m->uid;
+			snaps[n++]         = h;
+		}
+	}
+	tl_ops_record(l, TL_FILL, snaps, n, &p, sizeof(p), NULL, TL_FLAG_UPSCALABLE);
+	for (u32 k = 0; k < n; ++k) {
+		hstore_unref(snaps[k]); // The params hold them
+	}
 }
 
 // An entry reading timeline src at its cursor (apply mask, merge): the entry keeps src
@@ -187,15 +212,6 @@ void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32
 	if (!timeline_layer_paints(l)) {
 		return;
 	}
-	if (kind == TL_FILL && params == NULL) { // To paint: the fill it was, the step keeps its material
-		history_step_t  *step = tl_ops_last_step();
-		bool             to   = step != NULL && (step->action == HISTORY_ACTION_TO_PAINT_LAYER || step->action == HISTORY_ACTION_TO_PAINT_MASK);
-		slot_material_t *m    = to ? slot_material_find_uid(step->material_uid) : NULL;
-		if (m != NULL) {
-			tl_ops_record_fill(l, m, l->scale, l->angle);
-			return;
-		}
-	}
 	if (kind == TL_CLEAR && params == NULL) { // As the clear ops do
 		tl_clear_params_t p = {.color = slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, .occlusion = 1.0, .roughness = layers_default_rough, .metallic = 0.0};
 		tl_ops_record(l, kind, NULL, 0, &p, sizeof(p), uv_bounds, flags | TL_FLAG_UPSCALABLE);
@@ -204,12 +220,14 @@ void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32
 	tl_ops_record(l, kind, NULL, 0, params, params != NULL ? len : 0, uv_bounds, flags);
 }
 
-// To fill: the conversion renders material m, scaled and rotated as it was painted with
-void timeline_record_to_fill(slot_layer_t *l, slot_material_t *m) {
-	if (!timeline_layer_paints(l) || m == NULL) {
-		return;
+// The fill of fill layer or fill mask l in its timeline: converted to fill (the timeline ends with it and waits for a
+// conversion back), or back to paint (its start)
+void timeline_record_fill(slot_layer_t *l) {
+	timeline_allow_fill(true);
+	if (timeline_layer_paints(l)) {
+		tl_ops_record_fill(l);
 	}
-	tl_ops_record_fill(l, m, m->uv_scale, m->uv_angle);
+	timeline_allow_fill(false);
 }
 
 // The bytes of an asset's file: packed in the project, or on disk. NULL when neither has them.
@@ -314,6 +332,32 @@ static bool tl_ops_params_ok(tl_entry_t *e, u32 min_len, u32 min_children) {
 	return ok;
 }
 
+// The materials a fill entry reads are as they were recorded
+static bool tl_ops_fill_materials_same(tl_entry_t *e) {
+	tl_params_t p;
+	if (!tl_params_get(e, &p)) {
+		return false;
+	}
+	tl_fill_params_t f;
+	memcpy(&f, p.body, sizeof(f));
+	u32 n = p.n;
+	free(p.blob);
+	fill_t *fill = fill_decode(&(f32_array_t){.buffer = f.fill, .length = FILL_ENCODE_LENGTH, .capacity = FILL_ENCODE_LENGTH}, false);
+	bool    same = fill != NULL;
+	for (i32 c = 0; same && c < FILL_CHANNEL_COUNT; ++c) {
+		bool snapped = false; // Its snapshot renders it
+		for (u32 k = 0; k < n && k < TL_PARAMS_MAX; ++k) {
+			snapped = snapped || (fill->ch[c].kind == FILL_SOURCE_MATERIAL && fill->ch[c].material == f.snapshot_uids[k]);
+		}
+		if (f.material_sigs[c] != 0 && !snapped) {
+			slot_material_t *m = fill_source_material(&fill->ch[c]);
+			same               = m != NULL && material_cache_graph_signature(m) == f.material_sigs[c];
+		}
+	}
+	free(fill);
+	return same;
+}
+
 // Entry index re-renders at any resolution
 bool timeline_ops_replays(timeline_t *tl, i32 index) {
 	tl_entry_t *e = &tl->entries[index];
@@ -327,7 +371,7 @@ bool timeline_ops_replays(timeline_t *tl, i32 index) {
 	case TL_IMAGE:
 		return tl_ops_params_ok(e, 1, 1);
 	case TL_FILL:
-		return tl_ops_params_ok(e, sizeof(tl_fill_params_t), 1);
+		return tl_ops_params_ok(e, sizeof(tl_fill_params_t), 0) && tl_ops_fill_materials_same(e);
 	case TL_APPLY_MASK:
 		return tl_ops_params_ok(e, sizeof(f32), 0) && timeline_find(e->src_tl) != NULL;
 	case TL_MERGE:
@@ -453,7 +497,7 @@ static void tl_ops_unswap(tl_ops_swap_t *s) {
 	}
 }
 
-// t dilated as layers_update_fill_layer dilates the live layer l: over the uv islands of t's part of the layer
+// t dilated as fill_rasterize dilates the live layer l: over the uv islands of t's part of the layer
 static void tl_ops_dilate(slot_layer_t *l, paint_target_t *t) {
 	if (g_config->dilate_radius <= 0) {
 		return;
@@ -490,24 +534,37 @@ static void tl_ops_dilate(slot_layer_t *l, paint_target_t *t) {
 	draw_resume(saved);
 }
 
-// The fill rendered for t (layers_render_fill_rect) by the layer for a while: its fill the snapshot, its uv props the
-// recorded ones
+// The fill rendered for t (fill_render) by the layer for a while: its fill and props the recorded ones
 static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t) {
 	slot_layer_t *l = slot_layer_find_uid(tl->layer_uid);
 	if (l == NULL) {
 		return false;
 	}
-	slot_material_t *m = paint_mat_snapshot_instantiate(p->children[0]);
-	if (m == NULL) {
-		return false;
-	}
 	tl_fill_params_t f;
 	memcpy(&f, p->body, sizeof(f));
-	slot_layer_t saved = *l; // The layer itself renders it (the paint pass finds it by pointer), as the fill it was
-	l->fill_material   = m;
-	l->scale           = f.scale;
-	l->angle           = f.angle;
-	l->uv_type         = f.uv_type;
+	fill_t *fill = fill_decode(&(f32_array_t){.buffer = f.fill, .length = FILL_ENCODE_LENGTH, .capacity = FILL_ENCODE_LENGTH}, false);
+	if (fill == NULL) {
+		return false;
+	}
+	// Materials changed since: their snapshots stand in, under uids of their own (a tile each)
+	u32 stand_ins[TL_PARAMS_MAX];
+	u32 nstand = 0;
+	for (u32 k = 0; k < p->n && k < TL_PARAMS_MAX; ++k) {
+		slot_material_t *m = paint_mat_snapshot_instantiate(p->children[k]);
+		if (m == NULL || array_index_of(g_project->_->materials, m) >= 0) {
+			continue; // Gone (the entry checked it does not need it), or the project's own still
+		}
+		u32 uid = 0x80000000u | (u32)(p->children[k].lo & 0x7fffffffu);
+		fill_stand_in_set(uid, m);
+		stand_ins[nstand++] = uid;
+		for (i32 c = 0; c < FILL_CHANNEL_COUNT; ++c) {
+			if (fill->ch[c].kind == FILL_SOURCE_MATERIAL && fill->ch[c].material == f.snapshot_uids[k]) {
+				fill->ch[c].material = uid;
+			}
+		}
+	}
+	slot_layer_t saved = *l; // The layer itself renders it (its row of fill parameters), as the fill it was
+	l->fill            = fill;
 	l->uv_map          = f.uv_map;
 	l->object_mask     = f.object_mask;
 	memcpy(&l->decal_mat, f.decal_mat, sizeof(f.decal_mat));
@@ -516,24 +573,14 @@ static bool tl_ops_replay_fill(timeline_t *tl, tl_params_t *p, paint_target_t *t
 	for (i32 i = 0; i < 11; ++i) {
 		*flags[i] = f.paint[i] != 0;
 	}
-	for (i32 k = 0; k < 3; ++k) {
-		util_texture_ensure_target(&tl_ops_scratch[k], t->w, t->h, GPU_TEXTURE_FORMAT_RGBA32);
-	}
-	if (t->channels == 1) { // The paint pass writes the normal and pack of the masked layer too
-		slot_layer_t *q = l->parent;
-		if (q != NULL && slot_layer_is_group(q)) {
-			slot_layer_t_array_t *children = slot_layer_get_children(q);
-			q                              = children != NULL && children->length > 0 ? children->buffer[0] : NULL;
-		}
-		if (q == NULL || q->texpaint_nor == NULL) {
-			*l = saved;
-			return false;
-		}
-		util_texture_ensure_target(&tl_ops_scratch[3], t->w, t->h, q->texpaint_nor->format);
-		util_texture_ensure_target(&tl_ops_scratch[4], t->w, t->h, q->texpaint_pack->format);
-	}
-	bool ok = layers_render_fill_rect(l, t, tl_ops_scratch);
+	fill_params_invalidate();
+	bool ok = fill_render(l, t->out, t->uv_rect);
 	*l      = saved;
+	fill_params_invalidate();
+	for (u32 k = 0; k < nstand; ++k) {
+		fill_stand_in_set(stand_ins[k], NULL); // Its tile goes with the next update
+	}
+	free(fill);
 	if (ok) {
 		tl_ops_dilate(l, t);
 	}

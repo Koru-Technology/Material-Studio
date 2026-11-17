@@ -37,7 +37,7 @@ void history_record_children(const u8 *data, u32 len, hstore_visit_fn visit, voi
 }
 
 // Props of a layer record (every layer_data_t field but the pixels, and uid, timeline, id), bools as i32
-#define HISTORY_RECORD_PROPS 41
+#define HISTORY_RECORD_PROPS 38
 
 static void hrec_i32(char *k, i32 v) {
 	armpack_encode_string(k);
@@ -61,7 +61,7 @@ static void hrec_f32s(char *k, f32_array_t *a) {
 
 static u32 history_record_props_size(slot_layer_t *l) {
 	f32_array_t *a[5] = {l->path_points, l->path_points_world, l->path_points_camera, l->mask_effects, NULL};
-	u32          n    = 4096 + (l->name != NULL ? string_length(l->name) : 0) + (l->path_points_parent != NULL ? l->path_points_parent->length * 4 : 0);
+	u32          n    = 4096 + FILL_ENCODE_LENGTH * 4 + (l->name != NULL ? string_length(l->name) : 0) + (l->path_points_parent != NULL ? l->path_points_parent->length * 4 : 0);
 	for (i32 i = 0; i < 4; ++i) {
 		n += a[i] != NULL ? a[i]->length * 4 : 0;
 	}
@@ -78,13 +78,9 @@ static u32 history_record_props(slot_layer_t *l, u8 *out) {
 	hrec_i32("id", l->id);
 	hrec_i32("visible", l->visible);
 	hrec_f32("opacity_mask", l->mask_opacity);
-	hrec_i32("fill_material", l->fill_material != NULL ? (i32)l->fill_material->uid : 0);
 	hrec_i32("show_panel", l->show_panel);
 	hrec_i32("blending", l->blending);
 	hrec_i32("object_mask", l->object_mask);
-	hrec_f32("uv_scale", l->scale);
-	hrec_f32("uv_rot", l->angle);
-	hrec_i32("uv_type", l->uv_type);
 	hrec_i32("uv_map", l->uv_map);
 	bool flags[11] = {l->paint_base, l->paint_opac,   l->paint_occ,          l->paint_rough, l->paint_met, l->paint_nor,
 	                  l->paint_nor_blend, l->paint_height, l->paint_height_blend, l->paint_emis,  l->paint_subs};
@@ -115,6 +111,9 @@ static u32 history_record_props(slot_layer_t *l, u8 *out) {
 	hrec_f32("height_blend_offset", l->height_blend_offset);
 	hrec_f32("height_blend_reach", l->height_blend_reach);
 	hrec_f32s("mask_effects", l->mask_effects);
+	f32_array_t *fill = fill_encode(l->fill, false);
+	hrec_f32s("fill", fill);
+	array_delete(fill);
 	return armpack_encode_end();
 }
 
@@ -155,13 +154,9 @@ slot_layer_t *history_record_layer(hash128_t record) {
 	l->id              = armpack_map_get_i32(m, "id");
 	l->visible         = armpack_map_get_i32(m, "visible") != 0;
 	l->mask_opacity    = armpack_map_get_f32(m, "opacity_mask");
-	l->fill_material   = slot_material_find_uid((u32)armpack_map_get_i32(m, "fill_material"));
 	l->show_panel      = armpack_map_get_i32(m, "show_panel") != 0;
 	l->blending        = armpack_map_get_i32(m, "blending");
 	l->object_mask     = armpack_map_get_i32(m, "object_mask");
-	l->scale           = armpack_map_get_f32(m, "uv_scale");
-	l->angle           = armpack_map_get_f32(m, "uv_rot");
-	l->uv_type         = armpack_map_get_i32(m, "uv_type");
 	l->uv_map          = armpack_map_get_i32(m, "uv_map");
 	bool *flags[11]    = {&l->paint_base, &l->paint_opac,   &l->paint_occ,          &l->paint_rough, &l->paint_met, &l->paint_nor,
 	                      &l->paint_nor_blend, &l->paint_height, &l->paint_height_blend, &l->paint_emis,  &l->paint_subs};
@@ -195,6 +190,8 @@ slot_layer_t *history_record_layer(hash128_t record) {
 	l->height_blend_offset    = armpack_map_get_f32(m, "height_blend_offset");
 	l->height_blend_reach     = armpack_map_get_f32(m, "height_blend_reach");
 	l->mask_effects           = hrec_get_f32s(m, "mask_effects");
+	l->fill                   = fill_decode(any_map_get(m, "fill"), false);
+	l->fill_dirty             = l->fill != NULL;
 	free(b);
 	l->ext = string("%d", l->id); // history_io_decode gives it a free id
 	return l;
@@ -240,8 +237,6 @@ static hash128_t history_record_out(slot_layer_t *l) {
 	return h;
 }
 
-static void history_update_fill_layer(slot_layer_t *l);
-
 // The layer comes back: textures again, its pixels from the record
 static void history_record_in(slot_layer_t *l, hash128_t record) {
 	u32       len = 0;
@@ -271,9 +266,9 @@ static void history_record_in(slot_layer_t *l, hash128_t record) {
 		draw_saved_t saved = draw_suspend();
 		slot_layer_clear(l, slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 		draw_resume(saved);
-		if (l->fill_material != NULL) {
-			sys_notify_on_next_frame(&history_update_fill_layer, l);
-		}
+	}
+	if (l->fill != NULL) {
+		l->fill_dirty = true; // Rasterized again, the viewport shows it live meanwhile
 	}
 	hstore_unref(record);
 	mask_stack_mark_dirty(l);
@@ -436,23 +431,6 @@ void history_swap_order(history_step_t *step) {
 	make_material_parse_mesh_material();
 }
 
-// Deferred to the next frame (slot_layer_alive): a later step undone in the same frame may have removed the layer, its
-// textures are gone
-static void history_update_fill_layer(slot_layer_t *l) {
-	if (slot_layer_alive(l)) {
-		layers_refresh_fill_layer(l);
-	}
-}
-
-static void history_layer_object_clear(slot_layer_t *l) {
-	if (!slot_layer_alive(l)) {
-		return;
-	}
-	g_context->material = l->fill_material;
-	slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-	layers_update_fill_layers();
-}
-
 void history_get_height_blend(slot_layer_t *l, f32 *out) {
 	out[0] = l->height_blend ? 1.0 : 0.0;
 	out[1] = l->height_blend_below ? 1.0 : 0.0;
@@ -521,35 +499,26 @@ void history_swap_layer_props(history_step_t *step) {
 		step->layer_object = t;
 		context_set_layer(l);
 		make_material_parse_mesh_material();
-		if (l->fill_material != NULL) {
-			sys_notify_on_next_frame(&history_layer_object_clear, l);
-		}
-		else {
-			layers_set_object_mask();
-		}
+		fill_changed(l);
+		layers_set_object_mask();
 	}
-	else if (step->action == HISTORY_ACTION_LAYER_SCALE) {
-		f32 t             = l->scale;
-		l->scale          = step->layer_scale;
-		step->layer_scale = t;
-		sys_notify_on_next_frame(&history_update_fill_layer, l);
-	}
-	else if (step->action == HISTORY_ACTION_LAYER_ANGLE) {
-		f32 t             = l->angle;
-		l->angle          = step->layer_angle;
-		step->layer_angle = t;
-		sys_notify_on_next_frame(&history_update_fill_layer, l);
-	}
-	else if (step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL) {
-		slot_material_t_array_t *materials = g_project->_->materials;
-		i32                      t         = array_index_of(materials, l->fill_material);
-		u32                      t_uid     = l->fill_material != NULL ? l->fill_material->uid : 0;
-		if (step->material >= 0 && step->material < materials->length) {
-			l->fill_material = materials->buffer[step->material];
+	else if (step->action == HISTORY_ACTION_LAYER_FILL) {
+		f32_array_t *t = fill_encode(l->fill, false);
+		for (i32 i = 0; i < 16; ++i) { // The decal box after the fill
+			f32_array_push(t, ((f32 *)&l->decal_mat)[i]);
 		}
-		step->material     = t;
-		step->material_uid = t_uid;
-		sys_notify_on_next_frame(&history_update_fill_layer, l);
+		fill_t *f = fill_decode(step->fill, false);
+		if (f != NULL) {
+			free(l->fill);
+			l->fill = f;
+		}
+		if (step->fill != NULL && step->fill->length >= FILL_ENCODE_LENGTH + 16) {
+			memcpy(&l->decal_mat, step->fill->buffer + FILL_ENCODE_LENGTH, sizeof(f32) * 16);
+		}
+		array_delete(step->fill);
+		step->fill = t;
+		context_set_layer(l);
+		fill_reshaped(l);
 	}
 	else if (step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
 		f32 t[6];
@@ -568,15 +537,6 @@ void history_swap_layer_props(history_step_t *step) {
 			g_context->mask_effect = -1; // The selected effect went with the edit
 		}
 		mask_stack_mark_dirty(l);
-	}
-	else if (step->action == HISTORY_ACTION_LAYER_UV_TYPE) {
-		i32 t               = l->uv_type;
-		l->uv_type          = step->layer_uv_type;
-		step->layer_uv_type = t;
-		context_set_material(l->fill_material);
-		context_set_layer(l);
-		make_material_parse_paint_material(true);
-		sys_notify_on_next_frame(&history_update_fill_layer, l);
 	}
 }
 

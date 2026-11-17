@@ -409,7 +409,7 @@ static void render_path_paint_cull(mesh_object_t *o) {
 	paint_exec_op_t *op   = paint_exec_current();
 	if ((tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_BLUR) || g_context->paint2d ||
 	    context_is_decal() || g_context->xray || context_is_pixel_snap() || context_is_brush_camera_align() || g_context->pick_pos_nor_tex ||
-	    g_context->layer->fill_material != NULL || op == NULL) {
+	    g_context->layer->fill != NULL || op == NULL) {
 		return;
 	}
 	static paint_cull_dab_t dabs[RENDER_PATH_PAINT_BATCH_MAX];
@@ -857,7 +857,7 @@ bool render_path_paint_paint_enabled() {
 		return true;
 	}
 
-	bool fill_layer = g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER &&
+	bool fill_layer = g_context->layer->fill != NULL && g_context->tool != TOOL_TYPE_PICKER &&
 	                  g_context->tool != TOOL_TYPE_COLORID;
 	bool group_layer = slot_layer_is_group(g_context->layer);
 

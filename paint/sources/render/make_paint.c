@@ -245,7 +245,7 @@ static bool make_paint_batch_eligible() {
 	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER) {
 		return false;
 	}
-	if (g_context->pick_pos_nor_tex || g_context->layer == NULL || g_context->layer->fill_material != NULL || slot_layer_is_path(g_context->layer)) {
+	if (g_context->pick_pos_nor_tex || g_context->layer == NULL || g_context->layer->fill != NULL || slot_layer_is_path(g_context->layer)) {
 		return false;
 	}
 	// The rest keeps one draw per dab
@@ -254,14 +254,14 @@ static bool make_paint_batch_eligible() {
 }
 
 // Brush draws read their dabs resolved to world space (paint_exec.c): the brush tools always (a fill layer selected
-// with one still parses its shader), the fill tool when it paints a stroke (fill layers render without one)
+// with one still parses its shader), the fill tool when it paints a stroke (not on a fill layer, it shows its mask)
 static bool make_paint_resolved_eligible(bool is_atlas) {
 	if (is_atlas || g_context->pick_pos_nor_tex || g_context->layer == NULL) {
 		return false;
 	}
 	tool_type_t tool = g_context->tool;
 	if (tool == TOOL_TYPE_FILL) {
-		return g_context->layer->fill_material == NULL;
+		return g_context->layer->fill == NULL;
 	}
 	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR || context_is_decal();
 }
@@ -545,13 +545,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_vert(shader, string_tmp("output.pixel_uv = %s;", tuv));
 	}
 
-	bool decal_layer = g_context->layer->fill_material != NULL && g_context->layer->uv_type == UV_TYPE_PROJECT;
-	if (decal_layer) {
-		node_shader_add_constant(shader, "mat4 WVP", "_decal_layer_matrix");
-	}
-	else {
-		node_shader_add_constant(shader, "mat4 WVP", "_world_view_proj_matrix");
-	}
+	node_shader_add_constant(shader, "mat4 WVP", "_world_view_proj_matrix");
 
 	node_shader_add_out(shader, "vec4 ndc");
 	node_shader_write_attrib_vert(shader, "output.ndc = constants.WVP * vec4(input.pos.xyz, 1.0);");
@@ -571,7 +565,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_attrib_frag(shader, "int dab_k0 = int(constants.paint_dab_first);");
 	}
 
-	uv_type_t uv_type = g_context->layer->fill_material != NULL ? g_context->layer->uv_type : g_context->brush_paint;
+	uv_type_t uv_type = g_context->brush_paint;
 	if (uv_type == UV_TYPE_PROJECT) {
 		shader->frag_ndcpos = true;
 	}
@@ -670,7 +664,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		parser_material_parse_emission     = g_context->material->paint_emis;
 		parser_material_parse_subsurface   = g_context->material->paint_subs;
 		parser_material_parse_height       = g_context->material->paint_height;
-		uv_type_t uv_type                  = g_context->layer->fill_material != NULL ? g_context->layer->uv_type : g_context->brush_paint;
+		uv_type_t uv_type                  = g_context->brush_paint;
 		parser_material_triplanar          = uv_type == UV_TYPE_TRIPLANAR && !decal;
 		parser_material_sample_keep_aspect = decal;
 		parser_material_sample_uv_scale    = is_atlas ? "1.0" : "constants.brush_scale";
@@ -696,16 +690,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_frag(shader, string_tmp("float mat_opacity = %s;", opac));
 		node_shader_write_frag(shader, "float opacity = mat_opacity;");
 
-		// Fill layers write the material opacity directly, anything but a constant 1.0 on the bottom layer makes it see-through
-		if (g_context->layer->fill_material != NULL && g_context->layer == g_project->_->layers->buffer[0] && g_context->material->paint_opac) {
-			char *end;
-			f32   v = strtof(opac, &end);
-			if (*end != '\0' || v < 1.0) {
-				layers_enable_translucency();
-			}
-		}
-
-		if (g_context->layer->fill_material == NULL && !make_paint_batched) { // Batched: the opacity of each dab
+		if (!make_paint_batched) { // Batched: the opacity of each dab
 			node_shader_write_frag(shader, "opacity *= constants.brush_opacity;");
 		}
 
@@ -895,7 +880,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 	}
 
 	// Masks take a gray value, not the material: white reveals the layer, black hides it
-	bool mask_gray = slot_layer_is_mask(g_context->layer) && g_context->layer->fill_material == NULL &&
+	bool mask_gray = slot_layer_is_mask(g_context->layer) &&
 	                 (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_PARTICLE);
 	if (mask_gray) {
 		node_shader_add_constant(shader, "float mask_value", "_mask_value");
@@ -919,10 +904,6 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_frag(shader,
 		                       "output[0] = vec4((basecol * t_blur + sample_undo.rgb * sample_undo.a * (1.0 - t_blur)) / max(out_a, 0.0000001), out_a);");
 	}
-	else if (g_context->layer->fill_material != NULL) {
-		node_shader_write_frag(shader, string_tmp("output[0] = vec4(%s, %s);",
-		                                        make_material_blend_mode(shader, g_context->brush_blending, "sample_undo.rgb", "basecol", "str"), "mat_opacity"));
-	}
 	else if (g_project->linear_blending && !is_mask) {
 		// Blend in linear space, the layer stays gamma encoded
 		node_shader_write_frag(shader, "vec3 undo_lin = pow(max(sample_undo.rgb, vec3(0.0, 0.0, 0.0)), vec3(2.2, 2.2, 2.2));");
@@ -945,7 +926,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_write_frag(shader, string_tmp("output[0] = vec4(%s, %s);",
 		                                        make_material_blend_mode(shader, g_context->brush_blending, "sample_undo.rgb", "basecol", "str"), "out_a"));
 	}
-	if (make_material_blend_mode_channels(g_context->brush_blending) && !is_mask && g_context->layer->fill_material == NULL &&
+	if (make_material_blend_mode_channels(g_context->brush_blending) && !is_mask &&
 	    g_context->tool != TOOL_TYPE_BLUR) {
 		// The blend mode also applies to occlusion, roughness, metallic and height, the normal adds detail
 		node_shader_write_frag(shader, "vec3 pack_undo_rgb = sample_pack_undo.rgb;");

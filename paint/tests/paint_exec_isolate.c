@@ -1,7 +1,7 @@
 #include "global.h"
 
 // Paint work from outside the stroke model runs isolated (paint_exec.c): a fill layer updated and a fill rendered into
-// a target of its own (layers_render_fill_rect, as replays and export tiles render fills) come out the same while a
+// a target of its own (fill_render, as replays and export tiles render fills) come out the same while a
 // scope of the stroke model is open (a materialize from inside a stroke) as with none: the draw executes against the
 // targets its caller swapped in, not at the scope's end.
 

@@ -170,7 +170,7 @@ typedef struct {
 	int32_t     kind;      // app_layer_kind_t
 	bool        visible;
 	bool        selected;
-	bool        is_fill; // A fill layer (a material over the whole layer)
+	bool        is_fill; // A fill layer or fill mask (sources per channel, app_layer_fill)
 	float       opacity;
 	const char *name; // Valid until the next app_* call, copy it
 } app_layer_info_t;

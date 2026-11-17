@@ -119,12 +119,34 @@ static void hio_hashes(char *k, hash128_t *h, i32 n) {
 	free(a);
 }
 
+static void hio_f32_array(char *k, f32_array_t *a) {
+	hio_key(k);
+	if (a != NULL) {
+		armpack_encode_array_f32(a);
+	}
+	else {
+		armpack_encode_null();
+	}
+}
+
+static f32_array_t *hio_get_f32_array(any_map_t *m, char *k) {
+	f32_array_t *a = any_map_get(m, k);
+	if (a == NULL) {
+		return NULL;
+	}
+	f32_array_t *c = f32_array_create(a->length);
+	if (a->length > 0) {
+		memcpy(c->buffer, a->buffer, sizeof(f32) * a->length);
+	}
+	return c;
+}
+
 static void hio_swatch(swatch_color_t *s, f32 *out) {
 	f32 v[9] = {*(f32 *)&s->base, s->opacity, s->occlusion, s->roughness, s->metallic, *(f32 *)&s->normal, s->emission, s->height, s->subsurface};
 	memcpy(out, v, sizeof(v));
 }
 
-#define HISTORY_IO_STEP_KEYS 46
+#define HISTORY_IO_STEP_KEYS 45
 
 static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	armpack_encode_map(HISTORY_IO_STEP_KEYS);
@@ -143,17 +165,9 @@ static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	hio_i32("canvas_type", s->canvas_type);
 	hio_i32("canvas_group", s->canvas_group);
 	hio_str("layer_name", s->layer_name);
-	hio_f32("layer_scale", s->layer_scale);
-	hio_f32("layer_angle", s->layer_angle);
-	hio_i32("layer_uv_type", s->layer_uv_type);
 	hio_f32s("layer_height_blend", s->layer_height_blend, 6);
-	hio_key("mask_effects");
-	if (s->mask_effects != NULL) {
-		armpack_encode_array_f32(s->mask_effects);
-	}
-	else {
-		armpack_encode_null();
-	}
+	hio_f32_array("mask_effects", s->mask_effects);
+	hio_f32_array("fill", s->fill);
 	hio_i32("swatch", s->swatch);
 	f32 sw[9] = {0};
 	if (s->swatch_color != NULL) {
@@ -202,15 +216,15 @@ static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	                     p != NULL && p->path_material != NULL ? (i32)p->path_material->uid : 0};
 	i32_array_t pa    = {.buffer = pp, .length = 4, .capacity = 4};
 	hio_i32s("path_props", p != NULL ? &pa : NULL);
-	i32 fill[2] = {(i32)s->fill_uids[0], (i32)s->fill_uids[1]};
-	i32_array_t fa = {.buffer = fill, .length = 2, .capacity = 2};
-	hio_i32s("fill_uids", &fa);
+	hio_f32_array("fill_mask", s->fills[0]);
+	hio_f32_array("fill_layer", s->fills[1]);
 }
 
 // Upper bound of a step's encoded bytes
 static u32 history_io_step_size(history_step_t *s) {
 	u32 n = 4096;
 	n += s->mask_effects != NULL ? s->mask_effects->length * 4 : 0;
+	n += (FILL_ENCODE_LENGTH * 4 + 16) * 3;
 	n += s->swatch_colors != NULL ? s->swatch_colors->length * 40 : 0;
 	n += s->merge_layers != NULL ? s->merge_layers->length * 24 : 0;
 	n += s->merge_parents != NULL ? s->merge_parents->length * 4 : 0;
@@ -336,9 +350,6 @@ static history_step_t *history_io_decode_step(any_map_t *m) {
 	s->canvas_type    = armpack_map_get_i32(m, "canvas_type");
 	s->canvas_group   = armpack_map_get_i32(m, "canvas_group");
 	s->layer_name     = hio_get_str(m, "layer_name");
-	s->layer_scale    = armpack_map_get_f32(m, "layer_scale");
-	s->layer_angle    = armpack_map_get_f32(m, "layer_angle");
-	s->layer_uv_type  = armpack_map_get_i32(m, "layer_uv_type");
 	f32 *hb           = hio_get_f32s(m, "layer_height_blend", 6);
 	if (hb != NULL) {
 		memcpy(s->layer_height_blend, hb, sizeof(s->layer_height_blend));
@@ -414,11 +425,9 @@ static history_step_t *history_io_decode_step(any_map_t *m) {
 			free(data);
 		}
 	}
-	i32_array_t *f = any_map_get(m, "fill_uids");
-	if (f != NULL && f->length == 2) {
-		s->fill_uids[0] = (u32)f->buffer[0];
-		s->fill_uids[1] = (u32)f->buffer[1];
-	}
+	s->fill     = hio_get_f32_array(m, "fill");
+	s->fills[0] = hio_get_f32_array(m, "fill_mask");
+	s->fills[1] = hio_get_f32_array(m, "fill_layer");
 	return s;
 }
 

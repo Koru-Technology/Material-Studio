@@ -311,9 +311,7 @@ struct LayerRowView: View {
 				parts.append("Path")
 			}
 			else if layer.isFill {
-				let names = layers.materialNames
-				let m = Int(layer.props.fillMaterial)
-				parts.append(m >= 0 && m < names.count ? names[m] : "Fill")
+				parts.append(FillSummary.text(layer.props, materials: layers.materialNames))
 			}
 		}
 		if layer.props.showsBlending && layer.props.blending != 0 {

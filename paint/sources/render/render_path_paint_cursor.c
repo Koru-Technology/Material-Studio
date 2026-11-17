@@ -88,7 +88,7 @@ void render_path_paint_commands_cursor() {
 		return;
 	}
 
-	bool fill_layer  = g_context->layer->fill_material != NULL && !layers_fill_paint_tool(tool); // Brushes paint its mask
+	bool fill_layer  = g_context->layer->fill != NULL && !layers_fill_paint_tool(tool); // Brushes paint its mask
 	bool group_layer = slot_layer_is_group(g_context->layer);
 	if (!base_ui_enabled || fill_layer || group_layer) {
 		return;

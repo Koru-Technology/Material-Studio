@@ -71,8 +71,8 @@ struct LayerDetailSections: View {
 			}
 		}
 
-		if layer.isFill && p.fillMaterial >= 0 {
-			fillSection(layer)
+		if layer.isFill && !p.sources.isEmpty {
+			FillSections(layer: layer) // FillDetail.swift
 		}
 
 		if layer.kind == .mask {
@@ -84,29 +84,6 @@ struct LayerDetailSections: View {
 			Section("Channels") {
 				LayerChannels(layer: layer)
 			}
-		}
-	}
-
-	@ViewBuilder
-	private func fillSection(_ layer: LayerRow) -> some View {
-		let p = layer.props
-		Section(layer.kind == .mask ? "Fill Mask" : "Fill") {
-			Picker("Material", selection: Binding(get: { p.fillMaterial }, set: { v in
-				store.perform { _ = app_layer_set_fill_material(layer.id, v) }
-			})) {
-				ForEach(Array(layers.materialNames.enumerated()), id: \.offset) { i, name in
-					Text(name).tag(Int32(i))
-				}
-			}
-			Picker("Projection", selection: Binding(get: { p.uvType }, set: { v in
-				store.perform { _ = app_layer_set_uv_type(layer.id, v) }
-			})) {
-				Text("UV Map").tag(Int32(0))
-				Text("Triplanar").tag(Int32(1))
-				Text("Project").tag(Int32(2))
-			}
-			valueSlider(layer, "UV Scale", p.scale, 0...5, APP_LAYER_VALUE_SCALE) { String(format: "%.2f", $0) }
-			valueSlider(layer, "Angle", p.angle, 0...360, APP_LAYER_VALUE_ANGLE) { "\(Int($0.rounded()))°" }
 		}
 	}
 

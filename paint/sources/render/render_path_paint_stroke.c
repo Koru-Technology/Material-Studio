@@ -72,7 +72,7 @@ f32 render_path_paint_spacing() {
 
 bool render_path_paint_stamps() {
 	bool tool = g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_ERASER || g_context->tool == TOOL_TYPE_CLONE;
-	return tool && render_path_paint_spacing() > 0.0 && !slot_layer_is_path(g_context->layer) && g_context->layer->fill_material == NULL &&
+	return tool && render_path_paint_spacing() > 0.0 && !slot_layer_is_path(g_context->layer) && g_context->layer->fill == NULL &&
 	       !context_is_decal() && !context_is_pixel_snap();
 }
 
@@ -385,7 +385,7 @@ bool render_path_paint_use_samples() {
 	bool snap  = g_context->grid_snap_toggle || keymap_shortcut(any_map_get(g_keymap, "grid_snap"), SHORTCUT_TYPE_DOWN) ||
 	            (g_config->view2d_grid_snap && in_2d) || context_is_pixel_snap();
 	return g_context->brush_lazy_radius <= 0.0 && !context_is_ruler_paint() && !snap && !slot_layer_is_path(g_context->layer) &&
-	       g_context->layer->fill_material == NULL && !context_is_decal();
+	       g_context->layer->fill == NULL && !context_is_decal();
 }
 
 static render_path_paint_filter_t render_path_paint_samples_filter = {0};

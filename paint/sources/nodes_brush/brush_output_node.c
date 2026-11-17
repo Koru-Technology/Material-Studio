@@ -128,7 +128,7 @@ void brush_output_node_run() {
 	bool picking_object = g_context->tool == TOOL_TYPE_CURSOR;
 
 	// Do not paint over fill layer
-	if (!picking_object && g_context->layer->fill_material != NULL && g_context->tool != TOOL_TYPE_PICKER &&
+	if (!picking_object && g_context->layer->fill != NULL && g_context->tool != TOOL_TYPE_PICKER &&
 	    g_context->tool != TOOL_TYPE_COLORID) {
 		return;
 	}

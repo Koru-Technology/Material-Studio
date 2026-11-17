@@ -39,9 +39,16 @@ bool app_layer_expanded(int32_t id) {
 	return l != NULL && l->show_panel;
 }
 
-int32_t app_layer_uv_type(int32_t id) {
+// A fill layer's projection (app_fill_projection_t), -1 when it is no fill
+int32_t app_layer_fill_projection(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	return l != NULL ? (int32_t)l->uv_type : -1;
+	return l != NULL && l->fill != NULL ? l->fill->projection : -1;
+}
+
+// The kind of a fill layer's source (app_fill_source_kind_t), -1 when it is no fill
+int32_t app_layer_fill_kind(int32_t id, int32_t channel) {
+	slot_layer_t *l = app_layer_by_id(id);
+	return l != NULL && l->fill != NULL && channel >= 0 && channel < FILL_CHANNEL_COUNT ? l->fill->ch[channel].kind : -1;
 }
 
 int32_t app_mask_effect_type(int32_t id, int32_t index) {

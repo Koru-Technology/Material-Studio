@@ -11,12 +11,11 @@ struct LayerProps: Equatable {
 	var isDecal = false
 	var maskID: Int32 = -1
 	var blending: Int32 = 0
-	var uvType: Int32 = 0
 	var uvMap: Int32 = 0
 	var hasUV1 = false
-	var scale: Float = 1
-	var angle: Float = 0
-	var fillMaterial: Int32 = -1
+	var isFill = false
+	var fill = FillInfo()      // Fill layers and fill masks
+	var sources: [FillSource] = [] // Their channels' sources, app_fill_channel_t order
 	var channels: UInt32 = 0
 	var heightBlend = false
 	var heightBlendBelow = false
@@ -49,12 +48,17 @@ struct LayerProps: Equatable {
 		isDecal = p.is_decal
 		maskID = p.mask_id
 		blending = p.blending
-		uvType = p.uv_type
 		uvMap = p.uv_map
 		hasUV1 = p.has_uv1
-		scale = p.scale
-		angle = p.angle
-		fillMaterial = p.fill_material
+		isFill = p.is_fill
+		if p.is_fill {
+			var f = app_fill_t()
+			if app_layer_fill(p.id, &f) {
+				fill = FillInfo(f)
+			}
+			var s = app_fill_source_t()
+			sources = (0..<Int32(APP_FILL_CHANNEL_COUNT.rawValue)).compactMap { app_layer_fill_source(p.id, $0, &s) ? FillSource(s) : nil }
+		}
 		channels = p.channels
 		heightBlend = p.height_blend
 		heightBlendBelow = p.height_blend_below
@@ -80,6 +84,54 @@ struct LayerProps: Equatable {
 
 	func paints(_ channel: app_layer_channel_t) -> Bool {
 		channels & (1 << channel.rawValue) != 0
+	}
+}
+
+// A fill's projection (app_fill_t)
+struct FillInfo: Equatable {
+	var projection: Int32 = 0
+	var scaleX: Float = 1
+	var scaleY: Float = 1
+	var offsetX: Float = 0
+	var offsetY: Float = 0
+	var angle: Float = 0
+	var hardness: Float = 0.5
+	var isMask = false
+
+	init() {}
+
+	init(_ f: app_fill_t) {
+		projection = f.projection
+		scaleX = f.scale_x
+		scaleY = f.scale_y
+		offsetX = f.offset_x
+		offsetY = f.offset_y
+		angle = f.angle
+		hardness = f.hardness
+		isMask = f.is_mask
+	}
+}
+
+// Where one channel of a fill comes from (app_fill_source_t)
+struct FillSource: Equatable {
+	var kind: Int32 = 0
+	var color: [Float] = [0, 0, 0]
+	var color2: [Float] = [0, 0, 0]
+	var image: Int32 = -1
+	var imageChannel: Int32 = 4
+	var pattern: Int32 = 0
+	var params: [Float] = []
+	var material: Int32 = -1
+
+	init(_ s: app_fill_source_t) {
+		kind = s.kind
+		color = withUnsafeBytes(of: s.color) { Array($0.bindMemory(to: Float.self)) }
+		color2 = withUnsafeBytes(of: s.color2) { Array($0.bindMemory(to: Float.self)) }
+		image = s.image
+		imageChannel = s.image_channel
+		pattern = s.pattern
+		params = withUnsafeBytes(of: s.params) { Array($0.bindMemory(to: Float.self)) }
+		material = s.material
 	}
 }
 
@@ -177,7 +229,7 @@ final class LayersStore: ChangeOnly {
 	private(set) var visibleLayers: [LayerRow] = [] // Without the children of folded groups and layers
 	private(set) var thumbnailsVersion: UInt32 = 0
 	private(set) var materialNames: [String] = [] // Project materials, for the fill material picker
-	private(set) var imageNames: [String] = []    // Project images, for a fill effect's image picker
+	private(set) var imageNames: [String] = []    // Project images, for the image pickers of fill effects and fill layers
 	private(set) var canNew: Set<Int32> = []       // app_layer_new_t kinds the "+" menu enables
 
 	@ObservationIgnored private var layersSignature: UInt32 = 0
@@ -185,6 +237,7 @@ final class LayersStore: ChangeOnly {
 	@ObservationIgnored private var thumbnails: [Int32: CGImage] = [:]
 	@ObservationIgnored private let thumbnailReader = PixelReader(capacity: 512 * 512 * 4)
 
+	static let patternNames: [String] = (0..<app_fill_pattern_count()).map { String(cString: app_fill_pattern_name($0)) }
 	static let blendingNames: [String] = (0..<app_layer_blending_count()).map { String(cString: app_layer_blending_name($0)) }
 	static let maskBlendingNames: [String] = (0..<app_mask_blending_count()).map { String(cString: app_mask_blending_name($0)) }
 	static let effectTypeNames: [String] = (0..<app_mask_effect_type_count()).map { String(cString: app_mask_effect_type_name($0)) }

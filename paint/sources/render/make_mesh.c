@@ -122,6 +122,24 @@ static bool make_mesh_layer_has_visible_mask(slot_layer_t *l) {
 	return false;
 }
 
+// The pack (occlusion, roughness, metallic, height) of layer l at coord into texpaint_pack_sample: its texture, or its
+// fill evaluated
+static void make_mesh_write_pack(node_shader_t *shader, slot_layer_t *l, char *coord) {
+	if (l->fill != NULL) {
+		node_shader_write_frag(shader, string_tmp("texpaint_pack_sample = fill%d_pack_at(%s, input.wposition, n);", l->id, coord));
+		return;
+	}
+	node_shader_add_texture(shader, string_tmp("texpaint_pack%s", i32_to_string(l->id)), NULL);
+	node_shader_write_frag(shader, string_tmp("texpaint_pack_sample = textureLod(sampler2D(texpaint_pack%s, sampler_linear), %s, 0.0);", i32_to_string(l->id), coord));
+}
+
+// World position of height neighbour k (-u, +u, -v, +v by a texel, tex_step) for fills
+static char *make_mesh_fill_neighbour_wp(i32 k) {
+	char *wp[4] = {"input.wposition - fill_dpdu * tex_step", "input.wposition + fill_dpdu * tex_step", "input.wposition - fill_dpdv * tex_step",
+	               "input.wposition + fill_dpdv * tex_step"};
+	return wp[k];
+}
+
 // Opacity of a layer or mask as a shader constant, dragging the opacity slider then needs no new shader
 static char *make_mesh_opacity(node_shader_t *shader, slot_layer_t *l) {
 	node_shader_add_constant(shader, string("float layer_opac%d", l->id), string("_layer_opacity%d", l->id));
@@ -304,6 +322,8 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		node_shader_write_frag(shader, "vec4 texpaint_pack_sample;");
 		node_shader_write_frag(shader, "float texpaint_opac;");
 
+		make_fill_uses(&make_material_emis_used, &make_material_height_used); // Fill layers with emission or height
+
 		if (make_material_height_used) {
 			node_shader_write_frag(shader, "float height0 = 0.0;");
 			node_shader_write_frag(shader, "float height1 = 0.0;");
@@ -341,6 +361,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		make_mesh_layer_pass_count             = 1;
 		slot_layer_t_array_t *layers           = any_array_create_from_raw((void *[]){}, 0);
 		i32                   start_count      = texture_count;
+		bool                  fills_counted    = false;
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 			slot_layer_t *l = g_project->_->layers->buffer[i];
 			if (!slot_layer_is_visible(l)) {
@@ -354,6 +375,10 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			}
 
 			i32 count = 3;
+			if (l->fill != NULL) { // Live: its images and material tiles, the parameters texture once
+				count = make_fill_texture_count(l) + (fills_counted ? 0 : 1);
+				fills_counted = true;
+			}
 
 			slot_layer_t_array_t *masks = slot_layer_get_masks(l, true);
 			if (masks != NULL) {
@@ -372,6 +397,24 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		}
 
 		bool last_pass = layer_pass == make_mesh_layer_pass_count - 1;
+
+		// Fill layers' height neighbours: the surface moved by a texel of the uv map, in world space (planar and
+		// triplanar fills read the position). Outside any branch, derivatives need every fragment.
+		bool fill_neighbours = false;
+		for (i32 i = 0; i < layers->length; ++i) {
+			slot_layer_t *l = layers->buffer[i];
+			fill_neighbours = fill_neighbours || (l->fill != NULL && l->paint_height && make_material_height_used);
+		}
+		if (fill_neighbours) {
+			node_shader_write_frag(shader, "vec3 fill_dpx = dFdx(input.wposition);");
+			node_shader_write_frag(shader, "vec3 fill_dpy = dFdy(input.wposition);");
+			node_shader_write_frag(shader, "vec2 fill_dux = dFdx(tex_coord);");
+			node_shader_write_frag(shader, "vec2 fill_duy = dFdy(tex_coord);");
+			node_shader_write_frag(shader, "float fill_det = fill_dux.x * fill_duy.y - fill_dux.y * fill_duy.x;");
+			node_shader_write_frag(shader, "float fill_idet = abs(fill_det) > 0.0000000001 ? 1.0 / fill_det : 0.0;");
+			node_shader_write_frag(shader, "vec3 fill_dpdu = (fill_dpx * fill_duy.y - fill_dpy * fill_dux.y) * fill_idet;");
+			node_shader_write_frag(shader, "vec3 fill_dpdv = (fill_dpy * fill_dux.x - fill_dpx * fill_duy.x) * fill_idet;");
+		}
 
 		// Translucency: the bottom layer alpha is the surface opacity, layers above composite over it
 		bool transluc = g_project->_->translucency && g_context->viewport_mode != VIEWPORT_MODE_PATH_TRACE && g_project->_->layers->length > 0 &&
@@ -403,8 +446,15 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			}
 
 			char *tex_coord = l->uv_map == 1 ? "tex_coord1" : util_mesh_udim_layer(l) ? "tex_coord_atlas" : "tex_coord";
-			node_shader_add_texture(shader, string_tmp("texpaint%s", i32_to_string(l->id)), NULL);
-			node_shader_write_frag(shader, string_tmp("texpaint_sample = textureLod(sampler2D(texpaint%s, sampler_linear), %s, 0.0);", i32_to_string(l->id), tex_coord));
+			bool  fill      = l->fill != NULL;
+			if (fill) { // Evaluated here, at any zoom (make_fill.c)
+				make_fill_declare(shader, l);
+				node_shader_write_frag(shader, string_tmp("texpaint_sample = fill%d_base_at(%s, input.wposition, n);", l->id, tex_coord));
+			}
+			else {
+				node_shader_add_texture(shader, string_tmp("texpaint%s", i32_to_string(l->id)), NULL);
+				node_shader_write_frag(shader, string_tmp("texpaint_sample = textureLod(sampler2D(texpaint%s, sampler_linear), %s, 0.0);", i32_to_string(l->id), tex_coord));
+			}
 			if (g_project->linear_blending) { // Layers are stored gamma encoded, blended in linear
 				node_shader_write_frag(shader, "texpaint_sample.rgb = pow(max(texpaint_sample.rgb, vec3(0.0, 0.0, 0.0)), vec3(2.2, 2.2, 2.2));");
 			}
@@ -413,9 +463,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			bool height_blended = make_mesh_layer_height_blended(l);
 			if (height_blended) {
 				// The masks follow the height of the layer
-				node_shader_add_texture(shader, string_tmp("texpaint_pack%s", i32_to_string(l->id)), NULL);
-				node_shader_write_frag(shader, string_tmp("texpaint_pack_sample = textureLod(sampler2D(texpaint_pack%s, sampler_linear), %s, 0.0);", i32_to_string(l->id),
-				                                        tex_coord));
+				make_mesh_write_pack(shader, l, tex_coord);
 			}
 			if (make_mesh_layer_has_visible_mask(l)) {
 				char *texpaint_mask = string("texpaint_mask%s", i32_to_string(l->id));
@@ -442,11 +490,19 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			}
 
 			if (l->paint_nor || make_material_emis_used) {
-				node_shader_add_texture(shader, string_tmp("texpaint_nor%s", i32_to_string(l->id)), NULL);
-				node_shader_write_frag(shader, string_tmp("texpaint_nor_sample = textureLod(sampler2D(texpaint_nor%s, sampler_linear), %s, 0.0);", i32_to_string(l->id),
-				                                        tex_coord));
+				if (fill) {
+					node_shader_write_frag(shader, string_tmp("texpaint_nor_sample = fill%d_nor_at(%s, input.wposition, n);", l->id, tex_coord));
+				}
+				else {
+					node_shader_add_texture(shader, string_tmp("texpaint_nor%s", i32_to_string(l->id)), NULL);
+					node_shader_write_frag(shader, string_tmp("texpaint_nor_sample = textureLod(sampler2D(texpaint_nor%s, sampler_linear), %s, 0.0);",
+					                                        i32_to_string(l->id), tex_coord));
+				}
 
-				if (make_material_emis_used) {
+				if (make_material_emis_used && fill) {
+					node_shader_write_frag(shader, "if (texpaint_opac > 0.0) { matid = texpaint_nor_sample.a; }");
+				}
+				else if (make_material_emis_used) {
 					node_shader_write_frag(shader, "if (texpaint_opac > 0.0) {");
 					node_shader_add_constant(shader, "vec2 texpaint_size", "_texpaint_size");
 					node_shader_write_frag(shader, string_tmp("	vec4 texpaint_nor_raw = texelFetch(sampler2D(texpaint_nor%s, sampler_linear), ivec2(uint(%s.x * constants.texpaint_size.x), "
@@ -473,9 +529,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			}
 
 			if (l->paint_occ || l->paint_rough || l->paint_met || (l->paint_height && make_material_height_used)) {
-				node_shader_add_texture(shader, string_tmp("texpaint_pack%s", i32_to_string(l->id)), NULL);
-				node_shader_write_frag(shader, string_tmp("texpaint_pack_sample = textureLod(sampler2D(texpaint_pack%s, sampler_linear), %s, 0.0);", i32_to_string(l->id),
-				                                        tex_coord));
+				make_mesh_write_pack(shader, l, tex_coord);
 
 				bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l)) && l != g_project->_->layers->buffer[0];
 				if (pack_blend && (l->paint_occ || l->paint_rough || l->paint_met)) {
@@ -531,8 +585,15 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 						node_shader_write_frag(shader, "{");
 						char *nco_fmt = string("vec2 nco = %s;", offsets[k]);
 						node_shader_write_frag(shader, string_tmp(nco_fmt, tex_coord, tex_coord));
-						node_shader_write_frag(shader, string_tmp("float npack = textureLod(sampler2D(texpaint_pack%s, sampler_linear), nco, 0.0).a;", i32_to_string(l->id)));
-						node_shader_write_frag(shader, string_tmp("float nopac = textureLod(sampler2D(texpaint%s, sampler_linear), nco, 0.0).a;", i32_to_string(l->id)));
+						if (fill) {
+							char *nwp = make_mesh_fill_neighbour_wp(k);
+							node_shader_write_frag(shader, string_tmp("float npack = fill%d_pack_at(nco, %s, n).a;", l->id, nwp));
+							node_shader_write_frag(shader, string_tmp("float nopac = fill%d_base_at(nco, %s, n).a;", l->id, nwp));
+						}
+						else {
+							node_shader_write_frag(shader, string_tmp("float npack = textureLod(sampler2D(texpaint_pack%s, sampler_linear), nco, 0.0).a;", i32_to_string(l->id)));
+							node_shader_write_frag(shader, string_tmp("float nopac = textureLod(sampler2D(texpaint%s, sampler_linear), nco, 0.0).a;", i32_to_string(l->id)));
+						}
 						node_shader_write_frag(shader, "float nmask = 1.0;");
 						make_mesh_write_masks(shader, l, "nmask", "nco", "npack", h, false);
 						node_shader_write_frag(shader, "nopac *= clamp(nmask, 0.0, 1.0);");
@@ -542,6 +603,16 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 						}
 						node_shader_write_frag(shader, string_tmp("%s += npack * nopac;", h));
 						node_shader_write_frag(shader, "}");
+					}
+					node_shader_write_frag(shader, "}");
+				}
+				else if (l->paint_height && make_material_height_used && fill) {
+					char *offsets[] = {"vec2(%s.x - tex_step, %s.y)", "vec2(%s.x + tex_step, %s.y)", "vec2(%s.x, %s.y - tex_step)",
+					                   "vec2(%s.x, %s.y + tex_step)"};
+					for (i32 k = 0; k < 4; ++k) {
+						char *nco = string_copy(string_tmp(offsets[k], tex_coord, tex_coord));
+						node_shader_write_frag(shader, string_tmp("height%d += fill%d_pack_at(%s, %s, n).a * texpaint_opac;", k, l->id, nco,
+						                                        make_mesh_fill_neighbour_wp(k)));
 					}
 					node_shader_write_frag(shader, "}");
 				}

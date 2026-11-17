@@ -140,21 +140,21 @@ void next() {
 		count1 = app_layer_count();
 		check(app_layer_apply_mask(m) && layer_by_id(m) == NULL, "mask applied");
 		check(app_layer_count() == count1 - 1 && selected() == a, "a selected after");
-		check(app_layer_to_fill(a) && layer_by_id(a)->fill_material != NULL, "a to fill layer");
+		check(app_layer_to_fill(a) && layer_by_id(a)->fill != NULL, "a to fill layer");
 		check(!app_layer_clear(a), "a fill layer does not clear");
 	}
 	else if (step == 6) {
 		slot_layer_t *l = layer_by_id(a);
-		float scale0 = l->scale;
-		check(app_layer_set_value(a, 0, 2.0) && l->scale > 1.99 && l->scale < 2.01, "fill scale");
+		float scale0 = app_layer_value(a, 6);
+		check(app_layer_set_value(a, 6, 2.0) && app_layer_value(a, 6) > 1.99 && app_layer_value(a, 6) < 2.01, "fill scale");
 		app_undo();
-		check(l->scale > scale0 - 0.01 && l->scale < scale0 + 0.01, "undo fill scale");
-		check(app_layer_set_uv_type(a, 1) && app_layer_uv_type(a) == 1, "triplanar");
+		check(app_layer_value(a, 6) > scale0 - 0.01 && app_layer_value(a, 6) < scale0 + 0.01, "undo fill scale");
+		check(app_layer_set_fill_projection(a, 1) && app_layer_fill_projection(a) == 1, "triplanar");
 		check(app_layer_material_count() > 0, "materials listed");
-		check(!app_layer_set_fill_material(a, app_layer_material_count()), "material out of range refused");
+		check(!app_layer_set_fill_material(a, 0, app_layer_material_count()), "material out of range refused");
 	}
 	else if (step == 7) {
-		check(app_layer_to_paint(a) && layer_by_id(a)->fill_material == NULL, "a to paint layer");
+		check(app_layer_to_paint(a) && layer_by_id(a)->fill == NULL, "a to paint layer");
 		check(app_layer_clear(a), "cleared");
 		count1 = app_layer_count();
 		check(app_layer_duplicate(a) && app_layer_count() == count1 + 1, "duplicated");
@@ -171,12 +171,12 @@ void next() {
 		check(app_layer_new(1), "fill layer, next frame");
 	}
 	else if (step == 9) {
-		check(app_layer_count() == count1 + 1 && layer_by_id(selected())->fill_material != NULL, "fill layer added");
+		check(app_layer_count() == count1 + 1 && layer_by_id(selected())->fill != NULL, "fill layer added");
 		count1 = app_layer_count();
 		check(app_layer_new(2), "decal, next frame");
 	}
 	else if (step == 10) {
-		check(app_layer_count() == count1 + 1 && app_layer_uv_type(selected()) == 2, "decal added");
+		check(app_layer_count() == count1 + 1 && app_layer_fill_projection(selected()) == 2, "decal added");
 		count1 = app_layer_count();
 		check(app_layer_new(3), "color layer, next frame");
 	}
@@ -190,7 +190,7 @@ void next() {
 		check(!app_layer_can_new(9) && !app_layer_new(9) && !app_layer_new(11) && !app_layer_new(12), "one mask per layer, also from its mask");
 		check(!app_layer_add_mask(path, 9), "no second mask from the layer menu");
 		check(app_layer_new(0) && app_layer_new(11) && layer_by_id(selected())->height_blend, "height blend mask");
-		check(app_layer_new(0) && app_layer_new(12) && layer_by_id(selected())->fill_material != NULL, "fill mask");
+		check(app_layer_new(0) && app_layer_new(12) && layer_by_id(selected())->fill != NULL, "fill mask");
 	}
 	else if (step == 12) {
 		int n = app_layer_count();

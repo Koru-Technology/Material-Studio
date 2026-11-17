@@ -34,7 +34,7 @@ char *layer_hashes() {
 	char *s = "";
 	for (int i = 0; i < script_layer_count(); ++i) {
 		slot_layer_t *l = script_layer_at(i);
-		if (l->fill_material != NULL) {
+		if (l->fill != NULL) {
 			continue; // Fill layers render again at each size
 		}
 		if (l->texpaint != NULL) {

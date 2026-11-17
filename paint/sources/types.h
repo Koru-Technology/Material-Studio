@@ -116,7 +116,7 @@ typedef struct util_render_brush_scene {
 	struct slot_material  *material;
 	i32                    tool;
 	struct slot_layer     *layer;
-	struct slot_material  *fill_material;
+	struct fill           *fill;
 	struct mesh_object    *paint_object;
 	struct mesh_object    *plane;
 	struct u8_array       *visibles;
@@ -185,6 +185,32 @@ typedef struct mesh_geo_image {
 } mesh_geo_image_t;
 
 // ---- Layers, masks and fonts ----
+
+#define FILL_PATTERN_PARAMS 13 // The pattern node's inputs after Vector: Scale, Stretch, Angle, Contrast, Seed, Distort, Distort Scale, 6 of its own
+
+// Where one channel of a fill comes from (util/util_fill.c)
+typedef struct fill_source {
+	i32 kind;     // fill_source_kind_t
+	f32 value[4]; // Color: the color (rgb) or value (x). Procedural: at the pattern's low end
+	f32 value2[4]; // Procedural: at its high end
+	i32 image;     // Texture: asset id, -1 none
+	i32 image_channel; // Texture into a value channel: 0 r, 1 g, 2 b, 3 a, 4 luminance
+	i32 pattern;       // Procedural: pattern_defs index
+	f32 params[FILL_PATTERN_PARAMS];
+	u32 material; // Material: its uid, 0 none
+} fill_source_t;
+
+// A fill layer or fill mask: a source per channel and how they are projected. Evaluated live in the viewport
+// (render/make_fill.c), rasterized into the layer's textures only for what reads pixels (export, merge, bake, previews).
+typedef struct fill {
+	i32           projection; // fill_projection_t
+	f32           scale[2];   // Repeats over the uv space or the projection's unit
+	f32           offset[2];
+	f32           angle;    // Degrees
+	f32           hardness; // Triplanar: 0 soft blend of the planes, 1 hard edges
+	fill_source_t ch[FILL_CHANNEL_COUNT];
+} fill_t;
+
 typedef struct slot_layer {
 	i32                   id;
 	u32                   uid;      // Stable in the project and saved, history and timelines find the layer by it
@@ -197,13 +223,12 @@ typedef struct slot_layer {
 	struct gpu_texture   *texpaint_pack;
 	struct gpu_texture   *texpaint_preview; // Layer preview
 	f32                   mask_opacity;     // Opacity mask
-	struct slot_material *fill_material;
+	fill_t               *fill;             // Fill layer or fill mask, NULL for paint layers (malloc'd)
+	bool                  fill_dirty;       // Its textures are rasterized again before they are read (util_fill.c)
+	u64                   fill_shaped;      // fill_shape the viewport's shader was last made for, runtime only
 	bool                  show_panel;
 	blend_type_t          blending;
 	i32                   object_mask;
-	f32                   scale;
-	f32                   angle;
-	uv_type_t             uv_type;
 	i32                   uv_map;
 	bool                  paint_base;
 	bool                  paint_opac;
@@ -745,9 +770,7 @@ typedef struct history_step {
 	i32                          prev_order; // Previous layer position
 	i32                          canvas_type;
 	char                        *layer_name;
-	f32                          layer_scale;
-	f32                          layer_angle;
-	i32                          layer_uv_type;
+	f32_array_t                 *fill; // Fill on the other side of the step (fill_encode by id), NULL for none
 	f32                          layer_height_blend[6]; // Mask height blend: on, below, influence, sharpness, offset, reach
 	f32_array_t                 *mask_effects;          // Mask stack on the other side of the step, NULL for the implicit stack
 	i32                          swatch;
@@ -771,7 +794,7 @@ typedef struct history_step {
 	char                        *image_file;   // New layer: the asset drawn into it, redo draws it again
 	i32_array_t                 *tl_moves;     // Timeline cursors the step moved: uid, before, after (timeline.c)
 	struct hash128              *records;      // HSTORE_LAYER_RECORD of each of merge_layers, their textures freed
-	u32                          fill_uids[2]; // Apply mask: fill material of the mask and of its layer, 0 when painted
+	f32_array_t                 *fills[2]; // Apply mask: the fill of the mask and of its layer (fill_encode by id), NULL when painted
 	i32                          resolution[4]; // Resolution change: width and height before, after
 	struct slot_layer           *path;          // Path edit, clear of a path layer: the path props on the other side (props only)
 } history_step_t;
@@ -892,12 +915,9 @@ typedef struct layer_data {
 	i32               res_x; // Width and height of the textures
 	i32               res_y;
 	i32               bpp; // Bits per pixel
-	f32               uv_scale;
-	f32               uv_rot;
-	i32               uv_type;
 	struct f32_array *decal_mat;
 	f32               opacity_mask;
-	i32               fill_material;
+	struct f32_array *fill; // fill_encode by index, NULL for paint layers
 	i32               object_mask;
 	i32               blending;
 	i32               parent;

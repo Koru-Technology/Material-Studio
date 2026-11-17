@@ -171,12 +171,7 @@ void slot_material_remove(slot_material_t *m) {
 	if (i < 0) {
 		return;
 	}
-	for (i32 j = 0; j < g_project->_->layers->length; ++j) {
-		slot_layer_t *l = g_project->_->layers->buffer[j];
-		if (l->fill_material == m) {
-			l->fill_material = NULL;
-		}
-	}
+	fill_material_removed(m);
 	history_delete_material();
 	context_select_material(i == g_project->_->materials->length - 1 ? i - 1 : i + 1);
 	array_splice(g_project->_->materials, i, 1);
@@ -198,7 +193,7 @@ static bool slot_material_is_used(i32 index) {
 	// Fill or path layer
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->fill_material == m || l->path_material == m) {
+		if (fill_uses_material(l->fill, m) || l->path_material == m) {
 			return true;
 		}
 	}
@@ -272,9 +267,6 @@ void slot_material_apply_picked_color(swatch_color_t *swatch) {
 	    f32_array_create_xyz(color_get_rb(swatch->normal) / 255.0, color_get_gb(swatch->normal) / 255.0, color_get_bb(swatch->normal) / 255.0);
 	node->inputs->buffer[7]->default_value->buffer[0] = swatch->height;
 	slot_material_refresh();
-	if (layers_is_fill_material()) {
-		layers_update_fill_layers();
-	}
 	if (layers_is_path_material()) {
 		layers_update_path_layers();
 	}

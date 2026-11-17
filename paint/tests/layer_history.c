@@ -72,25 +72,25 @@ void next() {
 		check(script_layer_to_fill(a), "a to fill layer");
 	}
 	else if (step == 3) {
-		check(a->fill_material == mat_red, "a is a fill layer");
+		check(fill_main_material(a->fill) == mat_red, "a is a fill layer");
 		script_layer_set(b);
 		history_undo();
 	}
 	else if (step == 4) {
-		check(a->fill_material == NULL, "undo of to fill turns the converted layer back");
+		check(a->fill == NULL, "undo of to fill turns the converted layer back");
 		check(opaque(a) == texels, "undo of to fill restores its pixels");
-		check(b->fill_material == NULL && opaque(b) == 0, "undo of to fill leaves the selected layer alone");
+		check(b->fill == NULL && opaque(b) == 0, "undo of to fill leaves the selected layer alone");
 		script_layer_set(a);
 		history_redo();
 	}
 	else if (step == 5) {
-		check(a->fill_material == mat_red, "redo of to fill");
+		check(fill_main_material(a->fill) == mat_red, "redo of to fill");
 		script_layer_set(b);
 		history_undo();
 		history_redo();
 	}
 	else if (step == 6) {
-		check(a->fill_material == mat_red && b->fill_material == NULL, "redo of to fill converts the layer it was made on");
+		check(fill_main_material(a->fill) == mat_red && b->fill == NULL, "redo of to fill converts the layer it was made on");
 		m = script_layer_new_mask(b, 0); // Black
 	}
 	else if (step == 7) {
@@ -109,13 +109,13 @@ void next() {
 	else if (step == 10) {
 		check(opaque(m) == texels, "redo of a mask clear clears it white again");
 		script_material_set(mat_blue); // Another material selected than the one of the fill layer
-		check(script_layer_to_paint(a) && a->fill_material == NULL, "a to paint layer");
+		check(script_layer_to_paint(a) && a->fill == NULL, "a to paint layer");
 	}
 	else if (step == 11) {
 		history_undo();
 	}
 	else if (step == 12) {
-		check(a->fill_material == mat_red, "undo of to paint gives the layer its own material back");
+		check(fill_main_material(a->fill) == mat_red, "undo of to paint gives the layer its own material back");
 		int count  = script_layer_count();
 		b->visible = 0;
 		check(script_layer_merge_down(b) == NULL && script_layer_count() == count, "a hidden layer is not merged down");

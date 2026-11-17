@@ -267,6 +267,7 @@ void make_material_bake_node_previews() {
 	array_free(g_context->node_previews_used);
 	free(g_context->node_previews_used);
 	g_context->node_previews_used = NULL;
+	fill_tile_invalidate(g_context->material); // Its fill tile reads the bakes
 }
 
 // Refresh previews of a material that is not selected but fills linked layers,

@@ -212,20 +212,12 @@ static void layers_resolution_finish() {
 	g_context->ddirty          = 2;
 	layers_crop                = false;
 
-	slot_layer_t    *_layer    = g_context->layer;
-	slot_material_t *_material = g_context->material;
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
-		if (l->fill_material != NULL) {
-			g_context->layer    = l;
-			g_context->material = l->fill_material;
-			layers_set_object_mask();
-			layers_update_fill_layer(true);
+		if (l->fill != NULL) {
+			fill_rasterize(l); // At the new size
 		}
 	}
-	g_context->layer    = _layer;
-	g_context->material = _material;
-	layers_set_object_mask();
 	make_material_parse_paint_material(true);
 	g_context->layer_preview_dirty = true;
 	lr.active = false;

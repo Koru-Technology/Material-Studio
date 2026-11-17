@@ -194,7 +194,7 @@ static slot_layer_t *app_smart_target(void) {
 	if (l == NULL || slot_layer_is_mask(l)) {
 		return NULL;
 	}
-	return slot_layer_is_group(l) || l->fill_material != NULL ? l : NULL;
+	return slot_layer_is_group(l) || l->fill != NULL ? l : NULL;
 }
 
 void app_materials_get_state(app_materials_state_t *out) {
@@ -387,7 +387,7 @@ bool app_material_to_fill_layer(int32_t id) {
 	if (!app_material_select(id)) {
 		return false;
 	}
-	layers_create_fill_layer(UV_TYPE_UVMAP, mat4_nan(), -1);
+	layers_create_fill_layer(FILL_PROJECTION_UV, mat4_nan(), -1, true);
 	return true;
 }
 
@@ -397,9 +397,7 @@ bool app_material_apply_to_fill(int32_t id) {
 	if (m == NULL || target == NULL) {
 		return false;
 	}
-	if (target->fill_material != m) {
-		layers_set_fill_material_later(target, m);
-	}
+	layers_op_fill_material(target, m); // Every channel from it
 	return true;
 }
 
@@ -811,7 +809,8 @@ const char *app_smart_default_name(void) {
 	if (l == NULL) {
 		return "";
 	}
-	return app_str(l->fill_material != NULL && l->fill_material->canvas != NULL ? l->fill_material->canvas->name : l->name);
+	slot_material_t *m = fill_main_material(l->fill);
+	return app_str(m != NULL && m->canvas != NULL ? m->canvas->name : l->name);
 }
 
 static void app_smart_save_next(void *name) {

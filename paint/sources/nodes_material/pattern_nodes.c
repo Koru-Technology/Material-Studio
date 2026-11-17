@@ -1198,6 +1198,38 @@ ui_node_button_t *nodes_material_button_def(char *name, char *type, f32 value, c
 	                                     .height        = 0});
 }
 
+// The pattern functions in any shader (fill layers, render/make_fill.c)
+void pattern_lib_add(node_shader_t *shader, i32 i) {
+	node_shader_add_function(shader, str_pattern_common);
+	if (i >= 0 && i < PATTERN_DEF_COUNT) {
+		node_shader_add_function(shader, *pattern_defs[i].src);
+	}
+}
+
+char *pattern_def_fn(i32 i) {
+	return pattern_defs[i].fn;
+}
+
+f32 pattern_def_scale(i32 i) {
+	return pattern_defs[i].scale;
+}
+
+i32 pattern_def_extras(i32 i) {
+	return pattern_defs[i].extras;
+}
+
+char *pattern_def_extra_name(i32 i, i32 j) {
+	return j < pattern_defs[i].extras ? tr(pattern_defs[i].extra[j]) : "";
+}
+
+f32 pattern_def_extra_value(i32 i, i32 j) {
+	return pattern_defs[i].value[j];
+}
+
+f32 pattern_def_extra_max(i32 i, i32 j) {
+	return pattern_defs[i].max[j];
+}
+
 void pattern_lib_use(i32 i) {
 	// GLSL shaders declare every function first (node_shader_get), each function string goes in on its own
 	node_shader_add_function(parser_material_shader, str_pattern_common);

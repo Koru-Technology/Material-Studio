@@ -138,9 +138,6 @@ static bool import_arm_validate(project_t *p, bool as_mesh) {
 		if (ld->parent <= i || ld->parent >= layers) { // A parent sits above its masks and children
 			ld->parent = -1;
 		}
-		if (ld->fill_material >= materials) {
-			ld->fill_material = -1;
-		}
 		if (ld->path_material >= materials) {
 			ld->path_material = -1;
 		}
@@ -432,10 +429,7 @@ void import_arm_run_project(char *path) {
 			// See-through meshes when the bottom layer is not fully opaque
 			project_container_layer_restore(ld, l, i == 0 ? &g_project->_->translucency : NULL);
 
-			l->scale   = ld->uv_scale;
-			l->angle   = ld->uv_rot;
-			l->uv_type = ld->uv_type;
-			l->uv_map  = ld->uv_map;
+			l->uv_map = ld->uv_map;
 			if (ld->decal_mat != NULL) {
 				l->decal_mat = mat4_from_f32_array(ld->decal_mat, 0);
 			}
@@ -570,7 +564,8 @@ void import_arm_run_project(char *path) {
 		layer_data_t *ld       = g_project->layer_datas->buffer[i];
 		slot_layer_t *l        = g_project->_->layers->buffer[i];
 		if (ld->type != LAYER_SLOT_TYPE_GROUP) {
-			l->fill_material = ld->fill_material > -1 ? g_project->_->materials->buffer[ld->fill_material] : NULL;
+			l->fill          = fill_decode(ld->fill, true);
+			l->fill_dirty    = l->fill != NULL; // Rasterized again for its readers
 			l->path_material = ld->path_material > -1 ? g_project->_->materials->buffer[ld->path_material] : NULL;
 		}
 	}

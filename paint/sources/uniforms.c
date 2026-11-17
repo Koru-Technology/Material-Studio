@@ -85,7 +85,7 @@ vec2_t uniforms_brush_angle() {
 	if (d != NULL) {
 		return (vec2_t){d[28], d[29]};
 	}
-	f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle * (math_pi() / 180.0) : util_brush_tip_angle();
+	f32 angle = util_brush_tip_angle();
 	return (vec2_t){math_cos(-angle), math_sin(-angle)};
 }
 
@@ -184,9 +184,8 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		return uniforms_brush_hardness();
 	}
 	else if (string_equals(link, "_brush_scale")) {
-		bool fill = g_context->layer->fill_material != NULL;
-		// The fill layer's own, the decal's, else the material's
-		f32 base = fill ? g_context->layer->scale : context_is_decal() ? g_context->brush_scale : g_context->material->uv_scale;
+		// The decal's, else the material's
+		f32 base = context_is_decal() ? g_context->brush_scale : g_context->material->uv_scale;
 		f32 val  = base * g_context->brush_nodes_scale;
 		return val;
 	}
@@ -205,10 +204,6 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	else if (string_equals(link, "_particle_radius")) { // A particle's draw (paint_exec_particles)
 		paint_exec_op_t *op = paint_exec_current();
 		return op != NULL ? op->particle_hit.w : 0.1f;
-	}
-	else if (string_equals(link, "_decal_layer_dim")) {
-		vec4_t sc = mat4_get_scale(g_context->layer->decal_mat);
-		return sc.z * 0.5;
 	}
 	else if (string_equals(link, "_paint_dab_count")) {
 		paint_exec_op_t *op = paint_exec_current();
@@ -277,11 +272,11 @@ vec2_t uniforms_ext_vec2_link(object_t *object, shader_data_t *mat, char *link) 
 		return uniforms_brush_dab_angle();
 	}
 	else if (string_equals(link, "_uv_angle")) {
-		// Rotation of the material texture: the fill layer's own, the brush tip's for decals, else the material's
-		if (g_context->layer->fill_material == NULL && context_is_decal()) {
+		// Rotation of the material texture: the brush tip's for decals, else the material's
+		if (context_is_decal()) {
 			return uniforms_brush_angle();
 		}
-		f32 angle = g_context->layer->fill_material != NULL ? g_context->layer->angle : uniforms_material_uv_angle();
+		f32 angle = uniforms_material_uv_angle();
 		angle *= (math_pi() / 180.0);
 		return (vec2_t){math_cos(-angle), math_sin(-angle)};
 	}
@@ -347,15 +342,6 @@ vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) 
 		}
 		return (vec4_t){(slot % stride) / (f32)stride, (slot / stride) / (f32)stride, 1.0 / stride, 1.0};
 	}
-	else if (string_equals(link, "_decal_layer_loc")) {
-		v = (vec4_t){g_context->layer->decal_mat.m30, g_context->layer->decal_mat.m31, g_context->layer->decal_mat.m32, 1.0};
-		return v;
-	}
-	else if (string_equals(link, "_decal_layer_nor")) {
-		v = (vec4_t){g_context->layer->decal_mat.m20, g_context->layer->decal_mat.m21, g_context->layer->decal_mat.m22, 1.0};
-		v = vec4_norm(v);
-		return v;
-	}
 	else if (string_equals(link, "_picker_base")) {
 		v = (vec4_t){color_get_rb(g_context->picked_color->base) / 255.0, color_get_gb(g_context->picked_color->base) / 255.0,
 		             color_get_bb(g_context->picked_color->base) / 255.0, 1.0};
@@ -403,6 +389,9 @@ vec4_t uniforms_ext_vec4_link(object_t *object, shader_data_t *mat, char *link) 
 	}
 	if (string_equals(link, "_paint_uv_tile")) {
 		return paint_exec_uv_tile;
+	}
+	if (string_equals(link, "_fill_uv_tile")) { // Fill rasterizing, util_fill.c
+		return fill_uv_tile;
 	}
 	if (string_equals(link, "_fill_normal")) { // Angle fill: the picked triangle's (render_path_paint.c)
 		mesh_object_t *o = render_path_paint_fill_object;
@@ -458,15 +447,6 @@ mat4_t uniforms_ext_mat4_link(object_t *object, shader_data_t *mat, char *link) 
 		paint_exec_space(&obj, &obj_inv, &bmin, &bsize);
 		return string_equals(link, "_paint_dab_obj") ? obj : obj_inv;
 	}
-	if (string_equals(link, "_decal_layer_matrix")) { // Decal layer
-		mat4_t m            = mat4_inv(g_context->layer->decal_mat);
-		f32    parent_scale = object->parent != NULL ? object->parent->transform->scale.x : 1.0;
-		f32    f            = parent_scale * object->transform->scale_world;
-		m                   = mat4_scale(m, (vec4_t){f, f, f, 1.0});
-		m                   = mat4_mult_mat(m, uniforms_ext_ortho_p);
-		return m;
-	}
-
 	return mat4_nan();
 }
 
@@ -495,6 +475,17 @@ static gpu_texture_t *uniforms_layer_tex(gpu_texture_t *t) {
 gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char *link) {
 	if (starts_with(link, "_matcache")) { // The current material's outputs, see util_material_cache.c
 		return material_cache_texture(link[9] - '0');
+	}
+	if (string_equals(link, "_texfill")) { // Fill layers: the parameters, see util_fill.c
+		return fill_params_texture();
+	}
+	if (starts_with(link, "_fillimg")) { // _fillimg<asset id>
+		return fill_image_texture(atoi(link + 8));
+	}
+	if (starts_with(link, "_filltile")) { // _filltile<material uid>_<k>
+		char *us = strchr(link, '_' ) ;
+		u32   uid = (u32)strtoul(link + 9, &us, 10);
+		return fill_tile_texture(uid, us != NULL && *us == '_' ? atoi(us + 1) : 0);
 	}
 	// The layer before the stroke: replaying, the target as it was, else history_tiles_stroke_source
 	if (string_equals(link, "_texpaint_undo") || string_equals(link, "_texpaint_nor_undo") || string_equals(link, "_texpaint_pack_undo")) {

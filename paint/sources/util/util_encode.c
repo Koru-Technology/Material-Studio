@@ -289,7 +289,7 @@ buffer_t *util_encode_project(project_t *raw) {
 	if (raw->layer_datas != NULL) {
 		armpack_encode_array(raw->layer_datas->length);
 		for (i32 i = 0; i < raw->layer_datas->length; ++i) {
-			armpack_encode_map(45);
+			armpack_encode_map(42);
 			armpack_encode_string("name");
 			armpack_encode_string(raw->layer_datas->buffer[i]->name);
 			armpack_encode_string("type");
@@ -300,18 +300,12 @@ buffer_t *util_encode_project(project_t *raw) {
 			armpack_encode_i32(raw->layer_datas->buffer[i]->res_y);
 			armpack_encode_string("bpp");
 			armpack_encode_i32(raw->layer_datas->buffer[i]->bpp);
-			armpack_encode_string("uv_scale");
-			armpack_encode_f32(raw->layer_datas->buffer[i]->uv_scale);
-			armpack_encode_string("uv_rot");
-			armpack_encode_f32(raw->layer_datas->buffer[i]->uv_rot);
-			armpack_encode_string("uv_type");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->uv_type);
 			armpack_encode_string("decal_mat");
 			armpack_encode_array_f32(raw->layer_datas->buffer[i]->decal_mat);
 			armpack_encode_string("opacity_mask");
 			armpack_encode_f32(raw->layer_datas->buffer[i]->opacity_mask);
-			armpack_encode_string("fill_material");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->fill_material);
+			armpack_encode_string("fill");
+			armpack_encode_array_f32(raw->layer_datas->buffer[i]->fill);
 			armpack_encode_string("object_mask");
 			armpack_encode_i32(raw->layer_datas->buffer[i]->object_mask);
 			armpack_encode_string("blending");

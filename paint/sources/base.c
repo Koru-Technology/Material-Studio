@@ -648,7 +648,8 @@ i32 base_get_asset_index_by_file(char *file) {
 }
 
 bool base_is_decal_layer() {
-	return g_context->layer->fill_material != NULL && g_context->layer->uv_type == UV_TYPE_PROJECT;
+	return g_context->layer->fill != NULL &&
+	       (g_context->layer->fill->projection == FILL_PROJECTION_DECAL || g_context->layer->fill->projection == FILL_PROJECTION_PLANAR);
 }
 
 void base_redraw_ui() {

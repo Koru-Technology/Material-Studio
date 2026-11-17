@@ -176,7 +176,7 @@ void next() {
 		layers0 = app_layer_count();
 	}
 	else if (step == 13) {
-		check(script_get_context()->layer->fill_material != NULL, "a fill layer is selected");
+		check(script_get_context()->layer->fill != NULL, "a fill layer is selected");
 		int old = app_smart_find("app_api_test");
 		if (old >= 0) {
 			app_smart_delete(old);

@@ -48,7 +48,7 @@ void make_brush_run(node_shader_t *shader, bool depth_reject) {
 		return;
 	}
 
-	bool fill_layer = g_context->layer->fill_material != NULL;
+	bool fill_layer = g_context->layer->fill != NULL;
 	bool decal      = context_is_decal();
 	bool fast       = !decal && !g_context->xray && !context_is_pixel_snap(); // Distance first
 	if (depth_reject && !fast) {

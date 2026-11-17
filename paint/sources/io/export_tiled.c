@@ -355,7 +355,6 @@ typedef struct export_tiled_pool {
 } export_tiled_pool_t;
 
 static export_tiled_pool_t et_pool[EXPORT_TILED_DEPTH];
-static gpu_texture_t      *et_fill[5]; // layers_render_fill_rect: the layer before, a mask's normal and pack outputs
 static gpu_texture_t      *et_fill_temp;
 static bool                et_test_no_fill = false; // Tests: fill layers from their live pixels
 static bool                et_test_whole   = false; // Tests: exr encoded whole, not streamed
@@ -366,9 +365,6 @@ static void export_tiled_release_pool() {
 		for (i32 i = 0; i < (i32)(sizeof(export_tiled_pool_t) / sizeof(gpu_texture_t *)); ++i) {
 			util_texture_release_target(&t[i]);
 		}
-	}
-	for (i32 i = 0; i < 5; ++i) {
-		util_texture_release_target(&et_fill[i]);
 	}
 	util_texture_release_target(&et_fill_temp);
 }
@@ -385,7 +381,7 @@ static slot_layer_t *export_tiled_mask_parent(slot_layer_t *m) {
 
 // Fill layers and fill masks render for the tile, unless the paint pass draws an atlas or udim tiles
 static bool export_tiled_fill_ok(slot_layer_t *l, export_tiled_map_t m) {
-	if (l->fill_material == NULL || m.mode != 0 || et_test_no_fill || util_mesh_udim_active() || g_context->merged_object_is_atlas) {
+	if (l->fill == NULL || m.mode != 0 || et_test_no_fill || util_mesh_udim_active() || g_context->merged_object_is_atlas) {
 		return false;
 	}
 	return !slot_layer_is_mask(l) || export_tiled_mask_parent(l) != NULL;
@@ -443,22 +439,14 @@ static void export_tiled_source_live(slot_layer_t *l, export_tiled_map_t m, i32 
 }
 
 // Layer or mask l's pixels for the tile, into t->out (a mask: out[0]). Fill layers and fill masks render for t->uv_rect
-// at the export resolution (layers_render_fill_rect), dilated as the live ones. At the working resolution paint layers
+// at the export resolution (fill_render), dilated as the live ones. At the working resolution paint layers
 // are the live layer's pixels, exactly what shows. Above it they materialize their timeline (stroke_rec.h) at the state
 // they show: strokes replay there, what can not replay is resampled (export_tiled_not_upscaled). Without a timeline the
 // live layer's pixels, scaled. False when its timeline materializes over the next steps (et_job, export_tiled_job_done).
 static bool export_tiled_source_begin(slot_layer_t *l, export_tiled_map_t m, i32 hx, i32 hy, paint_target_t *t) {
 	if (export_tiled_fill_ok(l, m)) {
-		for (i32 k = 0; k < 3; ++k) {
-			export_tiled_target(&et_fill[k], GPU_TEXTURE_FORMAT_RGBA32);
-		}
-		slot_layer_t *p = slot_layer_is_mask(l) ? export_tiled_mask_parent(l) : NULL;
-		if (p != NULL) {
-			export_tiled_target(&et_fill[3], p->texpaint_nor->format);
-			export_tiled_target(&et_fill[4], p->texpaint_pack->format);
-		}
-		if (layers_render_fill_rect(l, t, et_fill)) {
-			for (i32 k = 0; k < t->channels && g_config->dilate_radius > 0; ++k) { // As layers_update_fill_layer dilates
+		if (fill_render(l, t->out, t->uv_rect)) {
+			for (i32 k = 0; k < t->channels && g_config->dilate_radius > 0; ++k) { // As fill_rasterize dilates
 				export_tiled_dilate_copy(t->out[k], g_config->dilate_radius);
 			}
 			et_stats[11]++;
@@ -1099,11 +1087,11 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	bool fills = false, gens = false; // Of any layer: anchors read others than the job's
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
-		fills           = fills || l->fill_material != NULL;
+		fills           = fills || l->fill != NULL;
 		gens            = gens || (slot_layer_is_mask(l) && export_tiled_has_generator(l));
 	}
 	for (i32 i = 0; i < job->layers->length; ++i) { // And the bake's live layer
-		fills = fills || job->layers->buffer[i]->fill_material != NULL;
+		fills = fills || job->layers->buffer[i]->fill != NULL;
 	}
 	fills       = fills && g_config->dilate_radius > 0 && !et_test_no_fill;
 	et.halo     = et.padding ? (i32)math_ceil(1.25 * EXPORT_TILED_NEAR) + 2 : 0;
@@ -1179,30 +1167,10 @@ static bool export_tiled_mm_wanted() {
 	return et_test_mm || w > config_get_texture_res_x() || h > config_get_texture_res_y();
 }
 
-// The passes the fill layers' materials sample; the strokes' follow over steps (export_tiled_mm_keys_step)
+// The passes the fills' material tiles sample (rendered again once full); the strokes' follow over steps
+// (export_tiled_mm_keys_step)
 static void export_tiled_mm_begin() {
-	slot_material_t *_material = g_context->material;
-	tool_type_t      _tool     = g_context->tool;
-	g_context->tool            = TOOL_TYPE_FILL;
-	any_array_t     *seen      = any_array_create_from_raw((void *[]){}, 0);
-	et.mm_n                    = 0;
-	for (i32 j = 0; j < et.njobs; ++j) {
-		for (i32 i = 0; i < et.jobs[j].layers->length; ++i) {
-			slot_material_t *m = et.jobs[j].layers->buffer[i]->fill_material;
-			if (m == NULL || array_index_of(seen, m) >= 0 || et.mm_n >= EXPORT_TILED_MM_KEYS) {
-				continue;
-			}
-			any_array_push(seen, m);
-			g_context->material = m;
-			make_material_parse_paint_material(false);
-			et.mm_n += mm_buffers_paint_keys(make_material_paint_scon, et.mm_keys + et.mm_n, EXPORT_TILED_MM_KEYS - et.mm_n);
-		}
-	}
-	g_context->material = _material;
-	g_context->tool     = _tool;
-	if (seen->length > 0) {
-		make_material_parse_paint_material(false);
-	}
+	et.mm_n = fill_tiles_mm_keys(et.mm_keys, EXPORT_TILED_MM_KEYS);
 	et.mm_job   = 0;
 	et.mm_layer = 0;
 	et.mm_entry = -1;
@@ -1322,7 +1290,7 @@ static void export_tiled_not_upscaled_add(char *name) {
 
 // l renders at any resolution: a fill (tiles: identity maps), a timeline that re-renders without loss
 static bool export_tiled_upscales(slot_layer_t *l, bool tiles) {
-	if (l->fill_material != NULL) {
+	if (l->fill != NULL) {
 		return tiles && !et_test_no_fill;
 	}
 	if (!tiles) {
@@ -1532,6 +1500,7 @@ bool export_tiled_start(char *path, bool bake_material) {
 	if (et.active) {
 		export_tiled_cancel();
 	}
+	fill_ensure_all(); // What reads the live layers sees every fill
 	export_texture_init_preset();
 	timeline_finalize();           // Strokes still being recorded land in their timelines
 	history_flush_restores(NULL); // Deferred undo restores land in the layers

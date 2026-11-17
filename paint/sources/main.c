@@ -144,6 +144,7 @@
 #include "render/make_curvature.c"
 #include "render/make_depth.c"
 #include "render/make_discard.c"
+#include "render/make_fill.c"
 #include "render/make_material.c"
 #include "render/make_mesh.c"
 #include "render/make_mesh_preview.c"
@@ -199,6 +200,7 @@
 #include "util/util_clone.c"
 #include "util/util_cursor.c"
 #include "util/util_encode.c"
+#include "util/util_fill.c"
 #include "util/util_env.c"
 #include "util/util_layer.c"
 #include "util/util_layer_create.c"
@@ -217,7 +219,6 @@
 #include "util/util_render.c"
 #include "util/util_shortcut.c"
 #include "util/util_stencil.c"
-#include "util/util_stroke_refine.c"
 #include "util/util_material_cache.c"
 #include "util/util_texture.c"
 #include "util/util_touch.c"
@@ -316,7 +317,6 @@ void _kickstart() {
 	    },
 	    26);
 
-	uniforms_ext_ortho_p    = mat4_ortho(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5);
 	import_mesh_importers   = any_map_create();
 	translator_translations = any_map_create();
 

@@ -145,7 +145,7 @@ void next() {
 	else if (step == 1) {
 		check(material_studio_preview() != NULL && material_studio_compiles() >= 1, "preview rendered");
 		layer = script_layer_new_fill();
-		check(layer != NULL && layer->fill_material == mat, "fill layer with the studio material");
+		check(layer != NULL && fill_main_material(layer->fill) == mat, "fill layer with the studio material");
 	}
 	else if (step == 2) {
 		check(variety(layer->texpaint) < 8, string("plastic is flat (%d)", variety(layer->texpaint)));

@@ -329,14 +329,8 @@ void util_brush_update() {
 				if (g_context->brush_time == 0 &&
 				    g_ui->combo_selected_id == 0) { // Paint started
 
-					// A fill layer is painted through its mask. Another material than the fill layer's asks for a new fill
-					// layer, and the stroke is dropped.
+					// A fill layer is painted through its mask
 					if (layers_fill_paint_tool(g_context->tool)) {
-						if (layers_fill_paint_needs_new_layer()) {
-							layers_fill_paint_confirm_new_layer();
-							util_brush_stroke_dropped = true;
-							return;
-						}
 						if (layers_fill_paint_needs_mask()) {
 							layers_fill_paint_confirm_mask();
 							util_brush_stroke_dropped = true;

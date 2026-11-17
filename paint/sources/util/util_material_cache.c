@@ -208,6 +208,20 @@ static u64 material_cache_hash_canvas(u64 h, ui_node_canvas_t *c, i32 depth) {
 	return h;
 }
 
+// What a material's outputs are wherever they render: its graph, switches and the project's images (fill tiles)
+u64 material_cache_graph_signature(slot_material_t *m) {
+	if (m == NULL) {
+		return 0;
+	}
+	u64 h    = material_cache_hash_canvas(1469598103934665603ull, m->canvas, 0);
+	u8  s[3] = {m->paint_emis, m->paint_subs, m->paint_height};
+	h        = hash_fnv1a(h, s, sizeof(s));
+	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
+		h = hash_fnv1a_str(h, g_project->_->assets->buffer[i]->file);
+	}
+	return h;
+}
+
 static u64 material_cache_signature(slot_material_t *m) {
 	u64 h = material_cache_hash_canvas(1469598103934665603ull, m->canvas, 0);
 	u8  s[3] = {m->paint_emis, m->paint_subs, m->paint_height};
@@ -233,7 +247,7 @@ static bool material_cache_context_fits(void) {
 		return false;
 	}
 	slot_layer_t *l = g_context->layer;
-	if (l == NULL || !slot_layer_is_layer(l) || slot_layer_is_path(l) || l->fill_material != NULL || l->texpaint == NULL) {
+	if (l == NULL || !slot_layer_is_layer(l) || slot_layer_is_path(l) || l->fill != NULL || l->texpaint == NULL) {
 		return false;
 	}
 	if (g_context->brush_paint != UV_TYPE_UVMAP || context_is_decal() || g_context->paint2d || g_context->pick_pos_nor_tex || util_mesh_udim_layer(l)) {
@@ -742,7 +756,7 @@ static void material_cache_update(void *_) {
 
 	if (e->state == MATERIAL_CACHE_NEW) {
 		if (g_context->brush_time > 0 || iron_time() - material_cache_settle_t < MATERIAL_CACHE_SETTLE || paint_refine_stat(0) > 0 ||
-		    stroke_refine_stat(1) > 0) { // Strokes and fill layers sharpen first
+		    fill_stat(1) > 0) { // Strokes and fill tiles sharpen first
 			return;
 		}
 		u64 keys[MATERIAL_CACHE_KEYS];

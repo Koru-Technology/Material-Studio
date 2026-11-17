@@ -74,7 +74,7 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	bool mask   = slot_layer_is_mask(l);
 	bool filter = slot_layer_is_filter(l);
 	bool layer  = slot_layer_is_layer(l);
-	bool fill   = l->fill_material != NULL || l->path_material != NULL;
+	bool fill   = l->fill != NULL || l->path_material != NULL;
 
 	slot_layer_t *first_mask = app_layer_first_mask(l);
 	slot_layer_t *target     = app_layer_mask_target(g_context->layer);
@@ -85,15 +85,12 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	    .expanded               = l->show_panel,
 	    .is_path                = slot_layer_is_path(l),
 	    .is_text                = l->path_text,
-	    .is_decal               = l->fill_material != NULL && l->uv_type == UV_TYPE_PROJECT,
+	    .is_decal               = l->fill != NULL && (l->fill->projection == FILL_PROJECTION_DECAL || l->fill->projection == FILL_PROJECTION_PLANAR),
+	    .is_fill                = l->fill != NULL,
 	    .mask_id                = first_mask != NULL ? first_mask->id : -1,
 	    .blending               = l->blending,
-	    .uv_type                = l->uv_type,
 	    .uv_map                 = l->uv_map,
 	    .has_uv1                = app_mesh_has_uv1(),
-	    .scale                  = l->scale,
-	    .angle                  = l->angle,
-	    .fill_material          = l->fill_material != NULL ? array_index_of(g_project->_->materials, l->fill_material) : -1,
 	    .channels               = app_layer_channels(l),
 	    .height_blend           = l->height_blend,
 	    .height_blend_below     = l->height_blend_below,
@@ -107,13 +104,13 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	    .shows_channels            = !group,
 	    .shows_to_fill             = !group && !fill,
 	    .shows_to_paint            = !group && fill,
-	    .shows_clear               = l->fill_material == NULL,
+	    .shows_clear               = l->fill == NULL,
 	    .shows_invert              = mask,
 	    .shows_apply               = mask,
 	    .shows_add_mask            = slot_layer_takes_mask(l),
 	    .shows_add_effect          = layer || group || mask,
 	    .shows_merge_group         = group,
-	    .shows_save_smart_material = group || (layer && l->fill_material != NULL),
+	    .shows_save_smart_material = group || (layer && l->fill != NULL),
 
 	    .can_delete      = layers_can_delete(l),
 	    .can_merge_down  = layers_can_merge_down(l),
@@ -133,15 +130,20 @@ uint32_t app_layers_props_signature(void) {
 		h               = app_hash(h, (uint32_t)l->id);
 		h               = app_hash(h, l->show_panel);
 		h               = app_hash(h, (uint32_t)l->blending);
-		h               = app_hash(h, (uint32_t)l->uv_type);
 		h               = app_hash(h, (uint32_t)l->uv_map);
-		h               = app_hash(h, (uint32_t)array_index_of(g_project->_->materials, l->fill_material));
+		h               = app_hash(h, l->fill != NULL);
+		if (l->fill != NULL) { // Every value of the fill: the panel shows them
+			h = app_hash(h, (uint32_t)fill_shape(l));
+			h = app_hash(h, (uint32_t)(fill_shape(l) >> 32));
+			const f32 *v = (const f32 *)l->fill;
+			for (i32 k = 0; k < (i32)(sizeof(fill_t) / sizeof(f32)); ++k) {
+				h = app_hash_fq(h, v[k]);
+			}
+		}
 		h               = app_hash(h, l->path_material != NULL);
 		h               = app_hash(h, l->path_text);
 		h               = app_hash(h, app_layer_channels(l));
 		h               = app_hash(h, l->height_blend | (l->height_blend_below << 1));
-		h               = app_hash_fq(h, l->scale);
-		h               = app_hash_fq(h, l->angle);
 		h               = app_hash_fq(h, l->height_blend_reach);
 		h               = app_hash_fq(h, l->height_blend_influence);
 		h               = app_hash_fq(h, l->height_blend_sharpness);
@@ -154,10 +156,10 @@ uint32_t app_layers_props_signature(void) {
 	h = app_hash(h, mesh_maps_get_asset(MESH_MAP_AO) != NULL); // app_mask_effect_t.needs_ao
 	h = app_hash(h, mesh_maps_get_asset(MESH_MAP_THICKNESS) != NULL);
 	h = app_hash(h, project_id_map_asset() != NULL);
-	for (i32 i = 0; i < g_project->_->assets->length; ++i) { // A fill effect's image picker
+	for (i32 i = 0; i < g_project->_->assets->length; ++i) { // The image pickers of fill effects and fill layers
 		h = app_hash_str(h, g_project->_->assets->buffer[i]->name);
 	}
-	// The fill material picker lists the project materials, the UV map picker depends on the mesh
+	// The fill pickers list the project materials, the UV map picker depends on the mesh
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		h = app_hash_str(h, g_project->_->materials->buffer[i]->canvas->name);
 	}
@@ -181,8 +183,8 @@ bool app_layer_pick(int32_t id) {
 		return false;
 	}
 	layers_op_set(l);
-	if (l->fill_material != NULL) {
-		context_set_material(l->fill_material);
+	if (fill_main_material(l->fill) != NULL) {
+		context_set_material(fill_main_material(l->fill)); // The material editor edits what fills it
 	}
 	else if (l->path_material != NULL) {
 		context_set_material(l->path_material);
@@ -278,10 +280,10 @@ bool app_layer_new(int32_t kind) {
 		ok = layers_op_new() != NULL;
 		break;
 	case APP_LAYER_NEW_FILL:
-		layers_create_fill_layer(UV_TYPE_UVMAP, mat4_nan(), -1);
+		layers_create_fill_layer(FILL_PROJECTION_UV, mat4_nan(), -1, false);
 		break;
 	case APP_LAYER_NEW_DECAL:
-		layers_create_fill_layer(UV_TYPE_PROJECT, mat4_nan(), -1);
+		layers_create_fill_layer(FILL_PROJECTION_DECAL, mat4_nan(), -1, false);
 		break;
 	case APP_LAYER_NEW_COLOR: {
 		swatch_color_t *s = g_context->swatch;
@@ -345,7 +347,7 @@ bool app_layer_merge_group(int32_t id) {
 
 bool app_layer_clear(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || l->fill_material != NULL) {
+	if (l == NULL || l->fill != NULL) {
 		return false;
 	}
 	layers_op_clear(l);
@@ -354,7 +356,7 @@ bool app_layer_clear(int32_t id) {
 
 bool app_layer_to_fill(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || l->fill_material != NULL || l->path_material != NULL) { // Not a material swap, see layers_op_to_fill
+	if (l == NULL || l->fill != NULL || l->path_material != NULL) { // Not a material swap, see layers_op_to_fill
 		return false;
 	}
 	return app_layer_done(layers_op_to_fill(l));
@@ -572,51 +574,6 @@ bool app_layer_set_uv_map(int32_t id, int32_t uv_map) {
 	return app_layer_done(true);
 }
 
-// Fill layer edits take history for l and leave the selection alone, as the other layer edits
-static void app_layer_history_for(slot_layer_t *l, void (*history)(void)) {
-	slot_layer_t *_layer = g_context->layer;
-	g_context->layer     = l;
-	history();
-	g_context->layer = _layer;
-}
-
-bool app_layer_set_uv_type(int32_t id, int32_t uv_type) {
-	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || l->fill_material == NULL || uv_type < UV_TYPE_UVMAP || uv_type > UV_TYPE_PROJECT || (i32)l->uv_type == uv_type) {
-		return false;
-	}
-	app_layer_history_for(l, history_layer_uv_type);
-	l->uv_type = uv_type;
-	layers_refresh_fill_layer_later(l);
-	return app_layer_done(true);
-}
-
-int32_t app_layer_material_count(void) {
-	return app_ready() ? g_project->_->materials->length : 0;
-}
-
-const char *app_layer_material_name(int32_t index) {
-	if (index < 0 || index >= app_layer_material_count()) {
-		return "";
-	}
-	return app_str(g_project->_->materials->buffer[index]->canvas->name);
-}
-
-bool app_layer_set_fill_material(int32_t id, int32_t material_index) {
-	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || l->fill_material == NULL || material_index < 0 || material_index >= app_layer_material_count()) {
-		return false;
-	}
-	slot_material_t *m = g_project->_->materials->buffer[material_index];
-	if (m == l->fill_material) {
-		return false;
-	}
-	draw_saved_t gpu = draw_suspend();
-	slot_layer_set_fill_material(l, m);
-	layers_op_end(gpu);
-	return app_layer_done(true);
-}
-
 static void app_layer_height_blend_changed(slot_layer_t *m) {
 	if (m->height_blend) {
 		make_material_height_used = true; // Track the height of the layers below
@@ -652,19 +609,274 @@ bool app_layer_set_height_blend_below(int32_t id, bool on) {
 	return app_layer_set_mask_flag(id, on, true);
 }
 
+// Fill layers
+
+static slot_layer_t *app_fill_layer(int32_t id) {
+	slot_layer_t *l = app_layer_by_id(id);
+	return l != NULL && l->fill != NULL ? l : NULL;
+}
+
+static fill_source_t *app_fill_source_of(slot_layer_t *l, int32_t channel) {
+	return l != NULL && l->fill != NULL && channel >= 0 && channel < FILL_CHANNEL_COUNT ? &l->fill->ch[channel] : NULL;
+}
+
+bool app_layer_fill(int32_t id, app_fill_t *out) {
+	slot_layer_t *l = app_fill_layer(id);
+	if (l == NULL) {
+		return false;
+	}
+	fill_t *f = l->fill;
+	*out      = (app_fill_t){.projection = f->projection,
+	                         .scale_x    = f->scale[0],
+	                         .scale_y    = f->scale[1],
+	                         .offset_x   = f->offset[0],
+	                         .offset_y   = f->offset[1],
+	                         .angle      = f->angle,
+	                         .hardness   = f->hardness,
+	                         .is_mask    = slot_layer_is_mask(l)};
+	return true;
+}
+
+bool app_layer_fill_source(int32_t id, int32_t channel, app_fill_source_t *out) {
+	fill_source_t *s = app_fill_source_of(app_fill_layer(id), channel);
+	if (s == NULL) {
+		return false;
+	}
+	asset_t         *a = fill_source_asset(s);
+	slot_material_t *m = slot_material_find_uid(s->material);
+	*out               = (app_fill_source_t){.kind          = s->kind,
+	                                         .image         = a != NULL ? array_index_of(g_project->_->assets, a) : -1,
+	                                         .image_channel = s->image_channel,
+	                                         .pattern       = s->pattern,
+	                                         .material      = m != NULL ? array_index_of(g_project->_->materials, m) : -1};
+	memcpy(out->color, s->value, sizeof(out->color));
+	memcpy(out->color2, s->value2, sizeof(out->color2));
+	memcpy(out->params, s->params, sizeof(out->params));
+	return true;
+}
+
+// An undoable edit of l's fill: shape (a new viewport shader) or values only
+static void app_fill_edit_begin(slot_layer_t *l) {
+	app_drag_end();
+	history_layer_fill(l);
+}
+
+static bool app_fill_edit_end(slot_layer_t *l, bool shape) {
+	draw_saved_t gpu = draw_suspend();
+	shape ? fill_reshaped(l) : fill_changed(l);
+	draw_resume(gpu);
+	iron_delay_idle_sleep();
+	return app_layer_done(true);
+}
+
+bool app_layer_set_fill_projection(int32_t id, int32_t projection) {
+	slot_layer_t *l = app_fill_layer(id);
+	if (l == NULL || projection < 0 || projection >= FILL_PROJECTION_COUNT || l->fill->projection == projection) {
+		return false;
+	}
+	app_fill_edit_begin(l);
+	bool box = projection == FILL_PROJECTION_DECAL || projection == FILL_PROJECTION_PLANAR;
+	if (box && l->fill->projection != FILL_PROJECTION_DECAL && l->fill->projection != FILL_PROJECTION_PLANAR && mat4_get_scale(l->decal_mat).x <= 1.0) {
+		l->decal_mat = layers_default_decal_box(); // The gizmo moves it
+	}
+	l->fill->projection = projection;
+	context_set_layer(l); // The gizmo shows for a box
+	return app_fill_edit_end(l, true);
+}
+
+bool app_layer_set_fill_kind(int32_t id, int32_t channel, int32_t kind) {
+	slot_layer_t  *l = app_fill_layer(id);
+	fill_source_t *s = app_fill_source_of(l, channel);
+	if (s == NULL || kind < 0 || kind >= FILL_SOURCE_COUNT || s->kind == kind) {
+		return false;
+	}
+	app_fill_edit_begin(l);
+	fill_source_set_kind(s, channel, kind);
+	if (kind == FILL_SOURCE_MATERIAL && fill_source_material(s) == NULL && g_context->material != NULL) {
+		s->material = g_context->material->uid;
+	}
+	if (kind == FILL_SOURCE_TEXTURE && fill_source_asset(s) == NULL && g_project->_->assets->length > 0) {
+		s->image = g_project->_->assets->buffer[0]->id;
+	}
+	return app_fill_edit_end(l, true);
+}
+
+bool app_layer_set_fill_image(int32_t id, int32_t channel, int32_t image) {
+	slot_layer_t  *l = app_fill_layer(id);
+	fill_source_t *s = app_fill_source_of(l, channel);
+	if (s == NULL || image < 0 || image >= g_project->_->assets->length) {
+		return false;
+	}
+	i32 asset_id = g_project->_->assets->buffer[image]->id;
+	if (s->kind == FILL_SOURCE_TEXTURE && s->image == asset_id) {
+		return false;
+	}
+	app_fill_edit_begin(l);
+	fill_source_set_kind(s, channel, FILL_SOURCE_TEXTURE);
+	s->image = asset_id;
+	return app_fill_edit_end(l, true);
+}
+
+bool app_layer_set_fill_image_channel(int32_t id, int32_t channel, int32_t image_channel) {
+	slot_layer_t  *l = app_fill_layer(id);
+	fill_source_t *s = app_fill_source_of(l, channel);
+	if (s == NULL || image_channel < 0 || image_channel > 4 || s->image_channel == image_channel) {
+		return false;
+	}
+	app_fill_edit_begin(l);
+	s->image_channel = image_channel;
+	return app_fill_edit_end(l, true);
+}
+
+bool app_layer_set_fill_pattern(int32_t id, int32_t channel, int32_t pattern) {
+	slot_layer_t  *l = app_fill_layer(id);
+	fill_source_t *s = app_fill_source_of(l, channel);
+	if (s == NULL || pattern < 0 || pattern >= pattern_node_count() || (s->kind == FILL_SOURCE_PROCEDURAL && s->pattern == pattern)) {
+		return false;
+	}
+	app_fill_edit_begin(l);
+	fill_source_set_kind(s, channel, FILL_SOURCE_PROCEDURAL);
+	f32 seed   = s->params[4];
+	s->pattern = pattern;
+	fill_pattern_params_reset(s);
+	s->params[4] = seed;
+	return app_fill_edit_end(l, true);
+}
+
+bool app_layer_set_fill_material(int32_t id, int32_t channel, int32_t material) {
+	slot_layer_t *l = app_fill_layer(id);
+	if (l == NULL || material < 0 || material >= app_layer_material_count()) {
+		return false;
+	}
+	slot_material_t *m = g_project->_->materials->buffer[material];
+	if (channel < 0) { // Every channel, as dropping the material on the layer
+		layers_op_fill_material(l, m);
+		return app_layer_done(true);
+	}
+	fill_source_t *s = app_fill_source_of(l, channel);
+	if (s == NULL || (s->kind == FILL_SOURCE_MATERIAL && s->material == m->uid)) {
+		return false;
+	}
+	app_fill_edit_begin(l);
+	fill_source_set_kind(s, channel, FILL_SOURCE_MATERIAL);
+	s->material = m->uid;
+	return app_fill_edit_end(l, true);
+}
+
+#define APP_FILL_COLOR_KEY 30 // After a channel's values: its colors in app_layer_set_fill_color's drags
+
+bool app_layer_set_fill_color(int32_t id, int32_t channel, int32_t which, float r, float g, float b) {
+	slot_layer_t  *l = app_fill_layer(id);
+	fill_source_t *s = app_fill_source_of(l, channel);
+	if (s == NULL || which < 0 || which > 1) {
+		return false;
+	}
+	f32 *v   = which == 0 ? s->value : s->value2;
+	i32  key = APP_LAYER_VALUE_FILL_SOURCE + channel * 32 + APP_FILL_COLOR_KEY + which;
+	if (v[0] == r && v[1] == g && v[2] == b) {
+		return false;
+	}
+	if (!app_dragging(APP_DRAG_LAYER_VALUE, id, key, 0)) { // A picker's changes in a row: one undo step
+		history_layer_fill(l);
+		app_drag_begin(APP_DRAG_LAYER_VALUE, id, key, 0);
+	}
+	v[0] = math_max(0.0, math_min(1.0, r));
+	v[1] = math_max(0.0, math_min(1.0, g));
+	v[2] = math_max(0.0, math_min(1.0, b));
+	fill_changed(l);
+	iron_delay_idle_sleep();
+	return true;
+}
+
+int32_t app_layer_material_count(void) {
+	return app_ready() ? g_project->_->materials->length : 0;
+}
+
+const char *app_layer_material_name(int32_t index) {
+	if (index < 0 || index >= app_layer_material_count()) {
+		return "";
+	}
+	return app_str(g_project->_->materials->buffer[index]->canvas->name);
+}
+
+int32_t app_fill_pattern_count(void) {
+	return pattern_node_count();
+}
+
+const char *app_fill_pattern_name(int32_t pattern) {
+	return pattern >= 0 && pattern < pattern_node_count() ? app_str(pattern_node_name(pattern)) : "";
+}
+
+static char *app_fill_common_params[7] = {"Scale", "Stretch", "Angle", "Contrast", "Seed", "Distort", "Distort Scale"};
+static f32   app_fill_common_min[7]    = {1.0, 1.0, 0.0, 0.2, 0.0, 0.0, 1.0};
+static f32   app_fill_common_max[7]    = {100.0, 50.0, 180.0, 4.0, 1000.0, 1.0, 32.0};
+
+int32_t app_fill_param_count(int32_t pattern) {
+	return pattern >= 0 && pattern < pattern_node_count() ? 7 + pattern_def_extras(pattern) : 0;
+}
+
+const char *app_fill_param_name(int32_t pattern, int32_t i) {
+	if (i < 0 || i >= app_fill_param_count(pattern)) {
+		return "";
+	}
+	return app_str(i < 7 ? tr(app_fill_common_params[i]) : pattern_def_extra_name(pattern, i - 7));
+}
+
+float app_fill_param_min(int32_t pattern, int32_t i) {
+	return i >= 0 && i < 7 ? app_fill_common_min[i] : 0.0;
+}
+
+float app_fill_param_max(int32_t pattern, int32_t i) {
+	if (i < 0 || i >= app_fill_param_count(pattern)) {
+		return 1.0;
+	}
+	return i < 7 ? app_fill_common_max[i] : pattern_def_extra_max(pattern, i - 7);
+}
+
 // Slider drags
 
 static f32 *app_layer_value_field(slot_layer_t *l, i32 value, f32 *min, f32 *max) {
-	bool mask = slot_layer_is_mask(l);
+	bool    mask = slot_layer_is_mask(l);
+	fill_t *f    = l->fill;
+	if (value >= APP_LAYER_VALUE_FILL_SOURCE) { // A source's value or pattern setting
+		i32            c = (value - APP_LAYER_VALUE_FILL_SOURCE) / 32;
+		i32            k = (value - APP_LAYER_VALUE_FILL_SOURCE) % 32;
+		fill_source_t *s = app_fill_source_of(l, c);
+		if (s == NULL) {
+			return NULL;
+		}
+		if (k == APP_FILL_VALUE || k == APP_FILL_VALUE2) {
+			*min = 0.0;
+			*max = c == FILL_CHANNEL_NORMAL ? 4.0 : 1.0; // A bump's strength
+			return k == APP_FILL_VALUE ? &s->value[0] : &s->value2[0];
+		}
+		i32 p = k - APP_FILL_VALUE_PARAM;
+		if (p < 0 || p >= app_fill_param_count(s->pattern)) {
+			return NULL;
+		}
+		*min = app_fill_param_min(s->pattern, p);
+		*max = app_fill_param_max(s->pattern, p);
+		return &s->params[p];
+	}
 	switch (value) {
-	case APP_LAYER_VALUE_SCALE:
-		*min = 0.0;
-		*max = 5.0;
-		return l->fill_material != NULL ? &l->scale : NULL;
-	case APP_LAYER_VALUE_ANGLE:
+	case APP_LAYER_VALUE_FILL_SCALE_X:
+	case APP_LAYER_VALUE_FILL_SCALE_Y:
+		*min = 0.01;
+		*max = 64.0;
+		return f != NULL ? &f->scale[value - APP_LAYER_VALUE_FILL_SCALE_X] : NULL;
+	case APP_LAYER_VALUE_FILL_OFFSET_X:
+	case APP_LAYER_VALUE_FILL_OFFSET_Y:
+		*min = -1.0;
+		*max = 1.0;
+		return f != NULL ? &f->offset[value - APP_LAYER_VALUE_FILL_OFFSET_X] : NULL;
+	case APP_LAYER_VALUE_FILL_ANGLE:
 		*min = 0.0;
 		*max = 360.0;
-		return l->fill_material != NULL ? &l->angle : NULL;
+		return f != NULL ? &f->angle : NULL;
+	case APP_LAYER_VALUE_FILL_HARDNESS:
+		*min = 0.0;
+		*max = 1.0;
+		return f != NULL ? &f->hardness : NULL;
 	case APP_LAYER_VALUE_HEIGHT_BLEND_REACH:
 		*min = 0.0;
 		*max = 0.1;
@@ -692,11 +904,8 @@ void app_layer_value_begin(int32_t id, int32_t value) {
 	if (l == NULL || app_layer_value_field(l, value, &min, &max) == NULL) {
 		return;
 	}
-	if (value == APP_LAYER_VALUE_SCALE) {
-		app_layer_history_for(l, history_layer_scale);
-	}
-	else if (value == APP_LAYER_VALUE_ANGLE) {
-		app_layer_history_for(l, history_layer_angle);
+	if (l->fill != NULL && value >= APP_LAYER_VALUE_FILL_SCALE_X) {
+		history_layer_fill(l);
 	}
 	else {
 		context_set_layer(l);
@@ -717,12 +926,25 @@ bool app_layer_set_value(int32_t id, int32_t value, float v) {
 		app_layer_value_begin(id, value);
 	}
 	*f = math_max(min, math_min(max, v));
-	if (value == APP_LAYER_VALUE_SCALE || value == APP_LAYER_VALUE_ANGLE) {
-		layers_refresh_fill_layer_later(l);
+	if (l->fill != NULL && value >= APP_LAYER_VALUE_FILL_SCALE_X) {
+		fill_changed(l); // Live: the parameters texture, no new shader
 	}
 	else {
 		app_layer_height_blend_changed(l);
 	}
 	iron_delay_idle_sleep();
 	return true;
+}
+
+float app_layer_value(int32_t id, int32_t value) {
+	slot_layer_t *l   = app_layer_by_id(id);
+	f32           min = 0.0;
+	f32           max = 0.0;
+	f32          *f   = l != NULL ? app_layer_value_field(l, value, &min, &max) : NULL;
+	return f != NULL ? *f : 0.0;
+}
+
+bool app_layer_value_range(int32_t id, int32_t value, float *min, float *max) {
+	slot_layer_t *l = app_layer_by_id(id);
+	return l != NULL && app_layer_value_field(l, value, min, max) != NULL;
 }

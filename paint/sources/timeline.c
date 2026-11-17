@@ -64,7 +64,7 @@ static bool timeline_fill_ok = false; // timeline_allow_fill
 
 // Paint layers and paint masks have a timeline, fill layers, fill masks and groups not
 bool timeline_layer_paints(slot_layer_t *l) {
-	return l != NULL && l->texpaint != NULL && (l->fill_material == NULL || timeline_fill_ok) &&
+	return l != NULL && l->texpaint != NULL && (l->fill == NULL || timeline_fill_ok) &&
 	       (slot_layer_is_mask(l) || (l->texpaint_nor != NULL && l->texpaint_pack != NULL));
 }
 

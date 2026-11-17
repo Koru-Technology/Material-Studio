@@ -131,6 +131,50 @@ typedef enum {
 	UV_TYPE_PROJECT   = 2,
 } uv_type_t;
 
+// Fill layers (util/util_fill.c): how a fill maps its sources onto the surface
+typedef enum {
+	FILL_PROJECTION_UV        = 0, // The layer's uv map
+	FILL_PROJECTION_TRIPLANAR = 1, // Three planes along the world axes, blended by the normal (hardness)
+	FILL_PROJECTION_DECAL     = 2, // Projected from the decal box (slot_layer_t.decal_mat) once, nothing outside it
+	FILL_PROJECTION_PLANAR    = 3, // Projected along the decal box's axis, repeating over the whole surface
+	FILL_PROJECTION_COUNT     = 4,
+} fill_projection_t;
+
+// The channels of a fill layer, each with its own source. A fill mask uses FILL_CHANNEL_BASE (as gray).
+typedef enum {
+	FILL_CHANNEL_BASE      = 0, // Color
+	FILL_CHANNEL_OPACITY   = 1,
+	FILL_CHANNEL_NORMAL    = 2, // Tangent space normal, a color
+	FILL_CHANNEL_ROUGHNESS = 3,
+	FILL_CHANNEL_METALLIC  = 4,
+	FILL_CHANNEL_HEIGHT    = 5,
+	FILL_CHANNEL_OCCLUSION = 6,
+	FILL_CHANNEL_EMISSION  = 7, // Above 0 the surface emits its base color
+	FILL_CHANNEL_COUNT     = 8,
+} fill_channel_t;
+
+typedef enum {
+	FILL_SOURCE_COLOR      = 0, // A uniform color or value
+	FILL_SOURCE_TEXTURE    = 1, // A project image
+	FILL_SOURCE_PROCEDURAL = 2, // A pattern (nodes_material/pattern_nodes.c), from one color or value to another
+	FILL_SOURCE_MATERIAL   = 3, // That channel of a material, rendered once into tileable textures
+	FILL_SOURCE_COUNT      = 4,
+} fill_source_kind_t;
+
+// The fill parameters texture (util_fill.c): RGBA32F, a row per fill layer (its id), FILL_TEXELS texels:
+// 0 scale.xy offset.xy, 1 cos sin triplanar-exponent 0, 2..4 world to decal box rows, 5 unused,
+// then per channel value, value2, pattern t (scale, stretch, angle, seed), d (distort, distort scale, contrast), a, b
+#define FILL_TEXELS_HEAD    6
+#define FILL_TEXELS_CHANNEL 6
+#define FILL_TEXELS         (FILL_TEXELS_HEAD + FILL_CHANNEL_COUNT * FILL_TEXELS_CHANNEL)
+
+// fill_encode: floats of a fill (util_fill.c)
+#define FILL_ENCODE_HEAD   8
+#define FILL_ENCODE_SOURCE (1 + 4 + 4 + 1 + 1 + 1 + FILL_PATTERN_PARAMS + 1)
+#define FILL_ENCODE_LENGTH (FILL_ENCODE_HEAD + FILL_CHANNEL_COUNT * FILL_ENCODE_SOURCE)
+#define FILL_ENCODE_IMAGE    9 // Within a source: the image, the material last
+#define FILL_ENCODE_MATERIAL (FILL_ENCODE_SOURCE - 1)
+
 typedef enum {
 	BLEND_TYPE_MIX          = 0,
 	BLEND_TYPE_DARKEN       = 1,
@@ -619,10 +663,7 @@ typedef enum {
 	HISTORY_ACTION_LAYER_VISIBLE,
 	HISTORY_ACTION_LAYER_NAME,
 	HISTORY_ACTION_LAYER_OBJECT,
-	HISTORY_ACTION_LAYER_SCALE,
-	HISTORY_ACTION_LAYER_ANGLE,
-	HISTORY_ACTION_LAYER_UV_TYPE,
-	HISTORY_ACTION_LAYER_FILL_MATERIAL,
+	HISTORY_ACTION_LAYER_FILL, // Sources or projection of a fill layer or fill mask
 	HISTORY_ACTION_SMART_MATERIAL,
 	HISTORY_ACTION_NEW_BRUSH,
 	HISTORY_ACTION_DELETE_BRUSH,

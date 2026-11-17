@@ -61,14 +61,8 @@ static char *history_action_to_string(history_action_t action) {
 		return tr("Rename Layer");
 	case HISTORY_ACTION_LAYER_OBJECT:
 		return tr("Layer Object");
-	case HISTORY_ACTION_LAYER_SCALE:
-		return tr("Layer UV Scale");
-	case HISTORY_ACTION_LAYER_ANGLE:
-		return tr("Layer Angle");
-	case HISTORY_ACTION_LAYER_UV_TYPE:
-		return tr("Layer UV Type");
-	case HISTORY_ACTION_LAYER_FILL_MATERIAL:
-		return tr("Layer Material");
+	case HISTORY_ACTION_LAYER_FILL:
+		return tr("Edit Fill");
 	case HISTORY_ACTION_SMART_MATERIAL:
 		return tr("Smart Material");
 	case HISTORY_ACTION_NEW_BRUSH:
@@ -130,6 +124,9 @@ static void history_step_free(history_step_t *step) {
 	}
 	history_tiles_release(step);
 	array_delete(step->mask_effects);
+	array_delete(step->fill);
+	array_delete(step->fills[0]);
+	array_delete(step->fills[1]);
 	history_path_free(step->path);
 	if (step->tl_moves != NULL) {
 		array_free(step->tl_moves);
@@ -237,7 +234,7 @@ static bool history_step_valid_check(history_step_t *step, bool undo) {
 			return history_in(step->layer, layers);
 		}
 		return step->layer >= 0 && step->layer <= layers && step->layer_parent - 1 < layers &&
-		       (step->action != HISTORY_ACTION_NEW_FILL_MASK || history_in(step->material, materials));
+		       (step->action != HISTORY_ACTION_NEW_FILL_MASK || step->fill != NULL);
 	case HISTORY_ACTION_SMART_MATERIAL:
 		return !undo || history_in(step->layer, layers);
 	case HISTORY_ACTION_NEW_GROUP:
@@ -262,7 +259,7 @@ static bool history_step_valid_check(history_step_t *step, bool undo) {
 		return undo ? step->material >= 0 && step->material <= materials : history_in(step->material, materials);
 	case HISTORY_ACTION_TO_FILL_LAYER:
 	case HISTORY_ACTION_TO_FILL_MASK:
-		return history_in(step->layer, layers) && (undo || history_in(step->material, materials));
+		return history_in(step->layer, layers) && (undo || step->fill != NULL);
 	case HISTORY_ACTION_PAINT:
 		return history_in(step->layer, layers) && history_in(step->object, g_project->_->paint_objects->length);
 	default:
@@ -407,10 +404,15 @@ static void history_raster_step(history_step_t *step, bool undo) {
 	}
 }
 
-static void history_refresh_fill(slot_layer_t *l) {
-	if (slot_layer_alive(l)) {
-		layers_refresh_fill_layer(l);
+// l is a fill again: fill (fill_encode by id), shown live, rasterized for its readers
+static void history_set_fill(slot_layer_t *l, f32_array_t *fill) {
+	fill_t *f = fill_decode(fill, false);
+	if (f == NULL) {
+		return;
 	}
+	free(l->fill);
+	l->fill = f;
+	fill_reshaped(l);
 }
 
 // Apply mask undo: the layers it was applied to come back from their timelines, the mask from its own
@@ -447,12 +449,10 @@ static void history_unapply_mask(history_step_t *step) {
 	}
 	history_restore_applied_mask(step, m);
 	// Fill again: the mask, the layer it was applied to
-	slot_material_t *fills[2] = {slot_material_find_uid(step->fill_uids[0]), slot_material_find_uid(step->fill_uids[1])};
-	slot_layer_t    *owners[2] = {m, current};
+	slot_layer_t *owners[2] = {m, current};
 	for (i32 i = 0; i < 2; ++i) {
-		if (step->fill_uids[i] != 0 && fills[i] != NULL && !slot_layer_is_group(owners[i])) {
-			owners[i]->fill_material = fills[i];
-			sys_notify_on_next_frame(&history_refresh_fill, owners[i]);
+		if (step->fills[i] != NULL && !slot_layer_is_group(owners[i])) {
+			history_set_fill(owners[i], step->fills[i]);
 		}
 	}
 	g_context->layers_preview_dirty = true;
@@ -462,7 +462,7 @@ static void history_unapply_mask(history_step_t *step) {
 static void history_reapply_mask(history_step_t *step) {
 	slot_layer_t *m      = g_project->_->layers->buffer[step->layer];
 	slot_layer_t *parent = m->parent;
-	if (parent->fill_material != NULL && !slot_layer_is_group(parent)) {
+	if (parent->fill != NULL && !slot_layer_is_group(parent)) {
 		slot_layer_to_paint_layer(parent); // As apply mask did, its pixels come from its timeline
 	}
 	history_defer_moves(step, false, false);
@@ -500,8 +500,7 @@ static bool history_layer_step(history_step_t *step, bool undo) {
 			history_flush_restores(l);
 		}
 		else {
-			l->fill_material = g_project->_->materials->buffer[step->material];
-			sys_notify_on_next_frame(&history_refresh_fill, l);
+			history_set_fill(l, step->fill);
 		}
 		mask_stack_mark_dirty(l);
 		return true;
@@ -510,8 +509,7 @@ static bool history_layer_step(history_step_t *step, bool undo) {
 		history_flush_restores(NULL);
 		context_set_layer(l);
 		if (undo) {
-			l->fill_material = step->material >= 0 && step->material < g_project->_->materials->length ? g_project->_->materials->buffer[step->material] : NULL;
-			sys_notify_on_next_frame(&history_refresh_fill, l); // The fill renders again
+			history_set_fill(l, step->fill); // Shown live again
 		}
 		else {
 			slot_layer_to_paint_layer(l);
@@ -580,8 +578,7 @@ void history_undo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
 		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
-		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
-		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
+		         step->action == HISTORY_ACTION_LAYER_FILL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
 		}
@@ -662,11 +659,6 @@ static void history_redo_new_content(history_step_t *step, slot_layer_t *l) {
 	draw_resume(saved);
 }
 
-static void history_redo_new_fill_mask(slot_layer_t *l) {
-	if (slot_layer_alive(l)) {
-		slot_layer_to_fill_layer(l);
-	}
-}
 
 void history_redo() {
 	history_tiles_finalize();
@@ -694,8 +686,7 @@ void history_redo() {
 			array_insert(g_project->_->layers, step->layer, l);
 			history_redo_new_content(step, l);
 			if (step->action == HISTORY_ACTION_NEW_FILL_MASK) {
-				g_context->material = g_project->_->materials->buffer[step->material];
-				sys_notify_on_next_frame(&history_redo_new_fill_mask, l);
+				history_set_fill(l, step->fill);
 			}
 			g_context->layer_preview_dirty = true;
 			context_set_layer(l);
@@ -728,8 +719,7 @@ void history_redo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
 		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
-		         step->action == HISTORY_ACTION_LAYER_SCALE || step->action == HISTORY_ACTION_LAYER_ANGLE || step->action == HISTORY_ACTION_LAYER_UV_TYPE ||
-		         step->action == HISTORY_ACTION_LAYER_FILL_MATERIAL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
+		         step->action == HISTORY_ACTION_LAYER_FILL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
 		}
@@ -827,7 +817,6 @@ void history_steps_replace(any_array_t *steps, i32 undos, i32 redos, u32 serial_
 	history_undos        = undos;
 	history_redos        = redos;
 	history_serial_next  = serial_next > history_serial_next ? serial_next : history_serial_next;
-	stroke_refine_reset(); // Records point at steps
 }
 
 void history_reset() {
@@ -847,8 +836,16 @@ void history_reset() {
 	history_restore_scheduled = false; // A job still queued finds nothing
 	history_tiles_reset();
 	timeline_reset_all();
-	stroke_refine_reset();
+	fill_reset();
 	material_cache_reset(); // A new project: every material cache goes
+}
+
+// Pending restores done and the last captures taken, before a layer's pixels change outside a step (a layer turning
+// into a fill rasterizes it before its step is pushed)
+void history_settle(void) {
+	history_flush_restores(NULL);
+	history_tiles_finalize();
+	timeline_finalize();
 }
 
 history_step_t *history_push(history_action_t action) {
