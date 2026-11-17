@@ -172,8 +172,8 @@ private struct FillSourceLabel: View {
 				Image(systemName: "photo").foregroundStyle(.secondary)
 			case Int32(APP_FILL_SOURCE_PROCEDURAL.rawValue):
 				Image(systemName: "square.grid.3x3").foregroundStyle(.secondary)
-			default:
-				Image(systemName: "circle.hexagongrid").foregroundStyle(.secondary)
+			default: // A material: no mark
+				EmptyView()
 			}
 		}
 	}
