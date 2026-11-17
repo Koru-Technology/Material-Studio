@@ -88,8 +88,17 @@ typedef struct gpu_texture {
 	gpu_texture_state_t  state;
 	buffer_t            *buffer;
 	bool                 gpu_write;
+	uint64_t             written; // Stamp of its last write (gpu_texture_written): unique to it and that write
 	gpu_texture_impl_t   impl;
 } gpu_texture_t;
+
+// Every write of a texture (made, a render target of a pass at its begin and end, a copy into it) stamps it from one
+// counter: equal stamps mean the same texture with the same texels, whatever texture is swapped in or made again at the
+// same address
+extern uint64_t gpu_texture_stamps;
+static inline void gpu_texture_written(gpu_texture_t *t) {
+	t->written = ++gpu_texture_stamps;
+}
 
 typedef struct gpu_buffer {
 	uint32_t          count;

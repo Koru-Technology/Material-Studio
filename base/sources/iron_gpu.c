@@ -20,6 +20,7 @@ uint32_t        draw_calls                         = 0;
 uint32_t        draw_calls_last                    = 0;
 bool            gpu_in_use                         = false;
 uint32_t        gpu_buffer_versions                = 0;
+uint64_t        gpu_texture_stamps                 = 0;
 gpu_texture_t  *current_textures[GPU_MAX_TEXTURES] = {0};
 gpu_texture_t  *current_render_targets[8]          = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 uint32_t        current_render_targets_count       = 0;
@@ -85,9 +86,11 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 
 	for (int i = 0; i < current_render_targets_count; ++i) {
 		gpu_barrier(current_render_targets[i], GPU_TEXTURE_STATE_RENDER_TARGET);
+		gpu_texture_written(current_render_targets[i]);
 	}
 	if (current_depth_buffer != NULL) {
 		gpu_barrier(current_depth_buffer, GPU_TEXTURE_STATE_RENDER_TARGET_DEPTH);
+		gpu_texture_written(current_depth_buffer);
 	}
 
 	gpu_begin_internal(flags, color, depth);
@@ -149,6 +152,12 @@ void gpu_end() {
 		iron_log("Begin before you end");
 	}
 	gpu_in_use = false;
+	for (int i = 0; i < current_render_targets_count; ++i) { // Drawn: a stamp taken during the pass no longer matches
+		gpu_texture_written(current_render_targets[i]);
+	}
+	if (current_depth_buffer != NULL) {
+		gpu_texture_written(current_depth_buffer);
+	}
 	gpu_end_internal();
 }
 
