@@ -13,7 +13,7 @@
 extern int gpu_shader_failure_count;
 void       iron_log(const char *format, ...);
 
-#define IRON_GLSL_MAX_TEXTURES 32
+#define IRON_GLSL_MAX_TEXTURES 96 // GPU_MAX_TEXTURES
 
 // Wall time, the translation runs on the main thread while pipelines compile on workers (clock() would sum their cpu time)
 double iron_glsl_now_ms(void) {

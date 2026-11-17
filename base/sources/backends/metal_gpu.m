@@ -650,31 +650,44 @@ void gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size)
 	[command_encoder setVertexBuffer:argument_buffer offset:argument_buffer_step * constant_buffer_index atIndex:1];
 	[command_encoder setFragmentBuffer:argument_buffer offset:argument_buffer_step * constant_buffer_index atIndex:1];
 	[command_encoder useResource:buf usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
-	// Every slot is written: one left as it was holds what a draw before put there in this part of the ring, a texture
-	// freed since (a deleted layer a stale shader still samples) faulted the GPU, which then ignored all later work
+	// No slot keeps what a draw before put there in this part of the ring: a texture freed since (a deleted layer a stale
+	// shader still samples) faulted the GPU, which then ignored all later work. Slots past the ones a draw sets hold the
+	// empty texture: each part of the ring remembers how far its last draw wrote, a draw writes that far at least (a
+	// part not used yet: every slot), most draws set a few of the GPU_MAX_TEXTURES.
 	static id<MTLTexture> empty = nil;
-	bool                  unset = false;
-	for (int i = 0; i < GPU_MAX_TEXTURES; ++i) {
+	static uint8_t        written[GPU_CONSTANT_BUFFER_MULTIPLE];
+	static bool           written_init = false;
+	if (empty == nil) {
+		MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:1 height:1 mipmapped:NO];
+		d.usage                 = MTLTextureUsageShaderRead;
+		empty                   = [get_metal_device() newTextureWithDescriptor:d];
+		uint32_t zero           = 0;
+		[empty replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:&zero bytesPerRow:4];
+	}
+	if (!written_init) {
+		memset(written, GPU_MAX_TEXTURES, sizeof(written));
+		written_init = true;
+	}
+	int set = 0;
+	for (int i = GPU_MAX_TEXTURES - 1; i >= 0; --i) {
+		if (current_textures[i] != NULL) {
+			set = i + 1;
+			break;
+		}
+	}
+	int count = set > written[constant_buffer_index] ? set : written[constant_buffer_index];
+	for (int i = 0; i < count; ++i) {
 		id<MTLTexture> tex = current_textures[i] != NULL ? (__bridge id<MTLTexture>)current_textures[i]->impl._tex : nil;
 		if (tex == nil) {
-			if (empty == nil) {
-				MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:1 height:1 mipmapped:NO];
-				d.usage                 = MTLTextureUsageShaderRead;
-				empty                   = [get_metal_device() newTextureWithDescriptor:d];
-				uint32_t zero           = 0;
-				[empty replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:&zero bytesPerRow:4];
-			}
-			tex   = empty;
-			unset = true;
+			tex = empty;
 		}
 		else {
 			[command_encoder useResource:tex usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
 		}
 		[argument_encoder setTexture:tex atIndex:i + 2];
 	}
-	if (unset) {
-		[command_encoder useResource:empty usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
-	}
+	written[constant_buffer_index] = (uint8_t)set;
+	[command_encoder useResource:empty usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
 }
 
 void gpu_set_texture(uint32_t unit, gpu_texture_t *texture) {

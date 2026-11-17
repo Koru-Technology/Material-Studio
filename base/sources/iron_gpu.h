@@ -10,7 +10,7 @@
 #include "backends/metal_gpu.h"
 
 #define GPU_MAX_VERTEX_ELEMENTS      16
-#define GPU_MAX_TEXTURES 32 // Argument buffers take many, more layers fit a viewport pass (3 textures a layer)
+#define GPU_MAX_TEXTURES 96 // What an argument buffer gives a stage on A11/A12 (tier 1), more on newer gpus; 3 textures a layer
 #define GPU_CONSTANT_BUFFER_SIZE     512
 #define GPU_CONSTANT_BUFFER_MULTIPLE 8192 // Draws per two frames before a cpu-gpu wait, 4 MB of constants, painting issues many
 #define GPU_FRAMEBUFFER_COUNT 3
@@ -185,6 +185,8 @@ extern uint32_t gpu_debug_draw_calls_frame;
 void gpu_resize(int width, int height);
 void gpu_resize_internal(int width, int height);
 void gpu_set_int(int location, int value);
+// The constants the next draw gets (GPU_CONSTANT_BUFFER_SIZE bytes), as the gpu_set_* calls wrote them
+uint8_t *gpu_constant_data(void);
 void gpu_set_float(int location, float value);
 void gpu_set_float2(int location, float value1, float value2);
 void gpu_set_float3(int location, float value1, float value2, float value3);

@@ -215,6 +215,10 @@ void gpu_set_int(int location, int value) {
 	ints[0]   = value;
 }
 
+uint8_t *gpu_constant_data(void) {
+	return constant_buffer.data;
+}
+
 void gpu_set_float(int location, float value) {
 	float *floats = (float *)(&constant_buffer.data[location]);
 	floats[0]     = value;
