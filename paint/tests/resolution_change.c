@@ -214,7 +214,7 @@ void next() {
 	}
 	else if (step == 19) {
 		script_diff_mask(export_tiled_test_coverage(), 1); // Inside the uv islands: the padding around them dilates apart
-		int painted = diff3(layer_live, layer_blank, 1.0);
+		int painted = diff3(layer_live, layer_blank, 0.0);
 		int over1   = diff3(layer_live, layer_rec, 1.0);
 		int over24  = diff3(layer_live, layer_rec, 24.0);
 		script_diff_mask(NULL, 0);

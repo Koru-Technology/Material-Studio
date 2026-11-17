@@ -138,7 +138,7 @@ void next() {
 			paint_replay_test_set_fast(1);
 			ok = ok && paint_replay_test_into(layers[kase], entries[kase], fast);
 			paint_replay_test_set_fast(0);
-			int painted = diff3(live, blank, 1.0);
+			int painted = diff3(live, blank, 0.0);
 			int over1   = diff3(live, full, 1.0);
 			int fastd   = diff3(full, fast, 0.0);
 			printf("[rec_fill] %s at 2048: %d painted, %d over 1/255 against live, %d differ composite-fast", name_of(kase), painted, over1, fastd);

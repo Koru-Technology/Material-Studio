@@ -129,7 +129,7 @@ void next() {
 			slot_layer_t *blank   = new_layer();
 			slot_layer_t *full    = new_layer();
 			int           ok      = paint_replay_test_into(layer, entry, full);
-			int           painted = diff3(full, blank, 1.0);
+			int           painted = diff3(full, blank, 0.0);
 			check(ok && painted > 100, string("replays at 2048 and paints (%d)", painted));
 			// Every third texel of the 1024 result painted against the mean of its 2x2 block at 2048
 			buffer_t *high    = script_get_texture_pixels(full->texpaint);

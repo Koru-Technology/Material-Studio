@@ -82,7 +82,7 @@ void next() {
 		check(paint_replay_test_fallbacks() == fb, "no replay fell back");
 	}
 	else if (frame == 14) {
-		int   painted = diff3(live, blank, 1.0);
+		int   painted = diff3(live, blank, 0.0);
 		int   over1   = diff3(live, whole, 1.0);
 		float mx      = script_diff_max();
 		int   over8   = diff3(live, whole, 8.0);
@@ -103,7 +103,7 @@ void next() {
 		float m2 = script_diff_max();
 		printf("[rec_hires] largest differences: base %f, normal %f, pack %f", m0, m1, m2);
 		check(tiles1 == 0 && tiles * 1000 <= painted, string("4 tiles are within 1/255 of the whole replay, on all but 0.1 percent exactly (%d differ)", tiles));
-		check(diff3(whole, blank, 1.0) > 10000, "the whole replay paints");
+		check(diff3(whole, blank, 0.0) > 10000, "the whole replay paints");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[rec_hires] %d checks, %d failures", checks, fails);

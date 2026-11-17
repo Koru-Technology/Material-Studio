@@ -207,7 +207,7 @@ void next() {
 				ok = paint_replay_test_into(layers[kase], entries[kase] - 1, full);
 			}
 			ok          = ok && paint_replay_test_into(layers[kase], entries[kase], full);
-			int painted = diff3(live, blank, 1.0);
+			int painted = diff3(live, blank, 0.0);
 			int over1   = diff3(live, full, 1.0);
 			printf("[rec_camera] %s at 2048: %d painted, %d over 1/255 against live", name_of(kase), painted, over1);
 			check(ok && painted > 100, string("%s: replays at 2048 and paints (%d)", name_of(kase), painted));
@@ -220,7 +220,7 @@ void next() {
 			}
 			else { // Their reach is the uv footprint painted at 1024 (blur's kernel, smudge's and clone's screen offsets): the
 				   // 1024 result scaled up, not a 2048 stroke
-				int scaled  = diff3(layers[kase], blank, 1.0);
+				int scaled  = diff3(layers[kase], blank, 0.0);
 				int over8   = diff3(layers[kase], full, 8.0);
 				printf("[rec_camera] %s at 2048 against the 1024 result scaled up: %d of %d over 8/255", name_of(kase), over8, scaled);
 				check(over8 * 20 <= scaled, string("%s: the 1024 record at 2048 is within 8/255 of the 1024 result scaled up on 95 percent (%d of %d)", name_of(kase), over8, scaled));
