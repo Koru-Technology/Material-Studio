@@ -34,9 +34,9 @@ final class ProjectsStore: ChangeOnly {
 		var rows: [ProjectRow] = []
 		for i in 0..<app_project_count() {
 			let path = String(cString: app_project_path(i))
-			let url  = URL(fileURLWithPath: path)
-			rows.append(ProjectRow(id: path, index: i, name: url.deletingPathExtension().lastPathComponent,
-			                       iconPath: url.deletingPathExtension().path + "_icon.png"))
+			let icon = String(cString: app_project_icon_path(i))
+			rows.append(ProjectRow(id: path, index: i, name: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent,
+			                       iconPath: icon))
 		}
 		update(\.projects, rows)
 	}

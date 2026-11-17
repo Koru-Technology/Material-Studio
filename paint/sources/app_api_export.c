@@ -169,9 +169,14 @@ static void app_history_copy_picked(char *path) {
 
 bool app_history_save_copy(void) {
 #ifdef IRON_IOS
-	char *dir = iron_save_dialog("", ""); // The documents folder, as Save As (project.c)
-	dir       = string_copy(substring(dir, 0, string_length(dir) - 8)); // Strip /"untitled"
-	char *f   = string("%s/%s copy.arm", dir, sys_title());
+	// A project of its own, next to the others (project.c): Projects/<title> copy/<title> copy.arm
+	char *name = string("%s copy", sys_title());
+	char *dir  = string("%s/Projects/%s", project_documents_dir(), name);
+	for (i32 i = 2; iron_file_exists(dir); ++i) {
+		dir = string("%s/Projects/%s %d", project_documents_dir(), name, i);
+	}
+	iron_create_directory(dir);
+	char *f = string("%s/%s.arm", dir, substring(dir, string_last_index_of(dir, "/") + 1, string_length(dir)));
 	if (!project_container_save_copy(f)) {
 		console_error(string("Could not save %s.", f));
 		return false;

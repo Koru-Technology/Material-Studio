@@ -4,17 +4,17 @@
 char *_box_projects_load_path;
 i32   _box_projects_load_frames;
 
-// Full path of a recent project, iOS stores only the file name inside the documents folder
+// Full path of a recent project, iOS lists it relative to the documents folder
 char *box_projects_recent_path(i32 i) {
 	return box_projects_path_of(g_config->recent_projects->buffer[i]);
 }
 
-// The file of an entry of the recent list: on iOS the list has file names, in the documents folder
+// The file of an entry of the recent list (project_recent_entry): on iOS relative to the documents folder
 char *box_projects_path_of(char *path) {
 #ifdef IRON_IOS
-	char *document_directory = iron_save_dialog("", "");
-	document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
-	path                     = string("%s%s", document_directory, path);
+	if (!data_is_abs(path)) {
+		path = string("%s/%s", project_documents_dir(), path);
+	}
 #endif
 	return path;
 }
@@ -56,13 +56,19 @@ void box_projects_load(char *path) {
 	sys_notify_on_next_frame(&box_projects_load_on_next_frame, NULL);
 }
 
-// The files of a project: the project, its icon, its data folder and its history journal
+// The files of a project: the project, its icon and its history journal. On iOS a project in Documents/Projects goes
+// with its whole folder (sources, exports, mesh maps)
 void box_projects_delete_files(char *path) {
-	char *base = substring(path, 0, string_length(path) - 4);
 	hstore_journal_delete_for_file(path); // Named by the uuid in the file
+#ifdef IRON_IOS
+	char *dir = substring(path, 0, string_last_index_of(path, "/"));
+	if (string_equals(substring(dir, 0, string_last_index_of(dir, "/")), string("%s/Projects", project_documents_dir()))) {
+		iron_delete_file(dir);
+		return;
+	}
+#endif
 	iron_delete_file(path);
-	iron_delete_file(string("%s_icon.png", base));
-	iron_delete_file(base);
+	iron_delete_file(project_icon_path(path));
 }
 
 // Removes a recent project with its files
@@ -73,6 +79,23 @@ void box_projects_delete(i32 i) {
 	box_projects_delete_files(box_projects_recent_path(i));
 	array_splice(g_config->recent_projects, i, 1);
 	config_save();
+}
+
+// A recent project has the name, or on iOS a project folder does
+static bool box_projects_title_taken(char *title) {
+	for (i32 j = 0; j < g_config->recent_projects->length; ++j) {
+		char *base = g_config->recent_projects->buffer[j];
+		base       = substring(base, string_last_index_of(base, PATH_SEP) + 1, string_last_index_of(base, "."));
+		if (string_equals(title, base)) {
+			return true;
+		}
+	}
+#ifdef IRON_IOS
+	if (iron_file_exists(string("%s/Projects/%s", project_documents_dir(), title))) {
+		return true;
+	}
+#endif
+	return false;
 }
 
 void box_projects_new() {
@@ -86,17 +109,10 @@ void box_projects_new() {
 	}
 	// Pick unique name
 	i32   i     = 0;
-	i32   j     = 0;
 	char *title = string("%s%s", tr("untitled"), i32_to_string(i));
-	while (j < g_config->recent_projects->length) {
-		char *base = g_config->recent_projects->buffer[j];
-		base       = string_copy(substring(base, string_last_index_of(base, PATH_SEP) + 1, string_last_index_of(base, ".")));
-		j++;
-		if (string_equals(title, base)) {
-			i++;
-			title = string("%s%s", tr("untitled"), i32_to_string(i));
-			j     = 0;
-		}
+	while (box_projects_title_taken(title)) {
+		i++;
+		title = string("%s%s", tr("untitled"), i32_to_string(i));
 	}
 	sys_title_set(title);
 }

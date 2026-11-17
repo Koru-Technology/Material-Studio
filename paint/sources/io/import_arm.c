@@ -250,11 +250,7 @@ void import_arm_run_project(char *path) {
 	}
 
 // Save to recent
-#ifdef IRON_IOS
-	char *recent_path = substring(path, string_last_index_of(path, "/") + 1, string_length(path));
-#else
-	char *recent_path = path;
-#endif
+	char *recent_path = project_recent_entry(path);
 	string_array_t *recent = g_config->recent_projects;
 	string_array_remove(recent, recent_path);
 	array_insert(recent, 0, recent_path);

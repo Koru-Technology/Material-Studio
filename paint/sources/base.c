@@ -120,14 +120,11 @@ void base_on_open_file(char *path) {
 	any_array_push(base_open_paths, string_copy(path));
 }
 
-static void base_open_new_project_title(void *path) {
-	sys_title_set(project_unique_title(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, "."))));
-}
-
 static void base_open_new_project(void *path) {
 	project_new(true);
+	sys_title_set(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, "."))); // The model names it
+	path = project_take_import(path); // iOS: into the project's Sources folder, named "<model> 2"... when taken
 	import_mesh_run(path, true, true, false);
-	sys_notify_on_next_frame(&base_open_new_project_title, path); // Once the mesh import named the project
 	console_info(tr("Model opened in a new project"));
 }
 
@@ -171,7 +168,7 @@ void base_handle_drop_paths() {
 				base_on_open_file(drop_path);
 				return;
 			}
-			import_asset_run(drop_path, base_drop_x, base_drop_y, true, true, NULL);
+			import_asset_run(project_take_import(drop_path), base_drop_x, base_drop_y, true, true, NULL);
 		}
 	}
 }

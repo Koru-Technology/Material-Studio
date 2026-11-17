@@ -133,8 +133,8 @@ void app_command(int32_t command);
 
 // Projects screen (iPad), the recent projects, most recent first
 int32_t     app_project_count(void);
-const char *app_project_path(int32_t index); // Full path of the .arm file, valid until the next app_* call. The preview
-                                             // is next to it: the same path with _icon.png in place of .arm
+const char *app_project_path(int32_t index); // Full path of the .arm file, valid until the next app_* call
+const char *app_project_icon_path(int32_t index); // Its preview, hidden next to it (project_icon_path)
 void        app_project_open(int32_t index); // Closes the screen, the project loads over the next frames
 void        app_project_delete(int32_t index); // With its files
 void        app_project_new(void);           // Closes the screen

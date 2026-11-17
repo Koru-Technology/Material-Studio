@@ -31,14 +31,132 @@ void project_save_on_next_frame(void *_) {
 	}
 }
 
-// Untitled projects are saved in the documents folder on mobile, false when a save dialog is needed
+// The preview of a project file, hidden next to it: .<name>_icon.png
+char *project_icon_path(char *path) {
+	i32   slash = string_last_index_of(path, "/");
+	char *name  = substring(path, slash + 1, string_length(path) - 4); // Without .arm
+	return string("%s/.%s_icon.png", substring(path, 0, slash), name);
+}
+
+#ifdef IRON_IOS
+// The iPad's Documents folder, what the Files app shows:
+//   Projects/<name>/              one folder per project
+//     <name>.arm                  the project, .<name>_icon.png its preview (hidden)
+//     Sources/                    models and textures imported into it (project_take_import)
+//     Exports/                    texture, mesh and layer exports (ui_files_show)
+//     Mesh Maps/                  baked maps (box_bake_maps.c)
+//   .imports/                     files picked or shared with the app until a project takes them (ios_system.m)
+//   .tests/                       test scripts (README)
+// The container is /var/mobile/... in the paths iOS hands over (pickers, launch arguments) and /private/var/mobile/...
+// in HOME, the same folder: paths are compared in the /var form
+static char *project_canonical(char *path) {
+	return starts_with(path, "/private/var/") ? substring(path, 8, string_length(path)) : path;
+}
+
+char *project_documents_dir() {
+	return project_canonical(string("%s/Documents", getenv("HOME")));
+}
+
+static char *project_folder_of(char *name) {
+	return string("%s/Projects/%s", project_documents_dir(), name);
+}
+
+static char *project_file_of(char *name) {
+	return string("%s/%s.arm", project_folder_of(name), name);
+}
+
+static char *project_name_of_folder(char *dir) {
+	return substring(dir, string_last_index_of(dir, "/") + 1, string_length(dir));
+}
+
+// Folder of the unsaved project, made when it first needs one (an import, an export, its first save), NULL before
+static char *project_unsaved_folder = NULL;
+
+// "name", or "name 2", "name 3"... when a project folder with the name exists
+static char *project_free_name(char *name) {
+	char *free_name = name;
+	for (i32 i = 2; iron_file_exists(project_folder_of(free_name)); ++i) {
+		free_name = string("%s %d", name, i);
+	}
+	return string_copy(free_name);
+}
+
+// The current project's folder. An unsaved project's is made on first use and named after its title, the title then
+// follows the folder: its files are saved there whatever the project is later called
+char *project_folder() {
+	if (!string_equals(g_project->_->filepath, "")) {
+		return substring(g_project->_->filepath, 0, string_last_index_of(g_project->_->filepath, "/"));
+	}
+	if (project_unsaved_folder == NULL) {
+		char *name             = project_free_name(sys_title());
+		project_unsaved_folder = string_copy(project_folder_of(name));
+		iron_create_directory(project_unsaved_folder);
+		sys_title_set(name);
+	}
+	return project_unsaved_folder;
+}
+
+// A folder of the current project (Sources, Exports, Mesh Maps), made when missing
+char *project_subfolder(char *name) {
+	char *dir = string("%s/%s", project_folder(), name);
+	iron_create_directory(dir);
+	return dir;
+}
+
+// An unsaved project is left (new project, another one opened): its folder goes, unless a save put the project in it
+static void project_drop_unsaved_folder() {
+	char *dir = project_unsaved_folder;
+	project_unsaved_folder = NULL;
+	if (dir != NULL && string_equals(g_project->_->filepath, "") &&
+	    !iron_file_exists(string("%s/%s.arm", dir, project_name_of_folder(dir)))) {
+		iron_delete_file(dir);
+	}
+}
+
+// A file picked or shared with the app lands in Documents/.imports (ios_system.m): it moves into the project's
+// Sources folder as the project imports it. A model imported into a new project names it.
+char *project_take_import(char *path) {
+	char *imports = string("%s/.imports/", project_documents_dir());
+	if (!starts_with(project_canonical(path), imports)) {
+		return path;
+	}
+	path       = project_canonical(path);
+	char *name = substring(path, string_length(imports), string_length(path));
+	if (string_equals(g_project->_->filepath, "") && project_unsaved_folder == NULL && path_is_mesh(path)) {
+		sys_title_set(substring(name, 0, string_last_index_of(name, ".")));
+	}
+	char *dst = string("%s/%s", project_subfolder("Sources"), name);
+	iron_delete_file(dst); // Picked again: the new file replaces it
+	if (rename(path, dst) != 0) {
+		return path;
+	}
+	return string_copy(dst);
+}
+#else
+char *project_take_import(char *path) {
+	return path;
+}
+#endif
+
+// The recent projects list entry of a project file: on iOS relative to Documents, the container moves between installs
+char *project_recent_entry(char *path) {
+#ifdef IRON_IOS
+	char *docs = string("%s/", project_documents_dir());
+	if (starts_with(project_canonical(path), docs)) {
+		path = project_canonical(path);
+		return string_copy(substring(path, string_length(docs), string_length(path)));
+	}
+#endif
+	return path;
+}
+
+// Untitled projects are saved in their folder on mobile, false when a save dialog is needed
 static bool project_set_default_path() {
 #ifdef IRON_IOS
-	char *document_directory = iron_save_dialog("", "");
-	document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"
-	char *title              = project_unique_title(sys_title());
-	g_project->_->filepath   = string("%s/%s.arm", document_directory, title);
-	sys_title_set(title);
+	char *dir              = project_folder();
+	char *name             = project_name_of_folder(dir);
+	g_project->_->filepath = string("%s/%s.arm", dir, name);
+	sys_title_set(name);
 	return true;
 #else
 	return false;
@@ -149,20 +267,14 @@ void project_save_as_on_file_picked(char *path) {
 }
 
 #ifdef IRON_IOS
-// No save dialog on iOS: the project is named here and saved in the documents folder
+// No save dialog on iOS: the project is named here and saved in its folder
 static char *project_save_as_name = "";
-
-static char *project_documents_path(char *name) {
-	char *dir = iron_save_dialog("", "");
-	dir       = string_copy(substring(dir, 0, string_length(dir) - 8)); // Strip /"untitled"
-	return string("%s/%s.arm", dir, name);
-}
 
 static void project_save_as_box() {
 	ui_text_input(&project_save_as_name, tr("Name"), UI_ALIGN_LEFT, true, false);
 	char *name = string_copy(string_replace_all(trim_end(project_save_as_name), "/", "-"));
-	bool  ok   = !string_equals(name, "");
-	if (ok && iron_file_exists(project_documents_path(name))) {
+	bool  ok   = !string_equals(name, "") && !starts_with(name, ".");
+	if (ok && iron_file_exists(project_file_of(name))) {
 		ui_text(tr("A project with this name exists, it will be replaced."), UI_ALIGN_LEFT, 0x00000000);
 	}
 	ui_row2();
@@ -174,7 +286,8 @@ static void project_save_as_box() {
 	g_ui->enabled = true;
 	if (ok && (save || g_ui->is_return_down)) {
 		char *old_path         = g_project->_->filepath;
-		g_project->_->filepath = project_documents_path(name);
+		iron_create_directory(project_folder_of(name));
+		g_project->_->filepath = project_file_of(name);
 		project_saved_as(old_path);
 		sys_title_set(name);
 		ui_box_hide();
@@ -182,19 +295,6 @@ static void project_save_as_box() {
 	}
 }
 #endif
-
-// Name for a new project that does not replace a saved one: "name", "name 2", ...
-char *project_unique_title(char *name) {
-#ifdef IRON_IOS
-	char *title = name;
-	for (i32 i = 2; iron_file_exists(project_documents_path(title)); ++i) {
-		title = string("%s %d", name, i);
-	}
-	return string_copy(title);
-#else
-	return string_copy(name);
-#endif
-}
 
 void project_save_as(bool save_and_quit) {
 	_project_save_and_quit = save_and_quit;
@@ -293,6 +393,9 @@ void project_fetch_default_meshes() {
 }
 
 void project_new(bool reset_layers) {
+#ifdef IRON_IOS
+	project_drop_unsaved_folder();
+#endif
 	project_uid_next = 1;
 	if (g_context->paint_object != NULL) {
 		project_cleanup();

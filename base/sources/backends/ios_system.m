@@ -14,7 +14,6 @@
 
 #define MAX_TOUCH_COUNT 10
 
-static char              ios_title[1024];
 static void             *touches[MAX_TOUCH_COUNT];
 static int               backing_width;
 static int               backing_height;
@@ -217,9 +216,7 @@ void iron_window_show() {}
 void iron_window_hide() {}
 void iron_window_create(iron_window_options_t *win) {}
 
-void iron_window_set_title(const char *title) {
-	snprintf(ios_title, sizeof(ios_title), "%s", title);
-}
+void iron_window_set_title(const char *title) {} // No window title on iOS
 
 void iron_window_set_resize_callback(void (*callback)(int x, int y, void *data), void *data) {
 	resize_callback      = callback;
@@ -1112,15 +1109,15 @@ static BOOL importCopyTree(NSURL *src, NSString *dst) {
 	return any;
 }
 
-// Copies the file into the documents folder, returns the copy or nil
+// Copies the file into Documents/.imports (hidden from the Files app), returns the copy or nil. The app moves it into
+// the folder of the project that imports it.
 static NSString *importCopy(NSURL *url) {
 	if (url == nil) {
 		IMPORT_LOG(@"[import] no URL received");
 		return nil;
 	}
-	NSArray  *paths       = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-	NSString *folder_name = [NSString stringWithUTF8String:ios_title];
-	NSString *file_path   = [[paths objectAtIndex:0] stringByAppendingPathComponent:folder_name];
+	NSArray  *paths     = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+	NSString *file_path = [[paths objectAtIndex:0] stringByAppendingPathComponent:@".imports"];
 	if (![[NSFileManager defaultManager] fileExistsAtPath:file_path]) {
 		[[NSFileManager defaultManager] createDirectoryAtPath:file_path withIntermediateDirectories:YES attributes:nil error:nil];
 	}

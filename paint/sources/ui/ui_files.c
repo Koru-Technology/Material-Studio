@@ -12,8 +12,14 @@ void ui_files_release_keys() {
 
 void ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files_done)(char *)) {
 	if (is_save) {
+#ifdef IRON_IOS
+		// No save dialog: files go into the project's folder (project.c), as <folder>/untitled for the code below
+		ui_files_path        = string_copy(string("%s/untitled", project_subfolder(ui_files_save_folder)));
+		ui_files_save_folder = "Exports";
+#else
 		char *default_path = "";
 		ui_files_path = string_copy(iron_save_dialog(filters, default_path));
+#endif
 		if (ui_files_path != NULL) {
 			char *sep2 = string("%s%s", PATH_SEP, PATH_SEP);
 			while (string_index_of(ui_files_path, sep2) >= 0) {

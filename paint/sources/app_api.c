@@ -430,6 +430,13 @@ const char *app_project_path(int32_t index) {
 	return app_str(box_projects_recent_path(index));
 }
 
+const char *app_project_icon_path(int32_t index) {
+	if (index < 0 || index >= app_project_count()) {
+		return "";
+	}
+	return app_str(project_icon_path(box_projects_recent_path(index)));
+}
+
 void app_project_open(int32_t index) {
 	if (index < 0 || index >= app_project_count()) {
 		return;

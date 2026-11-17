@@ -2147,7 +2147,14 @@ void                   project_autosave_update();
 void                   project_autosave_init();
 void                   project_save_now();
 void                   project_save(bool save_and_quit);
-char                  *project_unique_title(char *name);
+char                  *project_icon_path(char *path);
+char                  *project_take_import(char *path);
+char                  *project_recent_entry(char *path);
+#ifdef IRON_IOS
+char                  *project_documents_dir();
+char                  *project_folder();
+char                  *project_subfolder(char *name);
+#endif
 void                   project_save_as(bool save_and_quit);
 void                   project_fetch_default_meshes();
 void                   project_new(bool reset_layers);

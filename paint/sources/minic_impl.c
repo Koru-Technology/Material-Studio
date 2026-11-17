@@ -593,11 +593,17 @@ gpu_texture_t *script_brush_wave(void) {
 // The projects list of the session: taken before a --script runs and put back when it quits, in its order. The projects
 // the script saved (tests make their own) are deleted with their files and leave the list. Projects it only opened stay.
 static string_array_t *script_projects_saved = NULL;
-static string_array_t *script_projects_made  = NULL; // Full paths: on iOS the list has file names only
+static string_array_t *script_projects_made  = NULL; // Full paths: on iOS the list is relative to Documents
+#ifdef IRON_IOS
+static char *script_project_folders = NULL; // Documents/Projects before the script: the folders it makes go when it quits
+#endif
 
 void script_projects_take(void) {
 	script_projects_saved = any_array_create_from_raw((void *[]){}, 0);
 	script_projects_made  = any_array_create_from_raw((void *[]){}, 0);
+#ifdef IRON_IOS
+	script_project_folders = string_copy(string("\n%s\n", iron_read_directory(string("%s/Projects", project_documents_dir()))));
+#endif
 	for (i32 i = 0; i < g_config->recent_projects->length; ++i) {
 		string_array_push(script_projects_saved, string_copy(g_config->recent_projects->buffer[i]));
 	}
@@ -617,11 +623,7 @@ void script_projects_put_back(void) {
 	for (i32 i = 0; i < script_projects_made->length; ++i) {
 		char *path = script_projects_made->buffer[i];
 		box_projects_delete_files(path);
-#ifdef IRON_IOS
-		char *recent_path = substring(path, string_last_index_of(path, "/") + 1, string_length(path)); // As export_arm.c lists it
-#else
-		char *recent_path = path;
-#endif
+		char *recent_path = project_recent_entry(path); // As export_arm.c lists it
 		string_array_remove(script_projects_saved, recent_path); // Listed by an earlier run
 	}
 	string_array_t *list = any_array_create_from_raw((void *[]){}, 0);
@@ -636,6 +638,18 @@ void script_projects_put_back(void) {
 	script_projects_saved     = NULL;
 	script_projects_made      = NULL;
 	config_save();
+#ifdef IRON_IOS
+	// Folders of the projects it made, saved or not (exports, imports, mesh maps)
+	char           *projects = string("%s/Projects", project_documents_dir());
+	string_array_t *now      = string_split(string_copy(iron_read_directory(projects)), "\n");
+	for (i32 i = 0; i < now->length; ++i) {
+		char *name = now->buffer[i];
+		if (!string_equals(name, "") && string_index_of(script_project_folders, string("\n%s\n", name)) < 0) {
+			iron_delete_file(string("%s/%s", projects, name));
+		}
+	}
+	script_project_folders = NULL;
+#endif
 }
 
 void script_quit(void) {

@@ -118,6 +118,7 @@ i32          ui_box_modalh        = 170;
 char      *ui_files_filename;
 char      *ui_files_path;
 char      *ui_files_last_path = "";
+char      *ui_files_save_folder = "Exports"; // iOS: the project's folder the next save puts its file in, then Exports again
 
 // ---- ui/ui_id_mask.c ----
 bool ui_id_mask_active       = false; // Picking the parts of an ID mask, see ui_id_mask.c

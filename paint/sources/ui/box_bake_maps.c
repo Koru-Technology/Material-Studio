@@ -109,6 +109,11 @@ static char *bbm_default_name() {
 }
 
 static char *bbm_default_folder() {
+#ifdef IRON_IOS
+	if (!string_equals(project_filepath_get(), "")) {
+		return project_subfolder("Mesh Maps"); // The saved project's (project.c)
+	}
+#endif
 	char *path = project_filepath_get();
 	i32   i    = string_last_index_of(path, "/");
 	i32   j    = string_last_index_of(path, "\\");
@@ -384,6 +389,16 @@ static void bbm_folder_picked_and_run(char *path) {
 	bbm_run();
 }
 
+// The output folder is picked again: on iOS it is the project's Mesh Maps folder, the box outlives projects
+static bool bbm_pick_folder() {
+#ifdef IRON_IOS
+	ui_files_save_folder = "Mesh Maps";
+	return true;
+#else
+	return string_equals(bbm_out_folder, "");
+#endif
+}
+
 static void bbm_folder_picked_and_run_mesh_maps(char *path) {
 	bbm_folder_picked(path);
 	bbm_run_mesh_maps(bbm_mesh_maps_pending == 1);
@@ -570,13 +585,14 @@ static void bbm_draw_output() {
 	ui_row(f32_array_create_from_raw_tmp((f32[]){0.8, 0.2}, 2));
 	ui_text(string_equals(bbm_out_folder, "") ? tr("No folder selected") : bbm_out_folder, UI_ALIGN_LEFT, 0x00000000);
 	if (ui_button("...", UI_ALIGN_CENTER, "")) {
+		bbm_pick_folder();
 		ui_files_show("png", true, false, &bbm_folder_picked);
 	}
 }
 
 static void bbm_bake_mesh_maps(i32 mode) {
 	bbm_mesh_maps_pending = mode;
-	if (string_equals(bbm_out_folder, "")) {
+	if (bbm_pick_folder()) {
 		ui_files_show("png", true, false, &bbm_folder_picked_and_run_mesh_maps);
 	}
 	else {
@@ -640,7 +656,7 @@ static void bbm_draw_buttons() {
 		ui_tooltip(tr("New fill layer with the baked occlusion, normal and height maps"));
 	}
 	if (ui_icon_button(tr("Bake"), ICON_BAKE, UI_ALIGN_CENTER)) {
-		if (string_equals(bbm_out_folder, "")) {
+		if (bbm_pick_folder()) {
 			ui_files_show("png", true, false, &bbm_folder_picked_and_run);
 		}
 		else {
@@ -730,9 +746,13 @@ static void bbm_on_hide() {
 }
 
 void box_bake_maps_show() {
+#ifdef IRON_IOS
+	bbm_out_folder = bbm_default_folder(); // This project's Mesh Maps folder, the box outlives projects
+#else
 	if (string_equals(bbm_out_folder, "")) {
 		bbm_out_folder = bbm_default_folder(); // Project folder when saved
 	}
+#endif
 	bbm_box_open = true;
 	ui_box_show_custom(&bbm_draw_box, 1100, 720, &bbm_on_hide, true, tr("Bake Mesh Maps"));
 }

@@ -66,10 +66,6 @@ void import_mesh_run(char *path, bool _clear_layers, bool replace_existing, bool
 	        path,
 	    },
 	    1);
-
-#ifdef IRON_IOS
-	sys_title_set(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, ".")));
-#endif
 }
 
 static mesh_object_t *import_mesh_make_root() {

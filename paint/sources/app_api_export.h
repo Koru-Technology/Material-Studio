@@ -70,4 +70,4 @@ typedef struct {
 
 void app_history_info(app_history_info_t *out);
 void app_history_clear(void);     // Steps and checkpoints go, timelines stay (hi-res export keeps working)
-bool app_history_save_copy(void); // A copy of the project without its history: asks where (iOS: next to the projects)
+bool app_history_save_copy(void); // A copy of the project without its history: asks where (iOS: a project folder of its own)

@@ -211,7 +211,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		any_array_push(md, source >= 0 && source < i ? export_arm_linked_mesh_data(p, source) : export_arm_named_mesh_data(p));
 	}
 
-	char           *relative_to   = string_equals(g_project->_->filepath, "") ? path : g_project->_->filepath;
+	char           *relative_to   = path; // The file written: a copy saved in another folder finds the assets too
 	string_array_t *texture_files = export_arm_assets_to_files(relative_to, g_project->_->assets);
 	string_array_t *font_files    = export_arm_fonts_to_files(relative_to, g_project->_->fonts);
 	string_array_t *mesh_files    = export_arm_meshes_to_files(relative_to);
@@ -446,7 +446,7 @@ void export_arm_run_project(char *path) {
 		for (i32 i = 0; i < 256 * 256 * 4; ++i) {
 			u8a->buffer[i] = math_floor(math_pow(u8a->buffer[i] / 255.0, 1.0 / 2.2) * 255);
 		}
-		iron_write_png(string("%s_icon.png", substring(path, 0, string_length(path) - 4)), mesh_icon_pixels, 256, 256, 0);
+		iron_write_png(project_icon_path(path), mesh_icon_pixels, 256, 256, 0);
 		gpu_delete_texture(mesh_icon);
 	}
 #endif
@@ -456,11 +456,7 @@ void export_arm_run_project(char *path) {
 	}
 
 	// Save to recent
-#ifdef IRON_IOS
-	char *recent_path = substring(path, string_last_index_of(path, "/") + 1, string_length(path));
-#else
-	char *recent_path = path;
-#endif
+	char *recent_path = project_recent_entry(path);
 
 	string_array_t *recent = g_config->recent_projects;
 	string_array_remove(recent, recent_path);
