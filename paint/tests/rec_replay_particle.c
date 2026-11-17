@@ -29,7 +29,11 @@ void check(int ok, char *name) {
 }
 
 slot_layer_t *new_layer() {
+	int count = app_layer_count();
 	app_layer_new(0);
+	if (app_layer_count() != count + 1) { // iOS caps the layers of a project
+		check(0, string("a new layer, %d layers before", count));
+	}
 	return script_get_context()->layer;
 }
 

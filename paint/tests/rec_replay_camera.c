@@ -60,7 +60,11 @@ void check(int ok, char *name) {
 }
 
 slot_layer_t *new_layer() {
+	int count = app_layer_count();
 	app_layer_new(0);
+	if (app_layer_count() != count + 1) { // iOS caps the layers of a project
+		check(0, string("a new layer, %d layers before", count));
+	}
 	return script_get_context()->layer;
 }
 
@@ -156,6 +160,7 @@ void next() {
 				int e = timeline_test_count(l) - 1;
 				int p = diff3(l, b, 1.0);
 				check(timeline_test_kind(l, e) == 1 && p > 100, string("%s: a TL_STROKE, it paints (%d)", name_of(kase), p));
+				script_layer_delete(b); // Within the layer cap of iOS
 				entries[kase] = e;
 				hashes[kase]  = hash3(l);
 				if (kase == 2) { // Its stencil still the texture painted with
@@ -219,6 +224,9 @@ void next() {
 				printf("[rec_camera] %s at 2048 against the 1024 result scaled up: %d of %d over 8/255", name_of(kase), over8, scaled);
 				check(over8 * 20 <= scaled, string("%s: the 1024 record at 2048 is within 8/255 of the 1024 result scaled up on 95 percent (%d of %d)", name_of(kase), over8, scaled));
 			}
+			script_layer_delete(blank);
+			script_layer_delete(full);
+			script_layer_delete(live);
 			kase = kase + 1;
 		}
 	}

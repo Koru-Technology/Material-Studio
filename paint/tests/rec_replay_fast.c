@@ -29,7 +29,11 @@ void check(int ok, char *name) {
 }
 
 slot_layer_t *new_layer() {
+	int count = app_layer_count();
 	app_layer_new(0);
+	if (app_layer_count() != count + 1) { // iOS caps the layers of a project
+		check(0, string("a new layer, %d layers before", count));
+	}
 	return script_get_context()->layer;
 }
 
@@ -97,6 +101,11 @@ void compare(int k, char *where) {
 	check(painted > 1000, string("%s %s: the replay paints (%d)", names[k], where, painted));
 	check(whole == 0, string("%s %s: composite-fast is byte-equal to the full replay (%d differ)", names[k], where, whole));
 	check(tiles == 0, string("%s %s: and in 4 tiles (%d differ)", names[k], where, tiles));
+	script_layer_delete(full); // Within the layer cap of iOS
+	script_layer_delete(fast);
+	script_layer_delete(fullt);
+	script_layer_delete(fastt);
+	script_layer_delete(blank);
 }
 
 void finish() {

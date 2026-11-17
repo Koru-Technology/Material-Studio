@@ -47,7 +47,11 @@ void check(int ok, char *name) {
 }
 
 slot_layer_t *new_layer() {
+	int count = app_layer_count();
 	app_layer_new(0);
+	if (app_layer_count() != count + 1) { // iOS caps the layers of a project
+		check(0, string("a new layer, %d layers before", count));
+	}
 	return script_get_context()->layer;
 }
 
@@ -95,6 +99,7 @@ void next() {
 				int e = timeline_test_count(l) - 1;
 				int p = diff3(l, b, 1.0);
 				check(timeline_test_kind(l, e) == 1 && p > 100, string("%s fill: a TL_STROKE, it paints (%d)", name_of(kase), p));
+				script_layer_delete(b); // Within the layer cap of iOS
 				layers[kase]  = l;
 				entries[kase] = e;
 				hashes[kase]  = hash3(l);
@@ -139,6 +144,10 @@ void next() {
 			check(ok && painted > 100, string("%s fill: replays at 2048 and paints (%d)", name_of(kase), painted));
 			check(over1 * 100 <= painted, string("%s fill: the 1024 record at 2048 is within 1/255 of live on 99 percent (%d of %d)", name_of(kase), over1, painted));
 			check(fastd == 0, string("%s fill: composite-fast is byte-equal (%d differ)", name_of(kase), fastd));
+			script_layer_delete(blank);
+			script_layer_delete(full);
+			script_layer_delete(fast);
+			script_layer_delete(live);
 			kase = kase + 1;
 		}
 	}
