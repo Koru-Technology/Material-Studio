@@ -631,13 +631,30 @@ void gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size)
 	[command_encoder setVertexBuffer:argument_buffer offset:argument_buffer_step * constant_buffer_index atIndex:1];
 	[command_encoder setFragmentBuffer:argument_buffer offset:argument_buffer_step * constant_buffer_index atIndex:1];
 	[command_encoder useResource:buf usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
+	// Every slot is written: one left as it was holds what a draw before put there in this part of the ring, a texture
+	// freed since (a deleted layer a stale shader still samples) faulted the GPU, which then ignored all later work
+	static id<MTLTexture> empty = nil;
+	bool                  unset = false;
 	for (int i = 0; i < GPU_MAX_TEXTURES; ++i) {
-		if (current_textures[i] == NULL) {
-			break;
+		id<MTLTexture> tex = current_textures[i] != NULL ? (__bridge id<MTLTexture>)current_textures[i]->impl._tex : nil;
+		if (tex == nil) {
+			if (empty == nil) {
+				MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:1 height:1 mipmapped:NO];
+				d.usage                 = MTLTextureUsageShaderRead;
+				empty                   = [get_metal_device() newTextureWithDescriptor:d];
+				uint32_t zero           = 0;
+				[empty replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:&zero bytesPerRow:4];
+			}
+			tex   = empty;
+			unset = true;
 		}
-		id<MTLTexture> tex = (__bridge id<MTLTexture>)current_textures[i]->impl._tex;
+		else {
+			[command_encoder useResource:tex usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
+		}
 		[argument_encoder setTexture:tex atIndex:i + 2];
-		[command_encoder useResource:tex usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
+	}
+	if (unset) {
+		[command_encoder useResource:empty usage:MTLResourceUsageRead stages:MTLRenderStageVertex | MTLRenderStageFragment];
 	}
 }
 
