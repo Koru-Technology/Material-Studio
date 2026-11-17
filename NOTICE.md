@@ -1,4 +1,4 @@
-Koru Surface is a modified version of ArmorPaint (https://github.com/armory3d/armorpaint). Modifications are licensed under the GNU Affero General Public License v3.0, see LICENSE. The original ArmorPaint code is distributed under the zlib license below.
+Material Studio is a modified version of ArmorPaint (https://github.com/armory3d/armorpaint). Modifications are licensed under the GNU Affero General Public License v3.0, see LICENSE. The original ArmorPaint code is distributed under the zlib license below.
 
 # The zlib/libpng License
 

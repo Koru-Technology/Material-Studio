@@ -116,4 +116,4 @@ Crash logs from the iPad can be listed with `pymobiledevice3 crash ls --udid <ha
 
 ## License
 
-Koru Surface is licensed under the [GNU Affero General Public License v3.0](LICENSE). It is based on ArmorPaint, which is under the zlib license; the original notice is kept in [NOTICE.md](NOTICE.md). Third-party licenses are in `base/assets/licenses` and `paint/assets/licenses`.
+Material Studio is licensed under the [GNU Affero General Public License v3.0](LICENSE). It is based on ArmorPaint, which is under the zlib license; the original notice is kept in [NOTICE.md](NOTICE.md). Third-party licenses are in `base/assets/licenses` and `paint/assets/licenses`.
