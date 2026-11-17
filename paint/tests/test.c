@@ -1780,7 +1780,7 @@ void run_step(int s) {
 }
 
 int step_count      = 59;
-int expected_checks = 140;
+int expected_checks = 141;
 
 void next_frame() {
 	if (sub == 0) {
