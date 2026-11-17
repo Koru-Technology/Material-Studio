@@ -989,6 +989,7 @@ X1(context_select_tool, "v(i i)", v, i)
 X1(script_brush_use, "v(i id)", v, i)
 X3(gpu_create_render_target, "p:gpu_texture_t(i width,i height,i format)", p, i, i, i)
 X0(gpu_shader_failures, "i()", i)
+X0(gpu_errors, "i()", i)
 X5(viewport_capture_screenshot_to, "v(p:gpu_texture_t target,f x,f y,f w,f h)", v, p, f, f, f, f)
 X1(viewport_save_texture, "v(p:gpu_texture_t screenshot)", v, p)
 X2(viewport_save_texture_to_file, "v(p:gpu_texture_t screenshot,p:char path)", v, p, p)
@@ -1047,7 +1048,7 @@ X2(armpack_map_get_i32, "i(p:any_map_t map,p:char key)", i, p, p)
 
 // history_store.c test hooks. hstore_test_stat fields, KB unless noted: 0 blobs (count), 1 ram, 2 disk (journal),
 // 3 dirty, 4 dead, 5 ram budget, 6 disk budget, 7 last flush (ms), 8 chunks read from the journal or project (count),
-// 9 blobs saves read the children of (count)
+// 9 blobs saves read the children of (count), 10 cap of the ram budget (iOS: a tenth of the memory available, else 0)
 X4(hstore_test_put, "i(i kind,i seed,i len,i noise)", i, i, i, i, b)
 X4(hstore_test_get, "i(i id,i seed,i len,i noise)", i, i, i, i, b)
 X1(hstore_test_has, "i(i id)", b, i)

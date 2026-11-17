@@ -231,7 +231,16 @@ void budgets() {
 	hstore_test_flush();
 	printf("[history_store] flush of %f MB of smooth tiles (200 MB raw): %f ms", dirty / 1024.0, hstore_test_stat(7));
 	check(hstore_test_stat(3) == 0.0, "flush journals every dirty blob");
-	check(hstore_test_stat(5) == 1024.0 * 1024.0, "RAM budget from history_ram_mb");
+	float cap    = hstore_test_stat(10); // iOS: a tenth of the memory available, which moves a little
+	float budget = hstore_test_stat(5);
+	if (cap > 0.0 && cap < 1024.0 * 1024.0) {
+		float d = budget - cap;
+		d       = d < 0.0 ? -d : d;
+		check(d <= cap * 0.05, string("RAM budget from history_ram_mb, capped at a tenth of the memory available (%f KB, cap %f KB)", budget, cap));
+	}
+	else {
+		check(budget == 1024.0 * 1024.0, "RAM budget from history_ram_mb");
+	}
 }
 
 void main() {

@@ -245,17 +245,20 @@ static void hstore_remove(hstore_entry_t *e) {
 
 // ---- Budgets ----
 
-static i64 hstore_ram_budget_now() {
-	i64 b = (i64)g_config->history_ram_mb * HSTORE_MB;
+// iOS: a tenth of the memory the system still lets the app use, 0 when unknown or elsewhere
+static i64 hstore_ram_cap() {
 #ifdef IRON_IOS
 	if (__builtin_available(iOS 13.0, *)) {
-		i64 avail = (i64)os_proc_available_memory(); // 0 when unknown
-		if (avail > 0 && b > avail / 10) {
-			b = avail / 10;
-		}
+		return (i64)os_proc_available_memory() / 10;
 	}
 #endif
-	return b;
+	return 0;
+}
+
+static i64 hstore_ram_budget_now() {
+	i64 b   = (i64)g_config->history_ram_mb * HSTORE_MB;
+	i64 cap = hstore_ram_cap();
+	return cap > 0 && b > cap ? cap : b;
 }
 
 static i64 hstore_disk_budget() {
@@ -1211,7 +1214,7 @@ void hstore_test_unref(i32 id) {
 
 // Field of hstore_stats in KB: 0 blobs (a count), 1 ram, 2 disk, 3 dirty, 4 dead, 5 ram budget, 6 disk budget,
 // 7 duration of the last flush in ms, 8 chunks read from the journal or project (a count), 9 blobs saves read the
-// children of (a count)
+// children of (a count), 10 the cap of the ram budget now (iOS: a tenth of the memory available, 0 elsewhere)
 f32 hstore_test_stat(i32 field) {
 	hstore_stats_t s = hstore_stats();
 	switch (field) {
@@ -1235,6 +1238,8 @@ f32 hstore_test_stat(i32 field) {
 		return (f32)hstore_disk_reads;
 	case 9:
 		return (f32)hstore_each_decodes;
+	case 10:
+		return hstore_ram_cap() / 1024.0f;
 	}
 	return 0.0f;
 }
