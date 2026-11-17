@@ -50,7 +50,7 @@ static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_m
 	}
 
 	if (tool == TOOL_TYPE_PICKER && g_context->color_picker_callback == NULL && !g_context->picker_select_material) {
-		tab_materials_apply_picked_color(g_context->picked_color);
+		slot_material_apply_picked_color(g_context->picked_color);
 	}
 
 	// Update fill layers which are using materials containing a PICKER node

@@ -20,12 +20,6 @@ void tab_layers_button_2d_view() {
 	}
 }
 
-void tab_layers_repaint_text_layer(slot_layer_t *l) {
-	util_layer_repaint_path(l);
-	g_context->layer_preview_dirty  = true;
-	g_context->layers_preview_dirty = true;
-}
-
 void tab_layers_set_drag_layer(slot_layer_t *layer, f32 off_x, f32 off_y) {
 	base_drag_off_x      = off_x;
 	base_drag_off_y      = off_y;
@@ -165,23 +159,8 @@ void tab_layers_draw_layer_slot_mini(slot_layer_t *l, i32 i) {
 	g_ui->_y = uiy + g_theme->ELEMENT_H * 2 * UI_SCALE();
 }
 
-void tab_layers_delete_layer(slot_layer_t *l) {
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
-
-	history_delete_layer(l);
-
-	if (slot_layer_is_mask(l)) {
-		g_context->layer = l->parent;
-		layers_update_fill_layers();
-	}
-
-	g_context->ddirty = 2;
-	tab_layers_remap_all_layer_pointers(pointers);
-	base_redraw_status();
-}
-
 void tab_layers_draw_layer_slot_full_delete_layer(void *_) {
-	tab_layers_delete_layer(g_context->layer);
+	layers_delete(g_context->layer);
 }
 
 bool tab_layers_combo_blending(slot_layer_t *l, bool label) {
@@ -202,51 +181,16 @@ bool tab_layers_combo_blending(slot_layer_t *l, bool label) {
 	return changed;
 }
 
-void tab_layers_layer_toggle_visible(slot_layer_t *l) {
-	history_layer_visible(l);
-	l->visible              = !l->visible;
-	ui_view2d_hwnd->redraws = 2;
-	make_material_parse_mesh_material();
-}
-
-bool tab_layers_can_delete(slot_layer_t *l) {
-	i32 num_layers = 0;
-
-	if (slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
-		return true;
-	}
-
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *slot = g_project->_->layers->buffer[i];
-		if (slot_layer_is_layer(slot) && !slot_layer_is_filter(slot)) {
-			++num_layers;
-		}
-	}
-
-	// All layers are in one group
-	if (slot_layer_is_group(l) && slot_layer_get_children(l) != NULL && slot_layer_get_children(l)->length == num_layers) {
-		return false;
-	}
-
-	// Do not delete last layer
-	return num_layers > 1;
-}
-
 void tab_layers_draw_layer_context_menu_duplicate(void *_) {
-	slot_layer_t *l = tab_layers_l;
+	slot_layer_t *l = layers_export_layer;
 	context_set_layer(l);
 	history_duplicate_layer();
 	layers_duplicate_layer(l);
 }
 
-// Mask stacks: a mask with an explicit stack lists its effects as rows under it, top effect first
-static bool tab_layers_mask_has_stack(slot_layer_t *l) {
-	return slot_layer_is_mask(l) && l->mask_effects != NULL;
-}
-
 // Selected effect of mask m, -1 when m is not the current layer or nothing is selected
 static i32 tab_layers_selected_effect(slot_layer_t *m) {
-	if (g_context->layer != m || !tab_layers_mask_has_stack(m)) {
+	if (g_context->layer != m || !layers_mask_has_stack(m)) {
 		return -1;
 	}
 	i32 i = g_context->mask_effect;
@@ -266,11 +210,6 @@ static bool tab_layers_delete_selected_effect() {
 	return true;
 }
 
-bool tab_layers_has_children(slot_layer_t *l) {
-	return slot_layer_is_group(l) || (slot_layer_is_layer(l) && slot_layer_get_masks(l, false) != NULL) ||
-	       (slot_layer_is_layer(l) && slot_layer_get_filters(l, false)) || tab_layers_mask_has_stack(l);
-}
-
 void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 	i32 step   = g_theme->ELEMENT_H;
 	f32 center = (step / 2.0) * UI_SCALE();
@@ -278,7 +217,7 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 	f32 uix    = g_ui->_x;
 	f32 uiy    = g_ui->_y;
 
-	bool has_children = tab_layers_has_children(l);
+	bool has_children = layers_has_children(l);
 
 	// Columns: eye | indent | icon | name | expand arrow
 	i32 depth = 0;
@@ -312,7 +251,7 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 		col -= 0x99000000;
 	}
 	if (ui_sub_image(icons, col, 18 * UI_SCALE(), r->x, r->y, r->w, r->h) == UI_STATE_RELEASED) {
-		tab_layers_layer_toggle_visible(l);
+		layers_toggle_visible(l);
 	}
 
 	// Layer icon
@@ -338,7 +277,7 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 			new_name = string_copy(slot_layer_unique_name(l, new_name));
 		}
 		if (l->path_text && slot_layer_is_path(l) && !string_equals(l->name, new_name)) {
-			sys_notify_on_next_frame(&tab_layers_repaint_text_layer, l);
+			sys_notify_on_next_frame(&layers_repaint_text, l);
 		}
 		l->name = new_name;
 		if (commit && tab_layers_layer_name_prev != NULL && !string_equals(tab_layers_layer_name_prev, l->name)) {
@@ -379,13 +318,13 @@ void tab_layers_draw_layer_slot_full(slot_layer_t *l, i32 i) {
 			g_ui->is_delete_down = false;
 			tab_layers_delete_selected_effect();
 		}
-		else if (in_focus && !g_ui->is_typing && g_ui->is_delete_down && tab_layers_can_delete(g_context->layer)) {
+		else if (in_focus && !g_ui->is_typing && g_ui->is_delete_down && layers_can_delete(g_context->layer)) {
 			g_ui->is_delete_down = false;
 			sys_notify_on_next_frame(&tab_layers_draw_layer_slot_full_delete_layer, NULL);
 		}
 		if (in_focus && g_ui->is_ctrl_down && g_ui->is_key_pressed && g_ui->key_code == KEY_CODE_D) {
 			g_ui->is_key_pressed = false;
-			tab_layers_l         = g_context->layer;
+			layers_export_layer         = g_context->layer;
 			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_duplicate, NULL);
 		}
 	}
@@ -432,26 +371,12 @@ void tab_layers_draw_layer_highlight(slot_layer_t *l, bool mini) {
 	}
 }
 
-void tab_layers_draw_layer_context_menu_export_on_file_picked(char *path) {
-	slot_layer_t *l = tab_layers_l;
-	char         *f = ui_files_filename;
-	if (string_equals(f, "")) {
-		f = string_copy(tr("untitled"));
-	}
-	if (!ends_with(f, ".png")) {
-		f = string("%s.png", f);
-	}
-	gpu_texture_t *t = slot_layer_mask_texture(l); // Evaluated mask stack, texpaint for layers
-	iron_write_png(string("%s%s%s", path, PATH_SEP, f), gpu_get_texture_pixels(t), t->width, t->height, 3); // RRR1
-	gpu_release_texture_pixels(t);
-}
-
 void tab_layers_draw_layer_context_menu_delete(void *_) {
-	tab_layers_delete_layer(g_context->layer);
+	layers_delete(g_context->layer);
 }
 
 void tab_layers_draw_layer_context_menu_to_paint_layer(void *_) {
-	slot_layer_t *l = tab_layers_l;
+	slot_layer_t *l = layers_export_layer;
 
 	if (slot_layer_is_filter(l)) {
 		slot_layer_relocate(l, array_index_of(g_project->_->layers, l->parent));
@@ -464,42 +389,20 @@ void tab_layers_draw_layer_context_menu_to_paint_layer(void *_) {
 }
 
 void tab_layers_draw_layer_context_menu_to_fill_layer(void *_) {
-	slot_layer_t *l = tab_layers_l;
+	slot_layer_t *l = layers_export_layer;
 	slot_layer_is_layer(l) ? history_to_fill_layer() : history_to_fill_mask();
 	slot_layer_to_fill_layer(l);
-}
-
-bool tab_layers_can_merge_down(slot_layer_t *l) {
-	i32 index = array_index_of(g_project->_->layers, l);
-	i32 below = index - slot_layer_count_descendants(l) - 1;
-	// Lowest layer
-	if (below < 0) {
-		return false;
-	}
-	// Merging out of a group would leave its masks behind
-	if (l->parent != NULL && !slot_layer_is_descendant(g_project->_->layers->buffer[below], l->parent)) {
-		return false;
-	}
-	// A hidden layer is not merged away
-	if (!slot_layer_shows(l) || !slot_layer_shows(g_project->_->layers->buffer[below])) {
-		return false;
-	}
-	// Masks must be merged down to masks
-	if (slot_layer_is_mask(l) && !slot_layer_is_mask(g_project->_->layers->buffer[index - 1])) {
-		return false;
-	}
-	return true;
 }
 
 // A black mask on l, selected to paint the layer in
 void tab_layers_draw_layer_context_menu_add_black_mask(slot_layer_t *l) {
 	context_set_layer(l);
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *m        = layers_new_mask(false, l, -1);
 	if (m == NULL) {
 		return;
 	}
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 	slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	g_context->layer_preview_dirty = true;
 	history_new_black_mask();
@@ -511,7 +414,7 @@ void tab_layers_draw_layer_context_menu_set_bits(void *_) {
 }
 
 void tab_layers_draw_layer_context_menu_merge_down(void *_) {
-	slot_layer_t *l = tab_layers_l;
+	slot_layer_t *l = layers_export_layer;
 	context_set_layer(l);
 	history_merge_layers();
 	layers_merge_down();
@@ -520,13 +423,13 @@ void tab_layers_draw_layer_context_menu_merge_down(void *_) {
 }
 
 void tab_layers_draw_layer_context_menu_merge_group(void *_) {
-	slot_layer_t *l = tab_layers_l;
+	slot_layer_t *l = layers_export_layer;
 	history_merge_group(l);
 	layers_merge_group(l);
 }
 
 void tab_layers_draw_layer_context_menu_apply(void *_) {
-	slot_layer_t *l  = tab_layers_l;
+	slot_layer_t *l  = layers_export_layer;
 	g_context->layer = l;
 	history_apply_mask();
 	slot_layer_apply_mask(l);
@@ -536,7 +439,7 @@ void tab_layers_draw_layer_context_menu_apply(void *_) {
 }
 
 void tab_layers_draw_layer_context_menu_clear(void *_) {
-	slot_layer_t *l = tab_layers_l;
+	slot_layer_t *l = layers_export_layer;
 	if (!slot_layer_is_group(l)) {
 		history_clear_layer();
 		slot_layer_clear(l, slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
@@ -623,37 +526,6 @@ static void tab_layers_draw_mask_height_blend(slot_layer_t *m) {
 	}
 }
 
-static slot_layer_t    *tab_layers_fill_swap_layer    = NULL;
-static slot_material_t *tab_layers_fill_swap_material = NULL;
-
-static void tab_layers_set_fill_material_next(void *_) {
-	if (tab_layers_fill_swap_layer != NULL && array_index_of(g_project->_->layers, tab_layers_fill_swap_layer) >= 0) {
-		slot_layer_set_fill_material(tab_layers_fill_swap_layer, tab_layers_fill_swap_material);
-	}
-	tab_layers_fill_swap_layer = NULL;
-}
-
-// Gives fill layer l material m when the frame starts, the repaint does not run while the UI is drawn
-void tab_layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m) {
-	tab_layers_fill_swap_layer    = l;
-	tab_layers_fill_swap_material = m;
-	sys_notify_on_next_frame(&tab_layers_set_fill_material_next, NULL);
-}
-
-// The fill layer that l is or masks, NULL for others
-slot_layer_t *tab_layers_fill_target(slot_layer_t *l) {
-	if (l == NULL) {
-		return NULL;
-	}
-	if (slot_layer_is_layer(l) && l->fill_material != NULL) {
-		return l;
-	}
-	if (slot_layer_is_mask(l) && l->fill_material == NULL && l->parent != NULL && slot_layer_is_layer(l->parent) && l->parent->fill_material != NULL) {
-		return l->parent;
-	}
-	return NULL;
-}
-
 // Material, UV scale, angle and projection of fill layer l, in its menu or in the header.
 // Edits leave the selection alone: history is taken for l, l is repainted on the next frame.
 void tab_layers_fill_properties(slot_layer_t *l, bool menu) {
@@ -669,7 +541,7 @@ void tab_layers_fill_properties(slot_layer_t *l, bool menu) {
 		}
 		ui_combo(&index, names, tr("Material"), true, UI_ALIGN_LEFT, true);
 		if (ui_item_changed() && index >= 0 && index < materials->length) {
-			tab_layers_set_fill_material_later(l, materials->buffer[index]);
+			layers_set_fill_material_later(l, materials->buffer[index]);
 		}
 	}
 
@@ -950,7 +822,7 @@ static void tab_layers_draw_mask_effect_params(slot_layer_t *m, i32 i, f32 x, f3
 
 // Effect rows of mask m while its row is expanded, as tall as layer rows so the stripes line up
 static i32 tab_layers_mask_effect_rows(slot_layer_t *m) {
-	return tab_layers_mask_has_stack(m) && m->show_panel ? mask_stack_count(m) : 0;
+	return layers_mask_has_stack(m) && m->show_panel ? mask_stack_count(m) : 0;
 }
 
 static void tab_layers_draw_mask_effects(slot_layer_t *m) {
@@ -1036,14 +908,14 @@ static void tab_layers_draw_mask_effects(slot_layer_t *m) {
 }
 
 void tab_layers_draw_layer_context_menu_draw() {
-	slot_layer_t *l    = tab_layers_l;
+	slot_layer_t *l    = layers_export_layer;
 	bool          mini = tab_layers_mini;
 
 	if (mini) {
 		bool visible = l->visible; // Toggled with history below
 		ui_check(&visible, tr("Visible"), "");
 		if (ui_item_changed()) {
-			tab_layers_layer_toggle_visible(l);
+			layers_toggle_visible(l);
 			ui_menu_keep_open = true;
 		}
 
@@ -1051,7 +923,7 @@ void tab_layers_draw_layer_context_menu_draw() {
 
 	if (ui_menu_button(tr("Export"), "", ICON_EXPORT)) {
 		if (slot_layer_is_mask(l)) {
-			ui_files_show("png", true, false, &tab_layers_draw_layer_context_menu_export_on_file_picked);
+			ui_files_show("png", true, false, &layers_export_on_file_picked);
 		}
 		else {
 			g_context->layers_export = EXPORT_MODE_SELECTED;
@@ -1077,10 +949,10 @@ void tab_layers_draw_layer_context_menu_draw() {
 	}
 	if ((slot_layer_is_group(l) || (slot_layer_is_layer(l) && l->fill_material != NULL)) && ui_menu_button(tr("Save as Smart Material"), "", ICON_SAVE)) {
 		context_set_layer(l);
-		tab_smart_materials_show_save();
+		smart_materials_show_save();
 	}
 
-	g_ui->enabled = tab_layers_can_delete(l);
+	g_ui->enabled = layers_can_delete(l);
 	if (ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_delete, NULL);
 	}
@@ -1097,14 +969,14 @@ void tab_layers_draw_layer_context_menu_draw() {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_apply, NULL);
 	}
 	if (slot_layer_is_group(l)) {
-		g_ui->enabled = slot_layer_shows(l) || tab_layers_can_delete(l);
+		g_ui->enabled = slot_layer_shows(l) || layers_can_delete(l);
 		if (ui_menu_button(tr("Merge Group"), "", ICON_NONE)) {
 			sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_merge_group, NULL);
 		}
 		g_ui->enabled = true;
 	}
 
-	g_ui->enabled = tab_layers_can_merge_down(l);
+	g_ui->enabled = layers_can_merge_down(l);
 	if (ui_menu_button(tr("Merge Down"), "", ICON_ARROW_DOWN)) {
 		sys_notify_on_next_frame(&tab_layers_draw_layer_context_menu_merge_down, NULL);
 	}
@@ -1199,7 +1071,7 @@ void tab_layers_draw_layer_context_menu_draw() {
 }
 
 void tab_layers_draw_layer_context_menu(slot_layer_t *l, bool mini) {
-	tab_layers_l    = l;
+	layers_export_layer    = l;
 	tab_layers_mini = mini;
 
 	ui_menu_draw(&tab_layers_draw_layer_context_menu_draw, -1, -1);
@@ -1349,9 +1221,9 @@ void tab_layers_button_new_menu() {
 		}
 		l = g_context->layer;
 
-		slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+		slot_layer_t_array_t *pointers = layers_init_layer_map();
 		slot_layer_t         *m        = layers_new_mask(false, l, -1);
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 		sys_notify_on_next_frame(&tab_layers_button_new_black_mask, m);
 		g_context->layer_preview_dirty = true;
 		history_new_black_mask();
@@ -1363,9 +1235,9 @@ void tab_layers_button_new_menu() {
 		}
 		l = g_context->layer;
 
-		slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+		slot_layer_t_array_t *pointers = layers_init_layer_map();
 		slot_layer_t         *m        = layers_new_mask(false, l, -1);
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 		sys_notify_on_next_frame(&tab_layers_button_new_layer_clear, m);
 		g_context->layer_preview_dirty = true;
 		history_new_white_mask();
@@ -1378,9 +1250,9 @@ void tab_layers_button_new_menu() {
 		}
 		l = g_context->layer;
 
-		slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+		slot_layer_t_array_t *pointers = layers_init_layer_map();
 		slot_layer_t         *m        = layers_new_mask(false, l, -1);
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 		m->height_blend           = true;
 		make_material_height_used = true;
 		sys_notify_on_next_frame(&tab_layers_button_new_layer_clear, m);
@@ -1394,9 +1266,9 @@ void tab_layers_button_new_menu() {
 		}
 		l = g_context->layer;
 
-		slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+		slot_layer_t_array_t *pointers = layers_init_layer_map();
 		slot_layer_t         *m        = layers_new_mask(false, l, -1);
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 		sys_notify_on_next_frame(&tab_layers_button_new_to_fill_layer, m);
 		g_context->layer_preview_dirty = true;
 		history_new_fill_mask();
@@ -1419,14 +1291,14 @@ void tab_layers_button_new_menu() {
 			l = l->parent;
 		}
 
-		slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+		slot_layer_t_array_t *pointers = layers_init_layer_map();
 		slot_layer_t         *group    = layers_new_group();
 		context_set_layer(l);
 		array_remove(g_project->_->layers, group);
 		array_insert(g_project->_->layers, array_index_of(g_project->_->layers, l) + 1, group);
 		group->parent = l->parent;
 		l->parent     = group;
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 		context_set_layer(group);
 		history_new_group();
 	}
@@ -1678,7 +1550,7 @@ static void tab_layers_draw_content() {
 			}
 			// Open / close group
 			slot_layer_t *l            = g_context->layer;
-			bool          has_children = tab_layers_has_children(l);
+			bool          has_children = layers_has_children(l);
 			if (has_children && g_ui->is_key_pressed && g_ui->key_code == KEY_CODE_RETURN) {
 				l->show_panel = !l->show_panel;
 				ui_dock_redraw(TAB_AREA_SIDEBAR0);

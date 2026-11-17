@@ -338,17 +338,17 @@ bool layers_sync_nodes() {
 }
 
 // Before and after the layers change: kept for the call sites, layers_sync_nodes follows any change
-slot_layer_t_array_t *tab_layers_init_layer_map() {
+slot_layer_t_array_t *layers_init_layer_map() {
 	layers_sync_nodes();
 	return NULL;
 }
 
-void tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers) {
+void layers_remap_layer_pointers(slot_layer_t_array_t *old_layers) {
 	layers_sync_nodes();
 }
 
 void tab_layers_make_mask_preview_rgba32_on_next_frame(void *_) {
-	slot_layer_t *l = tab_layers_l;
+	slot_layer_t *l = layers_export_layer;
 	draw_begin(g_context->mask_preview_rgba32, true, 0xff000000);
 	draw_set_pipeline(ui_view2d_pipe);
 	gpu_set_int(ui_view2d_channel_loc, 1);
@@ -364,7 +364,7 @@ void tab_layers_make_mask_preview_rgba32(slot_layer_t *l) {
 	// Convert from R8 to RGBA32 for tooltip display
 	if (g_context->mask_preview_last != l) {
 		g_context->mask_preview_last = l;
-		tab_layers_l                 = l;
+		layers_export_layer                 = l;
 		sys_notify_on_next_frame(&tab_layers_make_mask_preview_rgba32_on_next_frame, NULL);
 	}
 }

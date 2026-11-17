@@ -359,7 +359,7 @@ static void brush_previews_render(void *_) {
 	if (!d->row_rt) { // A stroke read from disk is not a render target
 		brush_previews_set(d, NULL, false);
 	}
-	tab_brushes_render_row(&d->s, brush_library_tip_of(d), &d->image_row);
+	brush_previews_render_row(&d->s, brush_library_tip_of(d), &d->image_row);
 	if (d->image_row != NULL) {
 		d->row_rt = true;
 		brush_previews_queue_write(d->row_key, d->image_row);
@@ -452,4 +452,53 @@ void brush_previews_forget(bool delete_files) {
 	}
 	brush_previews_loaded = 0;
 	brush_previews_drawn  = 0;
+}
+
+// Renders the stroke of brush settings s into *dst, as shown in the brush list. Not while a window draws, see sys_notify_on_next_frame.
+void brush_previews_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture_t **dst) {
+	static slot_brush_t *row_brush = NULL; // Default brush the rows paint with, the project brush nodes do not show
+	if (row_brush == NULL) {
+		row_brush = slot_brush_create(NULL);
+	}
+	slot_brush_t *_brush = g_context->brush;
+	g_context->brush     = row_brush;
+	brush_settings_t saved;
+	brush_library_capture_settings(&saved);
+	gpu_texture_t *saved_tip = brush_library_tip_image_get();
+	brush_library_apply_settings(s, tip);
+	util_render_brush_wave_radius = 0.1 + 0.3 * s->preview_size;
+	make_material_parse_brush();
+	brush_output_node_parse_inputs();
+	util_render_make_brush_preview();
+	util_render_brush_wave_radius = 0.25;
+
+	gpu_texture_t *src = g_context->brush->image_wave;
+	if (src != NULL) {
+		if (*dst == NULL) {
+			*dst = gpu_create_render_target(src->width, src->height, GPU_TEXTURE_FORMAT_RGBA32);
+		}
+		draw_saved_t saved_draw = draw_suspend();
+		draw_begin(*dst, true, 0x00000000);
+		draw_set_color(0xffffffff);
+		draw_image(src, 0, 0);
+		draw_end();
+		draw_resume(saved_draw);
+	}
+
+	g_context->brush = _brush;
+	brush_library_apply_settings(&saved, saved_tip);
+	make_material_parse_brush();
+	brush_output_node_parse_inputs();
+}
+
+// Draws a stroke strip so its middle band fills the rectangle, keeping its aspect
+void brush_previews_draw_stroke(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h) {
+	if (img == NULL || w <= 0 || h <= 0) {
+		return;
+	}
+	f32 band = (h / w) / util_render_brush_wave_strip;
+	f32 sh   = img->height * (band < 1.0 ? band : 1.0);
+	f32 sy   = (img->height - sh) / 2.0;
+	draw_set_color(0xffffffff);
+	draw_scaled_sub_image(img, 0, sy, img->width, sh, x, y, w, h);
 }

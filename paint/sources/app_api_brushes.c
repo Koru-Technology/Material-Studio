@@ -346,7 +346,7 @@ static bool app_color_new_material_pending = false;
 static void app_color_apply_on_next_frame(void *_) {
 	app_color_apply_pending = false;
 	if (g_context->picked_color != NULL) {
-		tab_materials_apply_picked_color(g_context->picked_color);
+		slot_material_apply_picked_color(g_context->picked_color);
 	}
 }
 
@@ -362,7 +362,7 @@ void app_color_apply(void) {
 static void app_color_new_material_on_next_frame(void *_) {
 	app_color_new_material_pending = false;
 	if (g_context->picked_color != NULL) {
-		tab_materials_accept_swatch_drop(project_clone_swatch(g_context->picked_color));
+		slot_material_new_from_swatch(project_clone_swatch(g_context->picked_color));
 	}
 }
 
@@ -437,7 +437,7 @@ bool app_swatch_delete(int32_t index) {
 	if (s == NULL || g_project->swatches->length <= 1) {
 		return false;
 	}
-	tab_swatches_delete_swatch(s);
+	project_delete_swatch(s);
 	iron_delay_idle_sleep();
 	return true;
 }

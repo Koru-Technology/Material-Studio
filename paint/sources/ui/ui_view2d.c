@@ -182,7 +182,7 @@ void ui_view2d_render_color_pick(void *_) {
 		g_context->color_picker_callback(g_context->picked_color);
 	}
 	else {
-		tab_materials_apply_picked_color(g_context->picked_color);
+		slot_material_apply_picked_color(g_context->picked_color);
 	}
 }
 

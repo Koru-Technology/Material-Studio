@@ -2,7 +2,6 @@
 #include "../global.h"
 
 ui_color_state_t ui_header_color_state;
-static f64       ui_header_progress_last = 0.0;
 
 void ui_header_init() {
 	ui_header_handle->layout       = UI_LAYOUT_HORIZONTAL;
@@ -305,7 +304,7 @@ void ui_header_draw_tool_properties() {
 		}
 
 		// Masks and fill layers (painted through their mask): a gray value, and the fill layer's own material settings
-		slot_layer_t *fill_target = tab_layers_fill_target(g_context->layer);
+		slot_layer_t *fill_target = layers_fill_target(g_context->layer);
 		bool          on_mask     = (slot_layer_is_mask(g_context->layer) && g_context->layer->fill_material == NULL) || fill_target == g_context->layer;
 		if (on_mask && (g_context->tool == TOOL_TYPE_BRUSH || g_context->tool == TOOL_TYPE_FILL || g_context->tool == TOOL_TYPE_PARTICLE)) {
 			ui_slider(&g_context->mask_value, tr("Value"), 0.0, 1.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
@@ -560,33 +559,3 @@ void ui_header_draw_tool_properties() {
 	}
 }
 
-void ui_header_draw_progress(f32 progress) {
-	if (gpu_in_use) {
-		return;
-	}
-	f64 t = iron_time();
-	if (progress > 0.0 && progress < 1.0 && t - ui_header_progress_last < 1.0 / 30.0) {
-		return;
-	}
-	ui_header_progress_last = t;
-	i32  w                  = iron_window_width();
-	i32  h                  = iron_window_height();
-	i32  bw                 = w / 4;
-	i32  bh                 = math_floor(16 * UI_SCALE()); // Centered on the screen
-	i32  bx                 = (w - bw) / 2;
-	i32  by                 = (h - bh) / 2;
-	bool first_frame        = g_context->frame == 0;
-	// The frame is presented on its own, the screen holds undefined content unless it is cleared
-	if (base_startup_covering()) {
-		draw_begin(NULL, true, 0xff000000);
-	}
-	else {
-		draw_begin(NULL, first_frame, 0xff202020);
-	}
-	draw_set_color(g_theme->BUTTON_COL);
-	draw_filled_rect(bx, by, bw, bh);
-	draw_set_color(0xffe0393e); // Red
-	draw_filled_rect(bx, by, bw * progress, bh);
-	draw_end();
-	gpu_present();
-}

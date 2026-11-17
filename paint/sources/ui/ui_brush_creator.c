@@ -164,7 +164,7 @@ static void bc_render_row(void *_) {
 	if (!bc_show || brush_pad_busy()) {
 		return;
 	}
-	tab_brushes_render_row(&bc_edit.s, bc_tip, &bc_row);
+	brush_previews_render_row(&bc_edit.s, bc_tip, &bc_row);
 	bc_row_stale = false;
 	ui_brush_creator_redraw();
 }
@@ -607,7 +607,7 @@ static void bc_draw_settings() {
 		if (ui_is_visible(h)) {
 			draw_set_color(BC_COL_PILL);
 			ui_base_fill_round(g_ui->_x + 8 * s, g_ui->_y, g_ui->_w - 16 * s, h, 12 * s);
-			tab_brushes_draw_stroke(bc_row, g_ui->_x + 20 * s, g_ui->_y + 8 * s, g_ui->_w - 40 * s, h - 16 * s);
+			brush_previews_draw_stroke(bc_row, g_ui->_x + 20 * s, g_ui->_y + 8 * s, g_ui->_w - 40 * s, h - 16 * s);
 		}
 		ui_end_element_of_size(h);
 		if (bc_row_stale && !bc_row_pending && !brush_pad_busy()) {

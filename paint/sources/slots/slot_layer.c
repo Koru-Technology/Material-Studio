@@ -818,7 +818,7 @@ void slot_layer_move(slot_layer_t *raw, i32 to) {
 		return;
 	}
 
-	slot_layer_t_array_t *pointers   = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers   = layers_init_layer_map();
 	slot_layer_t         *old_parent = raw->parent;
 	i32                   from       = array_index_of(g_project->_->layers, raw);
 	i32                   dest       = pos > from ? pos - 1 : pos + slot_layer_count_descendants(raw);
@@ -835,7 +835,7 @@ void slot_layer_move(slot_layer_t *raw, i32 to) {
 	}
 	context_set_layer(raw);
 
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 }
 
 slot_layer_t *slot_layer_find_uid(u32 uid) {

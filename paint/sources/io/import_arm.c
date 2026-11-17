@@ -172,7 +172,7 @@ static void import_arm_uid_next(u32 saved) {
 
 void import_arm_run_project(char *path) {
 	iron_profile_mark("project load start");
-	ui_header_draw_progress(0.0);
+	base_draw_progress(0.0);
 	project_t *project;
 	bool       import_as_mesh = false;
 	buffer_t  *b              = NULL;
@@ -220,7 +220,7 @@ void import_arm_run_project(char *path) {
 
 	g_context->layers_preview_dirty = true;
 	g_context->layer_filter         = 0;
-	ui_header_draw_progress(0.1);
+	base_draw_progress(0.1);
 
 	i32 progress_assets = project->assets->length;
 	i32 progress_loaded = 0;
@@ -347,7 +347,7 @@ void import_arm_run_project(char *path) {
 		bool hdr_as_envmap = path_has_ext(abs, "hdr") && g_project->envmap != NULL && string_equals(g_project->envmap, path_normalize(abs));
 		import_texture_run(abs, hdr_as_envmap);
 		progress_loaded++;
-		ui_header_draw_progress(0.1 + 0.7 * (0.8 * import_arm_progress_unpacked / (f32)progress_bytes + 0.2 * progress_loaded / (f32)progress_assets));
+		base_draw_progress(0.1 + 0.7 * (0.8 * import_arm_progress_unpacked / (f32)progress_bytes + 0.2 * progress_loaded / (f32)progress_assets));
 	}
 	free(images);
 
@@ -367,7 +367,7 @@ void import_arm_run_project(char *path) {
 	string_array_t      *mesh_names = string_array_create(0);
 	mesh_data_t_array_t *mesh_datas = import_arm_get_mesh_datas(g_project, mesh_names);
 
-	ui_header_draw_progress(0.8);
+	base_draw_progress(0.8);
 	mesh_data_t *md = mesh_datas->buffer[0];
 
 	mesh_object_set_data(g_context->paint_object, md);
@@ -483,7 +483,7 @@ void import_arm_run_project(char *path) {
 		}
 	}
 
-	ui_header_draw_progress(0.85);
+	base_draw_progress(0.85);
 
 	if (g_project->timelines != NULL) {
 		timeline_io_decode((u8_array_t *)g_project->timelines); // The layers name their timeline, references at the end
@@ -576,7 +576,7 @@ void import_arm_run_project(char *path) {
 		}
 	}
 
-	ui_header_draw_progress(0.9);
+	base_draw_progress(0.9);
 	if (g_project->mesh_parents != NULL) {
 		for (i32 i = 0; i < g_project->_->paint_objects->length && i < g_project->mesh_parents->length; ++i) {
 			i32       parent_index = g_project->mesh_parents->buffer[i];
@@ -586,7 +586,7 @@ void import_arm_run_project(char *path) {
 		transform_build_matrix(_scene_root->transform);
 	}
 
-	ui_header_draw_progress(0.95);
+	base_draw_progress(0.95);
 	util_mesh_sort_hierarchy();
 
 	if (g_context->merged_object == NULL) {
@@ -602,7 +602,7 @@ void import_arm_run_project(char *path) {
 		}
 	}
 
-	ui_header_draw_progress(1.0);
+	base_draw_progress(1.0);
 	sys_notify_on_next_frame(&import_arm_run_project_on_next_frame, NULL);
 
 	base_update_tools();

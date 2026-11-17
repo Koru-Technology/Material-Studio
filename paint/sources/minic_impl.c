@@ -158,7 +158,7 @@ void script_texture_delete(char *s) {
 	for (int i = 0; i < g_project->_->assets->length; ++i) {
 		asset_t *asset = g_project->_->assets->buffer[i];
 		if (string_equals(asset->name, s)) {
-			tab_textures_delete_texture(asset);
+			util_texture_delete(asset);
 			return;
 		}
 	}
@@ -752,7 +752,7 @@ i32 script_assets_remove(char *search) {
 	while (i < g_project->_->assets->length) {
 		asset_t *a = g_project->_->assets->buffer[i];
 		if (string_index_of(a->file, search) >= 0) {
-			tab_textures_delete_texture(a);
+			util_texture_delete(a);
 			removed++;
 		}
 		else {
@@ -857,7 +857,7 @@ void script_material_delete(slot_material_t *m) {
 	if (array_index_of(g_project->_->materials, m) < 0) {
 		return;
 	}
-	tab_materials_delete_material(m);
+	slot_material_remove(m);
 }
 
 ui_node_t *script_material_create_node(char *type) {

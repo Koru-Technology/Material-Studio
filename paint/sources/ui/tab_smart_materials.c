@@ -3,56 +3,12 @@
 // Smart materials tab: saved fill layers and groups, tap one to pick it, Add to Layers puts it on top of the layers
 
 static i32   tab_smart_materials_i         = -1;
-static char *tab_smart_materials_save_name = "";
-static i32   tab_smart_materials_box_tab   = 0;
 static char *tab_smart_materials_selected  = NULL; // Name of the picked smart material
-
-// The layer Save takes: the selected fill layer or group, the fill layer of a selected mask
-static slot_layer_t *tab_smart_materials_target() {
-	slot_layer_t *l = g_context->layer;
-	if (l == NULL) {
-		return NULL;
-	}
-	if (slot_layer_is_mask(l)) {
-		l = l->parent;
-	}
-	if (l == NULL || slot_layer_is_mask(l)) {
-		return NULL;
-	}
-	return slot_layer_is_group(l) || l->fill_material != NULL ? l : NULL;
-}
 
 // Applying and saving draw to layers and export materials, they run when the frame starts, not while the UI is drawn
 
 static void tab_smart_materials_apply_next(void *name) {
 	smart_materials_apply(name);
-}
-
-static void tab_smart_materials_save_next(void *name) {
-	smart_materials_save(tab_smart_materials_target(), name);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-}
-
-static void tab_smart_materials_save_box() {
-	if (ui_tab(&tab_smart_materials_box_tab, tr("Save Smart Material"), false, -1, false)) {
-		ui_row2();
-		char *name = ui_text_input(&tab_smart_materials_save_name, tr("Name"), UI_ALIGN_LEFT, true, false);
-		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
-			sys_notify_on_next_frame(&tab_smart_materials_save_next, string_copy(name));
-			ui_box_hide();
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
-		}
-	}
-}
-
-// Asks for a name and saves the selected fill layer or group
-void tab_smart_materials_show_save() {
-	slot_layer_t *l = tab_smart_materials_target();
-	if (l == NULL) {
-		return;
-	}
-	tab_smart_materials_save_name = string_copy(l->fill_material != NULL ? l->fill_material->canvas->name : l->name);
-	ui_box_show_custom(&tab_smart_materials_save_box, 400, 200, NULL, true, "");
 }
 
 static void tab_smart_materials_menu() {
@@ -74,9 +30,9 @@ void tab_smart_materials_draw(i32 *htab) {
 	ui_begin_sticky();
 	f32_array_t *row = f32_array_create_from_raw_tmp((f32[]){-64, -140}, 2);
 	ui_row(row);
-	g_ui->enabled = tab_smart_materials_target() != NULL;
+	g_ui->enabled = smart_materials_save_target() != NULL;
 	if (ui_icon_button(tr("Save"), ICON_PLUS, UI_ALIGN_CENTER)) {
-		tab_smart_materials_show_save();
+		smart_materials_show_save();
 	}
 	if (g_ui->is_hovered) {
 		ui_tooltip(tr("Saves the selected fill layer or group with its masks"));

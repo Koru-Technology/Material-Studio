@@ -337,7 +337,7 @@ void app_view_face(int32_t face) {
 	if (!app_ready()) {
 		return;
 	}
-	ui_view_cube_set_view(face); // ui_panels.c
+	viewport_set_face(face); // ui_panels.c
 	iron_delay_idle_sleep();
 }
 
@@ -534,8 +534,8 @@ void app_command(int32_t command) {
 		sys_notify_on_next_frame(app_capture_screenshot, NULL); // After the frame, with the ui hidden
 		break;
 	case APP_COMMAND_DELETE_UNUSED:
-		tab_materials_delete_unused();
-		tab_textures_delete_unused();
+		slot_material_delete_unused();
+		util_texture_delete_unused();
 		break;
 	}
 	g_context->ddirty = 2;
@@ -612,14 +612,14 @@ bool app_layer_set_visible(int32_t id, bool visible) {
 	if (l == NULL || l->visible == visible) {
 		return false;
 	}
-	tab_layers_layer_toggle_visible(l);
+	layers_toggle_visible(l);
 	iron_delay_idle_sleep();
 	return true;
 }
 
 bool app_layer_delete(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || !tab_layers_can_delete(l)) {
+	if (l == NULL || !layers_can_delete(l)) {
 		return false;
 	}
 	layers_op_delete(l);

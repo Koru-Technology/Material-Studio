@@ -943,7 +943,15 @@ u32              project_uid_take(); // Next stable uid of a layer or material (
 char            *project_uuid_get(); // Random 128-bit id of the project in hex, names its history journal
 void             project_uuid_new();
 void             slot_material_unload(slot_material_t *raw);
-void             slot_material_delete(slot_material_t *raw);
+void slot_material_delete(slot_material_t *raw);
+void slot_material_delete_unused();
+void slot_material_new_on_next_frame(void *_);
+void slot_material_apply_picked_color(swatch_color_t *swatch);
+void slot_material_new_from_swatch(swatch_color_t *swatch);
+void slot_material_refresh();
+void slot_material_duplicate(i32 i);
+void slot_material_update_pointers(ui_node_t_array_t *nodes, i32 deleted);
+void slot_material_remove(slot_material_t *m);
 
 // ---- ui/box_append.c ----
 void box_append_show(char *path);
@@ -1001,8 +1009,6 @@ void tab_browser_show_directory(char *directory);
 void tab_browser_draw(i32 *htab);
 
 // ---- ui/tab_brushes.c ----
-void tab_brushes_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture_t **dst);
-void tab_brushes_draw_stroke(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h);
 void tab_brushes_show_group(i32 id);
 void tab_brushes_draw_content();
 void tab_brushes_draw(i32 *htab);
@@ -1018,30 +1024,19 @@ void tab_fonts_draw(i32 *htab);
 void tab_fonts_accept_font_drop(slot_font_t *font);
 
 // ---- ui/tab_layers.c ----
-void          tab_layers_delete_layer(slot_layer_t *l);
-bool          tab_layers_can_delete(slot_layer_t *l);
-bool          tab_layers_can_merge_down(slot_layer_t *l);
-void          tab_layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m);
-slot_layer_t *tab_layers_fill_target(slot_layer_t *l);
 void          tab_layers_fill_properties(slot_layer_t *l, bool menu);
 void          tab_layers_draw_edit();
 void          tab_layers_draw(i32 *htab);
 bool          tab_layers_can_drop_new_layer(i32 position);
 
 // ---- ui/tab_materials.c ----
-void tab_materials_delete_material(slot_material_t *m);
-void tab_materials_delete_unused();
-void tab_materials_button_new_on_next_frame(void *_);
 void tab_materials_draw(i32 *htab);
 void tab_materials_accept_material_drop(slot_material_t *material);
-void tab_materials_apply_picked_color(swatch_color_t *swatch);
-void tab_materials_accept_swatch_drop(swatch_color_t *swatch);
 
 // ---- ui/tab_library.c ----
 void tab_library_draw(i32 *htab);
 
 // ---- ui/tab_smart_materials.c ----
-void tab_smart_materials_show_save();
 void tab_smart_materials_draw(i32 *htab);
 
 // ---- ui/tab_swatches.c ----
@@ -1050,8 +1045,6 @@ void           tab_swatches_draw(i32 *htab);
 void           tab_swatches_accept_swatch_drop(swatch_color_t *swatch);
 
 // ---- ui/tab_textures.c ----
-void tab_textures_delete_texture(asset_t *asset);
-void tab_textures_delete_unused();
 void tab_textures_draw(i32 *htab);
 void tab_textures_accept_asset_drop(asset_t *asset);
 
@@ -1132,7 +1125,6 @@ void  ui_files_go_up(char **path);
 void ui_header_init();
 void ui_header_render_ui();
 void ui_header_draw_tool_properties();
-void ui_header_draw_progress(f32 progress);
 
 // ---- ui/ui_id_mask.c ----
 asset_t *project_id_map_asset();
@@ -1339,8 +1331,8 @@ void layers_enable_translucency();
 void layers_set_object_mask();
 void layers_history_with_prev(void (*push)(void));
 bool layers_sync_nodes();
-slot_layer_t_array_t *tab_layers_init_layer_map();
-void                  tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers);
+slot_layer_t_array_t *layers_init_layer_map();
+void                  layers_remap_layer_pointers(slot_layer_t_array_t *old_layers);
 void                  tab_layers_make_mask_preview_rgba32(slot_layer_t *l);
 
 // ---- util/util_layer_create.c ----
@@ -1386,6 +1378,16 @@ slot_layer_t *layers_op_new_path(bool curved);
 slot_layer_t *layers_op_new_text(char *text);
 bool          layers_op_add_path_point(slot_layer_t *l, f32 x, f32 y);
 void          layers_op_repaint_path(slot_layer_t *l);
+void layers_delete(slot_layer_t *l);
+bool layers_can_delete(slot_layer_t *l);
+bool layers_can_merge_down(slot_layer_t *l);
+void layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m);
+slot_layer_t *layers_fill_target(slot_layer_t *l);
+void          layers_repaint_text(slot_layer_t *l);
+void          layers_toggle_visible(slot_layer_t *l);
+bool          layers_has_children(slot_layer_t *l);
+void          layers_export_on_file_picked(char *path);
+bool          layers_mask_has_stack(slot_layer_t *l);
 
 // ---- util/util_layer_fill.c ----
 bool layers_is_fill_material();
@@ -1648,6 +1650,9 @@ void  util_texture_release_target(gpu_texture_t **t);
 i64   util_texture_tracked_bytes();
 i64   util_texture_tracked_peak();
 void  util_texture_tracked_peak_reset();
+void util_texture_delete(asset_t *asset);
+void util_texture_delete_unused();
+char *util_texture_mesh_maps_of(asset_t *asset);
 
 // ---- util/util_touch.c ----
 void util_touch_update();
@@ -1728,6 +1733,7 @@ void            base_update_tools();
 uint32_t        base_darker(uint32_t x, uint32_t y);
 string_array_t *base_get_viewport_modes();
 string_array_t *base_get_viewport_mode_shortcuts();
+void base_draw_progress(f32 progress);
 
 // ---- camera.c ----
 void camera_orbit_drag();
@@ -1832,6 +1838,8 @@ bool           smart_materials_save(slot_layer_t *root, char *name);
 slot_layer_t  *smart_materials_insert(char *name);
 slot_layer_t  *smart_materials_apply(char *name);
 void           smart_materials_delete(i32 i);
+void smart_materials_show_save();
+slot_layer_t *smart_materials_save_target();
 
 // ---- saved_materials.c ----
 void           saved_materials_refresh();
@@ -1847,6 +1855,8 @@ void brush_previews_start();
 void brush_previews_update();
 i32  brush_previews_stat(i32 what);
 void brush_previews_forget(bool delete_files);
+void brush_previews_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture_t **dst);
+void brush_previews_draw_stroke(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h);
 
 // ---- console.c ----
 void console_toast(char *s);
@@ -2313,6 +2323,7 @@ swatch_color_t        *project_clone_swatch(swatch_color_t *swatch);
 void                   project_set_default_swatches();
 node_group_t          *project_get_material_group_by_name(char *group_name);
 bool                   project_is_material_group_in_use(node_group_t *group);
+void project_delete_swatch(swatch_color_t *swatch);
 
 // ---- resource.c ----
 void           resource_load(string_array_t *names);
@@ -2366,6 +2377,7 @@ void viewport_capture_video_frame();
 void viewport_capture_video_draw();
 void viewport_capture_video_begin();
 void viewport_capture_video_end();
+void viewport_set_face(i32 face);
 
 // ---- minic_api.c ----
 char *minic_api_header_generate();

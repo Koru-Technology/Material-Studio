@@ -181,7 +181,7 @@ static void ui_id_mask_import_on_next_frame(void *_) {
 		ui_id_mask_start_picking();
 	}
 	else if (g_project->_->assets->length > ui_id_mask_assets_before && array_index_of(g_project->_->assets, a) >= ui_id_mask_assets_before) {
-		tab_textures_delete_texture(a); // Imported for this only
+		util_texture_delete(a); // Imported for this only
 	}
 }
 
@@ -366,9 +366,9 @@ void ui_id_mask_done() {
 	slot_layer_t *l = ui_id_mask_target;
 	ui_id_mask_cancel(); // Back to the tool from before
 
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *m        = layers_new_mask(false, l, -1);
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 	if (m == NULL) {
 		console_error(tr("Too many layers"));
 		return;

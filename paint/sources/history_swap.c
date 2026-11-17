@@ -323,7 +323,7 @@ void history_swap_merge(history_step_t *step, bool undo) {
 	slot_layer_t_array_t *saved    = step->merge_layers;
 	i32_array_t          *parents  = step->merge_parents;
 	i32                   count    = layers->length - (step->merge_length - saved->length);
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 
 	step->merge_layers  = any_array_create_from_raw((void *[]){}, 0);
 	step->merge_parents = i32_array_create(0);
@@ -351,7 +351,7 @@ void history_swap_merge(history_step_t *step, bool undo) {
 	}
 
 	if (step->action == HISTORY_ACTION_DELETE_LAYER) {
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 	}
 
 	i32 top = step->merge_start + saved->length - 1;
@@ -424,7 +424,7 @@ void history_swap_path(history_step_t *step, slot_layer_t *l) {
 }
 
 void history_swap_order(history_step_t *step) {
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *l        = g_project->_->layers->buffer[step->prev_order];
 	i32                   parent   = l->parent != NULL ? array_index_of(g_project->_->layers, l->parent) : -1;
 	slot_layer_relocate(l, step->layer);
@@ -433,7 +433,7 @@ void history_swap_order(history_step_t *step) {
 	i32 prev_order     = step->prev_order;
 	step->prev_order   = step->layer;
 	step->layer        = prev_order;
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 	context_set_layer(l);
 	make_material_parse_mesh_material();
 }

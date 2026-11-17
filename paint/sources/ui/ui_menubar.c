@@ -174,8 +174,8 @@ viewport_mode_t ui_menubar_string_to_viewport_mode(char *s) {
 }
 
 static void ui_menubar_delete_unused(void *_) {
-	tab_materials_delete_unused();
-	tab_textures_delete_unused();
+	slot_material_delete_unused();
+	util_texture_delete_unused();
 }
 
 static void ui_menubar_draw_import_export_items() {

@@ -191,7 +191,7 @@ slot_material_t *material_studio_new() {
 
 	any_array_push(g_project->_->materials, m);
 	context_set_material(m);
-	tab_materials_update_material();
+	slot_material_refresh();
 	history_new_material();
 	material_studio_open(m);
 	return m;

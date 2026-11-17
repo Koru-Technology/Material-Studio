@@ -150,23 +150,12 @@ static gpu_texture_t *tab_swatches_sphere_get(i32 i, swatch_color_t *s) {
 	return e->image;
 }
 
-void tab_swatches_delete_swatch(swatch_color_t *swatch) {
-	i32 i = array_index_of(g_project->swatches, swatch);
-	if (i < 0) {
-		return;
-	}
-	history_delete_swatch(swatch);
-	g_context->swatch = g_project->swatches->buffer[i == g_project->swatches->length - 1 ? i - 1 : i + 1];
-	array_splice(g_project->swatches, i, 1);
-	ui_dock_redraw(TAB_AREA_STATUS);
-}
-
 static void tab_swatches_create_material_on_next_frame(void *swatch) {
-	tab_materials_accept_swatch_drop(swatch);
+	slot_material_new_from_swatch(swatch);
 }
 
 static void tab_swatches_apply_picked_color_on_next_frame(void *_) {
-	tab_materials_apply_picked_color(g_context->picked_color);
+	slot_material_apply_picked_color(g_context->picked_color);
 }
 
 void tab_swatches_draw_menu() {
@@ -186,7 +175,7 @@ void tab_swatches_draw_menu() {
 	}
 #endif
 	else if (g_project->swatches->length > 1 && ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
-		tab_swatches_delete_swatch(g_project->swatches->buffer[i]);
+		project_delete_swatch(g_project->swatches->buffer[i]);
 	}
 	else if (ui_menu_button(tr("Create Material"), "", ICON_SPHERE)) {
 		sys_notify_on_next_frame(&tab_swatches_create_material_on_next_frame, g_project->swatches->buffer[i]);
@@ -444,7 +433,7 @@ void tab_swatches_draw(i32 *htab) {
 		                g_ui->input_y < g_ui->_window_y + g_ui->_window_h;
 		if (in_focus && g_ui->is_delete_down && g_project->swatches->length > 1) {
 			g_ui->is_delete_down = false;
-			tab_swatches_delete_swatch(g_context->swatch);
+			project_delete_swatch(g_context->swatch);
 		}
 		if (in_focus && g_ui->is_ctrl_down && g_ui->is_key_pressed && g_ui->key_code == KEY_CODE_D) {
 			g_context->swatch = project_clone_swatch(g_context->swatch);

@@ -66,11 +66,11 @@ slot_layer_t *layers_op_new_fill(void) {
 }
 
 void layers_op_delete(slot_layer_t *l) {
-	if (!slot_layer_alive(l) || !tab_layers_can_delete(l)) {
+	if (!slot_layer_alive(l) || !layers_can_delete(l)) {
 		return;
 	}
 	draw_saved_t gpu = draw_suspend();
-	tab_layers_delete_layer(l);
+	layers_delete(l);
 	draw_resume(gpu);
 }
 
@@ -108,10 +108,10 @@ slot_layer_t *layers_op_new_mask(slot_layer_t *l, i32 type) {
 	}
 	draw_saved_t gpu = draw_suspend();
 	context_set_layer(l);
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *m        = layers_new_mask(false, l, -1);
 	if (m != NULL) {
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 		if (type == 0) {
 			history_new_black_mask();
 			slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
@@ -142,7 +142,7 @@ slot_layer_t *layers_op_new_group(slot_layer_t *l) {
 		l = l->parent;
 	}
 	draw_saved_t gpu = draw_suspend();
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *group    = layers_new_group();
 	if (group != NULL) {
 		context_set_layer(l);
@@ -150,7 +150,7 @@ slot_layer_t *layers_op_new_group(slot_layer_t *l) {
 		array_insert(g_project->_->layers, array_index_of(g_project->_->layers, l) + 1, group);
 		group->parent = l->parent;
 		l->parent     = group;
-		tab_layers_remap_all_layer_pointers(pointers);
+		layers_remap_layer_pointers(pointers);
 		context_set_layer(group);
 		history_new_group();
 	}
@@ -301,7 +301,7 @@ slot_layer_t *layers_op_duplicate(slot_layer_t *l) {
 }
 
 slot_layer_t *layers_op_merge_down(slot_layer_t *l) {
-	if (!slot_layer_alive(l) || !tab_layers_can_merge_down(l)) {
+	if (!slot_layer_alive(l) || !layers_can_merge_down(l)) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
@@ -320,7 +320,7 @@ slot_layer_t *layers_op_merge_group(slot_layer_t *group) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();
-	if (slot_layer_shows(group) || tab_layers_can_delete(group)) {
+	if (slot_layer_shows(group) || layers_can_delete(group)) {
 		history_merge_group(group);
 	}
 	slot_layer_t *l = layers_merge_group(group);
@@ -480,4 +480,134 @@ void layers_op_repaint_path(slot_layer_t *l) {
 	draw_saved_t gpu = draw_suspend();
 	util_layer_repaint_path(l);
 	layers_op_end(gpu);
+}
+
+// Layer queries and edits the app API and the scripts share
+
+void layers_repaint_text(slot_layer_t *l) {
+	util_layer_repaint_path(l);
+	g_context->layer_preview_dirty  = true;
+	g_context->layers_preview_dirty = true;
+}
+
+void layers_delete(slot_layer_t *l) {
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
+
+	history_delete_layer(l);
+
+	if (slot_layer_is_mask(l)) {
+		g_context->layer = l->parent;
+		layers_update_fill_layers();
+	}
+
+	g_context->ddirty = 2;
+	layers_remap_layer_pointers(pointers);
+	base_redraw_status();
+}
+
+void layers_toggle_visible(slot_layer_t *l) {
+	history_layer_visible(l);
+	l->visible              = !l->visible;
+	ui_view2d_hwnd->redraws = 2;
+	make_material_parse_mesh_material();
+}
+
+bool layers_can_delete(slot_layer_t *l) {
+	i32 num_layers = 0;
+
+	if (slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
+		return true;
+	}
+
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *slot = g_project->_->layers->buffer[i];
+		if (slot_layer_is_layer(slot) && !slot_layer_is_filter(slot)) {
+			++num_layers;
+		}
+	}
+
+	// All layers are in one group
+	if (slot_layer_is_group(l) && slot_layer_get_children(l) != NULL && slot_layer_get_children(l)->length == num_layers) {
+		return false;
+	}
+
+	// Do not delete last layer
+	return num_layers > 1;
+}
+
+// Mask stacks: a mask with an explicit stack lists its effects as rows under it, top effect first
+bool layers_mask_has_stack(slot_layer_t *l) {
+	return slot_layer_is_mask(l) && l->mask_effects != NULL;
+}
+
+bool layers_has_children(slot_layer_t *l) {
+	return slot_layer_is_group(l) || (slot_layer_is_layer(l) && slot_layer_get_masks(l, false) != NULL) ||
+	       (slot_layer_is_layer(l) && slot_layer_get_filters(l, false)) || layers_mask_has_stack(l);
+}
+
+void layers_export_on_file_picked(char *path) {
+	slot_layer_t *l = layers_export_layer;
+	char         *f = ui_files_filename;
+	if (string_equals(f, "")) {
+		f = string_copy(tr("untitled"));
+	}
+	if (!ends_with(f, ".png")) {
+		f = string("%s.png", f);
+	}
+	gpu_texture_t *t = slot_layer_mask_texture(l); // Evaluated mask stack, texpaint for layers
+	iron_write_png(string("%s%s%s", path, PATH_SEP, f), gpu_get_texture_pixels(t), t->width, t->height, 3); // RRR1
+	gpu_release_texture_pixels(t);
+}
+
+bool layers_can_merge_down(slot_layer_t *l) {
+	i32 index = array_index_of(g_project->_->layers, l);
+	i32 below = index - slot_layer_count_descendants(l) - 1;
+	// Lowest layer
+	if (below < 0) {
+		return false;
+	}
+	// Merging out of a group would leave its masks behind
+	if (l->parent != NULL && !slot_layer_is_descendant(g_project->_->layers->buffer[below], l->parent)) {
+		return false;
+	}
+	// A hidden layer is not merged away
+	if (!slot_layer_shows(l) || !slot_layer_shows(g_project->_->layers->buffer[below])) {
+		return false;
+	}
+	// Masks must be merged down to masks
+	if (slot_layer_is_mask(l) && !slot_layer_is_mask(g_project->_->layers->buffer[index - 1])) {
+		return false;
+	}
+	return true;
+}
+
+static slot_layer_t    *layers_fill_swap_layer    = NULL;
+static slot_material_t *layers_fill_swap_material = NULL;
+
+static void layers_set_fill_material_next(void *_) {
+	if (layers_fill_swap_layer != NULL && array_index_of(g_project->_->layers, layers_fill_swap_layer) >= 0) {
+		slot_layer_set_fill_material(layers_fill_swap_layer, layers_fill_swap_material);
+	}
+	layers_fill_swap_layer = NULL;
+}
+
+// Gives fill layer l material m when the frame starts, the repaint does not run while the UI is drawn
+void layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m) {
+	layers_fill_swap_layer    = l;
+	layers_fill_swap_material = m;
+	sys_notify_on_next_frame(&layers_set_fill_material_next, NULL);
+}
+
+// The fill layer that l is or masks, NULL for others
+slot_layer_t *layers_fill_target(slot_layer_t *l) {
+	if (l == NULL) {
+		return NULL;
+	}
+	if (slot_layer_is_layer(l) && l->fill_material != NULL) {
+		return l;
+	}
+	if (slot_layer_is_mask(l) && l->fill_material == NULL && l->parent != NULL && slot_layer_is_layer(l->parent) && l->parent->fill_material != NULL) {
+		return l->parent;
+	}
+	return NULL;
 }

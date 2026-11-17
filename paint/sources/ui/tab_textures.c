@@ -24,17 +24,6 @@ void tab_textures_draw_use_as_id_map(void *asset) {
 	project_set_id_map(asset);
 }
 
-// Registered mesh maps of the asset, or "" if none
-static char *tab_textures_mesh_maps_of(asset_t *asset) {
-	char *s = "";
-	for (i32 i = 0; i < MESH_MAP_COUNT; ++i) {
-		if (mesh_maps_get_asset(i) == asset) {
-			s = string("%s%s%s", s, s[0] != '\0' ? ", " : "", tr(mesh_map_name(i)));
-		}
-	}
-	return s;
-}
-
 void tab_textures_draw_export_on_next_frame2(gpu_texture_t *target) {
 	char *path = _tab_textures_draw_path;
 	char *f    = ui_files_filename;
@@ -83,70 +72,6 @@ void tab_textures_draw_export(char *path) {
 	sys_notify_on_next_frame(&tab_textures_draw_export_on_next_frame, NULL);
 }
 
-void tab_textures_update_texture_pointers(ui_node_t_array_t *nodes, i32 index) {
-	for (i32 i = 0; i < nodes->length; ++i) {
-		ui_node_t *n = nodes->buffer[i];
-		if (string_equals(n->type, "TEX_IMAGE")) {
-			if (n->buttons->buffer[0]->default_value->buffer[0] == index) {
-				n->buttons->buffer[0]->default_value->buffer[0] = 9999; // Texture deleted, use pink now
-			}
-			else if (n->buttons->buffer[0]->default_value->buffer[0] > index) {
-				n->buttons->buffer[0]->default_value->buffer[0]--; // Offset by deleted texture
-			}
-		}
-	}
-}
-
-void tab_textures_delete_texture_on_next_frame(void *_) {
-	make_material_parse_paint_material(true);
-	util_render_make_material_preview();
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-}
-
-void tab_textures_delete_texture(asset_t *asset) {
-	i32 index = array_index_of(g_project->_->assets, asset);
-	if (g_project->_->assets->length > 1) {
-		g_context->texture = g_project->_->assets->buffer[index == g_project->_->assets->length - 1 ? index - 1 : index + 1];
-	}
-	ui_dock_redraw(TAB_AREA_STATUS);
-
-	project_id_map_removed(asset);
-	mesh_maps_asset_removed(asset);
-
-	if (data_get_texture(asset->file) == scene_world->_->envmap) {
-		project_set_default_envmap();
-	}
-
-	if (g_project->packed_assets != NULL) {
-		for (i32 i = 0; i < g_project->packed_assets->length; ++i) {
-			packed_asset_t *pa = g_project->packed_assets->buffer[i];
-			if (string_equals(pa->name, asset->file)) {
-				array_splice(g_project->packed_assets, i, 1);
-				break;
-			}
-		}
-	}
-
-	data_delete_texture(asset->file);
-	array_splice(g_project->_->assets, index, 1);
-	sys_notify_on_next_frame(&tab_textures_delete_texture_on_next_frame, NULL);
-
-	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		slot_material_t *m = g_project->_->materials->buffer[i];
-		tab_textures_update_texture_pointers(m->canvas->nodes, index);
-	}
-
-	for (i32 i = 0; i < g_project->_->material_groups->length; ++i) {
-		node_group_t *g = g_project->_->material_groups->buffer[i];
-		tab_textures_update_texture_pointers(g->canvas->nodes, index);
-	}
-
-	for (i32 i = 0; i < g_project->_->brushes->length; ++i) {
-		slot_brush_t *b = g_project->_->brushes->buffer[i];
-		tab_textures_update_texture_pointers(b->canvas->nodes, index);
-	}
-}
-
 void tab_textures_draw_context_menu() {
 	if (ui_menu_button(tr("Export"), "", ICON_EXPORT)) {
 		gpu_texture_format_t format = _tab_textures_draw_img->format;
@@ -182,7 +107,7 @@ void tab_textures_draw_context_menu() {
 		ui_menu_sub_end();
 	}
 	if (ui_menu_button(tr("Delete"), "delete", ICON_DELETE)) {
-		tab_textures_delete_texture(_tab_textures_draw_asset);
+		util_texture_delete(_tab_textures_draw_asset);
 	}
 	if (!_tab_textures_draw_is_packed && ui_menu_button(tr("Open Containing Directory..."), "", ICON_FOLDER_OPEN)) {
 		file_start(substring(_tab_textures_draw_asset->file, 0, string_last_index_of(_tab_textures_draw_asset->file, PATH_SEP)));
@@ -190,67 +115,6 @@ void tab_textures_draw_context_menu() {
 	if (!_tab_textures_draw_is_packed && ui_menu_button(tr("Open in Browser"), "", ICON_NONE)) {
 		tab_browser_show_directory(substring(_tab_textures_draw_asset->file, 0, string_last_index_of(_tab_textures_draw_asset->file, PATH_SEP)));
 	}
-}
-
-bool tab_textures_nodes_use_texture(ui_node_t_array_t *nodes, i32 index) {
-	for (i32 i = 0; i < nodes->length; ++i) {
-		ui_node_t *n = nodes->buffer[i];
-		if (string_equals(n->type, "TEX_IMAGE") && n->buttons->buffer[0]->default_value->buffer[0] == index) {
-			return true;
-		}
-	}
-	return false;
-}
-
-bool tab_textures_is_texture_used(i32 index) {
-	asset_t *asset = g_project->_->assets->buffer[index];
-	if (g_project->id_map != NULL && string_equals(g_project->id_map, asset->name)) {
-		return true;
-	}
-	if (!string_equals(tab_textures_mesh_maps_of(asset), "")) {
-		return true;
-	}
-	if (g_project->envmap != NULL && string_equals(g_project->envmap, asset->file)) {
-		return true;
-	}
-
-	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		slot_material_t *m = g_project->_->materials->buffer[i];
-		if (tab_textures_nodes_use_texture(m->canvas->nodes, index)) {
-			return true;
-		}
-	}
-
-	for (i32 i = 0; i < g_project->_->material_groups->length; ++i) {
-		node_group_t *g = g_project->_->material_groups->buffer[i];
-		if (tab_textures_nodes_use_texture(g->canvas->nodes, index)) {
-			return true;
-		}
-	}
-
-	for (i32 i = 0; i < g_project->_->brushes->length; ++i) {
-		slot_brush_t *b = g_project->_->brushes->buffer[i];
-		if (tab_textures_nodes_use_texture(b->canvas->nodes, index)) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-void tab_textures_delete_unused() {
-	asset_t_array_t *unused = any_array_create_from_raw((void *[]){}, 0);
-	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
-		if (!tab_textures_is_texture_used(i)) {
-			any_array_push(unused, g_project->_->assets->buffer[i]);
-		}
-	}
-
-	for (i32 i = 0; i < unused->length; ++i) {
-		tab_textures_delete_texture(unused->buffer[i]);
-	}
-
-	array_delete(unused);
 }
 
 static void tab_textures_apply_node_indices(ui_node_t_array_t *nodes, i32_array_t *new_indices) {
@@ -465,7 +329,7 @@ void tab_textures_draw(i32 *htab) {
 						if (is_packed) {
 							tooltip = string_tmp("%s %s", tooltip, tr("(packed)"));
 						}
-						char *mesh_maps = tab_textures_mesh_maps_of(asset);
+						char *mesh_maps = util_texture_mesh_maps_of(asset);
 						if (!string_equals(mesh_maps, "")) {
 							tooltip = string_tmp("%s (%s %s)", tooltip, tr("Mesh Map:"), mesh_maps);
 						}
@@ -524,7 +388,7 @@ void tab_textures_draw(i32 *htab) {
 		                g_ui->input_y < g_ui->_window_y + g_ui->_window_h;
 		if (in_focus && g_ui->is_delete_down && g_project->_->assets->length > 0 && array_index_of(g_project->_->assets, g_context->texture) >= 0) {
 			g_ui->is_delete_down = false;
-			tab_textures_delete_texture(g_context->texture);
+			util_texture_delete(g_context->texture);
 		}
 		if (in_focus && g_project->_->assets->length > 0) {
 			i32 i = array_index_of(g_project->_->assets, g_context->texture);

@@ -282,3 +282,28 @@ void viewport_capture_video_end() {
 	g_config->rp_grain     = viewport_video_grain;
 	g_context->ddirty      = 2;
 }
+
+// Looks along an axis: 0 right, 1 left, 2 back, 3 front, 4 top, 5 bottom
+void viewport_set_face(i32 face) {
+	f32 pi = math_pi();
+	switch (face) {
+	case 0:
+		viewport_set_view(1, 0, 0, pi / 2.0, 0, pi / 2.0); // Right
+		break;
+	case 1:
+		viewport_set_view(-1, 0, 0, pi / 2.0, 0, -pi / 2.0); // Left
+		break;
+	case 2:
+		viewport_set_view(0, 1, 0, pi / 2.0, 0, pi); // Back
+		break;
+	case 3:
+		viewport_set_view(0, -1, 0, pi / 2.0, 0, 0); // Front
+		break;
+	case 4:
+		viewport_set_view(0, 0, 1, 0, 0, 0); // Top
+		break;
+	case 5:
+		viewport_set_view(0, 0, -1, pi, 0, pi); // Bottom
+		break;
+	}
+}

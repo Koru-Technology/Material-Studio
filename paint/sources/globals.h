@@ -119,7 +119,7 @@ bool  tab_browser_refresh = false;
 
 // ---- ui/tab_layers.c ----
 char         *tab_layers_layer_name = "";
-slot_layer_t *tab_layers_l;
+slot_layer_t *layers_export_layer;
 paint_tex_t   tab_layers_preview_tex = PAINT_TEX_BASE;
 
 // ---- ui/ui_base.c ----

@@ -281,30 +281,6 @@ static u32 ui_view_cube_color(i32 face, f32 shade) {
 	return 0xff000000 | (r << 16) | (g << 8) | b;
 }
 
-static void ui_view_cube_set_view(i32 face) {
-	f32 pi = math_pi();
-	switch (face) {
-	case 0:
-		viewport_set_view(1, 0, 0, pi / 2.0, 0, pi / 2.0); // Right
-		break;
-	case 1:
-		viewport_set_view(-1, 0, 0, pi / 2.0, 0, -pi / 2.0); // Left
-		break;
-	case 2:
-		viewport_set_view(0, 1, 0, pi / 2.0, 0, pi); // Back
-		break;
-	case 3:
-		viewport_set_view(0, -1, 0, pi / 2.0, 0, 0); // Front
-		break;
-	case 4:
-		viewport_set_view(0, 0, 1, 0, 0, 0); // Top
-		break;
-	case 5:
-		viewport_set_view(0, 0, -1, pi, 0, pi); // Bottom
-		break;
-	}
-}
-
 static bool ui_view_cube_inside(f32 *px, f32 *py, i32 count, f32 x, f32 y) {
 	bool in = false;
 	for (i32 i = 0, j = count - 1; i < count; j = i++) {
@@ -385,7 +361,7 @@ static void ui_panels_draw_view_cube(i32 x, i32 y) {
 	}
 	else if (ui_view_cube_down) {
 		if (!ui_view_cube_dragging && hit >= 0 && hit == ui_view_cube_pressed) {
-			ui_view_cube_set_view(hit);
+			viewport_set_face(hit);
 		}
 		ui_view_cube_down     = false;
 		ui_view_cube_dragging = false;

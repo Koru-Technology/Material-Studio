@@ -81,7 +81,7 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 
 	*out = (app_layer_props_t){
 	    .id                     = l->id,
-	    .has_children           = tab_layers_has_children(l) && !mask, // A mask's effects list in its settings, not as rows
+	    .has_children           = layers_has_children(l) && !mask, // A mask's effects list in its settings, not as rows
 	    .expanded               = l->show_panel,
 	    .is_path                = slot_layer_is_path(l),
 	    .is_text                = l->path_text,
@@ -115,9 +115,9 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	    .shows_merge_group         = group,
 	    .shows_save_smart_material = group || (layer && l->fill_material != NULL),
 
-	    .can_delete      = tab_layers_can_delete(l),
-	    .can_merge_down  = tab_layers_can_merge_down(l),
-	    .can_merge_group = group && slot_layer_get_children(l) != NULL && (slot_layer_shows(l) || tab_layers_can_delete(l)),
+	    .can_delete      = layers_can_delete(l),
+	    .can_merge_down  = layers_can_merge_down(l),
+	    .can_merge_group = group && slot_layer_get_children(l) != NULL && (slot_layer_shows(l) || layers_can_delete(l)),
 	    .can_id_mask     = target != NULL && !slot_layer_is_group(target),
 	};
 	return true;
@@ -208,7 +208,7 @@ bool app_layer_set_name(int32_t id, const char *name) {
 	history_layer_name(l, prev);
 	if (l->path_text && slot_layer_is_path(l)) { // The name is the painted text
 		draw_saved_t gpu = draw_suspend();
-		tab_layers_repaint_text_layer(l);
+		layers_repaint_text(l);
 		layers_op_end(gpu);
 	}
 	ui_dock_redraw(TAB_AREA_SIDEBAR0);
@@ -338,7 +338,7 @@ bool app_layer_merge_down(int32_t id) {
 
 bool app_layer_merge_group(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || !slot_layer_is_group(l) || slot_layer_get_children(l) == NULL || !(slot_layer_shows(l) || tab_layers_can_delete(l))) {
+	if (l == NULL || !slot_layer_is_group(l) || slot_layer_get_children(l) == NULL || !(slot_layer_shows(l) || layers_can_delete(l))) {
 		return false;
 	}
 	return app_layer_done(layers_op_merge_group(l) != NULL);
@@ -390,9 +390,9 @@ void app_layer_export(int32_t id) {
 		return;
 	}
 	context_set_layer(l);
-	tab_layers_l = l;
+	layers_export_layer = l;
 	if (slot_layer_is_mask(l)) {
-		ui_files_show("png", true, false, &tab_layers_draw_layer_context_menu_export_on_file_picked);
+		ui_files_show("png", true, false, &layers_export_on_file_picked);
 	}
 	else {
 		g_context->layers_export = EXPORT_MODE_SELECTED;
@@ -408,7 +408,7 @@ void app_layer_save_smart_material(int32_t id) {
 		return;
 	}
 	context_set_layer(l);
-	tab_smart_materials_show_save();
+	smart_materials_show_save();
 	iron_delay_idle_sleep();
 }
 
@@ -446,7 +446,7 @@ static bool app_layer_can_reparent(slot_layer_t *l, slot_layer_t *parent) {
 
 static bool app_layer_reparent(slot_layer_t *l, slot_layer_t *parent) {
 	draw_saved_t gpu = draw_suspend();
-	slot_layer_t_array_t *pointers   = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers   = layers_init_layer_map();
 	slot_layer_t         *old_parent = l->parent;
 	context_set_layer(l);
 	history_order_layers(array_index_of(g_project->_->layers, l));
@@ -455,7 +455,7 @@ static bool app_layer_reparent(slot_layer_t *l, slot_layer_t *parent) {
 		history_delete_layer(old_parent)->with_prev = true;
 	}
 	context_set_layer(l);
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 	layers_op_end(gpu);
 	return true;
 }

@@ -122,7 +122,7 @@ void layers_create_filter_on_next_frame(void *_) {
 		return;
 	}
 
-	tab_materials_button_new_on_next_frame(NULL);
+	slot_material_new_on_next_frame(NULL);
 
 	slot_layer_t *l = layers_new_layer(false, -1, g_context->layer);
 	layers_history_with_prev(history_new_layer); // With the filter's new material: one undo removes the filter

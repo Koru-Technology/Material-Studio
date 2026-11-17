@@ -11,55 +11,6 @@ static brush_group_t *tab_brushes_menu_group = NULL;
 static char          *tab_brushes_name_text   = "";
 static i32            tab_brushes_box_tab     = 0;
 
-// Renders the stroke of brush settings s into *dst, as shown in the brush list. Not while a window draws, see sys_notify_on_next_frame.
-void tab_brushes_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture_t **dst) {
-	static slot_brush_t *row_brush = NULL; // Default brush the rows paint with, the project brush nodes do not show
-	if (row_brush == NULL) {
-		row_brush = slot_brush_create(NULL);
-	}
-	slot_brush_t *_brush = g_context->brush;
-	g_context->brush     = row_brush;
-	brush_settings_t saved;
-	brush_library_capture_settings(&saved);
-	gpu_texture_t *saved_tip = brush_library_tip_image_get();
-	brush_library_apply_settings(s, tip);
-	util_render_brush_wave_radius = 0.1 + 0.3 * s->preview_size;
-	make_material_parse_brush();
-	brush_output_node_parse_inputs();
-	util_render_make_brush_preview();
-	util_render_brush_wave_radius = 0.25;
-
-	gpu_texture_t *src = g_context->brush->image_wave;
-	if (src != NULL) {
-		if (*dst == NULL) {
-			*dst = gpu_create_render_target(src->width, src->height, GPU_TEXTURE_FORMAT_RGBA32);
-		}
-		draw_saved_t saved_draw = draw_suspend();
-		draw_begin(*dst, true, 0x00000000);
-		draw_set_color(0xffffffff);
-		draw_image(src, 0, 0);
-		draw_end();
-		draw_resume(saved_draw);
-	}
-
-	g_context->brush = _brush;
-	brush_library_apply_settings(&saved, saved_tip);
-	make_material_parse_brush();
-	brush_output_node_parse_inputs();
-}
-
-// Draws a stroke strip so its middle band fills the rectangle, keeping its aspect
-void tab_brushes_draw_stroke(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h) {
-	if (img == NULL || w <= 0 || h <= 0) {
-		return;
-	}
-	f32 band = (h / w) / util_render_brush_wave_strip;
-	f32 sh   = img->height * (band < 1.0 ? band : 1.0);
-	f32 sy   = (img->height - sh) / 2.0;
-	draw_set_color(0xffffffff);
-	draw_scaled_sub_image(img, 0, sy, img->width, sh, x, y, w, h);
-}
-
 // A long press: iron_ui turns a still touch into a right release where it was held
 static bool tab_brushes_long_pressed(f32 h) {
 	return g_ui->input_released_r && ui_get_hover(h);
@@ -98,7 +49,7 @@ static ui_state_t tab_brushes_row(char *name, gpu_texture_t *img, bool selected,
 		draw_set_font(g_ui->ops->font, g_ui->font_size);
 		f32 ty = y + pad / 2 + (name_h - draw_font_height(g_ui->ops->font, g_ui->font_size)) / 2.0;
 		draw_string(name, x + pad, ty);
-		tab_brushes_draw_stroke(img, x + pad, y + pad / 2 + name_h, wave_w, wave_h);
+		brush_previews_draw_stroke(img, x + pad, y + pad / 2 + name_h, wave_w, wave_h);
 	}
 	ui_end_element_of_size(h);
 	return state;

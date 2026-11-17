@@ -376,7 +376,7 @@ void base_update(void *_) {
 				tab_swatches_accept_swatch_drop(base_drag_swatch);
 			}
 			else if (context_in_materials()) {
-				tab_materials_accept_swatch_drop(base_drag_swatch);
+				slot_material_new_from_swatch(base_drag_swatch);
 			}
 			else if (context_in_3d_view()) {
 				i32 color = base_drag_swatch->base;
@@ -1115,4 +1115,38 @@ string_array_t *base_get_viewport_mode_shortcuts() {
 	}
 
 	return shortcuts;
+}
+
+// Full screen progress bar of the project import and export, drawn and presented on its own
+static f64 base_progress_last = 0.0;
+
+void base_draw_progress(f32 progress) {
+	if (gpu_in_use) {
+		return;
+	}
+	f64 t = iron_time();
+	if (progress > 0.0 && progress < 1.0 && t - base_progress_last < 1.0 / 30.0) {
+		return;
+	}
+	base_progress_last = t;
+	i32  w                  = iron_window_width();
+	i32  h                  = iron_window_height();
+	i32  bw                 = w / 4;
+	i32  bh                 = math_floor(16 * UI_SCALE()); // Centered on the screen
+	i32  bx                 = (w - bw) / 2;
+	i32  by                 = (h - bh) / 2;
+	bool first_frame        = g_context->frame == 0;
+	// The frame is presented on its own, the screen holds undefined content unless it is cleared
+	if (base_startup_covering()) {
+		draw_begin(NULL, true, 0xff000000);
+	}
+	else {
+		draw_begin(NULL, first_frame, 0xff202020);
+	}
+	draw_set_color(g_theme->BUTTON_COL);
+	draw_filled_rect(bx, by, bw, bh);
+	draw_set_color(0xffe0393e); // Red
+	draw_filled_rect(bx, by, bw * progress, bh);
+	draw_end();
+	gpu_present();
 }

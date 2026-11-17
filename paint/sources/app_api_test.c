@@ -29,7 +29,7 @@ bool app_layer_add(void) {
 
 bool app_layer_can_delete(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	return l != NULL && tab_layers_can_delete(l);
+	return l != NULL && layers_can_delete(l);
 }
 
 // Layer properties and mask effects
