@@ -113,13 +113,20 @@ struct MaskEffectsSection: View {
 		}
 	}
 
+	// Its source layer when it reads one, its blending, its opacity
 	private func summary(_ e: MaskEffect) -> String {
-		if e.isFilter {
-			return percent(e.opacity)
+		var parts: [String] = []
+		if let source = e.settings.first(where: { $0.kind == APP_MASK_PARAM_LAYER && $0.shown(in: e) }),
+		   let layer = LayersStore.shared.layer(Int32(e.params[Int(source.index)])) {
+			parts.append(layer.name)
 		}
-		let names = LayersStore.maskBlendingNames
-		let b     = Int(e.blending)
-		return "\(names.indices.contains(b) ? names[b] : names[0]) · \(percent(e.opacity))"
+		if !e.isFilter {
+			let names = LayersStore.maskBlendingNames
+			let b     = Int(e.blending)
+			parts.append(names.indices.contains(b) ? names[b] : names[0])
+		}
+		parts.append(percent(e.opacity))
+		return parts.joined(separator: " · ")
 	}
 }
 
