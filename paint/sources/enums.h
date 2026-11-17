@@ -254,7 +254,7 @@ typedef enum {
 // Saved by value in layer_data_t.mask_effects: append only.
 typedef enum {
 	MASK_EFFECT_PAINT  = 0, // The mask's own texpaint, exactly one per stack
-	MASK_EFFECT_FILL   = 1, // params[0]: value
+	MASK_EFFECT_FILL   = 1, // params[0]: value, [1] source (mask_fill_source_t), the rest MASK_FILL_*
 	MASK_EFFECT_LEVELS = 2, // params: in low, in high, gamma, out low, out high
 	MASK_EFFECT_INVERT = 3,
 	// Generators (util_mask_generators.c): sources computed from the mesh, params[12..15] are their noise
@@ -269,6 +269,8 @@ typedef enum {
 	MASK_EFFECT_HISTOGRAM    = 12, // Filter: position, contrast
 	MASK_EFFECT_BLUR         = 13, // Filter: radius (seam aware)
 	MASK_EFFECT_ANCHOR       = 14, // Another layer: params[0] its id (saved as its index in the file), [1] channel
+	MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, cavity, AO, world normal and position combined, MASK_BUILDER_*
+	MASK_EFFECT_AO           = 16, // Generator: side (0 occluded, 1 open), amount, sharpness
 	MASK_EFFECT_COUNT,
 } mask_effect_type_t;
 
@@ -280,12 +282,44 @@ typedef enum {
 
 #define MASK_ID_SELECTION_MAX 15 // Parts one ID selection holds
 
+// Fill: a value, or an image or grunge projected on the mesh (then rendered like a generator)
+typedef enum {
+	MASK_FILL_VALUE  = 0,
+	MASK_FILL_IMAGE  = 1,
+	MASK_FILL_GRUNGE = 2,
+} mask_fill_source_t;
+
+#define MASK_FILL_SOURCE     1
+#define MASK_FILL_IMAGE_REF  2  // Index in the project's assets, -1 none
+#define MASK_FILL_PATTERN    3  // Grunge pattern
+#define MASK_FILL_PROJECTION 4  // 0 uv, 1 triplanar
+#define MASK_FILL_SCALE      5  // Repeats over the uvs, or over the mesh's largest extent
+#define MASK_FILL_ROTATION   6  // Degrees
+#define MASK_FILL_BALANCE    7
+#define MASK_FILL_CONTRAST   8
+#define MASK_FILL_INVERT     9
+#define MASK_FILL_SEED       10 // Grunge
+
+// Mask Builder settings
+#define MASK_BUILDER_BALANCE       0
+#define MASK_BUILDER_CONTRAST      1
+#define MASK_BUILDER_EDGES         2  // Weight of the convex curvature
+#define MASK_BUILDER_CAVITY        3  // Of the concave curvature
+#define MASK_BUILDER_AO            4  // Of the occlusion
+#define MASK_BUILDER_NORMAL        5  // Of the faces turned to MASK_BUILDER_NORMAL_DIR
+#define MASK_BUILDER_NORMAL_DIR    6  // +Y, -Y, +X, -X, +Z, -Z
+#define MASK_BUILDER_POSITION      7  // Of the gradient toward MASK_BUILDER_POSITION_DIR
+#define MASK_BUILDER_POSITION_DIR  8
+#define MASK_BUILDER_MICRO_DETAILS 9  // The normal map's details in the curvature and world normal
+#define MASK_BUILDER_INVERT        10
+
 // Kinds of mask_effect_param_t
 typedef enum {
 	MASK_PARAM_SLIDER = 0,
 	MASK_PARAM_CHOICE = 1, // Whole values 0..count-1 of the comma separated options
 	MASK_PARAM_SEED   = 2, // A Shuffle button
 	MASK_PARAM_LAYER  = 3, // A layer id of the project, -1 for none (anchor)
+	MASK_PARAM_IMAGE  = 4, // An index in the project's assets, -1 for none (fill)
 } mask_param_kind_t;
 
 typedef enum {

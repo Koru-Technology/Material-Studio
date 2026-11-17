@@ -1292,6 +1292,11 @@ char                *mask_effect_name(i32 type);
 char                *mask_blend_name(i32 blending);
 bool                 mask_effect_is_filter(i32 type);
 bool                 mask_effect_is_generator(i32 type);
+bool                 mask_effect_is_rendered(mask_effect_t *e);
+i32                  mask_effect_fill_source(mask_effect_t *e);
+asset_t             *mask_effect_image(mask_effect_t *e);
+bool                 mask_stack_uses_asset(i32 index);
+void                 mask_stack_asset_removed(i32 index);
 mask_effect_t        mask_effect_default(i32 type);
 i32                  mask_stack_count(slot_layer_t *m);
 mask_effect_t        mask_stack_get(slot_layer_t *m, i32 i);
@@ -1308,7 +1313,7 @@ gpu_texture_t       *mask_stack_get_scratch(i32 w, i32 h);
 void                 mask_stack_layer_changed(slot_layer_t *l);
 bool                 slot_layer_alive(slot_layer_t *l);
 slot_layer_t        *mask_stack_layer_by_id(i32 id);
-f32_array_t         *mask_stack_anchors_to_index(f32_array_t *effects, slot_layer_t **layers, i32 count);
+f32_array_t         *mask_stack_effects_to_file(f32_array_t *effects, slot_layer_t **layers, i32 count, bool images);
 void                 mask_stack_anchors_from_index(f32_array_t *effects, slot_layer_t **layers, i32 count);
 gpu_texture_t       *slot_layer_mask_texture(slot_layer_t *m);
 void                 mask_stack_evaluate_dirty();
@@ -1511,6 +1516,7 @@ i64   util_texture_tracked_peak();
 void  util_texture_tracked_peak_reset();
 void util_texture_delete(asset_t *asset);
 void util_texture_delete_unused();
+bool util_texture_is_used(i32 index);
 char *util_texture_mesh_maps_of(asset_t *asset);
 
 // ---- util/util_touch.c ----

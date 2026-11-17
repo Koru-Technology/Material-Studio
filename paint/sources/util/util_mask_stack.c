@@ -22,7 +22,22 @@
 		"Seed", MASK_EFFECT_NOISE_SEED, MASK_PARAM_SEED, 0.0, 1000.0, 0.0, NULL                                             \
 	}
 
-static mask_effect_param_t mask_params_fill[]   = {{"Value", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL}};
+// A fill's settings past its source show for some sources (shown_by, shown_when)
+#define MASK_FILL_TEXTURED ((1u << MASK_FILL_IMAGE) | (1u << MASK_FILL_GRUNGE))
+static mask_effect_param_t mask_params_fill[] = {
+    {"Source", MASK_FILL_SOURCE, MASK_PARAM_CHOICE, 0.0, 2.0, 0.0, "Value,Image,Grunge"},
+    {"Value", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL, MASK_FILL_SOURCE, 1u << MASK_FILL_VALUE},
+    {"Image", MASK_FILL_IMAGE_REF, MASK_PARAM_IMAGE, -1.0, 1000000.0, -1.0, NULL, MASK_FILL_SOURCE, 1u << MASK_FILL_IMAGE},
+    {"Grunge", MASK_FILL_PATTERN, MASK_PARAM_CHOICE, 0.0, 5.0, 0.0, "Spots,Scratches,Leaks,Rust,Speckles,Cracks",
+     MASK_FILL_SOURCE, 1u << MASK_FILL_GRUNGE},
+    {"Projection", MASK_FILL_PROJECTION, MASK_PARAM_CHOICE, 0.0, 1.0, 0.0, "UV,Triplanar", MASK_FILL_SOURCE, MASK_FILL_TEXTURED},
+    {"Scale", MASK_FILL_SCALE, MASK_PARAM_SLIDER, 0.25, 16.0, 1.0, NULL, MASK_FILL_SOURCE, MASK_FILL_TEXTURED},
+    {"Rotation", MASK_FILL_ROTATION, MASK_PARAM_SLIDER, 0.0, 360.0, 0.0, NULL, MASK_FILL_SOURCE, MASK_FILL_TEXTURED},
+    {"Balance", MASK_FILL_BALANCE, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL, MASK_FILL_SOURCE, MASK_FILL_TEXTURED},
+    {"Contrast", MASK_FILL_CONTRAST, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL, MASK_FILL_SOURCE, MASK_FILL_TEXTURED},
+    {"Invert", MASK_FILL_INVERT, MASK_PARAM_CHOICE, 0.0, 1.0, 0.0, "Off,On", MASK_FILL_SOURCE, MASK_FILL_TEXTURED},
+    {"Seed", MASK_FILL_SEED, MASK_PARAM_SEED, 0.0, 1000.0, 0.0, NULL, MASK_FILL_SOURCE, 1u << MASK_FILL_GRUNGE},
+};
 static mask_effect_param_t mask_params_levels[] = {
     {"In Low", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},  {"In High", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL},
     {"Gamma", 2, MASK_PARAM_SLIDER, 0.1, 10.0, 1.0, NULL},  {"Out Low", 3, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
@@ -74,6 +89,26 @@ static mask_effect_param_t mask_params_thickness[] = {
     {"Sharpness", 2, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     MASK_NOISE_PARAMS,
 };
+static mask_effect_param_t mask_params_mask_builder[] = {
+    {"Balance", MASK_BUILDER_BALANCE, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    {"Contrast", MASK_BUILDER_CONTRAST, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    {"Edges", MASK_BUILDER_EDGES, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL},
+    {"Cavity", MASK_BUILDER_CAVITY, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"Ambient Occlusion", MASK_BUILDER_AO, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"World Normal", MASK_BUILDER_NORMAL, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"Normal Direction", MASK_BUILDER_NORMAL_DIR, MASK_PARAM_CHOICE, 0.0, 5.0, 0.0, "+Y,-Y,+X,-X,+Z,-Z"},
+    {"Position", MASK_BUILDER_POSITION, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"Position Direction", MASK_BUILDER_POSITION_DIR, MASK_PARAM_CHOICE, 0.0, 5.0, 0.0, "+Y,-Y,+X,-X,+Z,-Z"},
+    {"Micro Details", MASK_BUILDER_MICRO_DETAILS, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"Invert", MASK_BUILDER_INVERT, MASK_PARAM_CHOICE, 0.0, 1.0, 0.0, "Off,On"},
+    MASK_NOISE_PARAMS,
+};
+static mask_effect_param_t mask_params_ao[] = {
+    {"Side", 0, MASK_PARAM_CHOICE, 0.0, 1.0, 0.0, "Occluded,Open"},
+    {"Amount", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    {"Sharpness", 2, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
+    MASK_NOISE_PARAMS,
+};
 static mask_effect_param_t mask_params_histogram[] = {
     {"Position", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     {"Contrast", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
@@ -115,6 +150,10 @@ mask_effect_param_t *mask_effect_params(i32 type, i32 *count) {
 		MASK_PARAMS_OF(mask_params_blur);
 	case MASK_EFFECT_ANCHOR:
 		MASK_PARAMS_OF(mask_params_anchor);
+	case MASK_EFFECT_MASK_BUILDER:
+		MASK_PARAMS_OF(mask_params_mask_builder);
+	case MASK_EFFECT_AO:
+		MASK_PARAMS_OF(mask_params_ao);
 	}
 	*count = 0;
 	return NULL;
@@ -139,7 +178,7 @@ f32 mask_effect_param_clamp(i32 type, i32 index, f32 value) {
 		return value;
 	}
 	f32 v = math_max(p->min, math_min(p->max, value));
-	return p->kind == MASK_PARAM_SLIDER ? v : math_floor(v + 0.5); // Choices, seeds and layer ids are whole
+	return p->kind == MASK_PARAM_SLIDER ? v : math_floor(v + 0.5); // Choices, seeds, layer ids and images are whole
 }
 
 // Painter's rule: a layer or group has at most one mask, anything more goes into that mask's effects. Masks of older
@@ -184,6 +223,10 @@ char *mask_effect_name(i32 type) {
 		return "Blur";
 	case MASK_EFFECT_ANCHOR:
 		return "Anchor";
+	case MASK_EFFECT_MASK_BUILDER:
+		return "Mask Builder";
+	case MASK_EFFECT_AO:
+		return "Ambient Occlusion";
 	}
 	return "Effect";
 }
@@ -203,7 +246,27 @@ bool mask_effect_is_filter(i32 type) {
 // Generators are computed from the mesh (util_mask_generators.c)
 bool mask_effect_is_generator(i32 type) {
 	return (type >= MASK_EFFECT_EDGE_WEAR && type <= MASK_EFFECT_DIRECTIONAL) ||
-	       (type >= MASK_EFFECT_NOISE && type <= MASK_EFFECT_THICKNESS);
+	       (type >= MASK_EFFECT_NOISE && type <= MASK_EFFECT_THICKNESS) || type == MASK_EFFECT_MASK_BUILDER || type == MASK_EFFECT_AO;
+}
+
+// mask_fill_source_t of a fill, -1 for another effect
+i32 mask_effect_fill_source(mask_effect_t *e) {
+	return e->type == MASK_EFFECT_FILL ? (i32)math_floor(e->params[MASK_FILL_SOURCE] + 0.5) : -1;
+}
+
+// Rendered from the mesh into an output cached on the mask (util_mask_generators.c): the generators, and fills of an
+// image or grunge projected on the mesh
+bool mask_effect_is_rendered(mask_effect_t *e) {
+	return mask_effect_is_generator(e->type) || mask_effect_fill_source(e) > MASK_FILL_VALUE;
+}
+
+// The image fill e reads, NULL for none (another source, none picked, or deleted)
+asset_t *mask_effect_image(mask_effect_t *e) {
+	if (mask_effect_fill_source(e) != MASK_FILL_IMAGE) {
+		return NULL;
+	}
+	i32 i = (i32)math_floor(e->params[MASK_FILL_IMAGE_REF] + 0.5);
+	return i >= 0 && i < g_project->_->assets->length ? g_project->_->assets->buffer[i] : NULL;
 }
 
 mask_effect_t mask_effect_default(i32 type) {
@@ -560,21 +623,27 @@ static gpu_texture_t *mask_stack_anchor_source(slot_layer_t *m, mask_effect_t *e
 }
 
 // Saving: the effects with each anchor's layer id written as the index of that layer in layers, -1 when it is not among
-// them (a smart material keeps some layers). Layer ids are not saved, loading assigns new ones. The effects themselves
-// when there is no anchor.
-f32_array_t *mask_stack_anchors_to_index(f32_array_t *effects, slot_layer_t **layers, i32 count) {
+// them (a smart material keeps some layers). Layer ids are not saved, loading assigns new ones. Image fills keep their
+// asset index in a project (its assets are saved in order), none in a smart material (images: false), it has no assets.
+// The effects themselves when nothing changes.
+f32_array_t *mask_stack_effects_to_file(f32_array_t *effects, slot_layer_t **layers, i32 count, bool images) {
 	if (effects == NULL) {
 		return NULL;
 	}
 	f32_array_t *out = effects;
 	i32          n   = effects->length / MASK_EFFECT_STRIDE;
 	for (i32 i = 0; i < n; ++i) {
-		f32 *f = effects->buffer + i * MASK_EFFECT_STRIDE;
-		if ((i32)f[0] != MASK_EFFECT_ANCHOR) {
+		f32 *f    = effects->buffer + i * MASK_EFFECT_STRIDE;
+		i32  type = (i32)f[0];
+		if (type != MASK_EFFECT_ANCHOR && (type != MASK_EFFECT_FILL || images)) {
 			continue;
 		}
 		if (out == effects) {
 			out = mask_stack_copy_effects(effects);
+		}
+		if (type == MASK_EFFECT_FILL) {
+			out->buffer[i * MASK_EFFECT_STRIDE + 4 + MASK_FILL_IMAGE_REF] = -1.0;
+			continue;
 		}
 		i32 index = -1;
 		for (i32 k = 0; k < count; ++k) {
@@ -599,6 +668,49 @@ void mask_stack_anchors_from_index(f32_array_t *effects, slot_layer_t **layers, 
 		if ((i32)f[0] == MASK_EFFECT_ANCHOR) {
 			i32 index = (i32)f[4];
 			f[4]      = index >= 0 && index < count ? (f32)layers[index]->id : -1.0;
+		}
+	}
+}
+
+// Image fills name their image by its index in the project's assets, as Image Texture nodes do
+
+// Some image fill of a mask reads asset index (util_texture_is_used)
+bool mask_stack_uses_asset(i32 index) {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *m = g_project->_->layers->buffer[i];
+		i32           n = m->mask_effects != NULL ? mask_stack_count(m) : 0;
+		for (i32 k = 0; k < n; ++k) {
+			mask_effect_t e = mask_stack_get(m, k);
+			if (mask_effect_image(&e) == g_project->_->assets->buffer[index]) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+// Asset index is being deleted: fills of it read none, the ones of later assets follow their shift
+void mask_stack_asset_removed(i32 index) {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *m = g_project->_->layers->buffer[i];
+		i32           n = m->mask_effects != NULL ? mask_stack_count(m) : 0;
+		for (i32 k = 0; k < n; ++k) {
+			f32 *f   = m->mask_effects->buffer + k * MASK_EFFECT_STRIDE;
+			f32 *ref = &f[4 + MASK_FILL_IMAGE_REF];
+			if ((i32)f[0] != MASK_EFFECT_FILL || *ref < 0.0) {
+				continue;
+			}
+			i32 r = (i32)math_floor(*ref + 0.5);
+			if (r == index) {
+				*ref = -1.0;
+			}
+			else if (r > index) {
+				*ref = (f32)(r - 1);
+			}
+			else {
+				continue;
+			}
+			mask_stack_mark_dirty(m);
 		}
 	}
 }
@@ -706,7 +818,7 @@ static gpu_texture_t *mask_stack_source(slot_layer_t *m, mask_effect_t *e, f32 *
 	if (e->type == MASK_EFFECT_PAINT) {
 		return m->texpaint;
 	}
-	if (mask_effect_is_generator(e->type)) {
+	if (mask_effect_is_rendered(e)) {
 		return mask_gen_texture(m, *e);
 	}
 	if (e->type == MASK_EFFECT_ID_SELECTION) {
@@ -996,7 +1108,7 @@ void mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t
 		f32            src_w = 1.0;
 		f32            src_h = 1.0;
 		gpu_texture_t *s     = NULL;
-		if (mask_effect_is_generator(e.type)) {
+		if (mask_effect_is_rendered(&e)) {
 			mask_gen_render_rect(m, e, gen_scratch, gen_out, rect);
 			s = gen_out;
 		}

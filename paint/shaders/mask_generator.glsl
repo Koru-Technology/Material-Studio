@@ -1,8 +1,9 @@
 #version 450
 
-// One mask generator (util_mask_generators.c): the paint mesh drawn flat in uv space, R the generator's value and A the
-// coverage, dilated afterwards by mask_generator_dilate. Axes are Y up as the user sees them, the engine is Z up.
-// Patterns come from the 3d position, seamless across uv islands.
+// One mask generator or textured fill (util_mask_generators.c): the paint mesh drawn flat in uv space, R the value and A
+// the coverage, dilated afterwards by mask_generator_dilate. Axes are Y up as the user sees them, the engine is Z up.
+// Patterns come from the 3d position, seamless across uv islands. The registered position, world normal and normal maps
+// (baked by the app: object space, Z up) stand in for the mesh's own where they are registered.
 layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 0) mat3 N;            // Normal matrix of the drawn object (Directional, Light), d * N takes a world
 	                                      // direction into the object (Streaks)
@@ -16,17 +17,24 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 148) int uv_map;      // 1: the second uv set, in_tex.zw
 	layout(offset = 152) float noise_inv; // 1 / largest extent, isotropic noise
 	layout(offset = 160) vec4 uv_rect;    // The part of the mask drawn (u0, v0, du, dv), 0 0 1 1 the whole (export tiles)
+	layout(offset = 176) int maps;        // Registered mesh maps: 1 position, 2 world normal, 4 normal
+	layout(offset = 180) float map_scale; // Position map units to packed position units (1 / scale_pos)
 } constants;
 
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
 layout(set = 0, binding = 2) uniform texture2D texcurv; // Signed: 0.5 flat, brighter ridges, darker grooves
 layout(set = 0, binding = 3) uniform texture2D texao;
 layout(set = 0, binding = 4) uniform texture2D texthick; // White thick
+layout(set = 0, binding = 5) uniform texture2D texpos;   // Position map: object position * 0.5 + 0.5
+layout(set = 0, binding = 6) uniform texture2D texwnor;  // World normal map: object normal * 0.5 + 0.5
+layout(set = 0, binding = 7) uniform texture2D texnor;   // Tangent space normal map
+layout(set = 0, binding = 8) uniform texture2D teximg;   // Image fill
 
 layout(location = 0) VARYING Varyings {
 	vec3 pos;
 	vec3 nor;
-	vec2 uv; // First uv set, the mesh maps are baked in it
+	vec2 uv;  // First uv set, the mesh maps are baked in it
+	vec2 uvl; // The uv set of the layer, the fill's uv projection
 } VARYING_NAME;
 
 #ifdef VERT
@@ -41,6 +49,7 @@ void main() {
 	vout.pos    = in_pos.xyz;
 	vout.nor    = vec3(in_nor.xy, in_pos.w);
 	vout.uv     = in_tex.xy;
+	vout.uvl    = t;
 }
 #endif
 
@@ -190,13 +199,251 @@ vec3 user_axis(int axis) {
 	return vec3(0.0, -1.0, 0.0);
 }
 
+// Mesh maps
+
+// Tangent space normal ts on the surface of normal n, the tangents solved from the uv derivatives as the normal bake does
+vec3 tangent_to_object(vec3 ts, vec3 n) {
+	vec3  dp1 = dFdx(vin.pos);
+	vec3  dp2 = dFdy(vin.pos);
+	vec2  du1 = dFdx(vin.uv);
+	vec2  du2 = dFdy(vin.uv);
+	float s   = du1.x * du2.y - du2.x * du1.y < 0.0 ? -1.0 : 1.0;
+	vec3  tu  = (dp1 * du2.y - dp2 * du1.y) * s;
+	vec3  tv  = (dp2 * du1.x - dp1 * du2.x) * s;
+	vec3  t   = tu - n * dot(n, tu);
+	if (dot(t, t) <= dot(tu, tu) * 0.000001) { // Zero area triangles
+		return n;
+	}
+	t      = normalize(t);
+	vec3 b = tv - n * dot(n, tv) - t * dot(t, tv);
+	if (dot(b, b) <= dot(tv, tv) * 0.000001) {
+		return n;
+	}
+	b = normalize(b);
+	return normalize(t * ts.x - b * ts.y + n * ts.z); // The bake writes (t, -b, n)
+}
+
+// World direction of the surface: the world normal map or the mesh's normal, with the normal map's details by micro
+vec3 surface_normal(float micro) {
+	vec3 n = normalize(vin.nor);
+	if ((constants.maps & 2) != 0) {
+		vec3 m = textureLod(sampler2D(texwnor, sampler_linear), vin.uv, 0.0).rgb * 2.0 - 1.0;
+		if (dot(m, m) > 0.01) {
+			n = normalize(m);
+		}
+	}
+	if (micro > 0.0 && (constants.maps & 4) != 0) {
+		vec3 ts = textureLod(sampler2D(texnor, sampler_linear), vin.uv, 0.0).rgb * 2.0 - 1.0;
+		n       = normalize(mix(n, tangent_to_object(ts, n), micro));
+	}
+	return normalize(constants.N * n);
+}
+
+// Object position in packed units: the position map or the mesh's
+vec3 surface_position() {
+	if ((constants.maps & 1) != 0) {
+		return (textureLod(sampler2D(texpos, sampler_linear), vin.uv, 0.0).rgb * 2.0 - 1.0) * constants.map_scale;
+	}
+	return vin.pos;
+}
+
+// Signed curvature of the normal map, positive on bumps: the divergence of its slopes over a texel each way
+float micro_curvature() {
+	if ((constants.maps & 4) == 0) {
+		return 0.0;
+	}
+	vec2  px = 1.0 / vec2(textureSize(sampler2D(texnor, sampler_linear), 0));
+	float xr = textureLod(sampler2D(texnor, sampler_linear), vin.uv + vec2(px.x, 0.0), 0.0).r;
+	float xl = textureLod(sampler2D(texnor, sampler_linear), vin.uv - vec2(px.x, 0.0), 0.0).r;
+	float yd = textureLod(sampler2D(texnor, sampler_linear), vin.uv + vec2(0.0, px.y), 0.0).g;
+	float yu = textureLod(sampler2D(texnor, sampler_linear), vin.uv - vec2(0.0, px.y), 0.0).g;
+	return clamp(((xr - xl) - (yd - yu)) * 10.0, -1.0, 1.0); // Encoded 0 - 1, y written as -b
+}
+
+// 0 - 1 along a user direction (+Y, -Y, +X, -X, +Z, -Z) over the mesh bounds
+float position_gradient(vec3 p, int d) {
+	vec3  pn = clamp((p - constants.pos_min) * constants.pos_inv, 0.0, 1.0);
+	int   a  = d / 2;
+	float t  = a == 0 ? pn.z : a == 1 ? pn.x : 1.0 - pn.y;
+	return d % 2 == 0 ? t : 1.0 - t;
+}
+
+// World direction of a user direction (+Y, -Y, +X, -X, +Z, -Z)
+vec3 user_direction(int d) {
+	int pair = d / 2;
+	return user_axis(pair == 0 ? 1 : pair == 1 ? 0 : 2) * (d % 2 == 0 ? 1.0 : -1.0);
+}
+
+// Grunge: tileable patterns over 0 - 1 (one repeat), white where the grunge is
+
+float ghash(vec2 c, float seed) {
+	uint h = uint(c.x) * 1597334673u ^ uint(c.y) * 3812015801u ^ uint(seed) * 2798796415u;
+	h      = (h ^ (h >> 16u)) * 2246822519u;
+	h      = (h ^ (h >> 13u)) * 3266489917u;
+	h      = h ^ (h >> 16u);
+	return float(h) / 4294967295.0;
+}
+
+vec2 ghash2(vec2 c, float seed) {
+	return vec2(ghash(c, seed), ghash(c, seed + 7919.0));
+}
+
+// Value noise repeating every per cells
+float gnoise(vec2 p, vec2 per, float seed) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	float a = ghash(mod(i, per), seed);
+	float b = ghash(mod(i + vec2(1.0, 0.0), per), seed);
+	float c = ghash(mod(i + vec2(0.0, 1.0), per), seed);
+	float d = ghash(mod(i + vec2(1.0, 1.0), per), seed);
+	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float gfbm(vec2 p, vec2 per, float seed, int octaves) {
+	float sum = 0.0;
+	float amp = 0.5;
+	float tot = 0.0;
+	for (int i = 0; i < 6; i += 1) {
+		if (i >= octaves) {
+			break;
+		}
+		sum += amp * gnoise(p, per, seed + float(i));
+		tot += amp;
+		p   *= 2.0;
+		per *= 2.0;
+		amp *= 0.5;
+	}
+	return sum / tot;
+}
+
+// Distances to the nearest and second nearest point of a jittered grid repeating every per cells
+vec2 gcells(vec2 p, vec2 per, float seed) {
+	vec2  i  = floor(p);
+	vec2  f  = fract(p);
+	float d1 = 8.0;
+	float d2 = 8.0;
+	for (int yy = -1; yy <= 1; yy += 1) {
+		for (int xx = -1; xx <= 1; xx += 1) {
+			vec2  o = vec2(float(xx), float(yy));
+			float d = length(o + ghash2(mod(i + o, per), seed) - f);
+			if (d < d1) {
+				d2 = d1;
+				d1 = d;
+			}
+			else if (d < d2) {
+				d2 = d;
+			}
+		}
+	}
+	return vec2(d1, d2);
+}
+
+// A straight scratch of random angle and length in most cells, fading at its ends
+float gscratches(vec2 p, vec2 per, float seed) {
+	vec2  i = floor(p);
+	vec2  f = fract(p);
+	float v = 0.0;
+	for (int yy = -1; yy <= 1; yy += 1) {
+		for (int xx = -1; xx <= 1; xx += 1) {
+			vec2 o = vec2(float(xx), float(yy));
+			vec2 c = mod(i + o, per);
+			vec2 h = ghash2(c, seed);
+			vec2 g = ghash2(c, seed + 31.0);
+			if (g.y < 0.3) {
+				continue;
+			}
+			float a   = g.x * 3.14159;
+			vec2  dir = vec2(cos(a), sin(a));
+			vec2  r   = f - o - h;
+			float len = 0.3 + 0.5 * h.y; // Half its length, cells
+			float t   = dot(r, dir);
+			float d   = length(r - dir * clamp(t, -len, len));
+			float end = 1.0 - smoothstep(len * 0.4, len, abs(t));
+			v         = max(v, (1.0 - smoothstep(0.008, 0.03, d)) * end * (0.5 + 0.5 * g.y));
+		}
+	}
+	return v;
+}
+
+float grunge(int pat, vec2 uv, float seed) {
+	float s = seed * 32.0;
+	if (pat == 1) { // Scratches
+		return max(gscratches(uv * 5.0, vec2(5.0), s), gscratches(uv * 12.0, vec2(12.0), s + 1.0) * 0.7);
+	}
+	if (pat == 2) { // Leaks: noise stretched down the v axis
+		float n = gfbm(vec2(uv.x * 40.0, uv.y * 2.0), vec2(40.0, 2.0), s, 5);
+		return smoothstep(0.5, 0.75, n) * (0.6 + 0.4 * gfbm(uv * 8.0, vec2(8.0), s + 8.0, 3));
+	}
+	if (pat == 3) { // Rust: warped blotches and pits
+		vec2  w    = vec2(gfbm(uv * 4.0, vec2(4.0), s + 8.0, 3), gfbm(uv * 4.0, vec2(4.0), s + 16.0, 3)) - 0.5;
+		float n    = gfbm(uv * 5.0 + w * 1.5, vec2(5.0), s, 6);
+		float pits = smoothstep(0.68, 0.76, gfbm(uv * 40.0, vec2(40.0), s + 24.0, 2));
+		return max(smoothstep(0.5, 0.6, n) * (0.75 + 0.25 * gfbm(uv * 20.0, vec2(20.0), s + 4.0, 2)), pits * 0.7);
+	}
+	if (pat == 4) { // Speckles
+		float a = smoothstep(0.62, 0.68, gfbm(uv * 48.0, vec2(48.0), s, 3));
+		float b = smoothstep(0.66, 0.7, gfbm(uv * 96.0, vec2(96.0), s + 8.0, 2)) * 0.7;
+		return max(a, b) * (0.5 + 0.5 * gfbm(uv * 6.0, vec2(6.0), s + 16.0, 3));
+	}
+	if (pat == 5) { // Cracks: edges of warped cells where a broader noise lets them show
+		vec2  w     = vec2(gfbm(uv * 6.0, vec2(6.0), s + 8.0, 3), gfbm(uv * 6.0, vec2(6.0), s + 16.0, 3)) - 0.5;
+		vec2  c     = gcells(uv * 7.0 + w * 1.2, vec2(7.0), s);
+		vec2  cf    = gcells(uv * 16.0 + w * 2.4, vec2(16.0), s + 4.0);
+		float big   = 1.0 - smoothstep(0.0, 0.05, c.y - c.x);
+		float fine  = (1.0 - smoothstep(0.0, 0.04, cf.y - cf.x)) * 0.6;
+		float where = smoothstep(0.35, 0.55, gfbm(uv * 3.0, vec2(3.0), s + 24.0, 3));
+		return max(big, fine) * where;
+	}
+	// Spots: blotches and smaller dots
+	float blot = smoothstep(0.56, 0.66, gfbm(uv * 6.0, vec2(6.0), s, 5));
+	float dots = smoothstep(0.72, 0.78, gfbm(uv * 32.0, vec2(32.0), s + 8.0, 2)) * 0.8;
+	return max(blot, dots);
+}
+
+// Fill value at uv (repeats): the image's gray (alpha keeps stencils), or the grunge
+float fill_source(vec2 uv) {
+	if (int(constants.params0.y + 0.5) == 1) {
+		vec4 c = textureLod(sampler2D(teximg, sampler_linear), uv, 0.0);
+		return dot(c.rgb, vec3(0.299, 0.587, 0.114)) * c.a;
+	}
+	return grunge(int(constants.params0.w + 0.5), fract(uv), constants.params2.z);
+}
+
+vec2 fill_rotate(vec2 uv) {
+	float a = radians(constants.params1.z);
+	float c = cos(a);
+	float s = sin(a);
+	return vec2(c * uv.x - s * uv.y, s * uv.x + c * uv.y);
+}
+
+// Image or grunge projected on the uvs, or on three planes blended by the normal (triplanar)
+float fill(vec3 p) {
+	float scale = constants.params1.y;
+	float x     = 0.0;
+	if (constants.params1.x < 0.5) {
+		x = fill_source((fill_rotate(vin.uvl - 0.5) + 0.5) * scale);
+	}
+	else {
+		vec3 q = (p - constants.pos_min) * constants.noise_inv * scale;
+		vec3 w = pow(abs(normalize(vin.nor)), vec3(4.0, 4.0, 4.0));
+		w      = w / (w.x + w.y + w.z);
+		// Planes upright: the image's v goes down the engine's z
+		x = w.x * fill_source(fill_rotate(vec2(q.y, -q.z))) + w.y * fill_source(fill_rotate(vec2(q.x, -q.z))) +
+		    w.z * fill_source(fill_rotate(q.xy));
+	}
+	float c = constants.params2.x; // Contrast narrows, balance shifts: identity at 0.5, 0
+	x       = clamp((x - (1.0 - constants.params1.w)) / (1.0 - 0.98 * c) + 0.5, 0.0, 1.0);
+	return constants.params2.y > 0.5 ? 1.0 - x : x;
+}
+
 void main() {
 	vec3 p = vin.pos;
 
 	// Noise from the 3d position: seamless across uv islands, centred on 0
 	float noise  = 0.0;
 	float amount = constants.params3.y;
-	if (amount > 0.0 && constants.type != 9) {
+	if (amount > 0.0 && constants.type != 9 && constants.type != 1) { // Not 3D Noise's distortion, fills have none
 		vec3 q = (p - constants.pos_min) * constants.noise_inv * constants.params3.x;
 		q      = q + fract(vec3(0.1031, 0.1030, 0.0973) * constants.params3.z) * 97.0;
 		noise  = (tex_noise_fbm(q, constants.params3.w - 1.0, 0.5, 2.0) - 0.5) * 2.0 * amount;
@@ -214,9 +461,12 @@ void main() {
 		float cavity = max(0.5 - c, 0.0) * 2.0;
 		v            = sharp(mix(cavity, 1.0 - ao, constants.params0.z) + noise - (1.0 - constants.params0.x), constants.params0.y);
 	}
+	else if (constants.type == 1) { // Fill of an image or grunge
+		v = fill(p);
+	}
 	else if (constants.type == 6) { // Position Gradient
 		int   axis = int(constants.params0.x + 0.5);
-		vec3  pn   = (p - constants.pos_min) * constants.pos_inv; // 0 - 1 over the bounds
+		vec3  pn   = (surface_position() - constants.pos_min) * constants.pos_inv; // 0 - 1 over the bounds
 		float t    = axis == 0 ? pn.x : axis == 1 ? pn.z : 1.0 - pn.y;
 		t          = t + noise;
 		float d    = constants.params0.z - constants.params0.y;
@@ -229,10 +479,8 @@ void main() {
 		}
 	}
 	else if (constants.type == 7) { // Directional
-		int  d    = int(constants.params0.x + 0.5); // +Y, -Y, +X, -X, +Z, -Z
-		int  pair = d / 2;
-		vec3 dir  = user_axis(pair == 0 ? 1 : pair == 1 ? 0 : 2) * (d % 2 == 0 ? 1.0 : -1.0);
-		vec3 n   = normalize(constants.N * vin.nor);
+		vec3 dir = user_direction(int(constants.params0.x + 0.5));
+		vec3 n   = surface_normal(0.0);
 		v        = sharp(dot(n, dir) * 0.5 + 0.5 + noise - (1.0 - constants.params0.y), constants.params0.z);
 	}
 	else if (constants.type == 9) { // 3D Noise: pattern, coverage, sharpness
@@ -251,7 +499,7 @@ void main() {
 		float az = radians(constants.params0.x);
 		float el = radians(constants.params0.y);
 		vec3  l  = vec3(cos(el) * sin(az), -cos(el) * cos(az), sin(el)); // User (sin az, sin el, cos az), Y up
-		vec3  n  = normalize(constants.N * vin.nor);
+		vec3  n  = surface_normal(0.0);
 		float s  = constants.params0.z;
 		float ao = textureLod(sampler2D(texao, sampler_linear), vin.uv, 0.0).r;
 		v        = clamp((dot(n, l) + s) / (1.0 + s), 0.0, 1.0) * mix(1.0, ao, constants.params0.w) + noise;
@@ -260,6 +508,26 @@ void main() {
 		float t = textureLod(sampler2D(texthick, sampler_linear), vin.uv, 0.0).r;
 		float x = constants.params0.x > 0.5 ? t : 1.0 - t;
 		v       = sharp(x + noise - (1.0 - constants.params0.y), constants.params0.z);
+	}
+
+	else if (constants.type == 15) { // Mask Builder: the parts weighted and joined (screen), then balance and contrast
+		float c     = textureLod(sampler2D(texcurv, sampler_linear), vin.uv, 0.0).r - 0.5;
+		float micro = constants.params2.y;
+		c           = clamp(c + micro_curvature() * micro * 0.5, -0.5, 0.5);
+		float ao    = textureLod(sampler2D(texao, sampler_linear), vin.uv, 0.0).r;
+		float nd    = max(dot(surface_normal(micro), user_direction(int(constants.params1.z + 0.5))), 0.0);
+		float pg    = position_gradient(surface_position(), int(constants.params2.x + 0.5));
+		float keep  = (1.0 - constants.params0.z * max(c, 0.0) * 2.0) * (1.0 - constants.params0.w * max(-c, 0.0) * 2.0) *
+		             (1.0 - constants.params1.x * (1.0 - ao)) * (1.0 - constants.params1.y * nd) * (1.0 - constants.params1.w * pg);
+		v = sharp(1.0 - keep + noise - (1.0 - constants.params0.x), constants.params0.y);
+		if (constants.params2.z > 0.5) {
+			v = 1.0 - v;
+		}
+	}
+	else if (constants.type == 16) { // Ambient Occlusion: side (0 occluded, 1 open), amount, sharpness
+		float ao = textureLod(sampler2D(texao, sampler_linear), vin.uv, 0.0).r;
+		float x  = constants.params0.x > 0.5 ? ao : 1.0 - ao;
+		v        = sharp(x + noise - (1.0 - constants.params0.y), constants.params0.z);
 	}
 
 	v          = clamp(v, 0.0, 1.0);

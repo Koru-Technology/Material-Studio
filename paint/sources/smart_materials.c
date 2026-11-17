@@ -255,7 +255,7 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 		json_encode_f32("height_blend_offset", l->height_blend_offset);
 		json_encode_f32("height_blend_reach", l->height_blend_reach);
 		if (l->mask_effects != NULL) {
-			json_encode_string("mask_effects", smart_materials_floats_to_string(mask_stack_anchors_to_index(l->mask_effects, layers->buffer, layers->length)));
+			json_encode_string("mask_effects", smart_materials_floats_to_string(mask_stack_effects_to_file(l->mask_effects, layers->buffer, layers->length, false)));
 		}
 		json_encode_end_object();
 	}

@@ -1079,7 +1079,7 @@ static bool export_tiled_has_generator(slot_layer_t *m) {
 	i32 n = m->mask_effects != NULL ? mask_stack_count(m) : 0;
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
-		if (e.visible && mask_effect_is_generator(e.type)) {
+		if (e.visible && mask_effect_is_rendered(&e)) {
 			return true;
 		}
 	}

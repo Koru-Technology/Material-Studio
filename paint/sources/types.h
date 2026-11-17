@@ -268,7 +268,9 @@ typedef struct mask_effect_param {
 	f32   min;
 	f32   max;
 	f32   def;
-	char *options; // MASK_PARAM_CHOICE: "X,Y,Z"
+	char *options;    // MASK_PARAM_CHOICE: "X,Y,Z"
+	i32   shown_by;   // The choice setting (a params index) it depends on, read when shown_when is not 0
+	u32   shown_when; // Bit v set: shown while params[shown_by] is v. 0: always shown
 } mask_effect_param_t;
 
 typedef struct slot_font {

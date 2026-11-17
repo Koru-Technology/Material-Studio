@@ -127,6 +127,8 @@ struct MaskParam: Identifiable {
 	let kind: app_mask_param_kind_t
 	let range: ClosedRange<Float>
 	let options: [String] // Choices
+	let shownBy: Int32    // The choice it depends on, when shownWhen is not 0
+	let shownWhen: UInt32 // Bit v: shown while params[shownBy] is v, 0 always
 
 	var id: Int32 {
 		index
@@ -134,6 +136,15 @@ struct MaskParam: Identifiable {
 
 	var isNoise: Bool {
 		index >= APP_MASK_NOISE_FIRST
+	}
+
+	// Shown for the effect's current choices (a Fill's Image setting only for the Image source)
+	func shown(in effect: MaskEffect) -> Bool {
+		guard shownWhen != 0, effect.params.indices.contains(Int(shownBy)) else {
+			return true
+		}
+		let v = Int(effect.params[Int(shownBy)].rounded())
+		return v >= 0 && v < 32 && shownWhen & (1 << UInt32(v)) != 0
 	}
 }
 
@@ -166,6 +177,7 @@ final class LayersStore: ChangeOnly {
 	private(set) var visibleLayers: [LayerRow] = [] // Without the children of folded groups and layers
 	private(set) var thumbnailsVersion: UInt32 = 0
 	private(set) var materialNames: [String] = [] // Project materials, for the fill material picker
+	private(set) var imageNames: [String] = []    // Project images, for a fill effect's image picker
 	private(set) var canNew: Set<Int32> = []       // app_layer_new_t kinds the "+" menu enables
 
 	@ObservationIgnored private var layersSignature: UInt32 = 0
@@ -179,7 +191,11 @@ final class LayersStore: ChangeOnly {
 	// The Add Effect menu's sections, all types but Paint
 	static let effectSources: [Int32] = (1..<app_mask_effect_type_count()).filter { !app_mask_effect_type_is_filter($0) && !app_mask_effect_type_is_generator($0) }
 	static let effectFilters: [Int32] = (1..<app_mask_effect_type_count()).filter { app_mask_effect_type_is_filter($0) }
-	static let effectGenerators: [Int32] = (1..<app_mask_effect_type_count()).filter { app_mask_effect_type_is_generator($0) }
+	static let effectGenerators: [Int32] = { // The Mask Builder first, it combines the others
+		let all = (1..<app_mask_effect_type_count()).filter { app_mask_effect_type_is_generator($0) }
+		let builder = Int32(APP_MASK_EFFECT_MASK_BUILDER.rawValue)
+		return all.filter { $0 == builder } + all.filter { $0 != builder }
+	}()
 	static let effectParams: [[MaskParam]] = (0..<app_mask_effect_type_count()).map { type in
 		var p = app_mask_param_t()
 		return (0..<app_mask_effect_param_count(type)).compactMap { i in
@@ -188,7 +204,8 @@ final class LayersStore: ChangeOnly {
 			}
 			let options = String(cString: p.options)
 			return MaskParam(name: String(cString: p.name), index: p.index, kind: app_mask_param_kind_t(UInt32(p.kind)),
-			                 range: p.min...p.max, options: options.isEmpty ? [] : options.components(separatedBy: ","))
+			                 range: p.min...p.max, options: options.isEmpty ? [] : options.components(separatedBy: ","),
+			                 shownBy: p.shown_by, shownWhen: p.shown_when)
 		}
 	}
 
@@ -201,6 +218,7 @@ final class LayersStore: ChangeOnly {
 			update(\.layers, rows)
 			update(\.visibleLayers, Self.visible(rows))
 			update(\.materialNames, (0..<app_layer_material_count()).map { String(cString: app_layer_material_name($0)) })
+			update(\.imageNames, (0..<app_mask_image_count()).map { String(cString: app_mask_image_name($0)) })
 			update(\.canNew, Set((APP_LAYER_NEW_PAINT.rawValue...APP_LAYER_NEW_ID_MASK.rawValue).filter { app_layer_can_new(Int32($0)) }.map { Int32($0) }))
 		}
 		if s.previews_version != thumbnailsVersion {

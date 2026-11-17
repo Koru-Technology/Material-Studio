@@ -34,7 +34,9 @@ int THICKNESS   = 11;
 int HISTOGRAM   = 12;
 int BLUR        = 13;
 int ANCHOR      = 14;
-int TYPES       = 15;
+int BUILDER     = 15;
+int AO_GEN      = 16;
+int TYPES       = 17;
 int AO          = 0;
 int THICK_MAP   = 3;
 int NEW_ID_MASK = 13;
@@ -143,18 +145,19 @@ void next() {
 	frame = 0;
 
 	if (step == 0) {
-		check(app_mask_effect_type_count() == TYPES, "fifteen effect types");
+		check(app_mask_effect_type_count() == TYPES, "seventeen effect types");
 		check(!string_equals(app_mask_effect_type_name(ANCHOR), "") && string_equals(app_mask_effect_type_name(TYPES), ""), "type names, empty past the last");
 		bool classified = true;
 		for (int t = 0; t <= TYPES; ++t) {
 			bool filter    = t == LEVELS || t == INVERT || t == HISTOGRAM || t == BLUR;
-			bool generator = (t >= EDGE_WEAR && t <= DIRECTIONAL) || (t >= NOISE && t <= THICKNESS);
+			bool generator = (t >= EDGE_WEAR && t <= DIRECTIONAL) || (t >= NOISE && t <= THICKNESS) || t == BUILDER || t == AO_GEN;
 			classified     = classified && app_mask_effect_type_is_filter(t) == filter && app_mask_effect_type_is_generator(t) == generator;
 		}
 		check(classified, "filters and generators, the rest are sources (Fill, ID Selection, Anchor)");
 		check(app_mask_effect_param_count(ANCHOR) == 2 && app_mask_effect_param_count(ID) == 0, "anchor: layer and channel, ID Selection: picked");
-		check(app_mask_effect_param_count(PAINT) == 0 && app_mask_effect_param_count(FILL) == 1 && app_mask_effect_param_count(LEVELS) == 5,
+		check(app_mask_effect_param_count(PAINT) == 0 && app_mask_effect_param_count(FILL) == 11 && app_mask_effect_param_count(LEVELS) == 5,
 		      "settings of the plain effects");
+		check(app_mask_effect_param_count(BUILDER) == 15 && app_mask_effect_param_count(AO_GEN) == 7, "mask builder and ambient occlusion settings");
 		check(app_mask_effect_param_count(EDGE_WEAR) == 6 && app_mask_effect_param_count(DIRT) == 7, "generators end with the noise block");
 		check(app_mask_blending_count() == 7, "seven mask blendings");
 		check(app_layer_new(0), "paint layer");
@@ -275,6 +278,8 @@ void next() {
 	else if (step == 6) {
 		check(app_layer_previews_version() == pv, "no thumbnail redraws while idle");
 		check(app_mask_set_effect_value(m, index_of(FILL), 0, 0.25), "fill value edited");
+		check(!app_mask_set_effect_value(m, index_of(FILL), 2, app_mask_image_count() * 1.0), "a fill's image past the project's refused");
+		check(app_mask_image_count() == 0 || app_mask_set_effect_value(m, index_of(FILL), 2, 0.0), "a project image taken");
 	}
 	else if (step == 7) {
 		check(app_layer_previews_version() != pv, "the mask thumbnail is redrawn after an effect edit");

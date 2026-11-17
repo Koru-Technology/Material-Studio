@@ -134,6 +134,7 @@ void util_texture_delete(asset_t *asset) {
 	}
 	project_id_map_removed(asset);
 	mesh_maps_asset_removed(asset);
+	mask_stack_asset_removed(index);
 
 	if (data_get_texture(asset->file) == scene_world->_->envmap) {
 		project_set_default_envmap();
@@ -188,6 +189,9 @@ bool util_texture_is_used(i32 index) {
 		return true;
 	}
 	if (g_project->envmap != NULL && string_equals(g_project->envmap, asset->file)) {
+		return true;
+	}
+	if (mask_stack_uses_asset(index)) {
 		return true;
 	}
 

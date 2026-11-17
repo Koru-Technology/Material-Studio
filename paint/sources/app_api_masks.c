@@ -5,10 +5,11 @@
 // Mask effects. The stack is listed bottom first in slot_layer_t.mask_effects, the API counts from the top.
 
 _Static_assert((i32)APP_MASK_EFFECT_DIRECTIONAL == (i32)MASK_EFFECT_DIRECTIONAL && (i32)APP_MASK_EFFECT_ANCHOR == (i32)MASK_EFFECT_ANCHOR &&
-                   APP_MASK_EFFECT_ANCHOR + 1 == MASK_EFFECT_COUNT && APP_MASK_EFFECT_PARAMS == MASK_EFFECT_PARAMS &&
+                   (i32)APP_MASK_EFFECT_MASK_BUILDER == (i32)MASK_EFFECT_MASK_BUILDER && (i32)APP_MASK_EFFECT_AO == (i32)MASK_EFFECT_AO &&
+                   APP_MASK_EFFECT_AO + 1 == MASK_EFFECT_COUNT && APP_MASK_EFFECT_PARAMS == MASK_EFFECT_PARAMS &&
                    APP_MASK_NOISE_FIRST == MASK_EFFECT_NOISE_SCALE && APP_MASK_ID_SELECTION_MAX == MASK_ID_SELECTION_MAX &&
-                   (i32)APP_MASK_PARAM_LAYER == (i32)MASK_PARAM_LAYER,
-               "app_api_layers.h mirrors enums.h");
+                   (i32)APP_MASK_PARAM_LAYER == (i32)MASK_PARAM_LAYER && (i32)APP_MASK_PARAM_IMAGE == (i32)MASK_PARAM_IMAGE,
+               "app_api_masks.h mirrors enums.h");
 
 static slot_layer_t *app_mask_by_id(int32_t id) {
 	slot_layer_t *m = app_layer_by_id(id);
@@ -45,8 +46,9 @@ bool app_mask_effect(int32_t id, int32_t index, app_mask_effect_t *out) {
 	if (i < 0) {
 		return false;
 	}
-	mask_effect_t e = mask_stack_get(m, i);
-	*out            = (app_mask_effect_t){
+	mask_effect_t e       = mask_stack_get(m, i);
+	bool          reads_ao = e.type == MASK_EFFECT_DIRT || e.type == MASK_EFFECT_AO || (e.type == MASK_EFFECT_MASK_BUILDER && e.params[MASK_BUILDER_AO] > 0.0);
+	*out                  = (app_mask_effect_t){
 	    .type            = e.type,
 	    .visible         = e.visible,
 	    .opacity         = e.opacity,
@@ -54,7 +56,7 @@ bool app_mask_effect(int32_t id, int32_t index, app_mask_effect_t *out) {
 	    .is_paint        = e.type == MASK_EFFECT_PAINT,
 	    .is_filter       = mask_effect_is_filter(e.type),
 	    .is_generator    = mask_effect_is_generator(e.type),
-	    .needs_ao        = e.type == MASK_EFFECT_DIRT && mesh_maps_get_asset(MESH_MAP_AO) == NULL,
+	    .needs_ao        = reads_ao && mesh_maps_get_asset(MESH_MAP_AO) == NULL,
 	    .needs_thickness = e.type == MASK_EFFECT_THICKNESS && mesh_maps_get_asset(MESH_MAP_THICKNESS) == NULL,
 	    .needs_id_map    = e.type == MASK_EFFECT_ID_SELECTION && project_id_map_asset() == NULL,
 	};
@@ -99,7 +101,9 @@ bool app_mask_effect_param(int32_t type, int32_t p, app_mask_param_t *out) {
 	    .min     = ps[p].min,
 	    .max     = ps[p].max,
 	    .def     = ps[p].def,
-	    .options = ps[p].options != NULL ? ps[p].options : "",
+	    .options    = ps[p].options != NULL ? ps[p].options : "",
+	    .shown_by   = ps[p].shown_by,
+	    .shown_when = ps[p].shown_when,
 	};
 	return true;
 }
@@ -260,6 +264,14 @@ const char *app_mask_anchor_layer_name(int32_t id, int32_t i) {
 	return app_str(l != NULL ? l->name : NULL);
 }
 
+int32_t app_mask_image_count(void) {
+	return g_project->_->assets->length;
+}
+
+const char *app_mask_image_name(int32_t i) {
+	return app_str(i >= 0 && i < g_project->_->assets->length ? g_project->_->assets->buffer[i]->name : NULL);
+}
+
 // Slider drags
 
 // Field -1 is the opacity, the others are settings of the effect's type
@@ -294,6 +306,9 @@ bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v
 		if (l == NULL || !app_mask_anchors(m, l)) {
 			return false; // Not a layer it can reference
 		}
+	}
+	if (field >= 0 && mask_effect_param_at(e.type, field)->kind == MASK_PARAM_IMAGE && c >= g_project->_->assets->length) {
+		return false; // Not an image of the project
 	}
 	if (!app_dragging(APP_DRAG_MASK_VALUE, id, i, field)) { // A change without a drag: its own undo step
 		if (*f == c) {

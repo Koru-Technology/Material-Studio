@@ -144,6 +144,8 @@ func maskEffectSymbol(_ type: Int32) -> String {
 	case APP_MASK_EFFECT_HISTOGRAM: "chart.bar"
 	case APP_MASK_EFFECT_BLUR: "drop"
 	case APP_MASK_EFFECT_ANCHOR: "link"
+	case APP_MASK_EFFECT_MASK_BUILDER: "square.stack.3d.up"
+	case APP_MASK_EFFECT_AO: "circle.dotted"
 	default: "wand.and.stars"
 	}
 }
@@ -186,8 +188,16 @@ private struct MaskEffectSections: View {
 	let index: Int32
 	let effect: MaskEffect
 
+	private var layers = LayersStore.shared
+
+	init(layerID: Int32, index: Int32, effect: MaskEffect) {
+		self.layerID = layerID
+		self.index = index
+		self.effect = effect
+	}
+
 	var body: some View {
-		let settings = effect.settings
+		let settings = effect.settings.filter { $0.shown(in: effect) }
 		let own      = settings.filter { !$0.isNoise }
 		let noise    = settings.filter(\.isNoise)
 		Section {
@@ -235,7 +245,7 @@ private struct MaskEffectSections: View {
 				Text("Settings")
 			} footer: {
 				if effect.needsAO {
-					Text("No AO map: cavity only")
+					Text(effect.type == Int32(APP_MASK_EFFECT_DIRT.rawValue) ? "No AO map: cavity only" : "No AO map")
 				}
 				else if effect.needsThickness {
 					Text("No thickness map")
@@ -265,6 +275,14 @@ private struct MaskEffectSections: View {
 	private func setting(_ p: MaskParam) -> some View {
 		let value = effect.params[Int(p.index)]
 		switch p.kind {
+		case APP_MASK_PARAM_CHOICE where p.options.count > 4: // Too many for a segmented control
+			Picker(p.name, selection: Binding(get: { Int32(value.rounded()) }, set: { v in
+				AppStore.shared.perform { _ = app_mask_set_effect_value(layerID, index, p.index, Float(v)) }
+			})) {
+				ForEach(Array(p.options.enumerated()), id: \.offset) { i, name in
+					Text(name).tag(Int32(i))
+				}
+			}
 		case APP_MASK_PARAM_CHOICE:
 			VStack(alignment: .leading, spacing: 6) {
 				Text(p.name)
@@ -287,6 +305,19 @@ private struct MaskEffectSections: View {
 				ForEach(anchors, id: \.id) { layer in
 					Text(layer.name).tag(layer.id)
 				}
+			}
+		case APP_MASK_PARAM_IMAGE:
+			let images = layers.imageNames
+			Picker(p.name, selection: Binding(get: { images.indices.contains(Int(value)) ? Int32(value) : -1 }, set: { v in
+				AppStore.shared.perform { _ = app_mask_set_effect_value(layerID, index, p.index, Float(v)) }
+			})) {
+				Text("None").tag(Int32(-1))
+				ForEach(Array(images.enumerated()), id: \.offset) { i, name in
+					Text(name).tag(Int32(i))
+				}
+			}
+			Button("Import Image…", systemImage: "photo.badge.plus") {
+				AppStore.shared.perform { app_command(Int32(APP_COMMAND_IMPORT_TEXTURE.rawValue)) }
 			}
 		case APP_MASK_PARAM_SEED:
 			HStack {

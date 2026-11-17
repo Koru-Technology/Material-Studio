@@ -266,7 +266,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .height_blend_sharpness = l->height_blend_sharpness,
 		                              .height_blend_offset    = l->height_blend_offset,
 		                              .height_blend_reach     = l->height_blend_reach,
-		                              .mask_effects           = mask_stack_anchors_to_index(l->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length),
+		                              .mask_effects           = mask_stack_effects_to_file(l->mask_effects, g_project->_->layers->buffer, g_project->_->layers->length, true),
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
 		                              .uid                = l->uid,
 		                              .timeline           = project_container_writing_history() ? l->timeline : 0,

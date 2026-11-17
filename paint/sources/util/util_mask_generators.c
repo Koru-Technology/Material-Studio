@@ -2,13 +2,14 @@
 #include "util_hash.h"
 
 // Mask generators: effects of a mask stack (util_mask_stack.c) whose source is made from the mesh shape (Edge Wear, Dirt,
-// Position Gradient, Directional, 3D Noise, Light, Thickness). The paint mesh is drawn flat in uv space (mask_generator.glsl) into the stack's
-// scratch, giving each texel its object position and normal, then dilated (mask_generator_dilate.glsl) into an R8
+// Position Gradient, Directional, 3D Noise, Light, Thickness, Mask Builder, Ambient Occlusion), and fills of an image or
+// grunge projected on it. The paint mesh is drawn flat in uv space (mask_generator.glsl) into the stack's scratch, giving
+// each texel its object position and normal and the mesh maps, then dilated (mask_generator_dilate.glsl) into an R8
 // texture cached on the mask. Inside the stack a generator then reads like the paint effect.
 //
 // The cache is keyed by a signature of everything the output depends on: the effect's params, the mask size, uv set and
-// object mask, the drawn object and its transform, and the mesh maps. Painting on the mask reuses it, an edit renders
-// only the generator it changed.
+// object mask, the drawn object and its transform, the mesh maps and a fill's image. Painting on the mask reuses it, an
+// edit renders only the generator it changed.
 
 static gpu_pipeline_t        *mask_gen_pipes[4]; // One a mesh vertex layout
 static gpu_vertex_structure_t mask_gen_layouts[4];
@@ -25,6 +26,8 @@ static i32                    mask_gen_type;
 static i32                    mask_gen_uv_map;
 static i32                    mask_gen_noise_inv;
 static i32                    mask_gen_uv_rect;
+static i32                    mask_gen_maps;
+static i32                    mask_gen_map_scale;
 static i32                    mask_gen_radius_loc;
 static i32                    mask_gen_size_loc;
 static i32                    mask_gen_render_count = 0; // Generator passes so far (tests)
@@ -69,19 +72,28 @@ static mesh_object_t *mask_gen_object(slot_layer_t *m) {
 	return g_context->merged_object != NULL ? g_context->merged_object : g_context->paint_object;
 }
 
+// The mesh maps generators read, bound in this order (mask_generator.glsl texcurv to texnor)
+static const i32 mask_gen_maps_read[] = {MESH_MAP_CURVATURE, MESH_MAP_AO, MESH_MAP_THICKNESS, MESH_MAP_POSITION, MESH_MAP_WORLD_NORMAL, MESH_MAP_NORMAL};
+
 // What every generator depends on: the meshes and the mesh maps
 static u64 mask_gen_epoch() {
 	u64 h    = 1469598103934665603ull;
-	u64 v[5] = {mesh_maps_generation(), mask_gen_mesh_gen, (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_CURVATURE),
-	            (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_AO), (u64)(uintptr_t)mesh_maps_texture_model(MESH_MAP_THICKNESS)};
+	u64 v[2] = {mesh_maps_generation(), mask_gen_mesh_gen};
 	h        = hash_fnv1a(h, v, sizeof(v));
+	for (i32 i = 0; i < (i32)ARRAY_LENGTH(mask_gen_maps_read); ++i) {
+		u64 t = (u64)(uintptr_t)mesh_maps_texture_model(mask_gen_maps_read[i]);
+		h     = hash_fnv1a(h, &t, sizeof(t));
+	}
 	string_array_t *maps = g_project->mesh_maps;
 	for (i32 i = 0; maps != NULL && i < maps->length; ++i) {
-		if (i == MESH_MAP_CURVATURE || i == MESH_MAP_AO || i == MESH_MAP_THICKNESS) {
-			h = mask_gen_hash_string(h, maps->buffer[i]);
-		}
+		h = mask_gen_hash_string(h, maps->buffer[i]);
 	}
 	return h;
+}
+
+// The image a fill reads, NULL for none
+static gpu_texture_t *mask_gen_image(mask_effect_t *e) {
+	return project_get_image(mask_effect_image(e));
 }
 
 static u64 mask_gen_signature(slot_layer_t *m, mask_effect_t *e, u64 epoch) {
@@ -94,7 +106,7 @@ static u64 mask_gen_signature(slot_layer_t *m, mask_effect_t *e, u64 epoch) {
 	                        slot_layer_get_object_mask(m),
 	                        util_mesh_udim_layer(owner) ? 1 : 0,
 	                        mask_gen_radius()};
-	u64            p[2]  = {(u64)(uintptr_t)o, (u64)(uintptr_t)o->data};
+	u64            p[3]  = {(u64)(uintptr_t)o, (u64)(uintptr_t)o->data, (u64)(uintptr_t)mask_gen_image(e)}; // A reimported image is another
 	u64            h     = hash_fnv1a(epoch, v, sizeof(v));
 	h        = hash_fnv1a(h, e->params, sizeof(e->params));
 	h        = hash_fnv1a(h, p, sizeof(p));
@@ -108,7 +120,8 @@ static bool mask_gen_has_generator(slot_layer_t *m) {
 	}
 	i32 n = mask_stack_count(m);
 	for (i32 i = 0; i < n; ++i) {
-		if (mask_effect_is_generator((i32)m->mask_effects->buffer[i * MASK_EFFECT_STRIDE])) {
+		mask_effect_t e = mask_stack_get(m, i);
+		if (mask_effect_is_rendered(&e)) {
 			return true;
 		}
 	}
@@ -121,7 +134,7 @@ static u64 mask_gen_key(slot_layer_t *m, u64 epoch) {
 	i32 n   = mask_stack_count(m);
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
-		if (e.visible && mask_effect_is_generator(e.type)) {
+		if (e.visible && mask_effect_is_rendered(&e)) {
 			u64 s = mask_gen_signature(m, &e, epoch);
 			key   = hash_fnv1a(key, &s, sizeof(s));
 		}
@@ -188,6 +201,8 @@ static gpu_pipeline_t *mask_gen_pipeline(mesh_data_t *md) {
 	mask_gen_uv_map    = pipes_get_constant_location("int");
 	mask_gen_noise_inv = pipes_get_constant_location("float");
 	mask_gen_uv_rect   = pipes_get_constant_location("float4");
+	mask_gen_maps      = pipes_get_constant_location("int");
+	mask_gen_map_scale = pipes_get_constant_location("float");
 	return pipe;
 }
 
@@ -224,12 +239,22 @@ static void mask_gen_timing_done(void *data, f64 gpu_ms) {
 	free(p);
 }
 
+// Nothing to read: no thickness or AO map (their neutral white would read thick or open), a fill without an image
+static bool mask_gen_no_input(mask_effect_t *e) {
+	if (e->type == MASK_EFFECT_THICKNESS) {
+		return project_get_image(mesh_maps_get_asset(MESH_MAP_THICKNESS)) == NULL;
+	}
+	if (e->type == MASK_EFFECT_AO) {
+		return project_get_image(mesh_maps_get_asset(MESH_MAP_AO)) == NULL;
+	}
+	return mask_effect_fill_source(e) == MASK_FILL_IMAGE && mask_gen_image(e) == NULL;
+}
+
 // Generator e of m into dst: the mesh into scratch (R value, A coverage), dilated into dst. rect: the part of the mask
 // dst shows (u0, v0, du, dv), NULL the whole. No pass may be open.
 static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *scratch, gpu_texture_t *dst, f32 *rect) {
-	slot_layer_t *owner  = mask_gen_owner(m);
-	bool          no_map = e->type == MASK_EFFECT_THICKNESS && project_get_image(mesh_maps_get_asset(MESH_MAP_THICKNESS)) == NULL;
-	if (util_mesh_udim_layer(owner) || no_map) { // Not supported yet, or no thickness map (its neutral white would read thick): black
+	slot_layer_t *owner = mask_gen_owner(m);
+	if (util_mesh_udim_layer(owner) || mask_gen_no_input(e)) { // Not supported yet, or nothing to read: black
 		_gpu_begin(dst, NULL, NULL, GPU_CLEAR_COLOR, 0xff000000, 0.0);
 		gpu_end();
 		return;
@@ -280,9 +305,19 @@ static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *sc
 	else {
 		gpu_set_float4(mask_gen_uv_rect, 0.0, 0.0, 1.0, 1.0);
 	}
-	gpu_set_texture(0, mesh_maps_texture_model(MESH_MAP_CURVATURE));
-	gpu_set_texture(1, mesh_maps_texture_model(MESH_MAP_AO));
-	gpu_set_texture(2, mesh_maps_texture_model(MESH_MAP_THICKNESS));
+	// Position, world normal and normal maps where registered (bits 1, 2, 4), the mesh's own otherwise
+	i32 maps = 0;
+	for (i32 i = 0; i < (i32)ARRAY_LENGTH(mask_gen_maps_read); ++i) {
+		i32 type = mask_gen_maps_read[i];
+		gpu_set_texture(i, mesh_maps_texture_model(type));
+		if (i >= 3 && project_get_image(mesh_maps_get_asset(type)) != NULL) {
+			maps |= 1 << (i - 3);
+		}
+	}
+	gpu_texture_t *image = mask_gen_image(e);
+	gpu_set_texture((i32)ARRAY_LENGTH(mask_gen_maps_read), image != NULL ? image : render_path_empty_black());
+	gpu_set_int(mask_gen_maps, maps);
+	gpu_set_float(mask_gen_map_scale, f);
 	gpu_set_vertex_buffer(md->_->vertex_buffer);
 	gpu_set_index_buffer(md->_->index_buffer);
 	gpu_draw();
@@ -335,7 +370,7 @@ void mask_gen_update(slot_layer_t *m) {
 	// Outputs still matching are kept
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
-		if (!e.visible || !mask_effect_is_generator(e.type)) {
+		if (!e.visible || !mask_effect_is_rendered(&e)) {
 			continue;
 		}
 		u64 s = mask_gen_signature(m, &e, epoch);

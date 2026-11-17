@@ -154,6 +154,9 @@ uint32_t app_layers_props_signature(void) {
 	h = app_hash(h, mesh_maps_get_asset(MESH_MAP_AO) != NULL); // app_mask_effect_t.needs_ao
 	h = app_hash(h, mesh_maps_get_asset(MESH_MAP_THICKNESS) != NULL);
 	h = app_hash(h, project_id_map_asset() != NULL);
+	for (i32 i = 0; i < g_project->_->assets->length; ++i) { // A fill effect's image picker
+		h = app_hash_str(h, g_project->_->assets->buffer[i]->name);
+	}
 	// The fill material picker lists the project materials, the UV map picker depends on the mesh
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		h = app_hash_str(h, g_project->_->materials->buffer[i]->canvas->name);

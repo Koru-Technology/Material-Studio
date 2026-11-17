@@ -15,7 +15,7 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
 layout(set = 0, binding = 2) uniform texture2D texa;   // Accumulated
-layout(set = 0, binding = 3) uniform texture2D texsrc; // Paint effect texpaint, a generator's cached output, the ID map,
+layout(set = 0, binding = 3) uniform texture2D texsrc; // Paint effect texpaint, a generator's or fill's cached output, the ID map,
                                                        // the blurred result, the anchored layer
 
 layout(location = 0) VARYING Varyings {
@@ -114,7 +114,7 @@ void main() {
 	float a = textureLod(sampler2D(texa, sampler_linear), vin.tex, 0.0).r;
 	float r = a;
 
-	if (constants.type == 1) { // Fill
+	if (constants.type == 1 && constants.params0.y < 0.5) { // Fill of a value, an image or grunge reads its output below
 		r = blend(a, constants.params0.x, constants.blending);
 	}
 	else if (constants.type == 2) { // Levels
@@ -145,7 +145,7 @@ void main() {
 		float v = constants.params0.y < 0.5 ? s.r : s.a;
 		r       = blend(a, v, constants.blending);
 	}
-	else { // Paint, generators
+	else { // Paint, generators, fills of an image or grunge
 		float v = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
 		r = blend(a, v, constants.blending);
 	}

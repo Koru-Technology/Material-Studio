@@ -12,7 +12,7 @@
 
 typedef enum {
 	APP_MASK_EFFECT_PAINT        = 0,
-	APP_MASK_EFFECT_FILL         = 1,
+	APP_MASK_EFFECT_FILL         = 1,  // A value, or an image or grunge on the mesh: params[1] its source (0, 1, 2)
 	APP_MASK_EFFECT_LEVELS       = 2,  // Filter
 	APP_MASK_EFFECT_INVERT       = 3,  // Filter
 	APP_MASK_EFFECT_EDGE_WEAR    = 4,  // Generators: computed from the mesh
@@ -26,6 +26,8 @@ typedef enum {
 	APP_MASK_EFFECT_HISTOGRAM    = 12, // Filter
 	APP_MASK_EFFECT_BLUR         = 13, // Filter
 	APP_MASK_EFFECT_ANCHOR       = 14, // Another layer's mask, height or opacity: params[0] its id, -1 none
+	APP_MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, AO, world normal and position combined
+	APP_MASK_EFFECT_AO           = 16, // Generator
 } app_mask_effect_type_t;
 
 #define APP_MASK_EFFECT_PARAMS    16
@@ -37,6 +39,7 @@ typedef enum {
 	APP_MASK_PARAM_CHOICE = 1, // Whole values 0..count-1 of the comma separated options
 	APP_MASK_PARAM_SEED   = 2, // A Shuffle button
 	APP_MASK_PARAM_LAYER  = 3, // A layer id, -1 none: app_mask_anchor_layer_*
+	APP_MASK_PARAM_IMAGE  = 4, // An image of the project, -1 none: app_mask_image_*
 } app_mask_param_kind_t;
 
 typedef struct {
@@ -48,7 +51,7 @@ typedef struct {
 	bool    is_paint;        // Brush strokes paint it, it can not be deleted
 	bool    is_filter;       // Transforms the result below (Levels, Invert): no blending
 	bool    is_generator;    // Computed from the mesh, with a noise block
-	bool    needs_ao;        // Dirt and no AO map registered: cavity only
+	bool    needs_ao;        // Dirt, Ambient Occlusion or a Mask Builder weighing it, and no AO map registered
 	bool    needs_thickness; // Thickness and no thickness map registered
 	bool    needs_id_map;    // ID Selection and the project has no ID map
 } app_mask_effect_t;
@@ -61,7 +64,9 @@ typedef struct {
 	float       min;
 	float       max;
 	float       def;
-	const char *options; // APP_MASK_PARAM_CHOICE: "X,Y,Z", "" otherwise
+	const char *options;    // APP_MASK_PARAM_CHOICE: "X,Y,Z", "" otherwise
+	int32_t     shown_by;   // The choice setting (a params index) it depends on, when shown_when is not 0
+	uint32_t    shown_when; // Bit v set: shown while params[shown_by] is v. 0: always shown
 } app_mask_param_t;
 
 int32_t     app_mask_effect_count(int32_t id); // 0 for anything but a mask
@@ -93,7 +98,11 @@ int32_t     app_mask_anchor_layer_count(int32_t id);
 int32_t     app_mask_anchor_layer_id(int32_t id, int32_t i);   // -1 past the last
 const char *app_mask_anchor_layer_name(int32_t id, int32_t i); // Valid until the next app_* call, copy it
 
+// Images a fill's Image setting can take: the project's, its value is the index here
+int32_t     app_mask_image_count(void);
+const char *app_mask_image_name(int32_t i); // Valid until the next app_* call, copy it
+
 // Slider drags, as app_layer_value_begin: field -1 is the opacity, otherwise a params index. Values are clamped to the
-// setting's range, a layer setting takes -1 or an app_mask_anchor_layer_id. A set without a begin is its own undo step.
+// setting's range, a layer setting takes -1 or an app_mask_anchor_layer_id, an image setting -1 or an image index. A set without a begin is its own undo step.
 void app_mask_effect_value_begin(int32_t id, int32_t index, int32_t field);
 bool app_mask_set_effect_value(int32_t id, int32_t index, int32_t field, float v); // app_drag_end ends the drag
