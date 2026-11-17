@@ -63,6 +63,14 @@ vec3 get_nor(vec2 enc) {
 	return normalize(n);
 }
 
+// The normal of the full resolution gbuffer texel under uv. Ambient occlusion runs at half resolution, a filtered read
+// there averages four encoded normals: across the octahedral fold of downward normals that decodes to a sideways normal
+vec3 gbuffer_nor(vec2 uv) {
+	ivec2 size = textureSize(sampler2D(gbuffer0, sampler_linear), 0);
+	ivec2 coord = clamp(ivec2(uv * vec2(size)), ivec2(0, 0), size - ivec2(1, 1));
+	return get_nor(texelFetch(sampler2D(gbuffer0, sampler_linear), coord, 0).rg);
+}
+
 float get_linear_depth(float d) {
 	return constants.camera_proj.y / (constants.camera_proj.x - d);
 }
@@ -132,7 +140,7 @@ void main() {
 
 		vec3 vpos = vin.view_ray * get_linear_depth(d);
 		vec3 view_v = normalize(0.0 - vpos);
-		vec3 n = normalize(constants.V3 * get_nor(textureLod(sampler2D(gbuffer0, sampler_linear), vin.tex, 0.0).rg));
+		vec3 n = normalize(constants.V3 * gbuffer_nor(vin.tex));
 
 		float screen_w = 1.0 / constants.screen_size_inv.x;
 		float screen_h = 1.0 / constants.screen_size_inv.y;

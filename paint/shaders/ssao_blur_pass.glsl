@@ -50,6 +50,14 @@ vec3 get_nor(vec2 enc) {
 	return n;
 }
 
+// The normal of the full resolution gbuffer texel under uv. Ambient occlusion runs at half resolution, a filtered read
+// there averages four encoded normals: across the octahedral fold of downward normals that decodes to a sideways normal
+vec3 gbuffer_nor(vec2 uv) {
+	ivec2 size = textureSize(sampler2D(gbuffer0, sampler_linear), 0);
+	ivec2 coord = clamp(ivec2(uv * vec2(size)), ivec2(0, 0), size - ivec2(1, 1));
+	return get_nor(texelFetch(sampler2D(gbuffer0, sampler_linear), coord, 0).rg);
+}
+
 #ifdef VERT
 layout(location = 0) in vec2 in_pos;
 layout(location = 0) out Varyings {
@@ -70,7 +78,7 @@ layout(location = 0) out float frag_color;
 
 void main() {
 
-	vec3 nor = get_nor(textureLod(sampler2D(gbuffer0, sampler_linear), vin.tex, 0.0).rg);
+	vec3 nor = gbuffer_nor(vin.tex);
 	float weight = 1.0;
 	float color = textureLod(sampler2D(tex, sampler_linear), vin.tex, 0.0).r;
 
@@ -79,12 +87,12 @@ void main() {
 		float gw = exp(0.0 - fi * fi * blur_sigma);
 		vec2 off = fi * constants.dir_inv;
 
-		vec3 nor2 = get_nor(textureLod(sampler2D(gbuffer0, sampler_linear), vin.tex + off, 0.0).rg);
+		vec3 nor2 = gbuffer_nor(vin.tex + off);
 		float w = gw * clamp((dot(nor2, nor) - nor_threshold) * nor_scale, 0.0, 1.0);
 		color += textureLod(sampler2D(tex, sampler_linear), vin.tex + off, 0.0).r * w;
 		weight += w;
 
-		nor2 = get_nor(textureLod(sampler2D(gbuffer0, sampler_linear), vin.tex - off, 0.0).rg);
+		nor2 = gbuffer_nor(vin.tex - off);
 		w = gw * clamp((dot(nor2, nor) - nor_threshold) * nor_scale, 0.0, 1.0);
 		color += textureLod(sampler2D(tex, sampler_linear), vin.tex - off, 0.0).r * w;
 		weight += w;
