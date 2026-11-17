@@ -25,8 +25,9 @@ typedef enum {
 	APP_MASK_EFFECT_THICKNESS    = 11, // Generator
 	APP_MASK_EFFECT_HISTOGRAM    = 12, // Filter
 	APP_MASK_EFFECT_BLUR         = 13, // Filter
-	APP_MASK_EFFECT_ANCHOR       = 14, // Another layer's mask, height or opacity: params[0] its id, -1 none
-	APP_MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, AO, world normal and position combined
+	APP_MASK_EFFECT_ANCHOR       = 14, // Another layer's mask, height, opacity or occlusion: params[0] its id, -1 none
+	APP_MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, AO, world normal and position combined, micro details from
+	                                   // the normal map or a layer (params[11], a layer id)
 	APP_MASK_EFFECT_AO           = 16, // Generator
 } app_mask_effect_type_t;
 
@@ -38,7 +39,7 @@ typedef enum {
 	APP_MASK_PARAM_SLIDER = 0,
 	APP_MASK_PARAM_CHOICE = 1, // Whole values 0..count-1 of the comma separated options
 	APP_MASK_PARAM_SEED   = 2, // A Shuffle button
-	APP_MASK_PARAM_LAYER  = 3, // A layer id, -1 none: app_mask_anchor_layer_*
+	APP_MASK_PARAM_LAYER  = 3, // A layer id, -1 none (named by options, "None" when empty): app_mask_anchor_layer_*
 	APP_MASK_PARAM_IMAGE  = 4, // An image of the project, -1 none: app_mask_image_*
 } app_mask_param_kind_t;
 
@@ -93,7 +94,8 @@ bool    app_mask_reset_effect(int32_t id, int32_t index); // Settings to their d
 // and asks to import an ID map when the project has none. Done sets the parts as one undo step, Cancel leaves them.
 bool app_mask_effect_pick_ids(int32_t id, int32_t index);
 
-// Layers an Anchor effect of mask id can reference, top first: paint and fill layers other than the mask's own
+// Layers an Anchor or a Mask Builder's micro details of mask id can reference, top first: paint and fill layers other than
+// the mask's own
 int32_t     app_mask_anchor_layer_count(int32_t id);
 int32_t     app_mask_anchor_layer_id(int32_t id, int32_t i);   // -1 past the last
 const char *app_mask_anchor_layer_name(int32_t id, int32_t i); // Valid until the next app_* call, copy it

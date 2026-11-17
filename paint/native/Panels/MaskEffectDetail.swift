@@ -251,7 +251,10 @@ private struct MaskEffectSections: View {
 					Text("No thickness map")
 				}
 				else if effect.type == Int32(APP_MASK_EFFECT_ANCHOR.rawValue) {
-					Text("Uses another layer's mask, height or opacity")
+					Text("Uses another layer's mask, height, opacity or occlusion")
+				}
+				else if effect.type == Int32(APP_MASK_EFFECT_MASK_BUILDER.rawValue) {
+					Text("Micro details from a layer follow its normal and height: the cracks and ridges of its material")
 				}
 			}
 		}
@@ -301,7 +304,7 @@ private struct MaskEffectSections: View {
 			Picker(p.name, selection: Binding(get: { anchors.contains { $0.id == Int32(value) } ? Int32(value) : -1 }, set: { v in
 				AppStore.shared.perform { _ = app_mask_set_effect_value(layerID, index, p.index, Float(v)) }
 			})) {
-				Text("None").tag(Int32(-1))
+				Text(p.options.first ?? "None").tag(Int32(-1)) // Micro Details From: "Normal Map"
 				ForEach(anchors, id: \.id) { layer in
 					Text(layer.name).tag(layer.id)
 				}

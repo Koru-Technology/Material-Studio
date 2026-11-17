@@ -17,7 +17,8 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 148) int uv_map;      // 1: the second uv set, in_tex.zw
 	layout(offset = 152) float noise_inv; // 1 / largest extent, isotropic noise
 	layout(offset = 160) vec4 uv_rect;    // The part of the mask drawn (u0, v0, du, dv), 0 0 1 1 the whole (export tiles)
-	layout(offset = 176) int maps;        // Registered mesh maps: 1 position, 2 world normal, 4 normal
+	layout(offset = 176) int maps;        // Registered mesh maps: 1 position, 2 world normal, 4 normal; 8 micro details
+	                                      // from a layer (texlnor, texlpack) instead of the normal map
 	layout(offset = 180) float map_scale; // Position map units to packed position units (1 / scale_pos)
 } constants;
 
@@ -29,6 +30,8 @@ layout(set = 0, binding = 5) uniform texture2D texpos;   // Position map: object
 layout(set = 0, binding = 6) uniform texture2D texwnor;  // World normal map: object normal * 0.5 + 0.5
 layout(set = 0, binding = 7) uniform texture2D texnor;   // Tangent space normal map
 layout(set = 0, binding = 8) uniform texture2D teximg;   // Image fill
+layout(set = 0, binding = 9) uniform texture2D texlnor;  // Mask Builder micro details: a layer's tangent normal (rgb)
+layout(set = 0, binding = 10) uniform texture2D texlpack; // and its height (a)
 
 layout(location = 0) VARYING Varyings {
 	vec3 pos;
@@ -201,12 +204,13 @@ vec3 user_axis(int axis) {
 
 // Mesh maps
 
-// Tangent space normal ts on the surface of normal n, the tangents solved from the uv derivatives as the normal bake does
-vec3 tangent_to_object(vec3 ts, vec3 n) {
+// Tangent space normal ts on the surface of normal n in uv set uv, the tangents solved from the uv derivatives as the
+// normal bake does
+vec3 tangent_to_object(vec3 ts, vec3 n, vec2 uv) {
 	vec3  dp1 = dFdx(vin.pos);
 	vec3  dp2 = dFdy(vin.pos);
-	vec2  du1 = dFdx(vin.uv);
-	vec2  du2 = dFdy(vin.uv);
+	vec2  du1 = dFdx(uv);
+	vec2  du2 = dFdy(uv);
 	float s   = du1.x * du2.y - du2.x * du1.y < 0.0 ? -1.0 : 1.0;
 	vec3  tu  = (dp1 * du2.y - dp2 * du1.y) * s;
 	vec3  tv  = (dp2 * du1.x - dp1 * du2.x) * s;
@@ -223,7 +227,12 @@ vec3 tangent_to_object(vec3 ts, vec3 n) {
 	return normalize(t * ts.x - b * ts.y + n * ts.z); // The bake writes (t, -b, n)
 }
 
-// World direction of the surface: the world normal map or the mesh's normal, with the normal map's details by micro
+// Micro details from a layer: its normal and height, in the layer's uvs
+bool micro_from_layer() {
+	return (constants.maps & 8) != 0;
+}
+
+// World direction of the surface: the world normal map or the mesh's normal, with the micro details by micro
 vec3 surface_normal(float micro) {
 	vec3 n = normalize(vin.nor);
 	if ((constants.maps & 2) != 0) {
@@ -232,9 +241,13 @@ vec3 surface_normal(float micro) {
 			n = normalize(m);
 		}
 	}
-	if (micro > 0.0 && (constants.maps & 4) != 0) {
+	if (micro > 0.0 && micro_from_layer()) {
+		vec3 ts = textureLod(sampler2D(texlnor, sampler_linear), vin.uvl, 0.0).rgb * 2.0 - 1.0;
+		n       = normalize(mix(n, tangent_to_object(ts, n, vin.uvl), micro));
+	}
+	else if (micro > 0.0 && (constants.maps & 4) != 0) {
 		vec3 ts = textureLod(sampler2D(texnor, sampler_linear), vin.uv, 0.0).rgb * 2.0 - 1.0;
-		n       = normalize(mix(n, tangent_to_object(ts, n), micro));
+		n       = normalize(mix(n, tangent_to_object(ts, n, vin.uv), micro));
 	}
 	return normalize(constants.N * n);
 }
@@ -247,8 +260,33 @@ vec3 surface_position() {
 	return vin.pos;
 }
 
-// Signed curvature of the normal map, positive on bumps: the divergence of its slopes over a texel each way
+// Signed curvature of a layer's normal and height, positive on bumps. Its offsets cover the same surface at any
+// resolution: a texel of a 1024 texture, twice that for the height.
+float layer_curvature() {
+	vec2  size = vec2(textureSize(sampler2D(texlnor, sampler_linear), 0));
+	vec2  px   = max(size / 1024.0, vec2(1.0, 1.0)) / size;
+	vec2  uv   = vin.uvl;
+	float xr   = textureLod(sampler2D(texlnor, sampler_linear), uv + vec2(px.x, 0.0), 0.0).r;
+	float xl   = textureLod(sampler2D(texlnor, sampler_linear), uv - vec2(px.x, 0.0), 0.0).r;
+	float yd   = textureLod(sampler2D(texlnor, sampler_linear), uv + vec2(0.0, px.y), 0.0).g;
+	float yu   = textureLod(sampler2D(texlnor, sampler_linear), uv - vec2(0.0, px.y), 0.0).g;
+	float div  = (xr - xl) - (yd - yu);
+	// Height: the center against its neighbours, above them on a ridge, below them in a crack
+	vec2  ph = px * 2.0;
+	float h  = textureLod(sampler2D(texlpack, sampler_linear), uv, 0.0).a;
+	float hn = textureLod(sampler2D(texlpack, sampler_linear), uv + vec2(ph.x, 0.0), 0.0).a +
+	           textureLod(sampler2D(texlpack, sampler_linear), uv - vec2(ph.x, 0.0), 0.0).a +
+	           textureLod(sampler2D(texlpack, sampler_linear), uv + vec2(0.0, ph.y), 0.0).a +
+	           textureLod(sampler2D(texlpack, sampler_linear), uv - vec2(0.0, ph.y), 0.0).a;
+	return clamp(div * 10.0 + (h - hn * 0.25) * 6.0, -1.0, 1.0);
+}
+
+// Signed curvature of the micro details, positive on bumps: a layer's, or the divergence of the normal map's slopes over
+// a texel each way
 float micro_curvature() {
+	if (micro_from_layer()) {
+		return layer_curvature();
+	}
 	if ((constants.maps & 4) == 0) {
 		return 0.0;
 	}

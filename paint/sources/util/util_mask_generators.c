@@ -8,8 +8,8 @@
 // texture cached on the mask. Inside the stack a generator then reads like the paint effect.
 //
 // The cache is keyed by a signature of everything the output depends on: the effect's params, the mask size, uv set and
-// object mask, the drawn object and its transform, the mesh maps and a fill's image. Painting on the mask reuses it, an
-// edit renders only the generator it changed.
+// object mask, the drawn object and its transform, the mesh maps, a fill's image and the layer a Mask Builder takes its
+// micro details from (its revision). Painting on the mask reuses it, an edit renders only the generator it changed.
 
 static gpu_pipeline_t        *mask_gen_pipes[4]; // One a mesh vertex layout
 static gpu_vertex_structure_t mask_gen_layouts[4];
@@ -106,7 +106,9 @@ static u64 mask_gen_signature(slot_layer_t *m, mask_effect_t *e, u64 epoch) {
 	                        slot_layer_get_object_mask(m),
 	                        util_mesh_udim_layer(owner) ? 1 : 0,
 	                        mask_gen_radius()};
-	u64            p[3]  = {(u64)(uintptr_t)o, (u64)(uintptr_t)o->data, (u64)(uintptr_t)mask_gen_image(e)}; // A reimported image is another
+	slot_layer_t  *micro = mask_effect_micro_layer(e);
+	u64            p[5]  = {(u64)(uintptr_t)o, (u64)(uintptr_t)o->data, (u64)(uintptr_t)mask_gen_image(e), // A reimported image is another
+	                        (u64)(uintptr_t)micro, micro != NULL ? micro->revision : 0};
 	u64            h     = hash_fnv1a(epoch, v, sizeof(v));
 	h        = hash_fnv1a(h, e->params, sizeof(e->params));
 	h        = hash_fnv1a(h, p, sizeof(p));
@@ -314,8 +316,13 @@ static void mask_gen_render(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *sc
 			maps |= 1 << (i - 3);
 		}
 	}
+	i32            k     = (i32)ARRAY_LENGTH(mask_gen_maps_read);
 	gpu_texture_t *image = mask_gen_image(e);
-	gpu_set_texture((i32)ARRAY_LENGTH(mask_gen_maps_read), image != NULL ? image : render_path_empty_black());
+	gpu_set_texture(k, image != NULL ? image : render_path_empty_black());
+	slot_layer_t *micro = mask_effect_micro_layer(e); // Micro details from a layer's normal and height (bit 8)
+	gpu_set_texture(k + 1, micro != NULL ? micro->texpaint_nor : render_path_empty_black());
+	gpu_set_texture(k + 2, micro != NULL ? micro->texpaint_pack : render_path_empty_black());
+	maps |= micro != NULL ? 8 : 0;
 	gpu_set_int(mask_gen_maps, maps);
 	gpu_set_float(mask_gen_map_scale, f);
 	gpu_set_vertex_buffer(md->_->vertex_buffer);

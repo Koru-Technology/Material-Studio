@@ -268,7 +268,7 @@ typedef enum {
 	MASK_EFFECT_THICKNESS    = 11, // Generator: side (0 thin, 1 thick), amount, sharpness
 	MASK_EFFECT_HISTOGRAM    = 12, // Filter: position, contrast
 	MASK_EFFECT_BLUR         = 13, // Filter: radius (seam aware)
-	MASK_EFFECT_ANCHOR       = 14, // Another layer: params[0] its id (saved as its index in the file), [1] channel
+	MASK_EFFECT_ANCHOR       = 14, // Another layer: params[0] its id (saved as its index in the file), [1] channel (mask_anchor_channel_t)
 	MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, cavity, AO, world normal and position combined, MASK_BUILDER_*
 	MASK_EFFECT_AO           = 16, // Generator: side (0 occluded, 1 open), amount, sharpness
 	MASK_EFFECT_COUNT,
@@ -300,6 +300,13 @@ typedef enum {
 #define MASK_FILL_INVERT     9
 #define MASK_FILL_SEED       10 // Grunge
 
+typedef enum {
+	MASK_ANCHOR_MASK     = 0,
+	MASK_ANCHOR_HEIGHT   = 1,
+	MASK_ANCHOR_OPACITY  = 2,
+	MASK_ANCHOR_OCCLUDED = 3, // 1 - occlusion: white in the layer's crevices
+} mask_anchor_channel_t;
+
 // Mask Builder settings
 #define MASK_BUILDER_BALANCE       0
 #define MASK_BUILDER_CONTRAST      1
@@ -310,15 +317,17 @@ typedef enum {
 #define MASK_BUILDER_NORMAL_DIR    6  // +Y, -Y, +X, -X, +Z, -Z
 #define MASK_BUILDER_POSITION      7  // Of the gradient toward MASK_BUILDER_POSITION_DIR
 #define MASK_BUILDER_POSITION_DIR  8
-#define MASK_BUILDER_MICRO_DETAILS 9  // The normal map's details in the curvature and world normal
+#define MASK_BUILDER_MICRO_DETAILS 9  // Amount of the micro details in the curvature and world normal
 #define MASK_BUILDER_INVERT        10
+#define MASK_BUILDER_MICRO_SOURCE  11 // Layer whose normal and height are the micro details (its id, saved as its index),
+                                      // -1 the normal map
 
 // Kinds of mask_effect_param_t
 typedef enum {
 	MASK_PARAM_SLIDER = 0,
 	MASK_PARAM_CHOICE = 1, // Whole values 0..count-1 of the comma separated options
 	MASK_PARAM_SEED   = 2, // A Shuffle button
-	MASK_PARAM_LAYER  = 3, // A layer id of the project, -1 for none (anchor)
+	MASK_PARAM_LAYER  = 3, // A layer id of the project, -1 for none (options: the name of none, "None" without)
 	MASK_PARAM_IMAGE  = 4, // An index in the project's assets, -1 for none (fill)
 } mask_param_kind_t;
 

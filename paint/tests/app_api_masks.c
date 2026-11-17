@@ -157,7 +157,7 @@ void next() {
 		check(app_mask_effect_param_count(ANCHOR) == 2 && app_mask_effect_param_count(ID) == 0, "anchor: layer and channel, ID Selection: picked");
 		check(app_mask_effect_param_count(PAINT) == 0 && app_mask_effect_param_count(FILL) == 11 && app_mask_effect_param_count(LEVELS) == 5,
 		      "settings of the plain effects");
-		check(app_mask_effect_param_count(BUILDER) == 15 && app_mask_effect_param_count(AO_GEN) == 7, "mask builder and ambient occlusion settings");
+		check(app_mask_effect_param_count(BUILDER) == 16 && app_mask_effect_param_count(AO_GEN) == 7, "mask builder and ambient occlusion settings");
 		check(app_mask_effect_param_count(EDGE_WEAR) == 6 && app_mask_effect_param_count(DIRT) == 7, "generators end with the noise block");
 		check(app_mask_blending_count() == 7, "seven mask blendings");
 		check(app_layer_new(0), "paint layer");

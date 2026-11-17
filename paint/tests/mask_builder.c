@@ -2,8 +2,9 @@
 
 // Mask Builder, the Ambient Occlusion generator, the position, world normal and normal maps, and fills of an image or
 // grunge. The Mask Builder's parts each match the generator they stand for (Edge Wear, Dirt, Ambient Occlusion,
-// Directional, Position Gradient), inverting complements it, micro details follow the normal map. A registered world
-// normal or position map replaces the mesh's own. Image fills project on the uvs (scale, rotation, balance, invert) or
+// Directional, Position Gradient), inverting complements it, micro details follow the normal map or a layer's normal
+// and height (rendering again when the layer changes). A registered world normal or position map replaces the mesh's
+// own. Anchor reads a layer's occlusion. Image fills project on the uvs (scale, rotation, balance, invert) or
 // triplanar, every grunge renders something, a seed changes it, deleting images keeps the references right, save and
 // load keep it, a smart material drops the image.
 // The maps: curvature grows from 0 to 1 along u (concave left, flat in the middle, convex right), AO along v.
@@ -16,6 +17,7 @@ int frame  = 0;
 slot_layer_t *layer   = NULL;
 slot_layer_t *mask    = NULL;
 slot_layer_t *root    = NULL;
+slot_layer_t *stone   = NULL; // Micro details and anchor occlusion come from it
 int           g       = -1; // The effect under test, stack index
 int           covered = 0;  // Texels the mesh covers (white image fill)
 int           r0      = 0;
@@ -33,6 +35,7 @@ int POSITION    = 6;
 int DIRECTIONAL = 7;
 int BUILDER     = 15;
 int AO_GEN      = 16;
+int ANCHOR      = 14;
 int AMOUNT      = 13; // Noise
 int SEED        = 14;
 
@@ -44,6 +47,7 @@ int B_NORMAL   = 5;
 int B_POSITION = 7;
 int B_MICRO    = 9;
 int B_INVERT   = 10;
+int B_SOURCE   = 11;
 
 // Fill settings
 int F_SOURCE     = 1;
@@ -103,6 +107,11 @@ void write_image(char *path, int kind) {
 				gg = 255;
 				bb = 255;
 			}
+			else if (kind == 6) { // Height in alpha: grooves 6 texels wide every 32, white
+				r  = 255;
+				gg = 255;
+				bb = 255;
+			}
 			else if (kind == 4) { // Up and toward +X (+Z +X in the engine): a world normal, or a corner of a position map
 				r  = 218;
 				gg = 128;
@@ -116,7 +125,7 @@ void write_image(char *path, int kind) {
 			buffer_set_u8(p, i, r);
 			buffer_set_u8(p, i + 1, gg);
 			buffer_set_u8(p, i + 2, bb);
-			buffer_set_u8(p, i + 3, 255);
+			buffer_set_u8(p, i + 3, kind == 6 && x % 32 < 6 ? 0 : 255);
 		}
 	}
 	iron_write_png(path, p, w, w, 0);
@@ -190,6 +199,16 @@ int asset(char *name) {
 	return script_asset_index(name);
 }
 
+// Clears target to color, then draws the image whose file has name in it over it (NULL: none), marks stone changed
+void draw_image_into(gpu_texture_t *target, int color, char *name) {
+	draw_begin(target, 1, color);
+	if (name != NULL) {
+		draw_scaled_image(project_get_image(script_get_asset(asset(name))), 0.0, 0.0, target->width * 1.0, target->height * 1.0);
+	}
+	draw_end();
+	mask_stack_layer_changed(stone);
+}
+
 // An image fill of the asset whose file has name in it
 void use_image(char *name) {
 	use(FILL);
@@ -214,6 +233,8 @@ void next() {
 		write_image(test_path("koru_mb_test_up_world_normal.png"), 4);
 		write_image(test_path("koru_mb_test_up_position.png"), 4);
 		write_image(test_path("koru_mb_test_teeth_normal.png"), 5);
+		write_image(test_path("koru_mb_test_grooves.png"), 6);
+		script_import_asset(test_path("koru_mb_test_grooves.png"), 0);
 		script_import_asset(test_path("koru_mb_test_curvature.png"), 0);
 		script_import_asset(test_path("koru_mb_test_ao.png"), 0);
 		script_import_asset(test_path("koru_mb_test_half.png"), 0);
@@ -404,40 +425,93 @@ void next() {
 		check(hi0 - lo0 > 100, string("without it the gradient spans the mesh (%d - %d)", lo0, hi0));
 		check(hi - lo < 8, string("a constant position map gives one value (%d - %d)", lo, hi));
 		mesh_maps_set(POSITION_MAP, NULL);
-		use_image("koru_mb_test_half");
+		// Micro details from a layer: the teeth in its normal
+		stone = script_layer_new_color(0xff808080, 1.0, 0.5, 0.0);
+		script_layer_set_name(stone, "stone");
+		draw_image_into(stone->texpaint_nor, 0xff8080ff, "koru_mb_test_teeth_normal");
+		use(BUILDER); // Edges, no normal map registered: micro details do nothing
+		set(B_MICRO, 1.0);
 	}
 	else if (step == 21) {
+		a = copy_pixels(result());
+		set(B_SOURCE, stone->id * 1.0);
+	}
+	else if (step == 22) {
+		int n = changed(a);
+		check(n > 500, string("micro details from a layer follow its normal (%d texels)", n));
+		// Its height: grooves, the normal flat again
+		draw_image_into(stone->texpaint_nor, 0xff8080ff, NULL);
+		draw_image_into(stone->texpaint_pack, 0x00ffffff, "koru_mb_test_grooves");
+		set(B_EDGES, 0.0);
+		set(B_CAVITY, 1.0);
+		set(B_SOURCE, -1.0);
+	}
+	else if (step == 23) {
+		a = copy_pixels(result()); // Cavity of the mesh alone
+		set(B_SOURCE, stone->id * 1.0);
+	}
+	else if (step == 24) {
+		gpu_texture_t *t = result();
+		int            n = changed(a);
+		check(n > 500, string("micro details from a layer find the grooves of its height (%d texels)", n));
+		check(white(t, 40, 100, 0, 100) > 500, "white in the grooves, where the mesh is not concave");
+		r0 = mask_gen_renders();
+		draw_image_into(stone->texpaint_pack, 0x00ffffff, NULL); // Flat
+	}
+	else if (step == 25) {
+		check(mask_gen_renders() > r0, "the layer changed: the mask builder rendered again");
+		int n = changed(a);
+		check(n < 20, string("its height flat, only the mesh's cavity is left (%d texels differ)", n));
+		// Anchor: the layer's occlusion
+		draw_image_into(stone->texpaint_pack, 0x00404040, NULL); // Occlusion 0.25
+		use(ANCHOR);
+		set(0, stone->id * 1.0);
+		set(1, 3.0); // Occluded
+	}
+	else if (step == 26) {
+		gpu_texture_t *t = result();
+		buffer_t      *p = script_get_texture_pixels(t);
+		int            n = count_box(p, t->width, t->height, 0, 100, 0, 100, 185, 197);
+		int            all = count_box(p, t->width, t->height, 0, 100, 0, 100, 0, 255);
+		check(n * 100 > all * 99, string("anchor occluded: 1 - occlusion everywhere (%d of %d texels near 191)", n, all));
+		set(1, 1.0); // Height, 0
+	}
+	else if (step == 27) {
+		check(white(result(), 0, 100, 0, 100) == 0, "anchor height of the same layer: black");
+		use_image("koru_mb_test_half");
+	}
+	else if (step == 28) {
 		gpu_texture_t *t = result();
 		check(white(t, 0, 45, 0, 100) > 500, "image fill: the white left half shows on the left");
 		check(white(t, 55, 100, 0, 100) < 20, "and the right stays black");
 		set(F_SCALE, 2.0);
 	}
-	else if (step == 22) {
+	else if (step == 29) {
 		gpu_texture_t *t = result();
 		check(white(t, 2, 22, 0, 100) > 200 && white(t, 52, 72, 0, 100) > 200, "scale 2: white in two stripes");
 		check(white(t, 28, 47, 0, 100) < 20 && white(t, 78, 98, 0, 100) < 20, "and black between");
 		set(F_SCALE, 1.0);
 		set(F_ROTATION, 180.0);
 	}
-	else if (step == 23) {
+	else if (step == 30) {
 		gpu_texture_t *t = result();
 		check(white(t, 0, 45, 0, 100) < 20 && white(t, 55, 100, 0, 100) > 500, "rotation 180: the halves swap");
 		set(F_ROTATION, 0.0);
 		set(F_INVERT, 1.0);
 	}
-	else if (step == 24) {
+	else if (step == 31) {
 		gpu_texture_t *t = result();
 		check(white(t, 0, 45, 0, 100) < 20 && white(t, 55, 100, 0, 100) > 500, "invert: the halves swap");
 		set(F_INVERT, 0.0);
 		set(F_BALANCE, 0.0);
 	}
-	else if (step == 25) {
+	else if (step == 32) {
 		check(white(result(), 0, 100, 0, 100) < 20, "balance 0: nothing white");
 		set(F_BALANCE, 0.5);
 		a = copy_pixels(result());
 		set(F_PROJECTION, 1.0);
 	}
-	else if (step == 26) {
+	else if (step == 33) {
 		int n = changed(a);
 		check(n > 500, string("triplanar projects otherwise (%d texels)", n));
 		check(white(result(), 0, 100, 0, 100) > 200, "and shows the image");
@@ -445,7 +519,7 @@ void next() {
 		pattern = 0;
 		set(F_PATTERN, 0.0);
 	}
-	else if (step == 27) {
+	else if (step == 34) {
 		gpu_texture_t *t = result();
 		int            n = white(t, 0, 100, 0, 100);
 		check(n > 50 && n < covered - 50, string("grunge %d: some white, not all (%d of %d)", pattern, n, covered));
@@ -457,16 +531,16 @@ void next() {
 		}
 		set(F_PATTERN, 1.0); // Scratches
 	}
-	else if (step == 28) {
+	else if (step == 35) {
 		a = copy_pixels(result());
 		set(F_SEED, 7.0);
 	}
-	else if (step == 29) {
+	else if (step == 36) {
 		int n = changed(a);
 		check(n > 50, string("another seed, other grunge (%d texels)", n));
 		set(F_PROJECTION, 0.0);
 	}
-	else if (step == 30) {
+	else if (step == 37) {
 		int n = changed(a);
 		check(n > 50, string("grunge on the uvs differs from triplanar (%d texels)", n));
 		// Deleting an image: the fills of later images follow, the fill of the deleted one reads none
@@ -475,21 +549,21 @@ void next() {
 		check(util_texture_is_used(r0), "the image of a fill is in use");
 		script_assets_remove("koru_mb_test_half");
 	}
-	else if (step == 31) {
+	else if (step == 38) {
 		check(script_mask_get_effect_param(mask, g, F_IMAGE) == (r0 - 1) * 1.0 && asset("koru_mb_test_white") == r0 - 1,
 		      "an earlier image deleted, the fill follows its image");
 		int n = white(result(), 0, 100, 0, 100);
 		check(n > covered - 50, string("and still shows it (%d of %d)", n, covered));
 		script_assets_remove("koru_mb_test_white");
 	}
-	else if (step == 32) {
+	else if (step == 39) {
 		check(script_mask_get_effect_param(mask, g, F_IMAGE) == -1.0, "its image deleted, the fill reads none");
 		check(white(result(), 0, 100, 0, 100) < 20, "and is black");
 		// Save and load: an image fill and a grunge fill
 		write_image(test_path("koru_mb_test_half2.png"), 2);
 		script_import_asset(test_path("koru_mb_test_half2.png"), 0);
 	}
-	else if (step == 33) {
+	else if (step == 40) {
 		use_image("koru_mb_test_half2");
 		int e = script_mask_add_effect(mask, FILL, -1);
 		script_mask_set_effect_param(mask, e, F_SOURCE, 2.0);
@@ -497,22 +571,25 @@ void next() {
 		script_mask_set_effect_param(mask, e, F_PROJECTION, 1.0);
 		script_mask_set_effect_param(mask, e, F_SEED, 42.0);
 		script_mask_set_effect(mask, e, true, 1.0, 4); // Max
+		int k = script_mask_add_effect(mask, BUILDER, -1);
+		script_mask_set_effect_param(mask, k, B_SOURCE, stone->id * 1.0);
+		script_mask_set_effect_param(mask, k, B_MICRO, 1.0);
 	}
-	else if (step == 34) {
+	else if (step == 41) {
 		a     = copy_pixels(result());
 		saved = string_copy(script_mask_effects_string(mask));
 		file  = test_path("mask_builder_test.arm");
 		project_filepath_set(file);
 		project_save(0);
 	}
-	else if (step == 35) {
+	else if (step == 42) {
 		script_project_new();
 	}
-	else if (step == 36) {
+	else if (step == 43) {
 		r0 = mask_gen_renders();
 		script_project_open(file);
 	}
-	else if (step == 37) {
+	else if (step == 44) {
 		mask = script_layer_get("mb_mask");
 		check(mask != NULL, "the mask is loaded");
 		if (mask != NULL) {
@@ -521,6 +598,9 @@ void next() {
 			int n = changed(a);
 			check(n < 50, string("and render the same pixels (%d texels differ)", n));
 			check(mask_gen_renders() > r0, "they rendered after load");
+			stone = script_layer_get("stone");
+			check(stone != NULL && script_mask_get_effect_param(mask, g + 2, B_SOURCE) == stone->id * 1.0,
+			      "the mask builder's micro details layer is found again after load");
 			int old = smart_materials_find("mb_test_smart");
 			if (old >= 0) {
 				smart_materials_delete(old);
@@ -528,13 +608,13 @@ void next() {
 			check(smart_materials_save(mask->parent, "mb_test_smart"), "saved as a smart material");
 		}
 	}
-	else if (step == 38) {
+	else if (step == 45) {
 		script_project_new();
 	}
-	else if (step == 39) {
+	else if (step == 46) {
 		root = smart_materials_apply("mb_test_smart");
 	}
-	else if (step == 40) {
+	else if (step == 47) {
 		mask = NULL;
 		for (int i = 0; root != NULL && i < script_layer_count(); ++i) {
 			slot_layer_t *m = script_layer_at(i);
@@ -547,6 +627,7 @@ void next() {
 			check(script_mask_get_effect_param(mask, g, F_SOURCE) == 1.0 && script_mask_get_effect_param(mask, g, F_IMAGE) == -1.0,
 			      "an image fill from a smart material reads none: the image stays in its project");
 			check(script_mask_get_effect_param(mask, g + 1, F_SEED) == 42.0, "the grunge fill keeps its settings");
+			check(script_mask_get_effect_param(mask, g + 2, B_SOURCE) == -1.0, "a micro details layer outside the smart material reads none");
 			check(white(result(), 0, 100, 0, 100) > 50, "and renders on the new project's mesh");
 		}
 		smart_materials_delete(smart_materials_find("mb_test_smart"));

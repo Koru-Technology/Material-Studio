@@ -412,7 +412,7 @@ slot_layer_t *smart_materials_insert(char *name) {
 		slot_layer_clear(l, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	}
 	for (i32 i = 0; i < count; ++i) {
-		mask_stack_anchors_from_index(created[i]->mask_effects, created, count); // Anchors within the smart material
+		mask_stack_effects_from_file(created[i]->mask_effects, created, count); // Layer references within the smart material
 	}
 	for (i32 i = 0; i < count; ++i) {
 		if (created[i]->fill_material != NULL) {

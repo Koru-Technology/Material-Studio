@@ -560,7 +560,7 @@ static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *
 			export_tiled_blit(export_tiled_source_target(&p->eff, t), t, c->m, c->hx, c->hy);
 			return p->eff;
 		}
-		if (kind == 3) {
+		if (kind == 3 || kind == 4) {
 			i32            n  = et.size + 2 * et.halo;
 			paint_target_t pt = {.w = n, .h = n, .res_w = et.w, .res_h = et.h, .channels = 3};
 			pt.uv_rect[0]     = c->hx / (f32)et.w;
@@ -574,7 +574,7 @@ static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *
 				pt.channels = 1;
 			}
 			export_tiled_source(l, c->m, c->hx, c->hy, &pt);
-			return (i32)e->params[1] == 1 ? pt.out[2] : pt.out[0];
+			return kind == 4 ? pt.out[2] : pt.out[0];
 		}
 		return NULL;
 	}

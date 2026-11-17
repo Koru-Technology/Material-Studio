@@ -100,6 +100,7 @@ static mask_effect_param_t mask_params_mask_builder[] = {
     {"Position", MASK_BUILDER_POSITION, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
     {"Position Direction", MASK_BUILDER_POSITION_DIR, MASK_PARAM_CHOICE, 0.0, 5.0, 0.0, "+Y,-Y,+X,-X,+Z,-Z"},
     {"Micro Details", MASK_BUILDER_MICRO_DETAILS, MASK_PARAM_SLIDER, 0.0, 1.0, 0.0, NULL},
+    {"Micro Details From", MASK_BUILDER_MICRO_SOURCE, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, "Normal Map"},
     {"Invert", MASK_BUILDER_INVERT, MASK_PARAM_CHOICE, 0.0, 1.0, 0.0, "Off,On"},
     MASK_NOISE_PARAMS,
 };
@@ -118,7 +119,7 @@ static mask_effect_param_t mask_params_blur[] = {
 };
 static mask_effect_param_t mask_params_anchor[] = {
     {"Layer", 0, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL},
-    {"Channel", 1, MASK_PARAM_CHOICE, 0.0, 2.0, 0.0, "Mask,Height,Opacity"},
+    {"Channel", 1, MASK_PARAM_CHOICE, 0.0, 3.0, 0.0, "Mask,Height,Opacity,Occluded"},
 };
 
 #define MASK_PARAMS_OF(a) *count = ARRAY_LENGTH(a); return a
@@ -434,6 +435,11 @@ void mask_stack_mark_dirty(slot_layer_t *m) {
 
 static gpu_texture_t *mask_stack_scratch = NULL;
 
+// How mask_stack.glsl reads an anchor's texture (params[1] in the pass)
+#define MASK_ANCHOR_READ_R        0
+#define MASK_ANCHOR_READ_A        1
+#define MASK_ANCHOR_READ_OCCLUDED 2 // 1 - r
+
 static gpu_texture_t *mask_stack_black() {
 	return render_path_empty_black();
 }
@@ -495,9 +501,24 @@ slot_layer_t *mask_stack_layer_by_id(i32 id) {
 	return NULL;
 }
 
+// The params index of a layer an effect of type references (its id, saved as its index), -1 for none
+static i32 mask_effect_layer_ref(i32 type) {
+	return type == MASK_EFFECT_ANCHOR ? 0 : type == MASK_EFFECT_MASK_BUILDER ? MASK_BUILDER_MICRO_SOURCE : -1;
+}
+
+// The layer whose normal and height are the micro details of Mask Builder e, NULL for the normal map: none picked,
+// deleted, or no paint or fill layer (a group or mask has no normal and height)
+slot_layer_t *mask_effect_micro_layer(mask_effect_t *e) {
+	if (e->type != MASK_EFFECT_MASK_BUILDER) {
+		return NULL;
+	}
+	slot_layer_t *l = mask_stack_layer_by_id((i32)e->params[MASK_BUILDER_MICRO_SOURCE]);
+	return l != NULL && l->texpaint_nor != NULL && l->texpaint_pack != NULL ? l : NULL;
+}
+
 // The anchor reads the mask of l: a mask itself, or the Mask channel
 static bool mask_stack_anchor_reads_mask(slot_layer_t *l, mask_effect_t *e) {
-	return slot_layer_is_mask(l) || (i32)e->params[1] == 0;
+	return slot_layer_is_mask(l) || (i32)e->params[1] == MASK_ANCHOR_MASK;
 }
 
 // Mask an anchor reading the mask of l samples: l when it is one, else its first mask, NULL when it has none
@@ -565,6 +586,11 @@ static u64 mask_stack_inputs_key(slot_layer_t *m) {
 				v[2] = l->revision;
 			}
 		}
+		else if (mask_effect_micro_layer(&e) != NULL) { // Mask Builder: its micro details from a layer
+			slot_layer_t *l = mask_effect_micro_layer(&e);
+			v[0]            = (u64)(uintptr_t)l;
+			v[2]            = l->revision;
+		}
 		else {
 			continue;
 		}
@@ -593,39 +619,23 @@ static void mask_stack_anchors_prepare(slot_layer_t *m) {
 	}
 }
 
-// Texture anchor e of m samples, its channel set to the one the shader reads (0 red, else alpha)
+// Texture anchor e of m samples, e->params[1] set to how the shader reads it (mask_stack_anchor_target)
 static gpu_texture_t *mask_stack_anchor_source(slot_layer_t *m, mask_effect_t *e) {
-	slot_layer_t *l = mask_stack_layer_by_id((i32)e->params[0]);
-	if (l == NULL) { // None picked, or deleted
-		e->params[1] = 0.0;
-		return mask_stack_black();
+	i32           kind;
+	slot_layer_t *l = mask_stack_anchor_target(m, e, &kind);
+	if (kind == 1) {
+		return render_path_empty_white();
 	}
-	if (mask_stack_anchor_reads_mask(l, e)) {
-		e->params[1]    = 0.0;
-		slot_layer_t *r = mask_stack_anchor_mask(l);
-		if (r == NULL) { // No mask: all of the layer shows
-			return render_path_empty_white();
-		}
-		if (r == m) { // Itself, texmask is being written
-			return mask_stack_black();
-		}
-		if (mask_stack_is_trivial(r)) {
-			return r->texpaint;
-		}
-		return r->texmask != NULL ? r->texmask : mask_stack_black();
+	if (kind == 2) {
+		return mask_stack_is_trivial(l) ? l->texpaint : l->texmask != NULL ? l->texmask : mask_stack_black();
 	}
-	gpu_texture_t *t = (i32)e->params[1] == 1 ? l->texpaint_pack : l->texpaint; // Height in pack alpha, opacity in base alpha
-	if (t == NULL) { // A group
-		e->params[1] = 0.0;
-		return mask_stack_black();
-	}
-	return t;
+	return kind == 3 ? l->texpaint : kind == 4 ? l->texpaint_pack : mask_stack_black();
 }
 
-// Saving: the effects with each anchor's layer id written as the index of that layer in layers, -1 when it is not among
-// them (a smart material keeps some layers). Layer ids are not saved, loading assigns new ones. Image fills keep their
-// asset index in a project (its assets are saved in order), none in a smart material (images: false), it has no assets.
-// The effects themselves when nothing changes.
+// Saving: the effects with each layer reference (an anchor's layer, a Mask Builder's micro details layer) written as the
+// index of that layer in layers, -1 when it is not among them (a smart material keeps some layers). Layer ids are not
+// saved, loading assigns new ones. Image fills keep their asset index in a project (its assets are saved in order), none
+// in a smart material (images: false), it has no assets. The effects themselves when nothing changes.
 f32_array_t *mask_stack_effects_to_file(f32_array_t *effects, slot_layer_t **layers, i32 count, bool images) {
 	if (effects == NULL) {
 		return NULL;
@@ -635,7 +645,8 @@ f32_array_t *mask_stack_effects_to_file(f32_array_t *effects, slot_layer_t **lay
 	for (i32 i = 0; i < n; ++i) {
 		f32 *f    = effects->buffer + i * MASK_EFFECT_STRIDE;
 		i32  type = (i32)f[0];
-		if (type != MASK_EFFECT_ANCHOR && (type != MASK_EFFECT_FILL || images)) {
+		i32  ref  = mask_effect_layer_ref(type);
+		if (ref < 0 && (type != MASK_EFFECT_FILL || images)) {
 			continue;
 		}
 		if (out == effects) {
@@ -647,27 +658,28 @@ f32_array_t *mask_stack_effects_to_file(f32_array_t *effects, slot_layer_t **lay
 		}
 		i32 index = -1;
 		for (i32 k = 0; k < count; ++k) {
-			if (layers[k]->id == (i32)f[4]) {
+			if (layers[k]->id == (i32)f[4 + ref]) {
 				index = k;
 				break;
 			}
 		}
-		out->buffer[i * MASK_EFFECT_STRIDE + 4] = (f32)index;
+		out->buffer[i * MASK_EFFECT_STRIDE + 4 + ref] = (f32)index;
 	}
 	return out;
 }
 
-// Loading: each anchor's saved index into layers back to the id of that layer, once every layer exists
-void mask_stack_anchors_from_index(f32_array_t *effects, slot_layer_t **layers, i32 count) {
+// Loading: each saved layer index back to the id of that layer, once every layer exists
+void mask_stack_effects_from_file(f32_array_t *effects, slot_layer_t **layers, i32 count) {
 	if (effects == NULL) {
 		return;
 	}
 	i32 n = effects->length / MASK_EFFECT_STRIDE;
 	for (i32 i = 0; i < n; ++i) {
-		f32 *f = effects->buffer + i * MASK_EFFECT_STRIDE;
-		if ((i32)f[0] == MASK_EFFECT_ANCHOR) {
-			i32 index = (i32)f[4];
-			f[4]      = index >= 0 && index < count ? (f32)layers[index]->id : -1.0;
+		f32 *f   = effects->buffer + i * MASK_EFFECT_STRIDE;
+		i32  ref = mask_effect_layer_ref((i32)f[0]);
+		if (ref >= 0) {
+			i32 index  = (i32)f[4 + ref];
+			f[4 + ref] = index >= 0 && index < count ? (f32)layers[index]->id : -1.0;
 		}
 	}
 }
@@ -999,34 +1011,42 @@ static i32 mask_stack_visible_before(slot_layer_t *m, i32 index) {
 	return k;
 }
 
-// What anchor e of m reads for a tile: *kind 0 black, 1 white, 2 the returned mask's evaluated stack, 3 the returned
-// layer's texpaint (opacity in a) or texpaint_pack (height in a) as e->params[1] says. e->params[1] becomes the channel
-// the shader reads, as in mask_stack_anchor_source.
+// What anchor e of m reads: *kind 0 black, 1 white, 2 the returned mask's evaluated stack, 3 the returned layer's
+// texpaint (opacity in a), 4 its texpaint_pack (occlusion in r, height in a). e->params[1] becomes how the shader reads
+// it (MASK_ANCHOR_READ_*). The export reads the same for its tiles.
 slot_layer_t *mask_stack_anchor_target(slot_layer_t *m, mask_effect_t *e, i32 *kind) {
 	*kind           = 0;
 	slot_layer_t *l = mask_stack_layer_by_id((i32)e->params[0]);
-	if (l == NULL) {
-		e->params[1] = 0.0;
+	i32 channel     = l != NULL && mask_stack_anchor_reads_mask(l, e) ? MASK_ANCHOR_MASK : (i32)e->params[1];
+	e->params[1]    = MASK_ANCHOR_READ_R;
+	if (l == NULL) { // None picked, or deleted
 		return NULL;
 	}
-	if (mask_stack_anchor_reads_mask(l, e)) {
-		e->params[1]    = 0.0;
+	if (channel == MASK_ANCHOR_MASK) {
 		slot_layer_t *r = mask_stack_anchor_mask(l);
-		if (r == NULL) {
+		if (r == NULL) { // No mask: all of the layer shows
 			*kind = 1;
 			return NULL;
 		}
-		if (r == m) {
+		if (r == m) { // Itself, texmask is being written
 			return NULL;
 		}
 		*kind = 2;
 		return r;
 	}
-	if (l->texpaint == NULL || ((i32)e->params[1] == 1 && l->texpaint_pack == NULL)) {
-		e->params[1] = 0.0;
+	if (channel == MASK_ANCHOR_OPACITY) {
+		if (l->texpaint == NULL) { // A group
+			return NULL;
+		}
+		e->params[1] = MASK_ANCHOR_READ_A;
+		*kind        = 3;
+		return l;
+	}
+	if (l->texpaint_pack == NULL) {
 		return NULL;
 	}
-	*kind = 3;
+	e->params[1] = channel == MASK_ANCHOR_HEIGHT ? MASK_ANCHOR_READ_A : MASK_ANCHOR_READ_OCCLUDED;
+	*kind        = 4;
 	return l;
 }
 
