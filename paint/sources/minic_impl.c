@@ -624,7 +624,15 @@ void script_projects_put_back(void) {
 #endif
 		string_array_remove(script_projects_saved, recent_path); // Listed by an earlier run
 	}
-	g_config->recent_projects = script_projects_saved;
+	string_array_t *list = any_array_create_from_raw((void *[]){}, 0);
+	for (i32 i = 0; i < script_projects_saved->length; ++i) {
+		char *e = script_projects_saved->buffer[i];
+		if (string_array_index_of(g_config->recent_projects, e) < 0 && !iron_file_exists(box_projects_path_of(e))) {
+			continue; // Deleted by the script
+		}
+		string_array_push(list, e);
+	}
+	g_config->recent_projects = list;
 	script_projects_saved     = NULL;
 	script_projects_made      = NULL;
 	config_save();

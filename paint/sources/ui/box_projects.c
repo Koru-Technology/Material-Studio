@@ -6,7 +6,11 @@ i32   _box_projects_load_frames;
 
 // Full path of a recent project, iOS stores only the file name inside the documents folder
 char *box_projects_recent_path(i32 i) {
-	char *path = g_config->recent_projects->buffer[i];
+	return box_projects_path_of(g_config->recent_projects->buffer[i]);
+}
+
+// The file of an entry of the recent list: on iOS the list has file names, in the documents folder
+char *box_projects_path_of(char *path) {
 #ifdef IRON_IOS
 	char *document_directory = iron_save_dialog("", "");
 	document_directory       = string_copy(substring(document_directory, 0, string_length(document_directory) - 8)); // Strip /"untitled"

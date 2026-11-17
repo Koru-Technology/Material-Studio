@@ -948,6 +948,7 @@ char *box_projects_recent_path(i32 i);
 void  box_projects_cancel_load();
 void  box_projects_load(char *path);
 void  box_projects_delete_files(char *path);
+char *box_projects_path_of(char *path);
 void  box_projects_delete(i32 i);
 void  box_projects_new();
 void  box_projects_import();
