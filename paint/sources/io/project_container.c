@@ -520,7 +520,9 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
 	}
-	timeline_t *tl = !pc_w->no_history ? timeline_of(l) : NULL; // A copy: full maps, no delta chains
+	// A layer not changed yet gets its timeline now, its state captured once: session heads every few seconds would
+	// read back the whole layer each time (tens of ms a layer, a frame long). A copy: full maps, no delta chains.
+	timeline_t *tl = !pc_w->no_history ? timeline_ensure(l) : NULL;
 	hash128_t   h  = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE;
 	if (!hash128_is_none(h) && hstore_has(h)) {
 		hstore_ref(h);
