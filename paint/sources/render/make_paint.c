@@ -253,14 +253,17 @@ static bool make_paint_batch_eligible() {
 	       !g_context->brush_directional && g_context->brush_stencil_image == NULL;
 }
 
-// Brush draws read their dabs resolved to world space (paint_exec.c) instead of the depth and gbuffer under the screen point
+// Brush draws read their dabs resolved to world space (paint_exec.c): the brush tools always (a fill layer selected
+// with one still parses its shader), the fill tool when it paints a stroke (fill layers render without one)
 static bool make_paint_resolved_eligible(bool is_atlas) {
-	if (is_atlas || g_context->pick_pos_nor_tex || g_context->layer == NULL || g_context->layer->fill_material != NULL) {
+	if (is_atlas || g_context->pick_pos_nor_tex || g_context->layer == NULL) {
 		return false;
 	}
 	tool_type_t tool = g_context->tool;
-	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_FILL || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR ||
-	       context_is_decal();
+	if (tool == TOOL_TYPE_FILL) {
+		return g_context->layer->fill_material == NULL;
+	}
+	return tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_BLUR || context_is_decal();
 }
 
 node_shader_context_t *make_paint_run_context(material_t *data, char *context_id) {
