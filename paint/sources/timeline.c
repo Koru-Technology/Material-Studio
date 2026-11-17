@@ -764,14 +764,17 @@ static bool timeline_job_start(timeline_job_t *j) {
 // Replays entries until deadline (iron_time, at least one a step), then 0; 1 once t holds the state, -1 when it can not
 // (t undefined). An entry that fails becomes a floor and it starts again. Before a deadline, strokes replayed
 // composite-fast render their replay caches a step at a time (paint_replay_prepare), and the GPU's work is waited for
-// after each: the deadline is what the steps cost the frame, not what they took to issue (a heavy material's stroke
-// issued in 3 ms took 90 of the GPU on the iPad).
+// after each entry and every few cache steps: the deadline is what the steps cost the frame, not what they took to
+// issue (a heavy material's stroke issued in 3 ms took 90 of the GPU on the iPad).
+#define TIMELINE_JOB_BANDS 2 // Replay cache steps (a band of a few ms of GPU each) issued before waiting for them
+
 i32 timeline_job_step(timeline_job_t *j, f64 deadline) {
 	if (j->state != 0 && j->state != 1) {
 		return j->state == 2 ? 1 : -1;
 	}
 	bool timed = deadline < 1.0e30;
 	bool moved = false;
+	i32  bands = 0; // Replay cache steps since the GPU was waited for
 	i32  d     = j->grown ? timeline_grown_depth++ : -1; // Materializes from inside one (translate) grow into the next
 	while (j->state == 0 || j->next < j->pos) {
 		if (moved && timed && iron_time() >= deadline) {
@@ -790,7 +793,10 @@ i32 timeline_job_step(timeline_job_t *j, f64 deadline) {
 		bool whole = j->g.uv_rect[0] == 0.0 && j->g.uv_rect[1] == 0.0 && j->g.uv_rect[2] == 1.0 && j->g.uv_rect[3] == 1.0;
 		if (timed && j->tl->entries[i].kind == TL_STROKE && (j->g.res_w != j->tl->entries[i].res_w || j->g.res_h != j->tl->entries[i].res_h || !whole)) {
 			i32 r = paint_replay_prepare(j->tl, i, &j->g); // Composite-fast (timeline_entry_replay): its caches a step on
-			gpu_execute_and_wait();
+			if (++bands == TIMELINE_JOB_BANDS) {
+				gpu_execute_and_wait();
+				bands = 0;
+			}
 			moved = true;
 			if (r == 0) {
 				continue;
@@ -803,6 +809,7 @@ i32 timeline_job_step(timeline_job_t *j, f64 deadline) {
 		}
 		if (timed) {
 			gpu_execute_and_wait();
+			bands = 0;
 		}
 		j->next++;
 		moved = true;
