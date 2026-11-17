@@ -118,7 +118,7 @@ slot_layer_t *layers_new_text_layer() {
 }
 
 void layers_create_filter_on_next_frame(void *_) {
-	if (slot_layer_get_filters(g_context->layer, true) != NULL) {
+	if (slot_layer_get_filters(g_context->layer, true) != NULL || g_project->_->layers->length > layers_max_layers) {
 		return;
 	}
 
@@ -205,6 +205,9 @@ void layers_create_image_at(i32 i, bool mask) {
 
 void layers_create_color_layer_on_next_frame(void *_) {
 	slot_layer_t *l = layers_new_layer(false, _layers_position, NULL);
+	if (l == NULL) { // At the layer limit
+		return;
+	}
 	history_new_layer();
 	l->object_mask = g_context->layer_filter;
 	slot_layer_clear(l, _layers_base_color, NULL, _layers_occlusion, _layers_roughness, _layers_metallic);

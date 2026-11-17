@@ -1,7 +1,7 @@
 #include "../global.h"
 
 #ifdef IRON_IOS
-i32 layers_max_layers = 18;
+i32 layers_max_layers = 32;
 #else
 i32 layers_max_layers = 255;
 #endif
