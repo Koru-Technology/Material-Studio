@@ -654,48 +654,6 @@ bool timeline_state_resample(hash128_t h, paint_target_t *t) {
 	return true;
 }
 
-// Writes the state at pos into t, at t's resolution for its uv_rect. It starts from the latest of: a state kept at t's
-// resolution, an op writing every texel; at the floor or after it. Without one the floor's state of another resolution
-// is resampled. The entries after the start replay at t's resolution, one that fails becomes a floor and it starts again.
-static bool timeline_materialize_into(timeline_t *tl, i32 pos, paint_target_t *t) {
-	while (true) {
-		i32       fl   = timeline_floor(tl, pos);
-		i32       from = -1;
-		hash128_t h    = HASH128_NONE;
-		for (i32 p = pos; p >= fl && from < 0; --p) {
-			h = timeline_state_at(tl, p, t->res_w, t->res_h);
-			if (!hash128_is_none(h)) {
-				from = p;
-			}
-			else if (p < pos && timeline_ops_overwrites(tl, p)) {
-				from = p; // Replaying it writes every texel, nothing to restore
-			}
-		}
-		bool ok = true;
-		if (from < 0) {
-			from = timeline_floor_state(tl, fl, pos, &h);
-			ok   = from >= 0 && timeline_state_resample(h, t);
-		}
-		else if (!hash128_is_none(h)) {
-			ok = timeline_tiles_restore(h, t);
-		}
-		if (!ok) {
-			return false;
-		}
-		bool again = false;
-		for (i32 i = from; i < pos; ++i) {
-			if (!timeline_entry_replay(tl, i, t, false)) {
-				timeline_entry_fail(tl, i);
-				again = true;
-				break;
-			}
-		}
-		if (!again) {
-			return true;
-		}
-	}
-}
-
 // Read reach of the strokes a materialize to pos may replay, in uv: a part of the layer replays grown by it. Whole
 // layer (1) when one reads anywhere in it.
 static f32 timeline_halo(timeline_t *tl, i32 pos) {
@@ -718,15 +676,22 @@ static f32 timeline_halo(timeline_t *tl, i32 pos) {
 static gpu_texture_t *timeline_grown[TIMELINE_GROWN_DEPTH][3];
 static i32            timeline_grown_depth = 0;
 
-bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
-	if (tl == NULL || pos < 0 || pos > tl->count) {
-		return false;
+// A materialize as a job (timeline_job_t): set up, its start state written by the first step
+static void timeline_job_setup(timeline_job_t *j, timeline_t *tl, i32 pos, paint_target_t *t, gpu_texture_t **grown) {
+	memset(j, 0, sizeof(*j));
+	j->tl    = tl;
+	j->pos   = pos;
+	j->t     = *t;
+	j->g     = *t;
+	j->state = tl == NULL || pos < 0 || pos > tl->count ? -1 : 0;
+	if (j->state < 0) {
+		return;
 	}
 	timeline_finalize();
 	bool whole = t->uv_rect[0] <= 0.0 && t->uv_rect[1] <= 0.0 && t->uv_rect[2] >= 1.0 && t->uv_rect[3] >= 1.0;
 	f32  halo  = whole ? 0.0 : timeline_halo(tl, pos);
-	if (halo <= 0.0 || timeline_grown_depth >= TIMELINE_GROWN_DEPTH) {
-		return timeline_materialize_into(tl, pos, t);
+	if (halo <= 0.0 || grown == NULL) {
+		return;
 	}
 	// A part of the layer: replayed with the texels its strokes read around it, the middle copied into t
 	f32 du = (t->uv_rect[2] - t->uv_rect[0]) / t->w;
@@ -740,30 +705,126 @@ bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
 		px = px > qx ? px : qx;
 		py = py > qy ? py : qy;
 	}
-	paint_target_t g = *t;
-	g.w              = t->w + px * 2;
-	g.h              = t->h + py * 2;
-	g.uv_rect[0]     = t->uv_rect[0] - px * du;
-	g.uv_rect[1]     = t->uv_rect[1] - py * dv;
-	g.uv_rect[2]     = t->uv_rect[2] + px * du;
-	g.uv_rect[3]     = t->uv_rect[3] + py * dv;
-	i32 d            = timeline_grown_depth++;
+	j->grown      = true;
+	j->px         = px;
+	j->py         = py;
+	j->g.w        = t->w + px * 2;
+	j->g.h        = t->h + py * 2;
+	j->g.uv_rect[0] = t->uv_rect[0] - px * du;
+	j->g.uv_rect[1] = t->uv_rect[1] - py * dv;
+	j->g.uv_rect[2] = t->uv_rect[2] + px * du;
+	j->g.uv_rect[3] = t->uv_rect[3] + py * dv;
 	for (i32 k = 0; k < t->channels; ++k) {
-		util_texture_ensure_target(&timeline_grown[d][k], g.w, g.h, t->out[k]->format);
-		g.out[k] = timeline_grown[d][k];
+		util_texture_ensure_target(&grown[k], j->g.w, j->g.h, t->out[k]->format);
+		j->g.out[k] = grown[k];
 	}
-	bool ok = timeline_materialize_into(tl, pos, &g);
-	timeline_grown_depth--;
-	if (ok) {
-		draw_saved_t saved = draw_suspend();
-		gpu_copy_regions_begin();
-		for (i32 k = 0; k < t->channels; ++k) {
-			gpu_copy_region(t->out[k], 0, 0, g.out[k], px, py, t->w, t->h);
+}
+
+// Writes the state at pos into t (timeline_materialize), at t's resolution for its uv_rect, as a job across frames:
+// grown (3 targets, kept by the caller) holds a part of the layer grown by what its strokes read around it, NULL for
+// none. The first step writes the start state.
+void timeline_job_begin(timeline_job_t *j, timeline_t *tl, i32 pos, paint_target_t *t, gpu_texture_t **grown) {
+	timeline_job_setup(j, tl, pos, t, grown);
+}
+
+// The start: the latest of a state kept at t's resolution, an op writing every texel; at the floor or after it.
+// Without one the floor's state of another resolution is resampled.
+static bool timeline_job_start(timeline_job_t *j) {
+	timeline_t     *tl   = j->tl;
+	paint_target_t *t    = &j->g;
+	i32             fl   = timeline_floor(tl, j->pos);
+	i32             from = -1;
+	hash128_t       h    = HASH128_NONE;
+	for (i32 p = j->pos; p >= fl && from < 0; --p) {
+		h = timeline_state_at(tl, p, t->res_w, t->res_h);
+		if (!hash128_is_none(h)) {
+			from = p;
 		}
-		gpu_copy_regions_end();
-		draw_resume(saved);
+		else if (p < j->pos && timeline_ops_overwrites(tl, p)) {
+			from = p; // Replaying it writes every texel, nothing to restore
+		}
 	}
+	bool ok = true;
+	if (from < 0) {
+		from = timeline_floor_state(tl, fl, j->pos, &h);
+		ok   = from >= 0 && timeline_state_resample(h, t);
+	}
+	else if (!hash128_is_none(h)) {
+		ok = timeline_tiles_restore(h, t);
+	}
+	j->next = from;
 	return ok;
+}
+
+// Replays entries until deadline (iron_time, at least one a step), then 0; 1 once t holds the state, -1 when it can not
+// (t undefined). An entry that fails becomes a floor and it starts again. Before a deadline, strokes replayed
+// composite-fast render their replay caches a step at a time (paint_replay_prepare), and the GPU's work is waited for
+// after each: the deadline is what the steps cost the frame, not what they took to issue (a heavy material's stroke
+// issued in 3 ms took 90 of the GPU on the iPad).
+i32 timeline_job_step(timeline_job_t *j, f64 deadline) {
+	if (j->state != 0 && j->state != 1) {
+		return j->state == 2 ? 1 : -1;
+	}
+	bool timed = deadline < 1.0e30;
+	bool moved = false;
+	i32  d     = j->grown ? timeline_grown_depth++ : -1; // Materializes from inside one (translate) grow into the next
+	while (j->state == 0 || j->next < j->pos) {
+		if (moved && timed && iron_time() >= deadline) {
+			break;
+		}
+		if (j->state == 0) {
+			if (!timeline_job_start(j)) {
+				j->state = -1;
+				break;
+			}
+			j->state = 1;
+			moved    = true;
+			continue;
+		}
+		i32  i     = j->next;
+		bool whole = j->g.uv_rect[0] == 0.0 && j->g.uv_rect[1] == 0.0 && j->g.uv_rect[2] == 1.0 && j->g.uv_rect[3] == 1.0;
+		if (timed && j->tl->entries[i].kind == TL_STROKE && (j->g.res_w != j->tl->entries[i].res_w || j->g.res_h != j->tl->entries[i].res_h || !whole)) {
+			i32 r = paint_replay_prepare(j->tl, i, &j->g); // Composite-fast (timeline_entry_replay): its caches a step on
+			gpu_execute_and_wait();
+			moved = true;
+			if (r == 0) {
+				continue;
+			}
+		}
+		if (!timeline_entry_replay(j->tl, i, &j->g, false)) {
+			timeline_entry_fail(j->tl, i);
+			j->state = 0;
+			continue;
+		}
+		if (timed) {
+			gpu_execute_and_wait();
+		}
+		j->next++;
+		moved = true;
+	}
+	if (d >= 0) {
+		timeline_grown_depth--;
+	}
+	if (j->state == 1 && j->next >= j->pos) {
+		j->state = 2;
+		if (j->grown) {
+			draw_saved_t saved = draw_suspend();
+			gpu_copy_regions_begin();
+			for (i32 k = 0; k < j->t.channels; ++k) {
+				gpu_copy_region(j->t.out[k], 0, 0, j->g.out[k], j->px, j->py, j->t.w, j->t.h);
+			}
+			gpu_copy_regions_end();
+			draw_resume(saved);
+		}
+	}
+	return j->state == 2 ? 1 : j->state < 0 ? -1 : 0;
+}
+
+bool timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t) {
+	timeline_job_t j;
+	i32            d = timeline_grown_depth;
+	timeline_job_setup(&j, tl, pos, t, d < TIMELINE_GROWN_DEPTH ? timeline_grown[d] : NULL);
+	return timeline_job_step(&j, 1.0e300) == 1;
 }
 
 // The live layer of tl goes from the state at its cursor to the one at pos, only the tiles that differ are written

@@ -430,7 +430,7 @@ void            mm_buffers_clear();
 i32             mm_buffers_stat(i32 what);
 void            mm_buffers_init(); // Image node files, the text node's font
 i32             mm_buffers_export_begin(u64 *keys, i32 n, i32 max_size, i64 budget); // Export: the cap chosen, the passes pinned
-i32             mm_buffers_export_step(void);                                      // Renders the next one full, how many are left
+i32             mm_buffers_export_step(bool sync);                                 // Renders them full (sync) or queues them, how many are left
 void            mm_buffers_export_end(void);                                       // Unpinned, larger textures freed, the normal cap
 i32             mm_buffers_export_largest(void);
 
@@ -2451,6 +2451,7 @@ u64  make_paint_glsl_hash(shader_context_t *scon);
 bool make_paint_scon_uses_matcache(shader_context_t *scon);
 gpu_texture_t *paint_replay_dilate_map(i32 w, i32 h, const f32 *uv_rect);
 i32            paint_replay_prepare(struct timeline *tl, i32 index, struct paint_target *t);
+i32            paint_replay_mm_keys(struct timeline *tl, i32 index, struct paint_target *t, u64 *keys, i32 n, i32 max);
 void paint_mat_snapshot_reset();
 void paint_mat_snapshot_init();
 void paint_mat_snapshot_parse_begin(slot_material_t *m);

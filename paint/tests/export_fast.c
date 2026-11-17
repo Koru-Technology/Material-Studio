@@ -2,10 +2,12 @@
 
 // A hi-res export of strokes painted with a heavy Material Maker material (Old Brick Wall, 784) replays them
 // composite-fast (paint_replay.c, util_material_cache.c): per tile the material is rendered once into a replay cache,
-// in bands with a commit between them, and the strokes read it. 24 strokes at 1024 export at 2048 in 1024 px tiles, over
-// frames as the export dialog runs it (export_tiled_step, 40 ms): once with replay caches off (every stroke evaluates the
-// material for every dab), once with them on. The files are byte-equal; with the caches the longest frame and the whole
-// export take less time.
+// a band a step, and the strokes read it. 24 strokes at 1024, three over each part of a band of the layer, export at 2048
+// in 1024 px tiles, over frames as the export dialog runs it (export_tiled_step, 40 ms): once with replay caches off
+// (every stroke evaluates the material for every dab), once with them on. The files are byte-equal; the material's
+// buffers render at the export's size over frames and tiles materialize a few strokes a step: no frame takes 500 ms.
+// With the caches rendering the tiles takes less time, and its longest step too. (A texel painted once costs the iPad
+// about as much evaluated in a stroke as in a cache: the caches win where strokes overlap.)
 
 char *root = "";
 
@@ -17,9 +19,11 @@ double t0     = 0.0;
 float  max_ft = 0.0;
 int    frames = 0;
 
-float slow_max   = 0.0; // Replay caches off
-float slow_total = 0.0;
+float slow_max    = 0.0; // Replay caches off
+float slow_total  = 0.0;
 int   slow_frames = 0;
+int   slow_tiles  = 0; // ms rendering tiles
+int   slow_step   = 0; // and the longest step of it
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -96,7 +100,7 @@ void next() {
 			for (int s = 0; s < 24; ++s) {
 				render_path_paint_set_stamp_seed(100 + s);
 				for (int i = 0; i < 20; ++i) {
-					script_paint(0.15 + i * 0.035, 0.12 + s * 0.03 + (i % 5) * 0.006);
+					script_paint(0.15 + i * 0.035, 0.3 + (s % 8) * 0.03 + (i % 5) * 0.006);
 				}
 				script_paint_end();
 			}
@@ -121,7 +125,11 @@ void next() {
 			slow_total  = sys_time() - t0;
 			slow_max    = max_ft;
 			slow_frames = frames;
-			printf("[export_fast] evaluating the material: %.2f s over %d frames, longest frame %.0f ms", slow_total, slow_frames, slow_max * 1000.0);
+			slow_tiles  = export_tiled_stat(16);
+			slow_step   = export_tiled_stat(17);
+			printf("[export_fast] evaluating the material: %.2f s over %d frames, longest frame %.0f ms; tiles %d ms, longest step of them %d ms", slow_total,
+			       slow_frames, slow_max * 1000.0, slow_tiles, slow_step);
+			check(slow_max < 0.5, string("no frame of the export takes 500 ms (%.0f ms)", slow_max * 1000.0));
 			phase = 4;
 			frame = 0;
 		}
@@ -135,8 +143,11 @@ void next() {
 	else if (phase == 5) {
 		if (step()) {
 			float total = sys_time() - t0;
-			printf("[export_fast] composite-fast: %.2f s over %d frames, longest frame %.0f ms; %d replay caches rendered, %d bands, longest %.1f ms of GPU",
-			       total, frames, max_ft * 1000.0, material_cache_replay_stat(1), material_cache_replay_stat(4), material_cache_replay_stat(5) / 1000.0);
+			int tiles = export_tiled_stat(16);
+			int tstep = export_tiled_stat(17);
+			printf("[export_fast] composite-fast: %.2f s over %d frames, longest frame %.0f ms; tiles %d ms, longest step of them %d ms; %d replay caches rendered, %d bands, longest %.1f ms of GPU",
+			       total, frames, max_ft * 1000.0, tiles, tstep, material_cache_replay_stat(1), material_cache_replay_stat(4), material_cache_replay_stat(5) / 1000.0);
+			check(max_ft < 0.5, string("no frame of the export takes 500 ms (%.0f ms)", max_ft * 1000.0));
 			check(export_tiled_stat(9) > 0 && export_tiled_stat(10) == 0, string("paint layer tiles materialized (%d, %d fell back)", export_tiled_stat(9), export_tiled_stat(10)));
 			check(material_cache_replay_stat(1) >= 4, string("a replay cache per tile (%d)", material_cache_replay_stat(1)));
 			check(material_cache_replay_stat(0) == 0 || material_cache_replay_stat(8) == 0, "the replay caches are freed when the export ends");
@@ -144,8 +155,8 @@ void next() {
 			int dn = script_diff_images(file("fast", "nor"), file("slow", "nor"), 0.0);
 			int dr = script_diff_images(file("fast", "rough"), file("slow", "rough"), 0.0);
 			check(db == 0 && dn == 0 && dr == 0, string("the files are byte-equal (%d, %d, %d values differ)", db, dn, dr));
-			check(max_ft < slow_max, string("the longest frame is shorter (%.0f ms against %.0f ms)", max_ft * 1000.0, slow_max * 1000.0));
-			check(total < slow_total, string("the export takes less time (%.2f s against %.2f s)", total, slow_total));
+			check(tstep < slow_step, string("the longest step rendering tiles is shorter (%d ms against %d ms)", tstep, slow_step));
+			check(tiles < slow_tiles, string("rendering the tiles takes less time (%d ms against %d ms)", tiles, slow_tiles));
 			material_cache_replay_set_enabled(1);
 			finish();
 			return;

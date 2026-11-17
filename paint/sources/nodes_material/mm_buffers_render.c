@@ -695,6 +695,10 @@ static void mm_buffers_step(void *_) {
 		gpu_ms  = getenv("MM_BUFFERS_STEP_GPU_MS") != NULL ? atof(getenv("MM_BUFFERS_STEP_GPU_MS")) : MM_BUFFERS_STEP_GPU_MS;
 		step_ms = getenv("MM_BUFFERS_STEP_MS") != NULL ? atof(getenv("MM_BUFFERS_STEP_MS")) : MM_BUFFERS_STEP_MS;
 	}
+	// An export rendering its passes at the raised cap (mm_buffers_export_step): no stroke is painted meanwhile, its
+	// frames take more of them
+	double frame_gpu_ms  = mm_buffers_export_cap > 0 ? gpu_ms * 3.0 : gpu_ms;
+	double frame_step_ms = mm_buffers_export_cap > 0 ? step_ms * 3.0 : step_ms;
 	mm_buffers_workers_start();
 	static double pipes_t0 = -1; // IRON_SHADER_TIMING: when the wave's pipelines were all made
 	if (mm_buffers_timing() && pipes_t0 != mm_buffers_wave_t0) {
@@ -762,13 +766,13 @@ static void mm_buffers_step(void *_) {
 			if (!w->job) {
 				mm_buffers_job_start(w, level);
 			}
-			mm_buffers_job_run(w, gpu_ms, &spent);
+			mm_buffers_job_run(w, frame_gpu_ms, &spent);
 			if (mm_buffers_pixels == px1) { // Nothing more fits this frame
 				break;
 			}
 		}
 		passes++;
-		if (spent >= gpu_ms || (iron_time() - t0) * 1000.0 >= step_ms) {
+		if (spent >= frame_gpu_ms || (iron_time() - t0) * 1000.0 >= frame_step_ms) {
 			break;
 		}
 	}
@@ -1318,16 +1322,31 @@ i32 mm_buffers_export_begin(u64 *keys, i32 n, i32 max_size, i64 budget) {
 	return mm_buffers_export_size;
 }
 
-// Renders the next pass of the export full, returns how many are left (0: all are full)
-i32 mm_buffers_export_step(void) {
-	while (mm_buffers_export_next < mm_buffers_export_n) {
-		mm_buffers_recipe_t *r = mm_buffers_find(mm_buffers_export_keys[mm_buffers_export_next++]);
+// The export's passes rendered full: sync, the next one now (with what it reads), how many are left; else queued for
+// the frame steps (mm_buffers_step: a heavy material at 2048 took seconds on the spot on the iPad), how many are not
+// full yet. 0: all are full.
+i32 mm_buffers_export_step(bool sync) {
+	if (sync) {
+		while (mm_buffers_export_next < mm_buffers_export_n) {
+			mm_buffers_recipe_t *r = mm_buffers_find(mm_buffers_export_keys[mm_buffers_export_next++]);
+			if (r != NULL && !mm_buffers_sat(r, MM_BUFFERS_FULL)) {
+				mm_buffers_rerender(r, MM_BUFFERS_FULL);
+				break;
+			}
+		}
+		return mm_buffers_export_n - mm_buffers_export_next;
+	}
+	i32 left = 0;
+	for (i32 i = 0; i < mm_buffers_export_n; ++i) {
+		mm_buffers_recipe_t *r = mm_buffers_find(mm_buffers_export_keys[i]);
 		if (r != NULL && !mm_buffers_sat(r, MM_BUFFERS_FULL)) {
-			mm_buffers_rerender(r, MM_BUFFERS_FULL);
-			break;
+			left++;
+			if (!r->queued[MM_BUFFERS_STAGES - 1]) {
+				mm_buffers_enqueue_missing(r);
+			}
 		}
 	}
-	return mm_buffers_export_n - mm_buffers_export_next;
+	return left;
 }
 
 // The export is over (or cancelled): pins go, textures above the normal full size are freed, the normal cap is back

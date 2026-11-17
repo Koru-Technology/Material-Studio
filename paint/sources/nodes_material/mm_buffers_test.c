@@ -290,7 +290,7 @@ i32 mm_buffers_test_export(i32 max_size, i32 budget_kb) {
 		}
 	}
 	i32 cap = mm_buffers_export_begin(keys, n, max_size, (i64)budget_kb * 1024);
-	while (mm_buffers_export_step() > 0) {
+	while (mm_buffers_export_step(true) > 0) {
 	}
 	return cap;
 }

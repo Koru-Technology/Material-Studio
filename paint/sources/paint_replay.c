@@ -103,8 +103,8 @@ static bool paint_replay_scon_textures(shader_context_t *scon) {
 // (addressed by texel of the live layer) replays at another size with the material evaluated, a stroke replayed
 // composite-fast reads a replay cache: when that is not the recorded kind of shader, the hash is not checked. Kept by
 // GLSL, material snapshot and cache use: the same GLSL can read other images. Parsed now, translated and compiled on a
-// thread: wait, until it is compiled; else NULL and *pending set while it compiles (paint_replay_prepare).
-static shader_context_t *paint_replay_shader(paint_state_t *s, bool wait, bool *pending) {
+// thread (paint_replay_shader waits for it).
+static make_material_async_t *paint_replay_shader_async(paint_state_t *s) {
 	bool cached = material_cache_replay_is_bound(); // Reads a replay cache: the recorded GLSL when it read the live one
 	bool verify = cached ? s->matcache != 0 : !(paint_replay_uncached && s->matcache);
 	u64  key    = (verify ? s->glsl : s->glsl ^ 0x9e3779b97f4a7c15ull) ^ s->material.lo ^ (s->material.hi * 0xff51afd7ed558ccdull);
@@ -137,6 +137,16 @@ static shader_context_t *paint_replay_shader(paint_state_t *s, bool wait, bool *
 		paint_replay_scons[i]       = a;
 		paint_replay_scon_hashes[i] = key;
 		paint_replay_scon_next      = (i + 1) % PAINT_REPLAY_SCONS;
+	}
+	return a;
+}
+
+// The paint shader of a state compiled, NULL when it does not hash as recorded. wait: until it is compiled; else NULL
+// and *pending set while it compiles (paint_replay_prepare).
+static shader_context_t *paint_replay_shader(paint_state_t *s, bool wait, bool *pending) {
+	make_material_async_t *a = paint_replay_shader_async(s);
+	if (a == NULL) {
+		return NULL;
 	}
 	while (!make_material_async_ready(a)) {
 		if (!wait) {
@@ -345,9 +355,18 @@ static bool paint_replay_ops(paint_rec_t *r, paint_target_t *t, bool fast) {
 	return true;
 }
 
-// Replays entry index into t; prepare: only a step of the replay caches it reads (composite-fast), 1 when they are
-// ready (or it reads none), 0 when there is more to render, -1 when it does not replay
-static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const paint_replay_opts_t *o, bool prepare) {
+// What paint_replay_run does with the entry: replays it; only a step of the replay caches it reads (composite-fast);
+// only its paint shaders parsed (their compile started) for the Material Maker buffers they sample
+typedef enum { PAINT_REPLAY_RUN, PAINT_REPLAY_PREPARE, PAINT_REPLAY_KEYS } paint_replay_mode_t;
+
+static u64 *paint_replay_keys; // PAINT_REPLAY_KEYS: the list the keys go to, without repeats
+static i32  paint_replay_nkeys;
+static i32  paint_replay_max_keys;
+
+// Replays entry index into t; prepare: 1 when its replay caches are ready (or it reads none), 0 when there is more to
+// render; -1 when it does not replay
+static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const paint_replay_opts_t *o, paint_replay_mode_t mode) {
+	bool prepare = mode != PAINT_REPLAY_RUN;
 	if (tl == NULL || index < 0 || index >= tl->count || tl->entries[index].kind != TL_STROKE) {
 		return -1;
 	}
@@ -425,7 +444,26 @@ static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const 
 	paint_mat_snapshot_replay_begin(m);
 	bool exact = t->w == r.res_w && t->h == r.res_h && t->uv_rect[0] == 0.0 && t->uv_rect[1] == 0.0 && t->uv_rect[2] == 1.0 && t->uv_rect[3] == 1.0;
 	paint_replay_uncached = !exact;
-	if (prepare) { // Each state's cache a step on, then its paint shader compiling: the first not ready stops it
+	if (mode == PAINT_REPLAY_KEYS) { // Each state's shader evaluating the material
+		for (i32 k = 0; k < r.n_ops; ++k) {
+			if (r.ops[k].kind == PAINT_OP_DRAW && (k == 0 || r.ops[k].state != r.ops[k - 1].state)) {
+				paint_replay_state_apply(&r.states[r.ops[k].state]);
+				make_material_async_t *a = paint_replay_shader_async(&r.states[r.ops[k].state]);
+				u64                    keys[64];
+				i32                    n = a != NULL ? mm_buffers_paint_keys(make_material_async_scon(a), keys, 64) : 0;
+				for (i32 j = 0; j < n; ++j) {
+					bool seen = false;
+					for (i32 q = 0; q < paint_replay_nkeys && !seen; ++q) {
+						seen = paint_replay_keys[q] == keys[j];
+					}
+					if (!seen && paint_replay_nkeys < paint_replay_max_keys) {
+						paint_replay_keys[paint_replay_nkeys++] = keys[j];
+					}
+				}
+			}
+		}
+	}
+	else if (prepare) { // Each state's cache a step on, then its paint shader compiling: the first not ready stops it
 		paint_replay_cache_pending = false;
 		for (i32 k = 0; k < r.n_ops && fast && !paint_replay_cache_pending; ++k) {
 			if (r.ops[k].kind == PAINT_OP_DRAW && (k == 0 || r.ops[k].state != r.ops[k - 1].state)) {
@@ -525,14 +563,25 @@ static i32 paint_replay_run(timeline_t *tl, i32 index, paint_target_t *t, const 
 }
 
 bool paint_replay_entry(timeline_t *tl, i32 index, paint_target_t *t, const paint_replay_opts_t *o) {
-	return paint_replay_run(tl, index, t, o, false) == 1;
+	return paint_replay_run(tl, index, t, o, PAINT_REPLAY_RUN) == 1;
 }
 
 // Before a composite-fast replay of entry index into t a frame at a time (stroke refine): a step of rendering the replay
 // caches it reads. 1 ready (or none read), 0 more steps to go, -1 the entry does not replay.
 i32 paint_replay_prepare(timeline_t *tl, i32 index, paint_target_t *t) {
 	paint_replay_opts_t o = {.composite_fast = true};
-	return paint_replay_run(tl, index, t, &o, true);
+	return paint_replay_run(tl, index, t, &o, PAINT_REPLAY_PREPARE);
+}
+
+// The Material Maker buffers a replay of entry index into t samples, added to keys[0, n) without repeats (at most max):
+// the new count. Its paint shaders are parsed, their compile started.
+i32 paint_replay_mm_keys(timeline_t *tl, i32 index, paint_target_t *t, u64 *keys, i32 n, i32 max) {
+	paint_replay_keys     = keys;
+	paint_replay_nkeys    = n;
+	paint_replay_max_keys = max;
+	paint_replay_run(tl, index, t, NULL, PAINT_REPLAY_KEYS);
+	paint_replay_keys = NULL;
+	return paint_replay_nkeys;
 }
 
 i32 paint_replay_halo_px(const tl_entry_t *e, i32 res_w) {

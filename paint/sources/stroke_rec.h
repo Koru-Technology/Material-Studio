@@ -153,6 +153,22 @@ void        timeline_append(timeline_t *tl, tl_entry_t *e); // Drops the redo br
 void        timeline_ref(timeline_t *tl);
 void        timeline_unref(timeline_t *tl);
 bool        timeline_materialize(timeline_t *tl, i32 pos, paint_target_t *t); // Best checkpoint <= pos, replay the rest
+
+// timeline_materialize as a job across frames (export tiles): a step replays entries until a deadline
+typedef struct timeline_job {
+	timeline_t    *tl;
+	i32            pos;
+	paint_target_t t;     // The caller's
+	paint_target_t g;     // What replays: t, or t grown by what its strokes read around it
+	bool           grown;
+	i32            px;    // t's offset in g
+	i32            py;
+	i32            next;  // The next entry to replay
+	i32            state; // 0 the start state to write, 1 replaying, 2 done, -1 failed
+} timeline_job_t;
+
+void timeline_job_begin(timeline_job_t *j, timeline_t *tl, i32 pos, paint_target_t *t, struct gpu_texture **grown);
+i32  timeline_job_step(timeline_job_t *j, f64 deadline); // 1 done, 0 more to do, -1 failed
 void        timeline_reset_all();
 
 // Ops other than strokes (timeline_ops.c): recorded where the history step is pushed, replayed by paint_replay_entry
