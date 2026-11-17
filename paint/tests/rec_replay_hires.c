@@ -95,6 +95,13 @@ void next() {
 		int tiles = diff3(whole, tiled, 0.0);
 		int tiles1 = diff3(whole, tiled, 1.0);
 		printf("[rec_hires] 4 tiles against the whole replay: %d channel values differ, %d by more than 1/255", tiles, tiles1);
+		script_diff_textures(whole->texpaint, tiled->texpaint, 0.0);
+		float m0 = script_diff_max();
+		script_diff_textures(whole->texpaint_nor, tiled->texpaint_nor, 0.0);
+		float m1 = script_diff_max();
+		script_diff_textures(whole->texpaint_pack, tiled->texpaint_pack, 0.0);
+		float m2 = script_diff_max();
+		printf("[rec_hires] largest differences: base %f, normal %f, pack %f", m0, m1, m2);
 		check(tiles1 == 0 && tiles * 1000 <= painted, string("4 tiles are within 1/255 of the whole replay, on all but 0.1 percent exactly (%d differ)", tiles));
 		check(diff3(whole, blank, 1.0) > 10000, "the whole replay paints");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));

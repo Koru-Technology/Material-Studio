@@ -32,16 +32,18 @@ static i32 util_test_diff(u8 *a, u8 *b, i32 w, i32 h, gpu_texture_format_t f, f3
 		iron_log("script_diff: mask is %dx%d, images %dx%d\n", util_test_mask_w, util_test_mask_h, w, h);
 		return -1;
 	}
-	i32 over  = 0;
-	f64 sum   = 0.0;
-	i64 count = 0;
-	f32 max   = 0.0;
+	bool bytes = f != GPU_TEXTURE_FORMAT_RGBA64 && f != GPU_TEXTURE_FORMAT_R16 && f != GPU_TEXTURE_FORMAT_RGBA128 && f != GPU_TEXTURE_FORMAT_R32;
+	i32  over  = 0;
+	f64  sum   = 0.0;
+	i64  count = 0;
+	f32  max   = 0.0;
 	for (i32 t = 0; t < w * h; ++t) {
 		if (util_test_mask != NULL && !util_test_mask[t]) {
 			continue;
 		}
 		for (i32 c = 0; c < ch; ++c) {
-			f32 d = fabsf(util_test_value(a, f, t * ch + c) - util_test_value(b, f, t * ch + c)) * 255.0;
+			i32 i = t * ch + c; // Bytes: their difference exactly (in floats a step of one came out 1.000001 at some values)
+			f32 d = bytes ? (f32)abs((i32)a[i] - (i32)b[i]) : fabsf(util_test_value(a, f, i) - util_test_value(b, f, i)) * 255.0;
 			if (d != d) { // NaN on one side only
 				d = 255.0;
 			}
