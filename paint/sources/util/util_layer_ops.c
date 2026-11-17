@@ -1,6 +1,6 @@
 #include "../global.h"
 
-// Layer operations of the layers panel for the app API and the scripts (registered under their script_layer_* names,
+// Layer operations for the app API and the scripts (registered under their script_layer_* names,
 // minic_api.c): checked arguments, one undo step each, NULL / false when the layer is gone or the operation does not
 // apply
 

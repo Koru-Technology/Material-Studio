@@ -1,5 +1,5 @@
 // app_api_layers.h, #included by main.c after app_api.c (it reuses app_layer_by_id and the script_* helpers of minic_impl.c).
-// The rules of what applies to which layer are those of the engine's layers tab (ui/tab_layers.c).
+// The rules of what applies to which layer are in util/util_layer_ops.c.
 
 #include "app_api_layers.h"
 #include "app_api_masks.h"
@@ -569,7 +569,7 @@ bool app_layer_set_uv_map(int32_t id, int32_t uv_map) {
 	return app_layer_done(true);
 }
 
-// Fill layer edits take history for l and leave the selection alone, as the layers tab
+// Fill layer edits take history for l and leave the selection alone, as the other layer edits
 static void app_layer_history_for(slot_layer_t *l, void (*history)(void)) {
 	slot_layer_t *_layer = g_context->layer;
 	g_context->layer     = l;

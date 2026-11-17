@@ -1,5 +1,5 @@
-// app_api_brushes.h, #included by main.c after app_api.c (it reuses app_hash and the brush library, tab_brushes, tab_swatches
-// and ui_quick_menu state of the same unit)
+// app_api_brushes.h, #included by main.c after app_api.c (it reuses app_hash, the brush library and the ui_quick_menu
+// state of the same unit)
 
 #include "app_api_brushes.h"
 

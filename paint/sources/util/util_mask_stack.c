@@ -11,7 +11,7 @@
 
 // Packing
 
-// Settings of each effect type: what the effect panels draw (native UI, tab_layers.c) and the defaults. Generators end
+// Settings of each effect type: what the native effect panels show and the defaults. Generators end
 // with the shared noise block, params[MASK_EFFECT_NOISE_*].
 
 #define MASK_NOISE_PARAMS                                                                                                   \

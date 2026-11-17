@@ -330,7 +330,7 @@ void app_view_face(int32_t face) {
 	if (!app_ready()) {
 		return;
 	}
-	viewport_set_face(face); // ui_panels.c
+	viewport_set_face(face);
 	iron_delay_idle_sleep();
 }
 
