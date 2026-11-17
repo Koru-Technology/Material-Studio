@@ -238,20 +238,34 @@ void context_set_layer(slot_layer_t *l) {
 	ui_view2d_hwnd->redraws = 2;
 }
 
+// The mesh shader and the render path (lit or not) read the tool only for these (make_mesh.c, context_use_lit,
+// context_set_viewport_mode): selecting between other tools leaves them as they are
+static bool context_tool_shapes_mesh(i32 tool) {
+	return tool == TOOL_TYPE_COLORID || tool == TOOL_TYPE_BAKE || (tool == TOOL_TYPE_PICKER && g_context->picker_hide_other_materials);
+}
+
+// The mesh shader and the render path for the viewport mode, after something they read changed
+void context_parse_mesh_material() {
+	g_context->ddirty              = 3;
+	viewport_mode_t _viewport_mode = g_context->viewport_mode;
+	g_context->viewport_mode       = VIEWPORT_MODE_NONE;
+	context_set_viewport_mode(_viewport_mode);
+	if (_viewport_mode == VIEWPORT_MODE_NONE) { // Not parsed by context_set_viewport_mode
+		make_material_parse_mesh_material();
+	}
+}
+
 void context_select_tool(i32 i) {
 	if (!(i >= 0 && i <= TOOL_TYPE_INPAINT)) {
 		return;
 	}
+	i32 old         = g_context->tool;
 	g_context->tool = i;
-	make_material_parse_paint_material(true);
-	g_context->ddirty              = 3; // The mesh material is parsed by context_set_viewport_mode below
-	viewport_mode_t _viewport_mode = g_context->viewport_mode;
-	g_context->viewport_mode       = VIEWPORT_MODE_NONE;
-	context_set_viewport_mode(_viewport_mode);
-	if (_viewport_mode == VIEWPORT_MODE_NONE) { // Not parsed above
-		make_material_parse_mesh_material();
+	make_material_parse_paint_material(false); // Made for the tool. The material's node previews do not depend on it
+	g_context->ddirty = 3;
+	if (context_tool_shapes_mesh(old) || context_tool_shapes_mesh(i)) {
+		context_parse_mesh_material();
 	}
-
 	context_init_tool();
 }
 

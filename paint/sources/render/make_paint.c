@@ -6,7 +6,7 @@ static bool make_paint_is_raytrace_bake_setup() {
 	return g_context->tool == TOOL_TYPE_BAKE && g_context->bake_type == BAKE_TYPE_INIT;
 }
 
-#define MAKE_PAINT_CACHE_SIZE 4
+#define MAKE_PAINT_CACHE_SIZE 16 // Every tool's paint shader for the material, and a few more (translation is ~15 ms)
 
 typedef struct make_paint_cached_shader {
 	char *shader;

@@ -331,7 +331,7 @@ void util_render_make_decal_preview() {
 	g_context->decal_preview = false;
 	util_render_preview_end(&preview);
 
-	make_material_parse_mesh_material();
+	make_material_restore_mesh_material();
 	g_context->ddirty = 1; // Refresh depth for decal paint
 }
 

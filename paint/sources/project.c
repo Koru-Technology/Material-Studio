@@ -388,6 +388,7 @@ void project_new(bool reset_layers) {
 	base_update_tools();
 	project_set_default_envmap();
 	context_select_tool(TOOL_TYPE_BRUSH);
+	context_parse_mesh_material(); // The new project's
 	scene_camera->data->near_plane      = 0.01;
 	scene_camera->data->far_plane       = 100.0;
 	scene_camera->data->frustum_culling = false;

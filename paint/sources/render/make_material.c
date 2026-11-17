@@ -96,10 +96,17 @@ void make_material_delete_context(shader_context_t *c) {
 	sys_notify_on_next_frame(&make_material_delete_context_on_next_frame, c);
 }
 
+// The first mesh pass shader a preview replaced (make_material_parse_mesh_preview_material), until it is restored
+static shader_context_t *make_material_mesh_scon_replaced = NULL;
+
 void make_material_parse_mesh_material() {
 	render_path_base_redraw(); // The 3D view shows the change
 	if (make_material_mesh_scons == NULL) {
 		make_material_mesh_scons = any_array_create(0);
+	}
+	if (make_material_mesh_scon_replaced != NULL) {
+		make_material_delete_context(make_material_mesh_scon_replaced);
+		make_material_mesh_scon_replaced = NULL;
 	}
 	for (i32 i = 0; i < make_material_mesh_scons->length; ++i) {
 		if (make_material_mesh_scons->buffer[i] != NULL) {
@@ -129,7 +136,8 @@ void make_material_parse_mesh_preview_material() {
 		return;
 	}
 
-	// Replaces the first mesh pass shader, make_material_parse_mesh_material() restores it
+	// Replaces the first mesh pass shader, make_material_restore_mesh_material() puts it back
+	// (or make_material_parse_mesh_material() makes it again)
 	material_t            *sd  = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
 	node_shader_context_t *con = make_mesh_preview_run(sd, false);
 	shader_context_load(con->data);
@@ -140,11 +148,29 @@ void make_material_parse_mesh_preview_material() {
 		any_array_push(make_material_mesh_scons, NULL);
 	}
 	if (make_material_mesh_scons->buffer[0] != NULL) {
-		make_material_delete_context(make_material_mesh_scons->buffer[0]);
+		if (make_material_mesh_scon_replaced == NULL) {
+			make_material_mesh_scon_replaced = make_material_mesh_scons->buffer[0];
+		}
+		else {
+			make_material_delete_context(make_material_mesh_scons->buffer[0]); // An earlier preview's
+		}
 	}
 	make_material_mesh_scons->buffer[0] = con->data;
 	node_shader_context_free(con);
 	free(sd);
+}
+
+// The first mesh pass shader a preview replaced, back in place: the mesh shaders as they were, not parsed again
+void make_material_restore_mesh_material() {
+	if (make_material_mesh_scon_replaced == NULL) {
+		make_material_parse_mesh_material();
+		return;
+	}
+	make_material_delete_context(make_material_mesh_scons->buffer[0]);
+	make_material_mesh_scons->buffer[0] = make_material_mesh_scon_replaced;
+	make_material_mesh_scon_replaced    = NULL;
+	render_path_base_redraw();
+	g_context->ddirty = 2;
 }
 
 static bool make_material_bake_linked = false;
