@@ -326,6 +326,15 @@ void gpu_end_internal() {
 	current_render_targets_count = 0;
 }
 
+// The gpu dropped a command buffer's work (a pass too long for the ios watchdog, out of memory): counted and logged,
+// from the thread completing it
+static void gpu_report_error(id<MTLCommandBuffer> cb, const char *where) {
+	if (cb.error != nil) {
+		__atomic_add_fetch(&gpu_error_count, 1, __ATOMIC_RELAXED);
+		fprintf(stderr, "GPU error (%s): %s\n", where, cb.error.localizedDescription.UTF8String);
+	}
+}
+
 void gpu_execute_and_wait() {
 	end_kept_encoder();
 	if (gpu_in_use) {
@@ -337,9 +346,7 @@ void gpu_execute_and_wait() {
 
 	[command_buffer commit];
 	[command_buffer waitUntilCompleted];
-	if (command_buffer.error != nil) { // The gpu dropped the work, e.g. a pass too long for the ios watchdog
-		iron_error("GPU error: %s", command_buffer.error.localizedDescription.UTF8String);
-	}
+	gpu_report_error(command_buffer, "execute");
 	wait_for_frames();
 	id<MTLCommandQueue> queue = get_metal_queue();
 	command_buffer            = [queue commandBuffer];
@@ -373,11 +380,12 @@ void gpu_commit(void (*done)(void *data, double gpu_ms), void *data) {
 		}
 		return;
 	}
-	if (done != NULL) {
-		[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+	  gpu_report_error(cb, "commit");
+	  if (done != NULL) {
 		  done(data, cb.error == nil ? (cb.GPUEndTime - cb.GPUStartTime) * 1000.0 : -1.0);
-		}];
-	}
+	  }
+	}];
 	[command_buffer commit];
 	command_buffer = [get_metal_queue() commandBuffer];
 }
@@ -471,6 +479,9 @@ void gpu_present_internal() {
 		  }
 		}];
 	}
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+	  gpu_report_error(cb, "frame");
+	}];
 	[command_buffer commit];
 	frames_pending[gpu_frame_index] = command_buffer;
 
@@ -605,6 +616,7 @@ void gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
 	[command_encoder endEncoding];
 	[command_buffer commit];
 	[command_buffer waitUntilCompleted];
+	gpu_report_error(command_buffer, "readback");
 
 	// Read buffer
 	memcpy(data, [target_buffer contents], buffer_size);

@@ -36,6 +36,12 @@ int             gpu_shader_failure_count = 0; // Shaders that failed to compile,
 int gpu_shader_failures(void) {
 	return gpu_shader_failure_count;
 }
+
+volatile int gpu_error_count = 0; // Command buffers the gpu dropped (backend), tests check it stays 0
+
+int gpu_errors(void) {
+	return gpu_error_count;
+}
 #ifndef NDEBUG
 uint32_t gpu_debug_draw_calls       = 0;
 uint32_t gpu_debug_draw_calls_frame = 0;

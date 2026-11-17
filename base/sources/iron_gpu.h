@@ -301,6 +301,8 @@ extern gpu_texture_t   framebuffers[GPU_FRAMEBUFFER_COUNT];
 extern int             gpu_frame_index;
 extern int             gpu_shader_failure_count;
 int                    gpu_shader_failures(void);
+extern volatile int    gpu_error_count;
+int                    gpu_errors(void);
 extern bool            gpu_vertex_textures;
 extern gpu_texture_t   framebuffer_depth;
 extern gpu_texture_t  *gpu_framebuffer_redirect;
