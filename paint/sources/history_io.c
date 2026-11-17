@@ -416,7 +416,7 @@ static history_step_t *history_io_decode_step(any_map_t *m) {
 		u8 *data = hstore_get(c, &len);
 		if (data != NULL) {
 			buffer_t b = {.buffer = data, .length = len};
-			s->canvas  = util_clone_canvas(armpack_decode(&b));
+			s->canvas  = ui_node_canvas_decode(&b);
 			free(data);
 		}
 	}

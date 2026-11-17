@@ -1012,3 +1012,367 @@ void armpack_map_set_f32(any_map_t *map, char *key, float value) {
 	s.type = 0;
 	any_map_set(map, key, s.p);
 }
+
+// ---- Schemas ----
+
+typedef struct armpack_reader {
+	const uint8_t *p;
+	size_t         i;
+} armpack_reader_t;
+
+static uint8_t ap_u8(armpack_reader_t *r) {
+	return r->p[r->i++];
+}
+
+static uint32_t ap_u32(armpack_reader_t *r) {
+	uint32_t v;
+	memcpy(&v, r->p + r->i, 4);
+	r->i += 4;
+	return v;
+}
+
+static float ap_f32(armpack_reader_t *r) {
+	float v;
+	memcpy(&v, r->p + r->i, 4);
+	r->i += 4;
+	return v;
+}
+
+static uint32_t ap_typed_size(uint8_t flag) {
+	return flag == 0xca || flag == 0xd2 ? 4 : flag == 0xd1 ? 2 : flag == 0xc4 ? 1 : 0;
+}
+
+// Past the value at r, as armpack_valid walks it
+static void ap_skip(armpack_reader_t *r) {
+	uint8_t flag = ap_u8(r);
+	switch (flag) {
+	case 0xca:
+	case 0xd2:
+		r->i += 4;
+		return;
+	case 0xdb:
+		r->i += ap_u32(r);
+		return;
+	case 0xdf: {
+		uint32_t n = ap_u32(r);
+		for (uint32_t k = 0; k < n; ++k) {
+			r->i += 1;          // Key string flag
+			r->i += ap_u32(r); // Key
+			ap_skip(r);
+		}
+		return;
+	}
+	case 0xdd: {
+		uint32_t n = ap_u32(r);
+		if (n == 0) {
+			return;
+		}
+		uint32_t size = ap_typed_size(r->p[r->i]);
+		if (size > 0) {
+			r->i += 1 + (size_t)size * n;
+			return;
+		}
+		for (uint32_t k = 0; k < n; ++k) {
+			ap_skip(r);
+		}
+		return;
+	}
+	default: // null, bool
+		return;
+	}
+}
+
+static void ap_store_number(uint8_t *dst, armpack_kind_t kind, double v) {
+	if (kind == ARMPACK_I32) {
+		int32_t i = (int32_t)v;
+		memcpy(dst, &i, 4);
+	}
+	else if (kind == ARMPACK_F32) {
+		float f = (float)v;
+		memcpy(dst, &f, 4);
+	}
+	else {
+		*(bool *)dst = v != 0.0;
+	}
+}
+
+static void *ap_decode_struct(armpack_reader_t *r, const armpack_schema_t *schema);
+
+static void *ap_typed_array(armpack_kind_t kind, uint32_t n) {
+	switch (kind) {
+	case ARMPACK_F32_ARRAY:
+		return f32_array_create(n);
+	case ARMPACK_I32_ARRAY:
+		return i32_array_create(n);
+	case ARMPACK_I16_ARRAY:
+		return i16_array_create(n);
+	default:
+		return u8_array_create(n);
+	}
+}
+
+static uint8_t ap_typed_flag(armpack_kind_t kind) {
+	return kind == ARMPACK_F32_ARRAY ? 0xca : kind == ARMPACK_I32_ARRAY ? 0xd2 : kind == ARMPACK_I16_ARRAY ? 0xd1 : 0xc4;
+}
+
+// The value at r into dst as kind. A value of another kind is skipped, dst keeps what it has.
+static void ap_decode_value(armpack_reader_t *r, uint8_t *dst, armpack_kind_t kind, const armpack_schema_t *schema) {
+	size_t  start = r->i;
+	uint8_t flag  = ap_u8(r);
+
+	if (kind == ARMPACK_I32 || kind == ARMPACK_F32 || kind == ARMPACK_BOOL) {
+		if (flag == 0xd2) {
+			ap_store_number(dst, kind, (int32_t)ap_u32(r));
+		}
+		else if (flag == 0xca) {
+			ap_store_number(dst, kind, ap_f32(r));
+		}
+		else if (flag == 0xc2 || flag == 0xc3) {
+			ap_store_number(dst, kind, flag == 0xc3 ? 1.0 : 0.0);
+		}
+		else {
+			r->i = start;
+			ap_skip(r);
+		}
+		return;
+	}
+
+	if (flag == 0xc0) {
+		*(void **)dst = NULL;
+		return;
+	}
+
+	if (kind == ARMPACK_STRING) {
+		if (flag != 0xdb) {
+			r->i = start;
+			ap_skip(r);
+			return;
+		}
+		uint32_t len = ap_u32(r);
+		char    *s   = malloc(len + 1);
+		memcpy(s, r->p + r->i, len);
+		s[len] = '\0';
+		r->i += len;
+		*(char **)dst = s;
+		return;
+	}
+
+	if (flag != 0xdd) {
+		r->i = start;
+		ap_skip(r);
+		return;
+	}
+	uint32_t n     = ap_u32(r);
+	uint8_t  first = n > 0 ? r->p[r->i] : 0;
+
+	if (kind == ARMPACK_F32_ARRAY || kind == ARMPACK_I32_ARRAY || kind == ARMPACK_I16_ARRAY || kind == ARMPACK_U8_ARRAY) {
+		if (n > 0 && first != ap_typed_flag(kind)) {
+			r->i = start;
+			ap_skip(r);
+			return;
+		}
+		u8_array_t *a    = ap_typed_array(kind, n); // Same layout for each element type
+		uint32_t    size = ap_typed_size(ap_typed_flag(kind)) * n;
+		if (n > 0) {
+			r->i += 1;
+			memcpy(a->buffer, r->p + r->i, size);
+			r->i += size;
+		}
+		*(void **)dst = a;
+		return;
+	}
+
+	if (n > 0 && ap_typed_size(first) > 0) { // A typed array where elements of their own are expected
+		r->i = start;
+		ap_skip(r);
+		return;
+	}
+
+	if (kind == ARMPACK_STRING_ARRAY) {
+		string_array_t *a = string_array_create(n);
+		for (uint32_t k = 0; k < n; ++k) {
+			a->buffer[k] = NULL;
+			ap_decode_value(r, (uint8_t *)&a->buffer[k], ARMPACK_STRING, NULL);
+		}
+		*(void **)dst = a;
+		return;
+	}
+
+	any_array_t *a = any_array_create(n);
+	for (uint32_t k = 0; k < n; ++k) {
+		a->buffer[k] = NULL;
+		if (kind == ARMPACK_STRUCTS) {
+			if (r->p[r->i] == 0xdf) {
+				r->i += 1;
+				a->buffer[k] = ap_decode_struct(r, schema);
+			}
+			else {
+				ap_skip(r);
+			}
+		}
+		else {
+			ap_decode_value(r, (uint8_t *)&a->buffer[k], kind == ARMPACK_U8_ARRAYS ? ARMPACK_U8_ARRAY : ARMPACK_F32_ARRAY, NULL);
+		}
+	}
+	*(void **)dst = a;
+}
+
+// Field of key, looked up first at the key's place in the file (a file written in the schema's order)
+static const armpack_field_t *ap_field(const armpack_schema_t *schema, const char *key, uint32_t len, uint32_t hint) {
+	if (hint < (uint32_t)schema->count) {
+		const armpack_field_t *f = &schema->fields[hint];
+		if (strlen(f->name) == len && memcmp(f->name, key, len) == 0) {
+			return f;
+		}
+	}
+	for (int i = 0; i < schema->count; ++i) {
+		const armpack_field_t *f = &schema->fields[i];
+		if (strlen(f->name) == len && memcmp(f->name, key, len) == 0) {
+			return f;
+		}
+	}
+	return NULL;
+}
+
+// The map at r (its flag read) as a new struct of schema
+static void *ap_decode_struct(armpack_reader_t *r, const armpack_schema_t *schema) {
+	uint8_t *s = calloc(1, schema->size);
+	for (int i = 0; i < schema->count; ++i) {
+		const armpack_field_t *f = &schema->fields[i];
+		if (f->def != 0.0f && (f->kind == ARMPACK_I32 || f->kind == ARMPACK_F32 || f->kind == ARMPACK_BOOL)) {
+			ap_store_number(s + f->offset, f->kind, f->def);
+		}
+	}
+	uint32_t n = ap_u32(r);
+	for (uint32_t k = 0; k < n; ++k) {
+		r->i += 1; // Key string flag
+		uint32_t    len = ap_u32(r);
+		const char *key = (const char *)(r->p + r->i);
+		r->i += len;
+		const armpack_field_t *f = ap_field(schema, key, len, k);
+		if (f == NULL) {
+			ap_skip(r); // Not a field of this build
+		}
+		else {
+			ap_decode_value(r, s + f->offset, f->kind, f->schema);
+		}
+	}
+	return s;
+}
+
+void *armpack_decode_schema(buffer_t *b, const armpack_schema_t *schema) {
+	if (!armpack_valid(b) || b->buffer[0] != 0xdf) {
+		return NULL;
+	}
+	armpack_reader_t r = {.p = b->buffer, .i = 1};
+	return ap_decode_struct(&r, schema);
+}
+
+static void ap_encode_value(uint8_t *src, armpack_kind_t kind, const armpack_schema_t *schema) {
+	switch (kind) {
+	case ARMPACK_I32:
+		armpack_encode_i32(*(int32_t *)src);
+		return;
+	case ARMPACK_F32:
+		armpack_encode_f32(*(float *)src);
+		return;
+	case ARMPACK_BOOL:
+		armpack_encode_bool(*(bool *)src);
+		return;
+	case ARMPACK_STRING:
+		armpack_encode_string(*(char **)src);
+		return;
+	case ARMPACK_F32_ARRAY:
+		armpack_encode_array_f32(*(f32_array_t **)src);
+		return;
+	case ARMPACK_I32_ARRAY:
+		armpack_encode_array_i32(*(i32_array_t **)src);
+		return;
+	case ARMPACK_I16_ARRAY:
+		armpack_encode_array_i16(*(i16_array_t **)src);
+		return;
+	case ARMPACK_U8_ARRAY:
+		armpack_encode_array_u8(*(u8_array_t **)src);
+		return;
+	case ARMPACK_STRING_ARRAY:
+		armpack_encode_array_string(*(string_array_t **)src);
+		return;
+	default: {
+		any_array_t *a = *(any_array_t **)src;
+		if (a == NULL) {
+			armpack_encode_null();
+			return;
+		}
+		armpack_encode_array(a->length);
+		for (uint32_t k = 0; k < a->length; ++k) {
+			if (kind == ARMPACK_STRUCTS) {
+				if (a->buffer[k] == NULL) {
+					armpack_encode_null();
+				}
+				else {
+					armpack_encode_schema(a->buffer[k], schema);
+				}
+			}
+			else {
+				ap_encode_value((uint8_t *)&a->buffer[k], kind == ARMPACK_U8_ARRAYS ? ARMPACK_U8_ARRAY : ARMPACK_F32_ARRAY, NULL);
+			}
+		}
+	}
+	}
+}
+
+void armpack_encode_schema(void *s, const armpack_schema_t *schema) {
+	armpack_encode_map(schema->count);
+	for (int i = 0; i < schema->count; ++i) {
+		const armpack_field_t *f = &schema->fields[i];
+		armpack_encode_string((char *)f->name);
+		ap_encode_value((uint8_t *)s + f->offset, f->kind, f->schema);
+	}
+}
+
+static uint32_t ap_size_value(uint8_t *src, armpack_kind_t kind, const armpack_schema_t *schema) {
+	switch (kind) {
+	case ARMPACK_I32:
+	case ARMPACK_F32:
+		return 5;
+	case ARMPACK_BOOL:
+		return 1;
+	case ARMPACK_STRING: {
+		char *str = *(char **)src;
+		return str == NULL ? 1 : 5 + (uint32_t)strlen(str);
+	}
+	case ARMPACK_F32_ARRAY:
+	case ARMPACK_I32_ARRAY:
+	case ARMPACK_I16_ARRAY:
+	case ARMPACK_U8_ARRAY: {
+		u8_array_t *a = *(u8_array_t **)src; // Same layout for each element type
+		return a == NULL ? 1 : 5 + (a->length > 0 ? 1 + ap_typed_size(ap_typed_flag(kind)) * a->length : 0);
+	}
+	default: {
+		any_array_t *a = *(any_array_t **)src;
+		if (a == NULL) {
+			return 1;
+		}
+		uint32_t size = 5;
+		for (uint32_t k = 0; k < a->length; ++k) {
+			if (kind == ARMPACK_STRUCTS) {
+				size += a->buffer[k] == NULL ? 1 : armpack_size_schema(a->buffer[k], schema);
+			}
+			else {
+				armpack_kind_t elem = kind == ARMPACK_STRING_ARRAY ? ARMPACK_STRING : kind == ARMPACK_U8_ARRAYS ? ARMPACK_U8_ARRAY : ARMPACK_F32_ARRAY;
+				size += ap_size_value((uint8_t *)&a->buffer[k], elem, NULL);
+			}
+		}
+		return size;
+	}
+	}
+}
+
+uint32_t armpack_size_schema(void *s, const armpack_schema_t *schema) {
+	uint32_t size = 5;
+	for (int i = 0; i < schema->count; ++i) {
+		const armpack_field_t *f = &schema->fields[i];
+		size += 5 + (uint32_t)strlen(f->name) + ap_size_value((uint8_t *)s + f->offset, f->kind, f->schema);
+	}
+	return size;
+}

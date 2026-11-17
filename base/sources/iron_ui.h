@@ -613,7 +613,10 @@ extern void (*ui_nodes_on_node_remove)(ui_node_t *);
 extern void (*ui_nodes_on_node_changed)(ui_node_t *);
 extern bool ui_nodes_grid_snap;
 
-void     ui_node_canvas_encode(ui_node_canvas_t *canvas);
+void              ui_node_canvas_encode(ui_node_canvas_t *canvas);
+uint32_t          ui_node_canvas_size(ui_node_canvas_t *canvas);
+ui_node_canvas_t *ui_node_canvas_decode(buffer_t *b);
+extern const armpack_schema_t ui_node_canvas_schema;
 char    *ui_node_canvas_to_json(ui_node_canvas_t *canvas);
 
 float UI_NODE_X(ui_node_t *node);

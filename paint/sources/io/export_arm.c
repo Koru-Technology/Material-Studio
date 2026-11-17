@@ -552,7 +552,7 @@ void export_arm_run_material(char *path) {
                                                          });
 	any_array_push(mdata2, md2);
 
-	project_t *raw = ALLOC_INIT(project_t, {.version         = manifest_version_library,
+	project_t *raw = ALLOC_INIT(project_t, {.version         = manifest_version_project,
 	                                        .material_nodes  = mnodes,
 	                                        .material_groups = mgroups,
 	                                        .material_icons  = micons,
@@ -615,7 +615,7 @@ buffer_t *export_arm_encode_library_material(slot_material_t *m) {
                                                          });
 	any_array_push(mdata2, md2);
 
-	project_t *raw = ALLOC_INIT(project_t, {.version        = manifest_version_library,
+	project_t *raw = ALLOC_INIT(project_t, {.version        = manifest_version_project,
 	                                        .material_nodes = mnodes,
 	                                        .material_icons = any_array_create_from_raw((void *[]){icon}, 1),
 	                                        .material_datas = mdata2,
@@ -677,7 +677,7 @@ void export_arm_run_swatches(char *path) {
 	if (!ends_with(path, ".arm")) {
 		path = string("%s.arm", path);
 	}
-	project_t *raw    = ALLOC_INIT(project_t, {.version = manifest_version_library, .swatches = g_project->swatches});
+	project_t *raw    = ALLOC_INIT(project_t, {.version = manifest_version_project, .swatches = g_project->swatches});
 	buffer_t  *buffer = util_encode_project(raw);
 	if (!iron_file_save_bytes(path, buffer, 0)) {
 		console_error(string("Could not save %s.", path));

@@ -1460,127 +1460,86 @@ void ui_node_canvas(ui_nodes_t *nodes, ui_node_canvas_t *canvas) {
 	current->input_enabled  = _input_enabled;
 }
 
+// Canvases as saved (projects, materials, brushes, history), decoded by key: armpack_schema_t
+static const armpack_field_t ui_node_socket_fields[] = {
+    ARMPACK_FIELD(ui_node_socket_t, id, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_socket_t, node_id, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_socket_t, name, ARMPACK_STRING),
+    ARMPACK_FIELD(ui_node_socket_t, type, ARMPACK_STRING),
+    ARMPACK_FIELD(ui_node_socket_t, color, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_socket_t, default_value, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(ui_node_socket_t, min, ARMPACK_F32),
+    ARMPACK_FIELD(ui_node_socket_t, max, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(ui_node_socket_t, precision, ARMPACK_F32, .def = 100.0f),
+    ARMPACK_FIELD(ui_node_socket_t, display, ARMPACK_I32),
+};
+static const armpack_schema_t ui_node_socket_schema = ARMPACK_SCHEMA(ui_node_socket_t, ui_node_socket_fields);
+
+static const armpack_field_t ui_node_button_fields[] = {
+    ARMPACK_FIELD(ui_node_button_t, name, ARMPACK_STRING),
+    ARMPACK_FIELD(ui_node_button_t, type, ARMPACK_STRING),
+    ARMPACK_FIELD(ui_node_button_t, output, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_button_t, default_value, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(ui_node_button_t, data, ARMPACK_U8_ARRAY),
+    ARMPACK_FIELD(ui_node_button_t, min, ARMPACK_F32),
+    ARMPACK_FIELD(ui_node_button_t, max, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(ui_node_button_t, precision, ARMPACK_F32, .def = 100.0f),
+    ARMPACK_FIELD(ui_node_button_t, height, ARMPACK_F32),
+};
+static const armpack_schema_t ui_node_button_schema = ARMPACK_SCHEMA(ui_node_button_t, ui_node_button_fields);
+
+static const armpack_field_t ui_node_fields[] = {
+    ARMPACK_FIELD(ui_node_t, id, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_t, name, ARMPACK_STRING),
+    ARMPACK_FIELD(ui_node_t, type, ARMPACK_STRING),
+    ARMPACK_FIELD(ui_node_t, x, ARMPACK_F32),
+    ARMPACK_FIELD(ui_node_t, y, ARMPACK_F32),
+    ARMPACK_FIELD(ui_node_t, color, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_t, inputs, ARMPACK_STRUCTS, .schema = &ui_node_socket_schema),
+    ARMPACK_FIELD(ui_node_t, outputs, ARMPACK_STRUCTS, .schema = &ui_node_socket_schema),
+    ARMPACK_FIELD(ui_node_t, buttons, ARMPACK_STRUCTS, .schema = &ui_node_button_schema),
+    ARMPACK_FIELD(ui_node_t, width, ARMPACK_F32),
+    ARMPACK_FIELD(ui_node_t, flags, ARMPACK_I32),
+};
+static const armpack_schema_t ui_node_schema = ARMPACK_SCHEMA(ui_node_t, ui_node_fields);
+
+static const armpack_field_t ui_node_link_fields[] = {
+    ARMPACK_FIELD(ui_node_link_t, id, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_link_t, from_id, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_link_t, from_socket, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_link_t, to_id, ARMPACK_I32),
+    ARMPACK_FIELD(ui_node_link_t, to_socket, ARMPACK_I32),
+};
+static const armpack_schema_t ui_node_link_schema = ARMPACK_SCHEMA(ui_node_link_t, ui_node_link_fields);
+
+static const armpack_field_t ui_node_canvas_fields[] = {
+    ARMPACK_FIELD(ui_node_canvas_t, name, ARMPACK_STRING),
+    ARMPACK_FIELD(ui_node_canvas_t, nodes, ARMPACK_STRUCTS, .schema = &ui_node_schema),
+    ARMPACK_FIELD(ui_node_canvas_t, links, ARMPACK_STRUCTS, .schema = &ui_node_link_schema),
+};
+const armpack_schema_t ui_node_canvas_schema = ARMPACK_SCHEMA(ui_node_canvas_t, ui_node_canvas_fields);
+
 void ui_node_canvas_encode(ui_node_canvas_t *canvas) {
-	// armpack_encode_start(encoded);
-	armpack_encode_map(3);
-	armpack_encode_string("name");
-	armpack_encode_string(canvas->name);
+	armpack_encode_schema(canvas, &ui_node_canvas_schema);
+}
 
-	armpack_encode_string("nodes");
-	armpack_encode_array(canvas->nodes->length);
-	for (int i = 0; i < canvas->nodes->length; ++i) {
-		armpack_encode_map(11);
-		armpack_encode_string("id");
-		armpack_encode_i32(canvas->nodes->buffer[i]->id);
-		armpack_encode_string("name");
-		armpack_encode_string(canvas->nodes->buffer[i]->name);
-		armpack_encode_string("type");
-		armpack_encode_string(canvas->nodes->buffer[i]->type);
-		armpack_encode_string("x");
-		armpack_encode_f32(canvas->nodes->buffer[i]->x);
-		armpack_encode_string("y");
-		armpack_encode_f32(canvas->nodes->buffer[i]->y);
-		armpack_encode_string("color");
-		armpack_encode_i32(canvas->nodes->buffer[i]->color);
+uint32_t ui_node_canvas_size(ui_node_canvas_t *canvas) {
+	return armpack_size_schema(canvas, &ui_node_canvas_schema);
+}
 
-		armpack_encode_string("inputs");
-		armpack_encode_array(canvas->nodes->buffer[i]->inputs->length);
-		for (int j = 0; j < canvas->nodes->buffer[i]->inputs->length; ++j) {
-			armpack_encode_map(10);
-			armpack_encode_string("id");
-			armpack_encode_i32(canvas->nodes->buffer[i]->inputs->buffer[j]->id);
-			armpack_encode_string("node_id");
-			armpack_encode_i32(canvas->nodes->buffer[i]->inputs->buffer[j]->node_id);
-			armpack_encode_string("name");
-			armpack_encode_string(canvas->nodes->buffer[i]->inputs->buffer[j]->name);
-			armpack_encode_string("type");
-			armpack_encode_string(canvas->nodes->buffer[i]->inputs->buffer[j]->type);
-			armpack_encode_string("color");
-			armpack_encode_i32(canvas->nodes->buffer[i]->inputs->buffer[j]->color);
-			armpack_encode_string("default_value");
-			armpack_encode_array_f32(canvas->nodes->buffer[i]->inputs->buffer[j]->default_value);
-			armpack_encode_string("min");
-			armpack_encode_f32(canvas->nodes->buffer[i]->inputs->buffer[j]->min);
-			armpack_encode_string("max");
-			armpack_encode_f32(canvas->nodes->buffer[i]->inputs->buffer[j]->max);
-			armpack_encode_string("precision");
-			armpack_encode_f32(canvas->nodes->buffer[i]->inputs->buffer[j]->precision);
-			armpack_encode_string("display");
-			armpack_encode_i32(canvas->nodes->buffer[i]->inputs->buffer[j]->display);
-		}
-
-		armpack_encode_string("outputs");
-		armpack_encode_array(canvas->nodes->buffer[i]->outputs->length);
-		for (int j = 0; j < canvas->nodes->buffer[i]->outputs->length; ++j) {
-			armpack_encode_map(10);
-			armpack_encode_string("id");
-			armpack_encode_i32(canvas->nodes->buffer[i]->outputs->buffer[j]->id);
-			armpack_encode_string("node_id");
-			armpack_encode_i32(canvas->nodes->buffer[i]->outputs->buffer[j]->node_id);
-			armpack_encode_string("name");
-			armpack_encode_string(canvas->nodes->buffer[i]->outputs->buffer[j]->name);
-			armpack_encode_string("type");
-			armpack_encode_string(canvas->nodes->buffer[i]->outputs->buffer[j]->type);
-			armpack_encode_string("color");
-			armpack_encode_i32(canvas->nodes->buffer[i]->outputs->buffer[j]->color);
-			armpack_encode_string("default_value");
-			armpack_encode_array_f32(canvas->nodes->buffer[i]->outputs->buffer[j]->default_value);
-			armpack_encode_string("min");
-			armpack_encode_f32(canvas->nodes->buffer[i]->outputs->buffer[j]->min);
-			armpack_encode_string("max");
-			armpack_encode_f32(canvas->nodes->buffer[i]->outputs->buffer[j]->max);
-			armpack_encode_string("precision");
-			armpack_encode_f32(canvas->nodes->buffer[i]->outputs->buffer[j]->precision);
-			armpack_encode_string("display");
-			armpack_encode_i32(canvas->nodes->buffer[i]->outputs->buffer[j]->display);
-		}
-
-		armpack_encode_string("buttons");
-		armpack_encode_array(canvas->nodes->buffer[i]->buttons->length);
-		for (int j = 0; j < canvas->nodes->buffer[i]->buttons->length; ++j) {
-			armpack_encode_map(9);
-			armpack_encode_string("name");
-			armpack_encode_string(canvas->nodes->buffer[i]->buttons->buffer[j]->name);
-			armpack_encode_string("type");
-			armpack_encode_string(canvas->nodes->buffer[i]->buttons->buffer[j]->type);
-			armpack_encode_string("output");
-			armpack_encode_i32(canvas->nodes->buffer[i]->buttons->buffer[j]->output);
-			armpack_encode_string("default_value");
-			armpack_encode_array_f32(canvas->nodes->buffer[i]->buttons->buffer[j]->default_value);
-			armpack_encode_string("data");
-			u8_array_t *u8 = canvas->nodes->buffer[i]->buttons->buffer[j]->data;
-			armpack_encode_array_u8(u8);
-			armpack_encode_string("min");
-			armpack_encode_f32(canvas->nodes->buffer[i]->buttons->buffer[j]->min);
-			armpack_encode_string("max");
-			armpack_encode_f32(canvas->nodes->buffer[i]->buttons->buffer[j]->max);
-			armpack_encode_string("precision");
-			armpack_encode_f32(canvas->nodes->buffer[i]->buttons->buffer[j]->precision);
-			armpack_encode_string("height");
-			armpack_encode_f32(canvas->nodes->buffer[i]->buttons->buffer[j]->height);
-		}
-
-		armpack_encode_string("width");
-		armpack_encode_f32(canvas->nodes->buffer[i]->width);
-		armpack_encode_string("flags");
-		armpack_encode_i32(canvas->nodes->buffer[i]->flags);
+// A canvas ui_node_canvas_encode wrote, by any build: NULL when b is not one
+ui_node_canvas_t *ui_node_canvas_decode(buffer_t *b) {
+	ui_node_canvas_t *c = armpack_decode_schema(b, &ui_node_canvas_schema);
+	if (c != NULL && (c->nodes == NULL || c->links == NULL)) {
+		return NULL;
 	}
-
-	armpack_encode_string("links");
-	armpack_encode_array(canvas->links->length);
-	for (int i = 0; i < canvas->links->length; ++i) {
-		armpack_encode_map(5);
-		armpack_encode_string("id");
-		armpack_encode_i32(canvas->links->buffer[i]->id);
-		armpack_encode_string("from_id");
-		armpack_encode_i32(canvas->links->buffer[i]->from_id);
-		armpack_encode_string("from_socket");
-		armpack_encode_i32(canvas->links->buffer[i]->from_socket);
-		armpack_encode_string("to_id");
-		armpack_encode_i32(canvas->links->buffer[i]->to_id);
-		armpack_encode_string("to_socket");
-		armpack_encode_i32(canvas->links->buffer[i]->to_socket);
+	for (int i = 0; c != NULL && i < c->nodes->length; ++i) {
+		ui_node_t *n = c->nodes->buffer[i];
+		if (n == NULL || n->inputs == NULL || n->outputs == NULL || n->buttons == NULL) {
+			return NULL;
+		}
 	}
+	return c;
 }
 
 char *ui_node_canvas_to_json(ui_node_canvas_t *canvas) {

@@ -315,7 +315,7 @@ mask_effect_t mask_stack_get(slot_layer_t *m, i32 i) {
 	return e;
 }
 
-static void mask_stack_pack(f32 *f, mask_effect_t e) {
+void mask_stack_pack(f32 *f, mask_effect_t e) {
 	f[0] = (f32)e.type;
 	f[1] = e.visible ? 1.0 : 0.0;
 	f[2] = e.opacity;

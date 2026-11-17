@@ -74,350 +74,153 @@ buffer_t *util_encode_scene(scene_t *raw) {
 	return encoded;
 }
 
-void util_encode_node_canvas(ui_node_canvas_t *c) {
-	ui_node_canvas_encode(c);
-}
+// ---- Projects ----
+// Project files (and material, brush and swatches files, projects without layers) as armpack maps of these fields,
+// decoded by key (armpack_schema_t): a field added, removed or moved needs no version bump. A field whose meaning
+// changes does: the step that reads the older meaning goes into import_arm_upgrade (io/import_arm.c).
 
-i32 util_encode_packed_assets_size(packed_asset_t_array_t *assets) {
-	if (assets == NULL) {
-		return 0;
-	}
-	i32 size = 0;
-	for (i32 i = 0; i < assets->length; ++i) {
-		packed_asset_t *asset = assets->buffer[i];
-		buffer_t       *bytes = asset->bytes;
-		size += bytes->length;
-	}
-	return size;
-}
+static const armpack_field_t util_packed_asset_fields[] = {
+    ARMPACK_FIELD(packed_asset_t, name, ARMPACK_STRING),
+    ARMPACK_FIELD(packed_asset_t, bytes, ARMPACK_U8_ARRAY),
+};
+static const armpack_schema_t util_packed_asset_schema = ARMPACK_SCHEMA(packed_asset_t, util_packed_asset_fields);
 
-i32 util_encode_buffers_size(buffer_t_array_t *buffers) {
-	if (buffers == NULL) {
-		return 0;
-	}
-	i32 size = 0;
-	for (i32 i = 0; i < buffers->length; ++i) {
-		size += buffers->buffer[i]->length;
-	}
-	return size;
-}
+static const armpack_field_t util_swatch_fields[] = {
+    ARMPACK_FIELD(swatch_color_t, base, ARMPACK_I32),
+    ARMPACK_FIELD(swatch_color_t, opacity, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(swatch_color_t, occlusion, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(swatch_color_t, roughness, ARMPACK_F32),
+    ARMPACK_FIELD(swatch_color_t, metallic, ARMPACK_F32),
+    ARMPACK_FIELD(swatch_color_t, normal, ARMPACK_I32),
+    ARMPACK_FIELD(swatch_color_t, emission, ARMPACK_F32),
+    ARMPACK_FIELD(swatch_color_t, height, ARMPACK_F32),
+    ARMPACK_FIELD(swatch_color_t, subsurface, ARMPACK_F32),
+};
+static const armpack_schema_t util_swatch_schema = ARMPACK_SCHEMA(swatch_color_t, util_swatch_fields);
 
-i32 util_encode_f32_arrays_size(f32_array_t_array_t *arrays) {
-	if (arrays == NULL) {
-		return 0;
-	}
-	i32 size = 0;
-	for (i32 i = 0; i < arrays->length; ++i) {
-		size += arrays->buffer[i]->length * 4;
-	}
-	return size;
-}
+static const armpack_field_t util_material_data_fields[] = {
+    ARMPACK_FIELD(material_data2_t, paint_base, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_opac, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_occ, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_rough, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_met, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_nor, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_height, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_emis, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, paint_subs, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(material_data2_t, uv_scale, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(material_data2_t, uv_angle, ARMPACK_F32),
+    ARMPACK_FIELD(material_data2_t, uid, ARMPACK_I32),
+};
+static const armpack_schema_t util_material_data_schema = ARMPACK_SCHEMA(material_data2_t, util_material_data_fields);
+
+static const armpack_field_t util_layer_data_fields[] = {
+    ARMPACK_FIELD(layer_data_t, name, ARMPACK_STRING),
+    ARMPACK_FIELD(layer_data_t, type, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, res_x, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, res_y, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, bpp, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, decal_mat, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(layer_data_t, opacity_mask, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(layer_data_t, fill, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(layer_data_t, object_mask, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, blending, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, parent, ARMPACK_I32, .def = -1),
+    ARMPACK_FIELD(layer_data_t, visible, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_base, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_opac, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_occ, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_rough, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_met, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_nor, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_nor_blend, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_height, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_height_blend, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_emis, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, paint_subs, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, uv_map, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, path_points, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(layer_data_t, path_points_world, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(layer_data_t, path_points_camera, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(layer_data_t, path_points_parent, ARMPACK_I32_ARRAY),
+    ARMPACK_FIELD(layer_data_t, path_tool, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, path_curved, ARMPACK_BOOL),
+    ARMPACK_FIELD(layer_data_t, path_material, ARMPACK_I32, .def = -1),
+    ARMPACK_FIELD(layer_data_t, path_text, ARMPACK_BOOL),
+    ARMPACK_FIELD(layer_data_t, mask_effects, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(layer_data_t, uid, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, timeline, ARMPACK_I32),
+    ARMPACK_FIELD(layer_data_t, tilemap, ARMPACK_U8_ARRAY),
+};
+static const armpack_schema_t util_layer_data_schema = ARMPACK_SCHEMA(layer_data_t, util_layer_data_fields);
+
+static const armpack_field_t util_vertex_array_fields[] = {
+    ARMPACK_FIELD(vertex_array_t, attrib, ARMPACK_STRING),
+    ARMPACK_FIELD(vertex_array_t, data, ARMPACK_STRING),
+    ARMPACK_FIELD(vertex_array_t, values, ARMPACK_I16_ARRAY),
+};
+static const armpack_schema_t util_vertex_array_schema = ARMPACK_SCHEMA(vertex_array_t, util_vertex_array_fields);
+
+static const armpack_field_t util_mesh_data_fields[] = {
+    ARMPACK_FIELD(mesh_data_t, name, ARMPACK_STRING),
+    ARMPACK_FIELD(mesh_data_t, scale_pos, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(mesh_data_t, scale_tex, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(mesh_data_t, vertex_arrays, ARMPACK_STRUCTS, .schema = &util_vertex_array_schema),
+    ARMPACK_FIELD(mesh_data_t, index_array, ARMPACK_I32_ARRAY),
+};
+static const armpack_schema_t util_mesh_data_schema = ARMPACK_SCHEMA(mesh_data_t, util_mesh_data_fields);
+
+static const armpack_field_t util_project_fields[] = {
+    ARMPACK_FIELD(project_t, version, ARMPACK_STRING), // First: import_arm_version reads it at a fixed place
+    ARMPACK_FIELD(project_t, assets, ARMPACK_STRING_ARRAY),
+    ARMPACK_FIELD(project_t, is_bgra, ARMPACK_BOOL),
+    ARMPACK_FIELD(project_t, packed_assets, ARMPACK_STRUCTS, .schema = &util_packed_asset_schema),
+    ARMPACK_FIELD(project_t, envmap, ARMPACK_STRING),
+    ARMPACK_FIELD(project_t, envmap_strength, ARMPACK_F32, .def = 1.0f),
+    ARMPACK_FIELD(project_t, envmap_angle, ARMPACK_F32),
+    ARMPACK_FIELD(project_t, envmap_blur, ARMPACK_BOOL),
+    ARMPACK_FIELD(project_t, camera_world, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(project_t, camera_origin, ARMPACK_F32_ARRAY),
+    ARMPACK_FIELD(project_t, camera_fov, ARMPACK_F32),
+    ARMPACK_FIELD(project_t, camera_near, ARMPACK_F32),
+    ARMPACK_FIELD(project_t, camera_far, ARMPACK_F32),
+    ARMPACK_FIELD(project_t, camera_frustum_culling, ARMPACK_BOOL),
+    ARMPACK_FIELD(project_t, swatches, ARMPACK_STRUCTS, .schema = &util_swatch_schema),
+    ARMPACK_FIELD(project_t, brush_nodes, ARMPACK_STRUCTS, .schema = &ui_node_canvas_schema),
+    ARMPACK_FIELD(project_t, brush_icons, ARMPACK_U8_ARRAYS),
+    ARMPACK_FIELD(project_t, material_nodes, ARMPACK_STRUCTS, .schema = &ui_node_canvas_schema),
+    ARMPACK_FIELD(project_t, material_groups, ARMPACK_STRUCTS, .schema = &ui_node_canvas_schema),
+    ARMPACK_FIELD(project_t, material_icons, ARMPACK_U8_ARRAYS),
+    ARMPACK_FIELD(project_t, material_datas, ARMPACK_STRUCTS, .schema = &util_material_data_schema),
+    ARMPACK_FIELD(project_t, font_assets, ARMPACK_STRING_ARRAY),
+    ARMPACK_FIELD(project_t, layer_datas, ARMPACK_STRUCTS, .schema = &util_layer_data_schema),
+    ARMPACK_FIELD(project_t, mesh_datas, ARMPACK_STRUCTS, .schema = &util_mesh_data_schema),
+    ARMPACK_FIELD(project_t, mesh_assets, ARMPACK_STRING_ARRAY),
+    ARMPACK_FIELD(project_t, mesh_icons, ARMPACK_U8_ARRAYS),
+    ARMPACK_FIELD(project_t, mesh_transforms, ARMPACK_F32_ARRAYS),
+    ARMPACK_FIELD(project_t, mesh_parents, ARMPACK_I32_ARRAY),
+    ARMPACK_FIELD(project_t, atlas_objects, ARMPACK_I32_ARRAY),
+    ARMPACK_FIELD(project_t, atlas_names, ARMPACK_STRING_ARRAY),
+    ARMPACK_FIELD(project_t, linear_blending, ARMPACK_BOOL),
+    ARMPACK_FIELD(project_t, id_map, ARMPACK_STRING),
+    ARMPACK_FIELD(project_t, mesh_maps, ARMPACK_STRING_ARRAY),
+    ARMPACK_FIELD(project_t, uuid, ARMPACK_STRING),
+    ARMPACK_FIELD(project_t, next_uid, ARMPACK_I32),
+    ARMPACK_FIELD(project_t, timelines, ARMPACK_U8_ARRAY),
+    ARMPACK_FIELD(project_t, history, ARMPACK_U8_ARRAY),
+};
+static const armpack_schema_t util_project_schema = ARMPACK_SCHEMA(project_t, util_project_fields);
 
 buffer_t *util_encode_project(project_t *raw) {
-	i32 size = 32 * 1024 * 1024 + util_encode_mesh_data_size(raw->mesh_datas) +
-	           util_encode_packed_assets_size(raw->packed_assets) + util_encode_buffers_size(raw->brush_icons) + util_encode_buffers_size(raw->material_icons) +
-	           util_encode_buffers_size(raw->mesh_icons) + util_encode_f32_arrays_size(raw->mesh_transforms) +
-	           (raw->timelines != NULL ? raw->timelines->length : 0) + (raw->history != NULL ? raw->history->length : 0);
-	buffer_t *encoded = buffer_create(size);
-
+	buffer_t *encoded = buffer_create(armpack_size_schema(raw, &util_project_schema));
 	armpack_encode_start(encoded->buffer);
-	armpack_encode_map(37);
-
-	armpack_encode_string("version");
-	armpack_encode_string(raw->version);
-	armpack_encode_string("assets");
-	armpack_encode_array_string(raw->assets);
-	armpack_encode_string("is_bgra");
-	armpack_encode_bool(raw->is_bgra);
-	armpack_encode_string("packed_assets");
-	if (raw->packed_assets != NULL) {
-		armpack_encode_array(raw->packed_assets->length);
-		for (i32 i = 0; i < raw->packed_assets->length; ++i) {
-			armpack_encode_map(2);
-			armpack_encode_string("name");
-			armpack_encode_string(raw->packed_assets->buffer[i]->name);
-			armpack_encode_string("bytes");
-			armpack_encode_array_u8(raw->packed_assets->buffer[i]->bytes);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-	armpack_encode_string("envmap");
-	armpack_encode_string(raw->envmap);
-	armpack_encode_string("envmap_strength");
-	armpack_encode_f32(raw->envmap_strength);
-	armpack_encode_string("envmap_angle");
-	armpack_encode_f32(raw->envmap_angle);
-	armpack_encode_string("envmap_blur");
-	armpack_encode_bool(raw->envmap_blur);
-	armpack_encode_string("camera_world");
-	armpack_encode_array_f32(raw->camera_world);
-	armpack_encode_string("camera_origin");
-	armpack_encode_array_f32(raw->camera_origin);
-	armpack_encode_string("camera_fov");
-	armpack_encode_f32(raw->camera_fov);
-	armpack_encode_string("camera_near");
-	armpack_encode_f32(raw->camera_near);
-	armpack_encode_string("camera_far");
-	armpack_encode_f32(raw->camera_far);
-	armpack_encode_string("camera_frustum_culling");
-	armpack_encode_bool(raw->camera_frustum_culling);
-	armpack_encode_string("swatches");
-	if (raw->swatches != NULL) {
-		armpack_encode_array(raw->swatches->length);
-		for (i32 i = 0; i < raw->swatches->length; ++i) {
-			armpack_encode_map(9);
-			armpack_encode_string("base");
-			armpack_encode_i32(raw->swatches->buffer[i]->base);
-			armpack_encode_string("opacity");
-			armpack_encode_f32(raw->swatches->buffer[i]->opacity);
-			armpack_encode_string("occlusion");
-			armpack_encode_f32(raw->swatches->buffer[i]->occlusion);
-			armpack_encode_string("roughness");
-			armpack_encode_f32(raw->swatches->buffer[i]->roughness);
-			armpack_encode_string("metallic");
-			armpack_encode_f32(raw->swatches->buffer[i]->metallic);
-			armpack_encode_string("normal");
-			armpack_encode_i32(raw->swatches->buffer[i]->normal);
-			armpack_encode_string("emission");
-			armpack_encode_f32(raw->swatches->buffer[i]->emission);
-			armpack_encode_string("height");
-			armpack_encode_f32(raw->swatches->buffer[i]->height);
-			armpack_encode_string("subsurface");
-			armpack_encode_f32(raw->swatches->buffer[i]->subsurface);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("brush_nodes");
-	if (raw->brush_nodes != NULL) {
-		armpack_encode_array(raw->brush_nodes->length);
-		for (i32 i = 0; i < raw->brush_nodes->length; ++i) {
-			util_encode_node_canvas(raw->brush_nodes->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("brush_icons");
-	if (raw->brush_icons != NULL) {
-		armpack_encode_array(raw->brush_icons->length);
-		for (i32 i = 0; i < raw->brush_icons->length; ++i) {
-			armpack_encode_array_u8(raw->brush_icons->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("material_nodes");
-	if (raw->material_nodes != NULL) {
-		armpack_encode_array(raw->material_nodes->length);
-		for (i32 i = 0; i < raw->material_nodes->length; ++i) {
-			util_encode_node_canvas(raw->material_nodes->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("material_groups");
-	if (raw->material_groups != NULL) {
-		armpack_encode_array(raw->material_groups->length);
-		for (i32 i = 0; i < raw->material_groups->length; ++i) {
-			util_encode_node_canvas(raw->material_groups->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("material_icons");
-	if (raw->material_icons != NULL) {
-		armpack_encode_array(raw->material_icons->length);
-		for (i32 i = 0; i < raw->material_icons->length; ++i) {
-			armpack_encode_array_u8(raw->material_icons->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("material_datas");
-	if (raw->material_datas != NULL) {
-		armpack_encode_array(raw->material_datas->length);
-		for (i32 i = 0; i < raw->material_datas->length; ++i) {
-			armpack_encode_map(12);
-			armpack_encode_string("paint_base");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_base);
-			armpack_encode_string("paint_opac");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_opac);
-			armpack_encode_string("paint_occ");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_occ);
-			armpack_encode_string("paint_rough");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_rough);
-			armpack_encode_string("paint_met");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_met);
-			armpack_encode_string("paint_nor");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_nor);
-			armpack_encode_string("paint_height");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_height);
-			armpack_encode_string("paint_emis");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_emis);
-			armpack_encode_string("paint_subs");
-			armpack_encode_bool(raw->material_datas->buffer[i]->paint_subs);
-			armpack_encode_string("uv_scale");
-			armpack_encode_f32(raw->material_datas->buffer[i]->uv_scale);
-			armpack_encode_string("uv_angle");
-			armpack_encode_f32(raw->material_datas->buffer[i]->uv_angle);
-			armpack_encode_string("uid");
-			armpack_encode_i32((i32)raw->material_datas->buffer[i]->uid);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("font_assets");
-	armpack_encode_array_string(raw->font_assets);
-
-	armpack_encode_string("layer_datas");
-	if (raw->layer_datas != NULL) {
-		armpack_encode_array(raw->layer_datas->length);
-		for (i32 i = 0; i < raw->layer_datas->length; ++i) {
-			armpack_encode_map(36);
-			armpack_encode_string("name");
-			armpack_encode_string(raw->layer_datas->buffer[i]->name);
-			armpack_encode_string("type");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->type);
-			armpack_encode_string("res_x");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->res_x);
-			armpack_encode_string("res_y");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->res_y);
-			armpack_encode_string("bpp");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->bpp);
-			armpack_encode_string("decal_mat");
-			armpack_encode_array_f32(raw->layer_datas->buffer[i]->decal_mat);
-			armpack_encode_string("opacity_mask");
-			armpack_encode_f32(raw->layer_datas->buffer[i]->opacity_mask);
-			armpack_encode_string("fill");
-			armpack_encode_array_f32(raw->layer_datas->buffer[i]->fill);
-			armpack_encode_string("object_mask");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->object_mask);
-			armpack_encode_string("blending");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->blending);
-			armpack_encode_string("parent");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->parent);
-			armpack_encode_string("visible");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->visible);
-			armpack_encode_string("paint_base");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_base);
-			armpack_encode_string("paint_opac");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_opac);
-			armpack_encode_string("paint_occ");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_occ);
-			armpack_encode_string("paint_rough");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_rough);
-			armpack_encode_string("paint_met");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_met);
-			armpack_encode_string("paint_nor");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_nor);
-			armpack_encode_string("paint_nor_blend");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_nor_blend);
-			armpack_encode_string("paint_height");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_height);
-			armpack_encode_string("paint_height_blend");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_height_blend);
-			armpack_encode_string("paint_emis");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_emis);
-			armpack_encode_string("paint_subs");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->paint_subs);
-			armpack_encode_string("uv_map");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->uv_map);
-			armpack_encode_string("path_points");
-			armpack_encode_array_f32(raw->layer_datas->buffer[i]->path_points);
-			armpack_encode_string("path_points_world");
-			armpack_encode_array_f32(raw->layer_datas->buffer[i]->path_points_world);
-			armpack_encode_string("path_points_camera");
-			armpack_encode_array_f32(raw->layer_datas->buffer[i]->path_points_camera);
-			armpack_encode_string("path_points_parent");
-			armpack_encode_array_i32(raw->layer_datas->buffer[i]->path_points_parent);
-			armpack_encode_string("path_tool");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->path_tool);
-			armpack_encode_string("path_curved");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->path_curved);
-			armpack_encode_string("path_material");
-			armpack_encode_i32(raw->layer_datas->buffer[i]->path_material);
-			armpack_encode_string("path_text");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->path_text);
-			armpack_encode_string("mask_effects");
-			armpack_encode_array_f32(raw->layer_datas->buffer[i]->mask_effects);
-			armpack_encode_string("uid");
-			armpack_encode_i32((i32)raw->layer_datas->buffer[i]->uid);
-			armpack_encode_string("timeline");
-			armpack_encode_i32((i32)raw->layer_datas->buffer[i]->timeline);
-			armpack_encode_string("tilemap");
-			armpack_encode_array_u8(raw->layer_datas->buffer[i]->tilemap);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	util_encode_mesh_datas(raw->mesh_datas);
-
-	armpack_encode_string("mesh_assets");
-	armpack_encode_array_string(raw->mesh_assets);
-
-	armpack_encode_string("mesh_icons");
-	if (raw->mesh_icons != NULL) {
-		armpack_encode_array(raw->mesh_icons->length);
-		for (i32 i = 0; i < raw->mesh_icons->length; ++i) {
-			armpack_encode_array_u8(raw->mesh_icons->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("mesh_transforms");
-	if (raw->mesh_transforms != NULL) {
-		armpack_encode_array(raw->mesh_transforms->length);
-		for (i32 i = 0; i < raw->mesh_transforms->length; ++i) {
-			armpack_encode_array_f32(raw->mesh_transforms->buffer[i]);
-		}
-	}
-	else {
-		armpack_encode_null();
-	}
-
-	armpack_encode_string("mesh_parents");
-	armpack_encode_array_i32(raw->mesh_parents);
-
-	armpack_encode_string("atlas_objects");
-	armpack_encode_array_i32(raw->atlas_objects);
-	armpack_encode_string("atlas_names");
-	armpack_encode_array_string(raw->atlas_names);
-	armpack_encode_string("linear_blending");
-	armpack_encode_bool(raw->linear_blending);
-	armpack_encode_string("id_map");
-	armpack_encode_string(raw->id_map);
-	armpack_encode_string("mesh_maps");
-	armpack_encode_array_string(raw->mesh_maps);
-	armpack_encode_string("uuid");
-	armpack_encode_string(raw->uuid);
-	armpack_encode_string("next_uid");
-	armpack_encode_i32((i32)raw->next_uid);
-	armpack_encode_string("timelines");
-	armpack_encode_array_u8(raw->timelines);
-	armpack_encode_string("history");
-	armpack_encode_array_u8(raw->history);
-
-	i32 ei          = armpack_encode_end();
-	encoded->length = ei;
+	armpack_encode_schema(raw, &util_project_schema);
+	encoded->length = armpack_encode_end();
 	return encoded;
+}
+
+// A project, material, brush or swatches file of any version, its fields as that version wrote them: NULL when b is
+// not one. import_arm_decode reads it as this build's version.
+project_t *util_decode_project(buffer_t *b) {
+	return armpack_decode_schema(b, &util_project_schema);
 }

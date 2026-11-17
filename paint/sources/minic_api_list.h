@@ -1205,6 +1205,7 @@ X0(paint_replay_test_count, "i()", i)
 X2(paint_replay_test_entry, "b(p:slot_layer_t l,i index)", b, p, i)
 
 X1(script_tmp_dir, "p:char(p:char name)", p, p)
+X0(script_dir, "p:char()", p)
 // Texture export, more
 X2(script_diff_files, "i(p:char path_a,p:char path_b)", i, p, p)
 X1(export_tiled_test_whole, "v(b on)", v, b)

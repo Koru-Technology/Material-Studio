@@ -497,7 +497,7 @@ static char *pms_image_texture(hash128_t h, char *file) {
 
 static ui_node_canvas_t *pms_decode_canvas(const u8 *data, u32 len) {
 	buffer_t b = {.buffer = (u8 *)data, .length = len};
-	return util_clone_canvas(armpack_decode(&b));
+	return ui_node_canvas_decode(&b);
 }
 
 // A hidden material from a snapshot blob, its dependencies in *deps (NULL when it has none)

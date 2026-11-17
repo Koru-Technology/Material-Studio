@@ -179,6 +179,13 @@ char *script_tmp_dir(char *name) {
 #endif
 }
 
+extern char *args_script_path;
+
+// The directory of the running script (--script), ending with a separator: fixtures next to the suites
+char *script_dir(void) {
+	return path_base_dir(args_script_path);
+}
+
 // Texels for comparisons across formats: script_texture_read or script_image_read takes a snapshot (RGBA floats, RGBA
 // order whatever the texture's), script_texel reads it
 static f32 *util_test_snap   = NULL;

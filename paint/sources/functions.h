@@ -62,6 +62,7 @@ void import_arm_set_preview_given(slot_material_t *m);
 bool import_arm_take_preview_given(slot_material_t *m);
 void import_arm_run_project(char *path);
 bool       import_arm_has_version(buffer_t *b);
+i32        import_arm_version(buffer_t *b);
 project_t *import_arm_decode(buffer_t *b);
 
 // ---- io/import_arm_library.c ----
@@ -1173,7 +1174,8 @@ void util_cursor_render(void *_);
 
 // ---- util/util_encode.c ----
 buffer_t *util_encode_scene(scene_t *raw);
-buffer_t *util_encode_project(project_t *raw);
+buffer_t  *util_encode_project(project_t *raw);
+project_t *util_decode_project(buffer_t *b);
 
 // ---- util/util_env.c ----
 void env_begin(i32 w, i32 h, f32 r, f32 g, f32 b);
@@ -1345,6 +1347,7 @@ mask_effect_t        mask_effect_default(i32 type);
 i32                  mask_stack_count(slot_layer_t *m);
 mask_effect_t        mask_stack_get(slot_layer_t *m, i32 i);
 void                 mask_stack_materialize(slot_layer_t *m);
+void                 mask_stack_pack(f32 *f, mask_effect_t e); // e into MASK_EFFECT_STRIDE floats
 void                 mask_stack_set(slot_layer_t *m, i32 i, mask_effect_t e);
 i32                  mask_stack_paint_index(slot_layer_t *m);
 bool                 mask_stack_is_trivial(slot_layer_t *m);
@@ -2388,6 +2391,7 @@ i32  project_test_layer_hash(i32 i, i32 channel);
 
 // ---- util/util_test.c ----
 char *script_tmp_dir(char *name);
+char *script_dir(void);
 i32   script_diff_images(char *path_a, char *path_b, f32 tol);
 i32   script_diff_textures(gpu_texture_t *a, gpu_texture_t *b, f32 tol);
 f32   script_diff_max();

@@ -189,7 +189,11 @@ void import_arm_run_project(char *path) {
 	}
 
 	if (project == NULL) {
-		console_error(string(import_arm_has_version(b) && !project_container_is(path) ? "Could not open file %s, it was saved by an older version." : "Could not open file %s.", path));
+		i32 version = b != NULL ? import_arm_version(b) : -1;
+		console_error(string(version > atoi(manifest_version_project) ? "Could not open file %s, it was saved by a newer version."
+		                     : version >= 0 && version < manifest_version_oldest ? "Could not open file %s, it was saved by an older version."
+		                                                                         : "Could not open file %s.",
+		                     path));
 		return;
 	}
 
@@ -603,34 +607,133 @@ bool import_arm_has_version(buffer_t *b) {
 	return b != NULL && b->length > 10 && b->buffer[10] == 'v';
 }
 
-static bool import_arm_is_version(buffer_t *b, char *n) {
+// The version a project, material, brush or swatches file was saved with, -1 for none or one that does not read
+i32 import_arm_version(buffer_t *b) {
 	// 0xdf map, i32 count, 0xdb string, i32 len, "version", 0xdb string, i32 len, version value
-	if (!import_arm_has_version(b) || b->length < 22) {
-		return false;
+	if (!import_arm_has_version(b) || b->length < 22 || b->buffer[17] != 0xdb) {
+		return -1;
 	}
-	u32 len = *(u32 *)(b->buffer + 18); // version value length
-	if (len > b->length - 22) {
-		return false;
+	u32 len;
+	memcpy(&len, b->buffer + 18, 4); // Version value length
+	if (len == 0 || len > 8 || len > b->length - 22) {
+		return -1;
 	}
-	return strlen(n) == len && memcmp(b->buffer + 22, n, len) == 0;
+	i32 v = 0;
+	for (u32 i = 0; i < len; ++i) {
+		u8 c = b->buffer[22 + i];
+		if (c < '0' || c > '9') {
+			return -1;
+		}
+		v = v * 10 + (c - '0');
+	}
+	return v;
 }
 
-// A project head of this build's version (manifest_version_project), or a material, brush or swatches file of the
-// library's (manifest_version_library), NULL for others: files of older builds do not open. armpack decodes by position,
-// so a project of the library's version (an older project) would read its layers into the wrong fields.
-project_t *import_arm_decode(buffer_t *b) {
-	if (import_arm_is_version(b, manifest_version_project)) {
-		return armpack_decode(b);
-	}
-	if (import_arm_is_version(b, manifest_version_library)) {
-		project_t *project = armpack_decode(b);
-		if (project == NULL || project->layer_datas == NULL) {
-			return project;
+// ---- Upgrades ----
+// A field whose meaning changes bumps manifest_version_project and gets a step here: it turns what older versions
+// saved into what this build reads. raw is the file by key (armpack_decode_to_map), with the fields this build no
+// longer has. Fields only added, removed or moved need no step: the decode matches them by name.
+
+static any_map_t *import_arm_raw_layer(any_map_t *raw, i32 i) {
+	any_array_t *a = any_map_get(raw, "layer_datas");
+	return a != NULL && i < (i32)a->length ? a->buffer[i] : NULL;
+}
+
+// 32: a fill layer or mask is a fill (fill_t, a source per channel), no longer fill_material with uv_scale, uv_rot and
+// uv_type
+static void import_arm_upgrade_32(project_t *p, any_map_t *raw) {
+	i32 materials = p->material_datas != NULL ? p->material_datas->length : 0;
+	for (i32 i = 0; p->layer_datas != NULL && i < p->layer_datas->length; ++i) {
+		layer_data_t *ld = p->layer_datas->buffer[i];
+		any_map_t    *rl = import_arm_raw_layer(raw, i);
+		if (ld == NULL || rl == NULL || any_map_get(rl, "fill_material") == NULL) {
+			continue;
 		}
-		free(project); // One block (armpack_decode)
+		i32 material = armpack_map_get_i32(rl, "fill_material");
+		if (material < 0 || material >= materials) {
+			continue;
+		}
+		i32     uv_type = armpack_map_get_i32(rl, "uv_type");
+		fill_t *f       = fill_create(uv_type == UV_TYPE_TRIPLANAR ? FILL_PROJECTION_TRIPLANAR
+		                              : uv_type == UV_TYPE_PROJECT ? FILL_PROJECTION_DECAL
+		                                                           : FILL_PROJECTION_UV);
+		for (i32 c = 0; c < FILL_CHANNEL_COUNT; ++c) {
+			f->ch[c].kind     = FILL_SOURCE_MATERIAL;
+			f->ch[c].material = (u32)material; // The index layer_data_t.fill holds (fill_encode by index)
+		}
+		f32 scale   = armpack_map_get_f32(rl, "uv_scale");
+		f->scale[0] = f->scale[1] = scale > 0.0 ? scale : 1.0;
+		f->angle                  = armpack_map_get_f32(rl, "uv_rot"); // Degrees then too
+		ld->fill                  = fill_encode(f, false);              // Not by index: the material as set, no images (-1)
+		free(f);
 	}
-	if (import_arm_has_version(b)) {
-		iron_log("Saved by an older version, not read");
+}
+
+// 33: a mask's height blend is a MASK_EFFECT_HEIGHT_BLEND effect on top of its stack, no longer the height_blend fields
+static void import_arm_upgrade_33(project_t *p, any_map_t *raw) {
+	for (i32 i = 0; p->layer_datas != NULL && i < p->layer_datas->length; ++i) {
+		layer_data_t *ld = p->layer_datas->buffer[i];
+		any_map_t    *rl = import_arm_raw_layer(raw, i);
+		if (ld == NULL || rl == NULL || armpack_map_get_i32(rl, "height_blend") == 0) {
+			continue;
+		}
+		mask_effect_t e             = mask_effect_default(MASK_EFFECT_HEIGHT_BLEND);
+		e.params[MASK_HB_COMPARE]   = armpack_map_get_i32(rl, "height_blend_below") != 0 ? MASK_HB_COMPARE_BELOW : MASK_HB_COMPARE_FLAT;
+		e.params[MASK_HB_INFLUENCE] = armpack_map_get_f32(rl, "height_blend_influence");
+		e.params[MASK_HB_SHARPNESS] = armpack_map_get_f32(rl, "height_blend_sharpness");
+		e.params[MASK_HB_OFFSET]    = armpack_map_get_f32(rl, "height_blend_offset");
+		e.params[MASK_HB_REACH]     = armpack_map_get_f32(rl, "height_blend_reach") * 1024.0; // Was uv, texels of a 1024 mask now
+		for (i32 k = 0; k < MASK_EFFECT_PARAMS; ++k) {
+			e.params[k] = mask_effect_param_clamp(MASK_EFFECT_HEIGHT_BLEND, k, e.params[k]);
+		}
+		f32_array_t *old = ld->mask_effects;
+		i32          n   = old != NULL ? old->length / MASK_EFFECT_STRIDE : 1; // NULL: the implicit paint effect
+		f32_array_t *a   = f32_array_create((n + 1) * MASK_EFFECT_STRIDE);
+		if (old != NULL) {
+			memcpy(a->buffer, old->buffer, sizeof(f32) * n * MASK_EFFECT_STRIDE);
+		}
+		else {
+			mask_stack_pack(a->buffer, mask_effect_default(MASK_EFFECT_PAINT));
+		}
+		mask_stack_pack(a->buffer + n * MASK_EFFECT_STRIDE, e);
+		ld->mask_effects = a;
 	}
-	return NULL;
+}
+
+static void import_arm_upgrade(project_t *p, buffer_t *b, i32 version) {
+	if (p->layer_datas == NULL || p->layer_datas->length == 0) {
+		return; // Materials, brushes and swatches: no step changes them
+	}
+	any_map_t *raw = armpack_decode_to_map(b);
+	if (raw == NULL) {
+		return;
+	}
+	if (version < 32) {
+		import_arm_upgrade_32(p, raw);
+	}
+	if (version < 33) {
+		import_arm_upgrade_33(p, raw);
+	}
+}
+
+// A project head, material, brush or swatches file of this build's version or an older one down to
+// manifest_version_oldest, read as this build's version. NULL for others, files of newer builds too.
+project_t *import_arm_decode(buffer_t *b) {
+	i32 version = import_arm_version(b);
+	i32 current = atoi(manifest_version_project);
+	if (version < manifest_version_oldest || version > current) {
+		if (import_arm_has_version(b)) {
+			iron_log(version > current ? "Saved by a newer version, not read" : "Saved by an older version, not read");
+		}
+		return NULL;
+	}
+	project_t *p = util_decode_project(b);
+	if (p == NULL) {
+		return NULL;
+	}
+	if (version < current) {
+		import_arm_upgrade(p, b, version);
+	}
+	p->version = string_copy(manifest_version_project);
+	return p;
 }

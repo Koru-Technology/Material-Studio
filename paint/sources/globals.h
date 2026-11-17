@@ -6,8 +6,9 @@
 
 // ---- Shared (written by several files) ----
 char        *manifest_title           = "Material Studio";
-char        *manifest_version_project = "33"; // Project files (positional armpack: any layout change of what they hold bumps it)
-char        *manifest_version_library = "31"; // Material, brush and swatches files: project_t without layers, unchanged since 31
+char        *manifest_version_project = "33"; // Project, material, brush and swatches files: bumped when a saved field changes meaning,
+                                              // with the step that reads the older meaning (import_arm_upgrade)
+i32          manifest_version_oldest  = 31;   // Older files do not open
 char        *manifest_version_config  = "20";
 context_t   *g_context;
 project_t   *g_project;
