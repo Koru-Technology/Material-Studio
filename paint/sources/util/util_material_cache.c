@@ -799,6 +799,17 @@ static void material_cache_update(void *_) {
 	}
 }
 
+// A cache translating, compiling or rendering its bands: work spread over frames that other work waits behind
+bool material_cache_building(void) {
+	for (i32 i = 0; i < material_cache_count; ++i) {
+		i32 st = material_cache_entries[i]->state;
+		if (st == MATERIAL_CACHE_TRANSLATE || st == MATERIAL_CACHE_COMPILE || st == MATERIAL_CACHE_BUILD) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // A new project, a resize: every cache goes
 void material_cache_reset(void) {
 	while (material_cache_count > 0) {

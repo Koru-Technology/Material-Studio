@@ -1484,6 +1484,7 @@ bool           material_cache_paint_info(bool is_atlas, bool *emis_used, bool *s
 gpu_texture_t *material_cache_texture(i32 i);
 void           material_cache_paint_check(void);
 void           material_cache_reset(void);
+bool           material_cache_building(void);
 void           material_cache_mesh_changed(void);
 void           material_cache_trim(void);
 void           material_cache_set_enabled(i32 on);
