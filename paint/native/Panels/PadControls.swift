@@ -17,6 +17,10 @@ struct PadControls: View {
 				}
 				Spacer()
 			}
+			VStack {
+				PadLayerTitle()
+				Spacer()
+			}
 			HStack {
 				PadToolColumn()
 				Spacer()
@@ -275,6 +279,36 @@ struct PadMenuBar: View {
 		.sheet(isPresented: $settings) {
 			ProjectSettingsSheet()
 		}
+	}
+}
+
+// Top middle while the Materials or Layers panel is open: the layer painted, "Layer • Mask" when its mask is
+struct PadLayerTitle: View {
+	private var popovers = PadPopovers.shared
+	private var layers   = LayersStore.shared
+
+	var body: some View {
+		if popovers.shown == "Materials" || popovers.shown == "Layers", let title {
+			Text(title)
+				.font(.headline)
+				.lineLimit(1)
+				.truncationMode(.middle)
+				.padding(.horizontal, 18)
+				.frame(height: 44)
+				.glassEffect(.regular, in: .capsule)
+				.frame(maxWidth: 420)
+				.allowsHitTesting(false)
+		}
+	}
+
+	private var title: String? {
+		guard let layer = layers.selectedLayer else {
+			return nil
+		}
+		if layer.kind == .mask, let parent = layers.layer(layer.parentID) {
+			return "\(parent.name) \u{2022} \(layer.name)"
+		}
+		return layer.name
 	}
 }
 

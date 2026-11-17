@@ -25,6 +25,10 @@ static char *history_action_to_string(history_action_t action) {
 		return tr("Delete Layer");
 	case HISTORY_ACTION_CLEAR_LAYER:
 		return tr("Clear Layer");
+	case HISTORY_ACTION_CLEAR_PAINT:
+		return tr("Clear Paint");
+	case HISTORY_ACTION_FILL_PAINT:
+		return tr("Fill Paint");
 	case HISTORY_ACTION_DUPLICATE_LAYER:
 		return tr("Duplicate Layer");
 	case HISTORY_ACTION_ORDER_LAYERS:
@@ -477,6 +481,8 @@ static bool history_layer_step(history_step_t *step, bool undo) {
 	switch (step->action) {
 	case HISTORY_ACTION_PAINT:
 	case HISTORY_ACTION_CLEAR_LAYER:
+	case HISTORY_ACTION_CLEAR_PAINT:
+	case HISTORY_ACTION_FILL_PAINT:
 	case HISTORY_ACTION_INVERT_MASK:
 	case HISTORY_ACTION_PATH:
 		if (step->path != NULL && l != NULL) {

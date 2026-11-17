@@ -22,6 +22,7 @@ struct LayerProps: Equatable {
 	var showsToFill = false
 	var showsToPaint = false
 	var showsClear = false
+	var showsFillPaint = false
 	var showsInvert = false
 	var showsApply = false
 	var showsAddMask = false
@@ -59,6 +60,7 @@ struct LayerProps: Equatable {
 		showsToFill = p.shows_to_fill
 		showsToPaint = p.shows_to_paint
 		showsClear = p.shows_clear
+		showsFillPaint = p.shows_fill_paint
 		showsInvert = p.shows_invert
 		showsApply = p.shows_apply
 		showsAddMask = p.shows_add_mask

@@ -173,6 +173,7 @@ void        timeline_reset_all();
 
 // Ops other than strokes (timeline_ops.c): recorded where the history step is pushed, replayed by paint_replay_entry
 void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32 len, const f32 *uv_bounds, u16 flags);
+void timeline_record_clear(slot_layer_t *l, u32 color); // TL_CLEAR: base (a mask's value) to color
 bool timeline_ops_replay(timeline_t *tl, i32 index, paint_target_t *t);
 
 // Layer states as tile maps (timeline_tiles.c): HISTORY_TILES_GRID^2 tiles per channel texture, uniform tiles inline

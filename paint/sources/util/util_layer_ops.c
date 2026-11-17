@@ -96,11 +96,8 @@ i32 layers_op_index(slot_layer_t *l) {
 }
 
 slot_layer_t *layers_op_new_mask(slot_layer_t *l, i32 type) {
-	// type: 0 black, 1 white, 2 fill with the current material
-	if (!slot_layer_alive(l) || type < 0 || type > 2) {
-		return NULL;
-	}
-	if (type == 2 && g_context->material == NULL) {
+	// type: 0 black, 1 white
+	if (!slot_layer_alive(l) || type < 0 || type > 1) {
 		return NULL;
 	}
 	if (slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
@@ -116,14 +113,9 @@ slot_layer_t *layers_op_new_mask(slot_layer_t *l, i32 type) {
 			history_new_black_mask();
 			slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 		}
-		else if (type == 1) {
+		else {
 			history_new_white_mask();
 			slot_layer_clear(m, 0xffffffff, NULL, 1.0, layers_default_rough, 0.0);
-		}
-		else {
-			slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
-			slot_layer_to_fill_layer(m, layers_new_fill_mask());
-			history_new_fill_mask();
 		}
 	}
 	draw_resume(gpu);
@@ -318,7 +310,8 @@ slot_layer_t *layers_op_merge_group(slot_layer_t *group) {
 	return l;
 }
 
-void layers_op_clear(slot_layer_t *l) {
+// A layer to transparent, a mask's paint to mask_color (black for Clear Paint, white for Fill Paint)
+static void layers_op_clear_to(slot_layer_t *l, u32 mask_color, history_action_t mask_action) {
 	if (!slot_layer_alive(l) || l->fill != NULL) {
 		return;
 	}
@@ -329,20 +322,32 @@ void layers_op_clear(slot_layer_t *l) {
 		for (i32 i = 0; children != NULL && i < children->length; ++i) {
 			slot_layer_t *c  = children->buffer[i];
 			g_context->layer = c;
-			history_clear_layer();
+			history_clear_layer(HISTORY_ACTION_CLEAR_LAYER, 0x00000000);
 			slot_layer_clear(c, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 		}
 		g_context->layer = l;
 	}
 	else {
-		history_clear_layer();
-		slot_layer_clear(l, slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
+		bool mask  = slot_layer_is_mask(l);
+		u32  color = mask ? mask_color : 0x00000000;
+		history_clear_layer(mask ? mask_action : HISTORY_ACTION_CLEAR_LAYER, color);
+		slot_layer_clear(l, color, NULL, 1.0, layers_default_rough, 0.0);
 		util_layer_clear_path_points(l);
 	}
 	if (l == g_project->_->layers->buffer[0] || l == g_project->_->layers->buffer[0]->parent) {
 		layers_enable_translucency();
 	}
 	layers_op_end(gpu);
+}
+
+void layers_op_clear(slot_layer_t *l) {
+	layers_op_clear_to(l, 0x00000000, HISTORY_ACTION_CLEAR_PAINT);
+}
+
+void layers_op_fill_paint(slot_layer_t *l) {
+	if (slot_layer_is_mask(l)) {
+		layers_op_clear_to(l, 0xffffffff, HISTORY_ACTION_FILL_PAINT);
+	}
 }
 
 bool layers_op_invert_mask(slot_layer_t *m) {
@@ -371,8 +376,7 @@ slot_layer_t *layers_op_apply_mask(slot_layer_t *m) {
 	return parent;
 }
 
-// A paint layer or mask becomes a fill of the selected material in every channel (plain colors, a pattern for a mask,
-// without one). A fill layer takes the selected material in every channel instead (as dropping the material on it).
+// A paint layer becomes a fill of the selected material in every channel (plain colors without one). A fill layer takes the selected material in every channel instead (as dropping the material on it).
 bool layers_op_to_fill(slot_layer_t *l) {
 	if (slot_layer_alive(l) && slot_layer_is_layer(l) && l->fill != NULL && g_context->material != NULL) {
 		bool all = true; // Already all of it: nothing to do
@@ -387,16 +391,14 @@ bool layers_op_to_fill(slot_layer_t *l) {
 		layers_op_end(gpu);
 		return true;
 	}
-	if (!slot_layer_alive(l) || slot_layer_is_group(l) || l->fill != NULL || l->path_material != NULL) {
+	if (!slot_layer_alive(l) || !slot_layer_is_layer(l) || l->fill != NULL || l->path_material != NULL) {
 		return false;
 	}
 	draw_saved_t gpu = draw_suspend();
 	context_set_layer(l);
-	fill_t *f = g_context->material != NULL ? fill_from_material(g_context->material, FILL_PROJECTION_UV)
-	            : slot_layer_is_layer(l)  ? layers_new_fill_layer_fill()
-	                                      : layers_new_fill_mask();
+	fill_t *f = g_context->material != NULL ? fill_from_material(g_context->material, FILL_PROJECTION_UV) : layers_new_fill_layer_fill();
 	slot_layer_to_fill_layer(l, f);
-	slot_layer_is_layer(l) ? history_to_fill_layer() : history_to_fill_mask();
+	history_to_fill_layer();
 	layers_op_end(gpu);
 	return true;
 }

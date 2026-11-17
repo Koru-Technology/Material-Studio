@@ -40,7 +40,7 @@ int HB          = 17;
 int TYPES       = 18;
 int AO          = 0;
 int THICK_MAP   = 3;
-int NEW_ID_MASK = 12;
+int NEW_ID_MASK = 11;
 int RED         = 16711680; // 0xff0000
 int BLUE        = 255;
 
@@ -296,7 +296,7 @@ void next() {
 		check(k >= 0 && app_layer_count() == n + 1 && selected() == k, "an effect on a layer without a mask makes a black mask");
 		check(app_mask_effect_count(k) == 2 && app_mask_effect_type(k, 0) == EDGE_WEAR && app_mask_effect_type(k, 1) == PAINT, "the effect sits on its paint");
 		check(app_mask_effect_blending(k, 0) == 4 && app_mask_effect_blending(k, 1) == 0, "generators start on max, paint on normal");
-		check(!app_layer_add_mask(a, 9) && !app_layer_can_new(9) && !app_layer_can_new(11), "no second mask");
+		check(!app_layer_add_mask(a, 9) && !app_layer_can_new(9) && !app_layer_can_new(10), "no second mask");
 		check(app_layer_add_effect(a, DIRT) == k && app_mask_effect_count(k) == 3, "the next effect goes into the same mask");
 		check(app_layer_add_effect(k, LEVELS) == k && app_mask_effect_count(k) == 4, "and from the mask's own menu");
 		app_undo();

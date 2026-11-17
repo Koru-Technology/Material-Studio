@@ -646,7 +646,7 @@ typedef enum {
 	HISTORY_ACTION_NEW_LAYER,
 	HISTORY_ACTION_NEW_BLACK_MASK,
 	HISTORY_ACTION_NEW_WHITE_MASK,
-	HISTORY_ACTION_NEW_FILL_MASK,
+	HISTORY_ACTION_NEW_FILL_MASK, // Fill masks are no longer made: steps saved before still undo
 	HISTORY_ACTION_NEW_GROUP,
 	HISTORY_ACTION_DELETE_LAYER,
 	HISTORY_ACTION_CLEAR_LAYER,
@@ -656,7 +656,7 @@ typedef enum {
 	HISTORY_ACTION_APPLY_MASK,
 	HISTORY_ACTION_INVERT_MASK,
 	HISTORY_ACTION_TO_FILL_LAYER,
-	HISTORY_ACTION_TO_FILL_MASK,
+	HISTORY_ACTION_TO_FILL_MASK, // As NEW_FILL_MASK
 	HISTORY_ACTION_TO_PAINT_LAYER,
 	HISTORY_ACTION_TO_PAINT_MASK,
 	HISTORY_ACTION_LAYER_OPACITY,
@@ -681,6 +681,8 @@ typedef enum {
 	HISTORY_ACTION_MASK_STACK, // Effects of a mask stack added, removed, moved or edited
 	HISTORY_ACTION_RESOLUTION, // Working resolution changed, layers kept (util/util_layer_resolution.c)
 	HISTORY_ACTION_PATH,       // Points of a path layer added, removed or moved (util/util_path.c)
+	HISTORY_ACTION_CLEAR_PAINT, // A mask's paint to black
+	HISTORY_ACTION_FILL_PAINT,  // A mask's paint to white
 } history_action_t;
 
 // Rounded corners of floating panels

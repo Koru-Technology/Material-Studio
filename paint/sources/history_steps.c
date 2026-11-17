@@ -43,11 +43,6 @@ void history_new_white_mask() {
 }
 
 // After the new fill mask got its fill: redo makes it again with it
-void history_new_fill_mask() {
-	history_step_t *step = history_push(HISTORY_ACTION_NEW_FILL_MASK);
-	step->fill           = fill_encode(g_context->layer->fill, false);
-}
-
 void history_new_group() {
 	history_push(HISTORY_ACTION_NEW_GROUP);
 }
@@ -97,11 +92,11 @@ history_step_t *history_delete_layer(slot_layer_t *l) {
 	return step;
 }
 
-void history_clear_layer() {
-	history_step_t *step = history_push(HISTORY_ACTION_CLEAR_LAYER);
+void history_clear_layer(history_action_t action, u32 color) {
+	history_step_t *step = history_push(action);
 	step->path           = slot_layer_is_path(g_context->layer) ? history_path_copy(g_context->layer) : NULL; // Clear drops the points too
 	history_tiles_begin(step, g_context->layer); // As a stroke, the tiles it changes. Before the entry: it finalizes what is pending
-	timeline_record_op(g_context->layer, TL_CLEAR, NULL, 0, NULL, 0);
+	timeline_record_clear(g_context->layer, color);
 }
 
 void history_order_layers(i32 prev_order) {
@@ -165,10 +160,6 @@ static void history_to_fill(history_action_t action) {
 
 void history_to_fill_layer() {
 	history_to_fill(HISTORY_ACTION_TO_FILL_LAYER);
-}
-
-void history_to_fill_mask() {
-	history_to_fill(HISTORY_ACTION_TO_FILL_MASK);
 }
 
 // Before the layer turns back to paint: undo gives its fill back

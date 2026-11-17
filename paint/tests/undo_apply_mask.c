@@ -1,7 +1,7 @@
 #include "global.h"
 
-// Undo v2, apply mask: a painted mask onto a fill layer, a fill mask onto a paint layer. Undo gives the layer and the mask
-// back byte for byte and fill again, redo gives the applied layer back.
+// Undo v2, apply mask: a painted mask onto a fill layer, a cleared white mask onto a paint layer. Undo gives the layer and
+// the mask back byte for byte and fill again, redo gives the applied layer back.
 
 int fails  = 0;
 int checks = 0;
@@ -80,18 +80,19 @@ void next() {
 	}
 	else if (step == 5) {
 		check(f->fill == NULL && mask_of(f) == NULL && string_equals(layer_hash(f), after), "redo: the applied layer back");
-		// A fill mask onto a paint layer
+		// A white mask, its paint cleared to black, onto a paint layer
 		p = script_layer_new();
 	}
 	else if (step == 6) {
 		script_layer_set(p);
 		stroke();
-		m = script_layer_new_mask(p, 2);
+		m = script_layer_new_mask(p, 1);
+		script_layer_clear(m);
 	}
 	else if (step == 7) {
 		before = layer_hash(p);
 		mask   = script_texture_hash(m->texpaint);
-		check(m->fill != NULL, "a fill mask");
+		check(m->fill == NULL && mask_of(p) == m, "a cleared mask");
 		script_layer_apply_mask(m);
 	}
 	else if (step == 8) {
@@ -101,7 +102,7 @@ void next() {
 	else if (step == 9) {
 		m = mask_of(p);
 		check(string_equals(layer_hash(p), before), "undo: the layer back byte for byte");
-		check(m != NULL && m->fill != NULL, "undo: a fill mask again");
+		check(m != NULL, "undo: the mask again");
 		check(m != NULL && string_equals(script_texture_hash(m->texpaint), mask), "undo: the mask's render back");
 		history_redo(); // Restored at once (frames after it the selected layer may be dilated again, as after any apply)
 		check(mask_of(p) == NULL && string_equals(layer_hash(p), after), "redo: the applied layer back");

@@ -1,7 +1,7 @@
 import SwiftUI
 
 // A mask's effects in its settings, top first as they apply: a tap opens an effect's settings (pushed in the iPad
-// popover, a popover of its own in the Mac inspector)
+// popover, a popover of its own in the Mac inspector), a drag reorders them
 struct MaskEffectsSection: View {
 	let layer: LayerRow
 
@@ -17,6 +17,7 @@ struct MaskEffectsSection: View {
 			ForEach(Array(layer.effects.enumerated()), id: \.offset) { i, effect in
 				row(Int32(i), effect)
 			}
+			.onMove(perform: move)
 			addMenu
 		} header: {
 			Text("Effects")
@@ -71,18 +72,6 @@ struct MaskEffectsSection: View {
 			}
 		}
 		.contextMenu {
-			Button {
-				AppStore.shared.perform { app_mask_move_effect(layer.id, index, index - 1) }
-			} label: {
-				Label("Move Up", systemImage: "arrow.up")
-			}
-			.disabled(index == 0)
-			Button {
-				AppStore.shared.perform { app_mask_move_effect(layer.id, index, index + 1) }
-			} label: {
-				Label("Move Down", systemImage: "arrow.down")
-			}
-			.disabled(Int(index) == layer.effects.count - 1)
 			Button(role: .destructive) {
 				AppStore.shared.perform { app_mask_remove_effect(layer.id, index) }
 			} label: {
@@ -94,6 +83,15 @@ struct MaskEffectsSection: View {
 			MaskEffectDetailView(layerID: layer.id, index: index)
 				.frame(width: 320, height: 440)
 		}
+	}
+
+	// A row dropped before row `to`: its index once moved
+	private func move(_ from: IndexSet, _ to: Int) {
+		guard let source = from.first, from.count == 1, to != source, to != source + 1 else {
+			return
+		}
+		let target = to > source ? to - 1 : to
+		AppStore.shared.perform { app_mask_move_effect(layer.id, Int32(source), Int32(target)) }
 	}
 
 	private var addMenu: some View {
@@ -279,13 +277,9 @@ private struct MaskEffectSections: View {
 			}
 		case APP_MASK_PARAM_LAYER:
 			let anchors = anchorLayers
-			Picker(p.name, selection: Binding(get: { anchors.contains { $0.id == Int32(value) } ? Int32(value) : -1 }, set: { v in
+			LayerChoicePicker(title: p.name, none: p.options.first ?? "None", ids: anchors,
+			                  selection: anchors.contains(Int32(value)) ? Int32(value) : -1) { v in
 				AppStore.shared.perform { _ = app_mask_set_effect_value(layerID, index, p.index, Float(v)) }
-			})) {
-				Text(p.options.first ?? "None").tag(Int32(-1))
-				ForEach(anchors, id: \.id) { layer in
-					Text(layer.name).tag(layer.id)
-				}
 			}
 		case APP_MASK_PARAM_IMAGE:
 			let images = layers.imageNames
@@ -322,8 +316,8 @@ private struct MaskEffectSections: View {
 	}
 
 	// Layers an anchor can reference, top first
-	private var anchorLayers: [(id: Int32, name: String)] {
-		(0..<app_mask_anchor_layer_count(layerID)).map { (app_mask_anchor_layer_id(layerID, $0), String(cString: app_mask_anchor_layer_name(layerID, $0))) }
+	private var anchorLayers: [Int32] {
+		(0..<app_mask_anchor_layer_count(layerID)).map { app_mask_anchor_layer_id(layerID, $0) }
 	}
 
 	private func slider(_ title: String, field: Int32, value: Float, range: ClosedRange<Float>) -> some View {
@@ -360,3 +354,124 @@ struct MaskEffectAddItems: View {
 		}
 	}
 }
+
+// A layer setting: each layer as the layers panel shows it, its thumbnail and its mask's beside the name. iPad: a row
+// that pushes the list, Mac: a menu.
+struct LayerChoicePicker: View {
+	let title: String
+	let none: String // The -1 choice
+	let ids: [Int32]
+	let selection: Int32
+	let set: (Int32) -> Void
+
+	private var layers = LayersStore.shared
+
+	init(title: String, none: String, ids: [Int32], selection: Int32, set: @escaping (Int32) -> Void) {
+		self.title = title
+		self.none = none
+		self.ids = ids
+		self.selection = selection
+		self.set = set
+	}
+
+	var body: some View {
+#if os(iOS)
+		NavigationLink {
+			LayerChoiceList(title: title, none: none, ids: ids, selection: selection, set: set)
+		} label: {
+			LabeledContent(title) {
+				LayerChoiceLabel(id: selection, none: none, size: 28)
+			}
+		}
+#else
+		Picker(title, selection: Binding(get: { selection }, set: set)) {
+			Text(none).tag(Int32(-1))
+			ForEach(ids, id: \.self) { id in
+				Label {
+					Text(layers.layer(id)?.name ?? "")
+				} icon: {
+					if let image = layers.thumbnail(for: id) {
+						Image(decorative: image, scale: CGFloat(image.width) / 16)
+					}
+				}
+				.tag(id)
+			}
+		}
+#endif
+	}
+}
+
+// A layer's thumbnail, its mask's and its name; none for -1
+struct LayerChoiceLabel: View {
+	let id: Int32
+	let none: String
+	let size: CGFloat
+
+	private var layers = LayersStore.shared
+
+	init(id: Int32, none: String, size: CGFloat) {
+		self.id = id
+		self.none = none
+		self.size = size
+	}
+
+	var body: some View {
+		if let layer = layers.layer(id) {
+			HStack(spacing: 6) {
+				HStack(spacing: 3) {
+					LayerThumbnail(id: layer.id, mask: layer.kind == .mask, size: size)
+					if layer.props.maskID >= 0 {
+						LayerThumbnail(id: layer.props.maskID, mask: true, size: size)
+					}
+				}
+				Text(layer.name)
+					.lineLimit(1)
+					.truncationMode(.middle)
+			}
+		}
+		else {
+			Text(none)
+		}
+	}
+}
+
+#if os(iOS)
+private struct LayerChoiceList: View {
+	let title: String
+	let none: String
+	let ids: [Int32]
+	let selection: Int32
+	let set: (Int32) -> Void
+
+	@Environment(\.dismiss) private var dismiss
+
+	var body: some View {
+		List {
+			row(-1)
+			ForEach(ids, id: \.self) { row($0) }
+		}
+		.navigationTitle(title)
+		.navigationBarTitleDisplayMode(.inline)
+	}
+
+	private func row(_ id: Int32) -> some View {
+		Button {
+			if id != selection {
+				set(id)
+			}
+			dismiss()
+		} label: {
+			HStack {
+				LayerChoiceLabel(id: id, none: none, size: 36)
+				Spacer(minLength: 4)
+				if id == selection {
+					Image(systemName: "checkmark")
+						.foregroundStyle(Color.accentColor)
+				}
+			}
+			.contentShape(.rect)
+		}
+		.tint(Color.primary)
+	}
+}
+#endif

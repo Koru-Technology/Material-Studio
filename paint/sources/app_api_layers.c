@@ -96,9 +96,10 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 
 	    .shows_blending            = !group && !mask && !filter,
 	    .shows_channels            = !group,
-	    .shows_to_fill             = !group && !fill,
+	    .shows_to_fill             = layer && !fill,
 	    .shows_to_paint            = !group && fill,
 	    .shows_clear               = l->fill == NULL,
+	    .shows_fill_paint          = mask && l->fill == NULL,
 	    .shows_invert              = mask,
 	    .shows_apply               = mask,
 	    .shows_add_mask            = slot_layer_takes_mask(l),
@@ -221,8 +222,6 @@ bool app_layer_can_new(int32_t kind) {
 	case APP_LAYER_NEW_PATH:
 	case APP_LAYER_NEW_CURVE:
 		return g_context->material != NULL;
-	case APP_LAYER_NEW_FILL_MASK:
-		return g_context->material != NULL && slot_layer_takes_mask(app_layer_mask_target(g_context->layer));
 	case APP_LAYER_NEW_COLOR:
 		return g_context->swatch != NULL;
 	case APP_LAYER_NEW_BLACK_MASK:
@@ -242,8 +241,6 @@ static slot_layer_t *app_layer_new_mask(slot_layer_t *l, i32 kind) {
 		return layers_op_new_mask(l, 0);
 	case APP_LAYER_NEW_WHITE_MASK:
 		return layers_op_new_mask(l, 1);
-	case APP_LAYER_NEW_FILL_MASK:
-		return layers_op_new_mask(l, 2);
 	}
 	return NULL;
 }
@@ -333,6 +330,15 @@ bool app_layer_clear(int32_t id) {
 	return app_layer_done(true);
 }
 
+bool app_layer_fill_paint(int32_t id) {
+	slot_layer_t *l = app_layer_by_id(id);
+	if (l == NULL || !slot_layer_is_mask(l) || l->fill != NULL) {
+		return false;
+	}
+	layers_op_fill_paint(l);
+	return app_layer_done(true);
+}
+
 bool app_layer_to_fill(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
 	if (l == NULL || l->fill != NULL || l->path_material != NULL) { // Not a material swap, see layers_op_to_fill
@@ -355,10 +361,7 @@ bool app_layer_apply_mask(int32_t id) {
 
 bool app_layer_add_mask(int32_t id, int32_t kind) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (!slot_layer_takes_mask(l) || kind < APP_LAYER_NEW_BLACK_MASK || kind > APP_LAYER_NEW_FILL_MASK) {
-		return false;
-	}
-	if (kind == APP_LAYER_NEW_FILL_MASK && g_context->material == NULL) {
+	if (!slot_layer_takes_mask(l) || (kind != APP_LAYER_NEW_BLACK_MASK && kind != APP_LAYER_NEW_WHITE_MASK)) {
 		return false;
 	}
 	return app_layer_done(app_layer_new_mask(l, kind) != NULL);

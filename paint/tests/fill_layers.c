@@ -9,7 +9,7 @@ int frame  = 0;
 int checks = 0;
 int fails  = 0;
 int f      = -1; // The fill layer
-int m      = -1; // A fill mask
+int m      = -1; // The fill layer's mask
 int count0 = 0;
 
 slot_material_t *mat_red   = NULL;
@@ -240,24 +240,37 @@ void next() {
 	}
 	else if (step == 15) {
 		check(layer_by_id(f)->fill != NULL && app_layer_fill_kind(f, 3) == 2, "undo gives the fill back, sources and all");
-		// A fill mask: a pattern from black to white
-		check(app_layer_add_mask(f, 11), "fill mask"); // APP_LAYER_NEW_FILL_MASK
+		check(!app_layer_add_mask(f, 11), "no fill masks"); // 11: APP_LAYER_NEW_ID_MASK, not a mask kind
+		check(app_layer_add_mask(f, 10), "white mask"); // APP_LAYER_NEW_WHITE_MASK
 	}
 	else if (step == 16) {
 		m                = selected();
 		slot_layer_t *ml = layer_by_id(m);
-		check(ml != NULL && ml->fill != NULL && ml->parent == l, "the mask is a fill");
-		check(ml != NULL && variety(ml->texpaint, 1) > 4, string("the mask holds the pattern (%d)", ml != NULL ? variety(ml->texpaint, 1) : 0));
+		check(ml != NULL && ml->fill == NULL && ml->parent == l, "the mask paints");
+		check(ml != NULL && average(ml->texpaint, 0) > 0.99, "a white mask starts white");
+		check(app_layer_clear(m), "clear paint");
+	}
+	else if (step == 17) {
+		check(average(layer_by_id(m)->texpaint, 0) < 0.01, "clear paint makes a white mask black");
+		check(!app_layer_fill_paint(f), "fill paint only on a mask");
+		check(app_layer_fill_paint(m), "fill paint");
+	}
+	else if (step == 18) {
+		check(average(layer_by_id(m)->texpaint, 0) > 0.99, "fill paint makes it white");
+		history_undo();
+	}
+	else if (step == 19) {
+		check(average(layer_by_id(m)->texpaint, 0) < 0.01, "undo: black again");
 		project_filepath_set(string("%s/fill_layers_test.arm", script_save_path()));
 		project_save(false);
 	}
-	else if (step == 17) {
+	else if (step == 20) {
 		script_project_new();
 	}
-	else if (step == 18) {
+	else if (step == 21) {
 		script_project_open(string("%s/fill_layers_test.arm", script_save_path()));
 	}
-	else if (step == 19) {
+	else if (step == 22) {
 		slot_layer_t *fl = NULL;
 		for (int i = 0; i < script_layer_count(); ++i) {
 			slot_layer_t *x = script_layer_at(i);

@@ -41,9 +41,10 @@ typedef struct {
 	// Menu items: shown
 	bool shows_blending;  // Layers, not masks, groups or filters
 	bool shows_channels;  // Not groups
-	bool shows_to_fill;   // "To Fill Layer" / "To Fill Mask"
+	bool shows_to_fill;   // "To Fill Layer"
 	bool shows_to_paint;  // "To Paint Layer" / "To Paint Mask"
-	bool shows_clear;
+	bool shows_clear;       // "Clear", a mask's "Clear Paint" (to black)
+	bool shows_fill_paint;  // A mask's "Fill Paint" (to white)
 	bool shows_invert;
 	bool shows_apply;
 	bool shows_add_mask;   // The layer has no mask yet: one per layer, as Painter
@@ -80,8 +81,7 @@ typedef enum {
 	APP_LAYER_NEW_FILTER       = 8,
 	APP_LAYER_NEW_BLACK_MASK   = 9,
 	APP_LAYER_NEW_WHITE_MASK   = 10,
-	APP_LAYER_NEW_FILL_MASK    = 11,
-	APP_LAYER_NEW_ID_MASK      = 12, // An ID Selection effect in the layer's mask (a black one made first), picking its parts
+	APP_LAYER_NEW_ID_MASK      = 11, // An ID Selection effect in the layer's mask (a black one made first), picking its parts
 } app_layer_new_t;
 
 bool app_layer_new(int32_t kind); // On the selected layer. Fill, decal, color and filter layers appear on the next frame
@@ -91,7 +91,8 @@ bool app_layer_can_new(int32_t kind);
 bool app_layer_duplicate(int32_t id);
 bool app_layer_merge_down(int32_t id);
 bool app_layer_merge_group(int32_t id);
-bool app_layer_clear(int32_t id);
+bool app_layer_clear(int32_t id);      // A mask's paint to black
+bool app_layer_fill_paint(int32_t id); // A mask's paint to white
 bool app_layer_to_fill(int32_t id);
 bool app_layer_to_paint(int32_t id);
 bool app_layer_invert_mask(int32_t id); // Adds an Invert effect, the painted texture stays (Apply bakes it)

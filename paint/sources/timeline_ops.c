@@ -212,12 +212,13 @@ void timeline_record_op(slot_layer_t *l, tl_kind_t kind, const void *params, u32
 	if (!timeline_layer_paints(l)) {
 		return;
 	}
-	if (kind == TL_CLEAR && params == NULL) { // As the clear ops do
-		tl_clear_params_t p = {.color = slot_layer_is_mask(l) ? 0xffffffff : 0x00000000, .occlusion = 1.0, .roughness = layers_default_rough, .metallic = 0.0};
-		tl_ops_record(l, kind, NULL, 0, &p, sizeof(p), uv_bounds, flags | TL_FLAG_UPSCALABLE);
-		return;
-	}
 	tl_ops_record(l, kind, NULL, 0, params, params != NULL ? len : 0, uv_bounds, flags);
+}
+
+// A clear of l: its base (a mask's value) to color, the other channels to their defaults
+void timeline_record_clear(slot_layer_t *l, u32 color) {
+	tl_clear_params_t p = {.color = color, .occlusion = 1.0, .roughness = layers_default_rough, .metallic = 0.0};
+	timeline_record_op(l, TL_CLEAR, &p, sizeof(p), NULL, TL_FLAG_UPSCALABLE);
 }
 
 // The fill of fill layer or fill mask l in its timeline: converted to fill (the timeline ends with it and waits for a

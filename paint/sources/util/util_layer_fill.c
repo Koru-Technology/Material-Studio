@@ -215,18 +215,6 @@ fill_t *layers_new_fill_layer_fill(void) {
 	return layers_new_fill(FILL_PROJECTION_UV, false);
 }
 
-// A new fill mask's: a pattern from black to white (cloudy noise)
-fill_t *layers_new_fill_mask(void) {
-	fill_t        *f = fill_create(FILL_PROJECTION_UV);
-	fill_source_t *s = &f->ch[FILL_CHANNEL_BASE];
-	fill_source_set_kind(s, FILL_CHANNEL_BASE, FILL_SOURCE_PROCEDURAL);
-	for (i32 i = 0; i < 3; ++i) {
-		s->value[i]  = 0.0;
-		s->value2[i] = 1.0;
-	}
-	return f;
-}
-
 // A decal box around the paint object, as large as it: where a new decal or planar projection starts
 mat4_t layers_default_decal_box(void) {
 	mesh_object_t *o = g_context->paint_object;

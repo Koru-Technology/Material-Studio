@@ -331,7 +331,7 @@ struct LayerRowView: View {
 		case .group:
 			parts.append("Group")
 		case .mask:
-			parts.append(layer.isFill ? "Fill Mask" : "Mask")
+			parts.append("Mask")
 		case .filter:
 			parts.append("Filter")
 		case .layer:

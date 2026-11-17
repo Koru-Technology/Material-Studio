@@ -175,9 +175,9 @@ void next() {
 		check(app_layer_new(6) && layer_by_id(selected())->path_curved, "curve layer");
 		int path = selected();
 		check(app_layer_new(10) && parent_id(selected()) == path, "white mask on the selected layer");
-		check(!app_layer_can_new(9) && !app_layer_new(9) && !app_layer_new(11), "one mask per layer, also from its mask");
+		check(!app_layer_can_new(9) && !app_layer_new(9), "one mask per layer, also from its mask");
 		check(!app_layer_add_mask(path, 9), "no second mask from the layer menu");
-		check(app_layer_new(0) && app_layer_new(11) && layer_by_id(selected())->fill != NULL, "fill mask");
+		check(!app_layer_add_mask(path, 11), "no fill masks"); // 11: APP_LAYER_NEW_ID_MASK, not a mask kind
 	}
 	else if (step == 12) {
 		int n = app_layer_count();

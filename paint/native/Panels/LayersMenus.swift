@@ -25,7 +25,6 @@ struct NewLayerMenu: View {
 			Section("Mask") {
 				item("Black Mask", "circle.fill", APP_LAYER_NEW_BLACK_MASK)
 				item("White Mask", "circle", APP_LAYER_NEW_WHITE_MASK)
-				item("Fill Mask", "circle.lefthalf.filled", APP_LAYER_NEW_FILL_MASK)
 				item("ID Mask…", "square.grid.3x3.square", APP_LAYER_NEW_ID_MASK)
 			}
 		} label: {
@@ -59,10 +58,6 @@ struct LayerContextMenu: View {
 
 	private var p: LayerProps {
 		layer.props
-	}
-
-	private var isLayer: Bool {
-		layer.kind == .layer
 	}
 
 	var body: some View {
@@ -103,7 +98,7 @@ struct LayerContextMenu: View {
 				Button {
 					store.perform { app_layer_to_fill(layer.id) }
 				} label: {
-					Label(isLayer ? "To Fill Layer" : "To Fill Mask", systemImage: "drop.fill")
+					Label("To Fill Layer", systemImage: "drop.fill")
 				}
 			}
 			if p.showsToPaint {
@@ -120,7 +115,6 @@ struct LayerContextMenu: View {
 				Menu {
 					maskItem("Black Mask", APP_LAYER_NEW_BLACK_MASK)
 					maskItem("White Mask", APP_LAYER_NEW_WHITE_MASK)
-					maskItem("Fill Mask", APP_LAYER_NEW_FILL_MASK)
 				} label: {
 					Label("Add Mask", systemImage: "circle.lefthalf.filled")
 				}
@@ -167,11 +161,18 @@ struct LayerContextMenu: View {
 		}
 
 		Section {
+			if p.showsFillPaint {
+				Button {
+					store.perform { app_layer_fill_paint(layer.id) }
+				} label: {
+					Label("Fill Paint", systemImage: "circle.fill")
+				}
+			}
 			if p.showsClear {
 				Button(role: .destructive) {
 					store.perform { app_layer_clear(layer.id) }
 				} label: {
-					Label("Clear", systemImage: "eraser")
+					Label(layer.kind == .mask ? "Clear Paint" : "Clear", systemImage: "eraser")
 				}
 			}
 			Button(role: .destructive) {
@@ -211,7 +212,6 @@ struct LayerContextMenu: View {
 		Button(title) {
 			store.perform { app_layer_add_mask(layer.id, Int32(kind.rawValue)) }
 		}
-		.disabled(kind == APP_LAYER_NEW_FILL_MASK && !layers.canNew.contains(Int32(APP_LAYER_NEW_FILL_MASK.rawValue)))
 	}
 }
 

@@ -97,7 +97,7 @@ struct FillSections: View {
 				FillValueSlider(layer: layer, title: "Hardness", value: f.hardness, kind: APP_LAYER_VALUE_FILL_HARDNESS.rawValue, range: 0...1) { "\(Int(($0 * 100).rounded()))%" }
 			}
 		} header: {
-			Text(layer.kind == .mask ? "Fill Mask" : "Fill")
+			Text("Fill")
 		}
 	}
 }
