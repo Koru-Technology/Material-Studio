@@ -102,14 +102,6 @@ static void camera_orbit_action(bool modif, bool default_keymap, bool ruler) {
 	camera_turn(-mouse_movement_x / 100.0 * g_config->camera_rotation_speed, -move_y / 100.0 * g_config->camera_rotation_speed, camera_view_pivot());
 }
 
-// Orbits around the view origin with the mouse movement, used by the view cube
-void camera_orbit_drag() {
-	camera_redraws = 2;
-	camera_turn(-mouse_movement_x / 100.0 * g_config->camera_rotation_speed, -mouse_movement_y / 100.0 * g_config->camera_rotation_speed,
-	            camera_view_pivot());
-	g_context->ddirty = 2;
-}
-
 static void camera_rotate_action(bool modif, bool default_keymap, bool ruler) {
 	camera_object_t *camera    = scene_camera;
 	camera_redraws             = 2;
@@ -430,8 +422,7 @@ void camera_update(void *_) {
 		camera_controls_down = false;
 	}
 
-	// Not while a split between views is dragged
-	if (_input_occupied || !base_ui_enabled || ui_base_panel_grab || base_is_dragging || base_is_resizing || g_ui->is_scrolling || g_ui->combo_selected_id != 0 ||
+	if (_input_occupied || !base_ui_enabled || g_ui->is_scrolling || g_ui->combo_selected_id != 0 ||
 	    !camera_controls_down) {
 		return;
 	}

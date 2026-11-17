@@ -108,7 +108,7 @@ static bool ui_quick_menu_item_enabled(i32 item) {
 	case QUICK_MENU_REDO:
 		return history_redos > 0;
 	case QUICK_MENU_PICKER:
-		return ui_toolbar_tool_visible(TOOL_TYPE_PICKER);
+		return true;
 	case QUICK_MENU_RECENT_BRUSH_1:
 	case QUICK_MENU_RECENT_BRUSH_2:
 	case QUICK_MENU_RECENT_BRUSH_3:

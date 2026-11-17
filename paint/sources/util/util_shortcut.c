@@ -54,9 +54,6 @@ void util_shortcut_global() {
 		if (keymap_shortcut(any_map_get(g_keymap, "toggle_node_editor"), SHORTCUT_TYPE_STARTED)) {
 			ui_base_show_material_nodes(); // Brushes are made in the Brush Creator
 		}
-		else if (keymap_shortcut(any_map_get(g_keymap, "toggle_browser"), SHORTCUT_TYPE_STARTED)) {
-			ui_base_toggle_browser();
-		}
 		else if (keymap_shortcut(any_map_get(g_keymap, "toggle_2d_view"), SHORTCUT_TYPE_STARTED)) {
 			ui_base_show_2d_view(VIEW_2D_TYPE_LAYER);
 		}
@@ -103,9 +100,6 @@ void util_shortcut_global() {
 	}
 	else if (keymap_shortcut(any_map_get(g_keymap, "edit_prefs"), SHORTCUT_TYPE_STARTED)) {
 		box_preferences_show();
-	}
-	if (keyboard_started(any_map_get(g_keymap, "view_distract_free")) || (keyboard_started("escape") && !ui_base_show && !ui_box_show)) {
-		ui_base_toggle_distract_free();
 	}
 }
 
@@ -210,14 +204,10 @@ void util_shortcut_viewport() {
 				context_select_tool(TOOL_TYPE_BLUR);
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_particle"), SHORTCUT_TYPE_STARTED)) {
-				if (ui_toolbar_tool_visible(TOOL_TYPE_PARTICLE)) {
-					context_select_tool(TOOL_TYPE_PARTICLE);
-				}
+				context_select_tool(TOOL_TYPE_PARTICLE);
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "tool_picker"), SHORTCUT_TYPE_STARTED)) {
-				if (ui_toolbar_tool_visible(TOOL_TYPE_PICKER)) {
-					context_select_tool(TOOL_TYPE_PICKER);
-				}
+				context_select_tool(TOOL_TYPE_PICKER);
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "swap_brush_eraser"), SHORTCUT_TYPE_STARTED)) {
 				context_select_tool(g_context->tool == TOOL_TYPE_BRUSH ? TOOL_TYPE_ERASER : TOOL_TYPE_BRUSH);

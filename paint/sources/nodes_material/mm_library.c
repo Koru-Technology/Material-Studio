@@ -158,7 +158,6 @@ static void mm_library_use_on_next_frame(void *data) {
 		if (getenv("IRON_SHADER_TIMING") != NULL) {
 			iron_log("[shader] library tap %d: import %.1f ms", (i32)(size_t)data, (iron_time() - t0) * 1000.0);
 		}
-		ui_base_show_tab(TAB_MATERIALS); // Where the new material is selected
 	}
 	iron_profile_mark(string("library tap %d end", (i32)(size_t)data));
 }

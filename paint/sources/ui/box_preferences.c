@@ -16,11 +16,7 @@ char            *box_preferences_new_keymap     = "new_keymap";
 void box_preferences_set_scale() {
 	f32 scale = g_config->window_scale;
 	ui_set_scale(scale);
-	ui_header_h = math_floor(ui_header_default_h * scale);
-	ui_dock_set_size(DOCK_ROLE_STATUS, math_floor(ui_statusbar_default_h * scale));
-	ui_menubar_w = math_floor(ui_menubar_default_w * scale);
 	ui_base_set_icon_scale();
-	ui_dock_set_size(DOCK_ROLE_SIDEBAR, math_floor(ui_base_sidebar_default_w(g_config->large_asset_previews) * scale));
 	base_resize();
 }
 
@@ -79,7 +75,7 @@ static void box_preferences_workspace(workspace_preset_t preset) {
 	base_set_workspace(preset);
 }
 
-// Workspace, tools and tabs, these were in the Window menu of the top bar
+// The views shown
 static void box_preferences_interface_layout() {
 	box_preferences_section(tr("Workspace"));
 	ui_row3();
@@ -91,27 +87,6 @@ static void box_preferences_interface_layout() {
 	}
 	if (ui_button(tr("Nodes"), UI_ALIGN_CENTER, "")) {
 		box_preferences_workspace(WORKSPACE_PRESET_NODES);
-	}
-
-	box_preferences_section(tr("Tabs"));
-	static bool tab_visible[TAB_COUNT];
-	i32         column = 0;
-	for (i32 i = 0; i < TAB_COUNT; ++i) {
-		tab_draw_t *tab = ui_base_get_tab(i);
-		if (tab == NULL) {
-			continue;
-		}
-		if (column++ % 3 == 0) {
-			ui_row3();
-		}
-		tab_visible[i] = ui_dock_tab_open(i);
-		ui_check(&tab_visible[i], tr(tab->name), "");
-		if (ui_item_changed()) {
-			tab_visible[i] ? ui_base_show_tab(i) : ui_base_close_tab(i);
-		}
-	}
-	while (column++ % 3 != 0) {
-		ui_end_element();
 	}
 }
 
@@ -154,21 +129,6 @@ void box_preferences_interface_tab() {
 	ui_check(&g_config->large_asset_previews, tr("Large Asset Previews"), "");
 	if (ui_item_changed()) {
 		sys_notify_on_next_frame(&util_render_resize_asset_icons, NULL);
-		f32  scale = g_config->window_scale;
-		bool large = g_config->large_asset_previews;
-		i32  size  = math_floor(ui_dock_get_size(DOCK_ROLE_SIDEBAR));
-		i32  new_w = 0;
-		if (size == math_floor(ui_base_sidebar_mini_w(!large) * scale)) {
-			new_w = ui_base_sidebar_mini_w(large);
-		}
-		else if (size == math_floor(ui_base_sidebar_full_w(!large) * scale)) {
-			new_w = ui_base_sidebar_full_w(large);
-		}
-		if (new_w > 0) {
-			ui_dock_set_size(DOCK_ROLE_SIDEBAR, math_floor(new_w * scale));
-			base_resize();
-			ui_dock_save();
-		}
 		base_redraw_ui();
 	}
 

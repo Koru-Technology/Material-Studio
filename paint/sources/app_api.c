@@ -235,20 +235,13 @@ static int32_t app_read_rgba8(gpu_texture_t *t, int32_t max_size, bool premultip
 	return bytes;
 }
 
-bool app_native_chrome     = false;
-i32  app_overlay_top_inset = 0;
+i32 app_overlay_top_inset = 0;
 
 void app_set_overlay_top_inset(int32_t pixels) {
 	app_overlay_top_inset = pixels > 0 ? pixels : 0;
 	if (ui_nodes_hwnd != NULL) {
 		ui_nodes_hwnd->redraws = 2;
 	}
-}
-
-void app_set_native_chrome(bool on) {
-	app_native_chrome = on;
-	ui_base_show      = !on;
-	base_resize();
 }
 
 // Tool and brush

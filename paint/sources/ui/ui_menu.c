@@ -211,49 +211,6 @@ bool ui_icon_button(char *text, icon_t icon, ui_align_t align) {
 	return result;
 }
 
-bool ui_menu_sub_left() {
-	i32 offset = g_ui->_w + ui_menu_padding() * 2 + 2;
-	return g_ui->_x + g_ui->_w + offset > iron_window_width() && g_ui->_x - offset >= 0;
-}
-
-bool ui_menu_sub_button(char *text) {
-	g_ui->is_hovered = false;
-	ui_menu_button(text, ">", ICON_NONE);
-	f32 dx = ui_menu_sub_left() ? -g_ui->input_dx : g_ui->input_dx;
-	if (g_ui->is_hovered) {
-		snprintf(ui_menu_sub_text, sizeof(ui_menu_sub_text), "%s", text);
-	}
-	else if (math_abs(g_ui->input_dy) > dx && g_ui->input_x >= g_ui->_x && g_ui->input_x < g_ui->_x + g_ui->_w) {
-		ui_menu_sub_text[0] = '\0';
-	}
-	return string_equals(ui_menu_sub_text, text);
-}
-
-void ui_menu_label(char *text, char *shortcut) {
-	i32 _y            = g_ui->_y;
-	i32 _TEXT_COL     = g_theme->TEXT_COL;
-	g_theme->TEXT_COL = g_theme->LABEL_COL;
-	ui_text(text, UI_ALIGN_LEFT, 0x00000000);
-	if (shortcut != NULL) {
-		g_ui->_y = _y;
-		ui_text(shortcut, UI_ALIGN_RIGHT, 0x00000000);
-	}
-	g_theme->TEXT_COL = _TEXT_COL;
-}
-
-void ui_menu_align() {
-	if (!g_config->touch_ui) {
-		f32_array_t *row = f32_array_create_from_raw_tmp(
-		    (f32[]){
-		        12 / 100.0,
-		        88 / 100.0,
-		    },
-		    2);
-		ui_row(row);
-		ui_end_element();
-	}
-}
-
 void ui_menu_begin() {
 	// ui_menu_h is the height of the items, padding is added around them
 	i32 padding = ui_menu_padding();
@@ -269,28 +226,3 @@ void ui_menu_begin() {
 
 void ui_menu_end() {}
 
-void ui_menu_sub_begin(i32 items) {
-	ui_menu_sub_x = g_ui->_x;
-	ui_menu_sub_y = g_ui->_y;
-	i32 padding   = ui_menu_padding();
-	i32 offset    = g_ui->_w + padding * 2 + 2;
-	g_ui->_x += ui_menu_sub_left() ? -offset : offset;
-	g_ui->_y -= UI_ELEMENT_H();
-	f32 h = UI_ELEMENT_H() * items + padding * 2;
-	// Keep long sub menus in the window
-	if (g_ui->_y - padding + h > iron_window_height()) {
-		g_ui->_y = math_max(padding, iron_window_height() - h + padding);
-	}
-	f32 x = g_ui->_x - padding;
-	f32 y = g_ui->_y - padding;
-	f32 w = g_ui->_w + padding * 2;
-	ui_draw_shadow(x, y, w, h);
-	draw_set_color(g_theme->SEPARATOR_COL);
-	ui_draw_rect(true, true, x, y, w, h);
-	draw_set_color(0xffffffff);
-}
-
-void ui_menu_sub_end() {
-	g_ui->_x = ui_menu_sub_x;
-	g_ui->_y = ui_menu_sub_y;
-}

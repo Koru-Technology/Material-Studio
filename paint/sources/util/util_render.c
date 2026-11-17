@@ -967,12 +967,3 @@ bool util_render_picked_on_mesh() {
 	return d < cam->data->far_plane * 0.99;
 }
 
-mat4_t util_render_get_decal_mat() {
-	util_render_pick_pos_nor_tex();
-	mat4_t decal_mat = mat4_identity();
-	vec4_t loc       = (vec4_t){g_context->posx_picked, g_context->posy_picked, g_context->posz_picked, 1.0};
-	quat_t rot       = quat_from_to((vec4_t){0.0, 0.0, -1.0, 1.0}, (vec4_t){g_context->norx_picked, g_context->nory_picked, g_context->norz_picked, 1.0});
-	vec4_t scale     = (vec4_t){g_context->brush_radius * 0.5, g_context->brush_radius * 0.5, g_context->brush_radius * 0.5, 1.0};
-	decal_mat        = mat4_compose(loc, rot, scale);
-	return decal_mat;
-}

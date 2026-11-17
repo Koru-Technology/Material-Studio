@@ -48,6 +48,3 @@ i32 strings_split_number_ext(char *name, char **base) {
 	return parse_int(name + dot + 1);
 }
 
-char *strings_graphics_api() {
-	return "Metal";
-}

@@ -54,9 +54,7 @@ static void util_pencil_run(i32 gesture, f32 x, f32 y) {
 		util_pencil_toggle(TOOL_TYPE_ERASER);
 		break;
 	case PENCIL_ACTION_COLOR_PICKER:
-		if (ui_toolbar_tool_visible(TOOL_TYPE_PICKER)) {
-			util_pencil_toggle(TOOL_TYPE_PICKER);
-		}
+		util_pencil_toggle(TOOL_TYPE_PICKER);
 		break;
 	case PENCIL_ACTION_PREVIOUS_TOOL:
 		if (util_pencil_tool_previous >= 0) {

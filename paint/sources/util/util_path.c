@@ -925,7 +925,7 @@ void util_layer_check_path_grab() {
 	}
 
 	i32 vis_points = l->path_points->length / 2;
-	if (!mouse_started("left") || g_ui->is_hovered || base_is_dragging || vis_points == 0) {
+	if (!mouse_started("left") || g_ui->is_hovered || vis_points == 0) {
 		return;
 	}
 

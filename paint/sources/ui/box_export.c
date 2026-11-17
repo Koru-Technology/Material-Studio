@@ -553,35 +553,3 @@ void box_export_show_mesh() {
 	ui_box_show_custom(&box_export_show_mesh_box, 420, 260, NULL, true, tr("Export"));
 }
 
-void box_export_show_material_export_on_next_frame(char *path) {
-	export_arm_run_material(path);
-}
-
-void box_export_show_material_export(char *path) {
-	char *f = ui_files_filename;
-	if (string_equals(f, "")) {
-		f = string_copy(tr("untitled"));
-	}
-	sys_notify_on_next_frame(&box_export_show_material_export_on_next_frame, string("%s%s%s", path, PATH_SEP, f));
-}
-
-void box_export_show_material_box() {
-	bool tab_vertical = g_config->touch_ui;
-	if (ui_tab(&_box_export_tab, tr("Export Material"), tab_vertical, -1, false)) {
-		ui_check(&g_context->pack_assets_on_export, tr("Pack Assets"), "");
-		ui_check(&g_context->write_icon_on_export, tr("Export Icon"), "");
-		ui_row2();
-		if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-			ui_box_hide();
-		}
-		if (ui_icon_button(tr("Export"), ICON_CHECK, UI_ALIGN_CENTER)) {
-			ui_box_hide();
-			ui_files_show("arm", true, false, &box_export_show_material_export);
-		}
-	}
-}
-
-void box_export_show_material() {
-	ui_box_show_custom(&box_export_show_material_box, 400, 200, NULL, true, "");
-}
-

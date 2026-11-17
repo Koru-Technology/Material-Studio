@@ -250,12 +250,6 @@ void history_new_swatch() {
 	step->swatch_color   = g_context->swatch;
 }
 
-void history_duplicate_swatch() {
-	history_step_t *step = history_push(HISTORY_ACTION_DUPLICATE_SWATCH);
-	step->swatch         = array_index_of(g_project->swatches, g_context->swatch);
-	step->swatch_color   = g_context->swatch;
-}
-
 void history_delete_swatch(swatch_color_t *swatch) {
 	history_step_t *step = history_push(HISTORY_ACTION_DELETE_SWATCH);
 	step->swatch         = array_index_of(g_project->swatches, swatch);
@@ -269,12 +263,6 @@ void history_replace_swatches(char *name) {
 	for (i32 i = 0; i < g_project->swatches->length; ++i) {
 		any_array_push(step->swatch_colors, g_project->swatches->buffer[i]);
 	}
-}
-
-void history_edit_swatch(i32 index, swatch_color_t *prev) {
-	history_step_t *step = history_push(HISTORY_ACTION_EDIT_SWATCH);
-	step->swatch         = index;
-	step->swatch_color   = util_clone_swatch_color(prev);
 }
 
 void history_new_material() {

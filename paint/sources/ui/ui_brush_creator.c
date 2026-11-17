@@ -122,7 +122,6 @@ static void bc_save() {
 		d->s             = bc_edit.s;
 		d->group         = g != NULL && !g->builtin ? g->id : brush_library_user_group();
 		brush_library_add(d, bc_tip);
-		tab_brushes_show_group(d->group);
 		brush_library_use(d);
 	}
 	else {
@@ -673,7 +672,6 @@ void ui_brush_creator_render_ui() {
 	f32 py = m + hh + m;
 	f32 ph = wh - py - m;
 
-	ui_base_panel_add_rect(0, 0, ww, wh); // Touches neither paint nor turn the view
 	bool input          = g_ui->input_enabled;
 	g_ui->input_enabled = base_ui_enabled && !bc_closing;
 	bool interactive    = g_ui->input_enabled && !ui_menu_show && !ui_box_show;

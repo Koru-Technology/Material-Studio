@@ -181,7 +181,6 @@ int32_t app_brush_duplicate(int32_t id) {
 	if (c == NULL) {
 		return -1;
 	}
-	tab_brushes_show_group(group);
 	brush_library_use(c);
 	iron_delay_idle_sleep();
 	return c->id;

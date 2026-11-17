@@ -6,7 +6,6 @@
 
 // ---- Shared (written by several files) ----
 char        *manifest_title           = "Material Studio";
-char        *manifest_version         = "1.1rc1";
 char        *manifest_version_project = "31";
 char        *manifest_version_config  = "19";
 context_t   *g_context;
@@ -16,13 +15,6 @@ any_map_t   *g_keymap;
 ui_t        *g_ui;
 draw_font_t *g_font;
 ui_theme_t  *g_theme;
-i32          ui_sidebar_default_w_mini  = 56;
-i32          ui_sidebar_default_w_full  = 280;
-i32          ui_sidebar_default_w_large = 295;
-i32          ui_sidebar_default_w;
-ui_window_t *ui_sidebar_hminimized;
-i32          ui_sidebar_w_mini;
-i32          ui_statusbar_default_h = 33;
 
 // ---- io/import_arm.c ----
 i32             import_arm_progress_unpacked = 0;    // Bytes of the .arm file's assets unpacked, for the progress bar
@@ -112,19 +104,10 @@ char *box_projects_search = "";
 bool  box_projects_native_shown = false; // iPad: the native projects screen is up (app_api.h)
 bool  box_projects_import_pending = false; // The model picked next starts a new project (box_projects_import)
 
-// ---- ui/tab_browser.c ----
-char *tab_browser_path    = "";
-char *tab_browser_search  = "";
-bool  tab_browser_refresh = false;
-
-// ---- ui/tab_layers.c ----
-char         *tab_layers_layer_name = "";
+// ---- util/util_layer_ops.c ----
 slot_layer_t *layers_export_layer;
-paint_tex_t   tab_layers_preview_tex = PAINT_TEX_BASE;
 
 // ---- ui/ui_base.c ----
-bool ui_base_panel_grab = false; // Touch started on a floating panel
-bool ui_base_show       = true;
 i32  ui_base_viewport_col;
 
 // ---- ui/ui_box.c ----
@@ -135,22 +118,12 @@ i32          ui_box_modalw        = 400;
 i32          ui_box_modalh        = 170;
 
 // ---- ui/ui_files.c ----
-#if defined(IRON_MACOS)
-char *ui_files_default_path = "/Users";
-#else
-char *ui_files_default_path = "/";
-#endif
-
 char      *ui_files_filename;
 char      *ui_files_path;
 char      *ui_files_last_path = "";
-extern i32 ui_files_selected;
 
 // ---- ui/ui_header.c ----
-i32          ui_header_default_h = 30;
-i32          ui_header_h;
 ui_window_t *ui_header_handle;
-ui_window_t *ui_header_split_handle;
 
 // ---- ui/ui_id_mask.c ----
 bool ui_id_mask_active       = false; // Picking the parts of an ID mask, see ui_id_mask.c
@@ -168,11 +141,8 @@ void (*ui_menu_commands)(void) = NULL;
 bool ui_menu_show_first        = true;
 
 // ---- ui/ui_menubar.c ----
-i32          ui_menubar_default_w = 395;
 ui_window_t *ui_menubar_hwnd;
-ui_window_t *ui_menubar_split_hwnd;
 ui_window_t *ui_menubar_menu_handle;
-i32          ui_menubar_w;
 
 // ---- ui/ui_nodes.c ----
 any_map_t            *ui_nodes_custom_buttons;
@@ -195,12 +165,8 @@ f32                   _ui_nodes_max;
 f32                   _ui_nodes_vals[4];
 
 // ---- ui/ui_toolbar.c ----
-i32             ui_toolbar_default_w = 36;
 ui_window_t    *ui_toolbar_handle;
-ui_window_t    *ui_toolbar_split_handle;
-string_array_t *ui_toolbar_tool_names;
 string_array_t *ui_toolbar_tool_labels;
-string_array_t *ui_toolbar_tooltip_extras;
 
 // ---- ui/ui_view2d.c ----
 gpu_pipeline_t *ui_view2d_pipe;
@@ -273,16 +239,8 @@ bool             base_ui_enabled        = true;
 bool             base_view3d_show       = true;
 i32              base_appx              = 0;
 i32              base_appy              = 0;
-bool             base_is_dragging       = false;
-bool             base_is_resizing       = false;
 bool             base_workspace_pending = false;
 i32              base_workspace_preset  = WORKSPACE_PRESET_NONE;
-asset_t         *base_drag_asset        = NULL;
-swatch_color_t  *base_drag_swatch       = NULL;
-char            *base_drag_file         = NULL;
-gpu_texture_t   *base_drag_file_icon    = NULL;
-f32              base_drag_off_x        = 0.0;
-f32              base_drag_off_y        = 0.0;
 i32              base_default_element_w = 100;
 i32              base_default_element_h = 28;
 i32              base_default_font_size = 13;
@@ -291,10 +249,6 @@ f32              base_res_x;
 f32              base_res_y;
 i32              base_bits;
 string_array_t  *base_drop_paths;
-slot_material_t *base_drag_material = NULL;
-slot_layer_t    *base_drag_layer    = NULL;
-slot_brush_t    *base_drag_brush    = NULL;
-slot_font_t     *base_drag_font     = NULL;
 
 // ---- camera.c ----
 vec4_t camera_origins[2];
@@ -481,15 +435,6 @@ any_map_t *translator_translations;
 mat4_t uniforms_ext_ortho_p;
 
 // ---- viewport.c ----
-bool           viewport_recording      = false;
-gpu_texture_t *viewport_video_frame    = NULL;
-i32            viewport_video_w        = 0;
-i32            viewport_video_h        = 0;
-f64            viewport_video_start    = 0.0;
-bool           viewport_video_stepped  = false; // Frames are encoded only when viewport_video_time is set
-f64            viewport_video_time     = -1.0;
-f32            viewport_video_vignette = 0.0;
-f32            viewport_video_grain    = 0.0;
 
 // ---- paint_exec.c ----
 vec4_t paint_exec_uv_tile  = {0.0, 0.0, 1.0, 1.0}; // _paint_uv_tile: the part of the layer painted (u0 v0 and scale), 0 0 1 1 live

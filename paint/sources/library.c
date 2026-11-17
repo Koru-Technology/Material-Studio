@@ -894,29 +894,6 @@ static void library_set_root(char *path) {
 	}
 }
 
-static void library_folder_picked(char *path) {
-	if (path == NULL) {
-		return;
-	}
-	g_config->materials_folder = string_copy(path);
-	config_save();
-	library_set_root(path);
-	library_failed = 0;
-	// Maybe another folder: only what the scan finds in it gets imported
-	for (i32 q = library_queue_pos; q < library_queue_len; ++q) {
-		if (library_queue[q] != NULL) {
-			library_queue[q]->queued = false;
-		}
-	}
-	library_queue_pos = 0;
-	library_queue_len = 0;
-	library_rescan();
-}
-
-void library_pick_folder() {
-	iron_folder_pick(&library_folder_picked);
-}
-
 // Restores access to the folder picked last time and refreshes it
 void library_init() {
 	if (string_equals(g_config->materials_folder, "")) {

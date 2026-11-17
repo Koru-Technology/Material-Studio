@@ -121,10 +121,6 @@ void render_path_base_end() {
 		g_context->foreground_event = false;
 		g_context->pdirty           = 0;
 	}
-
-	if (viewport_recording) {
-		viewport_capture_video_frame();
-	}
 }
 
 bool render_path_base_ssaa4() {
@@ -222,7 +218,7 @@ static bool render_path_base_can_reuse() {
 	if (render_path_base_presented == NULL || g_context->ddirty > -8 || g_context->pdirty > 0 || g_context->brush_time > 0) {
 		return false;
 	}
-	if (base_is_split() || g_context->split_view || viewport_recording) {
+	if (base_is_split() || g_context->split_view) {
 		return false;
 	}
 	if (g_config->brush_live || context_is_decal() || g_context->tool == TOOL_TYPE_PARTICLE || g_context->paint2d) {
@@ -249,10 +245,6 @@ static void render_path_base_present_last() {
 void render_path_base_commands(void (*draw_commands)(void)) {
 	if (iron_window_width() == 0 || iron_window_height() == 0) {
 		return;
-	}
-
-	if (viewport_recording) {
-		gpu_framebuffer_redirect = viewport_video_frame;
 	}
 
 	gpu_vertex_textures = false;

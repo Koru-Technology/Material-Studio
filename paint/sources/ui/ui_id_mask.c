@@ -409,7 +409,7 @@ void ui_id_mask_render_ui() {
 	i32 w   = math_floor(320 * UI_SCALE());
 	i32 h   = UI_ELEMENT_H() * 2 + UI_ELEMENT_OFFSET() * 3 + pad * 2;
 	i32 x   = base_view_x(0) + math_floor((base_view_w() - w) / 2.0);
-	i32 y   = base_y() + ui_header_h + pad;
+	i32 y   = base_y() + math_floor(30 * UI_SCALE()) + pad; // Clear of the top of the view
 
 	if (ui_base_panel_window(ui_id_mask_bar, x, y, w, h, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR, false)) {
 		g_ui->_x += pad;

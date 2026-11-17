@@ -99,19 +99,6 @@ void brush_output_node_run() {
 	f32 top    = 0.0;
 	f32 bottom = 1.0;
 
-	// Do not paint over floating toolbar, it floats in the 2D view when there is no 3D view
-	if (context_is_floating_toolbar() && base_paint_in_2d() == !base_view3d_show) {
-		i32 w = ui_toolbar_x() + ui_toolbar_w(false);
-		left += w / (float)base_paint_view_w();
-		top += w / (float)base_paint_view_h();
-
-#ifdef IRON_IOS
-		if (config_is_iphone()) {
-			top += w / (float)base_paint_view_h();
-		}
-#endif
-	}
-
 	// First time init
 	if (g_context->last_paint_x < 0 || g_context->last_paint_y < 0) {
 		g_context->last_paint_vec_x = g_context->paint_vec.x;
@@ -125,7 +112,7 @@ void brush_output_node_run() {
 
 	// ID mask picking: a tap on the mesh picks the part under it, once per tap, nothing is painted
 	if (g_context->tool == TOOL_TYPE_COLORID) {
-		bool blocked = !ui_id_mask_active || ui_id_mask_pressed || g_ui->is_hovered || base_is_dragging || base_is_resizing || ui_dock_is_dragging() ||
+		bool blocked = !ui_id_mask_active || ui_id_mask_pressed || g_ui->is_hovered ||
 		               g_ui->combo_selected_id != 0 || ui_quick_menu_blocking();
 		if (!blocked && (mouse_down("left") || pen_down("tip"))) {
 			ui_id_mask_pressed = true;
@@ -159,7 +146,7 @@ void brush_output_node_run() {
 		return;
 	}
 
-	if (g_ui->is_hovered || base_is_dragging || base_is_resizing || ui_dock_is_dragging() || g_ui->is_scrolling || g_ui->combo_selected_id != 0 ||
+	if (g_ui->is_hovered || g_ui->is_scrolling || g_ui->combo_selected_id != 0 ||
 	    ui_quick_menu_blocking() || ui_brush_creator_shown()) {
 		return;
 	}

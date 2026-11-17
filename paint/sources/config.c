@@ -662,15 +662,6 @@ char *config_get_sha() {
 	return v != NULL && v->sha != NULL ? v->sha : "undefined";
 }
 
-char *config_get_date() {
-	buffer_t *blob = data_get_blob("version.json");
-	if (blob == NULL) {
-		return "undefined";
-	}
-	version_t *v = json_parse(sys_buffer_to_string(blob));
-	return v != NULL && v->date != NULL ? v->date : "undefined";
-}
-
 iron_window_options_t *config_get_options() {
 	iron_window_mode_t     window_mode = g_config->window_mode == 0 ? IRON_WINDOW_MODE_WINDOW : IRON_WINDOW_MODE_FULLSCREEN;
 	iron_window_features_t features    = IRON_WINDOW_FEATURES_NONE;
