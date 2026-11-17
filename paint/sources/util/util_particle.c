@@ -245,3 +245,21 @@ void util_particle_update() {
 	}
 #endif
 }
+
+// The radius particle i paints with: shrinks as it slows down and the longer it touches the surface
+f32 util_particle_radius(i32 i) {
+	f32 speed         = g_context->particles[i].body != NULL ? physics_body_get_speed(g_context->particles[i].body) : 0.0f;
+	f32 vel_scale     = fminf(speed / 0.12f, 1.0f);
+	f32 contact_scale = 1.0f - fminf(g_context->particles[i].contact_time, 1.0f);
+	return fmaxf(g_context->brush_radius * vel_scale * contact_scale, 0.1f);
+}
+
+// Particles still flying or rolling: their stroke goes on (paint_rec.c records it until they are gone)
+bool util_particle_alive() {
+	for (i32 i = 0; i < 32; ++i) {
+		if (g_context->particles[i].timer != NULL) {
+			return true;
+		}
+	}
+	return false;
+}

@@ -202,12 +202,9 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	else if (string_equals(link, "_dilate_radius")) {
 		return util_uv_dilatemap != NULL ? g_config->dilate_radius : 0.0;
 	}
-	else if (string_equals(link, "_particle_radius")) {
-		i32 idx           = g_context->particle_index;
-		f32 speed         = g_context->particles[idx].body != NULL ? physics_body_get_speed(g_context->particles[idx].body) : 0.0f;
-		f32 vel_scale     = fminf(speed / 0.12f, 1.0f);
-		f32 contact_scale = 1.0f - fminf(g_context->particles[idx].contact_time, 1.0f);
-		return fmaxf(g_context->brush_radius * vel_scale * contact_scale, 0.1f);
+	else if (string_equals(link, "_particle_radius")) { // A particle's draw (paint_exec_particles)
+		paint_exec_op_t *op = paint_exec_current();
+		return op != NULL ? op->particle_hit.w : 0.1f;
 	}
 	else if (string_equals(link, "_decal_layer_dim")) {
 		vec4_t sc = mat4_get_scale(g_context->layer->decal_mat);
@@ -371,11 +368,13 @@ vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) 
 		return v;
 	}
 	else if (string_equals(link, "_particle_hit")) {
-		v = (vec4_t){g_context->particle_hit_x, g_context->particle_hit_y, g_context->particle_hit_z, 1.0};
+		paint_exec_op_t *op = paint_exec_current();
+		v                   = op != NULL ? (vec4_t){op->particle_hit.x, op->particle_hit.y, op->particle_hit.z, 1.0} : (vec4_t){0.0, 0.0, 0.0, 1.0};
 		return v;
 	}
 	else if (string_equals(link, "_particle_hit_last")) {
-		v = (vec4_t){g_context->last_particle_hit_x, g_context->last_particle_hit_y, g_context->last_particle_hit_z, 1.0};
+		paint_exec_op_t *op = paint_exec_current();
+		v                   = op != NULL ? (vec4_t){op->particle_last.x, op->particle_last.y, op->particle_last.z, 1.0} : (vec4_t){0.0, 0.0, 0.0, 1.0};
 		return v;
 	}
 	else if (string_equals(link, "_camera_right")) {

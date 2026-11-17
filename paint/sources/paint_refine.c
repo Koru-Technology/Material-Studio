@@ -245,7 +245,7 @@ static void paint_refine_step() {
 }
 
 static void paint_refine_update(void *_) {
-	if (g_context->brush_time > 0) { // A stroke in progress: after it
+	if (g_context->brush_time > 0 || util_particle_alive()) { // A stroke in progress (particles still painting): after it
 		return;
 	}
 	if (paint_rec_active()) {

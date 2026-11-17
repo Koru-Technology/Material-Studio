@@ -8,11 +8,12 @@
 // Blob, sections 4-byte aligned, structs of arrays (the store compresses it):
 //   paint_rec_head_t, states (paint_state_t), cams (paint_rec_cam_t), xforms (paint_rec_xform_t),
 //   ops: kind u8, flags u8, mm_tier u8 (padded), state u16, cam u16, xform u16 (padded), dab_first u32, dab_count u32,
-//        brush_time f32, down f32, direction 4 f32, pixel_snap_uv 4 f32, decal_mask 4 f32, each an array of n_ops,
+//        brush_time f32, down f32, direction 4 f32, pixel_snap_uv 4 f32, decal_mask 4 f32, particle_hit 4 f32,
+//        particle_last 4 f32, each an array of n_ops,
 //   dabs: PAINT_DAB_TEXELS * 4 arrays of n_dabs f32, the resolved texels component by component.
 
 #define PAINT_REC_MAGIC   0x31435250 // "PRC1"
-#define PAINT_REC_VERSION 6
+#define PAINT_REC_VERSION 7
 
 typedef struct paint_rec_head {
 	u32 magic;
@@ -75,7 +76,7 @@ static bool paint_rec_tool_replayable() {
 		return false; // Reads the other layers: a keyframe
 	}
 	return (tool == TOOL_TYPE_BRUSH || tool == TOOL_TYPE_ERASER || tool == TOOL_TYPE_FILL || tool == TOOL_TYPE_DECAL || tool == TOOL_TYPE_TEXT ||
-	        tool == TOOL_TYPE_BLUR || tool == TOOL_TYPE_CLONE) &&
+	        tool == TOOL_TYPE_BLUR || tool == TOOL_TYPE_CLONE || tool == TOOL_TYPE_PARTICLE) &&
 	       l->fill_material == NULL && !slot_layer_is_path(l) && !g_context->paint2d &&
 	       !context_is_pixel_snap() && !g_context->pick_pos_nor_tex;
 }
@@ -313,6 +314,8 @@ void paint_rec_op(paint_exec_op_t *op, i32 base) {
 		o->direction     = op->direction;
 		o->pixel_snap_uv = op->pixel_snap_uv;
 		o->decal_mask    = op->decal_mask;
+		o->particle_hit  = op->particle_hit;
+		o->particle_last = op->particle_last;
 	}
 }
 
@@ -352,7 +355,7 @@ static u8 *paint_rec_encode(paint_rec_t *r, u32 *len) {
 	u32 a  = (n + 3) & ~3u;     // u8 arrays padded
 	u32 a2 = (n * 2 + 3) & ~3u; // u16 arrays padded
 	u32 size = sizeof(paint_rec_head_t) + r->n_states * sizeof(paint_state_t) + r->n_cams * sizeof(paint_rec_cam_t) +
-	           r->n_xforms * sizeof(paint_rec_xform_t) + a * 3 + a2 * 3 + n * 4 * 4 + n * 4 * 12 + nd * PAINT_DAB_TEXELS * 4 * 4;
+	           r->n_xforms * sizeof(paint_rec_xform_t) + a * 3 + a2 * 3 + n * 4 * 4 + n * 4 * 20 + nd * PAINT_DAB_TEXELS * 4 * 4;
 	u8 *b  = calloc(1, size);
 	u8 *p  = b;
 	paint_rec_head_t h = {.magic      = PAINT_REC_MAGIC,
@@ -402,13 +405,17 @@ static u8 *paint_rec_encode(paint_rec_t *r, u32 *len) {
 		f32 *d   = &r->ops[i].direction.x;
 		f32 *ps  = &r->ops[i].pixel_snap_uv.x;
 		f32 *dm  = &r->ops[i].decal_mask.x;
+		f32 *ph  = &r->ops[i].particle_hit.x;
+		f32 *pl  = &r->ops[i].particle_last.x;
 		for (i32 c = 0; c < 4; ++c) {
 			f[n * (2 + c) + i]  = d[c];
 			f[n * (6 + c) + i]  = ps[c];
 			f[n * (10 + c) + i] = dm[c];
+			f[n * (14 + c) + i] = ph[c];
+			f[n * (18 + c) + i] = pl[c];
 		}
 	}
-	p += n * 4 * 14;
+	p += n * 4 * 22;
 	f = (f32 *)p;
 	i32 comps = PAINT_DAB_TEXELS * 4;
 	for (u32 k = 0; k < nd; ++k) {
@@ -435,7 +442,7 @@ bool paint_rec_decode(const u8 *b, u32 len, paint_rec_t *r) {
 	u32 n = h.n_ops, nd = h.n_dabs;
 	u32 a = (n + 3) & ~3u, a2 = (n * 2 + 3) & ~3u;
 	u64 need = sizeof(h) + (u64)h.n_states * sizeof(paint_state_t) + (u64)h.n_cams * sizeof(paint_rec_cam_t) + (u64)h.n_xforms * sizeof(paint_rec_xform_t) +
-	           a * 3 + a2 * 3 + (u64)n * 4 * 16 + (u64)nd * PAINT_DAB_TEXELS * 4 * 4;
+	           a * 3 + a2 * 3 + (u64)n * 4 * 24 + (u64)nd * PAINT_DAB_TEXELS * 4 * 4;
 	if (need > len) {
 		return false;
 	}
@@ -485,13 +492,17 @@ bool paint_rec_decode(const u8 *b, u32 len, paint_rec_t *r) {
 		f32 *d               = &r->ops[i].direction.x;
 		f32 *ps              = &r->ops[i].pixel_snap_uv.x;
 		f32 *dm              = &r->ops[i].decal_mask.x;
+		f32 *ph              = &r->ops[i].particle_hit.x;
+		f32 *pl              = &r->ops[i].particle_last.x;
 		for (i32 c = 0; c < 4; ++c) {
 			d[c]  = f[n * (2 + c) + i];
 			ps[c] = f[n * (6 + c) + i];
 			dm[c] = f[n * (10 + c) + i];
+			ph[c] = f[n * (14 + c) + i];
+			pl[c] = f[n * (18 + c) + i];
 		}
 	}
-	p += n * 4 * 14;
+	p += n * 4 * 22;
 	f         = (const f32 *)p;
 	i32 comps = PAINT_DAB_TEXELS * 4;
 	r->n_dabs = r->c_dabs = nd;

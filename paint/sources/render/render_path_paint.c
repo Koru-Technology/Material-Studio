@@ -243,47 +243,26 @@ static void render_path_paint_draw_fill_object() {
 	render_path_end();
 }
 
+// A particle's draw, the op executed (paint_exec_particles): the coverage so far copied already
 void render_path_paint_commands_particle(i32 tid, char *texpaint, bool is_mask) {
-	// Paint pass per particle
-	i32 drawn = 0;
-	for (i32 _pi = 0; _pi < 32; ++_pi) {
-		if (g_context->particles[_pi].timer == NULL || !g_context->particles[_pi].hit) {
-			continue;
-		}
-		g_context->particle_index      = _pi;
-		g_context->particle_hit_x      = g_context->particles[_pi].hit_x;
-		g_context->particle_hit_y      = g_context->particles[_pi].hit_y;
-		g_context->particle_hit_z      = g_context->particles[_pi].hit_z;
-		g_context->last_particle_hit_x = g_context->particles[_pi].hit_last_x;
-		g_context->last_particle_hit_y = g_context->particles[_pi].hit_last_y;
-		g_context->last_particle_hit_z = g_context->particles[_pi].hit_last_z;
-		if (is_mask) {
-			tid = g_context->layer->parent->id;
-			if (slot_layer_is_group(g_context->layer->parent)) {
-				for (i32 i = 0; i < slot_layer_get_children(g_context->layer->parent)->length; ++i) {
-					slot_layer_t *c = slot_layer_get_children(g_context->layer->parent)->buffer[i];
-					tid             = c->id;
-					break;
-				}
+	if (is_mask) {
+		tid = g_context->layer->parent->id;
+		if (slot_layer_is_group(g_context->layer->parent)) {
+			for (i32 i = 0; i < slot_layer_get_children(g_context->layer->parent)->length; ++i) {
+				slot_layer_t *c = slot_layer_get_children(g_context->layer->parent)->buffer[i];
+				tid             = c->id;
+				break;
 			}
 		}
-
-		if (drawn > 0) {
-			render_path_set_target("texpaint_blend1", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-			render_path_bind_target("texpaint_blend0", "tex");
-			render_path_draw_shader("Scene/copy_pass/copyR16_pass");
-		}
-		drawn++;
-
-		render_path_set_target(texpaint, render_path_paint_additional(string_tmp("texpaint_nor%d", tid), string_tmp("texpaint_pack%d", tid)), NULL,
-		                       GPU_CLEAR_NONE, 0, 0.0);
-		render_path_bind_target(render_path_paint_depth(), "gbufferD");
-		if (render_path_paint_uses_gbuffer0()) {
-			render_path_bind_target("gbuffer0", "gbuffer0");
-		}
-		render_path_bind_target("texpaint_blend1", "paintmask");
-		render_path_paint_draw_target();
 	}
+	render_path_set_target(texpaint, render_path_paint_additional(string_tmp("texpaint_nor%d", tid), string_tmp("texpaint_pack%d", tid)), NULL,
+	                       GPU_CLEAR_NONE, 0, 0.0);
+	render_path_bind_target(render_path_paint_depth(), "gbufferD");
+	if (render_path_paint_uses_gbuffer0()) {
+		render_path_bind_target("gbuffer0", "gbuffer0");
+	}
+	render_path_bind_target("texpaint_blend1", "paintmask");
+	render_path_paint_draw_target();
 }
 
 // Scratch targets the size of the layer painted

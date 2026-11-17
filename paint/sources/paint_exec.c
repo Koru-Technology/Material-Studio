@@ -321,7 +321,41 @@ static void paint_exec_draw_state(paint_exec_op_t *op) {
 	op->decal_mask    = context_is_decal() ? uniforms_decal_mask() : (vec4_t){0.0, 0.0, 0.0, 0.0};
 }
 
+// The particle tool: a draw a particle that hit the mesh this frame, where it hit and its radius in the op, the brush
+// state in its dab. Dilates after the last one.
+static void paint_exec_particles(bool dilation) {
+	if (g_context->pdirty <= 0) {
+		return;
+	}
+	i32 last = -1;
+	for (i32 i = 0; i < 32; ++i) {
+		if (g_context->particles[i].timer != NULL && g_context->particles[i].hit) {
+			last = i;
+		}
+	}
+	for (i32 i = 0; i <= last; ++i) {
+		if (g_context->particles[i].timer == NULL || !g_context->particles[i].hit) {
+			continue;
+		}
+		paint_exec_reserve(1);
+		paint_exec_op_t *op = paint_exec_push(PAINT_OP_DRAW);
+		op->dilation        = dilation && i == last;
+		op->dab_first       = paint_exec_dab_add(0.0, 0.0, 0.0, 0.0, PAINT_DAB_MODE_BRUSH);
+		op->dab_count       = 1;
+		op->particle_hit    = (vec4_t){g_context->particles[i].hit_x, g_context->particles[i].hit_y, g_context->particles[i].hit_z, util_particle_radius(i)};
+		op->particle_last   = (vec4_t){g_context->particles[i].hit_last_x, g_context->particles[i].hit_last_y, g_context->particles[i].hit_last_z, 0.0};
+		paint_exec_draw_state(op);
+	}
+	if (paint_exec_depth == 0) {
+		paint_exec_flush();
+	}
+}
+
 void paint_exec_draw(bool dilation) {
+	if (g_context->tool == TOOL_TYPE_PARTICLE && paint_exec_op == NULL) {
+		paint_exec_particles(dilation);
+		return;
+	}
 	if (render_path_paint_fill_pick && paint_exec_op == NULL && !paint_exec_replay && render_path_paint_fill_picks()) {
 		render_path_paint_fill_pick_now(); // What a fill paints, with the live camera: recorded in its state
 	}

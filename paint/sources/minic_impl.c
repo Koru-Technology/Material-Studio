@@ -1599,6 +1599,12 @@ void script_set_blur_type(i32 type) {
 	make_material_parse_paint_material(false);
 }
 
+// Scripts: how brushes map the material (uv_type_t: uv map, triplanar, project)
+void script_set_uv_type(i32 uv) {
+	g_context->brush_paint = uv;
+	make_material_parse_paint_material(false);
+}
+
 // Scripts: the clone tool's source offset on screen
 void script_set_clone_delta(f32 x, f32 y) {
 	g_context->clone_delta_x = x;

@@ -328,6 +328,8 @@ static bool paint_replay_ops(paint_rec_t *r, paint_target_t *t, bool fast) {
 				op.direction         = p->direction;
 				op.pixel_snap_uv     = p->pixel_snap_uv;
 				op.decal_mask        = p->decal_mask;
+				op.particle_hit      = p->particle_hit;
+				op.particle_last     = p->particle_last;
 				op.loc               = x->loc;
 				op.rot               = x->rot;
 				op.scale             = x->scale;

@@ -89,12 +89,6 @@ void context_init() {
 	g_context->decal_x                      = 0.0;
 	g_context->decal_y                      = 0.0;
 	g_context->write_icon_on_export         = false;
-	g_context->particle_hit_x               = 0.0;
-	g_context->particle_hit_y               = 0.0;
-	g_context->particle_hit_z               = 0.0;
-	g_context->last_particle_hit_x          = 0.0;
-	g_context->last_particle_hit_y          = 0.0;
-	g_context->last_particle_hit_z          = 0.0;
 	g_context->particle_friction            = 0.1;
 	g_context->particle_bounciness          = 0.0;
 	g_context->particle_gravity_x           = 0.0;

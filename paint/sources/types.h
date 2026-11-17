@@ -691,12 +691,6 @@ typedef struct context {
 	f32                         lock_start_x;
 	f32                         lock_start_y;
 	bool                        registered;
-	f32                         particle_hit_x;
-	f32                         particle_hit_y;
-	f32                         particle_hit_z;
-	f32                         last_particle_hit_x;
-	f32                         last_particle_hit_y;
-	f32                         last_particle_hit_z;
 	struct physics_body        *paint_body;
 	struct {
 		f32                  hit_x;
@@ -714,7 +708,6 @@ typedef struct context {
 		struct physics_body *body;
 		struct object       *bullet;
 	} particles[32];
-	i32             particle_index;
 	f32             particle_friction;
 	f32             particle_bounciness;
 	f32             particle_gravity_x;
@@ -1316,6 +1309,8 @@ typedef struct paint_exec_op {
 	vec4_t direction;     // _brush_direction: x, y the stroke direction, z 0 drops the dab
 	vec4_t pixel_snap_uv; // _pixel_snap_uv
 	vec4_t decal_mask;    // _decal_mask: decals, the anchor on screen, the mask pass, the radius
+	vec4_t particle_hit;  // Particle tool, a draw a particle: where it hit the mesh (world), w its radius
+	vec4_t particle_last; // and where it hit the frame before
 	vec4_t loc;           // Transform of the paint object, mirrored and turned for symmetry copies
 	quat_t rot;
 	vec4_t scale;
@@ -1406,6 +1401,8 @@ typedef struct paint_rec_op {
 	vec4_t direction;
 	vec4_t pixel_snap_uv;
 	vec4_t decal_mask;
+	vec4_t particle_hit;
+	vec4_t particle_last;
 } paint_rec_op_t;
 
 // A stroke being recorded, or a stored one decoded (paint_rec.c)

@@ -832,6 +832,7 @@ void           script_camera_save();
 bool           paint_asset_test_roundtrip(gpu_texture_t *t);
 void           script_camera_restore();
 void           script_set_clone_delta(f32 x, f32 y);
+void           script_set_uv_type(i32 uv);
 vec4_t         uniforms_decal_mask();
 char          *render_path_paint_uv_target();
 void           render_path_paint_ref_invalidate();
@@ -1575,6 +1576,8 @@ i32   util_particle_preset_count();
 char *util_particle_preset_name(i32 i);
 void  util_particle_apply_preset(i32 i);
 void  util_particle_update();
+f32   util_particle_radius(i32 i);
+bool  util_particle_alive();
 
 // ---- util/util_path.c ----
 bool   util_layer_is_path_point_dragging();
