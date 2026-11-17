@@ -35,7 +35,7 @@ struct FillSections: View {
 							}
 						}
 					} label: {
-						Label("Fill From Material", systemImage: "circle.hexagongrid")
+						Text("Fill From Material")
 					}
 				}
 				DisclosureGroup(isExpanded: panel.expansion("fill.channels")) {
