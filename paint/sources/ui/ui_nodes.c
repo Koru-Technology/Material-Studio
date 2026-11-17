@@ -533,7 +533,6 @@ void ui_viewnodes_on_canvas_context_menu() {
 			g_context->swatch          = new_swatch;
 			any_array_push(g_project->swatches, new_swatch);
 			history_new_swatch();
-			ui_dock_redraw(TAB_AREA_STATUS);
 		}
 	}
 	if (selected != NULL && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL && mm_node_is(selected) && mm_node_export_count(selected) > 0) {
@@ -995,7 +994,6 @@ static void ui_nodes_edit_end() {
 	if (ui_nodes_show && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
 		ui_base_show_material_nodes(); // Closes the editor
 	}
-	ui_dock_redraw(-1);
 }
 
 static void ui_nodes_edit_save(void *_) {

@@ -29,7 +29,6 @@ static void app_mask_history(slot_layer_t *m) {
 
 static bool app_mask_done(bool ok) {
 	if (ok) {
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
 		iron_delay_idle_sleep();
 	}
 	return ok;

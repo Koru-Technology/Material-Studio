@@ -62,7 +62,6 @@ static void import_arm_preview_next(void *_) {
 			make_material_bake_node_previews(); // The selected material's node previews again (the bake replaced them)
 		}
 		draw_resume(saved_draw);
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 	if (import_arm_preview_queue->length > 0) {
 		import_arm_preview_pending = true;
@@ -606,8 +605,6 @@ void import_arm_run_project(char *path) {
 	sys_notify_on_next_frame(&import_arm_run_project_on_next_frame, NULL);
 
 	base_update_tools();
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	g_context->ddirty = 4;
 	data_delete_blob(path);
 	project_container_loaded();

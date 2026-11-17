@@ -425,8 +425,6 @@ void brush_library_applied() {
 	brush_output_node_parse_inputs(); // Picks up the tip, recompiles the paint shader when it changed
 	make_material_parse_paint_material(true);
 	g_context->brush->preview_ready = false;
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	ui_header_handle->redraws = 2;
 }
 
 // Picks brush d to paint with

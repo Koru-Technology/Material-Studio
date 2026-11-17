@@ -497,7 +497,6 @@ void slot_layer_resize_and_set_bits(slot_layer_t *raw) {
 void slot_layer_to_fill_layer_on_next_frame(void *_) {
 	make_material_parse_paint_material(true);
 	g_context->layer_preview_dirty = true;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
 void slot_layer_to_fill_layer(slot_layer_t *raw) {
@@ -531,7 +530,6 @@ void slot_layer_to_paint_layer(slot_layer_t *raw) {
 	}
 	make_material_parse_paint_material(true);
 	g_context->layer_preview_dirty = true;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
 bool slot_layer_is_visible(slot_layer_t *raw) {
@@ -825,8 +823,6 @@ void slot_layer_move(slot_layer_t *raw, i32 to) {
 
 	context_set_layer(raw);
 	history_order_layers(dest);
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-
 	slot_layer_relocate(raw, dest);
 	raw->parent = parent;
 

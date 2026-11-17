@@ -62,7 +62,6 @@ static void util_brush_hold_pick() {
 		if (!mouse_down("left")) {
 			context_select_tool(util_brush_hold_tool);
 			util_brush_hold_tool       = -1;
-			ui_toolbar_handle->redraws = 2;
 		}
 		return;
 	}
@@ -403,6 +402,5 @@ void util_brush_update() {
 	if (util_brush_clone_source_down && !paint_down && !pen_down("tip")) {
 		util_brush_clone_source_down = false;
 		g_context->clone_set_source  = false;
-		ui_header_handle->redraws    = 2;
 	}
 }

@@ -75,8 +75,6 @@ void ui_view2d_render_color_pick(void *_) {
 	g_context->picked_color->base = color_set_rb(g_context->picked_color->base, buffer_get_u8(a, 0));
 	g_context->picked_color->base = color_set_gb(g_context->picked_color->base, buffer_get_u8(a, 1));
 	g_context->picked_color->base = color_set_bb(g_context->picked_color->base, buffer_get_u8(a, 2));
-	ui_header_handle->redraws     = 2;
-
 	if (g_context->color_picker_callback != NULL) {
 		g_context->color_picker_callback(g_context->picked_color);
 	}

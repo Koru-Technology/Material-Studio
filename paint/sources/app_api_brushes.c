@@ -305,7 +305,6 @@ bool app_color_get(app_color_t *out) {
 }
 
 static void app_color_changed(void) {
-	ui_header_handle->redraws = 2;
 	g_context->ddirty         = 2; // The picker's color mask reads it
 	iron_delay_idle_sleep();
 }
@@ -426,7 +425,6 @@ int32_t app_swatch_add(void) {
 	g_context->swatch = s;
 	any_array_push(g_project->swatches, s);
 	history_new_swatch();
-	ui_dock_redraw(TAB_AREA_STATUS);
 	iron_delay_idle_sleep();
 	return g_project->swatches->length - 1;
 }

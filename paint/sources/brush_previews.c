@@ -366,7 +366,6 @@ static void brush_previews_render(void *_) {
 		d->row_state = BRUSH_PREVIEW_READY;
 		brush_previews_drawn++;
 	}
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 // Looks the strokes up on disk, during the startup cover

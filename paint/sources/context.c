@@ -212,8 +212,6 @@ void context_set_material(slot_material_t *m) {
 	}
 	g_context->material = m;
 	make_material_parse_paint_material_async(true); // Compiles on a thread, strokes wait for it (util_brush_update)
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	ui_header_handle->redraws = 2;
 	ui_nodes_hwnd->redraws    = 2;
 	ui_nodes_group_stack      = any_array_create_from_raw((void *[]){}, 0);
 
@@ -236,8 +234,6 @@ void context_set_layer(slot_layer_t *l) {
 	}
 	g_context->layer          = l;
 	g_context->mask_effect    = -1; // Effect rows belong to the previous mask
-	ui_header_handle->redraws = 2;
-
 	draw_saved_t saved_draw = draw_suspend();
 
 	layers_set_object_mask();
@@ -245,8 +241,6 @@ void context_set_layer(slot_layer_t *l) {
 	make_material_parse_paint_material(true);
 
 	draw_resume(saved_draw);
-
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	ui_view2d_hwnd->redraws = 2;
 }
 
@@ -265,8 +259,6 @@ void context_select_tool(i32 i) {
 	}
 
 	context_init_tool();
-	ui_header_handle->redraws  = 2;
-	ui_toolbar_handle->redraws = 2;
 }
 
 void context_init_tool() {
@@ -279,7 +271,6 @@ void context_init_tool() {
 }
 
 void context_select_paint_object(mesh_object_t *o) {
-	ui_header_handle->redraws  = 2;
 	g_context->paint_object    = o;
 	util_uv_uvmap_cached       = false;
 	util_uv_dilatemap_cached   = false;

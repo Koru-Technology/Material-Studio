@@ -122,9 +122,6 @@ char      *ui_files_filename;
 char      *ui_files_path;
 char      *ui_files_last_path = "";
 
-// ---- ui/ui_header.c ----
-ui_window_t *ui_header_handle;
-
 // ---- ui/ui_id_mask.c ----
 bool ui_id_mask_active       = false; // Picking the parts of an ID mask, see ui_id_mask.c
 bool ui_id_mask_pick_pending = false; // A tap waits for the ID map color under it, see render_path_paint
@@ -139,10 +136,6 @@ i32  ui_menu_h                 = 0;
 bool ui_menu_keep_open         = false;
 void (*ui_menu_commands)(void) = NULL;
 bool ui_menu_show_first        = true;
-
-// ---- ui/ui_menubar.c ----
-ui_window_t *ui_menubar_hwnd;
-ui_window_t *ui_menubar_menu_handle;
 
 // ---- ui/ui_nodes.c ----
 any_map_t            *ui_nodes_custom_buttons;
@@ -163,10 +156,6 @@ char                 *_ui_nodes_name = "";
 f32                   _ui_nodes_min;
 f32                   _ui_nodes_max;
 f32                   _ui_nodes_vals[4];
-
-// ---- ui/ui_toolbar.c ----
-ui_window_t    *ui_toolbar_handle;
-string_array_t *ui_toolbar_tool_labels;
 
 // ---- ui/ui_view2d.c ----
 gpu_pipeline_t *ui_view2d_pipe;
@@ -262,9 +251,6 @@ char      *config_button_spacing = "       ";
 i32 brush_previews_group = -1; // Group shown in the brush list, its strokes render first
 
 // ---- console.c ----
-char           *console_message       = "";
-f32             console_message_timer = 0.0;
-i32             console_message_color = 0x00000000;
 string_array_t *console_last_traces;
 char           *console_capture = NULL;
 
@@ -274,6 +260,7 @@ char *project_uuid     = NULL; // 32 hex digits, project_uuid_get
 
 // ---- history.c ----
 history_step_t_array_t *history_steps;
+string_array_t         *history_tool_names; // Tool names shown in the history
 i32                     history_undos     = 0;     // Undos available
 i32                     history_redos     = 0;     // Redos available
 bool                    history_push_undo = false; // Store undo on next paint

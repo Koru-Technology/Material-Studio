@@ -305,10 +305,7 @@ void _kickstart() {
 	import_texture_importers = any_map_create();
 	import_text_importers    = any_map_create();
 	base_drop_paths          = any_array_create_from_raw((void *[]){}, 0);
-	ui_toolbar_handle = ui_window_create();
-
-	// Tool names shown in the history
-	ui_toolbar_tool_labels = any_array_create_from_raw(
+	history_tool_names = any_array_create_from_raw(
 	    (void *[]){
 	        _tr("Brush"),   _tr("Eraser"), _tr("Fill"),     _tr("Decal"),   _tr("Text"),   _tr("Clone"),   _tr("Blur"),  _tr("Particle"),
 	        _tr("ID"),      _tr("Picker"), _tr("Preview"),  _tr("Move"),    _tr("Select"), _tr("Empty"),   _tr("Plane"), _tr("Cube"),
@@ -320,8 +317,6 @@ void _kickstart() {
 
 	uniforms_ext_ortho_p    = mat4_ortho(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5);
 	import_mesh_importers   = any_map_create();
-	ui_menubar_hwnd         = ui_window_create();
-	ui_menubar_menu_handle  = ui_window_create();
 	translator_translations = any_map_create();
 
 	g_project                     = ALLOC_INIT(project_t, {0});
@@ -340,7 +335,6 @@ void _kickstart() {
 	parser_material_node_vectors = any_map_create();
 	parser_material_custom_nodes = any_map_create();
 	parser_material_node_outputs = any_map_create();
-	ui_header_handle             = ui_window_create();
 	parser_logic_custom_nodes    = any_map_create();
 	resource_bundled             = any_map_create();
 	ui_nodes_hwnd                = ui_window_create();

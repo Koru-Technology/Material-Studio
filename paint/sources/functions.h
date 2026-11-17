@@ -1023,7 +1023,6 @@ void ui_dock_reset();
 void ui_dock_show_view(dock_view_t view, bool show);
 i32  ui_dock_view3d_w();
 i32  ui_dock_view3d_h();
-void ui_dock_redraw(i32 area);
 
 // ---- ui/ui_files.c ----
 void  ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files_done)(char *));
@@ -1577,8 +1576,6 @@ string_array_t *base_combo_enum_texts(char *node_type);
 any_array_t    *base_combo_enum_textures(char *node_type);
 i32             base_get_asset_index_by_file(char *file);
 bool            base_is_decal_layer();
-void            base_redraw_status();
-void            base_redraw_console();
 void            base_redraw_ui();
 void            base_set_workspace(workspace_preset_t preset);
 void            base_apply_workspace();

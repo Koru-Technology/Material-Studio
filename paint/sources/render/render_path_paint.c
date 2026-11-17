@@ -687,8 +687,6 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				render_path_bind_target(string_tmp("texpaint_pack%d", tid), "texpaint_pack");
 				render_path_paint_draw_fullscreen_triangle();
 			}
-			ui_header_handle->redraws = 2;
-			ui_dock_redraw(2);
 			render_path_paint_picker_read(is_mask);
 		}
 	}

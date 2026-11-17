@@ -204,8 +204,6 @@ static void ui_quick_menu_run(i32 item) {
 	default:
 		break;
 	}
-	ui_toolbar_handle->redraws = 2;
-	ui_header_handle->redraws  = 2;
 }
 
 void ui_quick_menu_update() {
@@ -237,7 +235,6 @@ void ui_quick_menu_update() {
 		else {
 			g_context->brush_opacity = math_max(0.0, math_min(1.0, ui_quick_menu_drag_value + delta));
 		}
-		ui_header_handle->redraws = 2;
 		render_path_base_redraw();
 		if (!down) {
 			ui_quick_menu_close();

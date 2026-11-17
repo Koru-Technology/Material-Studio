@@ -978,9 +978,6 @@ void box_preferences_keymap_tab() {
 void box_preferences_library_tab() {
 	box_preferences_section(tr("Built-in Brushes"));
 	ui_check(&g_config->hide_builtin_brushes, tr("Hide Built-in Brushes"), "");
-	if (ui_item_changed()) {
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	}
 }
 
 void box_preferences_show_on_hide() {

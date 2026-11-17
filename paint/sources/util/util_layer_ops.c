@@ -172,7 +172,6 @@ void layers_op_set_name(slot_layer_t *l, char *name) {
 		return;
 	}
 	l->name = string_copy(slot_layer_unique_name(l, name));
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
 void layers_op_update(slot_layer_t *l) {
@@ -285,7 +284,6 @@ void layers_op_end(draw_saved_t g) {
 	g_context->layers_preview_dirty = true;
 	g_context->rtdirty              = 1;
 	g_context->ddirty               = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
 slot_layer_t *layers_op_duplicate(slot_layer_t *l) {
@@ -502,7 +500,6 @@ void layers_delete(slot_layer_t *l) {
 
 	g_context->ddirty = 2;
 	layers_remap_layer_pointers(pointers);
-	base_redraw_status();
 }
 
 void layers_toggle_visible(slot_layer_t *l) {

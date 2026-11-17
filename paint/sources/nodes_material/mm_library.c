@@ -407,7 +407,6 @@ static void mm_library_update(void *_) {
 		l->icon_state = l->icon != NULL ? 2 : 3;
 		mm_library_icons += l->icon != NULL ? 1 : 0;
 		loaded++;
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 }
 

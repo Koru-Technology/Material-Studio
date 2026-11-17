@@ -75,8 +75,6 @@ static void util_pencil_run(i32 gesture, f32 x, f32 y) {
 	default:
 		return;
 	}
-	ui_toolbar_handle->redraws = 2;
-	ui_header_handle->redraws  = 2;
 }
 
 void util_pencil_update() {

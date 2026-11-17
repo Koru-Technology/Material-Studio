@@ -368,9 +368,6 @@ void project_new(bool reset_layers) {
 	g_project->_->next_asset_id = 0;
 	g_project->packed_assets    = any_array_create_from_raw((void *[]){}, 0);
 	g_context->ddirty           = 4;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-
 	if (reset_layers) {
 		bool res_changed = g_project->_->layers->buffer[0]->texpaint->width != config_get_texture_res_x() ||
 		                   g_project->_->layers->buffer[0]->texpaint->height != config_get_texture_res_y();
@@ -556,7 +553,6 @@ void project_reimport_texture_load_on_next_frame(void *_) {
 	render_path_base_redraw(); // The 3D view shows the change
 	make_material_parse_paint_material(true);
 	util_render_make_material_preview();
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 void project_reimport_texture_load(char *path, asset_t *asset) {
@@ -763,5 +759,4 @@ void project_delete_swatch(swatch_color_t *swatch) {
 	history_delete_swatch(swatch);
 	g_context->swatch = g_project->swatches->buffer[i == g_project->swatches->length - 1 ? i - 1 : i + 1];
 	array_splice(g_project->swatches, i, 1);
-	ui_dock_redraw(TAB_AREA_STATUS);
 }

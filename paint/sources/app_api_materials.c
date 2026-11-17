@@ -255,7 +255,6 @@ int32_t app_material_duplicate(int32_t id) {
 	draw_saved_t gpu          = draw_suspend();
 	slot_material_duplicate(array_index_of(g_project->_->materials, m));
 	draw_resume(gpu);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return g_context->material != NULL ? g_context->material->id : -1;
 }
 
@@ -293,7 +292,6 @@ bool app_material_rename(int32_t id, const char *name) {
 	}
 	m->canvas->name  = string_copy(slot_material_unique_name(m->canvas, (char *)name));
 	project_modified = true;
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return true;
 }
 

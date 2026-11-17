@@ -104,13 +104,6 @@ void ui_base_update_next_frame(void *_) {
 
 void ui_base_update(void *_) {
 
-	if (console_message_timer > 0) {
-		console_message_timer -= sys_delta();
-		if (console_message_timer <= 0) {
-			ui_dock_redraw(TAB_AREA_STATUS);
-		}
-	}
-
 	if (base_ui_enabled && !ui_brush_creator_shown()) {
 		render_gizmo_update();
 		util_layer_update_path();

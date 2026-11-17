@@ -211,8 +211,6 @@ void base_update(void *_) {
 
 	if (g_context->frame == 2) {
 		util_render_make_material_preview();
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
-
 		make_material_parse_mesh_material();
 		make_material_parse_paint_material(true);
 		g_context->ddirty = 0;
@@ -653,24 +651,10 @@ bool base_is_decal_layer() {
 	return g_context->layer->fill_material != NULL && g_context->layer->uv_type == UV_TYPE_PROJECT;
 }
 
-void base_redraw_status() {
-	ui_dock_redraw(TAB_AREA_STATUS);
-}
-
-void base_redraw_console() {
-	ui_dock_redraw(TAB_AREA_STATUS);
-}
-
 void base_redraw_ui() {
-	ui_header_handle->redraws       = 2;
-	ui_menubar_menu_handle->redraws = 2;
-	ui_menubar_hwnd->redraws        = 2;
 	ui_nodes_hwnd->redraws          = 2;
 	ui_box_hwnd->redraws            = 2;
 	ui_view2d_hwnd->redraws         = 2;
-	ui_toolbar_handle->redraws      = 2;
-	ui_dock_redraw(-1);
-	// Redraw viewport
 	if (g_context->ddirty < 0) {
 		g_context->ddirty = 0;
 	}
@@ -700,10 +684,6 @@ void base_apply_workspace() {
 }
 
 void base_update_tools() {
-	if (ui_toolbar_handle != NULL) {
-		ui_toolbar_handle->redraws = 2;
-	}
-
 	if (g_context->tool >= TOOL_TYPE_MATERIAL && g_context->tool <= TOOL_TYPE_CURVE) {
 		context_select_tool(TOOL_TYPE_BRUSH); // No longer a tool
 	}

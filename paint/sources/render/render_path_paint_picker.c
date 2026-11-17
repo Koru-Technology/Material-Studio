@@ -61,12 +61,9 @@ static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_m
 			g_context->material = m;
 			layers_update_fill_layers();
 			util_render_make_material_preview();
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
 		}
 	}
 	g_context->material = _material;
-	ui_header_handle->redraws = 2;
-	ui_dock_redraw(2);
 }
 
 static bool        render_path_paint_picker_mask = false;

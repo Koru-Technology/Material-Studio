@@ -58,7 +58,6 @@ void util_layer_update_preview() {
 
 			util_layer_draw_preview(l, target);
 		}
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	}
 
 	if (g_context->layer != NULL && g_context->layer_preview_dirty && !slot_layer_is_group(g_context->layer)) {
@@ -70,7 +69,6 @@ void util_layer_update_preview() {
 		gpu_texture_t *target = l->texpaint_preview;
 		if (target != NULL) {
 			util_layer_draw_preview(l, target);
-			ui_dock_redraw(TAB_AREA_SIDEBAR0);
 		}
 	}
 }

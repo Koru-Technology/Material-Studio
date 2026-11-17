@@ -116,7 +116,6 @@ slot_material_t *slot_material_find_uid(u32 uid) {
 }
 
 void slot_material_refresh() {
-	ui_header_handle->redraws = 2;
 	ui_nodes_hwnd->redraws    = 2;
 	ui_nodes_group_stack      = any_array_create_from_raw((void *[]){}, 0);
 	make_material_parse_paint_material(true);
@@ -181,7 +180,6 @@ void slot_material_remove(slot_material_t *m) {
 	history_delete_material();
 	context_select_material(i == g_project->_->materials->length - 1 ? i - 1 : i + 1);
 	array_splice(g_project->_->materials, i, 1);
-	ui_dock_redraw(1);
 	slot_material_on_removed(m, i);
 }
 
@@ -248,7 +246,6 @@ void slot_material_delete_unused() {
 		return;
 	}
 	context_set_material(selected != NULL ? selected : g_project->_->materials->buffer[0]);
-	ui_dock_redraw(1);
 }
 
 void slot_material_new_on_next_frame(void *_) {
@@ -281,7 +278,6 @@ void slot_material_apply_picked_color(swatch_color_t *swatch) {
 	if (layers_is_path_material()) {
 		layers_update_path_layers();
 	}
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 void slot_material_new_from_swatch(swatch_color_t *swatch) {

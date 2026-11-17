@@ -152,7 +152,6 @@ void util_shortcut_brush() {
 		g_context->brush_radius = math_max(0.01, math_min(4.0, g_context->brush_radius));
 		g_context->brush_radius = math_round(g_context->brush_radius * 100) / 100.0;
 	}
-	ui_header_handle->redraws = 2;
 }
 
 void util_shortcut_viewport() {
@@ -161,7 +160,6 @@ void util_shortcut_viewport() {
 	bool is_typing = g_ui->is_typing;
 	if (!is_typing) {
 		if (keymap_shortcut(any_map_get(g_keymap, "select_material"), SHORTCUT_TYPE_DOWN)) {
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
 			for (i32 i = 1; i < 10; ++i) {
 				if (keyboard_started(i32_to_string(i))) {
 					context_select_material(i - 1);
@@ -169,7 +167,6 @@ void util_shortcut_viewport() {
 			}
 		}
 		else if (keymap_shortcut(any_map_get(g_keymap, "select_layer"), SHORTCUT_TYPE_DOWN)) {
-			ui_dock_redraw(TAB_AREA_SIDEBAR0);
 			for (i32 i = 1; i < 10; ++i) {
 				if (keyboard_started(i32_to_string(i))) {
 					context_select_layer(i - 1);
@@ -239,33 +236,24 @@ void util_shortcut_viewport() {
 			else if (keymap_shortcut(any_map_get(g_keymap, "brush_radius_decrease"), SHORTCUT_TYPE_REPEAT)) {
 				g_context->brush_radius -= ui_base_get_radius_increment();
 				g_context->brush_radius   = math_max(math_round(g_context->brush_radius * 100) / 100.0, 0.01);
-				ui_header_handle->redraws = 2;
 			}
 			else if (keymap_shortcut(any_map_get(g_keymap, "brush_radius_increase"), SHORTCUT_TYPE_REPEAT)) {
 				g_context->brush_radius += ui_base_get_radius_increment();
 				g_context->brush_radius   = math_round(g_context->brush_radius * 100) / 100.0;
-				ui_header_handle->redraws = 2;
 			}
 			else if (decal_mask) {
 				if (keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "decal_mask"), any_map_get(g_keymap, "brush_radius_decrease")),
 				                    SHORTCUT_TYPE_REPEAT)) {
 					g_context->brush_decal_mask_radius -= ui_base_get_radius_increment();
 					g_context->brush_decal_mask_radius = math_max(math_round(g_context->brush_decal_mask_radius * 100) / 100.0, 0.01);
-					ui_header_handle->redraws          = 2;
 				}
 				else if (keymap_shortcut(string_tmp("%s+%s", any_map_get(g_keymap, "decal_mask"), any_map_get(g_keymap, "brush_radius_increase")),
 				                         SHORTCUT_TYPE_REPEAT)) {
 					g_context->brush_decal_mask_radius += ui_base_get_radius_increment();
 					g_context->brush_decal_mask_radius = math_round(g_context->brush_decal_mask_radius * 100) / 100.0;
-					ui_header_handle->redraws          = 2;
 				}
 			}
 		}
-		if (decal_mask && (keymap_shortcut(any_map_get(g_keymap, "decal_mask"), SHORTCUT_TYPE_STARTED) ||
-		                   keymap_shortcut(any_map_get(g_keymap, "decal_mask"), SHORTCUT_TYPE_RELEASED))) {
-			ui_header_handle->redraws = 2;
-		}
-
 		// Viewpoint
 		if (mouse_view_x() < sys_w()) {
 			if (keymap_shortcut(any_map_get(g_keymap, "view_reset"), SHORTCUT_TYPE_STARTED)) {

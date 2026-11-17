@@ -466,7 +466,6 @@ static void layers_fill_paint_new_mask_on_next_frame(void *_) {
 	layers_fill_mask_layer = NULL;
 	if (slot_layer_alive(l)) {
 		layers_op_new_mask(l, layers_fill_mask_type); // Selected, the next stroke paints it
-		ui_dock_redraw(-1);
 	}
 }
 

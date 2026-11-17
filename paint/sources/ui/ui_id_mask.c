@@ -325,7 +325,6 @@ static void ui_id_mask_build(void *_m) {
 	mask_stack_mark_dirty(m);
 	g_context->layer_preview_dirty = true;
 	layers_update_fill_layers();
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	base_redraw_ui();
 }
 
@@ -351,7 +350,6 @@ static void ui_id_mask_done_effect() {
 	history_mask_stack();
 	g_context->layer = _layer;
 	mask_stack_set(m, ui_id_mask_effect, picked);
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
 // The picked parts become a mask of the layer

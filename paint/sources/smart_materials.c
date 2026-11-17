@@ -427,7 +427,6 @@ slot_layer_t *smart_materials_insert(char *name) {
 	make_material_parse_mesh_material();
 	g_context->layers_preview_dirty = true;
 	g_context->ddirty               = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	return root;
 }
 
@@ -478,7 +477,6 @@ slot_layer_t *smart_materials_save_target() {
 
 static void smart_materials_save_next(void *name) {
 	smart_materials_save(smart_materials_save_target(), name);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 static void smart_materials_save_box() {
@@ -488,7 +486,6 @@ static void smart_materials_save_box() {
 		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
 			sys_notify_on_next_frame(&smart_materials_save_next, string_copy(name));
 			ui_box_hide();
-			ui_dock_redraw(TAB_AREA_SIDEBAR1);
 		}
 	}
 }

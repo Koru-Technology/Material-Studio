@@ -342,12 +342,6 @@ typedef enum {
 	CLONE_LAYERS_VISIBLE  = 1,
 } clone_layers_t;
 
-typedef enum {
-	TAB_AREA_SIDEBAR0 = 0,
-	TAB_AREA_SIDEBAR1 = 1,
-	TAB_AREA_STATUS   = 2,
-} tab_area_t;
-
 // Views sharing the window, see ui_dock.c
 typedef enum {
 	DOCK_VIEW_3D    = 0,

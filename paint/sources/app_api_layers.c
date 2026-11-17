@@ -194,7 +194,6 @@ bool app_layer_set_expanded(int32_t id, bool expanded) {
 		return false;
 	}
 	l->show_panel = expanded;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	return true;
 }
 
@@ -211,7 +210,6 @@ bool app_layer_set_name(int32_t id, const char *name) {
 		layers_repaint_text(l);
 		layers_op_end(gpu);
 	}
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	iron_delay_idle_sleep();
 	return true;
 }
@@ -315,7 +313,6 @@ bool app_layer_new(int32_t kind) {
 		break;
 	}
 	g_context->ddirty = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	iron_delay_idle_sleep();
 	return ok;
 }
@@ -323,7 +320,6 @@ bool app_layer_new(int32_t kind) {
 // Layer menu
 
 static bool app_layer_done(bool ok) {
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	iron_delay_idle_sleep();
 	return ok;
 }

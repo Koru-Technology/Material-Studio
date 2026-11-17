@@ -77,6 +77,3 @@ i32 ui_dock_view3d_w() {
 i32 ui_dock_view3d_h() {
 	return ui_dock_laid_out ? dock_view3d_h : iron_window_height();
 }
-
-// No-op, the engine draws no panels
-void ui_dock_redraw(i32 area) {}

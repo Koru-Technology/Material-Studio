@@ -125,7 +125,6 @@ void util_texture_update_pointers(ui_node_t_array_t *nodes, i32 index) {
 void util_texture_deleted_on_next_frame(void *_) {
 	make_material_parse_paint_material(true);
 	util_render_make_material_preview();
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 void util_texture_delete(asset_t *asset) {
@@ -133,8 +132,6 @@ void util_texture_delete(asset_t *asset) {
 	if (g_project->_->assets->length > 1) {
 		g_context->texture = g_project->_->assets->buffer[index == g_project->_->assets->length - 1 ? index - 1 : index + 1];
 	}
-	ui_dock_redraw(TAB_AREA_STATUS);
-
 	project_id_map_removed(asset);
 	mesh_maps_asset_removed(asset);
 

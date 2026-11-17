@@ -823,7 +823,6 @@ slot_material_t *script_material_create(char *name) {
 	draw_resume(gpu);
 
 	history_new_material();
-	ui_dock_redraw(1);
 	return m;
 }
 
@@ -1155,10 +1154,6 @@ void script_material_update(void) {
 	if (ui_nodes_hwnd != NULL) {
 		ui_nodes_hwnd->redraws = 2;
 	}
-	if (ui_header_handle != NULL) {
-		ui_header_handle->redraws = 2;
-	}
-	ui_dock_redraw(1);
 	g_context->ddirty  = 2;
 	g_context->rtdirty = 1;
 }

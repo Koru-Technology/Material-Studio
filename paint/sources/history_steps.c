@@ -12,7 +12,7 @@ void history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_gr
 void history_paint() {
 	history_push_undo    = false;
 	history_step_t *step = history_push(HISTORY_ACTION_PAINT);
-	step->name           = tr(ui_toolbar_tool_labels->buffer[g_context->tool]);
+	step->name           = tr(history_tool_names->buffer[g_context->tool]);
 	history_tiles_begin(step, g_context->layer); // The snapshot the stroke blends over, its tiles for undo
 	timeline_stroke_begin(step, g_context->layer);
 	paint_rec_stroke_begin(step, g_context->layer); // The stroke recorded for replay (paint_rec.c)
