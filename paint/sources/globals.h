@@ -6,7 +6,8 @@
 
 // ---- Shared (written by several files) ----
 char        *manifest_title           = "Material Studio";
-char        *manifest_version_project = "31";
+char        *manifest_version_project = "32"; // Project files (positional armpack: any layout change of what they hold bumps it)
+char        *manifest_version_library = "31"; // Material, brush and swatches files: project_t without layers, unchanged since 31
 char        *manifest_version_config  = "20";
 context_t   *g_context;
 project_t   *g_project;

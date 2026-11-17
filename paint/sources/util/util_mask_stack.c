@@ -119,7 +119,7 @@ static mask_effect_param_t mask_params_blur[] = {
 };
 static mask_effect_param_t mask_params_anchor[] = {
     {"Layer", 0, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL},
-    {"Channel", 1, MASK_PARAM_CHOICE, 0.0, 2.0, 0.0, "Mask,Height,Opacity"},
+    {"Channel", 1, MASK_PARAM_CHOICE, 0.0, 3.0, 0.0, "Mask,Height,Opacity,Occluded"},
 };
 
 #define MASK_PARAMS_OF(a) *count = ARRAY_LENGTH(a); return a
@@ -436,8 +436,9 @@ void mask_stack_mark_dirty(slot_layer_t *m) {
 static gpu_texture_t *mask_stack_scratch = NULL;
 
 // How mask_stack.glsl reads an anchor's texture (params[1] in the pass)
-#define MASK_ANCHOR_READ_R 0
-#define MASK_ANCHOR_READ_A 1
+#define MASK_ANCHOR_READ_R        0
+#define MASK_ANCHOR_READ_A        1
+#define MASK_ANCHOR_READ_OCCLUDED 2 // 1 - r
 
 static gpu_texture_t *mask_stack_black() {
 	return render_path_empty_black();
@@ -1015,8 +1016,8 @@ static i32 mask_stack_visible_before(slot_layer_t *m, i32 index) {
 }
 
 // What anchor e of m reads: *kind 0 black, 1 white, 2 the returned mask's evaluated stack, 3 the returned layer's
-// texpaint (opacity in a), 4 its texpaint_pack (height in a). e->params[1] becomes how the shader reads it
-// (MASK_ANCHOR_READ_*). The export reads the same for its tiles.
+// texpaint (opacity in a), 4 its texpaint_pack (occlusion in r, height in a). e->params[1] becomes how the shader reads
+// it (MASK_ANCHOR_READ_*). The export reads the same for its tiles.
 slot_layer_t *mask_stack_anchor_target(slot_layer_t *m, mask_effect_t *e, i32 *kind) {
 	*kind           = 0;
 	slot_layer_t *l = mask_stack_layer_by_id((i32)e->params[0]);
@@ -1048,7 +1049,7 @@ slot_layer_t *mask_stack_anchor_target(slot_layer_t *m, mask_effect_t *e, i32 *k
 	if (l->texpaint_pack == NULL) {
 		return NULL;
 	}
-	e->params[1] = MASK_ANCHOR_READ_A;
+	e->params[1] = channel == MASK_ANCHOR_HEIGHT ? MASK_ANCHOR_READ_A : MASK_ANCHOR_READ_OCCLUDED;
 	*kind        = 4;
 	return l;
 }

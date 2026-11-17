@@ -349,6 +349,7 @@ typedef enum {
 	MASK_ANCHOR_MASK     = 0,
 	MASK_ANCHOR_HEIGHT   = 1,
 	MASK_ANCHOR_OPACITY  = 2,
+	MASK_ANCHOR_OCCLUDED = 3, // 1 - occlusion: white in the layer's crevices
 } mask_anchor_channel_t;
 
 // Mask Builder settings

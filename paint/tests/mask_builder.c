@@ -3,7 +3,7 @@
 // Mask Builder, the Ambient Occlusion generator, the position, world normal and normal maps, and fills of an image or
 // grunge. The Mask Builder's parts each match the generator they stand for (Edge Wear, Dirt, Ambient Occlusion,
 // Directional, Position Gradient), inverting complements it, micro details follow the normal map or a layer's normal
-// and height (rendering again when the layer changes), a layer's occlusion joins the AO. A registered world normal or
+// and height (rendering again when the layer changes), a layer's occlusion joins the AO, Anchor reads it as it is. A registered world normal or
 // position map replaces the mesh's own. Image fills project on the uvs (scale, rotation, balance, invert) or
 // triplanar, every grunge renders something, a seed changes it, deleting images keeps the references right, save and
 // load keep it, a smart material drops the image.
@@ -35,6 +35,7 @@ int POSITION    = 6;
 int DIRECTIONAL = 7;
 int BUILDER     = 15;
 int AO_GEN      = 16;
+int ANCHOR      = 14;
 int AMOUNT      = 13; // Noise
 int SEED        = 14;
 
@@ -475,40 +476,54 @@ void next() {
 	else if (step == 27) {
 		int n = white(result(), 0, 100, 0, 100);
 		check(n > r0 + 1000, string("a layer's low occlusion makes more of the mask builder's AO white (%d from %d)", n, r0));
-		use_image("koru_mb_test_half");
+		use(ANCHOR); // The layer's occlusion as it is
+		set(0, stone->id * 1.0);
+		set(1, 3.0); // Occluded
 	}
 	else if (step == 28) {
+		gpu_texture_t *t   = result();
+		buffer_t      *p   = script_get_texture_pixels(t);
+		int            n   = count_box(p, t->width, t->height, 0, 100, 0, 100, 185, 197);
+		int            all = count_box(p, t->width, t->height, 0, 100, 0, 100, 0, 255);
+		check(n * 100 > all * 99, string("anchor occluded: 1 - occlusion everywhere (%d of %d texels near 191)", n, all));
+		set(1, 1.0); // Height, 0
+	}
+	else if (step == 29) {
+		check(white(result(), 0, 100, 0, 100) == 0, "anchor height of the same layer: black");
+		use_image("koru_mb_test_half");
+	}
+	else if (step == 30) {
 		gpu_texture_t *t = result();
 		check(white(t, 0, 45, 0, 100) > 500, "image fill: the white left half shows on the left");
 		check(white(t, 55, 100, 0, 100) < 20, "and the right stays black");
 		set(F_SCALE, 2.0);
 	}
-	else if (step == 29) {
+	else if (step == 31) {
 		gpu_texture_t *t = result();
 		check(white(t, 2, 22, 0, 100) > 200 && white(t, 52, 72, 0, 100) > 200, "scale 2: white in two stripes");
 		check(white(t, 28, 47, 0, 100) < 20 && white(t, 78, 98, 0, 100) < 20, "and black between");
 		set(F_SCALE, 1.0);
 		set(F_ROTATION, 180.0);
 	}
-	else if (step == 30) {
+	else if (step == 32) {
 		gpu_texture_t *t = result();
 		check(white(t, 0, 45, 0, 100) < 20 && white(t, 55, 100, 0, 100) > 500, "rotation 180: the halves swap");
 		set(F_ROTATION, 0.0);
 		set(F_INVERT, 1.0);
 	}
-	else if (step == 31) {
+	else if (step == 33) {
 		gpu_texture_t *t = result();
 		check(white(t, 0, 45, 0, 100) < 20 && white(t, 55, 100, 0, 100) > 500, "invert: the halves swap");
 		set(F_INVERT, 0.0);
 		set(F_BALANCE, 0.0);
 	}
-	else if (step == 32) {
+	else if (step == 34) {
 		check(white(result(), 0, 100, 0, 100) < 20, "balance 0: nothing white");
 		set(F_BALANCE, 0.5);
 		a = copy_pixels(result());
 		set(F_PROJECTION, 1.0);
 	}
-	else if (step == 33) {
+	else if (step == 35) {
 		int n = changed(a);
 		check(n > 500, string("triplanar projects otherwise (%d texels)", n));
 		check(white(result(), 0, 100, 0, 100) > 200, "and shows the image");
@@ -516,7 +531,7 @@ void next() {
 		pattern = 0;
 		set(F_PATTERN, 0.0);
 	}
-	else if (step == 34) {
+	else if (step == 36) {
 		gpu_texture_t *t = result();
 		int            n = white(t, 0, 100, 0, 100);
 		check(n > 50 && n < covered - 50, string("grunge %d: some white, not all (%d of %d)", pattern, n, covered));
@@ -528,16 +543,16 @@ void next() {
 		}
 		set(F_PATTERN, 1.0); // Scratches
 	}
-	else if (step == 35) {
+	else if (step == 37) {
 		a = copy_pixels(result());
 		set(F_SEED, 7.0);
 	}
-	else if (step == 36) {
+	else if (step == 38) {
 		int n = changed(a);
 		check(n > 50, string("another seed, other grunge (%d texels)", n));
 		set(F_PROJECTION, 0.0);
 	}
-	else if (step == 37) {
+	else if (step == 39) {
 		int n = changed(a);
 		check(n > 50, string("grunge on the uvs differs from triplanar (%d texels)", n));
 		// Deleting an image: the fills of later images follow, the fill of the deleted one reads none
@@ -546,21 +561,21 @@ void next() {
 		check(util_texture_is_used(r0), "the image of a fill is in use");
 		script_assets_remove("koru_mb_test_half");
 	}
-	else if (step == 38) {
+	else if (step == 40) {
 		check(script_mask_get_effect_param(mask, g, F_IMAGE) == (r0 - 1) * 1.0 && asset("koru_mb_test_white") == r0 - 1,
 		      "an earlier image deleted, the fill follows its image");
 		int n = white(result(), 0, 100, 0, 100);
 		check(n > covered - 50, string("and still shows it (%d of %d)", n, covered));
 		script_assets_remove("koru_mb_test_white");
 	}
-	else if (step == 39) {
+	else if (step == 41) {
 		check(script_mask_get_effect_param(mask, g, F_IMAGE) == -1.0, "its image deleted, the fill reads none");
 		check(white(result(), 0, 100, 0, 100) < 20, "and is black");
 		// Save and load: an image fill and a grunge fill
 		write_image(test_path("koru_mb_test_half2.png"), 2);
 		script_import_asset(test_path("koru_mb_test_half2.png"), 0);
 	}
-	else if (step == 40) {
+	else if (step == 42) {
 		use_image("koru_mb_test_half2");
 		int e = script_mask_add_effect(mask, FILL, -1);
 		script_mask_set_effect_param(mask, e, F_SOURCE, 2.0);
@@ -572,21 +587,21 @@ void next() {
 		script_mask_set_effect_param(mask, k, B_SOURCE, stone->id * 1.0);
 		script_mask_set_effect_param(mask, k, B_MICRO, 1.0);
 	}
-	else if (step == 41) {
+	else if (step == 43) {
 		a     = copy_pixels(result());
 		saved = string_copy(script_mask_effects_string(mask));
 		file  = test_path("mask_builder_test.arm");
 		project_filepath_set(file);
 		project_save(0);
 	}
-	else if (step == 42) {
+	else if (step == 44) {
 		script_project_new();
 	}
-	else if (step == 43) {
+	else if (step == 45) {
 		r0 = mask_gen_renders();
 		script_project_open(file);
 	}
-	else if (step == 44) {
+	else if (step == 46) {
 		mask = script_layer_get("mb_mask");
 		check(mask != NULL, "the mask is loaded");
 		if (mask != NULL) {
@@ -605,13 +620,13 @@ void next() {
 			check(smart_materials_save(mask->parent, "mb_test_smart"), "saved as a smart material");
 		}
 	}
-	else if (step == 45) {
+	else if (step == 47) {
 		script_project_new();
 	}
-	else if (step == 46) {
+	else if (step == 48) {
 		root = smart_materials_apply("mb_test_smart");
 	}
-	else if (step == 47) {
+	else if (step == 49) {
 		mask = NULL;
 		for (int i = 0; root != NULL && i < script_layer_count(); ++i) {
 			slot_layer_t *m = script_layer_at(i);

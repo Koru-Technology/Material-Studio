@@ -624,14 +624,22 @@ static bool import_arm_is_version(buffer_t *b, char *n) {
 	return strlen(n) == len && memcmp(b->buffer + 22, n, len) == 0;
 }
 
-// A project head, material, brush or swatches file of this build's version (manifest_version_project), NULL for
-// others: files of older builds do not open
+// A project head of this build's version (manifest_version_project), or a material, brush or swatches file of the
+// library's (manifest_version_library), NULL for others: files of older builds do not open. armpack decodes by position,
+// so a project of the library's version (an older project) would read its layers into the wrong fields.
 project_t *import_arm_decode(buffer_t *b) {
-	if (!import_arm_is_version(b, manifest_version_project)) {
-		if (import_arm_has_version(b)) {
-			iron_log("Saved by an older version, not read");
-		}
-		return NULL;
+	if (import_arm_is_version(b, manifest_version_project)) {
+		return armpack_decode(b);
 	}
-	return armpack_decode(b);
+	if (import_arm_is_version(b, manifest_version_library)) {
+		project_t *project = armpack_decode(b);
+		if (project == NULL || project->layer_datas == NULL) {
+			return project;
+		}
+		free(project); // One block (armpack_decode)
+	}
+	if (import_arm_has_version(b)) {
+		iron_log("Saved by an older version, not read");
+	}
+	return NULL;
 }

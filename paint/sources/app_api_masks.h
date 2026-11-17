@@ -25,7 +25,7 @@ typedef enum {
 	APP_MASK_EFFECT_THICKNESS    = 11, // Generator
 	APP_MASK_EFFECT_HISTOGRAM    = 12, // Filter
 	APP_MASK_EFFECT_BLUR         = 13, // Filter
-	APP_MASK_EFFECT_ANCHOR       = 14, // Another layer's mask, height or opacity: params[0] its id, -1 none
+	APP_MASK_EFFECT_ANCHOR       = 14, // Another layer's mask, height, opacity or occlusion: params[0] its id, -1 none
 	APP_MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, AO, world normal and position of the model combined, and of
 	                                   // a layer's material when one is picked (params[11], a layer id)
 	APP_MASK_EFFECT_AO           = 16, // Generator
