@@ -1,5 +1,5 @@
-// Saved materials: materials saved to the Library with "Save to Library" in the Material Studio, to reuse in any
-// project. saved_materials/<name>.arm in the app's save folder is the material, <name>.png its preview.
+// Saved materials: project materials saved to the Library with "Save to Library" in the materials popover, to reuse in
+// any project. saved_materials/<name>.arm in the app's save folder is the material, <name>.png its preview.
 
 #include "global.h"
 
@@ -82,15 +82,32 @@ gpu_texture_t *saved_materials_icon(i32 i) {
 	return e->icon;
 }
 
+// The name a material is saved under
+static char *saved_materials_file_name(slot_material_t *m) {
+	char *name = smart_materials_clean(m->canvas->name);
+	return name[0] == '\0' ? "Material" : name;
+}
+
+// A saved material has the name m would be saved under
+bool saved_materials_has(slot_material_t *m) {
+	if (m == NULL || m->canvas == NULL) {
+		return false;
+	}
+	char *name = saved_materials_file_name(m);
+	for (i32 i = 0; i < saved_materials_count(); ++i) {
+		if (string_equals(saved_materials[i].name, name)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // Saves m to the library under its name, one of that name is replaced
 bool saved_materials_save(slot_material_t *m) {
 	if (m == NULL || m->canvas == NULL) {
 		return false;
 	}
-	char *name = smart_materials_clean(m->canvas->name);
-	if (name[0] == '\0') {
-		name = "Material";
-	}
+	char *name = saved_materials_file_name(m);
 	iron_create_directory(saved_materials_dir());
 
 	char *arm = saved_materials_path(name, ".arm");

@@ -41,9 +41,12 @@ bool    app_material_can_delete(int32_t id); // Not the project's last material
 bool    app_material_delete(int32_t id);
 int32_t app_material_delete_unused(void); // Materials no layer or other material uses, returns how many went
 bool    app_material_rename(int32_t id, const char *name);
+// The Library has a material of its name: added from there, or already saved to it
+bool    app_material_in_library(int32_t id);
+bool    app_material_save_to_library(int32_t id); // On the next frame, under its name
 
-// Editing, on the next frame. Edit: the Material Studio when it can open the material, the node editor (with Save to
-// Library and Cancel) otherwise, as the old tab's Edit. Show nodes: the node editor on it, as the old tab's Nodes button.
+// Editing, on the next frame. Edit: the Material Studio when it can open the material, the node editor (with Save and
+// Cancel) otherwise, as the old tab's Edit. Show nodes: the node editor on it, as the old tab's Nodes button.
 bool app_material_edit(int32_t id);
 bool app_material_open_studio(int32_t id);
 bool app_material_show_nodes(int32_t id);

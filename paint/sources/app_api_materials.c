@@ -295,6 +295,43 @@ bool app_material_rename(int32_t id, const char *name) {
 	return true;
 }
 
+bool app_material_in_library(int32_t id) {
+	slot_material_t *m = app_mat_by_id(id);
+	if (m == NULL || m->canvas == NULL) {
+		return false;
+	}
+	if (saved_materials_has(m)) {
+		return true;
+	}
+	char *name = m->canvas->name;
+	for (i32 i = 0; i < library_entry_count(); ++i) { // The materials folder, as library_use finds them in the project
+		if (string_equals(library_entry_name(library_entry_get(i)), name)) {
+			return true;
+		}
+	}
+	for (i32 i = 0; i < mm_library_count(); ++i) {
+		if (string_equals(mm_library_name(i), name)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void app_material_save_to_library_next(void *data) {
+	slot_material_t *m = app_mat_by_id((int32_t)(intptr_t)data);
+	if (m != NULL && saved_materials_save(m)) {
+		console_info(string("%s %s", tr("Saved to the library:"), m->canvas->name));
+	}
+}
+
+bool app_material_save_to_library(int32_t id) {
+	if (app_mat_by_id(id) == NULL) {
+		return false;
+	}
+	sys_notify_on_next_frame(&app_material_save_to_library_next, (void *)(intptr_t)id);
+	return true;
+}
+
 // Editing waits for the next frame as in the old tab, the material is found again by id then
 
 static void app_material_edit_next(void *data) {

@@ -969,8 +969,8 @@ void ui_nodes_draw_menubar_search(void *_) {
 	ui_nodes_node_search(math_floor(ui_nodes_node_search_x), math_floor(ui_nodes_node_search_y), NULL);
 }
 
-// Editing a material from the Materials tab (its Edit): the graph when the edit began, for Cancel. Save to Library and
-// Cancel end the edit and close the editor, as in the Material Studio.
+// Editing a material from the Materials tab (its Edit): the graph when the edit began, for Cancel. Save (the edits stay
+// in the project's material) and Cancel end the edit and close the editor, as in the Material Studio.
 static slot_material_t  *ui_nodes_edit_mat      = NULL;
 static ui_node_canvas_t *ui_nodes_edit_snapshot = NULL;
 
@@ -997,10 +997,6 @@ static void ui_nodes_edit_end() {
 }
 
 static void ui_nodes_edit_save(void *_) {
-	slot_material_t *m = ui_nodes_edit_mat;
-	if (m != NULL && saved_materials_save(m)) {
-		console_info(string("%s %s", tr("Saved to the library:"), m->canvas->name));
-	}
 	ui_nodes_edit_end();
 }
 
@@ -1192,7 +1188,7 @@ void ui_nodes_draw_menubar() {
 	f32 search_w = g_config->touch_ui ? 36 * UI_SCALE() : ui_nodes_menubar_button_w(tr("Search"));
 	f32 back_w   = ui_nodes_group_stack->length > 0 ? ew : 0;
 	bool editing = ui_nodes_editing();
-	f32  save_w  = ui_nodes_menubar_button_w(tr("Save to Library"));
+	f32  save_w  = ui_nodes_menubar_button_w(tr("Save"));
 	f32  cancel_w = ui_nodes_menubar_button_w(tr("Cancel"));
 	f32  close_w = !editing ? ew : 0; // The editor closes from its menubar
 	f32  edit_w  = editing ? save_w + cancel_w + 9 : close_w;
@@ -1275,15 +1271,15 @@ void ui_nodes_draw_menubar() {
 	if (editing) {
 		g_ui->_x = ui_nodes_ww - edit_w;
 		g_ui->_y = 2 + start_y;
+		g_ui->_w = save_w;
+		if (ui_button(tr("Save"), UI_ALIGN_CENTER, "")) {
+			sys_notify_on_next_frame(&ui_nodes_edit_save, NULL);
+		}
+		g_ui->_x = ui_nodes_ww - cancel_w - 3;
+		g_ui->_y = 2 + start_y;
 		g_ui->_w = cancel_w;
 		if (ui_button(tr("Cancel"), UI_ALIGN_CENTER, "")) {
 			sys_notify_on_next_frame(&ui_nodes_edit_cancel, NULL);
-		}
-		g_ui->_x = ui_nodes_ww - save_w - 3;
-		g_ui->_y = 2 + start_y;
-		g_ui->_w = save_w;
-		if (ui_button(tr("Save to Library"), UI_ALIGN_CENTER, "")) {
-			sys_notify_on_next_frame(&ui_nodes_edit_save, NULL);
 		}
 	}
 }

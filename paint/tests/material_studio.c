@@ -267,6 +267,7 @@ void next() {
 		check(lib_a != NULL && lib_b != NULL && mm_import_material_node(lib_a) != NULL && mm_import_material_node(lib_b) != NULL && script_material_get() == lib_b,
 		      "library materials are added to the project and selected");
 		check(mm_library_count() >= 890 && mm_library_find(2) >= 0, string("the library lists %d materials", mm_library_count()));
+		check(app_material_in_library(lib_b->id), "a material added from the library is in the library");
 		slot_material_t *last = material_studio_new();
 		material_studio_preset(2);
 	}
@@ -280,9 +281,15 @@ void next() {
 		material_studio_save();
 	}
 	else if (step == 21 + PRESETS) {
-		check(!material_studio_is_open(), "save to library closes the studio");
-		check(saved_materials_count() == saved + 1, string("save to library adds it to the library (%d)", saved_materials_count()));
+		check(!material_studio_is_open(), "save closes the studio");
+		check(saved_materials_count() == saved, "save keeps the edits in the project, the library is not touched");
 		check(script_material_get() == mat && script_material_count() == compiles, "it stays the current project material");
+		check(!app_material_in_library(mat->id), "a new material is not in the library");
+		app_material_save_to_library(mat->id);
+	}
+	else if (step == 22 + PRESETS) {
+		check(saved_materials_count() == saved + 1, string("save to library adds it to the library (%d)", saved_materials_count()));
+		check(app_material_in_library(mat->id), "then it is in the library");
 		saved_i = -1;
 		for (int i = 0; i < saved_materials_count(); ++i) {
 			if (string_equals(saved_materials_name(i), mat_name)) {
@@ -292,13 +299,13 @@ void next() {
 		check(saved_i >= 0, "listed under its name");
 		saved_materials_use(saved_i);
 	}
-	else if (step == 22 + PRESETS) {
+	else if (step == 23 + PRESETS) {
 		check(script_material_count() == compiles + 1, "a saved material adds to the project");
 		slot_material_t *m = script_material_get();
 		check(m != mat && m != NULL, "and is selected");
 		material_studio_open(m);
 	}
-	else if (step == 23 + PRESETS) {
+	else if (step == 24 + PRESETS) {
 		check(material_studio_is_open() && material_studio_layers() >= 1, "the saved material opens in the studio");
 		material_studio_close();
 		saved_materials_delete(saved_i);

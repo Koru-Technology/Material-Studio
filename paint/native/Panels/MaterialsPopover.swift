@@ -197,6 +197,13 @@ struct MaterialsProjectView: View {
 		} label: {
 			Label("Duplicate", systemImage: "plus.square.on.square")
 		}
+		if !app_material_in_library(m.id) {
+			Button {
+				AppStore.shared.perform { app_material_save_to_library(m.id) }
+			} label: {
+				Label("Save to Library", systemImage: "books.vertical")
+			}
+		}
 		Button(role: .destructive) {
 			AppStore.shared.perform { app_material_delete(m.id) }
 		} label: {

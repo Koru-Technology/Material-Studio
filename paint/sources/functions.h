@@ -1088,7 +1088,7 @@ char                    *ui_nodes_get_menu_path(char *node_type);
 void                     ui_nodes_wrap_mouse(bool controls_down, f32 x, f32 y, f32 w, f32 h);
 ui_canvas_control_t     *ui_nodes_get_canvas_control(bool controls_down, bool is_node_view);
 gpu_texture_t           *ui_nodes_draw_grid(f32 zoom);
-void                     ui_nodes_edit_material(slot_material_t *m); // ui/ui_nodes.c: the node editor on m, with Save to Library and Cancel
+void                     ui_nodes_edit_material(slot_material_t *m); // ui/ui_nodes.c: the node editor on m, with Save and Cancel
 void                     ui_nodes_update_rect();
 void                     ui_nodes_update(void *_);
 void                     ui_nodes_render_popup();
@@ -1696,6 +1696,7 @@ i32            saved_materials_count();
 char          *saved_materials_name(i32 i);
 gpu_texture_t *saved_materials_icon(i32 i);
 bool           saved_materials_save(slot_material_t *m);
+bool           saved_materials_has(slot_material_t *m);
 void           saved_materials_use(i32 i);
 void           saved_materials_delete(i32 i);
 

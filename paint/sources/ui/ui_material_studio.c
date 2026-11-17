@@ -763,24 +763,10 @@ void material_studio_close() {
 	base_redraw_ui();
 }
 
-static void studio_save_next(void *m) {
-	if (array_index_of(g_project->_->materials, m) < 0) {
-		return;
-	}
-	context_set_material(m); // Stays the current material
-	if (saved_materials_save(m)) {
-		console_info(string("%s %s", tr("Saved to the library:"), ((slot_material_t *)m)->canvas->name));
-	}
-}
-
-// Closes the studio and saves the material to the library, it stays in the project's materials
+// Closes the studio keeping the edits: the project's material is the edited one. The Library is not touched, the
+// materials popover saves to it (app_material_save_to_library).
 void material_studio_save() {
-	slot_material_t *m = studio_material;
-	if (m == NULL) {
-		return;
-	}
 	material_studio_close(); // Commits, applies to the paint and renders the icon
-	sys_notify_on_next_frame(&studio_save_next, m);
 }
 
 // Closes the studio and puts the material back as it was when the studio opened. One undo step, Cancel can be undone.
@@ -1807,15 +1793,15 @@ static void studio_draw_header(f32 w) {
 	g_ui->_y = by;
 	g_ui->_x = _x + w - bw * 2 - gap;
 	g_ui->_w = bw;
-	if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-		material_studio_cancel();
+	if (ui_icon_button(tr("Save"), ICON_CHECK, UI_ALIGN_CENTER)) {
+		material_studio_save();
 	}
 
 	g_ui->_y = by;
 	g_ui->_x = _x + w - bw;
 	g_ui->_w = bw;
-	if (ui_icon_button(tr("Save to Library"), ICON_CHECK, UI_ALIGN_CENTER)) {
-		material_studio_save();
+	if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
+		material_studio_cancel();
 	}
 
 	g_ui->_x = _x;
