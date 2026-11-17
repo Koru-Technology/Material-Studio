@@ -313,7 +313,8 @@ typedef enum {
 	MASK_EFFECT_HISTOGRAM    = 12, // Filter: position, contrast
 	MASK_EFFECT_BLUR         = 13, // Filter: radius (seam aware)
 	MASK_EFFECT_ANCHOR       = 14, // Another layer: params[0] its id (saved as its index in the file), [1] channel (mask_anchor_channel_t)
-	MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, cavity, AO, world normal and position combined, MASK_BUILDER_*
+	MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, cavity, AO, world normal and position combined, of the model and
+	                               // optionally a layer's material, MASK_BUILDER_*
 	MASK_EFFECT_AO           = 16, // Generator: side (0 occluded, 1 open), amount, sharpness
 	MASK_EFFECT_COUNT,
 } mask_effect_type_t;
@@ -348,7 +349,6 @@ typedef enum {
 	MASK_ANCHOR_MASK     = 0,
 	MASK_ANCHOR_HEIGHT   = 1,
 	MASK_ANCHOR_OPACITY  = 2,
-	MASK_ANCHOR_OCCLUDED = 3, // 1 - occlusion: white in the layer's crevices
 } mask_anchor_channel_t;
 
 // Mask Builder settings
@@ -361,10 +361,10 @@ typedef enum {
 #define MASK_BUILDER_NORMAL_DIR    6  // +Y, -Y, +X, -X, +Z, -Z
 #define MASK_BUILDER_POSITION      7  // Of the gradient toward MASK_BUILDER_POSITION_DIR
 #define MASK_BUILDER_POSITION_DIR  8
-#define MASK_BUILDER_MICRO_DETAILS 9  // Amount of the micro details in the curvature and world normal
+#define MASK_BUILDER_DETAIL        9  // Strength of the detail of the layer, or of the normal map, in the curvature and world normal
 #define MASK_BUILDER_INVERT        10
-#define MASK_BUILDER_MICRO_SOURCE  11 // Layer whose normal and height are the micro details (its id, saved as its index),
-                                      // -1 the normal map
+#define MASK_BUILDER_LAYER         11 // Layer whose material counts too (its height, normal, occlusion): its id, saved as its
+                                      // index, -1 none (the model only, the normal map its detail)
 
 // Kinds of mask_effect_param_t
 typedef enum {

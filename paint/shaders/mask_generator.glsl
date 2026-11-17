@@ -17,8 +17,8 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 148) int uv_map;      // 1: the second uv set, in_tex.zw
 	layout(offset = 152) float noise_inv; // 1 / largest extent, isotropic noise
 	layout(offset = 160) vec4 uv_rect;    // The part of the mask drawn (u0, v0, du, dv), 0 0 1 1 the whole (export tiles)
-	layout(offset = 176) int maps;        // Registered mesh maps: 1 position, 2 world normal, 4 normal; 8 micro details
-	                                      // from a layer (texlnor, texlpack) instead of the normal map
+	layout(offset = 176) int maps;        // Registered mesh maps: 1 position, 2 world normal, 4 normal; 8 a Mask Builder's
+	                                      // layer (texlnor, texlpack), its detail instead of the normal map's
 	layout(offset = 180) float map_scale; // Position map units to packed position units (1 / scale_pos)
 } constants;
 
@@ -30,8 +30,8 @@ layout(set = 0, binding = 5) uniform texture2D texpos;   // Position map: object
 layout(set = 0, binding = 6) uniform texture2D texwnor;  // World normal map: object normal * 0.5 + 0.5
 layout(set = 0, binding = 7) uniform texture2D texnor;   // Tangent space normal map
 layout(set = 0, binding = 8) uniform texture2D teximg;   // Image fill
-layout(set = 0, binding = 9) uniform texture2D texlnor;  // Mask Builder micro details: a layer's tangent normal (rgb)
-layout(set = 0, binding = 10) uniform texture2D texlpack; // and its height (a)
+layout(set = 0, binding = 9) uniform texture2D texlnor;   // A Mask Builder's layer: its tangent normal (rgb)
+layout(set = 0, binding = 10) uniform texture2D texlpack; // its occlusion (r) and height (a)
 
 layout(location = 0) VARYING Varyings {
 	vec3 pos;
@@ -227,13 +227,13 @@ vec3 tangent_to_object(vec3 ts, vec3 n, vec2 uv) {
 	return normalize(t * ts.x - b * ts.y + n * ts.z); // The bake writes (t, -b, n)
 }
 
-// Micro details from a layer: its normal and height, in the layer's uvs
-bool micro_from_layer() {
+// A Mask Builder's layer: its material counts too, in the layer's uvs
+bool has_builder_layer() {
 	return (constants.maps & 8) != 0;
 }
 
-// World direction of the surface: the world normal map or the mesh's normal, with the micro details by micro
-vec3 surface_normal(float micro) {
+// World direction of the surface: the world normal map or the mesh's normal, with the detail (the layer's or the normal map's) by detail
+vec3 surface_normal(float detail) {
 	vec3 n = normalize(vin.nor);
 	if ((constants.maps & 2) != 0) {
 		vec3 m = textureLod(sampler2D(texwnor, sampler_linear), vin.uv, 0.0).rgb * 2.0 - 1.0;
@@ -241,13 +241,13 @@ vec3 surface_normal(float micro) {
 			n = normalize(m);
 		}
 	}
-	if (micro > 0.0 && micro_from_layer()) {
+	if (detail > 0.0 && has_builder_layer()) {
 		vec3 ts = textureLod(sampler2D(texlnor, sampler_linear), vin.uvl, 0.0).rgb * 2.0 - 1.0;
-		n       = normalize(mix(n, tangent_to_object(ts, n, vin.uvl), micro));
+		n       = normalize(mix(n, tangent_to_object(ts, n, vin.uvl), detail));
 	}
-	else if (micro > 0.0 && (constants.maps & 4) != 0) {
+	else if (detail > 0.0 && (constants.maps & 4) != 0) {
 		vec3 ts = textureLod(sampler2D(texnor, sampler_linear), vin.uv, 0.0).rgb * 2.0 - 1.0;
-		n       = normalize(mix(n, tangent_to_object(ts, n, vin.uv), micro));
+		n       = normalize(mix(n, tangent_to_object(ts, n, vin.uv), detail));
 	}
 	return normalize(constants.N * n);
 }
@@ -281,10 +281,10 @@ float layer_curvature() {
 	return clamp(div * 10.0 + (h - hn * 0.25) * 6.0, -1.0, 1.0);
 }
 
-// Signed curvature of the micro details, positive on bumps: a layer's, or the divergence of the normal map's slopes over
+// Signed curvature of the detail, positive on bumps: a layer's, or the divergence of the normal map's slopes over
 // a texel each way
-float micro_curvature() {
-	if (micro_from_layer()) {
+float detail_curvature() {
+	if (has_builder_layer()) {
 		return layer_curvature();
 	}
 	if ((constants.maps & 4) == 0) {
@@ -547,13 +547,15 @@ void main() {
 		float x = constants.params0.x > 0.5 ? t : 1.0 - t;
 		v       = sharp(x + noise - (1.0 - constants.params0.y), constants.params0.z);
 	}
-
 	else if (constants.type == 15) { // Mask Builder: the parts weighted and joined (screen), then balance and contrast
-		float c     = textureLod(sampler2D(texcurv, sampler_linear), vin.uv, 0.0).r - 0.5;
-		float micro = constants.params2.y;
-		c           = clamp(c + micro_curvature() * micro * 0.5, -0.5, 0.5);
-		float ao    = textureLod(sampler2D(texao, sampler_linear), vin.uv, 0.0).r;
-		float nd    = max(dot(surface_normal(micro), user_direction(int(constants.params1.z + 0.5))), 0.0);
+		float detail = constants.params2.y;
+		float c      = textureLod(sampler2D(texcurv, sampler_linear), vin.uv, 0.0).r - 0.5;
+		c            = clamp(c + detail_curvature() * detail * 0.5, -0.5, 0.5);
+		float ao     = textureLod(sampler2D(texao, sampler_linear), vin.uv, 0.0).r;
+		if (has_builder_layer()) { // The material's occlusion over the model's
+			ao *= textureLod(sampler2D(texlpack, sampler_linear), vin.uvl, 0.0).r;
+		}
+		float nd    = max(dot(surface_normal(detail), user_direction(int(constants.params1.z + 0.5))), 0.0);
 		float pg    = position_gradient(surface_position(), int(constants.params2.x + 0.5));
 		float keep  = (1.0 - constants.params0.z * max(c, 0.0) * 2.0) * (1.0 - constants.params0.w * max(-c, 0.0) * 2.0) *
 		             (1.0 - constants.params1.x * (1.0 - ao)) * (1.0 - constants.params1.y * nd) * (1.0 - constants.params1.w * pg);

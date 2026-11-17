@@ -1360,7 +1360,7 @@ bool                 slot_layer_alive(slot_layer_t *l);
 slot_layer_t        *mask_stack_layer_by_id(i32 id);
 f32_array_t         *mask_stack_effects_to_file(f32_array_t *effects, slot_layer_t **layers, i32 count, bool images);
 void                 mask_stack_effects_from_file(f32_array_t *effects, slot_layer_t **layers, i32 count);
-slot_layer_t        *mask_effect_micro_layer(mask_effect_t *e);
+slot_layer_t        *mask_effect_builder_layer(mask_effect_t *e);
 gpu_texture_t       *slot_layer_mask_texture(slot_layer_t *m);
 void                 mask_stack_evaluate_dirty();
 void                 mask_stack_evaluate(slot_layer_t *m);

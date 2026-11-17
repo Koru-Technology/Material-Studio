@@ -47,7 +47,8 @@ bool app_mask_effect(int32_t id, int32_t index, app_mask_effect_t *out) {
 		return false;
 	}
 	mask_effect_t e       = mask_stack_get(m, i);
-	bool          reads_ao = e.type == MASK_EFFECT_DIRT || e.type == MASK_EFFECT_AO || (e.type == MASK_EFFECT_MASK_BUILDER && e.params[MASK_BUILDER_AO] > 0.0);
+	bool          reads_ao = e.type == MASK_EFFECT_DIRT || e.type == MASK_EFFECT_AO || // A Mask Builder's layer has its own occlusion
+	                (e.type == MASK_EFFECT_MASK_BUILDER && e.params[MASK_BUILDER_AO] > 0.0 && mask_effect_builder_layer(&e) == NULL);
 	*out                  = (app_mask_effect_t){
 	    .type            = e.type,
 	    .visible         = e.visible,

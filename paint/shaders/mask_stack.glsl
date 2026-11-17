@@ -140,10 +140,9 @@ void main() {
 	else if (constants.type == 13) { // Blur, texsrc the blurred result
 		r = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
 	}
-	else if (constants.type == 14) { // Anchor: mask (r), height or opacity (a), or occluded (1 - r) of another layer
-		vec4  s    = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0);
-		int   read = int(constants.params0.y + 0.5);
-		float v    = read == 0 ? s.r : read == 1 ? s.a : 1.0 - s.r;
+	else if (constants.type == 14) { // Anchor: mask (r), height or opacity (a) of another layer
+		vec4  s = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0);
+		float v = constants.params0.y < 0.5 ? s.r : s.a;
 		r       = blend(a, v, constants.blending);
 	}
 	else { // Paint, generators, fills of an image or grunge

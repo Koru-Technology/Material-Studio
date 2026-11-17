@@ -3,8 +3,8 @@
 // Mask Builder, the Ambient Occlusion generator, the position, world normal and normal maps, and fills of an image or
 // grunge. The Mask Builder's parts each match the generator they stand for (Edge Wear, Dirt, Ambient Occlusion,
 // Directional, Position Gradient), inverting complements it, micro details follow the normal map or a layer's normal
-// and height (rendering again when the layer changes). A registered world normal or position map replaces the mesh's
-// own. Anchor reads a layer's occlusion. Image fills project on the uvs (scale, rotation, balance, invert) or
+// and height (rendering again when the layer changes), a layer's occlusion joins the AO. A registered world normal or
+// position map replaces the mesh's own. Image fills project on the uvs (scale, rotation, balance, invert) or
 // triplanar, every grunge renders something, a seed changes it, deleting images keeps the references right, save and
 // load keep it, a smart material drops the image.
 // The maps: curvature grows from 0 to 1 along u (concave left, flat in the middle, convex right), AO along v.
@@ -35,7 +35,6 @@ int POSITION    = 6;
 int DIRECTIONAL = 7;
 int BUILDER     = 15;
 int AO_GEN      = 16;
-int ANCHOR      = 14;
 int AMOUNT      = 13; // Noise
 int SEED        = 14;
 
@@ -371,6 +370,7 @@ void next() {
 		check(low < 20, string("only where the position gradient is high (%d astray)", low));
 		// Micro details: the normal map's teeth show in the edges
 		use(BUILDER);
+		set(B_MICRO, 0.0);
 		script_import_asset(test_path("koru_mb_test_teeth_normal.png"), 0);
 	}
 	else if (step == 15) {
@@ -462,22 +462,19 @@ void next() {
 		check(mask_gen_renders() > r0, "the layer changed: the mask builder rendered again");
 		int n = changed(a);
 		check(n < 20, string("its height flat, only the mesh's cavity is left (%d texels differ)", n));
-		// Anchor: the layer's occlusion
+		// The layer's occlusion joins the model's AO
 		draw_image_into(stone->texpaint_pack, 0x00404040, NULL); // Occlusion 0.25
-		use(ANCHOR);
-		set(0, stone->id * 1.0);
-		set(1, 3.0); // Occluded
+		use(BUILDER);
+		set(B_EDGES, 0.0);
+		set(B_AO, 1.0);
 	}
 	else if (step == 26) {
-		gpu_texture_t *t = result();
-		buffer_t      *p = script_get_texture_pixels(t);
-		int            n = count_box(p, t->width, t->height, 0, 100, 0, 100, 185, 197);
-		int            all = count_box(p, t->width, t->height, 0, 100, 0, 100, 0, 255);
-		check(n * 100 > all * 99, string("anchor occluded: 1 - occlusion everywhere (%d of %d texels near 191)", n, all));
-		set(1, 1.0); // Height, 0
+		r0 = white(result(), 0, 100, 0, 100);
+		set(B_SOURCE, stone->id * 1.0);
 	}
 	else if (step == 27) {
-		check(white(result(), 0, 100, 0, 100) == 0, "anchor height of the same layer: black");
+		int n = white(result(), 0, 100, 0, 100);
+		check(n > r0 + 1000, string("a layer's low occlusion makes more of the mask builder's AO white (%d from %d)", n, r0));
 		use_image("koru_mb_test_half");
 	}
 	else if (step == 28) {
