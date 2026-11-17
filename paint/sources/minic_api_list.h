@@ -1208,4 +1208,3 @@ X1(paint_refine_stat, "i(i what)", i, i)
 
 // util_particle.c
 X0(util_particle_alive, "b()", b)
-X1(util_particle_apply_preset, "v(i i)", v, i)

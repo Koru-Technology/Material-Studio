@@ -61,7 +61,7 @@ void next() {
 			base  = new_layer();
 			layer = new_layer();
 			context_select_tool(TOOL_TYPE_PARTICLE);
-			util_particle_apply_preset(2); // Rain: born on the surface over a disk, four at a time, for 4 s
+			// The default emitter: a particle born on the surface every 0.2 s while held, each alive 5 s
 			script_get_context()->brush_radius = 0.5;
 			cx                     = sys_x() + sys_w() / 2;
 			cy                     = sys_h() / 2;

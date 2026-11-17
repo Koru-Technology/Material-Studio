@@ -103,24 +103,6 @@ static bool util_particle_emit(i32 k, i32 count) {
 	return true;
 }
 
-// Particle presets of the tool options
-typedef struct util_particle_preset {
-	char *name;
-	f32   lifetime, distance, mass, random, friction, bounce, gravity_z;
-	i32   shape, count;
-	f32   rate;
-} util_particle_preset_t;
-
-// clang-format off
-static util_particle_preset_t util_particle_presets[] = {
-	{"Drip",     6.0, 0.0,  1.0, 0.0, 0.2, 0.0, -9.81, 0, 1, 4.0},
-	{"Splatter", 1.5, 0.6,  0.5, 0.9, 0.5, 0.0, -2.0,  1, 6, 3.0},
-	{"Rain",     4.0, 0.0,  1.0, 0.05,0.0, 0.0, -9.81, 1, 4, 8.0},
-	{"Leak",     8.0, 0.05, 2.0, 0.1, 0.05,0.0, -9.81, 3, 3, 2.0},
-	{"Dust",     2.0, 0.3,  0.1, 1.0, 0.8, 0.3, -0.5,  1, 8, 6.0},
-};
-// clang-format on
-
 void util_particle_update() {
 	if (g_context->tool != TOOL_TYPE_PARTICLE) {
 		return;
