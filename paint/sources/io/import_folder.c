@@ -95,6 +95,5 @@ void import_folder_run_named(char *path, char *name) {
 
 	make_material_parse_paint_material(true);
 	util_render_make_material_preview();
-	ui_dock_redraw(1);
 	history_new_material();
 }

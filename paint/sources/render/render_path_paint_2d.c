@@ -30,7 +30,7 @@ void render_path_paint_set_plane_mesh() {
 	ui_view2d_tex_rect(ratio, &tx, &ty, &tw, &th);
 	f32                 s     = ui_view2d_world_scale();
 	f32                 cx    = tx + tw / 2.0;
-	f32                 cy    = ty + th / 2.0 - ui_view2d_top();
+	f32                 cy    = ty + th / 2.0;
 	static f32_array_t *ortho = NULL;
 	if (ortho == NULL) {
 		ortho = f32_array_create(4);

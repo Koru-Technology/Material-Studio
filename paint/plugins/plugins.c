@@ -30,7 +30,7 @@ string_array_t        *path_texture_formats(void);
 extern any_map_t      *data_cached_textures;
 void                   import_texture_run(char *path, bool hdr_as_envmap);
 any_array_t           *project_get_assets(void);
-void                   tab_textures_delete_texture(asset_t *asset);
+void                   util_texture_delete(asset_t *asset);
 
 int plugins_split_by = 0;
 
@@ -56,7 +56,7 @@ static void *import_psd(char *path) {
 	for (int i = project_assets->length - 1; i >= 0; --i) {
 		asset_t *a = project_assets->buffer[i];
 		if (starts_with(a->name, prefix)) {
-			tab_textures_delete_texture(a);
+			util_texture_delete(a);
 		}
 	}
 

@@ -12,7 +12,7 @@ void history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_gr
 void history_paint() {
 	history_push_undo    = false;
 	history_step_t *step = history_push(HISTORY_ACTION_PAINT);
-	step->name           = tr(ui_toolbar_tool_labels->buffer[g_context->tool]);
+	step->name           = tr(history_tool_names->buffer[g_context->tool]);
 	history_tiles_begin(step, g_context->layer); // The snapshot the stroke blends over, its tiles for undo
 	timeline_stroke_begin(step, g_context->layer);
 	paint_rec_stroke_begin(step, g_context->layer); // The stroke recorded for replay (paint_rec.c)
@@ -250,12 +250,6 @@ void history_new_swatch() {
 	step->swatch_color   = g_context->swatch;
 }
 
-void history_duplicate_swatch() {
-	history_step_t *step = history_push(HISTORY_ACTION_DUPLICATE_SWATCH);
-	step->swatch         = array_index_of(g_project->swatches, g_context->swatch);
-	step->swatch_color   = g_context->swatch;
-}
-
 void history_delete_swatch(swatch_color_t *swatch) {
 	history_step_t *step = history_push(HISTORY_ACTION_DELETE_SWATCH);
 	step->swatch         = array_index_of(g_project->swatches, swatch);
@@ -269,12 +263,6 @@ void history_replace_swatches(char *name) {
 	for (i32 i = 0; i < g_project->swatches->length; ++i) {
 		any_array_push(step->swatch_colors, g_project->swatches->buffer[i]);
 	}
-}
-
-void history_edit_swatch(i32 index, swatch_color_t *prev) {
-	history_step_t *step = history_push(HISTORY_ACTION_EDIT_SWATCH);
-	step->swatch         = index;
-	step->swatch_color   = util_clone_swatch_color(prev);
 }
 
 void history_new_material() {

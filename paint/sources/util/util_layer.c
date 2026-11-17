@@ -24,30 +24,9 @@ gpu_pipeline_t *layers_copy_pipe(texture_bits_t bits) {
 }
 
 static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
-	paint_tex_t type = tab_layers_preview_tex;
-	if (slot_layer_is_mask(l) || (type == PAINT_TEX_NORMAL && l->texpaint_nor == NULL) || (type >= PAINT_TEX_OCCLUSION && l->texpaint_pack == NULL)) {
-		type = PAINT_TEX_BASE;
-	}
-
-	if (type == PAINT_TEX_BASE) {
-		draw_begin(target, true, 0x00000000);
-		draw_set_pipeline(pipes_copy); // texpaint_preview is always RGBA32 for now
-		draw_scaled_image(slot_layer_is_mask(l) ? slot_layer_mask_texture(l) : l->texpaint, 0, 0, target->width, target->height);
-		draw_set_pipeline(NULL);
-		draw_end();
-		return;
-	}
-
-	gpu_texture_t *source  = type == PAINT_TEX_OPACITY ? l->texpaint : type == PAINT_TEX_NORMAL ? l->texpaint_nor : l->texpaint_pack;
-	i32            channel = type == PAINT_TEX_OCCLUSION   ? 1
-	                         : type == PAINT_TEX_ROUGHNESS ? 2
-	                         : type == PAINT_TEX_METALLIC  ? 3
-	                         : type == PAINT_TEX_NORMAL    ? 5
-	                                                       : 4; // Opacity, height
-	draw_begin(target, true, 0xff000000);                    // view2d pipe keeps dst alpha
-	draw_set_pipeline(ui_view2d_pipe);
-	gpu_set_int(ui_view2d_channel_loc, channel);
-	draw_scaled_image(source, 0, 0, target->width, target->height);
+	draw_begin(target, true, 0x00000000);
+	draw_set_pipeline(pipes_copy); // texpaint_preview is always RGBA32 for now
+	draw_scaled_image(slot_layer_is_mask(l) ? slot_layer_mask_texture(l) : l->texpaint, 0, 0, target->width, target->height);
 	draw_set_pipeline(NULL);
 	draw_end();
 }
@@ -79,7 +58,6 @@ void util_layer_update_preview() {
 
 			util_layer_draw_preview(l, target);
 		}
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	}
 
 	if (g_context->layer != NULL && g_context->layer_preview_dirty && !slot_layer_is_group(g_context->layer)) {
@@ -91,7 +69,6 @@ void util_layer_update_preview() {
 		gpu_texture_t *target = l->texpaint_preview;
 		if (target != NULL) {
 			util_layer_draw_preview(l, target);
-			ui_dock_redraw(TAB_AREA_SIDEBAR0);
 		}
 	}
 }
@@ -272,34 +249,6 @@ void layers_set_object_mask() {
 	util_uv_dilatemap_cached = false;
 }
 
-void tab_layers_apply_filter(i32 filter) {
-	g_context->layer_filter = filter;
-	char *filter_name       = NULL;
-	if (filter > 0 && filter <= g_project->_->paint_objects->length) {
-		filter_name = g_project->_->paint_objects->buffer[filter - 1]->base->name;
-	}
-	else if (filter > g_project->_->paint_objects->length) {
-		string_array_t *atlases = project_get_used_atlases();
-		if (atlases != NULL) {
-			filter_name = atlases->buffer[filter - g_project->_->paint_objects->length - 1];
-		}
-	}
-	for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
-		mesh_object_t *p = g_project->_->paint_objects->buffer[i];
-		p->base->visible = filter == 0 || (filter_name != NULL && string_equals(p->base->name, filter_name)) || project_is_atlas_object(p);
-	}
-	if (filter == 0 && g_context->merged_object_is_atlas) {
-		util_mesh_merge(NULL);
-	}
-	else if (filter > g_project->_->paint_objects->length) {
-		util_mesh_merge(util_mesh_get_visible());
-	}
-	layers_set_object_mask();
-	util_uv_uvmap_cached       = false;
-	g_context->ddirty          = 2;
-	render_path_raytrace_ready = false;
-}
-
 // Pushes a history step that undoes and redoes together with the one before it (one undo for several steps of one
 // action). Nothing is linked when the push added no step.
 void layers_history_with_prev(void (*push)(void)) {
@@ -366,33 +315,12 @@ bool layers_sync_nodes() {
 }
 
 // Before and after the layers change: kept for the call sites, layers_sync_nodes follows any change
-slot_layer_t_array_t *tab_layers_init_layer_map() {
+slot_layer_t_array_t *layers_init_layer_map() {
 	layers_sync_nodes();
 	return NULL;
 }
 
-void tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers) {
+void layers_remap_layer_pointers(slot_layer_t_array_t *old_layers) {
 	layers_sync_nodes();
 }
 
-void tab_layers_make_mask_preview_rgba32_on_next_frame(void *_) {
-	slot_layer_t *l = tab_layers_l;
-	draw_begin(g_context->mask_preview_rgba32, true, 0xff000000);
-	draw_set_pipeline(ui_view2d_pipe);
-	gpu_set_int(ui_view2d_channel_loc, 1);
-	draw_image(l->texpaint_preview, 0, 0);
-	draw_end();
-	draw_set_pipeline(NULL);
-}
-
-void tab_layers_make_mask_preview_rgba32(slot_layer_t *l) {
-	if (g_context->mask_preview_rgba32 == NULL) {
-		g_context->mask_preview_rgba32 = gpu_create_render_target(util_render_layer_preview_size, util_render_layer_preview_size, GPU_TEXTURE_FORMAT_RGBA32);
-	}
-	// Convert from R8 to RGBA32 for tooltip display
-	if (g_context->mask_preview_last != l) {
-		g_context->mask_preview_last = l;
-		tab_layers_l                 = l;
-		sys_notify_on_next_frame(&tab_layers_make_mask_preview_rgba32_on_next_frame, NULL);
-	}
-}

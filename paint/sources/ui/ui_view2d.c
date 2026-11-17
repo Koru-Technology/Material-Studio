@@ -36,23 +36,6 @@ void ui_view2d_init() {
 	ui_view2d_channel_loc = pipes_get_constant_location("int");
 }
 
-void ui_view2d_capture_output(void *_) {
-	if (ui_view2d_tex == NULL || ui_view2d_tex_channel == 0) {
-		util_texture_capture_output(ui_view2d_tex, "tex_capture");
-		return;
-	}
-	// Single channel views carry no usable alpha, bake the displayed channel into an opaque image
-	gpu_texture_t *rt = gpu_create_render_target(ui_view2d_tex->width, ui_view2d_tex->height, GPU_TEXTURE_FORMAT_RGBA32);
-	draw_begin(rt, true, 0xff000000);
-	draw_set_pipeline(ui_view2d_pipe);
-	gpu_set_int(ui_view2d_channel_loc, ui_view2d_tex_channel);
-	draw_scaled_image(ui_view2d_tex, 0, 0, rt->width, rt->height);
-	draw_end();
-	draw_set_pipeline(NULL);
-	util_texture_capture_output(rt, "tex_capture");
-	gpu_delete_texture(rt);
-}
-
 ui_node_t *ui_view2d_get_selected_node() {
 	ui_nodes_t *nodes = ui_nodes_get_nodes();
 	if (nodes->nodes_selected_id->length == 0) {
@@ -60,90 +43,6 @@ ui_node_t *ui_view2d_get_selected_node() {
 	}
 	ui_node_canvas_t *c = ui_nodes_get_canvas(true);
 	return ui_get_node(c->nodes, nodes->nodes_selected_id->buffer[0]);
-}
-
-void ui_view2d_draw_edit() {
-	if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
-		ui_check(&ui_view2d_uvmap_show, tr("UV Map"), "");
-		if (ui_item_changed()) {
-			ui_view2d_hwnd->redraws = 2;
-			ui_menu_keep_open       = true;
-		}
-	}
-
-	ui_check(&ui_view2d_tiled_show, tr("Tiled"), "");
-	if (ui_item_changed()) {
-		ui_view2d_hwnd->redraws = 2;
-		ui_menu_keep_open       = true;
-	}
-
-	ui_menu_separator();
-
-	ui_check(&g_config->view2d_grid_snap, tr("Grid Snap"), any_map_get(g_keymap, "grid_snap"));
-	if (ui_item_changed()) {
-		ui_menu_keep_open = true;
-	}
-
-	ui_check(&g_config->view2d_grid_show, tr("Show Grid"), "");
-	if (ui_item_changed()) {
-		ui_view2d_hwnd->redraws = 2;
-		ui_menu_keep_open       = true;
-	}
-
-	ui_slider_int(&g_config->view2d_grid_cell, tr("Grid Cell"), 1.0, 256.0, true, true, UI_ALIGN_RIGHT, true);
-	bool cell_changed = ui_item_changed();
-	if (g_ui->is_hovered) {
-		ui_tooltip(tr("Cell size in pixels"));
-	}
-	if (cell_changed) {
-		ui_view2d_hwnd->redraws = 2;
-		ui_menu_keep_open       = true;
-	}
-
-	ui_menu_separator();
-
-	if (ui_menu_button(tr("Zoom to Fit"), "", ICON_NONE)) {
-		ui_view2d_pan_x         = 0.0;
-		ui_view2d_pan_y         = 0.0;
-		ui_view2d_pan_scale     = 1.0;
-		ui_view2d_hwnd->redraws = 2;
-	}
-
-	g_ui->enabled = ui_view2d_tex != NULL;
-	if (ui_menu_button(tr("Capture Output"), "", ICON_PHOTO)) {
-		sys_notify_on_next_frame(&ui_view2d_capture_output, NULL);
-	}
-	g_ui->enabled = true;
-
-	if (ui_view2d_tex != NULL) {
-		ui_menu_separator();
-		g_ui->enabled = false;
-		ui_text(string_tmp("%dx%d", ui_view2d_tex->width, ui_view2d_tex->height), UI_ALIGN_LEFT, 0x00000000);
-		if (ui_view2d_type == VIEW_2D_TYPE_ASSET) {
-			asset_t *asset     = g_context->texture;
-			bool     is_packed = g_project->packed_assets != NULL && project_packed_asset_exists(g_project->packed_assets, asset->file);
-			if (is_packed) {
-				ui_text(tr("packed"), UI_ALIGN_LEFT, 0x00000000);
-			}
-		}
-		g_ui->enabled = true;
-	}
-
-	char *view_type = ui_view2d_type == VIEW_2D_TYPE_ASSET  ? tr("Asset")
-	                  : ui_view2d_type == VIEW_2D_TYPE_NODE ? tr("Node")
-	                  : ui_view2d_type == VIEW_2D_TYPE_FONT ? tr("Font")
-	                                                        : tr("Layer");
-
-	if (ui_view2d_type == VIEW_2D_TYPE_NODE) {
-		ui_node_t *sel = ui_view2d_get_selected_node();
-		if (sel != NULL) {
-			view_type = string_tmp("%s %s", sel->type, view_type);
-		}
-	}
-
-	g_ui->enabled = false;
-	ui_text(view_type, UI_ALIGN_LEFT, 0x00000000);
-	g_ui->enabled = true;
 }
 
 // Twisting with two fingers turns the layer while painting. The uv map and pixel snapping work on the upright image,
@@ -176,19 +75,12 @@ void ui_view2d_render_color_pick(void *_) {
 	g_context->picked_color->base = color_set_rb(g_context->picked_color->base, buffer_get_u8(a, 0));
 	g_context->picked_color->base = color_set_gb(g_context->picked_color->base, buffer_get_u8(a, 1));
 	g_context->picked_color->base = color_set_bb(g_context->picked_color->base, buffer_get_u8(a, 2));
-	ui_header_handle->redraws     = 2;
-
 	if (g_context->color_picker_callback != NULL) {
 		g_context->color_picker_callback(g_context->picked_color);
 	}
 	else {
-		tab_materials_apply_picked_color(g_context->picked_color);
+		slot_material_apply_picked_color(g_context->picked_color);
 	}
-}
-
-// Height of the tab names and the header drawn on top of the image, the image is centered in the area below
-i32 ui_view2d_top() {
-	return ui_base_show && !ui_popovers_enabled() ? ui_header_h * 2 : 0;
 }
 
 // Rect of the shown image relative to the window, the layer plane fills it when painting
@@ -197,7 +89,7 @@ void ui_view2d_tex_rect(f32 aspect, f32 *x, f32 *y, f32 *w, f32 *h) {
 	*w     = wm * 0.9 * ui_view2d_pan_scale;
 	*h     = *w * aspect;
 	*x     = ui_view2d_ww / 2.0 - *w / 2.0 + ui_view2d_pan_x;
-	*y     = (ui_view2d_wh + ui_view2d_top()) / 2.0 - *h / 2.0 + ui_view2d_pan_y;
+	*y     = ui_view2d_wh / 2.0 - *h / 2.0 + ui_view2d_pan_y;
 }
 
 // Pixels per world unit, the layer plane is 2 units wide like the default 3D mesh to share the brush radius
@@ -311,29 +203,16 @@ static void ui_view2d_layer_move_offset(slot_layer_t *l, f32 tw, f32 th, f32 *ox
 }
 
 void ui_view2d_update(void *_) {
-	f32 headerh = UI_ELEMENT_H() * 1.4;
-
 	ui_view2d_layer_move_update();
 
 	g_context->paint2d = false;
 
-	// 2D view takes the tab it is docked in
+	// 2D view takes its place next to the other views
 	ui_dock_layout();
-	if (!ui_base_show || ui_popovers_enabled()) {
-		headerh = 0;
-	}
 
 	ui_nodes_wrap_mouse(ui_view2d_controls_down, ui_view2d_wx, ui_view2d_wy, ui_view2d_ww, ui_view2d_wh);
 
-	// Dragging the split keeps the image the same size on screen, the fit to the view would scale it
-	static f32 last_wm = 0.0;
-	f32        wm      = fmin(ui_view2d_ww, ui_view2d_wh);
-	if (base_is_resizing && last_wm > 0.0 && wm > 0.0 && wm != last_wm) {
-		ui_view2d_pan_scale *= last_wm / wm;
-	}
-	last_wm = wm;
-
-	if (!base_ui_enabled || !ui_view2d_show || base_is_resizing || mouse_x < ui_view2d_wx || mouse_x > ui_view2d_wx + ui_view2d_ww || mouse_y < ui_view2d_wy + headerh ||
+	if (!base_ui_enabled || !ui_view2d_show || mouse_x < ui_view2d_wx || mouse_x > ui_view2d_wx + ui_view2d_ww || mouse_y < ui_view2d_wy ||
 	    mouse_y > ui_view2d_wy + ui_view2d_wh) {
 		if (ui_view2d_controls_down) {
 			ui_canvas_control_t *control = ui_nodes_get_canvas_control(ui_view2d_controls_down, false);
@@ -400,8 +279,7 @@ void ui_view2d_update(void *_) {
 			ui_view2d_layer_touched = false;
 		}
 
-		bool over_toolbar = !base_view3d_show && mouse_x < ui_view2d_wx + ui_toolbar_x() + ui_toolbar_w(false);
-		if (ui_view2d_type == VIEW_2D_TYPE_LAYER && g_context->tool == TOOL_TYPE_CURSOR && mouse_started("left") && !over_toolbar &&
+		if (ui_view2d_type == VIEW_2D_TYPE_LAYER && g_context->tool == TOOL_TYPE_CURSOR && mouse_started("left") &&
 		    ui_view2d_layer_movable(g_context->layer)) {
 			_ui_view2d_move_layer = g_context->layer;
 			_ui_view2d_moving     = true;
@@ -503,10 +381,6 @@ void ui_view2d_update(void *_) {
 	ui_begin(g_ui);
 
 	if (ui_window(ui_view2d_hwnd, ui_view2d_wx, ui_view2d_wy, ui_view2d_ww, ui_view2d_wh, false)) {
-
-		if (!g_config->touch_ui && ui_base_show) {
-			ui_dock_view_tabs(TAB_VIEW2D);
-		}
 
 		draw_set_color(g_theme->SEPARATOR_COL + 0x00020202);
 		draw_filled_rect(0, 0, ui_view2d_ww, ui_view2d_wh);
@@ -669,172 +543,6 @@ void ui_view2d_update(void *_) {
 				draw_filled_rect(x0, math_floor(iy + j * stepy), x1 - x0, 1);
 			}
 			draw_set_color(0xffffffff);
-		}
-
-		// Menu, none on touch: the popovers and the view button by the cube do its work
-		if (ui_base_show && !ui_popovers_enabled()) {
-			i32 top_y = ui_menu_top_y();
-			i32 ew    = math_floor(UI_ELEMENT_W());
-			draw_set_color(g_theme->WINDOW_BG_COL);
-			draw_filled_rect(0, top_y, ui_view2d_ww, UI_ELEMENT_H() + UI_ELEMENT_OFFSET() * 2);
-			draw_set_color(0xffffffff);
-
-			f32 start_y = top_y + UI_ELEMENT_OFFSET();
-			g_ui->_x    = 2;
-			g_ui->_y    = 2 + start_y;
-
-			// Back button
-			if (g_config->touch_ui && !base_view3d_show) {
-				g_ui->_w = math_floor(ew * 0.7 + 3);
-				if (ui_icon_button(tr("Back"), ICON_ARROW_LEFT, UI_ALIGN_CENTER)) {
-					g_ui->input_released = false;
-					base_set_workspace(WORKSPACE_PRESET_VIEW_3D);
-				}
-				g_ui->_x += ew * 0.7 + 3;
-				g_ui->_y = 2 + start_y;
-			}
-
-			bool full = true;
-#ifdef IRON_IOS
-			if (config_is_iphone()) {
-				full = false;
-			}
-#endif
-
-			// Editable layer name
-			if (full) {
-				g_ui->_w   = ew;
-				char *text = "";
-				if (ui_view2d_type == VIEW_2D_TYPE_NODE) {
-					text = g_context->node_preview_name;
-				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_ASSET && g_context->texture != NULL) {
-					text = g_context->texture->name;
-				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
-					text = l->name;
-				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_FONT) {
-					text = g_context->font->name;
-				}
-
-				g_ui->_w = math_floor(math_min(draw_string_width(g_font, g_ui->font_size, text) + 15 * UI_SCALE(), 100 * UI_SCALE()));
-
-				bool name_changed = false;
-				if (ui_view2d_type == VIEW_2D_TYPE_ASSET) {
-					asset_t *asset = g_context->texture;
-					if (asset != NULL) {
-						ui_text_input(&asset->name, "", UI_ALIGN_LEFT, true, false);
-						name_changed = ui_item_changed();
-					}
-				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_NODE) {
-					ui_node_t *sel = ui_view2d_get_selected_node();
-					if (sel != NULL && !string_equals(sel->type, "GROUP")) {
-						ui_text_input(&sel->name, "", UI_ALIGN_LEFT, true, false);
-						name_changed                 = ui_item_changed();
-						g_context->node_preview_name = string_copy(sel->name);
-						ui_view2d_text_input_hover   = g_ui->is_hovered;
-					}
-					else {
-						ui_text(g_context->node_preview_name, UI_ALIGN_LEFT, 0x00000000);
-					}
-				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
-					ui_id_t name_id     = ui_widget_id(&l->name, UI_ID_TEXT);
-					bool    was_editing = g_ui->text_selected_id == name_id;
-					ui_text_input(&l->name, "", UI_ALIGN_LEFT, true, false);
-					name_changed               = ui_item_changed();
-					ui_view2d_text_input_hover = g_ui->is_hovered;
-
-					if (!was_editing && g_ui->text_selected_id == name_id) {
-						ui_view2d_layer_name_prev = string_copy(l->name);
-					}
-					else if (was_editing && g_ui->text_selected_id != name_id && ui_view2d_layer_name_prev != NULL) {
-						char *name = string_equals(l->name, "") ? ui_view2d_layer_name_prev : l->name;
-						l->name    = string_copy(slot_layer_unique_name(l, name));
-						if (!string_equals(ui_view2d_layer_name_prev, l->name)) {
-							history_layer_name(l, ui_view2d_layer_name_prev);
-						}
-					}
-				}
-				else if (ui_view2d_type == VIEW_2D_TYPE_FONT) {
-					ui_text_input(&g_context->font->name, "", UI_ALIGN_LEFT, true, false);
-					name_changed = ui_item_changed();
-				}
-
-				if (name_changed) {
-					ui_dock_redraw(0);
-				}
-				g_ui->_x += g_ui->_w + 3;
-				g_ui->_y = 2 + start_y;
-			}
-
-			g_ui->_w = ew;
-
-			if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
-				string_array_t *layer_mode_combo = any_array_create_from_raw_tmp(
-				    (void *[]){
-				        tr("Visible"),
-				        tr("Selected"),
-				    },
-				    2);
-				ui_combo((int *)&ui_view2d_layer_mode, layer_mode_combo, tr("Layers"), false, UI_ALIGN_LEFT, true);
-				g_ui->_x += ew + 3;
-				g_ui->_y = 2 + start_y;
-
-				if (!slot_layer_is_mask(g_context->layer)) {
-					string_array_t *tex_type_combo = any_array_create_from_raw_tmp(
-					    (void *[]){
-					        tr("Base Color"),
-					        tr("Opacity"),
-					        tr("Normal Map"),
-					        tr("Occlusion"),
-					        tr("Roughness"),
-					        tr("Metallic"),
-					        tr("Height"),
-					    },
-					    7);
-
-					ui_combo((int *)&ui_view2d_tex_type, tex_type_combo, tr("Texture"), false, UI_ALIGN_LEFT, true);
-					g_ui->_x += ew + 3;
-					g_ui->_y = 2 + start_y;
-				}
-			}
-
-			// Zoom slider
-			if (full && tex != NULL) {
-				i32 scale_percent = math_round((tw / (float)tex->width) * 100);
-				f32 zoom          = scale_percent;
-				g_ui->_w          = math_floor(ew + 3);
-				ui_set_next_id((ui_id_t)&ui_view2d_pan_scale);
-				ui_slider(&zoom, string_tmp("%%", scale_percent), 1, 100, true, 1, true, UI_ALIGN_RIGHT, true);
-				if (ui_item_changed()) {
-					ui_view2d_pan_scale     = zoom / 100.0 * tex->width / (fmin(ui_view2d_ww, ui_view2d_wh) * 0.9);
-					ui_view2d_hwnd->redraws = 2;
-				}
-				g_ui->_x += ew + 3;
-				g_ui->_y = 2 + start_y;
-			}
-
-			if (full && ui_view2d_rotation != 0.0) {
-				g_ui->_w = math_floor(ew + 3);
-				if (ui_button(tr("Reset Rotation"), UI_ALIGN_CENTER, "")) {
-					ui_view2d_rotation      = 0.0;
-					ui_view2d_hwnd->redraws = 2;
-				}
-				g_ui->_x += ew + 3;
-				g_ui->_y = 2 + start_y;
-			}
-
-			g_ui->_w = math_floor(ew * 0.7 + 3);
-			if (ui_icon_button("Edit", ICON_EDIT, UI_ALIGN_CENTER)) {
-				ui_view2d_tex         = tex;
-				ui_view2d_tex_channel = ui_view2d_type == VIEW_2D_TYPE_LAYER ? channel : 0;
-				ui_menu_draw(&ui_view2d_draw_edit, -1, -1);
-			}
-			g_ui->_x += ew * 0.7 + 3;
-			g_ui->_y = 2 + start_y;
 		}
 
 		// Picked position

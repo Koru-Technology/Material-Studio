@@ -427,7 +427,6 @@ slot_layer_t *smart_materials_insert(char *name) {
 	make_material_parse_mesh_material();
 	g_context->layers_preview_dirty = true;
 	g_context->ddirty               = 2;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	return root;
 }
 
@@ -456,4 +455,47 @@ void smart_materials_delete(i32 i) {
 		iron_delete_file(smart_materials_path(name, string_tmp("_m%d.arm", k)));
 	}
 	smart_materials_refresh();
+}
+
+static char *smart_materials_save_name = "";
+static i32   smart_materials_box_tab   = 0;
+
+// The layer Save takes: the selected fill layer or group, the fill layer of a selected mask
+slot_layer_t *smart_materials_save_target() {
+	slot_layer_t *l = g_context->layer;
+	if (l == NULL) {
+		return NULL;
+	}
+	if (slot_layer_is_mask(l)) {
+		l = l->parent;
+	}
+	if (l == NULL || slot_layer_is_mask(l)) {
+		return NULL;
+	}
+	return slot_layer_is_group(l) || l->fill_material != NULL ? l : NULL;
+}
+
+static void smart_materials_save_next(void *name) {
+	smart_materials_save(smart_materials_save_target(), name);
+}
+
+static void smart_materials_save_box() {
+	if (ui_tab(&smart_materials_box_tab, tr("Save Smart Material"), false, -1, false)) {
+		ui_row2();
+		char *name = ui_text_input(&smart_materials_save_name, tr("Name"), UI_ALIGN_LEFT, true, false);
+		if (ui_icon_button(tr("OK"), ICON_CHECK, UI_ALIGN_CENTER) || g_ui->is_return_down) {
+			sys_notify_on_next_frame(&smart_materials_save_next, string_copy(name));
+			ui_box_hide();
+		}
+	}
+}
+
+// Asks for a name and saves the selected fill layer or group
+void smart_materials_show_save() {
+	slot_layer_t *l = smart_materials_save_target();
+	if (l == NULL) {
+		return;
+	}
+	smart_materials_save_name = string_copy(l->fill_material != NULL ? l->fill_material->canvas->name : l->name);
+	ui_box_show_custom(&smart_materials_save_box, 400, 200, NULL, true, "");
 }

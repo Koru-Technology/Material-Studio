@@ -367,16 +367,6 @@ project_t *project_container_open(char *path) {
 	return project;
 }
 
-// A container already in memory (append from a project), nothing kept
-project_t *project_container_decode(buffer_t *b) {
-	pc_src_t s = {.fd = -1, .b = b, .size = b->length};
-	return pc_load(&s, NULL);
-}
-
-bool project_container_is_buffer(buffer_t *b) {
-	return b != NULL && b->length >= 4 && memcmp(b->buffer, "MSPJ", 4) == 0;
-}
-
 // The project load reset the store (project_new): the opened file becomes where saves append, its history blobs are
 // read from it when used. Nothing for other files.
 void project_container_attach() {

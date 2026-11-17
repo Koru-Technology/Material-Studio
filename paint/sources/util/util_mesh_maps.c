@@ -86,7 +86,6 @@ static void mesh_maps_reparse(void *_) {
 	make_material_parse_mesh_material();
 	layers_update_fill_layers();
 	util_render_make_material_preview();
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 // Curvature Mask nodes sample a registered curvature map instead of their own bake

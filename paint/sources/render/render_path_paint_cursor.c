@@ -78,7 +78,7 @@ void render_path_paint_commands_cursor() {
 	bool        decal_mask = context_is_decal_mask();
 	tool_type_t tool       = g_context->tool;
 	if (tool == TOOL_TYPE_INPAINT) {
-		if (base_ui_enabled && !base_is_dragging && !base_paint_in_2d()) {
+		if (base_ui_enabled && !base_paint_in_2d()) {
 			render_path_paint_draw_cursor(g_context->paint_vec.x, 1.0 - g_context->paint_vec.y, g_context->brush_radius / 3.4, 1.0, 1.0, 1.0);
 		}
 		return;
@@ -90,7 +90,7 @@ void render_path_paint_commands_cursor() {
 
 	bool fill_layer  = g_context->layer->fill_material != NULL && !layers_fill_paint_tool(tool); // Brushes paint its mask
 	bool group_layer = slot_layer_is_group(g_context->layer);
-	if (!base_ui_enabled || base_is_dragging || fill_layer || group_layer) {
+	if (!base_ui_enabled || fill_layer || group_layer) {
 		return;
 	}
 
@@ -99,11 +99,8 @@ void render_path_paint_commands_cursor() {
 		return;
 	}
 
-	// Dragging a radius slider shows the brush size in the middle of the view, where the model usually is
-	bool sizing = ui_panels_radius_dragging();
-
 	// Hidden while painting, it covers the paint (also the first frame of a touch, before the stroke counts its time)
-	if ((g_context->brush_time > 0 || pen_down("tip") || mouse_down("left")) && !sizing) {
+	if ((g_context->brush_time > 0 || pen_down("tip") || mouse_down("left"))) {
 		return;
 	}
 
@@ -112,11 +109,11 @@ void render_path_paint_commands_cursor() {
 		return;
 	}
 
-	f32 mx = sizing ? 0.5 : g_context->paint_vec.x;
-	f32 my = sizing ? 0.5 : 1.0 - g_context->paint_vec.y;
+	f32 mx = g_context->paint_vec.x;
+	f32 my = 1.0 - g_context->paint_vec.y;
 
 	// Fainter the higher the pencil hovers
-	f32 tint = pen_hover >= 0.0 && !pen_down("tip") && !sizing ? 1.0 - 0.6 * pen_hover : 1.0;
+	f32 tint = pen_hover >= 0.0 && !pen_down("tip") ? 1.0 - 0.6 * pen_hover : 1.0;
 
 	// Prevent cursor jumping constantly if randomness is used in brush nodes
 	f32 brush_nodes_radius = g_context->brush_nodes_radius;

@@ -158,13 +158,6 @@ static void mm_library_use_on_next_frame(void *data) {
 		if (getenv("IRON_SHADER_TIMING") != NULL) {
 			iron_log("[shader] library tap %d: import %.1f ms", (i32)(size_t)data, (iron_time() - t0) * 1000.0);
 		}
-		// The Materials tab, where the new material is selected
-		if (ui_popovers_enabled()) {
-			ui_popovers_show_materials_tab(0);
-		}
-		else {
-			ui_base_show_tab(TAB_MATERIALS);
-		}
 	}
 	iron_profile_mark(string("library tap %d end", (i32)(size_t)data));
 }
@@ -414,7 +407,6 @@ static void mm_library_update(void *_) {
 		l->icon_state = l->icon != NULL ? 2 : 3;
 		mm_library_icons += l->icon != NULL ? 1 : 0;
 		loaded++;
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 }
 

@@ -336,12 +336,12 @@ static bool layers_tool_applies_material(i32 tool) {
 // A fill layer of the selected material above the current layer, for a stroke started on a fill layer of another
 // material: the stroke paints the new layer's black mask, so the selected material shows where it is painted
 static slot_layer_t *layers_new_fill_layer_for_stroke() {
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *l        = layers_new_layer(false, -1, NULL); // Above the current layer (its fill layer when on a mask)
 	if (l == NULL) {
 		return NULL;
 	}
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 	history_new_layer();
 	layers_history_with_prev(history_to_fill_layer);
 	slot_layer_to_fill_layer(l); // Filled with the selected material
@@ -433,12 +433,12 @@ static bool layers_fill_paint_to_mask_of(slot_layer_t *l, bool created) {
 		context_set_layer(mask);
 		return true;
 	}
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *m        = layers_new_mask(false, l, -1);
 	if (m == NULL) {
 		return false;
 	}
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 	slot_layer_clear(m, 0x00000000, NULL, 1.0, layers_default_rough, 0.0);
 	g_context->layer_preview_dirty = true;
 	if (created) {
@@ -466,7 +466,6 @@ static void layers_fill_paint_new_mask_on_next_frame(void *_) {
 	layers_fill_mask_layer = NULL;
 	if (slot_layer_alive(l)) {
 		layers_op_new_mask(l, layers_fill_mask_type); // Selected, the next stroke paints it
-		ui_dock_redraw(-1);
 	}
 }
 

@@ -11,7 +11,7 @@
 
 // Packing
 
-// Settings of each effect type: what the effect panels draw (native UI, tab_layers.c) and the defaults. Generators end
+// Settings of each effect type: what the native effect panels show and the defaults. Generators end
 // with the shared noise block, params[MASK_EFFECT_NOISE_*].
 
 #define MASK_NOISE_PARAMS                                                                                                   \
@@ -400,7 +400,6 @@ gpu_texture_t *mask_stack_get_scratch(i32 w, i32 h) {
 static void mask_stack_draw_preview(slot_layer_t *m) {
 	if (m->texpaint_preview != NULL) {
 		util_layer_draw_preview(m, m->texpaint_preview);
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	}
 }
 

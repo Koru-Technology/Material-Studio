@@ -827,28 +827,6 @@ void box_bake_maps_inpaint_stroke_end() {
 	bbm_inpaint_tried = false;
 }
 
-void box_bake_maps_inpaint_header() {
-	string_array_t *mode_combo = any_array_create_from_raw_tmp((void *[]){tr("Copy"), tr("Smooth")}, 2);
-	ui_combo(&bbm_inpaint_mode, mode_combo, tr("Mode"), true, UI_ALIGN_LEFT, true);
-
-	i32             targets[BBM_MAP_COUNT];
-	i32             count     = bbm_inpaint_targets(targets);
-	string_array_t *map_combo = any_array_create_from_raw_tmp(NULL, count + 1); // Full size, temp arrays can not grow
-	map_combo->buffer[0]      = tr("All Baked Maps");
-	for (i32 k = 0; k < count; ++k) {
-		map_combo->buffer[k + 1] = tr(bbm_maps[targets[k]].name);
-	}
-	if (bbm_inpaint_target > count) {
-		bbm_inpaint_target = 0;
-	}
-	ui_combo(&bbm_inpaint_target, map_combo, tr("Maps"), false, UI_ALIGN_LEFT, true);
-
-	ui_slider(&g_context->brush_radius, tr("Radius"), 0.01, 2.0, true, 100.0, true, UI_ALIGN_RIGHT, true);
-	if (count == 0) {
-		ui_text(tr("No baked maps for this mesh"), UI_ALIGN_LEFT, 0x00000000);
-	}
-}
-
 // Painted mask while an Inpaint stroke is in progress, tinted over the mesh
 gpu_texture_t *box_bake_maps_inpaint_overlay() {
 	return g_context->tool == TOOL_TYPE_INPAINT ? bbm_inpaint_overlay : NULL;
@@ -866,9 +844,6 @@ void box_bake_maps_show() {}
 void box_bake_maps_bake() {}
 void box_bake_maps_inpaint_stroke() {}
 void box_bake_maps_inpaint_stroke_end() {}
-void box_bake_maps_inpaint_header() {
-	ui_text(tr("Not available on this platform"), UI_ALIGN_LEFT, 0x00000000);
-}
 gpu_texture_t *box_bake_maps_inpaint_overlay() {
 	return NULL;
 }

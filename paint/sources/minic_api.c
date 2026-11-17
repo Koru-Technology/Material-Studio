@@ -947,7 +947,6 @@ void minic_register_builtins() {
 	MINIC_B(brush_live);
 	MINIC_B(node_previews);
 	MINIC_B(material_live);
-	MINIC_B(touch_ui);
 	MINIC_I(rp_view_transform);
 	MINIC_B(autosave);
 	MINIC_I(autosave_interval);

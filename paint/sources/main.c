@@ -175,42 +175,24 @@
 #include "slots/slot_layer.c"
 #include "slots/slot_material.c"
 
-#include "ui/box_append.c"
 #include "ui/box_bake_maps.c"
 #include "ui/box_export.c"
 #include "ui/box_import_mesh.c"
 #include "ui/box_new_project.c"
 #include "ui/box_preferences.c"
 #include "ui/box_projects.c"
-#include "ui/tab_browser.c"
-#include "ui/tab_brushes.c"
-#include "ui/tab_console.c"
-#include "ui/tab_debug.c"
-#include "ui/tab_fonts.c"
-#include "ui/tab_layers.c"
-#include "ui/tab_materials.c"
-#include "ui/tab_library.c"
-#include "ui/tab_smart_materials.c"
-#include "ui/tab_swatches.c"
-#include "ui/tab_textures.c"
 #include "ui/ui_base.c"
 #include "ui/ui_box.c"
 #include "ui/ui_dock.c"
 #include "ui/ui_files.c"
-#include "ui/ui_header.c"
 #include "ui/ui_id_mask.c"
 #include "ui/ui_menu.c"
 #include "history_tiles.c"
 #include "ui/ui_quick_menu.c"
-#include "ui/ui_menubar.c"
-#include "ui/ui_node_params.c"
 #include "ui/ui_nodes.c"
-#include "ui/ui_panels.c"
-#include "ui/ui_popovers.c"
 #include "ui/ui_brush_creator.c"
 #include "ui/ui_material_studio.c"
 #include "ui/ui_search.c"
-#include "ui/ui_toolbar.c"
 #include "ui/ui_view2d.c"
 
 #include "util/util_brush.c"
@@ -322,24 +304,8 @@ void _kickstart() {
 
 	import_texture_importers = any_map_create();
 	import_text_importers    = any_map_create();
-	ui_files_path            = ui_files_default_path;
 	base_drop_paths          = any_array_create_from_raw((void *[]){}, 0);
-	ui_base_init_tabs();
-	ui_toolbar_handle       = ui_window_create();
-	ui_toolbar_split_handle = ui_window_create();
-
-	ui_toolbar_tool_names = any_array_create_from_raw(
-	    (void *[]){
-	        _tr("Brush"),   _tr("Eraser"), _tr("Fill"),     _tr("Decal"),   _tr("Text"),   _tr("Clone"), _tr("Blur"),  _tr("Particle"),
-	        _tr("ColorID"), _tr("Picker"), _tr("Material"), _tr("Cursor"),  _tr("Select"), _tr("Empty"), _tr("Plane"), _tr("Cube"),
-	        _tr("Sphere"),  _tr("Cone"),   _tr("Cylinder"), _tr("Capsule"), _tr("Torus"),  _tr("Text"),  _tr("Path"),  _tr("Curve"),
-	        _tr("Bake"), // Hidden, used by Bake Texture node
-	        _tr("Inpaint"),
-	    },
-	    26);
-
-	// Shown in the toolbar, tooltips and history, the names above stay the keymap ids (tool_cursor, ...)
-	ui_toolbar_tool_labels = any_array_create_from_raw(
+	history_tool_names = any_array_create_from_raw(
 	    (void *[]){
 	        _tr("Brush"),   _tr("Eraser"), _tr("Fill"),     _tr("Decal"),   _tr("Text"),   _tr("Clone"),   _tr("Blur"),  _tr("Particle"),
 	        _tr("ID"),      _tr("Picker"), _tr("Preview"),  _tr("Move"),    _tr("Select"), _tr("Empty"),   _tr("Plane"), _tr("Cube"),
@@ -349,43 +315,8 @@ void _kickstart() {
 	    },
 	    26);
 
-	ui_toolbar_tooltip_extras = any_array_create_from_raw(
-	    (void *[]){
-	        _tr("Hold {action_paint} to paint\nHold {brush_ruler} and press {action_paint} to paint a straight line (ruler mode)"),
-	        _tr("Hold {action_paint} to erase\nHold {brush_ruler} and press {action_paint} to erase a straight line (ruler mode)"),
-	        "",
-	        _tr("Hold {decal_mask} to paint on a decal mask"),
-	        _tr("Hold {decal_mask} to use the text as a mask"),
-	        _tr("Hold {set_clone_source} to set source"),
-	        "",
-	        "",
-	        "",
-	        "",
-	        _tr("Shows the selected material on the active layer, click to read its values"),
-	        _tr("Select and transform objects"),
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        "",
-	        _tr("Paint over bake artifacts, the baked maps are repaired on release"),
-	    },
-	    26);
-
 	uniforms_ext_ortho_p    = mat4_ortho(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5);
 	import_mesh_importers   = any_map_create();
-	ui_menubar_hwnd         = ui_window_create();
-	ui_menubar_split_hwnd   = ui_window_create();
-	ui_menubar_menu_handle  = ui_window_create();
-	ui_menubar_w            = ui_menubar_default_w;
 	translator_translations = any_map_create();
 
 	g_project                     = ALLOC_INIT(project_t, {0});
@@ -404,9 +335,6 @@ void _kickstart() {
 	parser_material_node_vectors = any_map_create();
 	parser_material_custom_nodes = any_map_create();
 	parser_material_node_outputs = any_map_create();
-	ui_header_h                  = ui_header_default_h;
-	ui_header_handle             = ui_window_create();
-	ui_header_split_handle       = ui_window_create();
 	parser_logic_custom_nodes    = any_map_create();
 	resource_bundled             = any_map_create();
 	ui_nodes_hwnd                = ui_window_create();
@@ -420,14 +348,6 @@ void _kickstart() {
 
 	nodes_material_categories = nodes_material_category_names(); // In the order of nodes_material_list
 
-#if defined(IRON_IOS)
-	ui_sidebar_default_w = ui_sidebar_default_w_mini;
-#else
-	ui_sidebar_default_w = ui_sidebar_default_w_full;
-#endif
-
-	ui_sidebar_hminimized         = ui_window_create();
-	ui_sidebar_w_mini             = ui_sidebar_default_w_mini;
 	console_last_traces           = any_array_create(0);
 	ui_box_hwnd                   = ui_window_create();
 	render_path_raytrace_f32a     = f32_array_create(24);

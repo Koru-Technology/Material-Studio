@@ -309,7 +309,6 @@ typedef struct config {
 	bool  texture_filter;
 	// Application
 	struct string_array *recent_projects; // Recently opened projects
-	struct string_array *bookmarks;       // Bookmarked folders in browser
 	char                *keymap;          // Link to keymap file
 	char                *theme;           // Link to theme file
 	f32                  camera_fov;
@@ -319,12 +318,8 @@ typedef struct config {
 	bool                 camera_upside_down;
 	i32                  zoom_direction;
 	bool                 wrap_mouse;
-	bool                 show_asset_names;
-	bool                 material_params;
 	bool                 touch_ui;
 	bool                 splash_screen;
-	bool                 header_pinned;   // Tool properties in the header, floating toolbar otherwise
-	struct i32_array    *layout_tabs;     // Docked tabs
 	i32                  camera_pivot;    // Cursor, camera center
 	i32                  camera_controls; // Orbit, rotate, fly
 	i32                  viewport_mode;
@@ -347,14 +342,11 @@ typedef struct config {
 	i32                  view2d_grid_cell;
 	bool                 view2d_grid_snap;
 	bool                 pixel_snap;
+	i32                  view_layout; // Views shown, a bit per dock_view_t (ui_dock.c)
 	bool                 large_asset_previews;
 	bool                 tooltips;
 	char                *materials_folder; // Library root, "" when not set
 	bool                 reload_project;   // Open the last project on startup
-	i32                  cloud_resolution; // Cloud materials texture size, 0 - 1K, 1 - 2K, 2 - 4K, 3 - 8K
-	bool                 library_cloud;      // Library tab shows the cloud materials
-	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
-	f32                  library_scroll;     // Scroll position of the Library tab
 	f32                  brush_radius; // Brush settings kept across launches, the others come with the picked brush
 	f32                  brush_opacity;
 	f32                  brush_strength;
@@ -399,40 +391,7 @@ typedef struct slot_material {
 	u32                    uid; // Stable in the project and saved, history finds the material by it
 } slot_material_t;
 
-// ---- Tabs, docking and render passes ----
-typedef struct tab_draw {
-	void (*f)(i32 *);
-	i32   id;   // tab_id_t
-	char *name; // Untranslated
-	i32   area; // tab_area_t redrawn with, -1 for views
-	bool  closed;
-	bool  closed_default;
-} tab_draw_t;
-
-typedef struct dock_node {
-	struct dock_node *parent;
-	// Split
-	struct dock_node *a;         // Left or top
-	struct dock_node *b;         // Right or bottom
-	bool              vertical;  // Children are stacked
-	i32               fixed;     // 0 - ratio, 1 - a keeps the size, 2 - b keeps the size
-	f32               size;      // Ratio of a, size in pixels of the fixed child otherwise
-	bool              collapsed; // Fixed child is hidden
-	i32               role;      // dock_role_t
-	// Leaf
-	i32          tabs[32]; // tab_id_t, closed tabs included
-	i32          tab_count;
-	i32          active; // Position in between the open tabs
-	i32          last_active;
-	ui_window_t *hwnd;
-	// Layout
-	bool visible;
-	i32  x;
-	i32  y;
-	i32  w;
-	i32  h;
-} dock_node_t;
-
+// ---- Render passes ----
 typedef struct render_pass {
 	i32                 id;
 	render_pass_stage_t stage;
@@ -467,7 +426,6 @@ typedef struct context {
 	bool                        show_envmap_blur;
 	bool                        show_envmap_spheres;
 	bool                        capturing_screenshot;
-	bool                        capture_background;
 	f32                         envmap_angle;
 	f32                         light_angle;
 	bool                        cull_backfaces;
@@ -500,7 +458,6 @@ typedef struct context {
 	i32                         clone_layers;
 	f32                         grab_start_x;
 	f32                         grab_start_y;
-	bool                        show_compass;
 	bool                        show_grid;
 	i32                         project_type;
 	f32                         last_paint_vec_x;
@@ -512,7 +469,6 @@ typedef struct context {
 	bool                        brush_locked;
 	camera_type_t               camera_type;
 	char                       *texture_export_path;
-	i32                         last_status_position;
 	camera_pivot_t              camera_pivot;
 	camera_controls_t           camera_controls;
 	bool                        pen_painting_only;
@@ -529,7 +485,6 @@ typedef struct context {
 	struct any_map             *node_previews;
 	struct string_array        *node_previews_used;
 	bool                        selected_node_preview;
-	struct gpu_texture         *mask_preview_rgba32;
 	struct slot_layer          *mask_preview_last;
 	bool                        material_preview;
 	mat4_t                      saved_camera;
@@ -681,7 +636,6 @@ typedef struct context {
 	i32                         fill_type;
 	i32                         blur_type;
 	bool                        paint2d;
-	i32                         drag_dest;
 	vec4_t                      coords;
 	f32                         start_x;
 	f32                         start_y;
@@ -708,11 +662,6 @@ typedef struct context {
 		struct physics_body *body;
 		struct object       *bullet;
 	} particles[32];
-	f32             particle_friction;
-	f32             particle_bounciness;
-	f32             particle_gravity_x;
-	f32             particle_gravity_y;
-	f32             particle_gravity_z;
 	f32             particle_lifetime;
 	f32             particle_mass;
 	f32             particle_random;

@@ -2,8 +2,6 @@
 
 #include "app_api_materials.h"
 
-extern i32 _tab_materials_draw_slots; // ui/tab_materials.c
-void       tab_materials_draw_slots_duplicate(void *_);
 
 static uint32_t app_hash_floats(uint32_t h, f32_array_t *a) {
 	if (a == NULL) {
@@ -211,7 +209,7 @@ void app_materials_get_state(app_materials_state_t *out) {
 	out->materials_signature = app_mat_signature();
 	out->previews_version    = app_mat_previews;
 	out->smart_can_save      = app_smart_target() != NULL;
-	out->can_apply_to_fill   = tab_layers_fill_target(g_context->layer) != NULL;
+	out->can_apply_to_fill   = layers_fill_target(g_context->layer) != NULL;
 }
 
 int32_t app_material_count(void) {
@@ -254,11 +252,9 @@ int32_t app_material_duplicate(int32_t id) {
 	if (m == NULL) {
 		return -1;
 	}
-	_tab_materials_draw_slots = array_index_of(g_project->_->materials, m);
 	draw_saved_t gpu          = draw_suspend();
-	tab_materials_draw_slots_duplicate(NULL);
+	slot_material_duplicate(array_index_of(g_project->_->materials, m));
 	draw_resume(gpu);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return g_context->material != NULL ? g_context->material->id : -1;
 }
 
@@ -281,7 +277,7 @@ int32_t app_material_delete_unused(void) {
 		return 0;
 	}
 	i32 before = g_project->_->materials->length;
-	tab_materials_delete_unused();
+	slot_material_delete_unused();
 	iron_delay_idle_sleep();
 	return before - g_project->_->materials->length;
 }
@@ -296,7 +292,6 @@ bool app_material_rename(int32_t id, const char *name) {
 	}
 	m->canvas->name  = string_copy(slot_material_unique_name(m->canvas, (char *)name));
 	project_modified = true;
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return true;
 }
 
@@ -361,12 +356,12 @@ bool app_material_to_fill_layer(int32_t id) {
 
 bool app_material_apply_to_fill(int32_t id) {
 	slot_material_t *m      = app_mat_by_id(id);
-	slot_layer_t    *target = g_context != NULL ? tab_layers_fill_target(g_context->layer) : NULL;
+	slot_layer_t    *target = g_context != NULL ? layers_fill_target(g_context->layer) : NULL;
 	if (m == NULL || target == NULL) {
 		return false;
 	}
 	if (target->fill_material != m) {
-		tab_layers_set_fill_material_later(target, m);
+		layers_set_fill_material_later(target, m);
 	}
 	return true;
 }

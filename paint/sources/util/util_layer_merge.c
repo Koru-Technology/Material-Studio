@@ -78,7 +78,7 @@ void layers_merge_down() {
 	slot_layer_t *l0 = g_project->_->layers->buffer[array_index_of(g_project->_->layers, l1) - slot_layer_count_descendants(l1) - 1];
 
 	if (!slot_layer_shows(l1) || !slot_layer_shows(l0)) {
-		return; // Refused, tab_layers_can_merge_down
+		return; // Refused, layers_can_merge_down
 	}
 
 	if (slot_layer_is_group(l1)) {
@@ -115,7 +115,7 @@ slot_layer_t *layers_merge_group(slot_layer_t *l) {
 	}
 
 	if (!slot_layer_shows(l)) {
-		if (tab_layers_can_delete(l)) {
+		if (layers_can_delete(l)) {
 			slot_layer_delete(l);
 			for (slot_layer_t *p = l->parent; p != NULL && slot_layer_get_children(p) == NULL; p = p->parent) {
 				slot_layer_delete(p);

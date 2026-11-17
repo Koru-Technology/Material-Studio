@@ -570,7 +570,6 @@ static void library_update_icons() {
 		}
 		library_icon_entry = NULL;
 		library_icon_state = 0;
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 
 	// Unload the previews not drawn for the longest
@@ -771,7 +770,6 @@ static void library_merge_scan() {
 	}
 	free(added);
 	library_count_done();
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 // Scan finished: drops the folders that are gone and remembers the rest
@@ -809,7 +807,6 @@ static void library_finish_scan() {
 	library_count_done();
 	library_save_index();
 	iron_log("[library] %d materials, %d done", library_count, library_done);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 }
 
 // Imports one folder at a time while the user is not interacting
@@ -854,7 +851,6 @@ static void library_update(void *_) {
 			library_last_frame = g_context->frame;
 		}
 		library_job_free(job);
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	}
 
 	if (library_load_state == 0) {
@@ -892,29 +888,6 @@ static void library_set_root(char *path) {
 		update_added = true;
 		sys_notify_on_update(library_update, NULL);
 	}
-}
-
-static void library_folder_picked(char *path) {
-	if (path == NULL) {
-		return;
-	}
-	g_config->materials_folder = string_copy(path);
-	config_save();
-	library_set_root(path);
-	library_failed = 0;
-	// Maybe another folder: only what the scan finds in it gets imported
-	for (i32 q = library_queue_pos; q < library_queue_len; ++q) {
-		if (library_queue[q] != NULL) {
-			library_queue[q]->queued = false;
-		}
-	}
-	library_queue_pos = 0;
-	library_queue_len = 0;
-	library_rescan();
-}
-
-void library_pick_folder() {
-	iron_folder_pick(&library_folder_picked);
 }
 
 // Restores access to the folder picked last time and refreshes it

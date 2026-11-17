@@ -1,32 +1,8 @@
 
 #include "../global.h"
 
-// Floating panels drawn last frame, see ui_base_panel_add_rect
-#define UI_BASE_PANEL_RECTS_MAX 16
-static f32 ui_base_panel_rects[UI_BASE_PANEL_RECTS_MAX * 4];
-static i32 ui_base_panel_rects_count = 0;
-static i32 ui_base_panel_rects_drawn = 0;
-
 void ui_base_init_on_next_frame(void *_) {
 	layers_init();
-}
-
-static tab_draw_t *ui_base_all_tabs[TAB_COUNT];
-
-tab_draw_t *ui_base_get_tab(i32 id) {
-	return id >= 0 && id < TAB_COUNT ? ui_base_all_tabs[id] : NULL;
-}
-
-// Windows drawn once per 3D view display the same content, keep them redrawing together
-void ui_window_sync_redraws(ui_window_t *handle, ui_window_t *split_handle, bool split) {
-	if (split) {
-		i32 redraws           = math_max(handle->redraws, split_handle->redraws);
-		handle->redraws       = redraws;
-		split_handle->redraws = redraws;
-	}
-	else {
-		split_handle->redraws = 2;
-	}
 }
 
 bool ui_base_picker_button() {
@@ -34,13 +10,7 @@ bool ui_base_picker_button() {
 }
 
 void ui_base_init() {
-	ui_toolbar_init();
 	g_context->text_tool_text = string_copy(tr("Text"));
-	ui_header_init();
-	ui_menubar_init();
-
-	ui_header_h  = math_floor(ui_header_default_h * g_config->window_scale);
-	ui_menubar_w = math_floor(ui_menubar_default_w * g_config->window_scale);
 
 	if (g_context->empty_envmap == NULL) {
 		ui_base_make_empty_envmap(g_theme->VIEWPORT_COL);
@@ -78,11 +48,6 @@ void ui_base_init() {
 
 	g_ui = ui_create(ops);
 
-#if !defined(IRON_IOS)
-	ui_on_tab_drop = ui_dock_on_tab_drop;
-#endif
-	ui_on_tab_dock         = ui_dock_on_tab_dock;
-	ui_on_tab_context_menu = ui_dock_on_tab_context_menu;
 	ui_dock_load();
 	if (UI_SCALE() > 1) {
 		ui_base_set_icon_scale();
@@ -136,34 +101,10 @@ void ui_base_update_next_frame(void *_) {
 	export_texture_run(g_context->texture_export_path, false);
 }
 
-// Nothing docked is visible
-static void ui_base_draw_empty() {
-	draw_begin(NULL, true, g_theme->SEPARATOR_COL);
-	gpu_texture_t *img = data_get_texture("badge_bw.k");
-	draw_set_color(0x22ffffff);
-	draw_image(img, iron_window_width() / 2.0 - img->width / 2.0, iron_window_height() / 2.0 - img->height / 2.0);
-	draw_set_color(0xffffffff);
-	draw_end();
-}
-
-static void ui_base_panel_update_grab();
-
-extern bool app_native_chrome; // app_api.c, the native UI owns the panels
 
 void ui_base_update(void *_) {
 
-	if (console_message_timer > 0) {
-		console_message_timer -= sys_delta();
-		if (console_message_timer <= 0) {
-			ui_dock_redraw(TAB_AREA_STATUS);
-		}
-	}
-
-	ui_sidebar_w_mini = math_floor(ui_base_sidebar_mini_w(g_config->large_asset_previews) * UI_SCALE());
-
-	ui_base_panel_update_grab();
-	ui_popovers_update(); // A touch outside an open popover closes it
-	if (base_ui_enabled && !ui_base_panel_grab && !ui_brush_creator_shown()) {
+	if (base_ui_enabled && !ui_brush_creator_shown()) {
 		render_gizmo_update();
 		util_layer_update_path();
 		util_touch_update();
@@ -175,7 +116,6 @@ void ui_base_update(void *_) {
 		util_shortcut_global();
 		util_shortcut_brush();
 		util_shortcut_viewport();
-		ui_toolbar_update();
 		ui_id_mask_update();
 		util_particle_update();
 	}
@@ -186,109 +126,14 @@ void ui_base_update(void *_) {
 
 	util_cursor_render(_);
 
-	if (!ui_base_show && g_config->touch_ui && !app_native_chrome) {
-		// Distract free: a button where the top left bar was takes the ui back, the inverse of the one that hid it
-		g_ui->input_enabled       = true;
-		ui_begin(g_ui);
-		static ui_window_t window = {0};
-		i32                pad    = math_floor(10 * UI_SCALE());
-		i32                side   = math_floor(7 * UI_SCALE());
-		i32                xpad   = math_floor(3 * UI_SCALE());
-		i32                item_w = ui_toolbar_w(false);
-		if (ui_base_panel_window(&window, 0, 0, item_w + xpad * 2, ui_header_h + pad + side, UI_BASE_CORNER_BR, false)) {
-			g_ui->_y += pad;
-			g_ui->_x += xpad;
-			g_ui->_w = item_w;
-			if (ui_menubar_icon_button(ICON_FULLSCREEN_EXIT)) {
-				ui_base_toggle_distract_free();
-			}
-		}
-		ui_end();
-	}
-
-	if (!ui_base_show && app_native_chrome) {
-		// The native UI has the panels; the full screen editors without a native version yet still draw here
-		g_ui->input_enabled = base_ui_enabled && !ui_brush_creator_shown();
-		ui_begin(g_ui);
-		ui_id_mask_render_ui();
-		ui_material_studio_render_ui();
-		ui_brush_creator_render_ui();
-		ui_end();
-		g_ui->input_enabled       = true;
-		ui_base_panel_rects_count = 0;
-		return;
-	}
-
-	if (!ui_base_show) {
-		ui_base_panel_rects_count = 0;
-		return;
-	}
-
-	g_ui->input_enabled = base_ui_enabled && !ui_brush_creator_shown(); // The Brush Creator covers the screen
-
-	// Nothing to display
-	if (ui_dock_is_empty()) {
-		ui_base_draw_empty();
-	}
-
-	ui_base_panel_rects_drawn = 0;
+	// The native UI has the panels; the full screen editors without a native version yet still draw here
+	g_ui->input_enabled = base_ui_enabled && !ui_brush_creator_shown();
 	ui_begin(g_ui);
-	ui_menubar_update_w();
-	ui_dock_render_ui();
-	ui_toolbar_render_ui();
 	ui_id_mask_render_ui();
-	ui_menubar_render_ui();
-	ui_header_render_ui();
-	ui_panels_render_ui();
-	ui_popovers_render_ui();
 	ui_material_studio_render_ui();
-	ui_dock_render_resize_line();
-	ui_brush_creator_render_ui(); // Over everything
+	ui_brush_creator_render_ui();
 	ui_end();
-	ui_base_panel_rects_count = ui_base_panel_rects_drawn;
-	g_ui->input_enabled = true;
-}
-
-tab_draw_t *_draw_callback_create(void (*f)(i32 *), i32 id, char *name, i32 area) {
-	tab_draw_t *cb       = ALLOC_INIT(tab_draw_t, {.f = f, .id = id, .name = name, .area = area});
-	ui_base_all_tabs[id] = cb;
-	return cb;
-}
-
-void ui_base_init_tabs() {
-	_draw_callback_create(tab_layers_draw, TAB_LAYERS, "Layers", TAB_AREA_SIDEBAR0);
-	_draw_callback_create(tab_materials_draw, TAB_MATERIALS, "Materials", TAB_AREA_SIDEBAR1);
-	_draw_callback_create(tab_library_draw, TAB_LIBRARY, "Library", TAB_AREA_SIDEBAR1);
-	_draw_callback_create(tab_smart_materials_draw, TAB_SMART, "Smart", TAB_AREA_SIDEBAR1);
-	_draw_callback_create(tab_brushes_draw, TAB_BRUSHES, "Brushes", TAB_AREA_SIDEBAR1);
-	_draw_callback_create(tab_browser_draw, TAB_BROWSER, "Browser", TAB_AREA_STATUS);
-	_draw_callback_create(tab_textures_draw, TAB_TEXTURES, "Textures", TAB_AREA_STATUS);
-	_draw_callback_create(tab_fonts_draw, TAB_FONTS, "Fonts", TAB_AREA_STATUS);
-	_draw_callback_create(tab_swatches_draw, TAB_SWATCHES, "Swatches", TAB_AREA_STATUS);
-	_draw_callback_create(tab_console_draw, TAB_CONSOLE, "Console", TAB_AREA_STATUS);
-#ifndef NDEBUG
-	_draw_callback_create(tab_debug_draw, TAB_DEBUG, "Debug", TAB_AREA_SIDEBAR0)->closed_default = true;
-#endif
-	// Views draw their own windows
-	_draw_callback_create(tab_view3d_draw, TAB_VIEW3D, "3D View", -1);
-	_draw_callback_create(tab_view2d_draw, TAB_VIEW2D, "2D View", -1)->closed_default = true;
-	_draw_callback_create(tab_nodes_draw, TAB_NODES, "Nodes", -1)->closed_default     = true;
-
-#ifdef IRON_IOS
-	if (config_is_iphone()) {
-		ui_base_all_tabs[TAB_SWATCHES]->closed_default = true;
-	}
-#endif
-
-}
-
-void ui_base_toggle_distract_free() {
-	if (app_native_chrome) {
-		return;
-	}
-
-	ui_base_show = !ui_base_show;
-	base_resize();
+	g_ui->input_enabled       = true;
 }
 
 static bool ui_base_is_portrait() {
@@ -304,16 +149,16 @@ static void ui_base_show_nodes(canvas_type_t type) {
 		ui_nodes_group_stack->length = 0;
 	}
 	ui_nodes_canvas_type = type;
-	ui_dock_show_view(TAB_NODES, show);
+	ui_dock_show_view(DOCK_VIEW_NODES, show);
 
 	if (g_config->touch_ui && ui_view2d_show && base_view3d_show) {
-		ui_dock_show_view(TAB_VIEW2D, false);
+		ui_dock_show_view(DOCK_VIEW_2D, false);
 	}
 	if (ui_base_is_portrait()) {
 		if (show) {
-			ui_dock_show_view(TAB_VIEW2D, false);
+			ui_dock_show_view(DOCK_VIEW_2D, false);
 		}
-		ui_dock_show_view(TAB_VIEW3D, !show);
+		ui_dock_show_view(DOCK_VIEW_3D, !show);
 	}
 
 	base_resize();
@@ -329,16 +174,16 @@ void ui_base_show_2d_view(view_2d_type_t type) {
 	bool show               = ui_view2d_type != type || !ui_view2d_show;
 	ui_view2d_type          = type;
 	ui_view2d_hwnd->redraws = 2;
-	ui_dock_show_view(TAB_VIEW2D, show);
+	ui_dock_show_view(DOCK_VIEW_2D, show);
 
 	if (g_config->touch_ui && ui_nodes_show && base_view3d_show) {
-		ui_dock_show_view(TAB_NODES, false);
+		ui_dock_show_view(DOCK_VIEW_NODES, false);
 	}
 	if (ui_base_is_portrait()) {
 		if (show) {
-			ui_dock_show_view(TAB_NODES, false);
+			ui_dock_show_view(DOCK_VIEW_NODES, false);
 		}
-		ui_dock_show_view(TAB_VIEW3D, !show);
+		ui_dock_show_view(DOCK_VIEW_3D, !show);
 	}
 
 	base_resize();
@@ -357,32 +202,17 @@ void ui_base_cycle_view_mode() {
 	if (view3d && !view2d) {
 		ui_view2d_type          = VIEW_2D_TYPE_LAYER;
 		ui_view2d_hwnd->redraws = 2;
-		ui_dock_show_view(TAB_NODES, false);
-		ui_dock_show_view(TAB_VIEW2D, true);
-		ui_dock_show_view(TAB_VIEW3D, false);
+		ui_dock_show_view(DOCK_VIEW_NODES, false);
+		ui_dock_show_view(DOCK_VIEW_2D, true);
+		ui_dock_show_view(DOCK_VIEW_3D, false);
 	}
 	else if (!view3d && view2d) {
-		ui_dock_show_view(TAB_VIEW3D, true);
+		ui_dock_show_view(DOCK_VIEW_3D, true);
 	}
 	else {
-		ui_dock_show_view(TAB_VIEW2D, false);
-		ui_dock_show_view(TAB_VIEW3D, true);
+		ui_dock_show_view(DOCK_VIEW_2D, false);
+		ui_dock_show_view(DOCK_VIEW_3D, true);
 	}
-	base_resize();
-}
-
-void ui_base_show_3d_view() {
-	if (!base_view3d_show) {
-		if (g_config->touch_ui && ui_nodes_show && ui_view2d_show) {
-			ui_dock_show_view(TAB_VIEW2D, false);
-		}
-		if (ui_base_is_portrait()) {
-			ui_dock_show_view(TAB_NODES, false);
-			ui_dock_show_view(TAB_VIEW2D, false);
-		}
-	}
-
-	ui_dock_show_view(TAB_VIEW3D, !base_view3d_show);
 	base_resize();
 }
 
@@ -428,62 +258,8 @@ void ui_base_fill_round(f32 x, f32 y, f32 w, f32 h, f32 r) {
 	ui_base_fill_round_rect(x, y, w, h, r, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR);
 }
 
-// A touch starting on a floating panel neither paints nor moves the camera
-
-void ui_base_panel_add_rect(i32 x, i32 y, i32 w, i32 h) {
-	if (ui_base_panel_rects_drawn >= UI_BASE_PANEL_RECTS_MAX) {
-		return;
-	}
-	f32 *r = &ui_base_panel_rects[ui_base_panel_rects_drawn++ * 4];
-	r[0]   = x;
-	r[1]   = y;
-	r[2]   = w;
-	r[3]   = h;
-}
-
-static bool ui_base_panel_hit(f32 x, f32 y) {
-	for (i32 i = 0; i < ui_base_panel_rects_count; ++i) {
-		f32 *r = &ui_base_panel_rects[i * 4];
-		if (x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]) {
-			return true;
-		}
-	}
-	return false;
-}
-
-static void ui_base_panel_update_grab() {
-	if (mouse_started("left") || pen_started("tip")) {
-		ui_base_panel_grab = ui_base_panel_hit(mouse_x, mouse_y);
-	}
-	else if (!mouse_down("left") && !pen_down("tip")) {
-		ui_base_panel_grab = false;
-	}
-}
-
 // Window holding a panel of size w x h, the window is larger by the shadow on the right (or left) and bottom
-gpu_texture_t *ui_base_panel_backdrop = NULL; // Frosted glass: blurred image of what is under the next panel window, NULL for an opaque one
-
-// The backdrop inside the rounded panel: the rows of the rounded ends one at a time, the middle at once
-static void ui_base_draw_backdrop(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h, f32 r, i32 corners) {
-	f32 su = img->width / w;
-	f32 sv = img->height / h;
-	i32 ri = (i32)r;
-	draw_set_color(0xffffffff);
-	for (i32 i = 0; i < ri; ++i) {
-		f32 c  = r - i - 0.5f;
-		f32 d  = r - sqrtf(r * r - c * c);
-		f32 lt = (corners & UI_BASE_CORNER_TL) ? d : 0;
-		f32 rt = (corners & UI_BASE_CORNER_TR) ? d : 0;
-		f32 lb = (corners & UI_BASE_CORNER_BL) ? d : 0;
-		f32 rb = (corners & UI_BASE_CORNER_BR) ? d : 0;
-		draw_scaled_sub_image(img, lt * su, i * sv, (w - lt - rt) * su, sv, x + lt, y + i, w - lt - rt, 1);
-		draw_scaled_sub_image(img, lb * su, (h - 1 - i) * sv, (w - lb - rb) * su, sv, x + lb, y + h - 1 - i, w - lb - rb, 1);
-	}
-	draw_scaled_sub_image(img, 0, ri * sv, img->width, (h - ri * 2) * sv, x, y + ri, w, h - ri * 2);
-}
-
 bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 corners, bool shadow_left) {
-	ui_base_panel_add_rect(x, y, w, h);
 	i32 s      = ui_base_panel_shadow();
 	i32 wx     = shadow_left ? x - s : x;
 	u32 bg     = g_theme->WINDOW_BG_COL;
@@ -501,13 +277,7 @@ bool ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 c
 		draw_set_color(0x0c000000);
 		ui_base_fill_round_rect(px - i, i / 2 - i, w + i * 2, h + i * 2, r + i, corners);
 	}
-	if (ui_base_panel_backdrop != NULL) {
-		ui_base_draw_backdrop(ui_base_panel_backdrop, px, 0, w, h, r, corners);
-		draw_set_color((g_theme->WINDOW_BG_COL & 0x00ffffff) | 0xd0000000); // Tinted glass over it, mostly opaque
-	}
-	else {
-		draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker
-	}
+	draw_set_color(g_theme->WINDOW_BG_COL); // Same gray as the sidebar, the viewport is darker
 	ui_base_fill_round_rect(px, 0, w, h, r, corners);
 	draw_set_color(0xffffffff);
 

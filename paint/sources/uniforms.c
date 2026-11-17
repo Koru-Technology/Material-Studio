@@ -326,9 +326,8 @@ vec4_t uniforms_pixel_snap_uv() {
 	}
 	f32 tx, ty, tw, th;
 	ui_view2d_tex_rect(config_get_texture_res_y() / (float)config_get_texture_res_x(), &tx, &ty, &tw, &th);
-	f32 top = ui_view2d_top();
-	return (vec4_t){(g_context->paint_vec.x * base_w() - tx) / tw, (g_context->paint_vec.y * base_h() + top - ty) / th,
-	                (g_context->last_paint_vec_x * base_w() - tx) / tw, (g_context->last_paint_vec_y * base_h() + top - ty) / th};
+	return (vec4_t){(g_context->paint_vec.x * base_w() - tx) / tw, (g_context->paint_vec.y * base_h() - ty) / th,
+	                (g_context->last_paint_vec_x * base_w() - tx) / tw, (g_context->last_paint_vec_y * base_h() - ty) / th};
 }
 
 vec4_t uniforms_ext_vec3_link(object_t *object, shader_data_t *mat, char *link) {

@@ -17,7 +17,6 @@ void context_init() {
 	g_context->show_envmap_blur             = false;
 	g_context->show_envmap_spheres          = false;
 	g_context->capturing_screenshot         = false;
-	g_context->capture_background           = false;
 	g_context->envmap_angle                 = 0.0;
 	g_context->light_angle                  = 0.0;
 	g_context->cull_backfaces               = true;
@@ -44,7 +43,6 @@ void context_init() {
 	g_context->clone_delta_y                = 0.0;
 	g_context->clone_set_source             = false;
 	g_context->clone_layers                 = CLONE_LAYERS_SELECTED;
-	g_context->show_compass                 = true;
 	g_context->show_grid                    = false;
 	g_context->last_paint_vec_x             = -1.0;
 	g_context->last_paint_vec_y             = -1.0;
@@ -55,7 +53,6 @@ void context_init() {
 	g_context->brush_locked                 = false;
 	g_context->camera_type                  = CAMERA_TYPE_PERSPECTIVE;
 	g_context->texture_export_path          = "";
-	g_context->last_status_position         = 0;
 	g_context->camera_pivot                 = CAMERA_PIVOT_CURSOR;
 	g_context->camera_controls              = CAMERA_CONTROLS_ORBIT;
 	g_context->pen_painting_only            = false; // Reject painting with finger when using pen
@@ -89,11 +86,6 @@ void context_init() {
 	g_context->decal_x                      = 0.0;
 	g_context->decal_y                      = 0.0;
 	g_context->write_icon_on_export         = false;
-	g_context->particle_friction            = 0.1;
-	g_context->particle_bounciness          = 0.0;
-	g_context->particle_gravity_x           = 0.0;
-	g_context->particle_gravity_y           = 0.0;
-	g_context->particle_gravity_z           = -9.81;
 	g_context->particle_lifetime            = 5.0;
 	g_context->particle_mass                = 1.0;
 	g_context->particle_random              = 0.1;
@@ -180,7 +172,6 @@ void context_init() {
 	g_context->fill_type                    = FILL_TYPE_OBJECT;
 	g_context->blur_type                    = BLUR_TYPE_BLUR;
 	g_context->paint2d                      = false;
-	g_context->drag_dest                    = 0;
 	g_context->tool                         = TOOL_TYPE_BRUSH;
 	g_context->color_picker_previous_tool   = TOOL_TYPE_BRUSH;
 	g_context->brush_radius                 = 0.5;
@@ -215,8 +206,6 @@ void context_set_material(slot_material_t *m) {
 	}
 	g_context->material = m;
 	make_material_parse_paint_material_async(true); // Compiles on a thread, strokes wait for it (util_brush_update)
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
-	ui_header_handle->redraws = 2;
 	ui_nodes_hwnd->redraws    = 2;
 	ui_nodes_group_stack      = any_array_create_from_raw((void *[]){}, 0);
 
@@ -224,24 +213,6 @@ void context_set_material(slot_material_t *m) {
 	if (decal) {
 		sys_notify_on_next_frame(&context_set_material_on_next_frame, NULL);
 	}
-}
-
-void context_set_font(slot_font_t *f) {
-	if (array_index_of(g_project->_->fonts, f) == -1) {
-		return;
-	}
-	g_context->font = f;
-	util_render_make_text_preview();
-	util_render_make_decal_preview();
-	ui_dock_redraw(TAB_AREA_STATUS);
-	ui_view2d_hwnd->redraws = 2;
-}
-
-void context_select_font(i32 i) {
-	if (i < 0 || i >= g_project->_->fonts->length) {
-		return;
-	}
-	context_set_font(g_project->_->fonts->buffer[i]);
 }
 
 void context_select_layer(i32 i) {
@@ -257,8 +228,6 @@ void context_set_layer(slot_layer_t *l) {
 	}
 	g_context->layer          = l;
 	g_context->mask_effect    = -1; // Effect rows belong to the previous mask
-	ui_header_handle->redraws = 2;
-
 	draw_saved_t saved_draw = draw_suspend();
 
 	layers_set_object_mask();
@@ -266,8 +235,6 @@ void context_set_layer(slot_layer_t *l) {
 	make_material_parse_paint_material(true);
 
 	draw_resume(saved_draw);
-
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	ui_view2d_hwnd->redraws = 2;
 }
 
@@ -286,8 +253,6 @@ void context_select_tool(i32 i) {
 	}
 
 	context_init_tool();
-	ui_header_handle->redraws  = 2;
-	ui_toolbar_handle->redraws = 2;
 }
 
 void context_init_tool() {
@@ -300,7 +265,6 @@ void context_init_tool() {
 }
 
 void context_select_paint_object(mesh_object_t *o) {
-	ui_header_handle->redraws  = 2;
 	g_context->paint_object    = o;
 	util_uv_uvmap_cached       = false;
 	util_uv_dilatemap_cached   = false;
@@ -330,36 +294,6 @@ bool context_in_3d_view() {
 
 bool context_in_paint_area() {
 	return context_in_3d_view() || context_in_2d_view(VIEW_2D_TYPE_LAYER);
-}
-
-bool context_in_layers() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Layers"));
-}
-
-bool context_in_materials() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Materials"));
-}
-
-bool context_in_swatches() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Swatches"));
-}
-
-bool context_in_fonts() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Fonts"));
-}
-
-bool context_in_textures() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Textures"));
-}
-
-bool context_in_browser() {
-	char *tab = ui_hovered_tab_name();
-	return string_equals(tab, tr("Browser"));
 }
 
 bool context_in_2d_view(view_2d_type_t type) {
@@ -412,11 +346,6 @@ bool context_is_decal_mask_paint() {
 
 bool context_is_decal_mask_paint_pass() {
 	return context_is_decal_mask() && (mouse_down("left") || g_context->brush_time > 0);
-}
-
-bool context_is_floating_toolbar() {
-	// Header is off -> floating toolbar
-	return !g_config->header_pinned || (!base_view3d_show && ui_view2d_show);
 }
 
 void context_set_viewport_mode(viewport_mode_t mode) {

@@ -29,7 +29,6 @@ static void app_mask_history(slot_layer_t *m) {
 
 static bool app_mask_done(bool ok) {
 	if (ok) {
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
 		iron_delay_idle_sleep();
 	}
 	return ok;
@@ -124,7 +123,7 @@ int32_t app_mask_add_effect(int32_t id, int32_t type) {
 		return -1;
 	}
 	g_context->mask_effect = at;
-	m->show_panel          = true; // The engine's layers tab lists the effects under the mask
+	m->show_panel          = true; // Expanded: the effects list under the mask
 	if (type == MASK_EFFECT_ID_SELECTION) {
 		ui_id_mask_begin_effect(m, at); // Its parts are picked right away
 	}

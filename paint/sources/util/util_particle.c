@@ -121,33 +121,6 @@ static util_particle_preset_t util_particle_presets[] = {
 };
 // clang-format on
 
-i32 util_particle_preset_count() {
-	return ARRAY_LENGTH(util_particle_presets);
-}
-
-char *util_particle_preset_name(i32 i) {
-	return tr(util_particle_presets[i].name);
-}
-
-void util_particle_apply_preset(i32 i) {
-	util_particle_preset_t *p          = &util_particle_presets[i];
-	g_context->particle_lifetime       = p->lifetime;
-	g_context->particle_spawn_distance = p->distance;
-	g_context->particle_mass           = p->mass;
-	g_context->particle_random         = p->random;
-	g_context->particle_friction       = p->friction;
-	g_context->particle_bounciness     = p->bounce;
-	g_context->particle_gravity_x      = 0.0;
-	g_context->particle_gravity_y      = 0.0;
-	g_context->particle_gravity_z      = p->gravity_z;
-	g_context->particle_shape          = p->shape;
-	g_context->particle_count          = p->count;
-	g_context->particle_rate           = p->rate;
-	physics_set_friction(g_context->particle_friction);
-	physics_set_bounciness(g_context->particle_bounciness);
-	physics_set_gravity(g_context->particle_gravity_x, g_context->particle_gravity_y, g_context->particle_gravity_z);
-}
-
 void util_particle_update() {
 	if (g_context->tool != TOOL_TYPE_PARTICLE) {
 		return;
