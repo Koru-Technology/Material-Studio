@@ -90,7 +90,7 @@ static mask_effect_param_t mask_params_thickness[] = {
     MASK_NOISE_PARAMS,
 };
 static mask_effect_param_t mask_params_mask_builder[] = {
-    {"Layer", MASK_BUILDER_LAYER, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL},
+    {"Source Layer", MASK_BUILDER_LAYER, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL},
     {"Balance", MASK_BUILDER_BALANCE, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     {"Contrast", MASK_BUILDER_CONTRAST, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     {"Edges", MASK_BUILDER_EDGES, MASK_PARAM_SLIDER, 0.0, 1.0, 1.0, NULL},
@@ -112,7 +112,7 @@ static mask_effect_param_t mask_params_ao[] = {
 };
 static mask_effect_param_t mask_params_height_blend[] = {
     {"Compare With", MASK_HB_COMPARE, MASK_PARAM_CHOICE, 0.0, 2.0, 1.0, "Flat,Layers Below,Layer"},
-    {"Layer", MASK_HB_LAYER, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL, MASK_HB_COMPARE, 1u << MASK_HB_COMPARE_LAYER},
+    {"Source Layer", MASK_HB_LAYER, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL, MASK_HB_COMPARE, 1u << MASK_HB_COMPARE_LAYER},
     {"Influence", MASK_HB_INFLUENCE, MASK_PARAM_SLIDER, 0.0, 4.0, 1.0, NULL},
     {"Sharpness", MASK_HB_SHARPNESS, MASK_PARAM_SLIDER, 1.0, 50.0, 16.0, NULL},
     {"Offset", MASK_HB_OFFSET, MASK_PARAM_SLIDER, -1.0, 1.0, 0.0, NULL},
@@ -126,7 +126,7 @@ static mask_effect_param_t mask_params_blur[] = {
     {"Radius", 0, MASK_PARAM_SLIDER, 1.0, 32.0, 4.0, NULL},
 };
 static mask_effect_param_t mask_params_anchor[] = {
-    {"Layer", 0, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL},
+    {"Source Layer", 0, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL},
     {"Channel", 1, MASK_PARAM_CHOICE, 0.0, 3.0, 0.0, "Mask,Height,Opacity,Occluded"},
 };
 
