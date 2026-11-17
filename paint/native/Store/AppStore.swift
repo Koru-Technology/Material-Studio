@@ -30,6 +30,9 @@ final class AppStore: ChangeOnly {
 	private(set) var cameraControls: Int32 = 0
 	private(set) var cameraType: Int32     = 0
 	private(set) var fingerPaint: Int32    = 0 // 0 auto, 1 always, 2 never
+	// The new project sheet, also asked for by the engine (its projects box, the shortcut). Launch argument
+	// "-NativeShow NewProject" opens it (screenshots from scripted runs)
+	var newProjectShown = UserDefaults.standard.string(forKey: "NativeShow") == "NewProject"
 	private(set) var cameraRotation      = SIMD4<Float>(0, 0, 0, 1)
 
 
@@ -63,6 +66,9 @@ final class AppStore: ChangeOnly {
 		update(\.cameraControls, s.camera_controls)
 		update(\.cameraType, s.camera_type)
 		update(\.fingerPaint, s.finger_paint)
+		if app_take_new_project_request() {
+			newProjectShown = true
+		}
 		update(\.cameraRotation, SIMD4(s.camera_rot.0, s.camera_rot.1, s.camera_rot.2, s.camera_rot.3))
 		LayersStore.shared.refresh(s)
 		MaterialsStore.shared.refresh()

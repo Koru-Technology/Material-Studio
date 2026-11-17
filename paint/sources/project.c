@@ -264,6 +264,35 @@ char *project_uuid_get() {
 	return project_uuid;
 }
 
+// The templates of a new project: the meshes in data/meshes and the procedural shapes (util_shape_make_data)
+void project_fetch_default_meshes() {
+	if (project_default_mesh_list == NULL) {
+		project_default_mesh_list = file_read_directory(string("%s%smeshes", path_data(), PATH_SEP));
+		for (i32 i = 0; i < project_default_mesh_list->length; ++i) {
+			char *s                              = project_default_mesh_list->buffer[i];
+			project_default_mesh_list->buffer[i] = substring(project_default_mesh_list->buffer[i], 0, string_length(s) - 4); // Trim .arm
+		}
+		// Procedural
+		any_array_push(project_default_mesh_list, "empty");
+		any_array_push(project_default_mesh_list, "plane");
+		any_array_push(project_default_mesh_list, "plane_2048");
+		any_array_push(project_default_mesh_list, "cube");
+		any_array_push(project_default_mesh_list, "sphere");
+		any_array_push(project_default_mesh_list, "sphere_2048");
+		any_array_push(project_default_mesh_list, "cone");
+		any_array_push(project_default_mesh_list, "cylinder");
+		any_array_push(project_default_mesh_list, "capsule");
+		any_array_push(project_default_mesh_list, "torus");
+#ifdef WITH_EMBED
+		any_array_push(project_default_mesh_list, "cube_bevel");
+#endif
+
+		if (g_context->project_type == -1) {
+			g_context->project_type = string_array_index_of(project_default_mesh_list, "cube_bevel");
+		}
+	}
+}
+
 void project_new(bool reset_layers) {
 	project_uid_next = 1;
 	if (g_context->paint_object != NULL) {

@@ -55,6 +55,9 @@ i32  render_path_base_bloom_current_mip = 0;
 f32  render_path_base_bloom_sample_scale;
 bool render_path_base_buf_swapped = false;
 
+// ---- app_api.c ----
+bool app_new_project_requested = false; // The engine asked for the native new project sheet
+
 // ---- render/render_path_paint_cursor.c ----
 bool render_path_paint_cursor_preview = false; // The brush circle in the middle of the view: the native radius slider is dragged
 

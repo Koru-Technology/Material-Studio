@@ -78,7 +78,7 @@ void util_shortcut_global() {
 		project_reimport_textures();
 	}
 	else if (keymap_shortcut(any_map_get(g_keymap, "file_new"), SHORTCUT_TYPE_STARTED)) {
-		project_new_box();
+		app_new_project_requested = true; // The native sheet (app_take_new_project_request)
 	}
 	else if (keymap_shortcut(any_map_get(g_keymap, "file_export_textures"), SHORTCUT_TYPE_STARTED)) {
 		if (string_equals(g_context->texture_export_path, "")) { // First export, ask for path

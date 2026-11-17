@@ -70,7 +70,7 @@ struct ProjectsView: View {
 					.glassEffect(.regular.interactive(), in: .capsule)
 					.accessibilityHint("Starts a new project on a model")
 					Button {
-						AppStore.shared.perform { app_project_new() }
+						AppStore.shared.newProjectShown = true
 					} label: {
 						Image(systemName: "plus")
 							.font(.title3)

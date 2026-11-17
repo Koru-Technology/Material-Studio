@@ -104,7 +104,6 @@ void app_set_brush_preview(bool on);     // The brush circle in the middle of th
 
 // Menu commands, run like the old menus run them (some open the engine's dialogs)
 typedef enum {
-	APP_COMMAND_NEW_PROJECT,
 	APP_COMMAND_OPEN,
 	APP_COMMAND_OPEN_RECENT,
 	APP_COMMAND_SAVE,
@@ -139,6 +138,13 @@ const char *app_project_path(int32_t index); // Full path of the .arm file, vali
 void        app_project_open(int32_t index); // Closes the screen, the project loads over the next frames
 void        app_project_delete(int32_t index); // With its files
 void        app_project_new(void);           // Closes the screen
+
+// New project templates: the meshes and shapes a new project starts on
+int32_t     app_template_count(void);
+const char *app_template_id(int32_t index);              // cube_bevel, sphere_2048, ...
+int32_t     app_template_selected(void);                 // The one the last new project used
+void        app_project_new_from_template(int32_t index); // Closes the projects screen
+bool        app_take_new_project_request(void);           // Once true after the engine asked for the new project sheet
 void        app_project_import(void);        // Picks a model, it opens in a new project and the screen closes
 
 // History

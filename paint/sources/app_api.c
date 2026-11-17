@@ -458,6 +458,39 @@ void app_project_new(void) {
 	box_projects_new();
 }
 
+int32_t app_template_count(void) {
+	if (!app_ready()) {
+		return 0;
+	}
+	project_fetch_default_meshes();
+	return project_default_mesh_list->length;
+}
+
+const char *app_template_id(int32_t index) {
+	if (index < 0 || index >= app_template_count()) {
+		return "";
+	}
+	return app_str(project_default_mesh_list->buffer[index]);
+}
+
+int32_t app_template_selected(void) {
+	return app_template_count() > 0 ? g_context->project_type : -1;
+}
+
+void app_project_new_from_template(int32_t index) {
+	if (index < 0 || index >= app_template_count()) {
+		return;
+	}
+	g_context->project_type = index;
+	box_projects_new();
+}
+
+bool app_take_new_project_request(void) {
+	bool r                    = app_new_project_requested;
+	app_new_project_requested = false;
+	return r;
+}
+
 void app_project_import(void) {
 	if (!app_ready()) {
 		return;
@@ -470,9 +503,6 @@ void app_command(int32_t command) {
 		return;
 	}
 	switch (command) {
-	case APP_COMMAND_NEW_PROJECT:
-		project_new_box();
-		break;
 	case APP_COMMAND_OPEN:
 		project_open();
 		break;

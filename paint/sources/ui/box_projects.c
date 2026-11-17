@@ -176,7 +176,7 @@ void box_projects_recent_tab() {
 
 		ui_end_element();
 		if (ui_icon_button(tr("New Project..."), ICON_FILE_NEW, UI_ALIGN_LEFT)) {
-			project_new_box();
+			app_new_project_requested = true; // The native sheet (app_take_new_project_request)
 		}
 		if (ui_icon_button(tr("Open..."), ICON_FOLDER_OPEN, UI_ALIGN_LEFT)) {
 			project_open();

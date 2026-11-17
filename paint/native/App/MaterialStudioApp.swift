@@ -13,6 +13,7 @@ struct MaterialStudioApp: App {
 		}
 		.defaultSize(width: 1600, height: 1000)
 		.commands {
+			FileCommands()
 			EditCommands()
 		}
 #else
@@ -27,6 +28,7 @@ struct MaterialStudioApp: App {
 // Sidebar (layers), canvas, inspector (tool, brush and the selected layer's settings)
 struct MacRootView: View {
 	@State private var inspectorShown = true
+	@Bindable private var app         = AppStore.shared
 
 	var body: some View {
 		// The panels call the engine: they show once it started, as the iPad controls
@@ -69,6 +71,20 @@ struct MacRootView: View {
 					}
 				}
 		}
+		.sheet(isPresented: $app.newProjectShown) {
+			NewProjectSheet()
+		}
+	}
+}
+
+struct FileCommands: Commands {
+	var body: some Commands {
+		CommandGroup(replacing: .newItem) {
+			Button("New Project…") {
+				AppStore.shared.newProjectShown = true
+			}
+			.keyboardShortcut("n")
+		}
 	}
 }
 
@@ -107,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 #else
 struct PadRootView: View {
 	@Environment(\.scenePhase) private var scenePhase
+	@Bindable private var app = AppStore.shared
 
 	var body: some View {
 		ZStack {
@@ -133,6 +150,9 @@ struct PadRootView: View {
 			.statusBarHidden()
 			.persistentSystemOverlays(.hidden)
 			.defersSystemGestures(on: .all)
+			.sheet(isPresented: $app.newProjectShown) {
+				NewProjectSheet()
+			}
 			.onOpenURL { url in
 				iron_apple_open_url(url.absoluteString)
 			}

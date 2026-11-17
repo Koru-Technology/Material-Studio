@@ -939,10 +939,6 @@ void box_export_show_mesh();
 // ---- ui/box_import_mesh.c ----
 void project_import_mesh_box(char *path, bool replace_existing, bool clear_layers, bool keep_camera, void (*done)(void));
 
-// ---- ui/box_new_project.c ----
-void project_fetch_default_meshes();
-void project_new_box();
-
 // ---- ui/box_projects.c ----
 char *box_projects_recent_path(i32 i);
 void  box_projects_cancel_load();
@@ -2155,6 +2151,7 @@ void                   project_save_now();
 void                   project_save(bool save_and_quit);
 char                  *project_unique_title(char *name);
 void                   project_save_as(bool save_and_quit);
+void                   project_fetch_default_meshes();
 void                   project_new(bool reset_layers);
 void                   project_set_default_envmap();
 void                   project_import_material();

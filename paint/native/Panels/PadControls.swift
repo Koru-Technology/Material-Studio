@@ -228,7 +228,7 @@ struct PadMenuBar: View {
 			HStack(spacing: 8) {
 				Menu {
 					Section {
-						Button("New Project…", systemImage: "doc.badge.plus") { run(APP_COMMAND_NEW_PROJECT) }
+						Button("New Project…", systemImage: "doc.badge.plus") { AppStore.shared.newProjectShown = true }
 						Button("Open…", systemImage: "folder") { run(APP_COMMAND_OPEN) }
 						Button("Projects…", systemImage: "square.grid.2x2") { run(APP_COMMAND_OPEN_RECENT) }
 						Button("Save", systemImage: "square.and.arrow.down") { run(APP_COMMAND_SAVE) }

@@ -163,7 +163,6 @@
 #include "ui/box_bake_maps.c"
 #include "ui/box_export.c"
 #include "ui/box_import_mesh.c"
-#include "ui/box_new_project.c"
 #include "ui/box_projects.c"
 #include "ui/ui_base.c"
 #include "ui/ui_box.c"
