@@ -386,6 +386,15 @@ void app_set_camera_controls(int32_t controls) {
 	}
 }
 
+void app_set_brush_preview(bool on) {
+	if (!app_ready()) {
+		return;
+	}
+	render_path_paint_cursor_preview = on;
+	render_path_base_redraw();
+	iron_delay_idle_sleep();
+}
+
 void app_set_finger_paint(int32_t mode) {
 	if (!app_ready() || mode < 0 || mode > 2) {
 		return;

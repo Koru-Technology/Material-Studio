@@ -100,6 +100,7 @@ void app_set_camera_pivot(int32_t pivot);
 void app_set_camera_controls(int32_t controls);
 void app_set_camera_type(int32_t type);
 void app_set_finger_paint(int32_t mode); // A setting, saved
+void app_set_brush_preview(bool on);     // The brush circle in the middle of the view, while a native slider changes its size
 
 // Menu commands, run like the old menus run them (some open the engine's dialogs)
 typedef enum {

@@ -55,6 +55,9 @@ i32  render_path_base_bloom_current_mip = 0;
 f32  render_path_base_bloom_sample_scale;
 bool render_path_base_buf_swapped = false;
 
+// ---- render/render_path_paint_cursor.c ----
+bool render_path_paint_cursor_preview = false; // The brush circle in the middle of the view: the native radius slider is dragged
+
 // ---- render/render_path_paint.c ----
 u32           render_path_paint_stamp_seed_fixed  = 0; // Drawing pad: strokes painted again jitter alike, 0 seeds from the time
 slot_layer_t *render_path_paint_live_layer        = NULL;

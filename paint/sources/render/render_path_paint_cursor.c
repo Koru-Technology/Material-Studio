@@ -99,21 +99,24 @@ void render_path_paint_commands_cursor() {
 		return;
 	}
 
-	// Hidden while painting, it covers the paint (also the first frame of a touch, before the stroke counts its time)
-	if ((g_context->brush_time > 0 || pen_down("tip") || mouse_down("left"))) {
-		return;
+	bool preview = render_path_paint_cursor_preview; // In the middle of the view while its size changes
+	if (!preview) {
+		// Hidden while painting, it covers the paint (also the first frame of a touch, before the stroke counts its time)
+		if ((g_context->brush_time > 0 || pen_down("tip") || mouse_down("left"))) {
+			return;
+		}
+
+		// The pencil hovered away from the screen and nothing touches it
+		if (pen_hover_left && !pen_down("tip") && !mouse_down_any()) {
+			return;
+		}
 	}
 
-	// The pencil hovered away from the screen and nothing touches it
-	if (pen_hover_left && !pen_down("tip") && !mouse_down_any()) {
-		return;
-	}
-
-	f32 mx = g_context->paint_vec.x;
-	f32 my = 1.0 - g_context->paint_vec.y;
+	f32 mx = preview ? 0.5 : g_context->paint_vec.x;
+	f32 my = preview ? 0.5 : 1.0 - g_context->paint_vec.y;
 
 	// Fainter the higher the pencil hovers
-	f32 tint = pen_hover >= 0.0 && !pen_down("tip") ? 1.0 - 0.6 * pen_hover : 1.0;
+	f32 tint = !preview && pen_hover >= 0.0 && !pen_down("tip") ? 1.0 - 0.6 * pen_hover : 1.0;
 
 	// Prevent cursor jumping constantly if randomness is used in brush nodes
 	f32 brush_nodes_radius = g_context->brush_nodes_radius;

@@ -5,31 +5,116 @@ import UIKit
 // MARK: - Tools
 
 struct PadToolColumn: View {
+	var body: some View {
+		VStack(spacing: 2) {
+			ForEach(paintTools) { tool in
+				PadToolButton(tool: tool)
+			}
+		}
+		.padding(4)
+		.glassEffect(.regular, in: .rect(cornerRadius: 16))
+		.foregroundStyle(.primary)
+	}
+}
+
+// Right edge: the brush sliders the tool reads, stacked, and its symmetry below them
+struct PadBrushControls: View {
 	private var store = AppStore.shared
 
 	var body: some View {
+		let controls = Tool.selected(store.tool)?.controls ?? []
 		GlassEffectContainer(spacing: 10) {
 			VStack(spacing: 10) {
-				VStack(spacing: 2) {
-					ForEach(paintTools) { tool in
-						PadToolButton(tool: tool)
-					}
-				}
-				.padding(4)
-				.glassEffect(.regular, in: .rect(cornerRadius: 16))
-
-				HStack(spacing: 8) {
-					VerticalSlider(value: store.brushRadius, range: 0.01...2, symbol: "circle.fill", format: radiusText, bubbleX: 76) { v in
+				if controls.contains(.radius) {
+					VerticalSlider(title: "Radius", value: store.brushRadius, range: 0.01...2, symbol: "circle.fill", format: radiusText,
+					               showsBrush: true) { v in
 						app_set_brush_radius(v)
 					}
-					VerticalSlider(value: store.brushOpacity, range: 0...1, symbol: "circle.lefthalf.filled") { v in
+				}
+				if controls.contains(.opacity) {
+					VerticalSlider(title: "Opacity", value: store.brushOpacity, range: 0...1, symbol: "circle.lefthalf.filled") { v in
 						app_set_brush_opacity(v)
 					}
 				}
-				.frame(height: 220)
+				if controls.contains(.hardness) {
+					VerticalSlider(title: "Hardness", value: store.brushHardness, range: 0...1, symbol: "smallcircle.filled.circle") { v in
+						app_set_brush_hardness(v)
+					}
+				}
+				if controls.contains(.symmetry) {
+					SymmetryButton()
+				}
 			}
 		}
 		.foregroundStyle(.primary)
+	}
+}
+
+// The mirror axes as lines through the middle, lit in their axis color when on: X across, Z up, Y in depth
+struct SymmetryGizmo: View {
+	let on: [Bool]
+
+	var body: some View {
+		Canvas { c, size in
+			let m  = CGPoint(x: size.width / 2, y: size.height / 2)
+			let r  = min(size.width, size.height) * 0.36
+			let d  = r * 0.72
+			let ends: [(CGPoint, CGPoint)] = [
+				(CGPoint(x: m.x - r, y: m.y), CGPoint(x: m.x + r, y: m.y)),           // X
+				(CGPoint(x: m.x + d, y: m.y - d), CGPoint(x: m.x - d, y: m.y + d)),   // Y
+				(CGPoint(x: m.x, y: m.y + r), CGPoint(x: m.x, y: m.y - r)),           // Z
+			]
+			for axis in [1, 0, 2] { // Lit axes over the others
+				var p = Path()
+				p.move(to: ends[axis].0)
+				p.addLine(to: ends[axis].1)
+				let lit = axis < on.count && on[axis]
+				c.stroke(p, with: .color(lit ? symmetryAxes[axis].color : Color.secondary.opacity(0.45)),
+				         style: StrokeStyle(lineWidth: lit ? 3 : 2, lineCap: .round))
+			}
+		}
+	}
+}
+
+struct SymmetryButton: View {
+	private var store    = AppStore.shared
+	private var popovers = PadPopovers.shared
+
+	var body: some View {
+		Button {
+			popovers.toggle("Symmetry")
+		} label: {
+			SymmetryGizmo(on: store.symmetry)
+				.frame(width: 44, height: 44)
+				.contentShape(.circle)
+		}
+		.glassEffect(popovers.shown == "Symmetry" ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
+		.accessibilityLabel("Symmetry")
+		.padPopover("Symmetry", arrowEdge: .trailing) {
+			SymmetryPanel()
+		}
+	}
+}
+
+struct SymmetryPanel: View {
+	var body: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			Text("Symmetry")
+				.font(.headline)
+			HStack(spacing: 8) {
+				ForEach(0..<3, id: \.self) { axis in
+					Toggle(isOn: symmetryBinding(axis)) {
+						Text(symmetryAxes[axis].name)
+							.font(.headline)
+							.frame(width: 36, height: 28)
+					}
+					.toggleStyle(.button)
+					.tint(symmetryAxes[axis].color)
+					.accessibilityLabel("Symmetry \(symmetryAxes[axis].name)")
+				}
+			}
+		}
+		.padding(14)
 	}
 }
 
@@ -61,20 +146,10 @@ struct PadToolButton: View {
 		.accessibilityLabel(tool.name)
 		.accessibilityAddTraits(.isButton)
 		.accessibilityAction { select() }
-		.padPopover("Tool \(tool.id)", arrowEdge: .leading) {
-			ToolPropertiesView()
-				.frame(width: 320, height: 460)
-		}
 	}
 
 	private func select() {
-		if store.tool == tool.id {
-			PadPopovers.shared.toggle("Tool \(tool.id)") // A second touch on the tool opens its properties
-		}
-		else {
-			if PadPopovers.shared.shown?.hasPrefix("Tool ") == true {
-				PadPopovers.shared.close() // Another tool's properties
-			}
+		if store.tool != tool.id {
 			store.selectTool(tool.id)
 		}
 	}
@@ -214,17 +289,21 @@ struct PressReportingStyle: ButtonStyle {
 	}
 }
 
-// A slider standing up, dragged anywhere on its track; the brush size and opacity
+// A slider standing up, dragged anywhere on its track; the brush settings on the right edge. While dragged, its title and
+// value show to its left, level with the fill, and the radius shows the brush circle in the middle of the view.
 struct VerticalSlider: View {
+	let title: String
 	let value: Float
 	let range: ClosedRange<Float>
 	let symbol: String
 	var format: (Float) -> String = percent
-	var bubbleX: CGFloat = 48 // The bubble's distance to the right, past the other slider of the pair
+	var showsBrush = false
 	let set: (Float) -> Void
 
 	@State private var start: Float?
 	@State private var height: CGFloat = 0
+
+	private let width: CGFloat = 30 // The track and its padding
 
 	var body: some View {
 		GeometryReader { geo in
@@ -241,27 +320,43 @@ struct VerticalSlider: View {
 			.contentShape(Capsule())
 			.gesture(DragGesture(minimumDistance: 0)
 				.onChanged { g in
+					if start == nil && showsBrush {
+						AppStore.shared.perform { app_set_brush_preview(true) }
+					}
 					let base   = start ?? value
 					start      = base
 					let delta  = Float(-g.translation.height / geo.size.height) * (range.upperBound - range.lowerBound)
 					let v      = min(range.upperBound, max(range.lowerBound, base + delta))
 					AppStore.shared.perform { set(v) }
 				}
-				.onEnded { _ in start = nil })
+				.onEnded { _ in
+					start = nil
+					if showsBrush {
+						AppStore.shared.perform { app_set_brush_preview(false) }
+					}
+				})
 		}
-		.frame(width: 18)
+		.frame(width: width - 12, height: 150)
 		.padding(6)
 		.glassEffect(.regular.interactive(), in: .capsule)
+		.accessibilityElement()
+		.accessibilityLabel(title)
+		.accessibilityValue(format(value))
 		.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-		.overlay(alignment: .bottom) {
-			if start != nil { // While dragged: the value to the right of the sliders, level with the fill
+		.overlay(alignment: .bottomTrailing) {
+			if start != nil {
 				let f = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
-				ValueBubble(text: format(value))
-					.offset(x: bubbleX, y: -max(12, (height - 12) * min(1, max(0, f))))
+				ValueBubble(text: "\(title): \(format(value))")
+					.offset(x: -(width + 10), y: -max(12, (height - 12) * min(1, max(0, f))))
 					.transition(.opacity)
 			}
 		}
 		.animation(.easeOut(duration: 0.12), value: start != nil)
+		.onDisappear {
+			if start != nil && showsBrush { // The tool changed with the finger still down
+				AppStore.shared.perform { app_set_brush_preview(false) }
+			}
+		}
 	}
 }
 #endif

@@ -20,6 +20,7 @@ struct PadControls: View {
 			HStack {
 				PadToolColumn()
 				Spacer()
+				PadBrushControls()
 			}
 			VStack {
 				Spacer()
@@ -148,15 +149,17 @@ struct PadPanelHost: View {
 						}
 						.shadow(color: .black.opacity(0.3), radius: 24, y: 8)
 						.alignmentGuide(.leading) { d in
-							let x = panel.edge == .leading ? button.maxX + gap : button.midX - d.width / 2
+							let x = panel.edge == .leading ? button.maxX + gap
+							      : panel.edge == .trailing ? button.minX - gap - d.width : button.midX - d.width / 2
 							return -min(max(x, margin), geo.size.width - d.width - margin)
 						}
 						.alignmentGuide(.top) { d in
-							let y = panel.edge == .leading ? button.midY - d.height / 2
-							      : below ? button.maxY + gap : button.minY - gap - d.height
+							let side = panel.edge == .leading || panel.edge == .trailing
+							let y    = side ? button.midY - d.height / 2 : below ? button.maxY + gap : button.minY - gap - d.height
 							return -min(max(y, margin), geo.size.height - d.height - margin)
 						}
-						.transition(.opacity.combined(with: .scale(scale: 0.96, anchor: panel.edge == .leading ? .leading : below ? .top : .bottom)))
+						.transition(.opacity.combined(with: .scale(scale: 0.96, anchor: panel.edge == .leading ? .leading
+						                                                             : panel.edge == .trailing ? .trailing : below ? .top : .bottom)))
 						.id(name)
 				}
 			}
