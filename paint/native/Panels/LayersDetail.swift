@@ -80,7 +80,7 @@ struct LayerDetailSections: View {
 			heightBlendSection(layer)
 		}
 
-		if p.showsChannels {
+		if p.showsChannels && !layer.isFill && layer.kind != .mask { // A fill's channels show with their sources, a mask has none
 			Section("Channels") {
 				LayerChannels(layer: layer)
 			}

@@ -859,16 +859,18 @@ static f32 *app_layer_value_field(slot_layer_t *l, i32 value, f32 *min, f32 *max
 		return &s->params[p];
 	}
 	switch (value) {
+	case APP_LAYER_VALUE_FILL_SCALE:
 	case APP_LAYER_VALUE_FILL_SCALE_X:
 	case APP_LAYER_VALUE_FILL_SCALE_Y:
 		*min = 0.01;
 		*max = 64.0;
-		return f != NULL ? &f->scale[value - APP_LAYER_VALUE_FILL_SCALE_X] : NULL;
+		return f != NULL ? &f->scale[value == APP_LAYER_VALUE_FILL_SCALE_Y ? 1 : 0] : NULL;
+	case APP_LAYER_VALUE_FILL_OFFSET:
 	case APP_LAYER_VALUE_FILL_OFFSET_X:
 	case APP_LAYER_VALUE_FILL_OFFSET_Y:
 		*min = -1.0;
 		*max = 1.0;
-		return f != NULL ? &f->offset[value - APP_LAYER_VALUE_FILL_OFFSET_X] : NULL;
+		return f != NULL ? &f->offset[value == APP_LAYER_VALUE_FILL_OFFSET_Y ? 1 : 0] : NULL;
 	case APP_LAYER_VALUE_FILL_ANGLE:
 		*min = 0.0;
 		*max = 360.0;
@@ -926,6 +928,9 @@ bool app_layer_set_value(int32_t id, int32_t value, float v) {
 		app_layer_value_begin(id, value);
 	}
 	*f = math_max(min, math_min(max, v));
+	if (value == APP_LAYER_VALUE_FILL_SCALE || value == APP_LAYER_VALUE_FILL_OFFSET) { // Linked: Y follows X
+		f[1] = f[0];
+	}
 	if (l->fill != NULL && value >= APP_LAYER_VALUE_FILL_SCALE_X) {
 		fill_changed(l); // Live: the parameters texture, no new shader
 	}

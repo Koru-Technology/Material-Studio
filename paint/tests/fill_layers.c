@@ -170,6 +170,15 @@ void next() {
 		check(app_layer_value(f, 6) > 2.99 && app_layer_value(f, 7) > 0.99 && app_layer_value(f, 7) < 1.01, "only x scaled");
 		int d = diff_pixels(l->texpaint, before);
 		check(d > 100, string("scale changes the fill (%d)", d));
+		// Linked scale and offset (APP_LAYER_VALUE_FILL_SCALE 12, _OFFSET 13): both axes, one undo step
+		check(app_layer_set_value(f, 12, 2.0) && app_layer_value(f, 6) > 1.99 && app_layer_value(f, 6) < 2.01 && app_layer_value(f, 7) > 1.99 &&
+		          app_layer_value(f, 7) < 2.01,
+		      "linked scale sets both axes");
+		history_undo();
+		check(app_layer_value(f, 6) > 2.99 && app_layer_value(f, 7) > 0.99 && app_layer_value(f, 7) < 1.01, "one undo restores both scale axes");
+		check(app_layer_set_value(f, 13, 0.5) && app_layer_value(f, 8) == 0.5 && app_layer_value(f, 9) == 0.5, "linked offset sets both axes");
+		history_undo();
+		check(app_layer_value(f, 8) == 0.0 && app_layer_value(f, 9) == 0.0, "one undo restores both offset axes");
 		before = copy_pixels(l->texpaint);
 		check(app_layer_set_value(f, 8, 0.25) && app_layer_set_value(f, 10, 30.0), "offset and rotation");
 	}

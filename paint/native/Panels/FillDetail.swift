@@ -6,12 +6,16 @@ struct FillSections: View {
 	let layer: LayerRow
 
 	private var layers = LayersStore.shared
+	private var panel  = LayersPanelState.shared
 
 	init(layer: LayerRow) {
 		self.layer = layer
 	}
 
 	static let channelNames = ["Base Color", "Opacity", "Normal", "Roughness", "Metallic", "Height", "Occlusion", "Emission"]
+	// The layer channel (app_layer_channel_t) each fill channel paints, its eye
+	static let paintChannels: [app_layer_channel_t] = [APP_LAYER_CHANNEL_BASE, APP_LAYER_CHANNEL_OPACITY, APP_LAYER_CHANNEL_NORMAL, APP_LAYER_CHANNEL_ROUGHNESS,
+	                                                    APP_LAYER_CHANNEL_METALLIC, APP_LAYER_CHANNEL_HEIGHT, APP_LAYER_CHANNEL_OCCLUSION, APP_LAYER_CHANNEL_EMISSION]
 
 	var body: some View {
 		let p = layer.props
@@ -34,19 +38,45 @@ struct FillSections: View {
 						Label("Fill From Material", systemImage: "circle.hexagongrid")
 					}
 				}
-				ForEach(0..<min(p.sources.count, Self.channelNames.count), id: \.self) { c in
-					DisclosureGroup {
-						FillSourceEditor(layer: layer, channel: Int32(c), title: Self.channelNames[c])
-					} label: {
-						FillSourceLabel(title: Self.channelNames[c], source: p.sources[c], channel: c)
+				DisclosureGroup(isExpanded: panel.expansion("fill.channels")) {
+					ForEach(0..<min(p.sources.count, Self.channelNames.count), id: \.self) { c in
+						DisclosureGroup(isExpanded: panel.expansion("fill.channel.\(c)")) {
+							FillSourceEditor(layer: layer, channel: Int32(c), title: Self.channelNames[c])
+							if c == Int(APP_FILL_CHANNEL_NORMAL.rawValue) {
+								channelToggle("Normal Blend", APP_LAYER_CHANNEL_NORMAL_BLEND)
+							}
+							else if c == Int(APP_FILL_CHANNEL_HEIGHT.rawValue) {
+								channelToggle("Height Blend", APP_LAYER_CHANNEL_HEIGHT_BLEND)
+							}
+						} label: {
+							HStack(spacing: 8) {
+								FillSourceLabel(title: Self.channelNames[c], source: p.sources[c], channel: c)
+									.opacity(p.paints(Self.paintChannels[c]) ? 1 : 0.5)
+								ChannelEye(layer: layer, channel: Self.paintChannels[c])
+							}
+						}
 					}
+					HStack(spacing: 8) { // No source of its own: a material's subsurface
+						Text("Subsurface")
+							.opacity(p.paints(APP_LAYER_CHANNEL_SUBSURFACE) ? 1 : 0.5)
+						Spacer()
+						ChannelEye(layer: layer, channel: APP_LAYER_CHANNEL_SUBSURFACE)
+					}
+				} label: {
+					Text("Per Channel Settings")
 				}
 			} header: {
 				Text("Channels")
 			} footer: {
-				Text("Each channel takes its own source. A material is rendered once into a tile and projected like an image.")
+				Text("Each channel takes its own source, the eye hides it. A material is rendered once into a tile and projected like an image.")
 			}
 		}
+	}
+
+	private func channelToggle(_ title: String, _ channel: app_layer_channel_t) -> some View {
+		Toggle(title, isOn: Binding(get: { layer.props.paints(channel) }, set: { on in
+			AppStore.shared.perform { _ = app_layer_set_channel(layer.id, Int32(channel.rawValue), on) }
+		}))
 	}
 
 	@ViewBuilder
@@ -60,10 +90,10 @@ struct FillSections: View {
 				Text("Planar").tag(Int32(APP_FILL_PROJECTION_PLANAR.rawValue))
 				Text("Decal").tag(Int32(APP_FILL_PROJECTION_DECAL.rawValue))
 			}
-			FillValueSlider(layer: layer, title: "Scale X", value: f.scaleX, kind: APP_LAYER_VALUE_FILL_SCALE_X.rawValue, range: 0.05...16) { String(format: "%.2f", $0) }
-			FillValueSlider(layer: layer, title: "Scale Y", value: f.scaleY, kind: APP_LAYER_VALUE_FILL_SCALE_Y.rawValue, range: 0.05...16) { String(format: "%.2f", $0) }
-			FillValueSlider(layer: layer, title: "Offset X", value: f.offsetX, kind: APP_LAYER_VALUE_FILL_OFFSET_X.rawValue, range: -1...1) { String(format: "%.2f", $0) }
-			FillValueSlider(layer: layer, title: "Offset Y", value: f.offsetY, kind: APP_LAYER_VALUE_FILL_OFFSET_Y.rawValue, range: -1...1) { String(format: "%.2f", $0) }
+			FillPairSlider(layer: layer, title: "Scale", x: f.scaleX, y: f.scaleY, kinds: (APP_LAYER_VALUE_FILL_SCALE, APP_LAYER_VALUE_FILL_SCALE_X, APP_LAYER_VALUE_FILL_SCALE_Y),
+			               range: 0.05...16)
+			FillPairSlider(layer: layer, title: "Offset", x: f.offsetX, y: f.offsetY,
+			               kinds: (APP_LAYER_VALUE_FILL_OFFSET, APP_LAYER_VALUE_FILL_OFFSET_X, APP_LAYER_VALUE_FILL_OFFSET_Y), range: -1...1)
 			FillValueSlider(layer: layer, title: "Rotation", value: f.angle, kind: APP_LAYER_VALUE_FILL_ANGLE.rawValue, range: 0...360) { "\(Int($0.rounded()))°" }
 			if f.projection == Int32(APP_FILL_PROJECTION_TRIPLANAR.rawValue) {
 				FillValueSlider(layer: layer, title: "Hardness", value: f.hardness, kind: APP_LAYER_VALUE_FILL_HARDNESS.rawValue, range: 0...1) { "\(Int(($0 * 100).rounded()))%" }
@@ -272,6 +302,96 @@ struct FillSourceEditor: View {
 			ForEach(Array(layers.materialNames.enumerated()), id: \.offset) { i, name in
 				Text(name).tag(Int32(i))
 			}
+		}
+	}
+}
+
+// A layer channel shown or hidden, as a layer's eye
+private struct ChannelEye: View {
+	let layer: LayerRow
+	let channel: app_layer_channel_t
+
+	var body: some View {
+		let on = layer.props.paints(channel)
+		Button {
+			AppStore.shared.perform { _ = app_layer_set_channel(layer.id, Int32(channel.rawValue), !on) }
+		} label: {
+			Image(systemName: on ? "eye" : "eye.slash")
+				.frame(width: 28, height: 28)
+				.contentShape(.rect)
+		}
+		.buttonStyle(.borderless)
+		.tint(Color.primary)
+		.accessibilityLabel(on ? "Hide" : "Show")
+	}
+}
+
+// An X and Y pair (a fill's scale, offset): one slider setting both while linked, one each when not. Values set apart
+// show unlinked; linking sets Y to X.
+private struct FillPairSlider: View {
+	let layer: LayerRow
+	let title: String
+	let x: Float
+	let y: Float
+	let kinds: (both: app_layer_value_t, x: app_layer_value_t, y: app_layer_value_t)
+	let range: ClosedRange<Float>
+
+	private var panel = LayersPanelState.shared
+
+	init(layer: LayerRow, title: String, x: Float, y: Float, kinds: (app_layer_value_t, app_layer_value_t, app_layer_value_t), range: ClosedRange<Float>) {
+		self.layer = layer
+		self.title = title
+		self.x = x
+		self.y = y
+		self.kinds = kinds
+		self.range = range
+	}
+
+	private var key: String {
+		"\(layer.id).\(title)"
+	}
+
+	private var linked: Bool {
+		!panel.unlinked.contains(key) && x == y
+	}
+
+	var body: some View {
+		let format: (Float) -> String = { String(format: "%.2f", $0) }
+		HStack(spacing: 8) {
+			VStack(spacing: 10) {
+				if linked {
+					FillValueSlider(layer: layer, title: title, value: x, kind: kinds.both.rawValue, range: range, format: format)
+				}
+				else {
+					FillValueSlider(layer: layer, title: "\(title) X", value: x, kind: kinds.x.rawValue, range: range, format: format)
+					FillValueSlider(layer: layer, title: "\(title) Y", value: y, kind: kinds.y.rawValue, range: range, format: format)
+				}
+			}
+			Button {
+				if linked {
+					panel.unlinked.insert(key)
+				}
+				else {
+					panel.unlinked.remove(key)
+					let id = layer.id
+					let v  = x
+					AppStore.shared.perform { _ = app_layer_set_value(id, Int32(kinds.both.rawValue), v) } // Y to X, one undo step
+				}
+			} label: {
+				Image(systemName: "link")
+					.overlay { // Struck through while unlinked
+						if !linked {
+							Capsule()
+								.frame(width: 1.5, height: 22)
+								.rotationEffect(.degrees(45))
+						}
+					}
+					.frame(width: 28, height: 28)
+					.contentShape(.rect)
+			}
+			.buttonStyle(.borderless)
+			.tint(linked ? Color.accentColor : Color.secondary)
+			.accessibilityLabel(linked ? "Unlink \(title) X and Y" : "Link \(title) X and Y")
 		}
 	}
 }

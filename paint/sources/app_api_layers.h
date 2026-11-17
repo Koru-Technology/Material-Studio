@@ -132,6 +132,8 @@ typedef enum {
 	APP_LAYER_VALUE_FILL_OFFSET_Y          = 9,
 	APP_LAYER_VALUE_FILL_ANGLE             = 10, // Degrees
 	APP_LAYER_VALUE_FILL_HARDNESS          = 11, // Triplanar: 0 soft .. 1 hard plane edges
+	APP_LAYER_VALUE_FILL_SCALE             = 12, // Both axes at once (linked), reads as X
+	APP_LAYER_VALUE_FILL_OFFSET            = 13,
 	APP_LAYER_VALUE_FILL_SOURCE            = 64, // + channel * 32 + app_fill_value_t: a value of a channel's source
 } app_layer_value_t;
 

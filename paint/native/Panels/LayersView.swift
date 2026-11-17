@@ -12,9 +12,33 @@ struct LayersView: View {
 	}
 }
 
+// What the layers panel shows, kept while the popover is closed: it opens again on the same view
+@Observable
+final class LayersPanelState {
+	static let shared = LayersPanelState()
+
+#if os(iOS)
+	var path: [LayersRoute] = []
+#endif
+	var expanded: Set<String> = [] // Disclosure groups open
+	var unlinked: Set<String> = [] // Paired values (a fill's scale, offset) set apart
+
+	// An open or closed disclosure group, key names it
+	func expansion(_ key: String) -> Binding<Bool> {
+		Binding(get: { self.expanded.contains(key) }, set: { on in
+			if on {
+				self.expanded.insert(key)
+			}
+			else {
+				self.expanded.remove(key)
+			}
+		})
+	}
+}
+
 #if os(iOS)
 // What the popover's stack shows: a layer's settings, then one of its mask effects
-private enum LayersRoute: Hashable {
+enum LayersRoute: Hashable {
 	case layer(Int32)
 	case effect(layerID: Int32, index: Int32)
 
@@ -30,10 +54,10 @@ private enum LayersRoute: Hashable {
 }
 
 private struct LayersNavigation: View {
-	@State private var path: [LayersRoute] = []
+	@Bindable private var state = LayersPanelState.shared
 
 	var body: some View {
-		NavigationStack(path: $path) {
+		NavigationStack(path: $state.path) {
 			LayersList(pushesDetail: true)
 				.navigationTitle("Layers")
 				.navigationBarTitleDisplayMode(.inline)
@@ -52,17 +76,24 @@ private struct LayersNavigation: View {
 				}
 		}
 		.environment(\.openLayerDetail) { id in
-			path = [.layer(id)]
+			state.path = [.layer(id)]
 		}
 		.environment(\.openMaskEffect) { id, index in
-			path.append(.effect(layerID: id, index: index))
+			state.path.append(.effect(layerID: id, index: index))
 		}
 		.frame(idealWidth: 360, idealHeight: 560)
+		.onAppear { // Layers deleted while it was closed
+			prune(LayersStore.shared.layers)
+		}
 		.onChange(of: LayersStore.shared.layers) { _, rows in
-			let kept = path.filter { $0.exists(in: rows) }
-			if kept != path {
-				path = kept
-			}
+			prune(rows)
+		}
+	}
+
+	private func prune(_ rows: [LayerRow]) {
+		let kept = state.path.filter { $0.exists(in: rows) }
+		if kept != state.path {
+			state.path = kept
 		}
 	}
 }
