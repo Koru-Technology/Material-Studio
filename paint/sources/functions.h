@@ -1805,6 +1805,8 @@ i32         timeline_floor(struct timeline *tl, i32 pos);
 bool        timeline_upscalable(struct timeline *tl, i32 pos);
 gpu_pipeline_t *timeline_copy_pipe(gpu_texture_t *t);
 bool        timeline_state_resample(hash128_t h, struct paint_target *t);
+i32         timeline_tiles_restore_step(hash128_t map, struct paint_target *dst, i32 from, i32 batches);
+bool        timeline_captures_pending();
 void        timeline_target_live(slot_layer_t *l, struct paint_target *t);
 bool        timeline_live_map_fresh(slot_layer_t *l);
 hash128_t   timeline_live_map(slot_layer_t *l);

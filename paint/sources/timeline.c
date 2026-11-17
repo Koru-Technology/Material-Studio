@@ -399,6 +399,11 @@ void timeline_stroke_dirty(history_step_t *step, i32_array_t *tiles) {
 }
 
 // Captures the states after the entries recorded since the last finalize
+// Captures timeline_finalize has to make: a state after an entry, a stroke still being stored
+bool timeline_captures_pending() {
+	return timeline_pending_count > 0 || paint_rec_active();
+}
+
 void timeline_finalize() {
 	paint_rec_flush(); // A stroke whose dabs are still read back becomes its entry first
 	for (i32 i = 0; i < timeline_pending_count; ++i) { // In order: a capture reads the state the one before kept

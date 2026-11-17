@@ -5,7 +5,8 @@
 // are all full, its timeline is replayed from the state kept before it: every entry from there to the end, strokes of
 // other materials on top keeping their place, each stroke with its material at the full tier. The states kept after it
 // (checkpoints, what undo restores) are captured again as the replay passes them, the live layer becomes the state at
-// the cursor. A job across frames, a frame's share bounded by the entries' measured cost. Strokes replay composite-fast:
+// the cursor. A job across frames, a frame's share bounded by the entries' measured cost: the state it starts from
+// restored a part a frame, the captures again in frames of their own (each a readback). Strokes replay composite-fast:
 // their material rendered once into a replay cache (util_material_cache.c), a band of it a frame, the strokes read it.
 // Not an undo step: the history does not change, its states are sharper. Intermediate tiers do not sharpen, a replay
 // needs full buffers.
@@ -16,6 +17,7 @@
 #define PAINT_REFINE_MAX       16
 #define PAINT_REFINE_KEYS      32
 #define PAINT_REFINE_BUDGET_MS 12.0 // Measured GPU cost of the entries replayed a frame, at least one
+#define PAINT_REFINE_RESTORE   8    // Batches of tiles (timeline_tiles_restore_step) the start state restores a frame
 
 typedef struct {
 	u32 tl;
@@ -41,6 +43,8 @@ typedef struct {
 	gpu_texture_t *tex[3];
 	hash128_t      prev; // State of t kept last (restored or captured again)
 	u64            dirty[HISTORY_TILES_GRID * HISTORY_TILES_GRID / 64]; // Tiles written since
+	i32            restoring; // prev is being restored into t from this tile on (timeline_tiles_restore_step), -1 done
+	bool           capture;   // The checkpoint at pos is captured again next frame
 } paint_refine_job_t;
 
 static paint_refine_job_t paint_refine_job = {0};
@@ -122,9 +126,8 @@ static bool paint_refine_has_checkpoint(timeline_t *tl, i32 pos) {
 	return false;
 }
 
-// The job of note r: t holds the state kept at or before its stroke
+// The job of note r: t gets the state kept at or before its stroke over the next frames (every state was captured)
 static bool paint_refine_start(paint_refine_t *r) {
-	timeline_finalize(); // Every state captured
 	timeline_t   *tl = timeline_find(r->tl);
 	slot_layer_t *l  = tl != NULL ? slot_layer_find_uid(tl->layer_uid) : NULL;
 	if (l == NULL || !paint_refine_valid(r, tl)) {
@@ -148,10 +151,9 @@ static bool paint_refine_start(paint_refine_t *r) {
 		j->t.out[k] = k < live.channels ? j->tex[k] : NULL;
 	}
 	hash128_t s = timeline_state(tl, from);
-	if (!timeline_tiles_restore(s, &j->t)) {
-		return false;
-	}
-	j->active = true;
+	j->active    = true;
+	j->restoring = 0;
+	j->capture   = false;
 	j->tl     = r->tl;
 	j->i0     = r->index;
 	j->serial = r->serial;
@@ -187,7 +189,31 @@ static void paint_refine_to_live(slot_layer_t *l) {
 	mask_stack_layer_changed(l);
 }
 
-// A frame of the job: entries replayed up to the budget
+// The job reached pos: the live layer when it is the cursor, done at the end
+static void paint_refine_reached(paint_refine_job_t *j, slot_layer_t *l) {
+	if (j->pos == j->cursor) {
+		paint_refine_to_live(l);
+	}
+	if (j->pos == j->count) {
+		paint_refine_stop(true);
+		i32 i = paint_refine_find(j->tl);
+		if (i >= 0) {
+			paint_refine_remove(i);
+		}
+	}
+}
+
+static void paint_refine_fail() {
+	paint_refine_stop(false);
+	i32 i = paint_refine_find(paint_refine_job.tl);
+	if (i >= 0) {
+		paint_refine_remove(i); // Keeps the tier it reached
+		paint_refine_stats[2]++;
+	}
+}
+
+// A frame of the job: a part of the start state restored, or a checkpoint captured again, or entries replayed up to the
+// budget
 static void paint_refine_step() {
 	paint_refine_job_t *j  = &paint_refine_job;
 	timeline_t         *tl = timeline_find(j->tl);
@@ -195,6 +221,26 @@ static void paint_refine_step() {
 	if (l == NULL || tl->count != j->count || tl->cursor != j->cursor || j->i0 >= tl->count || tl->entries[j->i0].step_serial != j->serial ||
 	    l->texpaint->width != j->t.w || l->texpaint->height != j->t.h) {
 		paint_refine_stop(false); // Changed meanwhile: again from the start
+		return;
+	}
+	if (j->restoring >= 0) {
+		j->restoring = timeline_tiles_restore_step(j->prev, &j->t, j->restoring, PAINT_REFINE_RESTORE);
+		if (j->restoring < 0) {
+			paint_refine_stop(false);
+			return;
+		}
+		j->restoring = j->restoring == 0 ? -1 : j->restoring;
+		return;
+	}
+	if (j->capture) { // Undo's state there, sharper
+		j->capture  = false;
+		hash128_t h = timeline_tiles_capture(&j->t, j->prev, j->dirty);
+		if (!hash128_is_none(h)) {
+			timeline_checkpoint_set(tl, j->pos, h, false);
+			j->prev = h;
+			memset(j->dirty, 0, sizeof(j->dirty));
+		}
+		paint_refine_reached(j, l);
 		return;
 	}
 	f64 cost = 0.0;
@@ -205,12 +251,7 @@ static void paint_refine_step() {
 		}
 		bool ok = e->kind == TL_RASTER ? timeline_tiles_restore(e->payload, &j->t) : timeline_entry_replay(tl, j->pos, &j->t, true); // A keyframe: its state
 		if (!ok) {
-			paint_refine_stop(false);
-			i32 i = paint_refine_find(j->tl);
-			if (i >= 0) {
-				paint_refine_remove(i); // Keeps the tier it reached
-				paint_refine_stats[2]++;
-			}
+			paint_refine_fail();
 			return;
 		}
 		paint_refine_stats[3]++;
@@ -223,24 +264,11 @@ static void paint_refine_step() {
 			paint_refine_dirty_add(j->dirty, e);
 		}
 		j->pos++;
-		if (j->pos > j->i0 && paint_refine_has_checkpoint(tl, j->pos)) { // Undo's state there, sharper
-			hash128_t h = timeline_tiles_capture(&j->t, j->prev, j->dirty);
-			if (!hash128_is_none(h)) {
-				timeline_checkpoint_set(tl, j->pos, h, false);
-				j->prev = h;
-				memset(j->dirty, 0, sizeof(j->dirty));
-			}
+		if (j->pos > j->i0 && paint_refine_has_checkpoint(tl, j->pos)) {
+			j->capture = true; // Next frame: a capture reads the layer back
+			return;
 		}
-		if (j->pos == j->cursor) {
-			paint_refine_to_live(l);
-		}
-	}
-	if (j->pos == j->count) {
-		paint_refine_stop(true);
-		i32 i = paint_refine_find(j->tl);
-		if (i >= 0) {
-			paint_refine_remove(i);
-		}
+		paint_refine_reached(j, l);
 	}
 }
 
@@ -261,6 +289,15 @@ static void paint_refine_update(void *_) {
 		paint_refine_step();
 		return;
 	}
+	bool ready = false; // A note whose buffers are full: the states it starts from captured first, in a frame of their own
+	for (i32 i = 0; i < paint_refine_count && !ready; ++i) {
+		timeline_t *tl = timeline_find(paint_refine_notes[i].tl);
+		ready          = paint_refine_valid(&paint_refine_notes[i], tl) && mm_buffers_links_tier(paint_refine_notes[i].keys, paint_refine_notes[i].nkeys) >= MM_BUFFERS_FULL;
+	}
+	if (ready && timeline_captures_pending()) {
+		timeline_finalize();
+		return;
+	}
 	for (i32 i = 0; i < paint_refine_count; ++i) {
 		paint_refine_t *r  = &paint_refine_notes[i];
 		timeline_t     *tl = timeline_find(r->tl);
@@ -273,7 +310,7 @@ static void paint_refine_update(void *_) {
 			continue;
 		}
 		if (paint_refine_start(r)) {
-			paint_refine_step();
+			paint_refine_step(); // The first part of its start state
 		}
 		else {
 			paint_refine_remove(i);

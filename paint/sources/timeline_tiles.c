@@ -533,25 +533,26 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 
 // Writes the tiles of map into dst, only the ones that differ from prev when dst holds prev now (NONE: every tile).
 // dst may cover a part of the layer (uv_rect) at the map's resolution, or reach past its edge: tiles go at an offset,
-// texels outside the layer are cleared.
-bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *dst) {
+// texels outside the layer are cleared. Of the tiles to write the ones from from on, batches of them at most: the next
+// from, 0 once every one is written, -1 when they can not be.
+static i32 tl_tiles_restore_part(hash128_t map, hash128_t prev, paint_target_t *dst, i32 from, i32 batches) {
 	if (!tl_tiles_target_ok(dst)) {
-		return false;
+		return -1;
 	}
 	if (!hash128_is_none(prev) && hash128_eq(map, prev)) {
-		return true;
+		return 0;
 	}
 	tl_tiles_map_t *m   = tl_tiles_resolve(map);
 	gpu_texture_t  *tex = dst->out[0];
 	if (m == NULL || m->channels != dst->channels || m->format != (i32)tex->format) {
-		return false;
+		return -1;
 	}
 	i32  lw    = m->width;
 	i32  lh    = m->height;
 	bool whole = tex->width == lw && tex->height == lh && dst->uv_rect[0] == 0.0 && dst->uv_rect[1] == 0.0 && dst->uv_rect[2] == 1.0 &&
 	             dst->uv_rect[3] == 1.0;
 	if (!whole && (dst->res_w != lw || dst->res_h != lh)) {
-		return false; // Another resolution resamples, not tiles
+		return -1; // Another resolution resamples, not tiles
 	}
 	i32 ox = whole ? 0 : (i32)floorf(dst->uv_rect[0] * lw + 0.5f); // Layer texel at the target's origin
 	i32 oy = whole ? 0 : (i32)floorf(dst->uv_rect[1] * lh + 0.5f);
@@ -586,14 +587,15 @@ bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *
 	bool         ok    = true;
 	u8          *tile  = malloc(bytes);
 	draw_saved_t saved = draw_suspend();
-	if (ox < 0 || oy < 0 || ox + tex->width > lw || oy + tex->height > lh) {
+	if (from == 0 && (ox < 0 || oy < 0 || ox + tex->width > lw || oy + tex->height > lh)) {
 		for (i32 c = 0; c < dst->channels; ++c) { // Past the edge of the layer
 			_gpu_begin(dst->out[c], NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
 			gpu_end();
 		}
 	}
-	for (i32 b0 = 0; b0 < n; b0 += TL_TILES_BATCH) {
-		i32 bn  = n - b0 < TL_TILES_BATCH ? n - b0 : TL_TILES_BATCH;
+	i32 end = batches < (n - from + TL_TILES_BATCH - 1) / TL_TILES_BATCH ? from + batches * TL_TILES_BATCH : n;
+	for (i32 b0 = from; b0 < end; b0 += TL_TILES_BATCH) {
+		i32 bn  = end - b0 < TL_TILES_BATCH ? end - b0 : TL_TILES_BATCH;
 		u8 *mem = gpu_transfer_map(tl_tiles_transfer, (size_t)bn * bytes);
 		i32 rects[TL_TILES_BATCH][4]; // Part of each tile written: x, y, w, h in the layer
 		for (i32 i = 0; i < bn; ++i) {
@@ -631,7 +633,17 @@ bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *
 	free(list);
 	free(want);
 	free(have);
-	return ok;
+	return !ok ? -1 : end < n ? end : 0;
+}
+
+bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, paint_target_t *dst) {
+	return tl_tiles_restore_part(map, prev, dst, 0, INT32_MAX) == 0;
+}
+
+// timeline_tiles_restore a part at a time (a job across frames): of the tiles to write the ones from from on (0 the
+// first), batches of TL_TILES_BATCH at most. The next from, 0 once every one is written, -1 when they can not be.
+i32 timeline_tiles_restore_step(hash128_t map, paint_target_t *dst, i32 from, i32 batches) {
+	return tl_tiles_restore_part(map, HASH128_NONE, dst, from, batches);
 }
 
 bool timeline_tiles_restore(hash128_t tilemap, paint_target_t *dst) {
