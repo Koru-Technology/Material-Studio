@@ -5,3 +5,4 @@
 #include "../../sources/app_api_layers.h"
 #include "../../sources/app_api_masks.h"
 #include "../../sources/app_api_materials.h"
+#include "../../sources/app_api_studio.h"

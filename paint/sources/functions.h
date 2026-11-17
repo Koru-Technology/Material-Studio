@@ -1116,7 +1116,7 @@ void             material_studio_cancel();
 bool             material_studio_is_open();
 gpu_texture_t   *material_studio_preview();
 f32              material_studio_time(i32 which);
-void             material_studio_scroll(f32 offset);
+void             material_studio_edit_nodes();
 i32              material_studio_compiles();
 void             material_studio_preset(i32 i);
 i32              material_studio_add_layer(i32 preset);

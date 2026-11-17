@@ -33,6 +33,7 @@
 #include "app_api_layers.h"
 #include "app_api_masks.h"
 #include "app_api_materials.h"
+#include "app_api_studio.h"
 #include "app_api_test.h"
 
 gpu_texture_t *gpu_create_render_target(i32 width, i32 height, i32 format);

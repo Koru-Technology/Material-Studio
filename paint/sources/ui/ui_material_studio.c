@@ -1,14 +1,16 @@
 #include "../global.h"
 
-// Material Studio: a full screen popover editing the node graph of a studio material (studio_graph.c) with a few controls and
+// Material Studio: a full screen editor of the node graph of a studio material (studio_graph.c) with a few controls and
 // a large preview. Every control writes the inputs of real nodes, the graph stays editable in the node editor.
+// The controls are native (app_api_studio.c, paint/native/Panels/MaterialStudioView.swift): the engine draws the
+// background and the preview, in the rectangle the native editor leaves for it, and turns the preview with the finger.
 // The preview shader reads the node values from a texture (parser_material_live_*), so dragging a slider only renders the
 // preview again. Changes to the graph itself compile it. Letting go commits the edit: undo, the paint shader, the fill
 // layers using the material and its sphere icon.
 
 #define STUDIO_PREVIEW_SIZE 1024 // Own targets, the material preview ones are 512
 #define STUDIO_ANIM_TIME    0.2
-#define STUDIO_SLOTS        32 // Slider values made of several node inputs
+#define STUDIO_BACKGROUND   0xff1c1c1e // Under the native editor, its system background in dark mode
 
 bool material_studio_show = false;
 
@@ -16,15 +18,13 @@ static slot_material_t  *studio_material      = NULL;
 static f64               studio_anim_start    = 0.0;
 static bool              studio_closing       = false;
 static ui_window_t      *studio_back_handle   = NULL;
-static ui_window_t      *studio_head_handle   = NULL;
-static ui_window_t      *studio_view_handle   = NULL;
-static ui_window_t      *studio_ctrl_handle   = NULL;
 static gpu_texture_t    *studio_preview       = NULL;
 static mesh_object_t    *studio_cube          = NULL;
 static shader_context_t *studio_scon          = NULL;
 static bool              studio_need_compile  = false; // The preview shader is out of date
 static bool              studio_need_render   = false; // The preview image is out of date
 static bool              studio_need_commit   = false; // An edit to commit once the touch ends
+static bool              studio_native_drag   = false; // A native control is held: its edits make one undo step
 static bool              studio_hooked        = false;
 static ui_node_canvas_t *studio_undo_canvas   = NULL; // Canvas before the edit, for undo
 static ui_node_canvas_t *studio_open_canvas   = NULL; // Canvas when the studio opened, for Cancel
@@ -35,16 +35,13 @@ static bool              studio_sphere        = false; // Preview on the sphere 
 static bool              studio_orbiting      = false; // A drag that started on the preview turns it
 static i32               studio_sel           = 0;    // Selected layer
 static i32               studio_stop          = 0;    // Selected stop of its color ramp
-static bool              studio_ramp_drag     = false; // A stop follows the finger
-static f32              *studio_color_target  = NULL; // Color the color menu edits, three floats
-static ui_color_state_t  studio_color_state;
+static f32              studio_view[4]       = {0, 0, 0, 0}; // Preview rectangle in window pixels, from the native editor
+static u32              studio_tiles_version = 0;           // The layer tiles were drawn again
 static i32               studio_compile_count = 0;
 static f32               studio_compile_ms    = 0.0; // Last compile and render, for scripts
 static f32               studio_render_ms     = 0.0;
 static u32               studio_known_struct  = 0; // Hash of the graph as compiled, undo or the node editor change it
 static f64               studio_known_values  = 0.0;
-static f32               studio_slots[STUDIO_SLOTS];
-static f32               studio_swipe[STUDIO_LAYERS]; // Layer row offsets, the delete button shows under them
 
 #define STUDIO_THUMBS     48
 #define STUDIO_THUMB_SIZE 128
@@ -53,9 +50,8 @@ static gpu_texture_t *studio_thumb_none  = NULL;
 static bool           studio_thumbs_made = false;
 
 static void studio_redraw() {
-	if (studio_ctrl_handle != NULL) {
-		studio_ctrl_handle->redraws = 2;
-		studio_head_handle->redraws = 2;
+	if (studio_back_handle != NULL) {
+		studio_back_handle->redraws = 2;
 	}
 }
 
@@ -562,6 +558,7 @@ static void studio_update_tiles(ui_node_canvas_t *c, f64 values) {
 		return;
 	}
 	studio_layer_values = values;
+	studio_tiles_version++;
 	for (i32 k = 0; k < g.count; ++k) {
 		if (studio_layer_scon[k] == NULL) {
 			continue;
@@ -616,7 +613,7 @@ static void studio_apply_paint_next(void *_) {
 
 // Commits and applies right away, for scripts checking the fill layers while the studio is open
 void material_studio_apply() {
-	if (studio_need_commit && studio_canvas() != NULL) {
+	if (studio_need_commit && !studio_native_drag && studio_canvas() != NULL) {
 		studio_commit();
 	}
 	studio_apply_paint();
@@ -632,13 +629,13 @@ static void studio_update(void *_) {
 		material_studio_close(); // Deleted or rewired meanwhile
 		return;
 	}
-	if (studio_need_commit && !g_ui->input_down && !ui_menu_show) {
+	if (studio_need_commit && !studio_native_drag) {
 		studio_commit();
 	}
 	if (studio_vars) {
 		f64 vh  = studio_hash_vars(c);
 		f64 now = iron_time();
-		if (vh != studio_known_vars && (!g_ui->input_down || now - studio_var_compile_time > STUDIO_VAR_COMPILE_S)) {
+		if (vh != studio_known_vars && (!studio_native_drag || now - studio_var_compile_time > STUDIO_VAR_COMPILE_S)) {
 			studio_known_vars       = vh;
 			studio_var_compile_time = now;
 			variable_propagate(c->nodes, c->links); // Into the parameters, then compiled
@@ -684,9 +681,7 @@ static void studio_update(void *_) {
 		f64 t0 = iron_time();
 		studio_render();
 		studio_render_ms = (iron_time() - t0) * 1000.0;
-		if (studio_view_handle != NULL) {
-			studio_view_handle->redraws = 2;
-		}
+		studio_redraw();
 	}
 	if (!studio_vars) {
 		studio_update_tiles(c, vs);
@@ -719,6 +714,7 @@ void material_studio_open(slot_material_t *m) {
 	studio_anim_start    = iron_time();
 	studio_need_compile  = true;
 	studio_need_commit   = false;
+	studio_native_drag   = false;
 	studio_undo_canvas   = NULL;
 	studio_open_canvas   = util_clone_canvas(m->canvas);
 	studio_sel           = 0;
@@ -728,7 +724,6 @@ void material_studio_open(slot_material_t *m) {
 	studio_layer_values  = -1.0;
 	for (i32 k = 0; k < STUDIO_LAYERS; ++k) {
 		studio_layer_key[k] = 0;
-		studio_swipe[k]     = 0.0;
 	}
 	if (g_context->material != m) {
 		context_set_material(m);
@@ -739,12 +734,8 @@ void material_studio_open(slot_material_t *m) {
 	}
 	if (studio_back_handle == NULL) {
 		studio_back_handle = ui_window_create();
-		studio_head_handle = ui_window_create();
-		studio_view_handle = ui_window_create();
-		studio_ctrl_handle = ui_window_create();
 	}
-	studio_ctrl_handle->scroll_offset = 0;
-	studio_redraw(); // The windows keep their last drawing, which may be another material's
+	studio_redraw(); // The window keeps its last drawing, which may be another material's
 	ui_end_input(); // The tap that opened it does not reach the studio
 	base_redraw_ui();
 }
@@ -798,14 +789,6 @@ gpu_texture_t *material_studio_preview() {
 // Milliseconds the last preview compile (0) or render (1) took on the cpu
 f32 material_studio_time(i32 which) {
 	return which == 0 ? studio_compile_ms : studio_render_ms;
-}
-
-// Scrolls the controls, for scripts
-void material_studio_scroll(f32 offset) {
-	if (studio_ctrl_handle != NULL) {
-		studio_ctrl_handle->scroll_offset = offset;
-		studio_redraw();
-	}
 }
 
 // Times the preview shader was compiled, a drag must not add to it
@@ -915,107 +898,6 @@ void material_studio_set_color(i32 k, i32 i, f32 r, f32 g, f32 b) {
 	}
 }
 
-// ██╗   ██╗██╗
-// ██║   ██║██║
-// ██║   ██║██║
-// ██║   ██║██║
-// ╚██████╔╝██║
-//  ╚═════╝ ╚═╝
-
-static void studio_label(char *text) {
-	g_ui->_y += 6 * UI_SCALE();
-	ui_text(text, UI_ALIGN_LEFT, 0x00000000);
-}
-
-static void studio_take_undo_on_touch() {
-	if (g_ui->input_started) {
-		studio_begin_edit(); // Taken before any value moves
-	}
-}
-
-// A slider bound to a node input
-static void studio_input_slider(ui_node_socket_t *s, char *text, f32 from, f32 to, f32 precision) {
-	studio_take_undo_on_touch();
-	f32 *v      = &s->default_value->buffer[0];
-	f32  before = *v;
-	ui_slider(v, text, from, to, true, precision, true, UI_ALIGN_LEFT, true);
-	if (*v != before) {
-		studio_edited();
-	}
-}
-
-// A slider bound to a value made of node inputs, the slot keeps its pointer steady for the ui
-static void studio_value_slider(i32 slot, i32 k, i32 value, char *text, f32 from, f32 to, f32 precision) {
-	studio_take_undo_on_touch();
-	ui_node_canvas_t *c = studio_material->canvas;
-	studio_slots[slot]  = studio_graph_get(c, k, value);
-	f32 before          = studio_slots[slot];
-	ui_slider(&studio_slots[slot], text, from, to, true, precision, true, UI_ALIGN_LEFT, true);
-	if (studio_slots[slot] != before) {
-		studio_graph_set(c, k, value, studio_slots[slot]);
-		studio_edited();
-	}
-}
-
-// Chips: one choice of a few, the picked one highlighted
-static i32 studio_chips(char **names, i32 count, i32 picked, i32 columns) {
-	f32_array_t *row = f32_array_create(columns);
-	for (i32 i = 0; i < columns; ++i) {
-		row->buffer[i] = 1.0 / columns;
-	}
-	i32 tapped = -1;
-	u32 col    = g_theme->BUTTON_COL;
-	for (i32 i = 0; i < count; ++i) {
-		if (i % columns == 0) {
-			ui_row(row);
-		}
-		g_theme->BUTTON_COL = i == picked ? g_theme->HIGHLIGHT_COL : col;
-		if (ui_button(names[i], UI_ALIGN_CENTER, "")) {
-			tapped = i;
-		}
-		g_theme->BUTTON_COL = col;
-	}
-	for (i32 i = count; i % columns != 0; ++i) {
-		ui_end_element(); // Fill the last row
-	}
-	array_free(row);
-	free(row);
-	return tapped;
-}
-
-static void studio_color_menu() {
-	if (studio_color_target == NULL || studio_canvas() == NULL) {
-		return;
-	}
-	f32 *v = studio_color_target;
-	ui_fill(0, 0, g_ui->_w / (float)UI_SCALE(), g_theme->ELEMENT_H * 10, g_theme->SEPARATOR_COL);
-	u32 color     = color_from_floats(v[0], v[1], v[2], 1.0);
-	g_ui->changed = false;
-	ui_color_wheel(&color, &studio_color_state, false, -1, 10 * g_theme->ELEMENT_H * UI_SCALE(), false, NULL, NULL);
-	if (g_ui->changed) {
-		v[0] = color_get_rb(color) / 255.0;
-		v[1] = color_get_gb(color) / 255.0;
-		v[2] = color_get_bb(color) / 255.0;
-		studio_edited();
-		ui_menu_keep_open = true;
-	}
-	if (ui_icon_button(tr("Done"), ICON_CHECK, UI_ALIGN_CENTER)) {
-		ui_menu_show = false;
-	}
-}
-
-// A color swatch, a tap opens the color wheel on the three floats
-static bool studio_swatch(f32 *v) {
-	u32 color = color_from_floats(v[0], v[1], v[2], 1.0);
-	if (ui_swatch(color) == UI_STATE_RELEASED && g_ui->combo_selected_id == 0) { // On release, the lifted finger would close the menu
-		studio_begin_edit();
-		studio_color_target = v;
-		ui_menu_draw(&studio_color_menu, -1, -1);
-		return true;
-	}
-	return false;
-}
-
 // Stop indices of the ramp by position
 #define STUDIO_RAMP_MAX 8
 
@@ -1054,150 +936,6 @@ static void studio_ramp_color_at(f32_array_t *v, i32 *sorted, i32 len, f32 t, f3
 	}
 }
 
-// The colors of a layer: the gradient from the recesses to the surface, a swatch for each stop, its position
-static void studio_draw_ramp(ui_node_t *ramp, bool pattern) {
-	f32_array_t *v = ramp->buttons->buffer[0]->default_value;
-	i32          sorted[8];
-	i32          len = studio_ramp_sorted(v, sorted);
-	if (len == 0) {
-		return;
-	}
-	if (!pattern) { // A plain layer shows the stop at the surface
-		ui_row2();
-		ui_text(tr("Color"), UI_ALIGN_LEFT, 0x00000000);
-		if (studio_swatch(v->buffer + sorted[len - 1] * 5)) {
-			studio_stop = sorted[len - 1];
-		}
-		return;
-	}
-	if (studio_stop >= len) {
-		studio_stop = len - 1;
-	}
-	// Gradient with a mark for each stop, the picked one white
-	f32 w      = g_ui->_w / (f32)UI_SCALE();
-	f32 h      = g_theme->ELEMENT_H * 0.8;
-	i32 slices = 48;
-	for (i32 s = 0; s < slices; ++s) {
-		f32 t = (s + 0.5) / slices;
-		f32 col[3];
-		studio_ramp_color_at(v, sorted, len, t, col);
-		ui_fill(w * s / slices, 0, w / slices + 1.0, h, color_from_floats(col[0], col[1], col[2], 1.0));
-	}
-	for (i32 i = 0; i < len; ++i) {
-		f32 x = v->buffer[sorted[i] * 5 + 4] * w;
-		ui_fill(fminf(fmaxf(x - 1.5, 0.0), w - 3.0), 0, 3.0, h, sorted[i] == studio_stop ? 0xffffffff : 0xff000000);
-	}
-	// A touch on the gradient picks the nearest stop, dragging moves it
-	f32 rx = g_ui->_window_x + g_ui->_x;
-	f32 ry = g_ui->_window_y + g_ui->_y;
-	f32 rw = g_ui->_w;
-	f32 rh = h * UI_SCALE();
-	if (g_ui->input_enabled && g_ui->input_started && g_ui->input_x >= rx && g_ui->input_x < rx + rw && g_ui->input_y >= ry &&
-	    g_ui->input_y < ry + rh) {
-		f32 t    = (g_ui->input_x - rx) / rw;
-		f32 best = 2.0;
-		for (i32 i = 0; i < len; ++i) {
-			f32 d = fabsf(v->buffer[sorted[i] * 5 + 4] - t);
-			if (d < best) {
-				best        = d;
-				studio_stop = sorted[i];
-			}
-		}
-		studio_begin_edit();
-		studio_ramp_drag = true;
-	}
-	if (studio_ramp_drag) {
-		if (g_ui->input_down) {
-			g_ui->is_scrolling = true; // The panel does not scroll under the finger
-			f32 t              = fminf(fmaxf((g_ui->input_x - rx) / rw, 0.0), 1.0);
-			if (v->buffer[studio_stop * 5 + 4] != t) {
-				v->buffer[studio_stop * 5 + 4] = t;
-				studio_edited();
-			}
-		}
-		else {
-			studio_ramp_drag = false;
-		}
-	}
-	g_ui->_y += h * UI_SCALE() + 4 * UI_SCALE();
-
-	// Swatches by position, then add, remove and the blend between the stops
-	f32_array_t *row = f32_array_create(STUDIO_RAMP_MAX);
-	for (i32 i = 0; i < STUDIO_RAMP_MAX; ++i) {
-		row->buffer[i] = 1.0 / STUDIO_RAMP_MAX;
-	}
-	ui_row(row);
-	for (i32 i = 0; i < len; ++i) {
-		if (studio_swatch(v->buffer + sorted[i] * 5)) {
-			studio_stop = sorted[i];
-		}
-	}
-	for (i32 i = len; i < STUDIO_RAMP_MAX; ++i) {
-		ui_end_element();
-	}
-	ui_row3();
-	if (ui_button("+", UI_ALIGN_CENTER, "") && len < STUDIO_RAMP_MAX) { // A new stop half way to the next one
-		studio_begin_edit();
-		i32 at = 0;
-		for (i32 i = 0; i < len; ++i) {
-			if (sorted[i] == studio_stop) {
-				at = i;
-			}
-		}
-		i32 a = sorted[at];
-		i32 b = at + 1 < len ? sorted[at + 1] : sorted[at];
-		f32 p = a == b ? fminf(v->buffer[a * 5 + 4] + 0.2, 1.0) : (v->buffer[a * 5 + 4] + v->buffer[b * 5 + 4]) * 0.5;
-		f32 col[3];
-		studio_ramp_color_at(v, sorted, len, p, col);
-		f32_array_push(v, col[0]);
-		f32_array_push(v, col[1]);
-		f32_array_push(v, col[2]);
-		f32_array_push(v, 1.0);
-		f32_array_push(v, p);
-		studio_stop = len;
-		studio_edited();
-	}
-	if (ui_button("-", UI_ALIGN_CENTER, "") && len > 1) {
-		studio_begin_edit();
-		for (i32 i = studio_stop * 5; i + 5 < (i32)v->length; ++i) {
-			v->buffer[i] = v->buffer[i + 5];
-		}
-		v->length -= 5;
-		studio_stop = 0;
-		studio_edited();
-	}
-	u8_array_t *interp = ramp->buttons->buffer[0]->data;
-	if (ui_button(interp->buffer[0] == 1 ? tr("Hard Steps") : tr("Smooth"), UI_ALIGN_CENTER, "")) {
-		studio_begin_edit();
-		interp->buffer[0] = interp->buffer[0] == 1 ? 0 : 1;
-		studio_edited();
-	}
-	array_free(row);
-	free(row);
-	// Position of the picked stop, it drags without compiling like the sliders
-	studio_take_undo_on_touch();
-	f32 *pos    = &v->buffer[studio_stop * 5 + 4];
-	f32  before = *pos;
-	ui_slider(pos, tr("Stop Position"), 0.0, 1.0, true, 100, true, UI_ALIGN_LEFT, true);
-	if (*pos != before) {
-		studio_edited();
-	}
-}
-
-static void studio_add_layer_menu() {
-	if (studio_canvas() == NULL) {
-		return;
-	}
-	for (i32 i = 0; i < studio_layer_preset_count(); ++i) {
-		if (ui_menu_button(studio_layer_preset_name(i), "", ICON_NONE)) {
-			material_studio_add_layer(i);
-		}
-	}
-	if (ui_menu_button(tr("Empty Layer"), "", ICON_NONE)) {
-		material_studio_add_layer(-1);
-	}
-}
-
 // The layer names are the names of their Material Mix nodes, shown in the node editor too
 static char *studio_layer_name(ui_node_canvas_t *c, i32 k) {
 	if (k == 0) {
@@ -1207,29 +945,17 @@ static char *studio_layer_name(ui_node_canvas_t *c, i32 k) {
 	return string_equals(mix->name, "Material Mix") ? tr("Layer") : mix->name;
 }
 
-// Layer list gestures: a tap picks a layer, a long press lifts it to drag it to another place, a swipe to the left shows
-// the delete button under it. The base layer stays at the bottom.
-
-#define STUDIO_ROW_H   64
-#define STUDIO_TRASH_W 96
-
-enum { LG_NONE, LG_PRESSED, LG_SWIPE, LG_DRAG, LG_SCROLL };
-static i32 studio_lg_mode  = LG_NONE;
-static i32 studio_lg_layer = -1;
-static f32 studio_lg_x0    = 0.0;
-static f32 studio_lg_y0    = 0.0;
-static f32 studio_lg_off0  = 0.0;
-static f32 studio_lg_grab  = 0.0; // Finger to the top of the lifted row
-static f64 studio_lg_t0    = 0.0;
-
-static char *studio_layer_subtitle(ui_node_canvas_t *c, i32 k) {
-	ui_node_t *pat     = studio_graph_node(c, k, STUDIO_ROLE_PATTERN);
-	char      *pattern = tr("Plain");
+static char *studio_pattern_label(ui_node_t *pat) {
 	for (i32 i = 0; pat != NULL && i < pattern_node_count(); ++i) {
 		if (string_equals(pat->type, pattern_node_type(i))) {
-			pattern = pattern_node_name(i);
+			return pattern_node_name(i);
 		}
 	}
+	return tr("Plain");
+}
+
+static char *studio_layer_subtitle(ui_node_canvas_t *c, i32 k) {
+	char *pattern = studio_pattern_label(studio_graph_node(c, k, STUDIO_ROLE_PATTERN));
 	if (k == 0) {
 		return pattern;
 	}
@@ -1237,578 +963,21 @@ static char *studio_layer_subtitle(ui_node_canvas_t *c, i32 k) {
 	return string_tmp("%s, %s", pattern, masks[studio_graph_mask(c, k)]);
 }
 
-static void studio_draw_row(ui_node_canvas_t *c, i32 k, f32 x, f32 y, f32 w, f32 h, f32 off, bool lifted) {
-	f32          r       = 10 * UI_SCALE();
-	f32          pad     = 7 * UI_SCALE();
-	i32          corners = UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR;
-	draw_font_t *font    = g_ui->ops->font;
-	if (off < 0.0) { // The delete button under the row
-		draw_set_color(0xffd23c3c);
-		ui_base_fill_round_rect(x, y, w, h, r, corners);
-		draw_set_color(0xffffffff);
-		draw_set_font(font, g_ui->font_size);
-		char *del = tr("Delete");
-		f32   tw  = draw_string_width(font, g_ui->font_size, del);
-		draw_string(del, x + w - STUDIO_TRASH_W * UI_SCALE() / 2.0 - tw / 2.0, y + (h - draw_font_height(font, g_ui->font_size)) / 2.0);
-	}
-	if (lifted) {
-		for (i32 i = 6; i >= 1; --i) {
-			draw_set_color(0x10000000);
-			ui_base_fill_round_rect(x + off - i, y - i + 3, w + i * 2, h + i * 2, r + i, corners);
-		}
-	}
-	bool clip = off < 0.0 && !g_ui->scissor; // The sliding row stays inside its place
-	if (clip) {
-		draw_scissor((i32)x, (i32)y, (i32)(w + off), (i32)h);
-	}
-	draw_set_color(k == studio_sel ? g_theme->HIGHLIGHT_COL : g_theme->BUTTON_COL);
-	ui_base_fill_round_rect(x + off, y, w, h, r, corners);
-	f32 ts = h - pad * 2;
-	if (studio_layer_tile[k] != NULL) {
-		draw_set_color(0xffffffff);
-		draw_scaled_image(studio_layer_tile[k], x + off + pad, y + pad, ts, ts);
-	}
-	f32 tx = x + off + pad * 2 + ts;
-	f32 lh = draw_font_height(font, g_ui->font_size);
-	draw_set_font(font, g_ui->font_size);
-	draw_set_color(g_theme->TEXT_COL);
-	draw_string(studio_layer_name(c, k), tx, y + h / 2.0 - lh - 1 * UI_SCALE());
-	draw_set_color(g_theme->LABEL_COL);
-	draw_string(studio_layer_subtitle(c, k), tx, y + h / 2.0 + 1 * UI_SCALE());
-	draw_set_color(0xffffffff);
-	if (clip) {
-		draw_flush();
-		gpu_disable_scissor();
-	}
-}
-
-static void studio_draw_layers(ui_node_canvas_t *c) {
-	i32 count = studio_graph_layers(c);
-	if (studio_sel >= count) {
-		studio_sel = count - 1;
-	}
-	f32 rh    = STUDIO_ROW_H * UI_SCALE();
-	f32 gap   = 6 * UI_SCALE();
-	f32 trash = STUDIO_TRASH_W * UI_SCALE();
-	f32 x     = g_ui->_x + 2 * UI_SCALE();
-	f32 w     = g_ui->_w - 4 * UI_SCALE();
-	f32 y0    = g_ui->_y;
-	f32 lx    = g_ui->input_x - g_ui->_window_x;
-	f32 ly    = g_ui->input_y - g_ui->_window_y;
-	bool inside = lx >= x && lx < x + w && ly >= y0 && ly < y0 + count * rh;
-	i32  hit    = inside ? count - 1 - (i32)((ly - y0) / rh) : -1;
-
-	if (g_ui->input_enabled && !ui_menu_show) {
-		if (g_ui->input_started && inside && studio_lg_mode == LG_NONE) {
-			if (hit > 0 && studio_swipe[hit] < 0.0 && lx > x + w - trash) { // Delete
-				studio_begin_edit();
-				studio_graph_remove_layer(c, hit);
-				studio_edited();
-				for (i32 k = 0; k < STUDIO_LAYERS; ++k) {
-					studio_swipe[k] = 0.0;
-				}
-				if (studio_sel >= hit) {
-					studio_sel = studio_sel - 1 < 0 ? 0 : studio_sel - 1;
-				}
-				count = studio_graph_layers(c);
-			}
-			else {
-				studio_lg_mode  = LG_PRESSED;
-				studio_lg_layer = hit;
-				studio_lg_x0    = lx;
-				studio_lg_y0    = ly;
-				studio_lg_t0    = iron_time();
-				studio_lg_off0  = studio_swipe[hit];
-				studio_lg_grab  = ly - (y0 + (count - 1 - hit) * rh);
-				for (i32 k = 0; k < STUDIO_LAYERS; ++k) {
-					if (k != hit) {
-						studio_swipe[k] = 0.0;
-					}
-				}
-			}
-		}
-		if (studio_lg_mode == LG_PRESSED && g_ui->input_down) {
-			f32 dx  = lx - studio_lg_x0;
-			f32 dy  = ly - studio_lg_y0;
-			f32 thr = 10 * UI_SCALE();
-			if (studio_lg_layer > 0 && fabsf(dx) > thr && fabsf(dx) > fabsf(dy)) {
-				studio_lg_mode = LG_SWIPE;
-			}
-			else if (fabsf(dy) > thr) {
-				studio_lg_mode = LG_SCROLL; // The panel scrolls
-			}
-			else if (studio_lg_layer > 0 && iron_time() - studio_lg_t0 > 0.4) {
-				studio_lg_mode            = LG_DRAG;
-				g_ui->input_started_time = 0; // Our long press, not the ui's right click
-			}
-		}
-		if (studio_lg_mode == LG_SWIPE && g_ui->input_down) {
-			studio_swipe[studio_lg_layer] = fminf(0.0, fmaxf(-trash, studio_lg_off0 + lx - studio_lg_x0));
-		}
-		if ((studio_lg_mode == LG_SWIPE || studio_lg_mode == LG_DRAG) && g_ui->input_down) {
-			g_ui->input_dy = 0; // The panel does not scroll under the finger
-		}
-	}
-	// Place of the lifted row among the others, display rows top down, the base is the last
-	i32 target = 0;
-	if (studio_lg_mode == LG_DRAG) {
-		target = (i32)((ly - studio_lg_grab - y0 + rh / 2.0) / rh);
-		target = target < 0 ? 0 : target > count - 2 ? count - 2 : target;
-	}
-	if (studio_lg_mode != LG_NONE && !g_ui->input_down) { // Let go
-		i32 k = studio_lg_layer;
-		if (studio_lg_mode == LG_PRESSED) {
-			if (k > 0 && studio_swipe[k] < 0.0) {
-				studio_swipe[k] = 0.0;
-			}
-			else {
-				studio_sel  = k;
-				studio_stop = 0;
-			}
-		}
-		else if (studio_lg_mode == LG_SWIPE) {
-			studio_swipe[k] = studio_swipe[k] < -trash / 2.0 ? -trash : 0.0;
-		}
-		else if (studio_lg_mode == LG_DRAG) {
-			i32 to = count - 1 - target;
-			if (to != k) {
-				studio_begin_edit();
-				while (k != to) {
-					i32 dir = to > k ? 1 : -1;
-					studio_graph_move_layer(c, k, dir);
-					k += dir;
-				}
-				studio_edited();
-			}
-			studio_sel = to;
-		}
-		studio_lg_mode = LG_NONE;
-	}
-	if (studio_lg_mode != LG_NONE) {
-		studio_ctrl_handle->redraws = 2; // The long press and the drag go on without new input
-	}
-
-	// Rows, the lifted one last over the others
-	i32 slot = 0;
-	for (i32 i = 0; i < count; ++i) {
-		i32 k = count - 1 - i;
-		if (studio_lg_mode == LG_DRAG && k == studio_lg_layer) {
-			continue;
-		}
-		if (studio_lg_mode == LG_DRAG && slot == target) {
-			slot++; // Room for the lifted row
-		}
-		studio_draw_row(c, k, x, y0 + slot * rh, w, rh - gap, k > 0 ? studio_swipe[k] : 0.0, false);
-		slot++;
-	}
-	if (studio_lg_mode == LG_DRAG) {
-		f32 dy = fminf(fmaxf(ly - studio_lg_grab, y0), y0 + (count - 2) * rh);
-		studio_draw_row(c, studio_lg_layer, x, dy, w, rh - gap, 0.0, true);
-	}
-	ui_end_element_of_size(count * rh);
-
-	if (count < STUDIO_LAYERS && ui_icon_button(tr("Add Layer"), ICON_PLUS, UI_ALIGN_CENTER)) {
-		ui_menu_draw(&studio_add_layer_menu, -1, -1);
-	}
-}
-
-// Tiles of the patterns with their names, None first, the picked one framed
-static i32 studio_pattern_grid(i32 current) {
-	i32          cols   = 6;
-	i32          count  = pattern_node_count() + 1;
-	f32_array_t *row    = f32_array_create(cols);
-	i32          tapped = -1;
-	for (i32 i = 0; i < cols; ++i) {
-		row->buffer[i] = 1.0 / cols;
-	}
-	for (i32 r = 0; r * cols < count; ++r) {
-		ui_row(row);
-		f32 size = g_ui->_w - 6 * UI_SCALE(); // The row gives each cell its width
-		for (i32 j = 0; j < cols; ++j) {
-			i32 i = r * cols + j;
-			if (i >= count) {
-				ui_end_element_of_size(size); // The row is as tall as its last cell
-				continue;
-			}
-			gpu_texture_t *thumb = i == 0 ? studio_thumb_none : i - 1 < STUDIO_THUMBS ? studio_thumbs[i - 1] : NULL;
-			if (i == current) {
-				ui_fill(0, 0, g_ui->_w / UI_SCALE() - 2, size / UI_SCALE() + 4, g_theme->HIGHLIGHT_COL);
-			}
-			g_ui->_x += 3 * UI_SCALE();
-			g_ui->_y += 2 * UI_SCALE();
-			g_ui->image_scroll_align = false;
-			i32 state                = thumb != NULL ? ui_image(thumb, 0xffffffff, size) : UI_STATE_IDLE;
-			if (thumb == NULL) {
-				ui_end_element_of_size(size);
-			}
-			g_ui->image_scroll_align = true;
-			g_ui->_y -= 2 * UI_SCALE();
-			if (state == UI_STATE_RELEASED) {
-				tapped = i;
-			}
-		}
-		ui_row(row);
-		for (i32 j = 0; j < cols; ++j) {
-			i32 i = r * cols + j;
-			if (i >= count) {
-				ui_end_element();
-				continue;
-			}
-			ui_text(i == 0 ? tr("None") : pattern_node_name(i - 1), UI_ALIGN_CENTER, 0x00000000);
-		}
-	}
-	array_free(row);
-	free(row);
-	return tapped;
-}
-
-static void studio_draw_pattern(ui_node_canvas_t *c, i32 k) {
-	ui_node_t *pat     = studio_graph_node(c, k, STUDIO_ROLE_PATTERN);
-	i32        count   = pattern_node_count();
-	i32        current = 0;
-	for (i32 i = 0; i < count; ++i) {
-		if (pat != NULL && string_equals(pat->type, pattern_node_type(i))) {
-			current = i + 1;
-		}
-	}
-	i32 tapped = studio_pattern_grid(current);
-	if (tapped >= 0 && tapped != current) {
-		studio_begin_edit();
-		studio_graph_set_pattern(c, k, tapped == 0 ? NULL : pattern_node_type(tapped - 1));
-		studio_edited();
-		pat = studio_graph_node(c, k, STUDIO_ROLE_PATTERN);
-	}
-	if (pat == NULL) {
-		return;
-	}
-	// The pattern node's inputs by name: the shared ones, then its own
-	for (i32 i = 1; i < pat->inputs->length; ++i) {
-		ui_node_socket_t *s = pat->inputs->buffer[i];
-		if (i == 5 || (i == 7 && pat->inputs->buffer[6]->default_value->buffer[0] <= 0.0)) {
-			continue; // Seed has the Shuffle button, Distort Scale shows with Distort
-		}
-		studio_input_slider(s, tr(s->name), s->min, s->max, s->max > 20.0 ? 10 : 100);
-	}
-	ui_row2();
-	if (ui_icon_button(tr("Shuffle"), ICON_REFRESH, UI_ALIGN_CENTER)) {
-		studio_begin_edit();
-		pat->inputs->buffer[5]->default_value->buffer[0] = (f32)iron_random_get_max(1000);
-		studio_edited();
-	}
-	// Mapping toggles between UV and Triplanar
-	i32   mapping = (i32)pat->buttons->buffer[0]->default_value->buffer[0];
-	char *label   = mapping == 0 ? tr("UV Mapping") : tr("Triplanar Mapping");
-	if (ui_button(label, UI_ALIGN_CENTER, "")) {
-		studio_begin_edit();
-		pat->buttons->buffer[0]->default_value->buffer[0] = mapping == 0 ? 1 : 0;
-		studio_edited();
-	}
-}
-
-static void studio_draw_mask(ui_node_canvas_t *c, i32 k) {
-	char *masks[STUDIO_MASK_COUNT] = {tr("Full"), tr("Edges"), tr("Cavities"), tr("Facing Up"), tr("Pattern")};
-	i32   mask                     = studio_graph_mask(c, k);
-	bool  pattern                  = studio_graph_node(c, k, STUDIO_ROLE_PATTERN) != NULL;
-	i32   tapped                   = studio_chips(masks, pattern ? STUDIO_MASK_COUNT : STUDIO_MASK_COUNT - 1, mask, 3);
-	if (tapped >= 0 && tapped != mask) {
-		studio_begin_edit();
-		studio_graph_set_mask(c, k, tapped);
-		studio_edited();
-		mask = tapped;
-	}
-	if (mask != STUDIO_MASK_FULL) {
-		studio_value_slider(10, k, STUDIO_VALUE_MASK_AMOUNT, tr("Amount"), 0.0, 1.0, 100);
-		studio_value_slider(11, k, STUDIO_VALUE_MASK_SOFT, tr("Softness"), 0.0, 1.0, 100);
-		studio_value_slider(12, k, STUDIO_VALUE_MASK_BREAKUP, tr("Breakup"), 0.0, 1.0, 100);
-		if (studio_graph_get(c, k, STUDIO_VALUE_MASK_BREAKUP) > 0.0) {
-			studio_value_slider(14, k, STUDIO_VALUE_MASK_SCALE, tr("Breakup Scale"), 1.0, 200.0, 10);
-		}
-		if (mask == STUDIO_MASK_PATTERN) {
-			bool inv = studio_graph_get(c, k, STUDIO_VALUE_MASK_INVERT) > 0.5;
-			bool was = inv;
-			ui_check(&inv, tr("Where the pattern is low"), "");
-			if (inv != was) {
-				studio_begin_edit();
-				studio_graph_set(c, k, STUDIO_VALUE_MASK_INVERT, inv ? 1.0 : 0.0);
-				studio_edited();
-			}
-		}
-	}
-	studio_value_slider(13, k, STUDIO_VALUE_OPACITY, tr("Opacity"), 0.0, 1.0, 100);
-
-	studio_label(tr("Changes"));
-	char *channels[4] = {tr("Color"), tr("Roughness"), tr("Metallic"), tr("Height")};
-	ui_row4();
-	u32 col = g_theme->BUTTON_COL;
-	for (i32 ch = 0; ch < 4; ++ch) {
-		bool on             = studio_graph_channel(c, k, ch);
-		g_theme->BUTTON_COL = on ? g_theme->HIGHLIGHT_COL : col;
-		if (ui_button(channels[ch], UI_ALIGN_CENTER, "")) {
-			studio_begin_edit();
-			studio_graph_set_channel(c, k, ch, !on);
-			studio_edited();
-		}
-		g_theme->BUTTON_COL = col;
-	}
-	if (studio_graph_channel(c, k, 3)) { // How the height goes over the layers below
-		char *blends[3] = {tr("Mix Height"), tr("Add Height"), tr("Carve Height")};
-		i32   blend     = studio_graph_height_blend(c, k);
-		i32   picked    = studio_chips(blends, 3, blend, 3);
-		if (picked >= 0 && picked != blend) {
-			studio_begin_edit();
-			studio_graph_set_height_blend(c, k, picked);
-			studio_edited();
-		}
-	}
-}
-
-// A Variable's control: slider, switch, chips or menu, swatch, or a gradient with a swatch per stop
-static void studio_draw_variable(ui_node_t *v, i32 slot) {
-	i32          k     = variable_kind(v);
-	char        *label = variable_name(v);
-	f32_array_t *arr   = variable_value_array(v);
-	if (arr == NULL || arr->length == 0) {
-		return;
-	}
-	if (string_equals(variable_id(v), "shuffle")) { // A new random variation of every random node
-		ui_row2();
-		if (ui_icon_button(label, ICON_REFRESH, UI_ALIGN_CENTER)) {
-			studio_begin_edit();
-			arr->buffer[0] = (f32)iron_random_get_max(1000) / 1000.0;
-			studio_edited();
-		}
-		if (ui_icon_button(tr("Original"), ICON_UNDO, UI_ALIGN_CENTER) && arr->buffer[0] != 0.0) {
-			studio_begin_edit();
-			arr->buffer[0] = 0.0;
-			studio_edited();
-		}
-		return;
-	}
-	if (k == 0 || k == 1) { // Number, Whole Number
-		f32 min, max, step;
-		variable_range(v, &min, &max, &step);
-		i32 unit  = variable_unit(v);
-		f32 scale = unit == 1 ? 100.0 : 1.0; // Percent shown 0 to 100
-		f32 prec  = k == 1 ? 1 : step > 0 ? 1.0 / step : (max - min) <= 0.1 ? 10000 : (max - min) <= 2 ? 1000 : 100;
-		studio_take_undo_on_touch();
-		studio_slots[slot] = arr->buffer[0] * scale;
-		f32 before         = studio_slots[slot];
-		ui_slider(&studio_slots[slot], label, min * scale, max * scale, true, k == 1 ? 1 : prec / scale, true, UI_ALIGN_LEFT, true);
-		if (studio_slots[slot] != before) {
-			f32 x = studio_slots[slot] / scale;
-			if (k == 1) {
-				x = math_floor(x + 0.5);
-			}
-			arr->buffer[0] = x;
-			studio_edited();
-		}
-	}
-	else if (k == 2) { // Toggle
-		bool on = arr->buffer[0] != 0;
-		if (ui_check(&on, label, "") != (arr->buffer[0] != 0)) {
-			studio_begin_edit();
-			arr->buffer[0] = on ? 1.0 : 0.0;
-			studio_edited();
-		}
-	}
-	else if (k == 3) { // Choice
-		string_array_t *options = variable_options(v);
-		i32             picked  = (i32)arr->buffer[0];
-		if (options->length > 0 && options->length <= 3) {
-			studio_label(label);
-			i32 tapped = studio_chips((char **)options->buffer, options->length, picked, options->length);
-			if (tapped >= 0 && tapped != picked) {
-				studio_begin_edit();
-				arr->buffer[0] = tapped;
-				studio_edited();
-			}
-		}
-		else if (options->length > 3) {
-			i32 h = picked;
-			ui_combo(&h, options, label, true, UI_ALIGN_LEFT, true);
-			if (h != picked) {
-				studio_begin_edit();
-				arr->buffer[0] = h;
-				studio_edited();
-			}
-		}
-	}
-	else if (k == 4 && arr->length >= 3) { // Color
-		ui_row2();
-		ui_text(label, UI_ALIGN_LEFT, 0x00000000);
-		studio_swatch(arr->buffer);
-	}
-	else if (k == 5 && arr->length >= 10) { // Gradient: its colors, a swatch per stop in order of position
-		studio_label(label);
-		i32 sorted[STUDIO_RAMP_MAX];
-		i32 len    = studio_ramp_sorted(arr, sorted);
-		f32 w      = g_ui->_w / (f32)UI_SCALE();
-		f32 h      = g_theme->ELEMENT_H * 0.6;
-		i32 slices = 48;
-		for (i32 s = 0; s < slices; ++s) {
-			f32 col[3];
-			studio_ramp_color_at(arr, sorted, len, (s + 0.5) / slices, col);
-			ui_fill(w * s / slices, 0, w / slices + 1.0, h, color_from_floats(col[0], col[1], col[2], 1.0));
-		}
-		g_ui->_y += h * UI_SCALE();
-		f32_array_t *row = f32_array_create(len);
-		for (i32 i = 0; i < len; ++i) {
-			row->buffer[i] = 1.0 / len;
-		}
-		ui_row(row);
-		for (i32 i = 0; i < len; ++i) {
-			studio_swatch(arr->buffer + sorted[i] * 5);
-		}
-		array_free(row);
-		free(row);
-	}
-}
-
-// Variables mode: the controls of the material's Variables, by group
-static void studio_draw_variables(ui_node_canvas_t *c) {
-	ui_node_t_array_t *vars  = variable_list(c);
-	i32                group = -1;
-	for (i32 i = 0; i < vars->length && i < STUDIO_SLOTS; ++i) {
-		ui_node_t *v = vars->buffer[i];
-		if (variable_group(v) != group) {
-			group = variable_group(v);
-			studio_label(variable_group_name(group));
-		}
-		studio_draw_variable(v, i);
-	}
-}
-
-static void studio_draw_controls(ui_node_canvas_t *c) {
-	studio_label(tr("Presets"));
-	i32   n = studio_preset_count();
-	char *presets[32];
-	for (i32 i = 0; i < n && i < 32; ++i) {
-		presets[i] = studio_preset_name(i);
-	}
-	i32 preset = studio_chips(presets, n, -1, 3);
-	if (preset >= 0) {
-		material_studio_preset(preset);
-	}
-
-	studio_label(tr("Layers"));
-	studio_draw_layers(c);
-
-	i32 k = studio_sel;
-	if (k < 0 || k >= studio_graph_layers(c)) {
-		return;
-	}
-	studio_label(k == 0 ? tr("Base Pattern") : tr("Pattern"));
-	studio_draw_pattern(c, k);
-	bool pattern = studio_graph_node(c, k, STUDIO_ROLE_PATTERN) != NULL;
-
-	studio_label(tr("Colors"));
-	studio_draw_ramp(studio_graph_node(c, k, STUDIO_ROLE_RAMP), pattern);
-	if (pattern) {
-		studio_value_slider(0, k, STUDIO_VALUE_CELL_VAR, tr("Cell Variation"), 0.0, 1.0, 100);
-		bool random = studio_graph_get(c, k, STUDIO_VALUE_CELL_COLORS) > 0.5;
-		bool was    = random;
-		ui_check(&random, tr("A random color of the ramp for each cell"), "");
-		if (random != was) {
-			studio_begin_edit();
-			studio_graph_set(c, k, STUDIO_VALUE_CELL_COLORS, random ? 1.0 : 0.0);
-			studio_edited();
-		}
-	}
-
-	studio_label(tr("Surface"));
-	studio_value_slider(1, k, STUDIO_VALUE_ROUGHNESS, tr("Roughness"), 0.0, 1.0, 100);
-	if (pattern) {
-		studio_value_slider(2, k, STUDIO_VALUE_ROUGH_VAR, tr("Roughness Variation"), 0.0, 1.0, 100);
-	}
-	studio_value_slider(3, k, STUDIO_VALUE_METALLIC, tr("Metallic"), 0.0, 1.0, 100);
-	if (pattern) {
-		studio_value_slider(5, k, STUDIO_VALUE_METAL_VAR, tr("Metallic Variation"), 0.0, 1.0, 100);
-		studio_value_slider(4, k, STUDIO_VALUE_DEPTH, tr("Depth"), 0.0, 1.0, 100);
-		studio_value_slider(6, k, STUDIO_VALUE_CAVITY, tr("Cavity Darkening"), 0.0, 1.0, 100);
-		studio_value_slider(9, k, STUDIO_VALUE_CUTOUT, tr("Cutout"), 0.0, 1.0, 100);
-	}
-	studio_value_slider(7, k, STUDIO_VALUE_EMISSION, tr("Glow"), 0.0, 1.0, 100);
-	studio_value_slider(8, k, STUDIO_VALUE_SUBSURFACE, tr("Subsurface"), 0.0, 1.0, 100);
-
-	if (k > 0) {
-		studio_label(tr("Mask"));
-		studio_draw_mask(c, k);
-	}
-	g_ui->_y += 12 * UI_SCALE();
-}
-
 static void studio_open_nodes(void *_) {
 	ui_base_show_material_nodes();
 }
 
-// The material name as the title, editable in place
-static void studio_draw_title(f32 w, f32 h) {
-	i32 _font_size = g_ui->font_size;
-	i32 _element_h = g_theme->ELEMENT_H;
-	i32 _button_h  = g_theme->BUTTON_H;
-	u32 _button    = g_theme->BUTTON_COL;
-	u32 _hover     = g_theme->HOVER_COL;
-	g_ui->font_size     = _font_size * 3;
-	g_theme->ELEMENT_H  = (i32)(h / UI_SCALE());
-	g_theme->BUTTON_H   = g_theme->ELEMENT_H;
-	g_theme->BUTTON_COL = 0x00000000; // Reads as a title, the field shows while typing
-	g_theme->HOVER_COL  = 0x18ffffff;
-	draw_set_font(g_ui->ops->font, g_ui->font_size);
-	f32 _w     = g_ui->_w;
-	g_ui->_w   = w;
-	char *name = ui_text_input(&studio_material->canvas->name, "", UI_ALIGN_LEFT, true, false);
-	g_ui->_w   = _w;
-	g_ui->font_size     = _font_size;
-	g_theme->ELEMENT_H  = _element_h;
-	g_theme->BUTTON_H   = _button_h;
-	g_theme->BUTTON_COL = _button;
-	g_theme->HOVER_COL  = _hover;
-	draw_set_font(g_ui->ops->font, g_ui->font_size);
-	if (ui_item_changed() && !string_equals(name, "")) {
-		studio_material->canvas->name = string_copy(slot_material_unique_name(studio_material->canvas, name));
+// Closes the studio, the node editor opens on the material
+void material_studio_edit_nodes() {
+	if (!material_studio_show) {
+		return;
 	}
+	material_studio_close();
+	sys_notify_on_next_frame(&studio_open_nodes, NULL);
 }
 
-// The name at the left, the buttons at the right of its row
-static void studio_draw_header(f32 w) {
-	draw_font_t *font = g_ui->ops->font;
-	f32          h    = math_floor(draw_font_height(font, g_ui->font_size * 3) + 16 * UI_SCALE());
-	f32          y0   = g_ui->_y;
-	f32          _x   = g_ui->_x;
-	f32          _w   = g_ui->_w;
-	f32          bw   = math_floor(140 * UI_SCALE());
-	f32          gap  = math_floor(8 * UI_SCALE());
-	f32          by   = math_floor(y0 + (h - UI_ELEMENT_H()) / 2.0);
-
-	studio_draw_title(w - bw * 3 - gap * 4, h);
-
-	g_ui->_y = by;
-	g_ui->_x = _x + w - bw * 3 - gap * 2;
-	g_ui->_w = bw;
-	if (ui_icon_button(tr("Edit Nodes"), ICON_NODES, UI_ALIGN_CENTER)) {
-		material_studio_close();
-		sys_notify_on_next_frame(&studio_open_nodes, NULL);
-	}
-
-	g_ui->_y = by;
-	g_ui->_x = _x + w - bw * 2 - gap;
-	g_ui->_w = bw;
-	if (ui_icon_button(tr("Save"), ICON_CHECK, UI_ALIGN_CENTER)) {
-		material_studio_save();
-	}
-
-	g_ui->_y = by;
-	g_ui->_x = _x + w - bw;
-	g_ui->_w = bw;
-	if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-		material_studio_cancel();
-	}
-
-	g_ui->_x = _x;
-	g_ui->_w = _w;
-	g_ui->_y = y0 + h;
-}
-
+// The background and the preview, in the rectangle the native editor leaves for it. A drag that starts on the preview
+// turns it, pinch or wheel zooms.
 void ui_material_studio_render_ui() {
 	f64 t = (iron_time() - studio_anim_start) / STUDIO_ANIM_TIME;
 	t     = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
@@ -1820,72 +989,28 @@ void ui_material_studio_render_ui() {
 	if (!material_studio_show && !studio_closing) {
 		return;
 	}
-	ui_node_canvas_t *c = studio_canvas();
-	if (c == NULL) {
+	if (studio_canvas() == NULL) {
 		return;
 	}
-	f32 k = studio_closing ? 1.0 - t * t : 1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t);
+	f32 k = studio_closing ? 1.0 - t : t; // Fades as the native editor does
 	if (t < 1.0) {
 		base_redraw_ui();
 		iron_delay_idle_sleep();
 	}
-	if (material_studio_show && keyboard_started("escape") && !ui_menu_show) {
+	if (material_studio_show && keyboard_started("escape")) {
 		material_studio_close();
 	}
 
-	i32  margin         = math_floor(16 * UI_SCALE());
-	i32  x              = margin;
-	i32  y              = margin;
-	i32  w              = iron_window_width() - margin * 2;
-	i32  h              = iron_window_height() - margin * 2;
-	bool input          = g_ui->input_enabled;
-	g_ui->input_enabled = material_studio_show && !ui_menu_show && g_ui->combo_selected_id == 0;
-
-	// Opaque panel over everything
-	ui_base_panel_window(studio_back_handle, x, y, w, h, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR, true);
-	ui_window_composite_alpha = k;
-	ui_window_composite_scale = 0.96 + 0.04 * k;
-	ui_window_composite_ox    = x + w / 2.0;
-	ui_window_composite_oy    = y + h / 2.0;
-	ui_end_window();
-
-	u32 window_bg          = g_theme->WINDOW_BG_COL;
-	g_theme->WINDOW_BG_COL = 0x00000000; // The panel shows through
-	i32 pad                = math_floor(12 * UI_SCALE());
-	i32 head_h             = math_floor(g_ui->font_size * 4 * 1.3 + 32 * UI_SCALE());
-	if (ui_window(studio_head_handle, x + pad, y + pad / 2, w - pad * 2, head_h, false)) {
-		studio_draw_header(w - pad * 2);
-	}
-	ui_end_window();
-
-	// Preview left and controls right, the preview on top in portrait
-	i32  body_y   = y + pad / 2 + head_h;
-	i32  body_h   = h - head_h - pad;
-	bool portrait = w < h;
-	// The preview takes the full height next to the controls, the full width above them in portrait
-	i32  view_w   = portrait ? w - pad * 2 : math_floor((w - pad * 3) * 0.55);
-	i32  view_h   = portrait ? math_floor(body_h * 0.45) : body_h;
-	i32  view_x   = portrait ? x + pad : x + w - pad - view_w; // Preview at the right, controls at the left
-	i32  ctrl_x   = x + pad;
-	i32  ctrl_y   = portrait ? body_y + view_h + pad : body_y;
-	i32  ctrl_w   = portrait ? w - pad * 2 : view_x - pad - ctrl_x;
-	i32  ctrl_h   = portrait ? y + h - pad - ctrl_y : body_h;
-
-	f32  bs        = math_floor(UI_ELEMENT_H() * 1.4); // Cube or sphere button, at the bottom left
-	f32  bm        = math_floor(10 * UI_SCALE());
-	bool over_view = mouse_x >= view_x && mouse_x < view_x + view_w && mouse_y >= body_y && mouse_y < body_y + view_h;
-	bool over_bt   = mouse_x < view_x + bm + bs && mouse_y >= body_y + view_h - bm - bs;
-	if (ui_window(studio_view_handle, view_x, body_y, view_w, view_h, false)) {
-		if (studio_preview != NULL) { // The square render covers the view, cut at the sides (or top and bottom)
-			f32 s = fmaxf(view_w, view_h);
-			draw_set_color(0xffffffff);
-			draw_scaled_image(studio_preview, (view_w - s) / 2.0, (view_h - s) / 2.0, s, s);
-		}
-		// Turn the cube with the finger
-		if (g_ui->input_enabled && g_ui->input_started && over_view && !over_bt) {
+	f32  vx   = studio_view[0];
+	f32  vy   = studio_view[1];
+	f32  vw   = studio_view[2];
+	f32  vh   = studio_view[3];
+	bool over = vw > 0 && mouse_x >= vx && mouse_x < vx + vw && mouse_y >= vy && mouse_y < vy + vh;
+	if (material_studio_show) {
+		if (mouse_started("left") && over) {
 			studio_orbiting = true;
 		}
-		if (!g_ui->input_down) {
+		if (!mouse_down("left")) {
 			studio_orbiting = false;
 		}
 		if (studio_orbiting && (mouse_movement_x != 0 || mouse_movement_y != 0)) {
@@ -1893,37 +1018,34 @@ void ui_material_studio_render_ui() {
 			studio_pitch       = fmaxf(-1.2, fminf(1.2, studio_pitch + mouse_movement_y * 0.01));
 			studio_need_render = true;
 		}
-		g_ui->_x = bm;
-		g_ui->_y = view_h - bs - bm;
-		g_ui->_w = bs;
-		if (ui_icon_button("", studio_sphere ? ICON_CUBE : ICON_SPHERE, UI_ALIGN_CENTER)) {
-			studio_sphere      = !studio_sphere;
+		if (mouse_wheel_delta != 0 && over) {
+			studio_dist        = fmaxf(1.0, fminf(4.0, studio_dist * (1.0 + mouse_wheel_delta * 0.08)));
 			studio_need_render = true;
 		}
 	}
-	ui_end_window();
-	// Pinch or wheel over the preview zooms
-	if (material_studio_show && !ui_menu_show && mouse_wheel_delta != 0 && over_view) {
-		studio_dist        = fmaxf(1.0, fminf(4.0, studio_dist * (1.0 + mouse_wheel_delta * 0.08)));
-		studio_need_render = true;
-	}
 
-	if (ui_window(studio_ctrl_handle, ctrl_x, ctrl_y, ctrl_w, ctrl_h, false)) {
-		if (studio_vars) {
-			studio_draw_variables(c);
-		}
-		else {
-			studio_draw_controls(c);
+	studio_back_handle->redraws = 2;
+	u32 window_bg               = g_theme->WINDOW_BG_COL;
+	g_theme->WINDOW_BG_COL      = 0x00000000;
+	if (ui_window(studio_back_handle, 0, 0, iron_window_width(), iron_window_height(), false)) {
+		draw_set_color(STUDIO_BACKGROUND); // The native editor draws its controls over it
+		draw_filled_rect(0, 0, iron_window_width(), iron_window_height());
+		if (studio_preview != NULL && vw > 0 && vh > 0) { // The square render covers the view, cut at the sides
+			f32 s = fmaxf(vw, vh);
+			draw_set_color(0xffffffff);
+			draw_scissor((i32)vx, (i32)vy, (i32)vw, (i32)vh);
+			draw_scaled_image(studio_preview, vx + (vw - s) / 2.0, vy + (vh - s) / 2.0, s, s);
+			draw_flush();
+			gpu_disable_scissor();
 		}
 	}
+	ui_window_composite_alpha = k;
 	ui_end_window();
-	g_theme->WINDOW_BG_COL = window_bg;
-
 	ui_window_composite_alpha = 1.0;
-	ui_window_composite_scale = 1.0;
-	g_ui->input_enabled       = input;
+	g_theme->WINDOW_BG_COL    = window_bg;
 
 	if (studio_need_render || studio_need_compile) {
 		iron_delay_idle_sleep();
 	}
 }
+

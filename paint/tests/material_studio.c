@@ -35,6 +35,15 @@ int V_MASK_AMOUNT = 6;
 
 int M_EDGES = 1;
 
+// As in app_api_studio.c
+int KEY_VALUE    = 256;
+int KEY_MASK     = 770;
+int KEY_VARIABLE = 4096;
+
+float native_before = 0.0;
+int   native_stops  = 0;
+int   native_var    = -1;
+
 void check(int ok, char *name) {
 	checks = checks + 1;
 	if (!ok) {
@@ -310,6 +319,85 @@ void next() {
 		material_studio_close();
 		saved_materials_delete(saved_i);
 		check(saved_materials_count() == saved, "deleting it from the library");
+		// The native editor's interface (app_api_studio.h) on a new studio material
+		mat = material_studio_new();
+	}
+	else if (step == 25 + PRESETS) {
+		app_studio_apply_preset(6); // Stone
+	}
+	else if (step == 26 + PRESETS) {
+		check(app_studio_pattern_current() > 0 && app_studio_control_count() > 5, "native: a preset gives a pattern and its controls");
+		check(app_studio_layer_add(0) == 1 && app_studio_layer_count() == 2, "native: a layer is added and selected");
+		native_before = material_studio_get_value(1, V_ROUGHNESS);
+		app_studio_edit_begin(); // A slider drag: several values, one undo step
+		app_studio_control_set(KEY_VALUE + V_ROUGHNESS, 0.2);
+		app_studio_control_set(KEY_VALUE + V_ROUGHNESS, 0.3);
+		app_studio_control_set(KEY_VALUE + V_ROUGHNESS, 0.4);
+	}
+	else if (step == 27 + PRESETS) {
+		check(material_studio_get_value(1, V_ROUGHNESS) > 0.39 && material_studio_get_value(1, V_ROUGHNESS) < 0.41, "native: a drag sets the value");
+		app_studio_edit_end();
+	}
+	else if (step == 28 + PRESETS) {
+		history_undo();
+	}
+	else if (step == 29 + PRESETS) {
+		float r = material_studio_get_value(1, V_ROUGHNESS);
+		check(r > native_before - 0.01 && r < native_before + 0.01, string("native: one undo takes the whole drag back (%.2f, %.2f)", r, native_before));
+		check(app_studio_layer_count() == 2, "native: the layer stays");
+		native_stops = app_studio_ramp_count();
+		app_studio_ramp_add();
+	}
+	else if (step == 30 + PRESETS) {
+		check(app_studio_ramp_count() == native_stops + 1, "native: a ramp stop is added");
+		app_studio_ramp_remove();
+		app_studio_ramp_set_hard(1);
+		app_studio_control_set(KEY_MASK, 3); // Facing up
+	}
+	else if (step == 31 + PRESETS) {
+		check(app_studio_ramp_hard(), "native: hard steps");
+		check(count_type(mat, "DIRECTION_MASK") == 1, "native: the mask is set");
+		app_studio_layer_add(-1);
+		check(app_studio_layer_count() == 3, "native: an empty layer");
+		app_studio_layer_move(2, 1);
+		app_studio_layer_select(0);
+		app_studio_pattern_set(0);
+	}
+	else if (step == 32 + PRESETS) {
+		check(app_studio_pattern_current() == 0, "native: the base pattern is taken away");
+		app_studio_layer_remove(2);
+	}
+	else if (step == 33 + PRESETS) {
+		check(app_studio_layer_count() == 2, "native: a layer is removed");
+		app_studio_cancel();
+	}
+	else if (step == 34 + PRESETS) {
+		check(!material_studio_is_open(), "native: cancel closes");
+		script_material_set(mat);
+		check(material_studio_layers() == 1 && count_type(mat, "PATTERN_CELLS") == 0, "native: cancel puts the material back as it was");
+		material_studio_open(lib_b); // Variables mode
+	}
+	else if (step == 35 + PRESETS) {
+		check(material_studio_is_open() && app_studio_control_count() > 0, string("native: a library material shows its Variables (%d)", app_studio_control_count()));
+		native_var = -1;
+		for (int i = 0; i < variable_count(lib_b->canvas); ++i) {
+			if (native_var < 0 && variable_kind(variable_at(lib_b->canvas, i)) == 0) {
+				native_var = i;
+			}
+		}
+		check(native_var >= 0, "native: it has a number");
+		if (native_var >= 0) {
+			ui_node_t *v = variable_at(lib_b->canvas, native_var);
+			native_before = variable_param(v, 0) + (variable_param(v, 1) - variable_param(v, 0)) * 0.25;
+			app_studio_control_set(KEY_VARIABLE + native_var, native_before);
+		}
+	}
+	else if (step == 36 + PRESETS) {
+		if (native_var >= 0) {
+			float x = variable_value(variable_at(lib_b->canvas, native_var), 0);
+			check(x > native_before - 0.001 && x < native_before + 0.001, string("native: a Variable is set (%.3f)", x));
+		}
+		app_studio_save();
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));

@@ -40,6 +40,14 @@ struct MacRootView: View {
 		} detail: {
 			EngineCanvas()
 				.ignoresSafeArea()
+				.studioCanvas()
+				.overlay {
+					if StudioStore.shared.open {
+						MaterialStudioView()
+							.transition(.opacity)
+					}
+				}
+				.animation(.easeOut(duration: 0.2), value: StudioStore.shared.open) // As the engine fades the preview
 				.overlay(alignment: .top) {
 					HistoryToastView()
 				}
@@ -104,6 +112,11 @@ struct PadRootView: View {
 		ZStack {
 			EngineCanvas()
 				.ignoresSafeArea()
+				.studioCanvas()
+			if StudioStore.shared.open {
+				MaterialStudioView()
+					.transition(.opacity)
+			}
 			if AppStore.shared.ready && !AppStore.shared.engineModal && !ProjectsStore.shared.shown {
 				PadControls()
 					.transition(.opacity)
@@ -116,6 +129,7 @@ struct PadRootView: View {
 				HistoryToastView()
 			}
 		}
+			.animation(.easeOut(duration: 0.2), value: StudioStore.shared.open) // As the engine fades the preview
 			.statusBarHidden()
 			.persistentSystemOverlays(.hidden)
 			.defersSystemGestures(on: .all)

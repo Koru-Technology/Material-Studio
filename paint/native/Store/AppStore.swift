@@ -63,6 +63,7 @@ final class AppStore: ChangeOnly {
 		update(\.cameraRotation, SIMD4(s.camera_rot.0, s.camera_rot.1, s.camera_rot.2, s.camera_rot.3))
 		LayersStore.shared.refresh(s)
 		MaterialsStore.shared.refresh()
+		StudioStore.shared.refresh()
 		BrushesStore.shared.refresh()
 		ProjectsStore.shared.refresh(s)
 	}
