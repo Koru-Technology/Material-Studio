@@ -10,6 +10,7 @@ final class AppStore: ChangeOnly {
 
 	private(set) var ready         = false
 	private(set) var tool: Int32   = 0
+	private var pendingTool: Int32? // Chosen and shown, set in the engine after the next frame
 	private(set) var brushRadius   = Float(0.5)
 	private(set) var brushOpacity  = Float(1)
 	private(set) var brushHardness = Float(0.8)
@@ -38,7 +39,7 @@ final class AppStore: ChangeOnly {
 			return
 		}
 		update(\.ready, true)
-		update(\.tool, s.tool)
+		update(\.tool, pendingTool ?? s.tool)
 		update(\.brushRadius, s.brush_radius)
 		update(\.brushOpacity, s.brush_opacity)
 		update(\.brushHardness, s.brush_hardness)
@@ -68,6 +69,18 @@ final class AppStore: ChangeOnly {
 		ProjectsStore.shared.refresh(s)
 	}
 
+
+	// Shows the tool as selected at once, the engine takes it after the next frame (its material parse holds the main thread)
+	func selectTool(_ id: Int32) {
+		pendingTool = id
+		tool        = id
+		FrameDriver.shared.afterNextFrame { [self] in
+			if pendingTool == id { // Not a later choice still waiting
+				pendingTool = nil
+			}
+			perform { app_set_tool(id) }
+		}
+	}
 
 	// Actions: the engine changes, refresh picks it up right away instead of on the next frame.
 	// Between frames only (app_api.h): a frame's nested modal loop must not run them.

@@ -1,6 +1,7 @@
 import SwiftUI
 
 #if os(iOS)
+import UIKit
 // MARK: - Tools
 
 struct PadToolColumn: View {
@@ -11,27 +12,7 @@ struct PadToolColumn: View {
 			VStack(spacing: 10) {
 				VStack(spacing: 2) {
 					ForEach(paintTools) { tool in
-						Button {
-							if store.tool == tool.id {
-								PadPopovers.shared.toggle("Tool \(tool.id)") // A second tap on the tool opens its properties
-							}
-							else {
-								if PadPopovers.shared.shown?.hasPrefix("Tool ") == true {
-									PadPopovers.shared.close() // Another tool's properties
-								}
-								store.perform { app_set_tool(tool.id) }
-							}
-						} label: {
-							Image(systemName: tool.symbol)
-								.font(.system(size: 18))
-								.frame(width: 44, height: 40)
-								.background(store.tool == tool.id ? Color.accentColor.opacity(0.35) : .clear, in: .rect(cornerRadius: 10))
-						}
-						.accessibilityLabel(tool.name)
-						.padPopover("Tool \(tool.id)", arrowEdge: .leading) {
-							ToolPropertiesView()
-								.frame(width: 320, height: 460)
-						}
+						PadToolButton(tool: tool)
 					}
 				}
 				.padding(4)
@@ -49,6 +30,86 @@ struct PadToolColumn: View {
 			}
 		}
 		.foregroundStyle(.primary)
+	}
+}
+
+// A tool in the column, chosen on touch down rather than on release
+struct PadToolButton: View {
+	let tool: Tool
+	private var store = AppStore.shared
+
+	init(tool: Tool) {
+		self.tool = tool
+	}
+
+	var body: some View {
+		VStack(spacing: 3) {
+			Image(systemName: tool.symbol)
+				.font(.system(size: 27))
+				.symbolRenderingMode(.palette)
+				.foregroundStyle(.secondary, tool.group.color) // The group's color on the accent layer
+			Text(tool.name)
+				.font(.system(size: 10, weight: .medium))
+				.foregroundStyle(tool.group.color)
+		}
+		.frame(width: 66, height: 62)
+		.background(store.tool == tool.id ? tool.group.color.mix(with: Color(white: 0.25), by: 0.6) : .clear, in: .rect(cornerRadius: 12))
+		.transaction { $0.disablesAnimations = true; $0.animation = nil } // The selection shows at once, no fade
+		.contentShape(.rect)
+		.gesture(TouchDownGesture { select() })
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(tool.name)
+		.accessibilityAddTraits(.isButton)
+		.accessibilityAction { select() }
+		.padPopover("Tool \(tool.id)", arrowEdge: .leading) {
+			ToolPropertiesView()
+				.frame(width: 320, height: 460)
+		}
+	}
+
+	private func select() {
+		if store.tool == tool.id {
+			PadPopovers.shared.toggle("Tool \(tool.id)") // A second touch on the tool opens its properties
+		}
+		else {
+			if PadPopovers.shared.shown?.hasPrefix("Tool ") == true {
+				PadPopovers.shared.close() // Another tool's properties
+			}
+			store.selectTool(tool.id)
+		}
+	}
+}
+
+// Fires once as a finger lands. A UIKit recognizer: on the tool column SwiftUI's gestures got the touch only on release
+// or after ~0.75 s (measured on the iPad), a recognizer is given it at once
+struct TouchDownGesture: UIGestureRecognizerRepresentable {
+	let action: () -> Void
+
+	final class Recognizer: UIGestureRecognizer {
+		override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+			if state == .possible {
+				state = .recognized
+			}
+		}
+
+		override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+			state = .failed
+		}
+
+		override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+			state = .failed
+		}
+	}
+
+	func makeUIGestureRecognizer(context: Context) -> Recognizer {
+		let r = Recognizer()
+		r.cancelsTouchesInView = false
+		r.delaysTouchesBegan   = false
+		return r
+	}
+
+	func handleUIGestureRecognizerAction(_ recognizer: Recognizer, context: Context) {
+		action()
 	}
 }
 

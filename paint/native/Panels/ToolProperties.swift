@@ -1,14 +1,31 @@
 import SwiftUI
 
+// What a tool does to the layer; the toolbar colors its tools by it
+enum ToolGroup {
+	case paint, place, remove, retouch, sample
+
+	var color: Color {
+		switch self {
+		case .paint:   .blue
+		case .place:   .purple
+		case .remove:  .pink
+		case .retouch: .orange
+		case .sample:  .teal
+		}
+	}
+}
+
 struct Tool: Identifiable {
 	let id: Int32 // app_tool_t
 	let name: String
 	let symbol: String
+	let group: ToolGroup
 
-	init(_ tool: app_tool_t, _ name: String, _ symbol: String) {
+	init(_ tool: app_tool_t, _ name: String, _ symbol: String, _ group: ToolGroup) {
 		id = tool.id
 		self.name = name
 		self.symbol = symbol
+		self.group = group
 	}
 }
 
@@ -20,15 +37,15 @@ extension app_tool_t {
 
 // The painting tools the toolbar offers
 let paintTools: [Tool] = [
-	Tool(APP_TOOL_BRUSH, "Brush", "paintbrush.pointed"),
-	Tool(APP_TOOL_ERASER, "Eraser", "eraser"),
-	Tool(APP_TOOL_FILL, "Fill", "drop"),
-	Tool(APP_TOOL_PARTICLE, "Particle", "sparkles"),
-	Tool(APP_TOOL_PICKER, "Picker", "eyedropper"),
-	Tool(APP_TOOL_CLONE, "Clone", "square.on.square.dashed"),
-	Tool(APP_TOOL_BLUR, "Blur", "drop.halffull"),
-	Tool(APP_TOOL_DECAL, "Decal", "seal"),
-	Tool(APP_TOOL_TEXT, "Text", "textformat"),
+	Tool(APP_TOOL_BRUSH, "Brush", "pencil.and.scribble", .paint),
+	Tool(APP_TOOL_PARTICLE, "Particle", "wand.and.stars", .paint),
+	Tool(APP_TOOL_FILL, "Fill", "square.dashed.inset.filled", .paint),
+	Tool(APP_TOOL_DECAL, "Decal", "star.square.on.square", .place),
+	Tool(APP_TOOL_TEXT, "Text", "text.cursor", .place),
+	Tool(APP_TOOL_ERASER, "Eraser", "eraser.line.dashed", .remove),
+	Tool(APP_TOOL_CLONE, "Clone", "square.on.square.dashed", .retouch),
+	Tool(APP_TOOL_BLUR, "Blur", "circle.dotted.and.circle", .retouch),
+	Tool(APP_TOOL_PICKER, "Picker", "eyedropper", .sample),
 ]
 
 // MARK: - Tool properties (iPad popover, Mac inspector)

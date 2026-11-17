@@ -19,6 +19,8 @@ final class FrameDriver: NSObject {
 	private var fallback: Timer?
 	private var waitTimer: Timer?
 	private var lastTick: CFTimeInterval = 0
+	private var afterFrames: [() -> Void] = []
+	private var afterFramesTicks = 0
 
 	// Starts the engine once the view is in a window and has a size (SwiftUI adds it after creating it)
 	func start(view: PlatformView) {
@@ -98,6 +100,23 @@ final class FrameDriver: NSObject {
 			return
 		}
 		AppStore.shared.refresh()
+		if !afterFrames.isEmpty {
+			afterFramesTicks += 1
+			if afterFramesTicks >= 2 {
+				let actions = afterFrames
+				afterFrames      = []
+				afterFramesTicks = 0
+				for action in actions {
+					action()
+				}
+			}
+		}
+	}
+
+	// Runs an action between frames once the next one has drawn: what the UI just changed reaches the screen before a
+	// long engine call (a tool change parses materials, 50-100 ms) holds the main thread
+	func afterNextFrame(_ action: @escaping () -> Void) {
+		afterFrames.append(action)
 	}
 
 	// The engine stopped (a script quit, the user quit and saved): nothing draws or takes input any more
