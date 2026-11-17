@@ -141,7 +141,7 @@ void        app_project_new(void);           // Closes the screen
 
 // New project templates: the meshes and shapes a new project starts on
 int32_t     app_template_count(void);
-const char *app_template_id(int32_t index);              // cube_bevel, sphere_2048, ...
+const char *app_template_id(int32_t index);              // cube_bevel, sphere, ...
 int32_t     app_template_selected(void);                 // The one the last new project used
 void        app_project_new_from_template(int32_t index); // Closes the projects screen
 bool        app_take_new_project_request(void);           // Once true after the engine asked for the new project sheet

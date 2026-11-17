@@ -264,7 +264,8 @@ char *project_uuid_get() {
 	return project_uuid;
 }
 
-// The templates of a new project: the meshes in data/meshes and the procedural shapes (util_shape_make_data)
+// The templates of a new project: the meshes in data/meshes and the procedural shapes (util_shape_make_data, which
+// also makes the dense plane_2048 and sphere_2048 scripts ask for by name)
 void project_fetch_default_meshes() {
 	if (project_default_mesh_list == NULL) {
 		project_default_mesh_list = file_read_directory(string("%s%smeshes", path_data(), PATH_SEP));
@@ -275,10 +276,8 @@ void project_fetch_default_meshes() {
 		// Procedural
 		any_array_push(project_default_mesh_list, "empty");
 		any_array_push(project_default_mesh_list, "plane");
-		any_array_push(project_default_mesh_list, "plane_2048");
 		any_array_push(project_default_mesh_list, "cube");
 		any_array_push(project_default_mesh_list, "sphere");
-		any_array_push(project_default_mesh_list, "sphere_2048");
 		any_array_push(project_default_mesh_list, "cone");
 		any_array_push(project_default_mesh_list, "cylinder");
 		any_array_push(project_default_mesh_list, "capsule");
