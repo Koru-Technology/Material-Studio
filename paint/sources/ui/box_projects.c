@@ -52,17 +52,21 @@ void box_projects_load(char *path) {
 	sys_notify_on_next_frame(&box_projects_load_on_next_frame, NULL);
 }
 
-// Removes a recent project with its files: the project, its icon and its data folder
+// The files of a project: the project, its icon, its data folder and its history journal
+void box_projects_delete_files(char *path) {
+	char *base = substring(path, 0, string_length(path) - 4);
+	hstore_journal_delete_for_file(path); // Named by the uuid in the file
+	iron_delete_file(path);
+	iron_delete_file(string("%s_icon.png", base));
+	iron_delete_file(base);
+}
+
+// Removes a recent project with its files
 void box_projects_delete(i32 i) {
 	if (i < 0 || i >= g_config->recent_projects->length) {
 		return;
 	}
-	char *path = box_projects_recent_path(i);
-	char *base = substring(path, 0, string_length(path) - 4);
-	hstore_journal_delete_for_file(path); // Its history journal, named by the uuid in the file
-	iron_delete_file(path);
-	iron_delete_file(string("%s_icon.png", base));
-	iron_delete_file(base);
+	box_projects_delete_files(box_projects_recent_path(i));
 	array_splice(g_config->recent_projects, i, 1);
 	config_save();
 }

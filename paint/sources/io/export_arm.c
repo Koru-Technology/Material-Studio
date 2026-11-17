@@ -466,6 +466,7 @@ void export_arm_run_project(char *path) {
 	string_array_remove(recent, recent_path);
 	array_insert(recent, 0, recent_path);
 	config_save();
+	script_projects_saved_to(path); // Deleted when a script that saved it quits
 
 	console_info(tr("Project saved"));
 }

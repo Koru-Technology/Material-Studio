@@ -105,6 +105,7 @@ void args_run_api(void *_) {
 }
 
 static void args_run_script_quit(void *_) {
+	script_projects_put_back();
 	iron_stop();
 }
 
@@ -118,6 +119,7 @@ void args_run_script_stop(void *_) {
 
 void args_run_script(void *_) {
 	script_brush_take(); // Put back when the script quits, the config is saved on exit
+	script_projects_take(); // The projects the script makes are deleted when it quits
 	buffer_t *b = iron_load_blob(args_script_path);
 	if (b == NULL) {
 		iron_log(tr("Invalid script path"));

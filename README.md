@@ -61,7 +61,7 @@ The first install on a new device needs the developer certificate trusted on the
 
 ## Running scripts and tests
 
-The app runs a C script (minic) given with `--script`. The script API is listed in `paint/sources/minic_api_list.h`; the test suites are in `paint/tests/`. A script ends with `script_quit()`, which exits the app, so runs can be chained.
+The app runs a C script (minic) given with `--script`. The script API is listed in `paint/sources/minic_api_list.h`; the test suites are in `paint/tests/`. A script ends with `script_quit()`, which exits the app, so runs can be chained. When it quits, the projects it saved are deleted with their files and the projects list is put back as it was.
 
 **Mac**
 

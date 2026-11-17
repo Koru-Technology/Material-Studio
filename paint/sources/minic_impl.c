@@ -590,8 +590,49 @@ gpu_texture_t *script_brush_wave(void) {
 	return g_context->brush->image_wave;
 }
 
+// The projects list of the session: taken before a --script runs and put back when it quits, in its order. The projects
+// the script saved (tests make their own) are deleted with their files and leave the list. Projects it only opened stay.
+static string_array_t *script_projects_saved = NULL;
+static string_array_t *script_projects_made  = NULL; // Full paths: on iOS the list has file names only
+
+void script_projects_take(void) {
+	script_projects_saved = any_array_create_from_raw((void *[]){}, 0);
+	script_projects_made  = any_array_create_from_raw((void *[]){}, 0);
+	for (i32 i = 0; i < g_config->recent_projects->length; ++i) {
+		string_array_push(script_projects_saved, string_copy(g_config->recent_projects->buffer[i]));
+	}
+}
+
+// A project saved while a script runs (export_arm.c)
+void script_projects_saved_to(char *path) {
+	if (script_projects_made != NULL && string_array_index_of(script_projects_made, path) < 0) {
+		string_array_push(script_projects_made, string_copy(path));
+	}
+}
+
+void script_projects_put_back(void) {
+	if (script_projects_saved == NULL) {
+		return;
+	}
+	for (i32 i = 0; i < script_projects_made->length; ++i) {
+		char *path = script_projects_made->buffer[i];
+		box_projects_delete_files(path);
+#ifdef IRON_IOS
+		char *recent_path = substring(path, string_last_index_of(path, "/") + 1, string_length(path)); // As export_arm.c lists it
+#else
+		char *recent_path = path;
+#endif
+		string_array_remove(script_projects_saved, recent_path); // Listed by an earlier run
+	}
+	g_config->recent_projects = script_projects_saved;
+	script_projects_saved     = NULL;
+	script_projects_made      = NULL;
+	config_save();
+}
+
 void script_quit(void) {
 	script_brush_put_back();
+	script_projects_put_back();
 	iron_stop();
 }
 
