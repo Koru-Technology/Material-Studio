@@ -74,18 +74,18 @@ Script output (`printf`) goes to stdout. Each suite prints a final `... PASS` or
 
 **iPad**
 
-Copy the script into the app's Documents folder, then launch the app with it. `--console` streams the app's output to the terminal and waits until the app exits:
+Copy the script into `Documents/.tests/`, then launch the app with it. The dot hides the folder from the Files app, so scripts and their output never show up among the user's projects. `--console` streams the app's output to the terminal and waits until the app exits:
 
 ```sh
 xcrun devicectl device copy to --device <device id> \
   --domain-type appDataContainer --domain-identifier technology.koru.materialstudio \
-  --source tests/test.c --destination Documents/test.c
+  --source tests/test.c --destination Documents/.tests/test.c
 
 xcrun devicectl device process launch --console --terminate-existing \
-  --device <device id> technology.koru.materialstudio --script "~/Documents/test.c"
+  --device <device id> technology.koru.materialstudio --script "~/Documents/.tests/test.c"
 ```
 
-Files the app writes into Documents (for example screenshots from a script) can be fetched with `xcrun devicectl device copy from` and the same `--domain-type`/`--domain-identifier` arguments.
+A suite that reads fixtures (`script_dir()`) finds them next to the script: copy them into `Documents/.tests/fixtures/`. Files a script writes (screenshots, dumps) also go in `Documents/.tests/`, never directly in Documents. They can be fetched with `xcrun devicectl device copy from` and the same `--domain-type`/`--domain-identifier` arguments.
 
 ## Screenshots
 
@@ -97,7 +97,7 @@ if (frame == 60) {
 }
 ```
 
-On the iPad, write to the app's Documents folder and fetch the file with `devicectl device copy from`.
+On the iPad, write to `Documents/.tests/` and fetch the file with `devicectl device copy from`.
 
 **Of the iPad screen as it is now.** This uses [pymobiledevice3](https://github.com/doronz88/pymobiledevice3), installed in a virtualenv:
 
