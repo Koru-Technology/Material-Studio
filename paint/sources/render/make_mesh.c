@@ -152,7 +152,9 @@ static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *
 }
 
 node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
-	char                  *context_id = make_mesh_context_id(layer_pass);
+	bool                   bake       = make_mesh_bake;
+	bool                   cached     = !bake && layer_pass == 0 && layer_cache_active();
+	char                  *context_id = bake ? "layer_cache" : make_mesh_context_id(layer_pass);
 	shader_context_t      *props      = ALLOC_INIT(shader_context_t, {.name            = context_id,
 	                                                                  .depth_write     = layer_pass == 0 ? true : false,
 	                                                                  .compare_mode    = layer_pass == 0 ? "less" : "equal",
@@ -166,6 +168,13 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
                                                                 },
                                                                 render_path_base_gbuffer_uv() ? 3 : 2),
 	                                                                  .depth_attachment = "D32"});
+	if (bake) {
+		props->depth_write       = false;
+		props->compare_mode      = "always";
+		props->cull_mode         = "none";
+		props->color_attachments = any_array_create_from_raw((void *[]){"RGBA64", "RGBA64", "RGBA64", "RGBA64"}, 4);
+		props->depth_attachment  = NULL;
+	}
 	node_shader_context_t *con_mesh   = node_shader_context_create(data, props);
 
 	if (mesh_data_get_vertex_array(g_context->paint_object->data, "col") != NULL) {
@@ -179,13 +188,18 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 	node_shader_t *shader = node_shader_context_make_shader(con_mesh);
 
 	node_shader_add_out(shader, "vec2 tex_coord");
-	shader->frag_wvpposition = true;
-	node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
 	shader->frag_wposition = true;
 
 	i32 texture_count = 0;
 
-	node_shader_write_vert(shader, "output.pos = constants.VP * vec4(output.wposition.xyz, 1.0);");
+	if (bake) { // A texel of the layers for each fragment, the camera plays no part
+		node_shader_write_vert(shader, "output.pos = vec4(input.tex.x * 2.0 - 1.0, (1.0 - input.tex.y) * 2.0 - 1.0, 0.0, 1.0);");
+	}
+	else {
+		shader->frag_wvpposition = true;
+		node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
+		node_shader_write_vert(shader, "output.pos = constants.VP * vec4(output.wposition.xyz, 1.0);");
+	}
 	node_shader_write_vert(shader, "output.tex_coord = input.tex;");
 	node_shader_write_attrib_frag(shader, "vec2 tex_coord = input.tex_coord;");
 
@@ -204,15 +218,15 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 	}
 	char *tex_coord_layer = util_mesh_udim_layer(g_context->layer) ? "tex_coord_atlas" : "tex_coord";
 
-	shader->frag_out = render_path_base_gbuffer_uv() ? "vec4[3]" : "vec4[2]";
+	shader->frag_out = bake ? "vec4[4]" : render_path_base_gbuffer_uv() ? "vec4[3]" : "vec4[2]";
 	shader->frag_n   = true;
 	node_shader_add_function(shader, str_pack_float_int16);
 
-	if (g_context->picker_hide_other_materials && g_context->tool != TOOL_TYPE_PICKER) {
+	if (!bake && g_context->picker_hide_other_materials && g_context->tool != TOOL_TYPE_PICKER) {
 		make_discard_material_id(shader, tex_coord_layer);
 	}
 
-	if (g_context->tool == TOOL_TYPE_COLORID) {
+	if (g_context->tool == TOOL_TYPE_COLORID && !bake) {
 		// ID mask picking: the ID map unlit, the parts not picked are dimmed once any is picked
 		texture_count += 2;
 		node_shader_add_texture(shader, "texcolorid", "_texcolorid");
@@ -255,6 +269,26 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(shader, "vec3 ntex = gbuffer1_sample.rgb;");
 			node_shader_write_frag(shader, "float height = gbuffer2_sample.a;");
 		}
+		else if (cached) { // The layers under the edited one as the cache has them (layer_cache.c)
+			texture_count += 4;
+			node_shader_add_texture(shader, "layer_cache0", NULL);
+			node_shader_add_texture(shader, "layer_cache1", NULL);
+			node_shader_add_texture(shader, "layer_cache2", NULL);
+			node_shader_add_constant(shader, "vec2 texpaint_size", "_texpaint_size");
+			node_shader_write_frag(shader, "vec4 layer_cache0_sample = textureLod(sampler2D(layer_cache0, sampler_linear), tex_coord, 0.0);");
+			node_shader_write_frag(shader, "vec4 layer_cache1_sample = textureLod(sampler2D(layer_cache1, sampler_linear), tex_coord, 0.0);");
+			node_shader_write_frag(shader, "vec4 layer_cache2_sample = textureLod(sampler2D(layer_cache2, sampler_linear), tex_coord, 0.0);");
+			node_shader_write_frag(shader, "vec3 basecol = layer_cache0_sample.rgb;");
+			node_shader_write_frag(shader, "float roughness = layer_cache2_sample.g;");
+			node_shader_write_frag(shader, "float metallic = layer_cache2_sample.b;");
+			node_shader_write_frag(shader, "float occlusion = layer_cache2_sample.r;");
+			node_shader_write_frag(shader, "float opacity = 1.0;");
+			// The material id of one texel, ids do not blend (as the layers' own are read)
+			node_shader_write_frag(shader, "float matid = texelFetch(sampler2D(layer_cache1, sampler_linear), ivec2(uint(tex_coord.x * "
+			                               "constants.texpaint_size.x), uint(tex_coord.y * constants.texpaint_size.y)), 0).a;");
+			node_shader_write_frag(shader, "vec3 ntex = layer_cache1_sample.rgb;");
+			node_shader_write_frag(shader, "float height = layer_cache2_sample.a;");
+		}
 		else {
 			node_shader_write_frag(shader, "vec3 basecol = vec3(0.0, 0.0, 0.0);");
 			node_shader_write_frag(shader, "float roughness = 0.0;");
@@ -272,23 +306,31 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 
 		make_fill_uses(&make_material_emis_used, &make_material_height_used); // Fill layers with emission or height
 
-		if (make_material_height_used) {
+		if (make_material_height_used && cached) { // The height a texel away each way, as the cache has it
+			node_shader_add_texture(shader, "layer_cache3", NULL);
+			node_shader_write_frag(shader, "vec4 layer_cache3_sample = textureLod(sampler2D(layer_cache3, sampler_linear), tex_coord, 0.0);");
+			node_shader_write_frag(shader, "float height0 = layer_cache3_sample.x;");
+			node_shader_write_frag(shader, "float height1 = layer_cache3_sample.y;");
+			node_shader_write_frag(shader, "float height2 = layer_cache3_sample.z;");
+			node_shader_write_frag(shader, "float height3 = layer_cache3_sample.w;");
+		}
+		else if (make_material_height_used) {
 			node_shader_write_frag(shader, "float height0 = 0.0;");
 			node_shader_write_frag(shader, "float height1 = 0.0;");
 			node_shader_write_frag(shader, "float height2 = 0.0;");
 			node_shader_write_frag(shader, "float height3 = 0.0;");
 		}
 
-		if (g_context->draw_wireframe) {
+		if (g_context->draw_wireframe && !bake) {
 			texture_count++;
 			node_shader_add_texture(shader, "texuvmap", "_texuvmap");
 		}
 
-		if (box_bake_maps_inpaint_overlay() != NULL) {
+		if (box_bake_maps_inpaint_overlay() != NULL && !bake) {
 			texture_count++; // Added in the last pass
 		}
 
-		if (g_context->viewport_mode == VIEWPORT_MODE_MASK && slot_layer_get_masks(g_context->layer, true) != NULL) {
+		if (g_context->viewport_mode == VIEWPORT_MODE_MASK && slot_layer_get_masks(g_context->layer, true) != NULL && !bake) {
 			for (i32 i = 0; i < slot_layer_get_masks(g_context->layer, true)->length; ++i) {
 				slot_layer_t *m = slot_layer_get_masks(g_context->layer, true)->buffer[i];
 				if (!slot_layer_is_visible(m)) {
@@ -300,8 +342,8 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			}
 		}
 
-		// Get layers for this pass
-		make_mesh_layer_pass_count             = 1;
+		// Get layers for this pass: the bake takes the cached ones (one pass, layer_cache.c fits them), the viewport the others
+		i32                   pass_count       = 1;
 		slot_layer_t_array_t *layers           = any_array_create_from_raw((void *[]){}, 0);
 		i32                   start_count      = texture_count;
 		bool                  fills_counted    = false;
@@ -314,6 +356,9 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 				continue;
 			}
 			if (slot_layer_has_visible_filter(l)) {
+				continue;
+			}
+			if (bake != layer_cache_has(l)) {
 				continue;
 			}
 
@@ -329,17 +374,20 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			}
 
 			texture_count += count;
-			if (texture_count >= GPU_MAX_TEXTURES - 3) {
+			if (texture_count >= GPU_MAX_TEXTURES - 3 && !bake) {
 				texture_count = start_count + count + 3; // gbuffer0_copy, gbuffer1_copy, gbuffer2_copy
-				make_mesh_layer_pass_count++;
+				pass_count++;
 			}
 
-			if (layer_pass == make_mesh_layer_pass_count - 1) {
+			if (bake || layer_pass == pass_count - 1) {
 				any_array_push(layers, l);
 			}
 		}
+		if (!bake) {
+			make_mesh_layer_pass_count = pass_count;
+		}
 
-		bool last_pass = layer_pass == make_mesh_layer_pass_count - 1;
+		bool last_pass = layer_pass == pass_count - 1;
 
 		// Fill layers' height neighbours: the surface moved by a texel of the uv map, in world space (planar and
 		// triplanar fills read the position). Outside any branch, derivatives need every fragment.
@@ -361,9 +409,9 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 
 		// Translucency: the bottom layer alpha is the surface opacity, layers above composite over it
 		bool transluc = g_project->_->translucency && g_context->viewport_mode != VIEWPORT_MODE_PATH_TRACE && g_project->_->layers->length > 0 &&
-		                array_index_of(layers, g_project->_->layers->buffer[0]) >= 0;
+		                (array_index_of(layers, g_project->_->layers->buffer[0]) >= 0 || (cached && layer_cache_has(g_project->_->layers->buffer[0])));
 		if (transluc) {
-			node_shader_write_frag(shader, "float transluc_opac = 1.0;");
+			node_shader_write_frag(shader, cached ? "float transluc_opac = layer_cache0_sample.a;" : "float transluc_opac = 1.0;");
 		}
 
 		for (i32 i = 0; i < layers->length; ++i) {
@@ -577,6 +625,19 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			}
 		}
 		array_delete(layers);
+
+		if (bake) { // The running state as it is after the cached layers
+			node_shader_write_frag(shader, transluc ? "output[0] = vec4(basecol, transluc_opac);" : "output[0] = vec4(basecol, 1.0);");
+			node_shader_write_frag(shader, "output[1] = vec4(ntex, matid);");
+			node_shader_write_frag(shader, "output[2] = vec4(occlusion, roughness, metallic, height);");
+			node_shader_write_frag(shader, make_material_height_used ? "output[3] = vec4(height0, height1, height2, height3);"
+			                                                         : "output[3] = vec4(0.0, 0.0, 0.0, 0.0);");
+			parser_material_finalize(con_mesh);
+			con_mesh->data->shader_from_source = true;
+			gpu_create_shaders_from_glsl(node_shader_get(shader), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
+			                             &con_mesh->data->_->vertex_shader_size, &con_mesh->data->_->fragment_shader_size);
+			return con_mesh;
+		}
 
 		if (transluc) {
 			con_mesh->data->cull_mode = "none";

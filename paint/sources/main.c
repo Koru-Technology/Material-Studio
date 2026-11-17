@@ -131,6 +131,7 @@
 #include "render/make_fill.c"
 #include "render/make_material.c"
 #include "render/make_mesh.c"
+#include "render/layer_cache.c"
 #include "render/make_mesh_preview.c"
 #include "render/make_node_preview.c"
 #include "render/make_paint.c"

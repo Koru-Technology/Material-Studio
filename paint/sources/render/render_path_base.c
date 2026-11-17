@@ -593,6 +593,7 @@ void render_path_base_draw_paint_depth_into(char *color, char *depth) {
 }
 
 void render_path_base_draw_gbuffer() {
+	layer_cache_update(); // The layers under the edited one, made again if they changed
 	string_array_t *additional = any_array_create_from_raw_tmp(
 	    (void *[]){
 	        "gbuffer1",

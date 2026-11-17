@@ -1177,7 +1177,7 @@ void render_path_paint_bind_layers() {
 			render_path_bind_target(n, n);
 		}
 	}
-
+	layer_cache_bind();
 }
 
 void render_path_paint_unbind_layers() {

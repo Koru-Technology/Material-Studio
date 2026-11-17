@@ -522,6 +522,50 @@ static i32 mask_effect_layer_ref(i32 type) {
 	                                          : -1;
 }
 
+// l is target or under it: one of its masks or filters, a layer of its group
+static bool mask_stack_is_within(slot_layer_t *l, slot_layer_t *target) {
+	for (i32 d = 0; l != NULL && d < 64; ++d, l = l->parent) {
+		if (l == target) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool mask_stack_reads_depth(slot_layer_t *m, slot_layer_t *target, i32 depth) {
+	if (m == NULL || m->mask_effects == NULL || depth > 6) {
+		return false;
+	}
+	i32 n = mask_stack_count(m);
+	for (i32 i = 0; i < n; ++i) {
+		mask_effect_t e   = mask_stack_get(m, i);
+		i32           ref = mask_effect_layer_ref(e.type);
+		if (!e.visible || ref < 0) {
+			continue;
+		}
+		slot_layer_t *l = mask_stack_layer_by_id((i32)e.params[ref]);
+		if (l == NULL) {
+			continue;
+		}
+		if (mask_stack_is_within(l, target) || (slot_layer_is_mask(l) && mask_stack_reads_depth(l, target, depth + 1))) {
+			return true;
+		}
+		slot_layer_t_array_t *masks = slot_layer_is_mask(l) ? NULL : slot_layer_get_masks(l, false);
+		for (i32 j = 0; masks != NULL && j < masks->length; ++j) {
+			if (mask_stack_reads_depth(masks->buffer[j], target, depth + 1)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+// The effects of mask m read target or what is under it (an anchor's, a Mask Builder's or a Height Blend's layer),
+// directly or through the masks of the layers they read: m changes as target is painted
+bool mask_stack_reads(slot_layer_t *m, slot_layer_t *target) {
+	return mask_stack_reads_depth(m, target, 0);
+}
+
 // The layer whose material Mask Builder e reads too (height, normal, occlusion), NULL for none: none picked, deleted, or
 // no paint or fill layer (a group or mask has no material)
 slot_layer_t *mask_effect_builder_layer(mask_effect_t *e) {

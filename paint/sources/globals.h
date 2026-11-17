@@ -48,7 +48,8 @@ bool              make_material_emis_used   = false;
 bool              make_material_subs_used   = false;
 
 // ---- render/make_mesh.c ----
-i32 make_mesh_layer_pass_count = 1;
+i32  make_mesh_layer_pass_count = 1;
+bool make_mesh_bake             = false; // make_mesh_run makes the layer cache shader (layer_cache.c)
 
 // ---- render/render_path_base.c ----
 i32  render_path_base_bloom_current_mip = 0;

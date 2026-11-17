@@ -678,6 +678,14 @@ void                   make_material_parse_depth_material();
 char                  *make_mesh_context_id(i32 layer_pass);
 node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass);
 
+// ---- render/layer_cache.c ----
+bool layer_cache_active(void);
+bool layer_cache_has(slot_layer_t *l);
+void layer_cache_prepare(void);
+void layer_cache_bind(void);
+void layer_cache_update(void);
+i32  layer_cache_bake_count(void);
+
 // ---- render/make_mesh_preview.c ----
 node_shader_context_t *make_mesh_preview_run(material_t *data, bool viewport);
 
@@ -1313,6 +1321,7 @@ slot_layer_t        *mask_stack_layer_by_id(i32 id);
 f32_array_t         *mask_stack_effects_to_file(f32_array_t *effects, slot_layer_t **layers, i32 count, bool images);
 void                 mask_stack_effects_from_file(f32_array_t *effects, slot_layer_t **layers, i32 count);
 slot_layer_t        *mask_effect_builder_layer(mask_effect_t *e);
+bool                 mask_stack_reads(slot_layer_t *m, slot_layer_t *target);
 bool                 mask_stack_has_height_blend(slot_layer_t *m);
 f32                  mask_effect_blur_radius(mask_effect_t *e);
 gpu_texture_t       *slot_layer_mask_texture(slot_layer_t *m);

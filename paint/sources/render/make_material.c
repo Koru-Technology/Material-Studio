@@ -115,6 +115,8 @@ void make_material_parse_mesh_material() {
 	}
 	make_material_mesh_scons->length = 0;
 
+	layer_cache_prepare(); // The mesh shaders leave out the layers it takes
+
 	// The first pass decides the layer pass count
 	for (i32 i = 0; i == 0 || i < make_mesh_layer_pass_count; ++i) {
 		material_t            *mm  = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
