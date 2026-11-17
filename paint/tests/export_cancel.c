@@ -101,8 +101,9 @@ void next() {
 		dir    = fresh_dir("a");
 		int ok = export_tiled_start(dir, 0);
 		check(ok && export_tiled_running(), "export started");
+		export_tiled_step(1.0); // Finds the passes the strokes sample, then the cap
 		check(mm_buffers_stat(14) > 0, string("Material Maker export cap set (%d)", mm_buffers_stat(14)));
-		for (int i = 0; i < 6; ++i) {
+		for (int i = 0; i < 5; ++i) {
 			export_tiled_step(1.0);
 		}
 		float p = export_tiled_progress();
