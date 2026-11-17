@@ -114,6 +114,7 @@ void gpu_render_target_init2(gpu_texture_t *target, uint32_t width, uint32_t hei
 	target->format = format;
 	target->state  = GPU_TEXTURE_STATE_RENDER_TARGET;
 	target->buffer = NULL;
+	gpu_texture_written(target);
 
 	if (framebuffer_index < 0) {
 		id<MTLDevice>         device     = get_metal_device();
@@ -1006,6 +1007,7 @@ void gpu_texture_init_from_bytes(gpu_texture_t *texture, void *data, uint32_t wi
 	texture->format = format;
 	texture->state  = GPU_TEXTURE_STATE_SHADER_RESOURCE;
 	texture->buffer = NULL;
+	gpu_texture_written(texture);
 
 	MTLPixelFormat mtlformat = convert_texture_format(format);
 	if (mtlformat == MTLPixelFormatBGRA8Unorm) {
@@ -1211,6 +1213,7 @@ void gpu_copy_regions_begin(void) {
 }
 
 void gpu_copy_region(gpu_texture_t *dst, int dx, int dy, gpu_texture_t *src, int sx, int sy, int w, int h) {
+	gpu_texture_written(dst);
 	[region_blit copyFromTexture:(__bridge id<MTLTexture>)src->impl._tex
 	                 sourceSlice:0
 	                 sourceLevel:0
@@ -1276,6 +1279,7 @@ void gpu_copy_region_to_transfer(gpu_transfer_t *t, gpu_texture_t *src, int sx, 
 
 void gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *dst, int dx, int dy, int w, int h, size_t offset) {
 	int pitch = w * gpu_texture_format_size(dst->format);
+	gpu_texture_written(dst);
 	[region_blit copyFromBuffer:(__bridge id<MTLBuffer>)t->buffer
 	               sourceOffset:offset
 	          sourceBytesPerRow:pitch

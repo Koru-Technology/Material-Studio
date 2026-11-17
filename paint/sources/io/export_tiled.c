@@ -1188,9 +1188,7 @@ static bool export_tiled_upscales(slot_layer_t *l, bool tiles) {
 		return false;
 	}
 	// Never changed (a new project's layer, a new mask): uniform, it scales as it is
-	paint_target_t t;
-	timeline_target_live(l, &t);
-	hash128_t h       = timeline_tiles_capture(&t, HASH128_NONE, NULL);
+	hash128_t h       = timeline_live_map(l);
 	bool      uniform = timeline_tiles_uniform(h);
 	hstore_unref(h);
 	return uniform;
@@ -1315,9 +1313,7 @@ static void export_tiled_evict() {
 			hstore_ref(h);
 		}
 		else {
-			paint_target_t t;
-			timeline_target_live(l, &t);
-			h = timeline_tiles_capture(&t, HASH128_NONE, NULL);
+			h = timeline_live_map(l); // Read back unless captured since its last write
 		}
 		if (hash128_is_none(h)) {
 			continue;
@@ -1362,6 +1358,9 @@ static void export_tiled_unevict() {
 		}
 		if (!timeline_tiles_restore(e->h, &t)) {
 			console_error(string("Export: layer %s could not be restored", l->name));
+		}
+		else {
+			timeline_live_map_set(l, e->h);
 		}
 		hstore_unref(e->h);
 		if (mask) {

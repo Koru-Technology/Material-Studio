@@ -405,6 +405,12 @@ static bool tl_tiles_target_ok(paint_target_t *t) {
 	return tex->width >= 1 && tex->height >= 1;
 }
 
+static i32 tl_tiles_reads = 0; // Tiles read back so far (a tile of each channel counts once), for tests
+
+i32 timeline_tiles_test_reads() {
+	return tl_tiles_reads;
+}
+
 hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 *dirty) {
 	if (!tl_tiles_target_ok(src)) {
 		return HASH128_NONE;
@@ -438,6 +444,7 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 		}
 	}
 	bool *read = calloc(total, sizeof(bool)); // Tiles holding a reference from this capture
+	tl_tiles_reads += n * channels;
 
 	if (tl_tiles_transfer == NULL) {
 		tl_tiles_transfer = gpu_transfer_create(0);

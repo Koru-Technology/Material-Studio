@@ -305,6 +305,7 @@ void gpu_raytrace_dispatch_rays() {
 	id<MTLDevice> device = get_metal_device();
 	if (!device.supportsRaytracing)
 		return;
+	gpu_texture_written(output);
 	if (_instance_accel == nil || _instance_data == nil)
 		return;
 	dispatch_semaphore_wait(_semaphore, DISPATCH_TIME_FOREVER);

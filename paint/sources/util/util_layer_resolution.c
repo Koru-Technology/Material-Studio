@@ -59,9 +59,7 @@ void layers_resolution_reset() {
 }
 
 static hash128_t layers_resolution_capture(slot_layer_t *l) {
-	paint_target_t t;
-	timeline_target_live(l, &t);
-	return timeline_tiles_capture(&t, HASH128_NONE, NULL);
+	return timeline_live_map(l);
 }
 
 // dst becomes src scaled: halved by 2 x 2 averages while src is at least twice as large, then scaled (bilinear)

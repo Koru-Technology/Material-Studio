@@ -209,9 +209,7 @@ static hash128_t history_record_make(slot_layer_t *l) {
 		hstore_ref(map);
 	}
 	if (hash128_is_none(map) && l->texpaint != NULL && timeline_layer_paints(l)) {
-		paint_target_t t;
-		timeline_target_live(l, &t);
-		map = timeline_tiles_capture(&t, HASH128_NONE, NULL);
+		map = timeline_live_map(l);
 	}
 	u32 kind = l->texpaint == NULL ? LAYER_SLOT_TYPE_GROUP : slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER;
 	u8 *b    = malloc(HISTORY_RECORD_LEN + 4 + history_record_props_size(l));
