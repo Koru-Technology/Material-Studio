@@ -55,6 +55,8 @@ typedef struct export_tiled_map {
 	i32 slot;
 } export_tiled_map_t;
 
+#define EXPORT_TILED_MM_KEYS 256
+
 static struct {
 	bool                 active;
 	char                *path;
@@ -101,6 +103,13 @@ static struct {
 	i32                  units_done;
 	i32                  units_total;
 	i32                  units_mm; // Of them, the Material Maker passes
+	// The Material Maker passes the export renders full (phase -2 finds the strokes' in job mm_job, layer mm_layer, entry
+	// mm_entry)
+	u64                  mm_keys[EXPORT_TILED_MM_KEYS];
+	i32                  mm_n;
+	i32                  mm_job;
+	i32                  mm_layer;
+	i32                  mm_entry;
 	// The tile rendering: 0 starts, 1 its layer tile_layer starts, 2 materializes (et_job), 3 ends
 	i32                  tile_stage;
 	i32                  tile_layer;
@@ -1170,23 +1179,23 @@ static bool export_tiled_mm_wanted() {
 	return et_test_mm || w > config_get_texture_res_x() || h > config_get_texture_res_y();
 }
 
+// The passes the fill layers' materials sample; the strokes' follow over steps (export_tiled_mm_keys_step)
 static void export_tiled_mm_begin() {
-	u64              keys[256];
-	i32              n         = 0;
 	slot_material_t *_material = g_context->material;
 	tool_type_t      _tool     = g_context->tool;
 	g_context->tool            = TOOL_TYPE_FILL;
 	any_array_t     *seen      = any_array_create_from_raw((void *[]){}, 0);
+	et.mm_n                    = 0;
 	for (i32 j = 0; j < et.njobs; ++j) {
 		for (i32 i = 0; i < et.jobs[j].layers->length; ++i) {
 			slot_material_t *m = et.jobs[j].layers->buffer[i]->fill_material;
-			if (m == NULL || array_index_of(seen, m) >= 0 || n >= 256) {
+			if (m == NULL || array_index_of(seen, m) >= 0 || et.mm_n >= EXPORT_TILED_MM_KEYS) {
 				continue;
 			}
 			any_array_push(seen, m);
 			g_context->material = m;
 			make_material_parse_paint_material(false);
-			n += mm_buffers_paint_keys(make_material_paint_scon, keys + n, 256 - n);
+			et.mm_n += mm_buffers_paint_keys(make_material_paint_scon, et.mm_keys + et.mm_n, EXPORT_TILED_MM_KEYS - et.mm_n);
 		}
 	}
 	g_context->material = _material;
@@ -1194,28 +1203,67 @@ static void export_tiled_mm_begin() {
 	if (seen->length > 0) {
 		make_material_parse_paint_material(false);
 	}
-	i32 w = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
-	i32 h = et_res_h > 0 ? et_res_h : config_get_texture_res_y();
-	for (i32 j = 0; j < et.njobs; ++j) { // The strokes the tiles replay, their paint shaders compiling meanwhile
-		for (i32 i = 0; i < et.jobs[j].layers->length; ++i) {
-			timeline_t *tl = export_tiled_timeline(et.jobs[j].layers->buffer[i]);
-			if (tl == NULL || array_index_of(seen, tl) >= 0) {
-				continue;
-			}
-			any_array_push(seen, tl);
-			paint_target_t t = {.w = w, .h = h, .uv_rect = {0.0, 0.0, 1.0, 1.0}, .res_w = w, .res_h = h, .channels = tl->channels};
-			for (i32 e = timeline_floor(tl, tl->cursor); e < tl->cursor; ++e) {
-				if (tl->entries[e].kind == TL_STROKE && timeline_entry_replays(tl, e)) {
-					n = paint_replay_mm_keys(tl, e, &t, keys, n, 256);
-				}
+	et.mm_job   = 0;
+	et.mm_layer = 0;
+	et.mm_entry = -1;
+	et.phase    = -2;
+}
+
+// Layer i of job j's timeline when it materializes for the tiles and no layer before it in the jobs has it
+static timeline_t *export_tiled_mm_timeline(i32 j, i32 i) {
+	timeline_t *tl = export_tiled_timeline(et.jobs[j].layers->buffer[i]);
+	for (i32 jj = 0; jj <= j && tl != NULL; ++jj) {
+		for (i32 ii = 0; ii < (jj < j ? et.jobs[jj].layers->length : i); ++ii) {
+			if (export_tiled_timeline(et.jobs[jj].layers->buffer[ii]) == tl) {
+				return NULL;
 			}
 		}
 	}
-	i32 cap      = mm_buffers_export_begin(keys, n, w > h ? w : h, mm_buffers_export_budget(export_tiled_budget()));
+	return tl;
+}
+
+// The passes the strokes the tiles replay sample (their records read, their paint shaders parsed and compiling
+// meanwhile), until deadline: true once every stroke's are in
+static bool export_tiled_mm_keys_step(f64 deadline) {
+	i32 w = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
+	i32 h = et_res_h > 0 ? et_res_h : config_get_texture_res_y();
+	while (et.mm_job < et.njobs) {
+		if (et.mm_layer >= et.jobs[et.mm_job].layers->length) {
+			et.mm_job++;
+			et.mm_layer = 0;
+			continue;
+		}
+		timeline_t *tl = export_tiled_mm_timeline(et.mm_job, et.mm_layer);
+		if (tl == NULL || et.mm_entry >= tl->cursor) {
+			et.mm_layer++;
+			et.mm_entry = -1;
+			continue;
+		}
+		if (et.mm_entry < 0) {
+			et.mm_entry = timeline_floor(tl, tl->cursor);
+			continue;
+		}
+		if (iron_time() >= deadline) {
+			return false;
+		}
+		paint_target_t t = {.w = w, .h = h, .uv_rect = {0.0, 0.0, 1.0, 1.0}, .res_w = w, .res_h = h, .channels = tl->channels};
+		if (tl->entries[et.mm_entry].kind == TL_STROKE && timeline_entry_replays(tl, et.mm_entry)) {
+			et.mm_n = paint_replay_mm_keys(tl, et.mm_entry, &t, et.mm_keys, et.mm_n, EXPORT_TILED_MM_KEYS);
+		}
+		et.mm_entry++;
+	}
+	return true;
+}
+
+// The cap for the passes found, pinned: they render full over the next frames
+static void export_tiled_mm_cap() {
+	i32 w        = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
+	i32 h        = et_res_h > 0 ? et_res_h : config_get_texture_res_y();
+	i32 cap      = mm_buffers_export_begin(et.mm_keys, et.mm_n, w > h ? w : h, mm_buffers_export_budget(export_tiled_budget()));
 	et_mm_capped = true;
 	et_stats[5]  = cap;
-	et.units_mm  = n;
-	et.units_total += n;
+	et.units_mm  = et.mm_n;
+	et.units_total += et.mm_n;
 }
 
 // Blur effects read the stack below them blurred whole (mask_stack_blur_prefix), once for the export
@@ -1541,7 +1589,13 @@ bool export_tiled_step(f64 budget_ms) {
 	f64 tiles_ms = 0.0; // Of the step, rendering tiles
 	while ((iron_time() - t0) * 1000.0 < budget_ms) {
 		export_tiled_job_t *job = &et.jobs[et.job];
-		if (et.phase == -1) { // Material Maker buffers full
+		if (et.phase == -2) { // The passes the strokes sample
+			if (export_tiled_mm_keys_step(et_sync ? 1.0e300 : t0 + budget_ms / 1000.0)) {
+				export_tiled_mm_cap();
+				et.phase = -1;
+			}
+		}
+		else if (et.phase == -1) { // Material Maker buffers full
 			i32 left = et_mm_capped ? mm_buffers_export_step(et_sync) : 0;
 			if (left > 0) { // The frame steps render them (mm_buffers_step)
 				et.units_done = et.units_mm - left;
