@@ -432,8 +432,13 @@ bool project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, bool *ha
 	paint_target_t t;
 	timeline_target_live(l, &t);
 	hash128_t h = pc_hash_at(tm, 0);
+	i32       w = 0, hh = 0, format = 0, channels = 0;
 	if (hash128_is_none(h) || !timeline_tiles_restore(h, &t)) {
 		iron_log("Layer tiles could not be read, the layer starts empty");
+	}
+	else if (timeline_tiles_info(h, &w, &hh, &format, &channels) && w == t.w && hh == t.h && channels == t.channels &&
+	         format == (i32)t.out[0]->format) {
+		timeline_live_map_set(l, h); // The layer is the map: a session head reads nothing back until it changes
 	}
 	if (has_alpha != NULL) {
 		*has_alpha = import_arm_texture_has_alpha(l->texpaint);
@@ -514,24 +519,37 @@ static bool pc_has(hash128_t h) {
 	return false;
 }
 
-// The tile map of a layer's live state (layer_data_t.tilemap): its timeline's state at the cursor, else a capture. Its
-// tiles are written with the store's blobs. NULL for a group.
+// The state at the cursor of l's timeline when the store has it, NONE otherwise (no reference added)
+static hash128_t pc_timeline_state(slot_layer_t *l) {
+	timeline_t *tl = timeline_of(l);
+	hash128_t   h  = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE;
+	return !hash128_is_none(h) && hstore_has(h) ? h : HASH128_NONE;
+}
+
+// The tile map of a layer's live state (layer_data_t.tilemap): its timeline's state at the cursor, else its last
+// capture while its textures were not written since (timeline_live_map), else a capture. A copy captures full maps of
+// its own (no delta chains). Its tiles are written with the store's blobs. NULL for a group.
 u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
 	}
-	timeline_t *tl = !pc_w->no_history ? timeline_of(l) : NULL; // A copy: full maps, no delta chains
-	hash128_t   h  = tl != NULL ? timeline_state(tl, tl->cursor) : HASH128_NONE;
-	if (!hash128_is_none(h) && hstore_has(h)) {
-		hstore_ref(h);
-	}
-	else {
+	hash128_t h = HASH128_NONE;
+	if (pc_w->no_history) {
 		paint_target_t t;
 		timeline_target_live(l, &t);
-		h = timeline_tiles_capture(&t, HASH128_NONE, NULL); // Full: older saves' tiles go dead, unchanged ones dedupe
-		if (hash128_is_none(h)) {
-			iron_log("Layer %s could not be captured, it is saved empty", l->name);
+		h = timeline_tiles_capture(&t, HASH128_NONE, NULL); // Full: unchanged tiles dedupe
+	}
+	else {
+		h = pc_timeline_state(l);
+		if (!hash128_is_none(h)) {
+			hstore_ref(h);
 		}
+		else {
+			h = timeline_live_map(l);
+		}
+	}
+	if (hash128_is_none(h)) {
+		iron_log("Layer %s could not be captured, it is saved empty", l->name);
 	}
 	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
 	u8_array_t *a = u8_array_create(16);
@@ -982,8 +1000,8 @@ static u64 pc_history_signature() {
 	return h;
 }
 
-// Session heads are written for projects whose layers have timelines: their live states are tile maps already, a
-// head costs no readback
+// Session heads are written for projects with a mesh. The live states of layers are tile maps already: the timeline's
+// at its cursor, or the layer's last capture (timeline_live_map), a head reads back only the layers written since.
 static bool pc_session_on() {
 	return g_context->paint_object != NULL;
 }
@@ -1035,19 +1053,38 @@ bool project_session_changed() {
 }
 
 // The session head is due: the history changed PC_SESSION_SECONDS ago or more, nothing is painting, no work spread over
-// frames is under way (a head reads back the layers without a timeline, tens of ms each: after the material cache
-// build and the stroke sharpening, not in the middle of their frames)
+// frames is under way (a layer written since its last capture is read back, tens of ms: after the material cache build
+// and the stroke sharpening, not in the middle of their frames)
 bool project_session_due() {
 	return pc_session_on() && g_context->brush_time == 0 && pc_history_signature() != pc_session_sig &&
 	       iron_time() - pc_session_time >= PC_SESSION_SECONDS && !material_cache_building() && paint_refine_stat(0) == 0 &&
 	       paint_refine_stat(1) == 0;
 }
 
-// From the update loop
-void project_session_update() {
-	if (project_session_due()) {
-		project_session_write();
+// A layer the head would read back: no timeline state, written since its last capture. NULL for none.
+static slot_layer_t *pc_session_stale_layer() {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		if (l->texpaint != NULL && hash128_is_none(pc_timeline_state(l)) && !timeline_live_map_fresh(l)) {
+			return l;
+		}
 	}
+	return NULL;
+}
+
+// From the update loop. A due head reads back one stale layer a frame, it is written once none is left.
+void project_session_update() {
+	if (!project_session_due()) {
+		return;
+	}
+	history_flush_restores(NULL);
+	timeline_finalize();
+	slot_layer_t *l = pc_session_stale_layer();
+	if (l != NULL) {
+		hstore_unref(timeline_live_map(l)); // The layer remembers it, the head next frame references it
+		return;
+	}
+	project_session_write();
 }
 
 // A new project or an open: the session head belongs to the one before (hstore_reset dropped it)

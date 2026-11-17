@@ -245,6 +245,48 @@ void timeline_target_live(slot_layer_t *l, paint_target_t *t) {
 	}
 }
 
+// Write stamps of the live textures of l (gpu_texture_written): the same key, the same texels. Every write counts, a
+// change no step recorded too.
+static u64 timeline_live_key(slot_layer_t *l) {
+	paint_target_t t;
+	timeline_target_live(l, &t);
+	u64 h = HASH_FNV1A_BASIS;
+	for (i32 c = 0; c < t.channels; ++c) {
+		u64 s = t.out[c] != NULL ? t.out[c]->written : 0;
+		h     = hash_fnv1a(h, &s, sizeof(s));
+	}
+	return h;
+}
+
+// timeline_live_map reads nothing back for l
+bool timeline_live_map_fresh(slot_layer_t *l) {
+	return l->texpaint == NULL ||
+	       (l->live_map_key == timeline_live_key(l) && !hash128_is_none(l->live_map) && hstore_has(l->live_map));
+}
+
+// The tile map of the live textures of l, a reference added: the last capture while no texture of l was written since,
+// otherwise a capture (a readback of the whole layer). Saves and session heads read the layers without a timeline state
+// this way: a layer costs a readback once a change, not once a head. NONE when it can not be captured.
+hash128_t timeline_live_map(slot_layer_t *l) {
+	if (timeline_live_map_fresh(l)) {
+		hstore_ref(l->live_map);
+		return l->live_map;
+	}
+	u64            key = timeline_live_key(l); // Before: the capture may suspend and resume a pass drawing into l
+	paint_target_t t;
+	timeline_target_live(l, &t);
+	hash128_t h     = timeline_tiles_capture(&t, HASH128_NONE, NULL);
+	l->live_map     = h;
+	l->live_map_key = key;
+	return h;
+}
+
+// The live textures of l were restored from map h (an open): timeline_live_map has it without a readback
+void timeline_live_map_set(slot_layer_t *l, hash128_t h) {
+	l->live_map     = h;
+	l->live_map_key = timeline_live_key(l);
+}
+
 // The timeline of l, made at its first change: the pinned checkpoint at 0 is l as it is now
 timeline_t *timeline_ensure(slot_layer_t *l) {
 	if (!timeline_layer_paints(l)) {
@@ -256,9 +298,7 @@ timeline_t *timeline_ensure(slot_layer_t *l) {
 	}
 	tl          = timeline_create(l->uid, slot_layer_is_mask(l) ? 1 : 3);
 	l->timeline = tl->uid;
-	paint_target_t t;
-	timeline_target_live(l, &t);
-	timeline_checkpoint_set(tl, 0, timeline_tiles_capture(&t, HASH128_NONE, NULL), true);
+	timeline_checkpoint_set(tl, 0, timeline_live_map(l), true);
 	return tl;
 }
 

@@ -3,6 +3,7 @@
 #include "iron_physics.h"
 
 #include "enums.h"
+#include "util/util_hash.h"
 #include "minic.h"
 
 // ---- Brushes and strokes ----
@@ -246,6 +247,8 @@ typedef struct slot_layer {
 	u64                  mask_inputs_key; // Anchored layers and ID map texmask was last evaluated with
 	bool                 mask_evaluating; // Cycle guard: a mask anchoring one being evaluated reads its last texmask
 	u32                  timeline;        // Uid of its timeline (stroke_rec.h), 0 for none
+	hash128_t            live_map;        // Tile map of its textures as last captured (timeline_live_map), runtime only
+	u64                  live_map_key;    // Write stamps of the textures then (timeline_live_key)
 } slot_layer_t;
 
 // One effect of a mask stack, unpacked from slot_layer_t.mask_effects (mask_stack_get / mask_stack_set)
@@ -1208,7 +1211,6 @@ struct studio_graph {
 };
 
 // ---- Blob store chunks (history_store.c, io/project_container.c) ----
-#include "util/util_hash.h"
 
 #define HSTORE_CHUNK_HEADER   32 // "CHNK" u8 kind, u8 codec, u16 flags, u64 hash.lo, u64 hash.hi, u32 raw_len, u32 comp_len
 #define HSTORE_JOURNAL_HEADER 16 // "MSJN" u32 version, 8 bytes 0

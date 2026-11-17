@@ -1806,6 +1806,9 @@ bool        timeline_upscalable(struct timeline *tl, i32 pos);
 gpu_pipeline_t *timeline_copy_pipe(gpu_texture_t *t);
 bool        timeline_state_resample(hash128_t h, struct paint_target *t);
 void        timeline_target_live(slot_layer_t *l, struct paint_target *t);
+bool        timeline_live_map_fresh(slot_layer_t *l);
+hash128_t   timeline_live_map(slot_layer_t *l);
+void        timeline_live_map_set(slot_layer_t *l, hash128_t h);
 struct timeline *timeline_ensure(slot_layer_t *l);
 struct tl_entry *timeline_record(slot_layer_t *l, i32 kind, hash128_t payload, const f32 *uv_bounds, u16 flags);
 void        timeline_stroke_begin(history_step_t *step, slot_layer_t *l);
@@ -1852,6 +1855,7 @@ bool timeline_tiles_uniform(hash128_t h);
 bool timeline_tiles_base(hash128_t h, hash128_t base);
 hash128_t timeline_tiles_rebase(hash128_t h, hash128_t base);
 i32  timeline_tiles_test(slot_layer_t *l);
+i32  timeline_tiles_test_reads();
 
 // ---- history_steps.c ----
 void            history_edit_nodes(ui_node_canvas_t *canvas, i32 canvas_type, i32 canvas_group);
