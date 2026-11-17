@@ -141,6 +141,16 @@ void        app_project_import(void);        // Picks a model, it opens in a new
 
 // History
 const char *app_undo_name(void); // Name of the step undo would revert, "" when none
+const char *app_redo_name(void); // Name of the step redo would apply, "" when none
+
+// The last undo or redo the user asked for, from any source (buttons, shortcuts, gestures, the quick menu): a new
+// serial is a new notice. Serial 0: none yet. name is the step's, valid until the next app_* call.
+typedef struct {
+	uint32_t    serial;
+	bool        redo;
+	const char *name;
+} app_history_notice_t;
+app_history_notice_t app_history_notice(void);
 void        app_undo(void); // Returns at once: layers to restore from history follow over the next frames
 void        app_redo(void);
 bool        app_history_busy(void); // Undo or redo still restores layers, the counts are already the new ones

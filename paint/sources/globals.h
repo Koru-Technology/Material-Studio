@@ -263,6 +263,9 @@ history_step_t_array_t *history_steps;
 string_array_t         *history_tool_names; // Tool names shown in the history
 i32                     history_undos     = 0;     // Undos available
 i32                     history_redos     = 0;     // Redos available
+u32                     history_notice_serial = 0; // Bumped by every undo or redo the user asked for (history_user_undo)
+bool                    history_notice_redo   = false;
+char                   *history_notice_name   = "";
 bool                    history_push_undo = false; // Store undo on next paint
 
 // ---- nodes_brush.c ----

@@ -42,10 +42,10 @@ void util_shortcut_undo_redo() {
 	}
 
 	if (undo_pressed) {
-		history_undo();
+		history_user_undo();
 	}
 	else if (redo_pressed) {
-		history_redo();
+		history_user_redo();
 	}
 }
 

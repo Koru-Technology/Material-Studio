@@ -40,6 +40,9 @@ struct MacRootView: View {
 		} detail: {
 			EngineCanvas()
 				.ignoresSafeArea()
+				.overlay(alignment: .top) {
+					HistoryToastView()
+				}
 				.inspector(isPresented: $inspectorShown) {
 					Group {
 						if AppStore.shared.ready {
@@ -71,7 +74,7 @@ struct EditCommands: Commands {
 			}
 			.keyboardShortcut("z")
 			.disabled(!store.canUndo)
-			Button("Redo") {
+			Button(store.redoName.isEmpty ? "Redo" : "Redo \(store.redoName)") {
 				store.perform { app_redo() }
 			}
 			.keyboardShortcut("z", modifiers: [.command, .shift])
@@ -108,6 +111,9 @@ struct PadRootView: View {
 			if ProjectsStore.shared.shown {
 				ProjectsView()
 					.transition(.opacity)
+			}
+			if !ProjectsStore.shared.shown {
+				HistoryToastView()
 			}
 		}
 			.statusBarHidden()

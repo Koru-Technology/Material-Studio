@@ -1210,3 +1210,10 @@ X1(paint_refine_stat, "i(i what)", i, i)
 
 // util_particle.c
 X0(util_particle_alive, "b()", b)
+
+// history.c: undo and redo notices
+X0(history_test_notice_serial, "i()", i)
+X0(history_test_notice_redo, "b()", b)
+X0(history_test_notice_name, "p:char()", p)
+X0(app_undo_name, "p:char()", p)
+X0(app_redo_name, "p:char()", p)

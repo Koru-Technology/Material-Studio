@@ -545,11 +545,23 @@ const char *app_undo_name(void) {
 	return app_str(step->name);
 }
 
+const char *app_redo_name(void) {
+	if (!app_ready() || history_redos <= 0) {
+		return "";
+	}
+	history_step_t *step = history_steps->buffer[history_steps->length - history_redos];
+	return app_str(step->name);
+}
+
+app_history_notice_t app_history_notice(void) {
+	return (app_history_notice_t){.serial = history_notice_serial, .redo = history_notice_redo, .name = app_str(history_notice_name)};
+}
+
 void app_undo(void) {
 	if (!app_ready()) {
 		return;
 	}
-	history_undo();
+	history_user_undo();
 	iron_delay_idle_sleep();
 }
 
@@ -557,7 +569,7 @@ void app_redo(void) {
 	if (!app_ready()) {
 		return;
 	}
-	history_redo();
+	history_user_redo();
 	iron_delay_idle_sleep();
 }
 

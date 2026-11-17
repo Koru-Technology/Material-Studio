@@ -910,3 +910,50 @@ history_step_t *history_push(history_action_t action) {
 static void history_redo_smart_material(char *name) {
 	smart_materials_insert(name);
 }
+
+// Undo and redo the user asked for (buttons, shortcuts, gestures, the quick menu): the step's name is kept for the UI's
+// notice. Undos the app makes itself, a stroke a second finger cancels, use history_undo and leave no notice.
+static char history_notice_buf[128]; // A copy: the step may be freed (a new step drops the redo branch)
+
+static void history_notice(char *name, bool redo) {
+	history_notice_serial++;
+	history_notice_redo = redo;
+	snprintf(history_notice_buf, sizeof(history_notice_buf), "%s", name != NULL ? name : "");
+	history_notice_name = history_notice_buf;
+}
+
+void history_user_undo() {
+	if (history_undos <= 0) {
+		return;
+	}
+	char *name = history_steps->buffer[history_steps->length - 1 - history_redos]->name;
+	i32   was  = history_undos;
+	history_undo();
+	if (history_undos < was) {
+		history_notice(name, false);
+	}
+}
+
+void history_user_redo() {
+	if (history_redos <= 0) {
+		return;
+	}
+	char *name = history_steps->buffer[history_steps->length - history_redos]->name;
+	i32   was  = history_redos;
+	history_redo();
+	if (history_redos < was) {
+		history_notice(name, true);
+	}
+}
+
+i32 history_test_notice_serial() {
+	return (i32)history_notice_serial;
+}
+
+bool history_test_notice_redo() {
+	return history_notice_redo;
+}
+
+char *history_test_notice_name() {
+	return history_notice_name;
+}

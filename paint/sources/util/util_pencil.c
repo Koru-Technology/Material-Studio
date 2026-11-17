@@ -62,7 +62,7 @@ static void util_pencil_run(i32 gesture, f32 x, f32 y) {
 		}
 		break;
 	case PENCIL_ACTION_UNDO:
-		history_undo();
+		history_user_undo();
 		break;
 	case PENCIL_ACTION_QUICK_MENU:
 		if (ui_quick_menu_show) {

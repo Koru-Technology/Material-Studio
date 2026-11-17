@@ -191,10 +191,10 @@ static void ui_quick_menu_run(i32 item) {
 		context_select_tool(TOOL_TYPE_BLUR);
 		break;
 	case QUICK_MENU_UNDO:
-		history_undo();
+		history_user_undo();
 		break;
 	case QUICK_MENU_REDO:
-		history_redo();
+		history_user_redo();
 		break;
 	case QUICK_MENU_RECENT_BRUSH_1:
 	case QUICK_MENU_RECENT_BRUSH_2:

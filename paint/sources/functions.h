@@ -1760,6 +1760,11 @@ u32             history_serial_peek();
 void            history_steps_replace(any_array_t *steps, i32 undos, i32 redos, u32 serial_next);
 void            history_undo();
 void            history_redo();
+void            history_user_undo(); // An undo the user asked for: the UI notices it (history_notice_*)
+void            history_user_redo();
+i32             history_test_notice_serial();
+bool            history_test_notice_redo();
+char           *history_test_notice_name();
 void            history_reset();
 history_step_t *history_push(history_action_t action);
 
