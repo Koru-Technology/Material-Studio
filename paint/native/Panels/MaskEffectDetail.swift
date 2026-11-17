@@ -253,9 +253,6 @@ private struct MaskEffectSections: View {
 				else if effect.type == Int32(APP_MASK_EFFECT_ANCHOR.rawValue) {
 					Text("Uses another layer's mask, height, opacity or occlusion")
 				}
-				else if effect.type == Int32(APP_MASK_EFFECT_MASK_BUILDER.rawValue) {
-					Text("With a layer, its material counts too: the cracks and ridges of its height and normal, its occlusion")
-				}
 			}
 		}
 
