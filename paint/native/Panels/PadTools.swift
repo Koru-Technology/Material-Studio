@@ -45,6 +45,7 @@ struct PadBrushControls: View {
 					SymmetryButton()
 				}
 			}
+			.frame(width: 44) // As wide as the symmetry button also without it: the sliders stay in place
 		}
 		.foregroundStyle(.primary)
 	}
@@ -98,7 +99,7 @@ struct SymmetryButton: View {
 
 struct SymmetryPanel: View {
 	var body: some View {
-		VStack(alignment: .leading, spacing: 10) {
+		VStack(spacing: 10) {
 			Text("Symmetry")
 				.font(.headline)
 			HStack(spacing: 8) {
