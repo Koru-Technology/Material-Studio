@@ -115,30 +115,102 @@ struct TouchDownGesture: UIGestureRecognizerRepresentable {
 
 // Undo and redo side by side in the bottom left corner
 struct PadHistoryControls: View {
-	private var store = AppStore.shared
+	var body: some View {
+		GlassEffectContainer(spacing: 10) { // As the view buttons in the other corner
+			HStack(spacing: 10) {
+				RepeatButton(symbol: "arrow.uturn.backward", label: "Undo", enabled: { AppStore.shared.canUndo }) {
+					AppStore.shared.perform { app_undo() }
+				}
+				RepeatButton(symbol: "arrow.uturn.forward", label: "Redo", enabled: { AppStore.shared.canRedo }) {
+					AppStore.shared.perform { app_redo() }
+				}
+			}
+		}
+		.foregroundStyle(.primary)
+	}
+}
+
+// A system button (in the bottom corner fingers reach only it, not a recognizer of ours). Held for a second, it fires
+// every 100 ms until let go or nothing is left to do, a tap fires once.
+struct RepeatButton: View {
+	let symbol: String
+	let label: String
+	let enabled: () -> Bool
+	let action: () -> Void
+
+	@State private var timer: Timer?
+	@State private var repeated = false // The release does not fire again
 
 	var body: some View {
-		HStack(spacing: 2) {
-			Button {
-				store.perform { app_undo() }
-			} label: {
-				Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 40)
+		Button {
+			if !repeated && enabled() {
+				action()
 			}
-			.disabled(!store.canUndo)
-			.opacity(store.canUndo ? 1 : 0.3) // The primary style set on the capsule keeps the system's dimming away
-			.accessibilityLabel("Undo")
-			Button {
-				store.perform { app_redo() }
-			} label: {
-				Image(systemName: "arrow.uturn.forward").frame(width: 44, height: 40)
-			}
-			.disabled(!store.canRedo)
-			.opacity(store.canRedo ? 1 : 0.3)
-			.accessibilityLabel("Redo")
+			repeated = false
+		} label: {
+			Image(systemName: symbol)
+				.opacity(enabled() ? 1 : 0.3) // The arrow, the glass stays
+				.frame(width: 44, height: 44)
 		}
-		.padding(4)
-		.glassEffect(.regular, in: .capsule)
-		.foregroundStyle(.primary)
+		.buttonStyle(PressReportingStyle { pressed in
+			if pressed {
+				hold()
+			}
+			else {
+				release()
+			}
+		})
+		.disabled(!enabled())
+		.glassEffect(.regular.interactive(), in: .circle) // Its response to the touch
+		.accessibilityLabel(label)
+		.onDisappear {
+			release() // An editor took the screen with the finger still down
+		}
+	}
+
+	private func hold() {
+		release()
+		repeated = false
+		schedule(after: 1.0) {
+			schedule(after: 0.1, repeats: true) {
+				if enabled() {
+					repeated = true
+					action()
+				}
+				else {
+					release()
+				}
+			}
+		}
+	}
+
+	private func release() {
+		timer?.invalidate()
+		timer = nil
+	}
+
+	// In the common modes: it fires while touches are tracked
+	private func schedule(after interval: TimeInterval, repeats: Bool = false, _ fire: @escaping @MainActor () -> Void) {
+		let t = Timer(timeInterval: interval, repeats: repeats) { _ in
+			MainActor.assumeIsolated {
+				fire()
+			}
+		}
+		RunLoop.main.add(t, forMode: .common)
+		timer = t
+	}
+}
+
+// Reports the press of a button, the interactive glass around it shows it
+struct PressReportingStyle: ButtonStyle {
+	let pressed: (Bool) -> Void
+
+	func makeBody(configuration: Configuration) -> some View {
+		configuration.label
+			.contentShape(.circle) // The whole button takes the touch, not only the glyph's pixels
+			.onChange(of: configuration.isPressed) { _, on in
+				pressed(on)
+			}
 	}
 }
 
