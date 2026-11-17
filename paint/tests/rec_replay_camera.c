@@ -4,14 +4,15 @@
 // the decal's anchor and mask, the text tool's image, the stencil and the window's aspect are part of the record. Each
 // case paints on a new layer at 1024, the camera turns, the state before is restored and the record replays: byte-equal.
 // Then each record replays into a 2048 layer close to the same stroke painted live at 2048 (the camera turned back).
-// Cases: decal, text, a brush with a stencil, blur, smudge and clone (each over a stroke of the material).
+// Cases: decal, text, a brush with a stencil, blur, smudge and clone (each over a stroke of the material), a brush aligned
+// to the camera, a brush mapping the material from the screen (PROJECT uvs).
 
 int fails  = 0;
 int checks = 0;
 int frame  = 0;
 int phase  = 0;
 int kase   = 0;
-int NCASES = 6;
+int NCASES = 8;
 
 slot_layer_t *layers[8];
 slot_layer_t *pattern = NULL; // Filled with the material: the stencil
@@ -34,7 +35,13 @@ char *name_of(int k) {
 	if (k == 4) {
 		return "smudge";
 	}
-	return "clone";
+	if (k == 5) {
+		return "clone";
+	}
+	if (k == 6) {
+		return "camera align";
+	}
+	return "project";
 }
 
 void line(float y) {
@@ -83,6 +90,14 @@ void paint_case(int k) {
 		script_set_stencil(pattern->texpaint); // A layer filled with the material
 		check(paint_asset_test_roundtrip(pattern->texpaint), "the stencil's texels as an asset and back are the same");
 	}
+	else if (k == 6) {
+		context_select_tool(TOOL_TYPE_BRUSH);
+		script_get_context()->brush_camera_align = 1;
+	}
+	else if (k == 7) {
+		context_select_tool(TOOL_TYPE_BRUSH);
+		script_set_uv_type(2); // UV_TYPE_PROJECT
+	}
 	else { // Over a stroke of the material, the entry before
 		context_select_tool(TOOL_TYPE_BRUSH);
 		make_paint_set_batching(1);
@@ -103,6 +118,8 @@ void paint_case(int k) {
 	if (k == 2) {
 		script_set_stencil(NULL);
 	}
+	script_get_context()->brush_camera_align = 0;
+	script_set_uv_type(0);
 }
 
 void finish() {
@@ -180,7 +197,7 @@ void next() {
 			slot_layer_t *live  = new_layer();
 			paint_case(kase);
 			int ok      = 1;
-			if (kase >= 3) { // The stroke under it first
+			if (kase >= 3 && kase <= 5) { // The stroke under it first
 				ok = paint_replay_test_into(layers[kase], entries[kase] - 1, full);
 			}
 			ok          = ok && paint_replay_test_into(layers[kase], entries[kase], full);
@@ -192,7 +209,7 @@ void next() {
 				int over8 = diff3(live, full, 8.0);
 				check(over8 * 20 <= painted, string("text: the 1024 record at 2048 is within 8/255 of live on 95 percent (%d of %d)", over8, painted));
 			}
-			else if (kase < 3) {
+			else if (kase < 3 || kase > 5) {
 				check(over1 * 100 <= painted, string("%s: the 1024 record at 2048 is within 1/255 of live on 99 percent (%d of %d)", name_of(kase), over1, painted));
 			}
 			else { // Their reach is the uv footprint painted at 1024 (blur's kernel, smudge's and clone's screen offsets): the
