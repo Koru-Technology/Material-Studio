@@ -2296,6 +2296,7 @@ void render_path_set_target(char *target, string_array_t *additional, char *dept
 		render_path_current_w       = sys_w();
 		render_path_current_h       = sys_h();
 		_gpu_begin(NULL, NULL, NULL, flags, color, depth);
+		gpu_label_pass("framebuffer");
 		gpu_viewport(sys_x(), render_path_current_h - (sys_h() - sys_y()), sys_w(), sys_h());
 	}
 	else { // Render target
@@ -2317,6 +2318,7 @@ void render_path_set_target(char *target, string_array_t *additional, char *dept
 		render_target_t *db        = depth_buffer != NULL ? (render_target_t *)any_map_get(render_path_render_targets, depth_buffer) : NULL;
 		_render_path_current_image = rt->_image;
 		_gpu_begin(rt->_image, additional_images, db != NULL ? db->_image : NULL, flags, color, depth);
+		gpu_label_pass(target);
 	}
 	_render_path_bind_params = NULL;
 }
@@ -2355,6 +2357,8 @@ void render_path_draw_shader_keep_target(char *handle) {
 	// Full-screen triangle
 	// file/data_name/context
 	cached_shader_context_t *cc = (cached_shader_context_t *)any_map_get(_render_path_cached_shader_contexts, handle);
+	char                    *name = strrchr(handle, '/');
+	gpu_label_pass(name != NULL ? name + 1 : handle);
 	if (const_data_screen_aligned_vb == NULL) {
 		const_data_create_screen_aligned_data();
 	}

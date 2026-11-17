@@ -163,6 +163,8 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 void gpu_begin_internal(gpu_clear_t flags, unsigned color, float depth);
 void gpu_end(void);
 void gpu_end_internal(void);
+// Names the current pass in GPU traces and captures; passes that continue one encoder add their names
+void gpu_label_pass(const char *label);
 void gpu_execute_and_wait(void);
 // Submits the work recorded so far without waiting (outside a render pass); done, when given, gets its GPU time in ms
 // (-1 when unknown), on any thread. Elsewhere than Metal: gpu_execute_and_wait.

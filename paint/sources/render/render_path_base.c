@@ -550,6 +550,7 @@ void render_path_base_draw_overrides(mesh_data_t *data) {
 }
 
 static void render_path_base_draw_layer_pass(i32 layer_pass) {
+	gpu_label_pass(string_tmp("layers %d/%d", layer_pass + 1, make_mesh_layer_pass_count));
 	// Objects with an overridden material have only the base mesh shader,
 	// draw them in the last pass so they end up in the final gbuffer
 	render_path_base_draw_meshes(render_path_base_mesh_scon(layer_pass), layer_pass == make_mesh_layer_pass_count - 1);

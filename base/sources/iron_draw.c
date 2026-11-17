@@ -283,6 +283,7 @@ void draw_begin(gpu_texture_t *target, bool clear, unsigned color) {
 		gpu_texture_t *targets[1] = {target};
 		gpu_begin(targets, 1, NULL, clear ? GPU_CLEAR_COLOR : GPU_CLEAR_NONE, color, 0.0);
 	}
+	gpu_label_pass("draw 2d");
 }
 
 void draw_end(void) {

@@ -309,6 +309,19 @@ void gpu_begin_internal(gpu_clear_t flags, unsigned color, float depth) {
 	current_scissor.height   = current_render_targets[0]->height;
 }
 
+void gpu_label_pass(const char *label) {
+	if (command_encoder == nil || label == NULL) {
+		return;
+	}
+	NSString *old = command_encoder.label;
+	if (old == nil) {
+		command_encoder.label = @(label);
+	}
+	else if (old.length < 160) {
+		command_encoder.label = [NSString stringWithFormat:@"%@ + %s", old, label];
+	}
+}
+
 void gpu_end_internal() {
 	if (discard_depth_store || current_render_targets_count > 8) {
 		if (discard_depth_store) {
@@ -338,6 +351,7 @@ static void gpu_report_error(id<MTLCommandBuffer> cb, const char *where) {
 
 void gpu_execute_and_wait() {
 	end_kept_encoder();
+	NSString *label = command_encoder.label;
 	if (gpu_in_use) {
 		if (discard_depth_store) {
 			[command_encoder setDepthStoreAction:MTLStoreActionStore];
@@ -358,6 +372,7 @@ void gpu_execute_and_wait() {
 		}
 		render_pass_desc.depthAttachment.loadAction = MTLLoadActionLoad;
 		command_encoder                             = [command_buffer renderCommandEncoderWithDescriptor:render_pass_desc];
+		command_encoder.label                       = label;
 		id<MTLRenderPipelineState> pipe             = (__bridge id<MTLRenderPipelineState>)current_pipeline->impl.pipeline;
 		[command_encoder setRenderPipelineState:pipe];
 		id<MTLDepthStencilState> depth_state = (__bridge id<MTLDepthStencilState>)current_pipeline->impl.depth;
@@ -398,8 +413,10 @@ static MTLScissorRect           suspended_scissor;
 static gpu_buffer_t            *suspended_vb      = NULL;
 static gpu_buffer_t            *suspended_ib      = NULL;
 static bool                     suspended_discard = false;
+static NSString                *suspended_label   = nil;
 
 void gpu_suspend_internal(void) {
+	suspended_label    = command_encoder.label;
 	suspended_desc     = render_pass_desc;
 	suspended_viewport = current_viewport;
 	suspended_scissor  = current_scissor;
@@ -424,8 +441,10 @@ void gpu_resume_internal(void) {
 	if (command_buffer == nil) {
 		command_buffer = [get_metal_queue() commandBuffer];
 	}
-	command_encoder     = [command_buffer renderCommandEncoderWithDescriptor:render_pass_desc];
-	discard_depth_store = suspended_discard;
+	command_encoder       = [command_buffer renderCommandEncoderWithDescriptor:render_pass_desc];
+	command_encoder.label = suspended_label;
+	suspended_label       = nil;
+	discard_depth_store   = suspended_discard;
 	current_viewport    = suspended_viewport;
 	current_scissor     = suspended_scissor;
 	current_vb          = suspended_vb;
