@@ -688,6 +688,8 @@ void                   make_material_bake_node_previews_linked();
 void                   make_material_parse_paint_material(bool bake_previews);
 void                   make_material_use_pick_material();
 make_material_async_t *make_material_async_start(void);
+make_material_async_t *make_material_async_compile(shader_context_t *scon, char *glsl);
+void                   make_material_async_drop(make_material_async_t *a);
 bool                   make_material_async_started(make_material_async_t *a);
 bool                   make_material_async_ready(make_material_async_t *a);
 shader_context_t      *make_material_async_scon(make_material_async_t *a);

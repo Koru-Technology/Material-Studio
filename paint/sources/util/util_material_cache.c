@@ -87,7 +87,9 @@ struct material_cache_replay {
 	f32               rect[4];
 	i32               state;
 	gpu_texture_t    *tex[3];
-	shader_context_t *bake;
+	make_material_async_t *bake; // Its shader, translated and compiled on a thread
+	f64               bake_t0;
+	bool              bake_ready;
 	bool              emis_used;
 	bool              subs_used;
 	bool              height_used;
@@ -865,10 +867,9 @@ static i64 material_cache_replay_total(void) {
 }
 
 static void material_cache_replay_free_bake(material_cache_replay_t *e) {
-	if (e->bake != NULL) {
-		make_material_delete_context(e->bake); // Next frame: its band may be in flight
-		e->bake = NULL;
-	}
+	make_material_async_drop(e->bake); // Its context deleted next frame (its band may be in flight), once its thread ended
+	e->bake       = NULL;
+	e->bake_ready = false;
 }
 
 static void material_cache_replay_remove(i32 i) {
@@ -1019,21 +1020,25 @@ static void material_cache_replay_start(material_cache_replay_t *e) {
 	material_cache_replay_stats[1]++;
 }
 
-// Its shader parsed from the material replayed (g_context's, the snapshot's lists swapped in), translated and compiled;
-// or taken from a cache of the same material for another target (the tiles of an export)
+// Its shader parsed from the material replayed (g_context's, the snapshot's lists swapped in), translated and compiled
+// on a thread (hundreds of ms for a heavy material with Metal's cache cold); or taken from a cache of the same material
+// for another target (the tiles of an export)
 static bool material_cache_replay_parse(material_cache_replay_t *e) {
 	for (i32 i = 0; i < material_cache_replay_count; ++i) {
 		material_cache_replay_t *o = material_cache_replays[i];
 		if (o != e && o->bake != NULL && hash128_eq(o->snap, e->snap) && o->uv_map == e->uv_map && o->mesh == e->mesh) {
 			e->bake        = o->bake;
+			e->bake_t0     = o->bake_t0;
+			e->bake_ready  = o->bake_ready;
 			e->emis_used   = o->emis_used;
 			e->subs_used   = o->subs_used;
 			e->height_used = o->height_used;
 			o->bake        = NULL;
+			o->bake_ready  = false;
 			return true;
 		}
 	}
-	double      t0    = iron_time();
+	e->bake_t0        = iron_time();
 	material_t *sdata = ALLOC_INIT(material_t, {.name = "Material", .canvas = g_context->material->canvas});
 	char       *glsl  = NULL;
 	char       *why   = NULL;
@@ -1044,39 +1049,42 @@ static bool material_cache_replay_parse(material_cache_replay_t *e) {
 	shader_context_t *s = con->data;
 	node_shader_context_free(con);
 	free(sdata);
-	char *vs = NULL;
-	char *fs = NULL;
-	if (why == NULL && !iron_glsl_translate(glsl, &vs, &fs)) {
-		why = "its shader did not translate";
-	}
-	free(glsl);
 	if (why != NULL) {
+		free(glsl);
 		s->shader_from_source = true;
 		make_material_free_context(s);
-		free(vs);
-		free(fs);
 		material_cache_replay_unfit(e, why);
 		return false;
 	}
-	s->shader_from_source      = true;
-	s->vertex_shader           = vs;
-	s->fragment_shader         = fs;
-	s->_->vertex_shader_size   = 0;
-	s->_->fragment_shader_size = 0;
-	shader_context_load(s);
-	free(vs);
-	free(fs);
-	s->vertex_shader   = NULL;
-	s->fragment_shader = NULL;
-	e->bake            = s;
+	e->bake = make_material_async_compile(s, glsl);
+	if (!make_material_async_started(e->bake)) {
+		material_cache_replay_unfit(e, "its shader did not load");
+		return false;
+	}
+	return true;
+}
+
+// Its shader compiled: false while it compiles (sync: waited for), or when it failed (unfit then)
+static bool material_cache_replay_compiled(material_cache_replay_t *e, bool sync) {
+	if (e->bake_ready) {
+		return true;
+	}
+	while (!make_material_async_ready(e->bake)) {
+		if (!sync) {
+			return false;
+		}
+		usleep(500);
+	}
+	shader_context_t *s = make_material_async_scon(e->bake);
 	if (s->_->pipe == NULL || s->_->pipe->impl.pipeline == NULL) {
 		material_cache_replay_unfit(e, "its shader did not compile");
 		return false;
 	}
-	material_cache_replay_stats[6] = (i32)((iron_time() - t0) * 1000000.0);
+	e->bake_ready                  = true;
+	material_cache_replay_stats[6] = (i32)((iron_time() - e->bake_t0) * 1000000.0);
 	if (material_cache_timing()) {
-		iron_log("[matcache] replay cache shader of snapshot %016llx: parsed, translated and compiled in %.1f ms", (unsigned long long)e->snap.lo,
-		         (iron_time() - t0) * 1000.0);
+		iron_log("[matcache] replay cache shader of snapshot %016llx: parsed, then translated and compiled on a thread, ready in %.1f ms",
+		         (unsigned long long)e->snap.lo, (iron_time() - e->bake_t0) * 1000.0);
 	}
 	return true;
 }
@@ -1182,7 +1190,7 @@ static bool material_cache_replay_draw_band(material_cache_replay_t *e, const i3
 	gpu_scissor(x, y, w, h);
 	_mesh_object_last_pipeline = NULL;
 	i32 need                   = mm_buffers_require(MM_BUFFERS_FULL);
-	mesh_object_draw(render_path_paint_target(), e->bake, NULL);
+	mesh_object_draw(render_path_paint_target(), make_material_async_scon(e->bake), NULL);
 	mm_buffers_require(need);
 	gpu_disable_scissor();
 	gpu_end();
@@ -1235,6 +1243,9 @@ i32 material_cache_replay_build(material_cache_replay_t *e, const f32 *uv, bool 
 				return 0;
 			}
 			continue;
+		}
+		if (!material_cache_replay_compiled(e, sync)) {
+			return e->state == MATERIAL_CACHE_UNFIT ? -1 : 0;
 		}
 		i32 b[4];
 		material_cache_replay_need(e, uv, b);

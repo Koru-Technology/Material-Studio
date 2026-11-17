@@ -446,9 +446,9 @@ static void make_material_threads_join(void) {
 	make_material_nthreads = 0;
 }
 
-// The paint shader of the context as it is now (the caller sets it up), kept by the caller: parsed now, translated and
-// compiled on a thread. The current paint shader stays.
-make_material_async_t *make_material_async_start(void) {
+// A context loaded in a batch (its pipeline not compiled) with the GLSL to translate (taken, NULL when its shaders are
+// there): translated and compiled on a thread
+static make_material_async_t *make_material_async_begin(shader_context_t *scon, char *glsl, f64 t0) {
 	static bool at_exit = false;
 	if (!at_exit) {
 		at_exit = true;
@@ -456,8 +456,9 @@ make_material_async_t *make_material_async_start(void) {
 	}
 	make_material_async_t *a = calloc(1, sizeof(make_material_async_t));
 	atomic_init(&a->done, false);
-	a->t0   = iron_time();
-	a->scon = make_material_parse_kept_deferred(&a->glsl);
+	a->t0   = t0;
+	a->scon = scon;
+	a->glsl = glsl;
 	if (a->scon != NULL && a->scon->_ != NULL && a->scon->_->pipe != NULL && a->scon->_->pipe->vertex_shader != NULL &&
 	    a->scon->_->pipe->fragment_shader != NULL) {
 		a->started   = true;
@@ -470,6 +471,32 @@ make_material_async_t *make_material_async_start(void) {
 		iron_thread_init(&a->thread, make_material_async_worker, a);
 	}
 	return a;
+}
+
+// The paint shader of the context as it is now (the caller sets it up), kept by the caller: parsed now, translated and
+// compiled on a thread. The current paint shader stays.
+make_material_async_t *make_material_async_start(void) {
+	f64               t0   = iron_time();
+	char             *glsl = NULL;
+	shader_context_t *scon = make_material_parse_kept_deferred(&glsl);
+	return make_material_async_begin(scon, glsl, t0);
+}
+
+// A context parsed from GLSL and not loaded (util_material_cache.c's replay bakes), kept by the caller: loaded now with
+// empty shaders, glsl (taken) translated and its pipeline compiled on a thread
+make_material_async_t *make_material_async_compile(shader_context_t *scon, char *glsl) {
+	scon->shader_from_source      = true;
+	scon->vertex_shader           = "";
+	scon->fragment_shader         = "";
+	scon->_->vertex_shader_size   = 0;
+	scon->_->fragment_shader_size = 0;
+	shader_compile_batch_begin();
+	shader_context_load(scon);
+	i32 count = 0;
+	shader_compile_batch_take(&count);
+	scon->vertex_shader   = NULL;
+	scon->fragment_shader = NULL;
+	return make_material_async_begin(scon, glsl, iron_time());
 }
 
 // Its thread was started: false when the parse made no shader to compile
@@ -635,6 +662,26 @@ static void make_material_async_update(void *_) {
 	make_material_paint_ready(0.0);
 }
 
+static void make_material_async_register(void) {
+	if (!make_material_registered) {
+		make_material_registered = true;
+		sys_notify_on_update(make_material_async_update, NULL);
+	}
+}
+
+// Dropped while its thread may still be at work: freed once it ended, without waiting for it
+void make_material_async_drop(make_material_async_t *a) {
+	if (a == NULL) {
+		return;
+	}
+	if (a->compiling && !atomic_load(&a->done) && make_material_ndropped < MAKE_MATERIAL_DROPPED_MAX) {
+		make_material_async_register();
+		make_material_dropped[make_material_ndropped++] = a;
+		return;
+	}
+	make_material_async_free(a);
+}
+
 // The paint shader of the context, as make_material_parse_paint_material: parsed now, translated and compiled on a
 // thread (a heavy material's took 400 ms of the frame on the iPad). make_material_paint_scon stays the previous one until
 // it is ready (make_material_paint_ready).
@@ -649,10 +696,7 @@ void make_material_parse_paint_material_async(bool bake_previews) {
 		make_material_parse_paint_material(bake_previews); // The first one, or in the middle of another use
 		return;
 	}
-	if (!make_material_registered) {
-		make_material_registered = true;
-		sys_notify_on_update(make_material_async_update, NULL);
-	}
+	make_material_async_register();
 	if (bake_previews) {
 		make_material_bake_previews_now();
 	}
