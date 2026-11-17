@@ -191,7 +191,7 @@ static void tl_ops_record_src(slot_layer_t *l, tl_kind_t kind, timeline_t *src, 
 // Mask m (its timeline src) applied to l. It replays when the mask texture is its pixels: no effects, no height blend.
 void timeline_record_apply_mask(slot_layer_t *l, slot_layer_t *m, timeline_t *src) {
 	f32 opacity = m->mask_opacity;
-	tl_ops_record_src(l, TL_APPLY_MASK, src, mask_stack_is_trivial(m) && !m->height_blend ? &opacity : NULL, sizeof(opacity));
+	tl_ops_record_src(l, TL_APPLY_MASK, src, mask_stack_is_trivial(m) ? &opacity : NULL, sizeof(opacity));
 }
 
 // l1 merged down into l0 (layers_merge_down). It replays when both are layers without masks: the merge is then l0's

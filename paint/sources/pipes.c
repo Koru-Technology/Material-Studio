@@ -115,16 +115,6 @@ void pipes_init() {
 	pipes_offset          = 0;
 	pipes_opac_apply_mask = pipes_get_constant_location("float");
 
-	pipes_height_blend_mask = pipes_create("mask_height_blend", PIPES_LAYOUT_POS);
-	gpu_pipeline_compile(pipes_height_blend_mask);
-	pipes_offset                 = 0;
-	pipes_opac_height_blend      = pipes_get_constant_location("float");
-	pipes_influence_height_blend = pipes_get_constant_location("float");
-	pipes_sharpness_height_blend = pipes_get_constant_location("float");
-	pipes_offset_height_blend    = pipes_get_constant_location("float");
-	pipes_below_height_blend     = pipes_get_constant_location("float");
-	pipes_reach_height_blend     = pipes_get_constant_location("float");
-
 	pipes_merge_mask = pipes_create("mask_merge", PIPES_LAYOUT_POS);
 	gpu_pipeline_compile(pipes_merge_mask);
 	pipes_tex0_merge_mask     = 0;

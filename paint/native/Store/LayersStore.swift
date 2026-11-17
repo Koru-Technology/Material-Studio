@@ -17,12 +17,6 @@ struct LayerProps: Equatable {
 	var fill = FillInfo()      // Fill layers and fill masks
 	var sources: [FillSource] = [] // Their channels' sources, app_fill_channel_t order
 	var channels: UInt32 = 0
-	var heightBlend = false
-	var heightBlendBelow = false
-	var heightBlendReach: Float = 0
-	var heightBlendInfluence: Float = 0
-	var heightBlendSharpness: Float = 1
-	var heightBlendOffset: Float = 0
 	var showsBlending = false
 	var showsChannels = false
 	var showsToFill = false
@@ -60,12 +54,6 @@ struct LayerProps: Equatable {
 			sources = (0..<Int32(APP_FILL_CHANNEL_COUNT.rawValue)).compactMap { app_layer_fill_source(p.id, $0, &s) ? FillSource(s) : nil }
 		}
 		channels = p.channels
-		heightBlend = p.height_blend
-		heightBlendBelow = p.height_blend_below
-		heightBlendReach = p.height_blend_reach
-		heightBlendInfluence = p.height_blend_influence
-		heightBlendSharpness = p.height_blend_sharpness
-		heightBlendOffset = p.height_blend_offset
 		showsBlending = p.shows_blending
 		showsChannels = p.shows_channels
 		showsToFill = p.shows_to_fill

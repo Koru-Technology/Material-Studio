@@ -289,7 +289,7 @@ buffer_t *util_encode_project(project_t *raw) {
 	if (raw->layer_datas != NULL) {
 		armpack_encode_array(raw->layer_datas->length);
 		for (i32 i = 0; i < raw->layer_datas->length; ++i) {
-			armpack_encode_map(42);
+			armpack_encode_map(36);
 			armpack_encode_string("name");
 			armpack_encode_string(raw->layer_datas->buffer[i]->name);
 			armpack_encode_string("type");
@@ -354,18 +354,6 @@ buffer_t *util_encode_project(project_t *raw) {
 			armpack_encode_i32(raw->layer_datas->buffer[i]->path_material);
 			armpack_encode_string("path_text");
 			armpack_encode_bool(raw->layer_datas->buffer[i]->path_text);
-			armpack_encode_string("height_blend");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->height_blend);
-			armpack_encode_string("height_blend_below");
-			armpack_encode_bool(raw->layer_datas->buffer[i]->height_blend_below);
-			armpack_encode_string("height_blend_influence");
-			armpack_encode_f32(raw->layer_datas->buffer[i]->height_blend_influence);
-			armpack_encode_string("height_blend_sharpness");
-			armpack_encode_f32(raw->layer_datas->buffer[i]->height_blend_sharpness);
-			armpack_encode_string("height_blend_offset");
-			armpack_encode_f32(raw->layer_datas->buffer[i]->height_blend_offset);
-			armpack_encode_string("height_blend_reach");
-			armpack_encode_f32(raw->layer_datas->buffer[i]->height_blend_reach);
 			armpack_encode_string("mask_effects");
 			armpack_encode_array_f32(raw->layer_datas->buffer[i]->mask_effects);
 			armpack_encode_string("uid");

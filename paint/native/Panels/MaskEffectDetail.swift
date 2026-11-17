@@ -144,6 +144,7 @@ func maskEffectSymbol(_ type: Int32) -> String {
 	case APP_MASK_EFFECT_ANCHOR: "link"
 	case APP_MASK_EFFECT_MASK_BUILDER: "square.stack.3d.up"
 	case APP_MASK_EFFECT_AO: "circle.dotted"
+	case APP_MASK_EFFECT_HEIGHT_BLEND: "mountain.2"
 	default: "wand.and.stars"
 	}
 }

@@ -6,7 +6,7 @@
 
 // ---- Shared (written by several files) ----
 char        *manifest_title           = "Material Studio";
-char        *manifest_version_project = "32"; // Project files (positional armpack: any layout change of what they hold bumps it)
+char        *manifest_version_project = "33"; // Project files (positional armpack: any layout change of what they hold bumps it)
 char        *manifest_version_library = "31"; // Material, brush and swatches files: project_t without layers, unchanged since 31
 char        *manifest_version_config  = "20";
 context_t   *g_context;
@@ -337,13 +337,6 @@ gpu_pipeline_t *pipes_merge_a  = NULL;
 gpu_pipeline_t *pipes_merge_mask;
 gpu_pipeline_t *pipes_invert_mask;
 gpu_pipeline_t *pipes_apply_mask;
-gpu_pipeline_t *pipes_height_blend_mask;
-i32             pipes_opac_height_blend;
-i32             pipes_influence_height_blend;
-i32             pipes_sharpness_height_blend;
-i32             pipes_offset_height_blend;
-i32             pipes_below_height_blend;
-i32             pipes_reach_height_blend;
 gpu_pipeline_t *pipes_colorid_to_mask;
 i32             pipes_tex0;
 i32             pipes_tex1;

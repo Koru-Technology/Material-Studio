@@ -316,6 +316,7 @@ typedef enum {
 	MASK_EFFECT_MASK_BUILDER = 15, // Generator: curvature, cavity, AO, world normal and position combined, of the model and
 	                               // optionally a layer's material, MASK_BUILDER_*
 	MASK_EFFECT_AO           = 16, // Generator: side (0 occluded, 1 open), amount, sharpness
+	MASK_EFFECT_HEIGHT_BLEND = 17, // Filter: the edge of the result below moves with its layer's height, MASK_HB_*
 	MASK_EFFECT_COUNT,
 } mask_effect_type_t;
 
@@ -351,6 +352,21 @@ typedef enum {
 	MASK_ANCHOR_OPACITY  = 2,
 	MASK_ANCHOR_OCCLUDED = 3, // 1 - occlusion: white in the layer's crevices
 } mask_anchor_channel_t;
+
+// Height Blend settings: the result below gains where the mask's layer is higher than what it is compared with (fur strands
+// reaching past a painted edge)
+#define MASK_HB_INFLUENCE 0 // How far the height moves the edge
+#define MASK_HB_SHARPNESS 1
+#define MASK_HB_OFFSET    2
+#define MASK_HB_REACH     3 // Edge widened first (seam aware blur, texels of a 1024 mask), strands reach that far
+#define MASK_HB_COMPARE   4 // mask_hb_compare_t
+#define MASK_HB_LAYER     5 // MASK_HB_LAYER compare: a layer id, saved as its index
+
+typedef enum {
+	MASK_HB_COMPARE_FLAT  = 0, // A level of 0.5
+	MASK_HB_COMPARE_BELOW = 1, // The layers below, composited
+	MASK_HB_COMPARE_LAYER = 2, // One layer's height
+} mask_hb_compare_t;
 
 // Mask Builder settings
 #define MASK_BUILDER_BALANCE       0
@@ -674,7 +690,6 @@ typedef enum {
 	HISTORY_ACTION_DUPLICATE_SWATCH,
 	HISTORY_ACTION_REPLACE_SWATCHES,
 	HISTORY_ACTION_EDIT_SWATCH,
-	HISTORY_ACTION_MASK_HEIGHT_BLEND,
 	HISTORY_ACTION_MASK_STACK, // Effects of a mask stack added, removed, moved or edited
 	HISTORY_ACTION_RESOLUTION, // Working resolution changed, layers kept (util/util_layer_resolution.c)
 	HISTORY_ACTION_PATH,       // Points of a path layer added, removed or moved (util/util_path.c)

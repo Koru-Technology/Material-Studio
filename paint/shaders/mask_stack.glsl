@@ -16,7 +16,10 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
 layout(set = 0, binding = 2) uniform texture2D texa;   // Accumulated
 layout(set = 0, binding = 3) uniform texture2D texsrc; // Paint effect texpaint, a generator's or fill's cached output, the ID map,
-                                                       // the blurred result, the anchored layer
+                                                       // the blurred result, the anchored layer; Height Blend: the result
+                                                       // below widened by its reach
+layout(set = 0, binding = 4) uniform texture2D textop; // Height Blend: the height (a) of the mask's layer
+layout(set = 0, binding = 5) uniform texture2D texcmp; // and of what it is compared with
 
 layout(location = 0) VARYING Varyings {
 	vec2 tex;
@@ -136,6 +139,15 @@ void main() {
 		float w = max(1.0 - constants.params0.y, 0.0001);
 		float c = 1.0 - constants.params0.x;
 		r       = clamp((a - (c - w * 0.5)) / w, 0.0, 1.0);
+	}
+	else if (constants.type == 17) { // Height Blend: influence, sharpness, offset, reach, compare with
+		float m     = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
+		float top   = textureLod(sampler2D(textop, sampler_linear), vin.tex, 0.0).a;
+		float other = constants.params1.x < 0.5 ? 0.5 : textureLod(sampler2D(texcmp, sampler_linear), vin.tex, 0.0).a;
+		// Only inside the edge band: deep in the painted area stays clean, deep in the unpainted area keeps everything.
+		// Towards the outer end of the band a strand needs more height, towards the inner end less: strands stay crisp
+		float band = (1.0 - smoothstep(0.0, 0.25, m)) * -3.0 + smoothstep(0.75, 1.0, m) * 3.0;
+		r          = (m * 2.0 - 1.0 + (top - other + constants.params0.z) * constants.params0.x + band) * constants.params0.y * 0.5 + 0.5;
 	}
 	else if (constants.type == 13) { // Blur, texsrc the blurred result
 		r = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;

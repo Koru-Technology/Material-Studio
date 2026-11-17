@@ -110,6 +110,14 @@ static mask_effect_param_t mask_params_ao[] = {
     {"Sharpness", 2, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     MASK_NOISE_PARAMS,
 };
+static mask_effect_param_t mask_params_height_blend[] = {
+    {"Compare With", MASK_HB_COMPARE, MASK_PARAM_CHOICE, 0.0, 2.0, 1.0, "Flat,Layers Below,Layer"},
+    {"Layer", MASK_HB_LAYER, MASK_PARAM_LAYER, -1.0, 1000000.0, -1.0, NULL, MASK_HB_COMPARE, 1u << MASK_HB_COMPARE_LAYER},
+    {"Influence", MASK_HB_INFLUENCE, MASK_PARAM_SLIDER, 0.0, 4.0, 1.0, NULL},
+    {"Sharpness", MASK_HB_SHARPNESS, MASK_PARAM_SLIDER, 1.0, 50.0, 16.0, NULL},
+    {"Offset", MASK_HB_OFFSET, MASK_PARAM_SLIDER, -1.0, 1.0, 0.0, NULL},
+    {"Reach", MASK_HB_REACH, MASK_PARAM_SLIDER, 0.0, 64.0, 30.0, NULL},
+};
 static mask_effect_param_t mask_params_histogram[] = {
     {"Position", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     {"Contrast", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
@@ -155,6 +163,8 @@ mask_effect_param_t *mask_effect_params(i32 type, i32 *count) {
 		MASK_PARAMS_OF(mask_params_mask_builder);
 	case MASK_EFFECT_AO:
 		MASK_PARAMS_OF(mask_params_ao);
+	case MASK_EFFECT_HEIGHT_BLEND:
+		MASK_PARAMS_OF(mask_params_height_blend);
 	}
 	*count = 0;
 	return NULL;
@@ -228,6 +238,8 @@ char *mask_effect_name(i32 type) {
 		return "Mask Builder";
 	case MASK_EFFECT_AO:
 		return "Ambient Occlusion";
+	case MASK_EFFECT_HEIGHT_BLEND:
+		return "Height Blend";
 	}
 	return "Effect";
 }
@@ -241,7 +253,8 @@ char *mask_blend_name(i32 blending) {
 
 // Filters transform the result below (their blending is ignored), the other effects are sources blended over it
 bool mask_effect_is_filter(i32 type) {
-	return type == MASK_EFFECT_LEVELS || type == MASK_EFFECT_INVERT || type == MASK_EFFECT_HISTOGRAM || type == MASK_EFFECT_BLUR;
+	return type == MASK_EFFECT_LEVELS || type == MASK_EFFECT_INVERT || type == MASK_EFFECT_HISTOGRAM || type == MASK_EFFECT_BLUR ||
+	       type == MASK_EFFECT_HEIGHT_BLEND;
 }
 
 // Generators are computed from the mesh (util_mask_generators.c)
@@ -503,7 +516,10 @@ slot_layer_t *mask_stack_layer_by_id(i32 id) {
 
 // The params index of a layer an effect of type references (its id, saved as its index), -1 for none
 static i32 mask_effect_layer_ref(i32 type) {
-	return type == MASK_EFFECT_ANCHOR ? 0 : type == MASK_EFFECT_MASK_BUILDER ? MASK_BUILDER_LAYER : -1;
+	return type == MASK_EFFECT_ANCHOR         ? 0
+	       : type == MASK_EFFECT_MASK_BUILDER ? MASK_BUILDER_LAYER
+	       : type == MASK_EFFECT_HEIGHT_BLEND ? MASK_HB_LAYER
+	                                          : -1;
 }
 
 // The layer whose material Mask Builder e reads too (height, normal, occlusion), NULL for none: none picked, deleted, or
@@ -553,6 +569,128 @@ static bool mask_stack_anchor_reaches(slot_layer_t *from, slot_layer_t *target, 
 	return false;
 }
 
+// Height Blend: the height of the mask's layer (pack .a) against a flat level, the layers below it or one layer
+
+static i32 mask_hb_compare(mask_effect_t *e) {
+	return (i32)math_floor(e->params[MASK_HB_COMPARE] + 0.5);
+}
+
+// The layer whose height a Height Blend of m moves the edge with, NULL for none (a group's mask)
+static slot_layer_t *mask_hb_top(slot_layer_t *m) {
+	slot_layer_t *l = m->parent;
+	return l != NULL && l->texpaint_pack != NULL ? l : NULL;
+}
+
+// The one layer Height Blend e compares with, NULL for none picked or another comparison
+static slot_layer_t *mask_hb_layer(mask_effect_t *e) {
+	slot_layer_t *l = mask_hb_compare(e) == MASK_HB_COMPARE_LAYER ? mask_stack_layer_by_id((i32)e->params[MASK_HB_LAYER]) : NULL;
+	return l != NULL && l->texpaint_pack != NULL ? l : NULL;
+}
+
+static bool mask_stack_has_height_blend_below(slot_layer_t *m) {
+	i32 n = m->mask_effects != NULL ? mask_stack_count(m) : 0;
+	for (i32 i = 0; i < n; ++i) {
+		mask_effect_t e = mask_stack_get(m, i);
+		if (e.visible && e.type == MASK_EFFECT_HEIGHT_BLEND && mask_hb_compare(&e) == MASK_HB_COMPARE_BELOW) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// A visible Height Blend in the stack of m: the viewport samples its result around each texel for the normals (make_mesh.c)
+bool mask_stack_has_height_blend(slot_layer_t *m) {
+	i32 n = m->mask_effects != NULL ? mask_stack_count(m) : 0;
+	for (i32 i = 0; i < n; ++i) {
+		mask_effect_t e = mask_stack_get(m, i);
+		if (e.visible && e.type == MASK_EFFECT_HEIGHT_BLEND) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// The layers under l that paint height (layers_height_below composites them)
+static bool mask_hb_below_paints(slot_layer_t *b) {
+	return slot_layer_is_layer(b) && b->paint_height;
+}
+
+// What the composited height of the layers under l depends on: their pixels, visibility, opacity, blending and masks
+static u64 mask_hb_below_key(slot_layer_t *l) {
+	u64 h = 1469598103934665603ull;
+	for (i32 i = 0; l != NULL && i < g_project->_->layers->length; ++i) {
+		slot_layer_t *b = g_project->_->layers->buffer[i];
+		if (b == l) {
+			break;
+		}
+		if (!mask_hb_below_paints(b)) {
+			continue;
+		}
+		u64 v[6] = {(u64)(uintptr_t)b, b->revision, slot_layer_is_visible(b), (u64)(b->mask_opacity * 65536.0), (u64)b->blending, b->paint_height_blend};
+		h        = hash_fnv1a(h, v, sizeof(v));
+		slot_layer_t_array_t *masks = slot_layer_get_masks(b, true);
+		for (i32 k = 0; masks != NULL && k < masks->length; ++k) {
+			slot_layer_t *mk   = masks->buffer[k];
+			u64           w[4] = {(u64)(uintptr_t)mk, mk->revision, slot_layer_is_visible(mk), (u64)(mk->mask_opacity * 65536.0)};
+			h                  = hash_fnv1a(h, w, sizeof(w));
+		}
+	}
+	return h;
+}
+
+// The cached height of the layers under the layer of m, composited again when they changed. Fill layers among them are
+// rasterized first. Before the passes of m: compositing evaluates their masks, through the same scratch.
+static void mask_hb_below_prepare(slot_layer_t *m) {
+	slot_layer_t *l = mask_hb_top(m);
+	if (l == NULL || !mask_stack_has_height_blend_below(m)) {
+		if (m->height_below != NULL) {
+			gpu_delete_texture(m->height_below);
+			m->height_below = NULL;
+		}
+		return;
+	}
+	for (i32 i = 0; i < g_project->_->layers->length && g_project->_->layers->buffer[i] != l; ++i) {
+		if (mask_hb_below_paints(g_project->_->layers->buffer[i])) {
+			fill_ensure(g_project->_->layers->buffer[i]);
+		}
+	}
+	u64 key = mask_hb_below_key(l);
+	if (m->height_below != NULL && m->height_below_key == key && m->height_below->width == m->texpaint->width &&
+	    m->height_below->height == m->texpaint->height) {
+		return;
+	}
+	m->height_below_key = key;
+	util_texture_ensure_target(&m->height_below, m->texpaint->width, m->texpaint->height, GPU_TEXTURE_FORMAT_RGBA64);
+	gpu_texture_t *below = layers_height_below(l);
+	if (below == NULL) { // Nothing below paints height
+		_gpu_begin(m->height_below, NULL, NULL, GPU_CLEAR_COLOR, 0x00000000, 0.0);
+		gpu_end();
+		return;
+	}
+	draw_begin(m->height_below, false, 0);
+	draw_set_pipeline(pipes_copy64);
+	draw_scaled_image(below, 0, 0, m->height_below->width, m->height_below->height);
+	draw_set_pipeline(NULL);
+	draw_end();
+}
+
+// The heights Height Blend e of m reads: its layer's (*top) and what it is compared with (*cmp), .a of each
+static void mask_hb_heights(slot_layer_t *m, mask_effect_t *e, gpu_texture_t **top, gpu_texture_t **cmp) {
+	slot_layer_t *l = mask_hb_top(m);
+	*top            = l != NULL ? l->texpaint_pack : mask_stack_black();
+	i32 c           = mask_hb_compare(e);
+	if (c == MASK_HB_COMPARE_BELOW) {
+		*cmp = m->height_below != NULL ? m->height_below : mask_stack_black();
+	}
+	else if (c == MASK_HB_COMPARE_LAYER) {
+		slot_layer_t *o = mask_hb_layer(e);
+		*cmp            = o != NULL ? o->texpaint_pack : mask_stack_black();
+	}
+	else {
+		*cmp = mask_stack_black(); // Unread: the shader compares with 0.5
+	}
+}
+
 static gpu_texture_t *mask_stack_id_map() {
 	return project_get_image(project_id_map_asset());
 }
@@ -591,6 +729,13 @@ static u64 mask_stack_inputs_key(slot_layer_t *m) {
 			v[0]            = (u64)(uintptr_t)l;
 			v[2]            = l->revision;
 		}
+		else if (e.type == MASK_EFFECT_HEIGHT_BLEND) { // Its layer's height and what it is compared with
+			slot_layer_t *t = mask_hb_top(m);
+			slot_layer_t *o = mask_hb_layer(&e);
+			v[0]            = t != NULL ? t->revision : 0;
+			v[1]            = o != NULL ? (u64)(uintptr_t)o ^ ((u64)o->revision << 32) : 0;
+			v[2]            = mask_hb_compare(&e) == MASK_HB_COMPARE_BELOW ? mask_hb_below_key(t) : 0;
+		}
 		else {
 			continue;
 		}
@@ -600,16 +745,22 @@ static u64 mask_stack_inputs_key(slot_layer_t *m) {
 }
 
 // Masks the anchors of m read evaluate first, their passes use the same scratch. One evaluating already (a cycle) is
-// read as it was. Fill layers they or a Mask Builder's micro details read are rasterized now (util_fill.c).
+// read as it was. Fill layers they, a Mask Builder or a Height Blend read are rasterized now (util_fill.c), the height of
+// the layers below a Height Blend composited.
 static void mask_stack_anchors_prepare(slot_layer_t *m) {
 	if (m->mask_effects == NULL) {
 		return;
 	}
+	mask_hb_below_prepare(m);
 	i32 n = mask_stack_count(m);
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
 		if (e.visible) {
 			fill_ensure(mask_effect_builder_layer(&e));
+		}
+		if (e.visible && e.type == MASK_EFFECT_HEIGHT_BLEND) {
+			fill_ensure(mask_hb_top(m));
+			fill_ensure(mask_hb_layer(&e));
 		}
 		if (!e.visible || e.type != MASK_EFFECT_ANCHOR) {
 			continue;
@@ -778,10 +929,24 @@ static void mask_stack_blur_timing_done(void *data, f64 gpu_ms) {
 	free(p);
 }
 
-static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, gpu_texture_t *src, mask_effect_t *e, f32 src_w, f32 src_h);
+// The textures a pass reads besides the result below: the effect's source, a Height Blend's heights (.a)
+typedef struct {
+	gpu_texture_t *src;
+	gpu_texture_t *top;
+	gpu_texture_t *cmp;
+	f32            src_w; // ID map texels
+	f32            src_h;
+} mask_pass_in_t;
 
-// acc (w x h) blurred by blur effect e. No pass may be open.
-static gpu_texture_t *mask_stack_blur(gpu_texture_t *acc, mask_effect_t *e, i32 w, i32 h) {
+static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, mask_pass_in_t *in, mask_effect_t *e);
+
+// The blur radius of effect e before its pass, 0 for none: a Blur's, a Height Blend's reach
+f32 mask_effect_blur_radius(mask_effect_t *e) {
+	return e->type == MASK_EFFECT_BLUR ? e->params[0] : e->type == MASK_EFFECT_HEIGHT_BLEND ? e->params[MASK_HB_REACH] : 0.0;
+}
+
+// acc (w x h) blurred by radius (texels of a 1024 mask). No pass may be open.
+static gpu_texture_t *mask_stack_blur(gpu_texture_t *acc, f32 radius, i32 w, i32 h) {
 	if (mask_stack_blur_timing < 0) {
 		mask_stack_blur_timing = getenv("IRON_PAINT_TIMING") != NULL ? 1 : 0;
 	}
@@ -791,7 +956,7 @@ static gpu_texture_t *mask_stack_blur(gpu_texture_t *acc, mask_effect_t *e, i32 
 		t0 = iron_glsl_now_ms();
 	}
 
-	f32 sigma = e->params[0] * 0.5 * w / 1024.0; // Texels of the mask
+	f32 sigma = radius * 0.5 * w / 1024.0; // Texels of the mask
 	i32 s     = 1;                                // Downsampling, the shader averages up to 32 x 32 texels
 	while (s < 32 && w / (s * 2) >= 16 && h / (s * 2) >= 16 && (sigma / s > MASK_STACK_BLUR_SIGMA || w / s > MASK_STACK_BLUR_MAX_RES)) {
 		s *= 2;
@@ -803,10 +968,11 @@ static gpu_texture_t *mask_stack_blur(gpu_texture_t *acc, mask_effect_t *e, i32 
 
 	gpu_texture_t *src = acc;
 	if (s > 1) {
-		mask_effect_t d = {.type = -1, .opacity = 1.0};
-		d.params[0]     = (f32)s;
-		src             = mask_stack_blur_texture(0, bw, bh, GPU_TEXTURE_FORMAT_RGBA32);
-		mask_stack_pass(src, acc, mask_stack_black(), &d, (f32)w, (f32)h);
+		mask_effect_t  d  = {.type = -1, .opacity = 1.0};
+		mask_pass_in_t in = {.src = mask_stack_black(), .src_w = (f32)w, .src_h = (f32)h};
+		d.params[0]       = (f32)s;
+		src               = mask_stack_blur_texture(0, bw, bh, GPU_TEXTURE_FORMAT_RGBA32);
+		mask_stack_pass(src, acc, &in, &d);
 	}
 	f64 ts = mask_stack_blur_timing ? iron_glsl_now_ms() : 0.0;
 	util_uv_cache_seam_map(bw, bh); // Built on the cpu once a size and mesh
@@ -851,13 +1017,33 @@ static gpu_texture_t *mask_stack_source(slot_layer_t *m, mask_effect_t *e, f32 *
 	return mask_stack_black();
 }
 
+// What effect e of m reads (k visible effects before it, acc their result, w x h the mask): its source, a blur's blurred
+// result below, a Height Blend's result below widened by its reach and its heights. No pass may be open.
+static mask_pass_in_t mask_stack_inputs(slot_layer_t *m, mask_effect_t *e, gpu_texture_t *acc, i32 k, i32 w, i32 h) {
+	mask_pass_in_t in = {.src_w = 1.0, .src_h = 1.0};
+	f32            r  = mask_effect_blur_radius(e);
+	if (e->type == MASK_EFFECT_BLUR) {
+		in.src = k == 0 ? mask_stack_black() : mask_stack_blur(acc, r, w, h); // Black blurs to black
+	}
+	else if (e->type == MASK_EFFECT_HEIGHT_BLEND) {
+		in.src = k > 0 && r > 0.0 ? mask_stack_blur(acc, r, w, h) : acc;
+		mask_hb_heights(m, e, &in.top, &in.cmp);
+	}
+	else {
+		in.src = mask_stack_source(m, e, &in.src_w, &in.src_h);
+	}
+	return in;
+}
+
 static f32 mask_stack_pass_rect[4] = {0.0, 0.0, 1.0, 1.0}; // The part of the mask a pass draws (export tiles), ID Selection reads it
 
-static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, gpu_texture_t *src, mask_effect_t *e, f32 src_w, f32 src_h) {
+static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, mask_pass_in_t *in, mask_effect_t *e) {
 	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(pipes_mask_stack);
 	gpu_set_texture(pipes_texa_mask_stack, acc);
-	gpu_set_texture(pipes_texsrc_mask_stack, src);
+	gpu_set_texture(pipes_texsrc_mask_stack, in->src != NULL ? in->src : mask_stack_black());
+	gpu_set_texture(pipes_texsrc_mask_stack + 1, in->top != NULL ? in->top : mask_stack_black());
+	gpu_set_texture(pipes_texsrc_mask_stack + 2, in->cmp != NULL ? in->cmp : mask_stack_black());
 	gpu_set_int(pipes_type_mask_stack, e->type);
 	gpu_set_int(pipes_blending_mask_stack, e->blending);
 	gpu_set_float(pipes_opac_mask_stack, e->opacity);
@@ -865,7 +1051,7 @@ static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, gpu_texture_
 	gpu_set_float4(pipes_params1_mask_stack, e->params[4], e->params[5], e->params[6], e->params[7]);
 	gpu_set_float4(pipes_params2_mask_stack, e->params[8], e->params[9], e->params[10], e->params[11]);
 	gpu_set_float4(pipes_params3_mask_stack, e->params[12], e->params[13], e->params[14], e->params[15]);
-	gpu_set_float2(pipes_src_size_mask_stack, src_w, src_h);
+	gpu_set_float2(pipes_src_size_mask_stack, in->src_w, in->src_h);
 	gpu_set_float4(pipes_src_size_mask_stack + 16, mask_stack_pass_rect[0], mask_stack_pass_rect[1], mask_stack_pass_rect[2], mask_stack_pass_rect[3]);
 	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
 	gpu_set_index_buffer(const_data_screen_aligned_ib);
@@ -981,13 +1167,9 @@ void mask_stack_evaluate(slot_layer_t *m) {
 			if (!e.visible) {
 				continue;
 			}
-			gpu_texture_t *dst   = (visible - 1 - k) % 2 == 0 ? m->texmask : scratch;
-			f32            src_w = 1.0;
-			f32            src_h = 1.0;
-			gpu_texture_t *src   = e.type != MASK_EFFECT_BLUR ? mask_stack_source(m, &e, &src_w, &src_h)
-			                       : k == 0                    ? mask_stack_black() // Black blurs to black
-			                                                   : mask_stack_blur(acc, &e, w, h);
-			mask_stack_pass(dst, acc, src, &e, src_w, src_h);
+			gpu_texture_t *dst = (visible - 1 - k) % 2 == 0 ? m->texmask : scratch;
+			mask_pass_in_t in  = mask_stack_inputs(m, &e, acc, k, w, h);
+			mask_stack_pass(dst, acc, &in, &e);
 			acc = dst;
 			k++;
 		}
@@ -1004,7 +1186,8 @@ void mask_stack_evaluate(slot_layer_t *m) {
 // Export (io/export_tiled.c): stacks evaluated for a tile of the export instead of the whole mask, at any resolution.
 // Generators render for the tile, ID Selection reads the ID map through the tile's rectangle, the paint effect and
 // anchors come from the export (src). A blur stays global: the stack below it is evaluated whole once and blurred at the
-// blur's size (mask_stack_blur_prefix), the tile reads that.
+// blur's size (mask_stack_blur_prefix), the tile reads that. So does a Height Blend's reach, its heights come from the
+// export too.
 
 // Visible effects of m before index
 static i32 mask_stack_visible_before(slot_layer_t *m, i32 index) {
@@ -1080,17 +1263,13 @@ bool mask_stack_blur_prefix(slot_layer_t *m, i32 index, gpu_texture_t **out) {
 		if (!e.visible) {
 			continue;
 		}
-		gpu_texture_t *dst   = k % 2 == 0 ? a : b;
-		f32            src_w = 1.0;
-		f32            src_h = 1.0;
-		gpu_texture_t *src   = e.type != MASK_EFFECT_BLUR ? mask_stack_source(m, &e, &src_w, &src_h)
-		                       : k == 0                    ? mask_stack_black()
-		                                                   : mask_stack_blur(acc, &e, w, h);
-		mask_stack_pass(dst, acc, src, &e, src_w, src_h);
+		gpu_texture_t *dst = k % 2 == 0 ? a : b;
+		mask_pass_in_t in  = mask_stack_inputs(m, &e, acc, k, w, h);
+		mask_stack_pass(dst, acc, &in, &e);
 		acc = dst;
 		k++;
 	}
-	gpu_texture_t *blurred = mask_stack_blur(acc, &blur, w, h);
+	gpu_texture_t *blurred = mask_stack_blur(acc, mask_effect_blur_radius(&blur), w, h);
 	util_texture_ensure_target(out, blurred->width, blurred->height, blurred->format);
 	draw_begin(*out, false, 0);
 	draw_set_pipeline(blurred->format == GPU_TEXTURE_FORMAT_RGBA64 ? pipes_copy64 : blurred->format == GPU_TEXTURE_FORMAT_RGBA128 ? pipes_copy128 : pipes_copy);
@@ -1104,10 +1283,12 @@ bool mask_stack_blur_prefix(slot_layer_t *m, i32 index, gpu_texture_t **out) {
 }
 
 // The stack of m evaluated for the part rect (u0, v0, du, dv) of the mask into dst (RGBA32, what texmask holds there),
-// scratch a target like dst, gen_scratch an RGBA32 one for generators. src(m, effect, index, data): the tile of the
-// paint effect, an anchor or a blur's blurred result, tile sized; NULL reads black. No pass may be open.
+// scratch a target like dst, gen_scratch an RGBA32 one for generators. src(m, effect, index, input, data), tile sized:
+// input 0 the tile of the paint effect, an anchor, a blur's blurred result or a Height Blend's widened result below (NULL:
+// the result below as it is), 1 and 2 a Height Blend's heights (its layer's, what it compares with); NULL reads black.
+// No pass may be open.
 void mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t *scratch, gpu_texture_t *gen_out, gpu_texture_t *gen_scratch, f32 *rect,
-                              gpu_texture_t *(*src)(slot_layer_t *, mask_effect_t *, i32, void *), void *data) {
+                              gpu_texture_t *(*src)(slot_layer_t *, mask_effect_t *, i32, i32, void *), void *data) {
 	if (const_data_screen_aligned_vb == NULL) {
 		const_data_create_screen_aligned_data();
 	}
@@ -1128,21 +1309,25 @@ void mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t
 		if (!e.visible) {
 			continue;
 		}
-		gpu_texture_t *out   = (visible - 1 - k) % 2 == 0 ? dst : scratch;
-		f32            src_w = 1.0;
-		f32            src_h = 1.0;
-		gpu_texture_t *s     = NULL;
+		gpu_texture_t *out = (visible - 1 - k) % 2 == 0 ? dst : scratch;
+		mask_pass_in_t in  = {.src_w = 1.0, .src_h = 1.0};
 		if (mask_effect_is_rendered(&e)) {
 			mask_gen_render_rect(m, e, gen_scratch, gen_out, rect);
-			s = gen_out;
+			in.src = gen_out;
 		}
 		else if (e.type == MASK_EFFECT_ID_SELECTION) {
-			s = mask_stack_source(m, &e, &src_w, &src_h);
+			in.src = mask_stack_source(m, &e, &in.src_w, &in.src_h);
+		}
+		else if (e.type == MASK_EFFECT_HEIGHT_BLEND) {
+			gpu_texture_t *wide = k > 0 && mask_effect_blur_radius(&e) > 0.0 ? src(m, &e, i, 0, data) : NULL;
+			in.src              = wide != NULL ? wide : acc;
+			in.top              = src(m, &e, i, 1, data);
+			in.cmp              = mask_hb_compare(&e) == MASK_HB_COMPARE_FLAT ? NULL : src(m, &e, i, 2, data);
 		}
 		else if (e.type == MASK_EFFECT_PAINT || e.type == MASK_EFFECT_ANCHOR || (e.type == MASK_EFFECT_BLUR && k > 0)) {
-			s = src(m, &e, i, data);
+			in.src = src(m, &e, i, 0, data);
 		}
-		mask_stack_pass(out, acc, s != NULL ? s : mask_stack_black(), &e, src_w, src_h);
+		mask_stack_pass(out, acc, &in, &e);
 		acc = out;
 		k++;
 	}
@@ -1152,6 +1337,10 @@ void mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t
 // Frees texmask (unload, or the stack became trivial)
 void mask_stack_free_texture(slot_layer_t *m) {
 	mask_gen_free(m);
+	if (m->height_below != NULL) {
+		gpu_delete_texture(m->height_below);
+		m->height_below = NULL;
+	}
 	if (m->texmask == NULL) {
 		return;
 	}

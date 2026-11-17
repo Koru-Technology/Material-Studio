@@ -241,7 +241,7 @@ void next() {
 	else if (step == 15) {
 		check(layer_by_id(f)->fill != NULL && app_layer_fill_kind(f, 3) == 2, "undo gives the fill back, sources and all");
 		// A fill mask: a pattern from black to white
-		check(app_layer_add_mask(f, 12), "fill mask"); // APP_LAYER_NEW_FILL_MASK
+		check(app_layer_add_mask(f, 11), "fill mask"); // APP_LAYER_NEW_FILL_MASK
 	}
 	else if (step == 16) {
 		m                = selected();

@@ -293,54 +293,24 @@ void layers_merge_layer_ex(slot_layer_t *l0, slot_layer_t *l1, bool use_mask, gp
 	}
 }
 
-// Multiplies mask m into dst, the masks of layer combined so far. A height blended mask moves its edge with the height of the layer
-// compared to below (composited height of the layers under it in .a, NULL for a flat level)
-void layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m, slot_layer_t *layer, gpu_texture_t *below) {
-	if (!m->height_blend || layer == NULL || layer->texpaint_pack == NULL) {
-		slot_layer_t *t = ALLOC_INIT(slot_layer_t, {.texpaint = dst});
-		layers_merge_layer(t, m, false);
-		return;
-	}
-	layers_make_temp_img();
-	layers_merge_mask_ex(dst, layers_temp_image, m, slot_layer_mask_texture(m), layer, below, util_uv_dilatemap_cached ? util_uv_dilatemap : NULL);
+// Multiplies mask m into dst, the masks of a layer combined so far
+void layers_merge_mask(gpu_texture_t *dst, slot_layer_t *m) {
+	slot_layer_t *t = ALLOC_INIT(slot_layer_t, {.texpaint = dst});
+	layers_merge_layer(t, m, false);
 }
 
-// layers_merge_mask on textures of any size (export tiles): mask_tex the evaluated stack of m, temp a scratch like dst,
-// coverage the uv islands (NULL for everywhere)
-void layers_merge_mask_ex(gpu_texture_t *dst, gpu_texture_t *temp, slot_layer_t *m, gpu_texture_t *mask_tex, slot_layer_t *layer, gpu_texture_t *below,
-                          gpu_texture_t *coverage) {
-	if (!m->height_blend || layer == NULL || layer->texpaint_pack == NULL) {
-		if (!m->visible) {
-			return;
-		}
-		util_copy_texture(temp, dst, layers_pipe_for(pipes_copy, temp->format));
-		_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-		gpu_set_pipeline(layers_pipe_for(pipes_merge_mask, dst->format));
-		gpu_set_texture(pipes_tex0_merge_mask, mask_tex);
-		gpu_set_texture(pipes_texa_merge_mask, temp);
-		gpu_set_float(pipes_opac_merge_mask, m->mask_opacity);
-		gpu_set_int(pipes_blending_merge_mask, BLEND_TYPE_MULTIPLY);
-		gpu_set_vertex_buffer(const_data_screen_aligned_vb);
-		gpu_set_index_buffer(const_data_screen_aligned_ib);
-		gpu_draw();
-		gpu_end();
+// layers_merge_mask on textures of any size (export tiles): mask_tex the evaluated stack of m, temp a scratch like dst
+void layers_merge_mask_ex(gpu_texture_t *dst, gpu_texture_t *temp, slot_layer_t *m, gpu_texture_t *mask_tex) {
+	if (!m->visible) {
 		return;
 	}
-	util_copy_texture(temp, dst, layers_pipe_for(pipes_copy, temp->format)); // Copy to temp
-
+	util_copy_texture(temp, dst, layers_pipe_for(pipes_copy, temp->format));
 	_gpu_begin(dst, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-	gpu_set_pipeline(layers_pipe_for(pipes_height_blend_mask, dst->format));
-	gpu_set_texture(0, mask_tex);
-	gpu_set_texture(1, temp);
-	gpu_set_texture(2, layer->texpaint_pack);
-	gpu_set_texture(3, below != NULL ? below : render_path_empty_white());
-	gpu_set_texture(4, coverage != NULL ? coverage : render_path_empty_white()); // Uv island coverage
-	gpu_set_float(pipes_opac_height_blend, m->mask_opacity);
-	gpu_set_float(pipes_influence_height_blend, m->height_blend_influence);
-	gpu_set_float(pipes_sharpness_height_blend, m->height_blend_sharpness);
-	gpu_set_float(pipes_offset_height_blend, m->height_blend_offset);
-	gpu_set_float(pipes_below_height_blend, below != NULL && m->height_blend_below ? 1.0 : 0.0);
-	gpu_set_float(pipes_reach_height_blend, m->height_blend_reach);
+	gpu_set_pipeline(layers_pipe_for(pipes_merge_mask, dst->format));
+	gpu_set_texture(pipes_tex0_merge_mask, mask_tex);
+	gpu_set_texture(pipes_texa_merge_mask, temp);
+	gpu_set_float(pipes_opac_merge_mask, m->mask_opacity);
+	gpu_set_int(pipes_blending_merge_mask, BLEND_TYPE_MULTIPLY);
 	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
 	gpu_set_index_buffer(const_data_screen_aligned_ib);
 	gpu_draw();
@@ -496,7 +466,7 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 			draw_begin(pipes_temp_mask_image, GPU_CLEAR_COLOR, 0xffffffff);
 			draw_end();
 			for (i32 i = 0; i < l1masks->length; ++i) {
-				layers_merge_mask(pipes_temp_mask_image, layers_move_preview(l1masks->buffer[i]), l1, layers_expc);
+				layers_merge_mask(pipes_temp_mask_image, layers_move_preview(l1masks->buffer[i]));
 			}
 			mask = pipes_temp_mask_image;
 		}

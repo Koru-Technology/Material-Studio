@@ -178,7 +178,7 @@ void next() {
 		check(project_test_material_uid(0) == mat_uid, "material uid kept");
 		check(string_equals(project_uuid_get(), uuid), "project uuid kept");
 		check(uids_valid(), "uids after a load");
-		check(string_equals(script_get_project()->version, "32"), "version 32");
+		check(string_equals(script_get_project()->version, "33"), "version 33");
 		write_v30(file30);
 		script_project_open(file30);
 	}

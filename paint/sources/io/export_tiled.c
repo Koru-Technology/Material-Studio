@@ -80,8 +80,7 @@ static struct {
 	i32                  bpp; // Bytes a texel of a composite
 	gpu_texture_format_t format;
 	bool                 padding;
-	bool                 height_coverage; // Height blended masks read the uv coverage
-	bool                 need_cov;        // The tile's uv coverage: padding, height blended masks, fill dilation
+	bool                 need_cov;        // The tile's uv coverage: padding, fill dilation
 	slot_layer_t       **blur_masks;      // Blurred results of blur effects (mask_stack_blur_prefix), for the whole export
 	i32                 *blur_index;
 	gpu_texture_t      **blur_tex;
@@ -352,6 +351,7 @@ typedef struct export_tiled_pool {
 	gpu_texture_t *eff;
 	gpu_texture_t *blur;
 	gpu_texture_t *lay[3];
+	gpu_texture_t *cmp[3]; // The layer a Height Blend compares with
 } export_tiled_pool_t;
 
 static export_tiled_pool_t et_pool[EXPORT_TILED_DEPTH];
@@ -487,17 +487,84 @@ static void export_tiled_source(slot_layer_t *l, export_tiled_map_t m, i32 hx, i
 }
 
 // Masks per tile: the stack evaluated for the tile's rectangle at the export resolution (mask_stack_evaluate_tile), its
-// paint effect from export_tiled_source, generators rendered for the rectangle, blurs read from their whole blurred
-// result (one per blur for the export), anchors from the tile of what they read
+// paint effect from export_tiled_source, generators rendered for the rectangle, blurs and a Height Blend's reach read
+// from their whole blurred result (one per effect for the export), anchors and a Height Blend's heights from the tile of
+// what they read
 
 typedef struct export_tiled_mask_ctx {
 	export_tiled_map_t m;
 	i32                hx;
 	i32                hy;
 	i32                depth;
+	gpu_texture_t     *top;   // The tile of the mask's layer pack, NULL: rendered when read
+	gpu_texture_t     *below; // The pack of the layers below it composited for the tile, NULL: from the live composite
 } export_tiled_mask_ctx_t;
 
-static gpu_texture_t *export_tiled_mask(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, i32 depth);
+static gpu_texture_t *export_tiled_mask(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, i32 depth, gpu_texture_t *top, gpu_texture_t *below);
+
+// Layer l for the tile into out[0..2] (base, normal, pack), a mask's paint into out[0] only. Returns out[0], out[2] when pack
+static gpu_texture_t *export_tiled_layer_tile(slot_layer_t *l, export_tiled_mask_ctx_t *c, gpu_texture_t **out, bool pack) {
+	i32            n  = et.size + 2 * et.halo;
+	paint_target_t pt = {.w = n, .h = n, .res_w = et.w, .res_h = et.h, .channels = 3};
+	pt.uv_rect[0]     = c->hx / (f32)et.w;
+	pt.uv_rect[1]     = c->hy / (f32)et.h;
+	pt.uv_rect[2]     = (c->hx + n) / (f32)et.w;
+	pt.uv_rect[3]     = (c->hy + n) / (f32)et.h;
+	pt.out[0]         = export_tiled_source_target(&out[0], l->texpaint);
+	pt.out[1]         = export_tiled_source_target(&out[1], l->texpaint_nor != NULL ? l->texpaint_nor : l->texpaint);
+	pt.out[2]         = export_tiled_source_target(&out[2], l->texpaint_pack != NULL ? l->texpaint_pack : l->texpaint);
+	if (l->texpaint_nor == NULL) { // A mask: its paint only
+		pt.channels = 1;
+	}
+	export_tiled_source(l, c->m, c->hx, c->hy, &pt);
+	return pack ? pt.out[2] : pt.out[0];
+}
+
+// The whole blurred result effect index of mk reads (a blur, a Height Blend's reach) for the tile, NULL for none
+static gpu_texture_t *export_tiled_blurred(slot_layer_t *mk, i32 index, export_tiled_mask_ctx_t *c, export_tiled_pool_t *p) {
+	for (i32 i = 0; i < et.nblurs; ++i) {
+		if (et.blur_masks[i] == mk && et.blur_index[i] == index) {
+			gpu_texture_t *b = et.blur_tex[i];
+			export_tiled_target(&p->blur, b->format);
+			f32 kx = b->width / (f32)et.w, ky = b->height / (f32)et.h;
+			draw_begin(p->blur, false, 0);
+			draw_set_pipeline(export_texture_copy_pipe(b->format));
+			draw_scaled_sub_image(b, c->hx * kx, c->hy * ky, p->blur->width * kx, p->blur->height * ky, 0, 0, p->blur->width, p->blur->height);
+			draw_set_pipeline(NULL);
+			draw_end();
+			return p->blur;
+		}
+	}
+	return NULL;
+}
+
+// Height Blend e of mk for the tile: input 0 its widened result below, 1 the height of its layer, 2 of what it compares with
+static gpu_texture_t *export_tiled_height_blend(slot_layer_t *mk, mask_effect_t *e, i32 index, i32 input, export_tiled_mask_ctx_t *c,
+                                                export_tiled_pool_t *p) {
+	if (input == 0) {
+		return export_tiled_blurred(mk, index, c, p);
+	}
+	if (input == 1) {
+		slot_layer_t *l = mk->parent;
+		if (c->top != NULL) {
+			return c->top;
+		}
+		return l != NULL && l->texpaint_pack != NULL ? export_tiled_layer_tile(l, c, p->lay, true) : NULL;
+	}
+	i32 compare = (i32)math_floor(e->params[MASK_HB_COMPARE] + 0.5);
+	if (compare == MASK_HB_COMPARE_LAYER) {
+		slot_layer_t *o = mask_stack_layer_by_id((i32)e->params[MASK_HB_LAYER]);
+		return o != NULL && o->texpaint_pack != NULL ? export_tiled_layer_tile(o, c, p->cmp, true) : NULL;
+	}
+	if (c->below != NULL) {
+		return c->below;
+	}
+	if (mk->height_below == NULL) { // Read inside another mask: the composite the live stack used
+		return NULL;
+	}
+	export_tiled_blit(export_tiled_source_target(&p->eff, mk->height_below), mk->height_below, c->m, c->hx, c->hy);
+	return p->eff;
+}
 
 // The mask's paint for the tile into eff
 static gpu_texture_t *export_tiled_mask_paint(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, export_tiled_pool_t *p) {
@@ -512,27 +579,17 @@ static gpu_texture_t *export_tiled_mask_paint(slot_layer_t *mk, export_tiled_map
 	return p->eff;
 }
 
-static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *e, i32 index, void *data) {
+static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *e, i32 index, i32 input, void *data) {
 	export_tiled_mask_ctx_t *c = data;
 	export_tiled_pool_t     *p = &et_pool[c->depth];
 	if (e->type == MASK_EFFECT_PAINT) {
 		return export_tiled_mask_paint(mk, c->m, c->hx, c->hy, p);
 	}
 	if (e->type == MASK_EFFECT_BLUR) {
-		for (i32 i = 0; i < et.nblurs; ++i) {
-			if (et.blur_masks[i] == mk && et.blur_index[i] == index) {
-				gpu_texture_t *b = et.blur_tex[i];
-				export_tiled_target(&p->blur, b->format);
-				f32 kx = b->width / (f32)et.w, ky = b->height / (f32)et.h;
-				draw_begin(p->blur, false, 0);
-				draw_set_pipeline(export_texture_copy_pipe(b->format));
-				draw_scaled_sub_image(b, c->hx * kx, c->hy * ky, p->blur->width * kx, p->blur->height * ky, 0, 0, p->blur->width, p->blur->height);
-				draw_set_pipeline(NULL);
-				draw_end();
-				return p->blur;
-			}
-		}
-		return NULL;
+		return export_tiled_blurred(mk, index, c, p);
+	}
+	if (e->type == MASK_EFFECT_HEIGHT_BLEND) {
+		return export_tiled_height_blend(mk, e, index, input, c, p);
 	}
 	if (e->type == MASK_EFFECT_ANCHOR) {
 		i32           kind;
@@ -542,35 +599,23 @@ static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *
 		}
 		if (kind == 2) {
 			if (c->depth + 1 < EXPORT_TILED_DEPTH) {
-				return export_tiled_mask(l, c->m, c->hx, c->hy, c->depth + 1);
+				return export_tiled_mask(l, c->m, c->hx, c->hy, c->depth + 1, NULL, NULL);
 			}
 			gpu_texture_t *t = slot_layer_mask_texture(l); // Deeper: the whole evaluated one
 			export_tiled_blit(export_tiled_source_target(&p->eff, t), t, c->m, c->hx, c->hy);
 			return p->eff;
 		}
 		if (kind == 3 || kind == 4) {
-			i32            n  = et.size + 2 * et.halo;
-			paint_target_t pt = {.w = n, .h = n, .res_w = et.w, .res_h = et.h, .channels = 3};
-			pt.uv_rect[0]     = c->hx / (f32)et.w;
-			pt.uv_rect[1]     = c->hy / (f32)et.h;
-			pt.uv_rect[2]     = (c->hx + n) / (f32)et.w;
-			pt.uv_rect[3]     = (c->hy + n) / (f32)et.h;
-			pt.out[0]         = export_tiled_source_target(&p->lay[0], l->texpaint);
-			pt.out[1]         = export_tiled_source_target(&p->lay[1], l->texpaint_nor != NULL ? l->texpaint_nor : l->texpaint);
-			pt.out[2]         = export_tiled_source_target(&p->lay[2], l->texpaint_pack != NULL ? l->texpaint_pack : l->texpaint);
-			if (l->texpaint_nor == NULL) { // A mask: its paint only
-				pt.channels = 1;
-			}
-			export_tiled_source(l, c->m, c->hx, c->hy, &pt);
-			return kind == 4 ? pt.out[2] : pt.out[0];
+			return export_tiled_layer_tile(l, c, p->lay, kind == 4);
 		}
 		return NULL;
 	}
 	return NULL;
 }
 
-// Mask mk for the tile: what slot_layer_mask_texture holds for its rectangle, at the export resolution
-static gpu_texture_t *export_tiled_mask(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, i32 depth) {
+// Mask mk for the tile: what slot_layer_mask_texture holds for its rectangle, at the export resolution. top, below: the
+// tiles a Height Blend reads when the mask's layer is being merged (its pack, the layers below), NULL elsewhere.
+static gpu_texture_t *export_tiled_mask(slot_layer_t *mk, export_tiled_map_t m, i32 hx, i32 hy, i32 depth, gpu_texture_t *top, gpu_texture_t *below) {
 	export_tiled_pool_t *p = &et_pool[depth];
 	if (m.mode != 0) { // Udim maps: the whole evaluated one
 		gpu_texture_t *t = slot_layer_mask_texture(mk);
@@ -586,7 +631,7 @@ static gpu_texture_t *export_tiled_mask(slot_layer_t *mk, export_tiled_map_t m, 
 	export_tiled_target(&p->gen_scratch, GPU_TEXTURE_FORMAT_RGBA32);
 	i32                     n       = et.size + 2 * et.halo;
 	f32                     rect[4] = {hx / (f32)et.w, hy / (f32)et.h, n / (f32)et.w, n / (f32)et.h};
-	export_tiled_mask_ctx_t ctx     = {.m = m, .hx = hx, .hy = hy, .depth = depth};
+	export_tiled_mask_ctx_t ctx     = {.m = m, .hx = hx, .hy = hy, .depth = depth, .top = top, .below = below};
 	mk->mask_evaluating             = true; // Anchors back to it read black, as live
 	mask_stack_evaluate_tile(mk, p->dst, p->scratch, p->gen_out, p->gen_scratch, rect, &export_tiled_mask_effect, &ctx);
 	mk->mask_evaluating = false;
@@ -744,8 +789,8 @@ static void export_tiled_merge_source(export_tiled_job_t *job, i32 i, export_til
 		draw_end();
 		for (i32 j = 0; j < l1masks->length; ++j) {
 			slot_layer_t  *mk  = l1masks->buffer[j];
-			gpu_texture_t *tex = export_tiled_mask(mk, m, hx, hy, 0);
-			layers_merge_mask_ex(et_mask, et_mask_temp, mk, tex, &tl, et_acc[2], et.height_coverage ? et_cov : NULL);
+			gpu_texture_t *tex = export_tiled_mask(mk, m, hx, hy, 0, tl.texpaint_pack, et_acc[2]);
+			layers_merge_mask_ex(et_mask, et_mask_temp, mk, tex);
 		}
 		mask = et_mask;
 	}
@@ -1099,7 +1144,7 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	et.halo     = reach > et.halo ? reach : et.halo;
 	reach       = gens ? (i32)math_ceil(1.25 * 8) + 2 : 0; // Generators dilate up to 8 texels (util_mask_generators.c)
 	et.halo     = reach > et.halo ? reach : et.halo;
-	et.need_cov = et.padding || et.height_coverage || fills;
+	et.need_cov = et.padding || fills;
 	if (et.need_cov) {
 		util_uv_cache_dilate_map();
 	}
@@ -1234,7 +1279,8 @@ static void export_tiled_mm_cap() {
 	et.units_total += et.mm_n;
 }
 
-// Blur effects read the stack below them blurred whole (mask_stack_blur_prefix), once for the export
+// Blur effects and a Height Blend's reach read the stack below them blurred whole (mask_stack_blur_prefix), once for the
+// export
 static void export_tiled_blurs_begin() {
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *m = g_project->_->layers->buffer[i];
@@ -1244,7 +1290,7 @@ static void export_tiled_blurs_begin() {
 		i32 n = mask_stack_count(m);
 		for (i32 k = 0; k < n; ++k) {
 			mask_effect_t e = mask_stack_get(m, k);
-			if (!e.visible || e.type != MASK_EFFECT_BLUR) {
+			if (!e.visible || mask_effect_blur_radius(&e) <= 0.0) {
 				continue;
 			}
 			gpu_texture_t *t = NULL;
@@ -1524,7 +1570,6 @@ bool export_tiled_start(char *path, bool bake_material) {
 		return false;
 	}
 	et.active          = true;
-	et.height_coverage = util_uv_dilatemap_cached; // Height blended masks read it when there is one
 	et.bytes_base      = util_texture_tracked_bytes();
 	util_texture_tracked_peak_reset();
 	et_stats[1] = export_tiled_budget() / 1024;

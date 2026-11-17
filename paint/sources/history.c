@@ -81,8 +81,6 @@ static char *history_action_to_string(history_action_t action) {
 		return tr("Replace Swatches");
 	case HISTORY_ACTION_EDIT_SWATCH:
 		return tr("Edit Swatch");
-	case HISTORY_ACTION_MASK_HEIGHT_BLEND:
-		return tr("Mask Height Blend");
 	case HISTORY_ACTION_MASK_STACK:
 		return tr("Edit Mask Stack");
 	case HISTORY_ACTION_RESOLUTION:
@@ -578,7 +576,7 @@ void history_undo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
 		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
-		         step->action == HISTORY_ACTION_LAYER_FILL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
+		         step->action == HISTORY_ACTION_LAYER_FILL ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
 		}
@@ -719,7 +717,7 @@ void history_redo() {
 		}
 		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
 		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
-		         step->action == HISTORY_ACTION_LAYER_FILL || step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND ||
+		         step->action == HISTORY_ACTION_LAYER_FILL ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
 			history_swap_layer_props(step);
 		}

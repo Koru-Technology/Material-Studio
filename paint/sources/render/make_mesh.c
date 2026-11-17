@@ -89,23 +89,13 @@ char *make_mesh_context_id(i32 layer_pass) {
 	return ids[layer_pass];
 }
 
-// A visible height blended mask widens its edge (reach)
-static bool make_mesh_any_reach_mask() {
-	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
-		slot_layer_t *m = g_project->_->layers->buffer[i];
-		if (slot_layer_is_mask(m) && slot_layer_is_visible(m) && m->height_blend && m->height_blend_reach > 0.0) {
-			return true;
-		}
-	}
-	return false;
-}
-
-// A visible mask of the layer uses height blending
+// A visible mask of the layer has a Height Blend effect: its edge follows the height, the normals sample it around each
+// texel
 static bool make_mesh_layer_height_blended(slot_layer_t *l) {
 	slot_layer_t_array_t *masks = slot_layer_get_masks(l, true);
 	for (i32 i = 0; masks != NULL && i < masks->length; ++i) {
 		slot_layer_t *m = masks->buffer[i];
-		if (slot_layer_is_visible(m) && m->height_blend) {
+		if (slot_layer_is_visible(m) && mask_stack_has_height_blend(m)) {
 			return true;
 		}
 	}
@@ -146,9 +136,8 @@ static char *make_mesh_opacity(node_shader_t *shader, slot_layer_t *l) {
 	return string("constants.layer_opac%d", l->id);
 }
 
-// Multiplies the masks of the layer at coord into var. A height blended mask moves its edge with the layer height (height_top)
-// compared to the layers below (height_below) or a flat level
-static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *var, char *coord, char *height_top, char *height_below, bool center) {
+// Multiplies the masks of the layer at coord into var: their evaluated stacks (a Height Blend effect is in there)
+static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *var, char *coord) {
 	slot_layer_t_array_t *masks = slot_layer_get_masks(l, true);
 	for (i32 i = 0; masks != NULL && i < masks->length; ++i) {
 		slot_layer_t *m = masks->buffer[i];
@@ -158,48 +147,7 @@ static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *
 		char *mid  = string_copy(i32_to_string(m->id));
 		char *opac = make_mesh_opacity(shader, m);
 		node_shader_add_texture(shader, string_tmp("texmask%s", mid), NULL); // Evaluated stack or texpaint, see render_path_paint_bind_layers
-		bool reach = m->height_blend && m->height_blend_reach > 0.0;
-		char *soft = string("mask_soft%d_%d", l->id, m->id);
-		if (reach && center) {
-			// Average over a disk: the edge of a hard brush stroke becomes a ramp the strands can reach into.
-			// Computed once per pixel, the neighbours used for the normals reuse it
-			// Samples off the uv islands are skipped, they would pull the empty texture space in along the seams
-			bool cover = string_equals(coord, "tex_coord");
-			node_shader_write_frag(shader, string_tmp("float %s = 0.0;", soft));
-			node_shader_write_frag(shader, "{");
-			node_shader_write_frag(shader, "float wsum = 0.0;");
-			node_shader_write_frag(shader, "for (int k = 0; k < 24; k += 1) {");
-			node_shader_write_frag(shader, "float fk = float(k);");
-			node_shader_write_frag(shader, string_tmp("float rr = float(%s) * sqrt((fk + 0.5) / 24.0);", f32_to_string(m->height_blend_reach)));
-			node_shader_write_frag(shader, "float aa = fk * 2.39996;");
-			node_shader_write_frag(shader, string_tmp("vec2 tco = %s + vec2(cos(aa), sin(aa)) * rr;", coord));
-			node_shader_write_frag(shader, cover ? "float w = step(0.5, textureLod(sampler2D(texdilatemap, sampler_linear), tco, 0.0).r);" : "float w = 1.0;");
-			node_shader_write_frag(shader, string_tmp("%s += textureLod(sampler2D(texmask%s, sampler_linear), tco, 0.0).r * w;", soft, mid));
-			node_shader_write_frag(shader, "wsum += w;");
-			node_shader_write_frag(shader, "}");
-			node_shader_write_frag(shader, string_tmp("if (wsum > 0.0) { %s = %s / wsum; } else { %s = textureLod(sampler2D(texmask%s, sampler_linear), %s, 0.0).r; }", soft, soft, soft, mid, coord));
-			node_shader_write_frag(shader, "}");
-		}
-		node_shader_write_frag(shader, "{"); // Group mask is sampled across multiple layers
-		if (reach) {
-			node_shader_write_frag(shader, string_tmp("float mask_sample = mix(1.0, %s, float(%s));", soft, opac));
-		}
-		else {
-			node_shader_write_frag(shader, string_tmp("float mask_sample = mix(1.0, textureLod(sampler2D(texmask%s, sampler_linear), %s, 0.0).r, float(%s));", mid, coord, opac));
-		}
-		if (m->height_blend) {
-			char *below = m->height_blend_below && make_material_height_used ? height_below : "0.5";
-			// Only inside the edge band: deep in the painted area stays clean, deep in the unpainted area keeps everything
-			// Towards the outer end of the band a strand needs more height, towards the inner end less: strands stay crisp
-			node_shader_write_frag(shader, "{");
-			node_shader_write_frag(shader, "float mask_band = (1.0 - smoothstep(0.0, 0.25, mask_sample)) * -3.0 + smoothstep(0.75, 1.0, mask_sample) * 3.0;");
-			node_shader_write_frag(shader, string_tmp("mask_sample = clamp((mask_sample * 2.0 - 1.0 + (%s - %s + float(%s)) * float(%s) + mask_band) * float(%s) * 0.5 + 0.5, 0.0, 1.0);",
-			                                        height_top, below, f32_to_string(m->height_blend_offset), f32_to_string(m->height_blend_influence),
-			                                        f32_to_string(m->height_blend_sharpness)));
-			node_shader_write_frag(shader, "}");
-		}
-		node_shader_write_frag(shader, string_tmp("%s *= mask_sample;", var));
-		node_shader_write_frag(shader, "}");
+		node_shader_write_frag(shader, string_tmp("%s *= mix(1.0, textureLod(sampler2D(texmask%s, sampler_linear), %s, 0.0).r, float(%s));", var, mid, coord, opac));
 	}
 }
 
@@ -340,11 +288,6 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			texture_count++; // Added in the last pass
 		}
 
-		if (make_mesh_any_reach_mask()) {
-			texture_count++;
-			node_shader_add_texture(shader, "texdilatemap", "_texdilatemap"); // Uv island coverage for the height blend reach
-		}
-
 		if (g_context->viewport_mode == VIEWPORT_MODE_MASK && slot_layer_get_masks(g_context->layer, true) != NULL) {
 			for (i32 i = 0; i < slot_layer_get_masks(g_context->layer, true)->length; ++i) {
 				slot_layer_t *m = slot_layer_get_masks(g_context->layer, true)->buffer[i];
@@ -461,14 +404,10 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(shader, "texpaint_opac = texpaint_sample.a;");
 
 			bool height_blended = make_mesh_layer_height_blended(l);
-			if (height_blended) {
-				// The masks follow the height of the layer
-				make_mesh_write_pack(shader, l, tex_coord);
-			}
 			if (make_mesh_layer_has_visible_mask(l)) {
 				char *texpaint_mask = string("texpaint_mask%s", i32_to_string(l->id));
 				node_shader_write_frag(shader, string_tmp("float %s = 1.0;", texpaint_mask));
-				make_mesh_write_masks(shader, l, texpaint_mask, tex_coord, "texpaint_pack_sample.a", "height", true);
+				make_mesh_write_masks(shader, l, texpaint_mask, tex_coord);
 				node_shader_write_frag(shader, string_tmp("texpaint_opac *= clamp(%s, 0.0, 1.0);", texpaint_mask));
 			}
 
@@ -595,7 +534,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 							node_shader_write_frag(shader, string_tmp("float nopac = textureLod(sampler2D(texpaint%s, sampler_linear), nco, 0.0).a;", i32_to_string(l->id)));
 						}
 						node_shader_write_frag(shader, "float nmask = 1.0;");
-						make_mesh_write_masks(shader, l, "nmask", "nco", "npack", h, false);
+						make_mesh_write_masks(shader, l, "nmask", "nco");
 						node_shader_write_frag(shader, "nopac *= clamp(nmask, 0.0, 1.0);");
 						node_shader_write_frag(shader, string_tmp("nopac *= %s;", make_mesh_opacity(shader, l)));
 						if (!l->paint_height_blend) {

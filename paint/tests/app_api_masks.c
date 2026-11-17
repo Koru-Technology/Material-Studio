@@ -36,10 +36,11 @@ int BLUR        = 13;
 int ANCHOR      = 14;
 int BUILDER     = 15;
 int AO_GEN      = 16;
-int TYPES       = 17;
+int HB          = 17;
+int TYPES       = 18;
 int AO          = 0;
 int THICK_MAP   = 3;
-int NEW_ID_MASK = 13;
+int NEW_ID_MASK = 12;
 int RED         = 16711680; // 0xff0000
 int BLUE        = 255;
 
@@ -145,11 +146,11 @@ void next() {
 	frame = 0;
 
 	if (step == 0) {
-		check(app_mask_effect_type_count() == TYPES, "seventeen effect types");
+		check(app_mask_effect_type_count() == TYPES, "eighteen effect types");
 		check(!string_equals(app_mask_effect_type_name(ANCHOR), "") && string_equals(app_mask_effect_type_name(TYPES), ""), "type names, empty past the last");
 		bool classified = true;
 		for (int t = 0; t <= TYPES; ++t) {
-			bool filter    = t == LEVELS || t == INVERT || t == HISTOGRAM || t == BLUR;
+			bool filter    = t == LEVELS || t == INVERT || t == HISTOGRAM || t == BLUR || t == HB;
 			bool generator = (t >= EDGE_WEAR && t <= DIRECTIONAL) || (t >= NOISE && t <= THICKNESS) || t == BUILDER || t == AO_GEN;
 			classified     = classified && app_mask_effect_type_is_filter(t) == filter && app_mask_effect_type_is_generator(t) == generator;
 		}
@@ -157,7 +158,8 @@ void next() {
 		check(app_mask_effect_param_count(ANCHOR) == 2 && app_mask_effect_param_count(ID) == 0, "anchor: layer and channel, ID Selection: picked");
 		check(app_mask_effect_param_count(PAINT) == 0 && app_mask_effect_param_count(FILL) == 11 && app_mask_effect_param_count(LEVELS) == 5,
 		      "settings of the plain effects");
-		check(app_mask_effect_param_count(BUILDER) == 16 && app_mask_effect_param_count(AO_GEN) == 7, "mask builder and ambient occlusion settings");
+		check(app_mask_effect_param_count(BUILDER) == 16 && app_mask_effect_param_count(AO_GEN) == 7 && app_mask_effect_param_count(HB) == 6,
+		      "mask builder, ambient occlusion and height blend settings");
 		check(app_mask_effect_param_count(EDGE_WEAR) == 6 && app_mask_effect_param_count(DIRT) == 7, "generators end with the noise block");
 		check(app_mask_blending_count() == 7, "seven mask blendings");
 		check(app_layer_new(0), "paint layer");
@@ -294,7 +296,7 @@ void next() {
 		check(k >= 0 && app_layer_count() == n + 1 && selected() == k, "an effect on a layer without a mask makes a black mask");
 		check(app_mask_effect_count(k) == 2 && app_mask_effect_type(k, 0) == EDGE_WEAR && app_mask_effect_type(k, 1) == PAINT, "the effect sits on its paint");
 		check(app_mask_effect_blending(k, 0) == 4 && app_mask_effect_blending(k, 1) == 0, "generators start on max, paint on normal");
-		check(!app_layer_add_mask(a, 9) && !app_layer_can_new(9) && !app_layer_can_new(12), "no second mask");
+		check(!app_layer_add_mask(a, 9) && !app_layer_can_new(9) && !app_layer_can_new(11), "no second mask");
 		check(app_layer_add_effect(a, DIRT) == k && app_mask_effect_count(k) == 3, "the next effect goes into the same mask");
 		check(app_layer_add_effect(k, LEVELS) == k && app_mask_effect_count(k) == 4, "and from the mask's own menu");
 		app_undo();

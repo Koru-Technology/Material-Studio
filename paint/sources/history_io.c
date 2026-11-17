@@ -146,7 +146,7 @@ static void hio_swatch(swatch_color_t *s, f32 *out) {
 	memcpy(out, v, sizeof(v));
 }
 
-#define HISTORY_IO_STEP_KEYS 45
+#define HISTORY_IO_STEP_KEYS 44
 
 static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	armpack_encode_map(HISTORY_IO_STEP_KEYS);
@@ -165,7 +165,6 @@ static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	hio_i32("canvas_type", s->canvas_type);
 	hio_i32("canvas_group", s->canvas_group);
 	hio_str("layer_name", s->layer_name);
-	hio_f32s("layer_height_blend", s->layer_height_blend, 6);
 	hio_f32_array("mask_effects", s->mask_effects);
 	hio_f32_array("fill", s->fill);
 	hio_i32("swatch", s->swatch);
@@ -350,10 +349,6 @@ static history_step_t *history_io_decode_step(any_map_t *m) {
 	s->canvas_type    = armpack_map_get_i32(m, "canvas_type");
 	s->canvas_group   = armpack_map_get_i32(m, "canvas_group");
 	s->layer_name     = hio_get_str(m, "layer_name");
-	f32 *hb           = hio_get_f32s(m, "layer_height_blend", 6);
-	if (hb != NULL) {
-		memcpy(s->layer_height_blend, hb, sizeof(s->layer_height_blend));
-	}
 	f32_array_t *me = any_map_get(m, "mask_effects");
 	if (me != NULL) {
 		s->mask_effects = f32_array_create(me->length);

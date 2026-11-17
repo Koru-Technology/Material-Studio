@@ -77,7 +77,6 @@ struct LayerDetailSections: View {
 
 		if layer.kind == .mask {
 			MaskEffectsSection(layer: layer) // MaskEffectDetail.swift
-			heightBlendSection(layer)
 		}
 
 		if p.showsChannels && !layer.isFill && layer.kind != .mask { // A fill's channels show with their sources, a mask has none
@@ -85,36 +84,6 @@ struct LayerDetailSections: View {
 				LayerChannels(layer: layer)
 			}
 		}
-	}
-
-	@ViewBuilder
-	private func heightBlendSection(_ layer: LayerRow) -> some View {
-		let p = layer.props
-		Section {
-			Toggle("Height Blend", isOn: Binding(get: { p.heightBlend }, set: { on in
-				store.perform { _ = app_layer_set_height_blend(layer.id, on) }
-			}))
-			if p.heightBlend {
-				valueSlider(layer, "Reach", p.heightBlendReach, 0...0.1, APP_LAYER_VALUE_HEIGHT_BLEND_REACH) { String(format: "%.3f", $0) }
-				valueSlider(layer, "Influence", p.heightBlendInfluence, 0...4, APP_LAYER_VALUE_HEIGHT_BLEND_INFLUENCE) { String(format: "%.2f", $0) }
-				valueSlider(layer, "Sharpness", p.heightBlendSharpness, 1...50, APP_LAYER_VALUE_HEIGHT_BLEND_SHARPNESS) { String(format: "%.1f", $0) }
-				valueSlider(layer, "Offset", p.heightBlendOffset, -1...1, APP_LAYER_VALUE_HEIGHT_BLEND_OFFSET) { String(format: "%.2f", $0) }
-				Toggle("Compare With Layers Below", isOn: Binding(get: { p.heightBlendBelow }, set: { on in
-					store.perform { _ = app_layer_set_height_blend_below(layer.id, on) }
-				}))
-			}
-		} header: {
-			Text("Height Blend")
-		}
-	}
-
-	private func valueSlider(_ layer: LayerRow, _ title: String, _ value: Float, _ range: ClosedRange<Float>, _ kind: app_layer_value_t,
-	                         format: @escaping (Float) -> String) -> some View {
-		let k = Int32(kind.rawValue)
-		return LayerSlider(title, value: value, range: range, format: format,
-		                   begin: { app_layer_value_begin(layer.id, k) },
-		                   set: { _ = app_layer_set_value(layer.id, k, $0) },
-		                   end: { app_drag_end() })
 	}
 }
 

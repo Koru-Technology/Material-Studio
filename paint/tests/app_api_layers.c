@@ -121,19 +121,7 @@ void next() {
 		slot_layer_t *mask = layer_by_id(m);
 		check(is_mask(mask) && parent_id(m) == a, "the mask is a's");
 		check(!app_layer_add_mask(m, 9), "no mask on a mask");
-		check(app_layer_set_height_blend(m, true) && mask->height_blend, "height blend on");
-		app_layer_value_begin(m, 4);
-		app_layer_set_value(m, 4, 10.0);
-		app_layer_set_value(m, 4, 20.0);
-		app_drag_end();
-		check(mask->height_blend_sharpness > 19.9 && mask->height_blend_sharpness < 20.1, "sharpness set by the drag");
-		app_undo();
-		check(mask->height_blend_sharpness < 19.9, "one undo reverts the drag");
-		check(mask->height_blend, "the height blend step stays");
-		app_layer_value_begin(m, 4);
-		check(app_layer_set_value(m, 4, 99.0) && mask->height_blend_sharpness <= 50.0, "sharpness clamped");
-		app_drag_end();
-		check(!app_layer_set_value(a, 4, 1.0), "layers have no height blend");
+		check(!app_layer_set_value(m, 6, 1.0) && !app_layer_set_value(a, 6, 1.0), "a painted mask or layer has no fill values");
 		check(app_layer_invert_mask(m), "mask inverted");
 	}
 	else if (step == 5) {
@@ -187,10 +175,9 @@ void next() {
 		check(app_layer_new(6) && layer_by_id(selected())->path_curved, "curve layer");
 		int path = selected();
 		check(app_layer_new(10) && parent_id(selected()) == path, "white mask on the selected layer");
-		check(!app_layer_can_new(9) && !app_layer_new(9) && !app_layer_new(11) && !app_layer_new(12), "one mask per layer, also from its mask");
+		check(!app_layer_can_new(9) && !app_layer_new(9) && !app_layer_new(11), "one mask per layer, also from its mask");
 		check(!app_layer_add_mask(path, 9), "no second mask from the layer menu");
-		check(app_layer_new(0) && app_layer_new(11) && layer_by_id(selected())->height_blend, "height blend mask");
-		check(app_layer_new(0) && app_layer_new(12) && layer_by_id(selected())->fill != NULL, "fill mask");
+		check(app_layer_new(0) && app_layer_new(11) && layer_by_id(selected())->fill != NULL, "fill mask");
 	}
 	else if (step == 12) {
 		int n = app_layer_count();

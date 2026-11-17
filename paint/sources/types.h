@@ -250,12 +250,6 @@ typedef struct slot_layer {
 	bool                  path_curved;
 	bool                  path_text;
 	struct slot_material *path_material;
-	bool                  height_blend;           // Mask: the edge follows the height of its layer (fur strands over the layers below)
-	bool                  height_blend_below;     // Compare with the height of the layers below, otherwise with a flat level
-	f32                   height_blend_influence; // How far the height moves the mask edge
-	f32                   height_blend_sharpness;
-	f32                   height_blend_offset;
-	f32                   height_blend_reach; // Distance the mask edge is widened over (uv), strands reach that far with a hard brush
 	// Mask stack (util_mask_stack.c): MASK_EFFECT_STRIDE floats per effect, bottom first. NULL is the implicit stack of
 	// one paint effect, the mask is then texpaint itself. Brushes and fills always write texpaint (the paint effect).
 	f32_array_t        *mask_effects;
@@ -270,6 +264,8 @@ typedef struct slot_layer {
 	// Anchors (util_mask_stack.c), runtime only
 	u32                  revision;        // Bumped when the pixels change, the masks anchoring the layer evaluate again
 	u64                  mask_inputs_key; // Anchored layers and ID map texmask was last evaluated with
+	struct gpu_texture  *height_below;     // Height Blend effects: the height of the layers below the mask's layer (pack .a)
+	u64                  height_below_key; // Of the layers it was composited from
 	bool                 mask_evaluating; // Cycle guard: a mask anchoring one being evaluated reads its last texmask
 	u32                  timeline;        // Uid of its timeline (stroke_rec.h), 0 for none
 	hash128_t            live_map;        // Tile map of its textures as last captured (timeline_live_map), runtime only
@@ -771,7 +767,6 @@ typedef struct history_step {
 	i32                          canvas_type;
 	char                        *layer_name;
 	f32_array_t                 *fill; // Fill on the other side of the step (fill_encode by id), NULL for none
-	f32                          layer_height_blend[6]; // Mask height blend: on, below, influence, sharpness, offset, reach
 	f32_array_t                 *mask_effects;          // Mask stack on the other side of the step, NULL for the implicit stack
 	i32                          swatch;
 	struct swatch_color         *swatch_color;
@@ -942,12 +937,6 @@ typedef struct layer_data {
 	bool              path_curved;
 	i32               path_material;
 	bool              path_text;
-	bool              height_blend;
-	bool              height_blend_below;
-	f32               height_blend_influence;
-	f32               height_blend_sharpness;
-	f32               height_blend_offset;
-	f32               height_blend_reach;
 	f32_array_t      *mask_effects; // slot_layer_t.mask_effects as is, NULL for the implicit stack
 	u32               uid;          // slot_layer_t.uid
 	u32               timeline;     // Uid of the layer's timeline (stroke_rec.h), 0 for none

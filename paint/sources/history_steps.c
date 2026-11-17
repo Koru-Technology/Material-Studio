@@ -134,7 +134,6 @@ void history_apply_mask() {
 	// The mask's settings, undo brings it back with them (opacity and blending are kept by history_push)
 	slot_layer_t   *m    = g_context->layer;
 	history_step_t *step = history_push(HISTORY_ACTION_APPLY_MASK);
-	history_get_height_blend(m, step->layer_height_blend);
 	step->mask_effects = mask_stack_copy_effects(m->mask_effects);
 
 	// The layers the mask is applied to keep its timeline. A fill mask or fill layer starts one from its render (undo
@@ -211,12 +210,6 @@ void history_layer_name(slot_layer_t *l, char *prev_name) {
 
 void history_layer_object() {
 	history_push(HISTORY_ACTION_LAYER_OBJECT);
-}
-
-// Before changing the height blend settings of the current mask
-void history_mask_height_blend() {
-	history_step_t *step = history_push(HISTORY_ACTION_MASK_HEIGHT_BLEND);
-	history_get_height_blend(g_context->layer, step->layer_height_blend);
 }
 
 // After smart material name was put on the layer stack, its top layer selected

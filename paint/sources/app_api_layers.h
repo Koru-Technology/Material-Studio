@@ -37,12 +37,6 @@ typedef struct {
 	bool    has_uv1;      // The mesh has a second UV map
 	uint32_t channels;    // 1 << app_layer_channel_t
 	// Masks
-	bool  height_blend;
-	bool  height_blend_below;
-	float height_blend_reach;     // 0..0.1
-	float height_blend_influence; // 0..4
-	float height_blend_sharpness; // 1..50
-	float height_blend_offset;    // -1..1
 	int32_t effect_count;         // app_mask_effect_count
 	// Menu items: shown
 	bool shows_blending;  // Layers, not masks, groups or filters
@@ -86,9 +80,8 @@ typedef enum {
 	APP_LAYER_NEW_FILTER       = 8,
 	APP_LAYER_NEW_BLACK_MASK   = 9,
 	APP_LAYER_NEW_WHITE_MASK   = 10,
-	APP_LAYER_NEW_HEIGHT_MASK  = 11, // White mask with height blending
-	APP_LAYER_NEW_FILL_MASK    = 12,
-	APP_LAYER_NEW_ID_MASK      = 13, // An ID Selection effect in the layer's mask (a black one made first), picking its parts
+	APP_LAYER_NEW_FILL_MASK    = 11,
+	APP_LAYER_NEW_ID_MASK      = 12, // An ID Selection effect in the layer's mask (a black one made first), picking its parts
 } app_layer_new_t;
 
 bool app_layer_new(int32_t kind); // On the selected layer. Fill, decal, color and filter layers appear on the next frame
@@ -116,16 +109,10 @@ bool app_layer_set_group(int32_t id, int32_t group_id); // Into a group at its t
 bool app_layer_set_blending(int32_t id, int32_t blending);
 bool app_layer_set_channel(int32_t id, int32_t channel, bool on);
 bool app_layer_set_uv_map(int32_t id, int32_t uv_map);
-bool app_layer_set_height_blend(int32_t id, bool on);
-bool app_layer_set_height_blend_below(int32_t id, bool on);
 
 // Slider drags: one undo step for the whole gesture. Begin, set any number of times, end (app_drag_end).
 // A set without a begin is its own undo step.
 typedef enum {
-	APP_LAYER_VALUE_HEIGHT_BLEND_REACH     = 2,
-	APP_LAYER_VALUE_HEIGHT_BLEND_INFLUENCE = 3,
-	APP_LAYER_VALUE_HEIGHT_BLEND_SHARPNESS = 4,
-	APP_LAYER_VALUE_HEIGHT_BLEND_OFFSET    = 5,
 	APP_LAYER_VALUE_FILL_SCALE_X           = 6, // Fill projection: repeats along each axis
 	APP_LAYER_VALUE_FILL_SCALE_Y           = 7,
 	APP_LAYER_VALUE_FILL_OFFSET_X          = 8, // -1..1

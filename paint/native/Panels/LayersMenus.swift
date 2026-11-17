@@ -25,7 +25,6 @@ struct NewLayerMenu: View {
 			Section("Mask") {
 				item("Black Mask", "circle.fill", APP_LAYER_NEW_BLACK_MASK)
 				item("White Mask", "circle", APP_LAYER_NEW_WHITE_MASK)
-				item("Height Blend Mask", "mountain.2", APP_LAYER_NEW_HEIGHT_MASK)
 				item("Fill Mask", "circle.lefthalf.filled", APP_LAYER_NEW_FILL_MASK)
 				item("ID Mask…", "square.grid.3x3.square", APP_LAYER_NEW_ID_MASK)
 			}
@@ -121,7 +120,6 @@ struct LayerContextMenu: View {
 				Menu {
 					maskItem("Black Mask", APP_LAYER_NEW_BLACK_MASK)
 					maskItem("White Mask", APP_LAYER_NEW_WHITE_MASK)
-					maskItem("Height Blend Mask", APP_LAYER_NEW_HEIGHT_MASK)
 					maskItem("Fill Mask", APP_LAYER_NEW_FILL_MASK)
 				} label: {
 					Label("Add Mask", systemImage: "circle.lefthalf.filled")

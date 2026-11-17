@@ -270,12 +270,6 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 		json_encode_i32("paint_height_blend", l->paint_height_blend);
 		json_encode_i32("paint_emis", l->paint_emis);
 		json_encode_i32("paint_subs", l->paint_subs);
-		json_encode_i32("height_blend", l->height_blend);
-		json_encode_i32("height_blend_below", l->height_blend_below);
-		json_encode_f32("height_blend_influence", l->height_blend_influence);
-		json_encode_f32("height_blend_sharpness", l->height_blend_sharpness);
-		json_encode_f32("height_blend_offset", l->height_blend_offset);
-		json_encode_f32("height_blend_reach", l->height_blend_reach);
 		if (l->mask_effects != NULL) {
 			json_encode_string("mask_effects", smart_materials_floats_to_string(mask_stack_effects_to_file(l->mask_effects, layers->buffer, layers->length, false)));
 		}
@@ -404,18 +398,9 @@ slot_layer_t *smart_materials_insert(char *name) {
 		l->paint_height_blend     = smart_materials_i32(m, p, "paint_height_blend", 1) != 0;
 		l->paint_emis             = smart_materials_i32(m, p, "paint_emis", 1) != 0;
 		l->paint_subs             = smart_materials_i32(m, p, "paint_subs", 1) != 0;
-		l->height_blend           = smart_materials_i32(m, p, "height_blend", 0) != 0;
-		l->height_blend_below     = smart_materials_i32(m, p, "height_blend_below", 0) != 0;
-		l->height_blend_influence = smart_materials_f32(m, p, "height_blend_influence", 1.0);
-		l->height_blend_sharpness = smart_materials_f32(m, p, "height_blend_sharpness", 16.0);
-		l->height_blend_offset    = smart_materials_f32(m, p, "height_blend_offset", 0.0);
-		l->height_blend_reach     = smart_materials_f32(m, p, "height_blend_reach", 0.03);
 		if (slot_layer_is_mask(l)) {
 			l->mask_effects     = smart_materials_string_to_floats(smart_materials_get(m, p, "mask_effects"), MASK_EFFECT_STRIDE);
 			l->mask_stack_dirty = l->mask_effects != NULL;
-		}
-		if (l->height_blend) {
-			make_material_height_used = true;
 		}
 		f32_array_t *fill = smart_materials_string_to_floats(smart_materials_get(m, p, "fill"), FILL_ENCODE_LENGTH);
 		if (fill != NULL && fill->length >= FILL_ENCODE_LENGTH) {

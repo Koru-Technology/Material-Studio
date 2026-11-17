@@ -92,12 +92,6 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	    .uv_map                 = l->uv_map,
 	    .has_uv1                = app_mesh_has_uv1(),
 	    .channels               = app_layer_channels(l),
-	    .height_blend           = l->height_blend,
-	    .height_blend_below     = l->height_blend_below,
-	    .height_blend_reach     = l->height_blend_reach,
-	    .height_blend_influence = l->height_blend_influence,
-	    .height_blend_sharpness = l->height_blend_sharpness,
-	    .height_blend_offset    = l->height_blend_offset,
 	    .effect_count           = app_mask_effect_count(l->id),
 
 	    .shows_blending            = !group && !mask && !filter,
@@ -143,11 +137,6 @@ uint32_t app_layers_props_signature(void) {
 		h               = app_hash(h, l->path_material != NULL);
 		h               = app_hash(h, l->path_text);
 		h               = app_hash(h, app_layer_channels(l));
-		h               = app_hash(h, l->height_blend | (l->height_blend_below << 1));
-		h               = app_hash_fq(h, l->height_blend_reach);
-		h               = app_hash_fq(h, l->height_blend_influence);
-		h               = app_hash_fq(h, l->height_blend_sharpness);
-		h               = app_hash_fq(h, l->height_blend_offset);
 		for (i32 j = 0; slot_layer_is_mask(l) && l->mask_effects != NULL && j < l->mask_effects->length; ++j) {
 			h = app_hash_fq(h, l->mask_effects->buffer[j]);
 		}
@@ -238,7 +227,6 @@ bool app_layer_can_new(int32_t kind) {
 		return g_context->swatch != NULL;
 	case APP_LAYER_NEW_BLACK_MASK:
 	case APP_LAYER_NEW_WHITE_MASK:
-	case APP_LAYER_NEW_HEIGHT_MASK:
 		return slot_layer_takes_mask(app_layer_mask_target(g_context->layer));
 	case APP_LAYER_NEW_ID_MASK: { // Into the layer's mask, as Painter's mask with color selection
 		slot_layer_t *target = app_layer_mask_target(g_context->layer);
@@ -256,15 +244,6 @@ static slot_layer_t *app_layer_new_mask(slot_layer_t *l, i32 kind) {
 		return layers_op_new_mask(l, 1);
 	case APP_LAYER_NEW_FILL_MASK:
 		return layers_op_new_mask(l, 2);
-	case APP_LAYER_NEW_HEIGHT_MASK: { // Paint black where the layer should go, tall details reach past the edge
-		slot_layer_t *m = layers_op_new_mask(l, 1);
-		if (m != NULL) {
-			m->height_blend           = true;
-			make_material_height_used = true;
-			make_material_parse_mesh_material();
-		}
-		return m;
-	}
 	}
 	return NULL;
 }
@@ -574,41 +553,6 @@ bool app_layer_set_uv_map(int32_t id, int32_t uv_map) {
 	return app_layer_done(true);
 }
 
-static void app_layer_height_blend_changed(slot_layer_t *m) {
-	if (m->height_blend) {
-		make_material_height_used = true; // Track the height of the layers below
-	}
-	draw_saved_t gpu = draw_suspend();
-	layers_op_end(gpu);
-	if (ui_view2d_show) {
-		ui_view2d_hwnd->redraws = 2;
-	}
-}
-
-static bool app_layer_set_mask_flag(int32_t id, bool on, bool below) {
-	slot_layer_t *m = app_layer_by_id(id);
-	if (m == NULL || !slot_layer_is_mask(m)) {
-		return false;
-	}
-	bool *f = below ? &m->height_blend_below : &m->height_blend;
-	if (*f == on) {
-		return false;
-	}
-	context_set_layer(m);
-	history_mask_height_blend();
-	*f = on;
-	app_layer_height_blend_changed(m);
-	return app_layer_done(true);
-}
-
-bool app_layer_set_height_blend(int32_t id, bool on) {
-	return app_layer_set_mask_flag(id, on, false);
-}
-
-bool app_layer_set_height_blend_below(int32_t id, bool on) {
-	return app_layer_set_mask_flag(id, on, true);
-}
-
 // Fill layers
 
 static slot_layer_t *app_fill_layer(int32_t id) {
@@ -836,8 +780,7 @@ float app_fill_param_max(int32_t pattern, int32_t i) {
 // Slider drags
 
 static f32 *app_layer_value_field(slot_layer_t *l, i32 value, f32 *min, f32 *max) {
-	bool    mask = slot_layer_is_mask(l);
-	fill_t *f    = l->fill;
+	fill_t *f = l->fill;
 	if (value >= APP_LAYER_VALUE_FILL_SOURCE) { // A source's value or pattern setting
 		i32            c = (value - APP_LAYER_VALUE_FILL_SOURCE) / 32;
 		i32            k = (value - APP_LAYER_VALUE_FILL_SOURCE) % 32;
@@ -879,22 +822,6 @@ static f32 *app_layer_value_field(slot_layer_t *l, i32 value, f32 *min, f32 *max
 		*min = 0.0;
 		*max = 1.0;
 		return f != NULL ? &f->hardness : NULL;
-	case APP_LAYER_VALUE_HEIGHT_BLEND_REACH:
-		*min = 0.0;
-		*max = 0.1;
-		return mask ? &l->height_blend_reach : NULL;
-	case APP_LAYER_VALUE_HEIGHT_BLEND_INFLUENCE:
-		*min = 0.0;
-		*max = 4.0;
-		return mask ? &l->height_blend_influence : NULL;
-	case APP_LAYER_VALUE_HEIGHT_BLEND_SHARPNESS:
-		*min = 1.0;
-		*max = 50.0;
-		return mask ? &l->height_blend_sharpness : NULL;
-	case APP_LAYER_VALUE_HEIGHT_BLEND_OFFSET:
-		*min = -1.0;
-		*max = 1.0;
-		return mask ? &l->height_blend_offset : NULL;
 	}
 	return NULL;
 }
@@ -906,13 +833,7 @@ void app_layer_value_begin(int32_t id, int32_t value) {
 	if (l == NULL || app_layer_value_field(l, value, &min, &max) == NULL) {
 		return;
 	}
-	if (l->fill != NULL && value >= APP_LAYER_VALUE_FILL_SCALE_X) {
-		history_layer_fill(l);
-	}
-	else {
-		context_set_layer(l);
-		history_mask_height_blend();
-	}
+	history_layer_fill(l);
 	app_drag_begin(APP_DRAG_LAYER_VALUE, id, value, 0);
 }
 
@@ -931,12 +852,7 @@ bool app_layer_set_value(int32_t id, int32_t value, float v) {
 	if (value == APP_LAYER_VALUE_FILL_SCALE || value == APP_LAYER_VALUE_FILL_OFFSET) { // Linked: Y follows X
 		f[1] = f[0];
 	}
-	if (l->fill != NULL && value >= APP_LAYER_VALUE_FILL_SCALE_X) {
-		fill_changed(l); // Live: the parameters texture, no new shader
-	}
-	else {
-		app_layer_height_blend_changed(l);
-	}
+	fill_changed(l); // Live: the parameters texture, no new shader
 	iron_delay_idle_sleep();
 	return true;
 }

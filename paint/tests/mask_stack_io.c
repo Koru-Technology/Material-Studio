@@ -168,7 +168,6 @@ void next() {
 		if (mask != NULL) {
 			mask->mask_opacity = 0.5;
 			mask->blending     = 3;
-			mask->height_blend = 1;
 			script_layer_apply_mask(mask);
 		}
 	}
@@ -179,7 +178,6 @@ void next() {
 		check(script_layer_count() == layers, "undo brings the mask back");
 		check(script_layer_index(m) >= 0 && m->texpaint != NULL && m->texpaint_nor == NULL, "the restored mask is selected");
 		check(m->mask_opacity == 0.5 && m->blending == 3, string("opacity and blending restored (%f %d)", m->mask_opacity, m->blending));
-		check(m->height_blend, "height blend restored");
 		check(string_equals(effects(m), s5), string("effects restored (%s)", effects(m)));
 		history_redo();
 	}

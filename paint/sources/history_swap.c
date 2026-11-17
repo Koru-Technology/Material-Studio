@@ -37,7 +37,7 @@ void history_record_children(const u8 *data, u32 len, hstore_visit_fn visit, voi
 }
 
 // Props of a layer record (every layer_data_t field but the pixels, and uid, timeline, id), bools as i32
-#define HISTORY_RECORD_PROPS 38
+#define HISTORY_RECORD_PROPS 32
 
 static void hrec_i32(char *k, i32 v) {
 	armpack_encode_string(k);
@@ -104,12 +104,6 @@ static u32 history_record_props(slot_layer_t *l, u8 *out) {
 	hrec_i32("path_curved", l->path_curved);
 	hrec_i32("path_text", l->path_text);
 	hrec_i32("path_material", l->path_material != NULL ? (i32)l->path_material->uid : 0);
-	hrec_i32("height_blend", l->height_blend);
-	hrec_i32("height_blend_below", l->height_blend_below);
-	hrec_f32("height_blend_influence", l->height_blend_influence);
-	hrec_f32("height_blend_sharpness", l->height_blend_sharpness);
-	hrec_f32("height_blend_offset", l->height_blend_offset);
-	hrec_f32("height_blend_reach", l->height_blend_reach);
 	hrec_f32s("mask_effects", l->mask_effects);
 	f32_array_t *fill = fill_encode(l->fill, false);
 	hrec_f32s("fill", fill);
@@ -183,12 +177,6 @@ slot_layer_t *history_record_layer(hash128_t record) {
 	l->path_curved            = armpack_map_get_i32(m, "path_curved") != 0;
 	l->path_text              = armpack_map_get_i32(m, "path_text") != 0;
 	l->path_material          = slot_material_find_uid((u32)armpack_map_get_i32(m, "path_material"));
-	l->height_blend           = armpack_map_get_i32(m, "height_blend") != 0;
-	l->height_blend_below     = armpack_map_get_i32(m, "height_blend_below") != 0;
-	l->height_blend_influence = armpack_map_get_f32(m, "height_blend_influence");
-	l->height_blend_sharpness = armpack_map_get_f32(m, "height_blend_sharpness");
-	l->height_blend_offset    = armpack_map_get_f32(m, "height_blend_offset");
-	l->height_blend_reach     = armpack_map_get_f32(m, "height_blend_reach");
 	l->mask_effects           = hrec_get_f32s(m, "mask_effects");
 	l->fill                   = fill_decode(any_map_get(m, "fill"), false);
 	l->fill_dirty             = l->fill != NULL;
@@ -431,34 +419,12 @@ void history_swap_order(history_step_t *step) {
 	make_material_parse_mesh_material();
 }
 
-void history_get_height_blend(slot_layer_t *l, f32 *out) {
-	out[0] = l->height_blend ? 1.0 : 0.0;
-	out[1] = l->height_blend_below ? 1.0 : 0.0;
-	out[2] = l->height_blend_influence;
-	out[3] = l->height_blend_sharpness;
-	out[4] = l->height_blend_offset;
-	out[5] = l->height_blend_reach;
-}
-
-static void history_set_height_blend(slot_layer_t *l, f32 *in) {
-	l->height_blend           = in[0] > 0.5;
-	l->height_blend_below     = in[1] > 0.5;
-	l->height_blend_influence = in[2];
-	l->height_blend_sharpness = in[3];
-	l->height_blend_offset    = in[4];
-	l->height_blend_reach     = in[5];
-}
-
 // The mask recreated by an apply mask undo gets the settings it had, the step keeps its copy for the next undo
 void history_restore_applied_mask(history_step_t *step, slot_layer_t *m) {
 	m->mask_opacity = step->layer_opacity;
 	m->blending     = step->layer_blending;
-	history_set_height_blend(m, step->layer_height_blend);
 	m->mask_effects = mask_stack_copy_effects(step->mask_effects);
 	mask_stack_mark_dirty(m);
-	if (m->height_blend) {
-		make_material_height_used = true;
-	}
 	make_material_parse_mesh_material();
 }
 
@@ -519,14 +485,6 @@ void history_swap_layer_props(history_step_t *step) {
 		step->fill = t;
 		context_set_layer(l);
 		fill_reshaped(l);
-	}
-	else if (step->action == HISTORY_ACTION_MASK_HEIGHT_BLEND) {
-		f32 t[6];
-		history_get_height_blend(l, t);
-		history_set_height_blend(l, step->layer_height_blend);
-		memcpy(step->layer_height_blend, t, sizeof(t));
-		context_set_layer(l);
-		make_material_parse_mesh_material();
 	}
 	else if (step->action == HISTORY_ACTION_MASK_STACK) {
 		f32_array_t *t     = l->mask_effects;
