@@ -59,6 +59,7 @@ void next() {
 	else if (frame == 11) {
 		check(string_equals(layer_hash(fill), layer_off), "the fill layer updated inside an open scope");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[paint_exec_isolate] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "PAINT_EXEC_ISOLATE PASS" : "PAINT_EXEC_ISOLATE FAIL");
 		script_quit();

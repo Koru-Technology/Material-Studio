@@ -123,6 +123,7 @@ void next() {
 			int b = c & 0xff;
 			check(b > r + 60 && b > g + 30, string("the picker reads the painted blue (%d %d %d)", r, g, b));
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+			check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 			printf("[render_paint] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "RENDER_PAINT PASS" : "RENDER_PAINT FAIL");
 			script_quit();

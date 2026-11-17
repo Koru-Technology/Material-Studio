@@ -138,6 +138,7 @@ void next() {
 	else {
 		script_material_delete(mat);
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[mm_bridge] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "MM_BRIDGE PASS" : "MM_BRIDGE FAIL");
 		script_quit();

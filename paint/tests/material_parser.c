@@ -316,6 +316,7 @@ void next() {
 		}
 		remove_script_nodes();
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[material_parser] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "PARSER PASS" : "PARSER FAIL");
 		script_quit();

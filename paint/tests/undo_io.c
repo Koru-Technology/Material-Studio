@@ -140,6 +140,7 @@ void next() {
 		check(string_equals(project_hash(), states->buffer[NSTEPS]), "clear history keeps the layers");
 		check(timeline_test_materialize(a, count) && string_equals(project_hash(), states->buffer[NSTEPS]), "the layer materializes after clear history");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[undo_io] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO_IO PASS" : "UNDO_IO FAIL");
 		script_quit();

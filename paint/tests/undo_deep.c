@@ -122,6 +122,7 @@ void next() {
 	else if (step == 6) {
 		check(string_equals(all_hash(), h_end), "200 redos give the layers after the last stroke back");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[undo_deep] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO_DEEP PASS" : "UNDO_DEEP FAIL");
 		script_quit();

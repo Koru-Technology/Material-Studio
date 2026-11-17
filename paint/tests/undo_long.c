@@ -144,6 +144,7 @@ void next() {
 		check(string_equals(all_hash(), h_end), "1000 redos give the layers after the last stroke back");
 		stats("at the end");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		finish();
 		return;
 	}

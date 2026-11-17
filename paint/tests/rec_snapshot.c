@@ -221,6 +221,7 @@ void next() {
 		check(find_uid(uid) != NULL && string_equals(h0, hash_of(find_uid(uid)->texpaint)), "the layer as saved after opening");
 		compare("saved and opened");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[rec_snapshot] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "REC_SNAPSHOT PASS" : "REC_SNAPSHOT FAIL");
 		script_quit();

@@ -115,6 +115,7 @@ void next() {
 	else if (step == 8) {
 		check(diff_layer(state2) == 0, string("undo across a cleared layer (%d bytes differ)", diff_layer(state2)));
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[undo] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO PASS" : "UNDO FAIL");
 		script_quit();

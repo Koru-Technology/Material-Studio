@@ -213,6 +213,7 @@ void next() {
 			cfg->pencil_double_tap = 0;
 			cfg->pencil_squeeze    = 0;
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+			check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 			printf("[pencil] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "PENCIL PASS" : "PENCIL FAIL");
 			script_quit();

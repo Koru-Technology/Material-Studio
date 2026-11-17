@@ -113,6 +113,7 @@ void finish() {
 	       material_cache_replay_stat(1), material_cache_replay_stat(2), material_cache_replay_stat(3), material_cache_replay_stat(4),
 	       material_cache_replay_stat(5) / 1000.0, material_cache_replay_stat(7) / 1000.0, material_cache_replay_stat(6) / 1000.0);
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+	check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 	printf("[rec_fast] %d checks, %d failures", checks, fails);
 	printf(fails == 0 ? "REC_FAST PASS" : "REC_FAST FAIL");
 	script_quit();

@@ -142,6 +142,7 @@ void next() {
 	else if (step == 10) {
 		check_last(a, 8, TL_FILL, "to fill and to paint append fill entries");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[timeline_complete] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "TIMELINE_COMPLETE PASS" : "TIMELINE_COMPLETE FAIL");
 		script_quit();

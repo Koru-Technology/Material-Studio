@@ -128,6 +128,7 @@ void paint_case(int k) {
 
 void finish() {
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+	check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 	printf("[rec_camera] %d checks, %d failures", checks, fails);
 	printf(fails == 0 ? "REC_CAMERA PASS" : "REC_CAMERA FAIL");
 	script_quit();

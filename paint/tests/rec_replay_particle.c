@@ -50,6 +50,7 @@ int diff3(slot_layer_t *a, slot_layer_t *b, float tol) {
 
 void finish() {
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+	check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 	printf("[rec_particle] %d checks, %d failures", checks, fails);
 	printf(fails == 0 ? "REC_PARTICLE PASS" : "REC_PARTICLE FAIL");
 	script_quit();

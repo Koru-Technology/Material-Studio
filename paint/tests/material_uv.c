@@ -142,6 +142,7 @@ void next() {
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[uv] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UV PASS" : "UV FAIL");
 		script_quit();

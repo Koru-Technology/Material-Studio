@@ -1802,6 +1802,7 @@ void next_frame() {
 	}
 
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+	check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 	if (checks != expected_checks) {
 		failures += 1;
 		printf("[test]   FAIL expected %d checks, ran %d - a step was cut short", expected_checks, checks);

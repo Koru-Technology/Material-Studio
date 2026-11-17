@@ -192,6 +192,7 @@ void next() {
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[mask_stack_io] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "MASK_STACK_IO PASS" : "MASK_STACK_IO FAIL");
 		script_quit();

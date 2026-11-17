@@ -142,6 +142,7 @@ void next() {
 	else if (step == 11) {
 		check(opaque(a) == texels, "undo of a clear");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[history_fixes] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "HISTORY_FIXES PASS" : "HISTORY_FIXES FAIL");
 		script_quit();

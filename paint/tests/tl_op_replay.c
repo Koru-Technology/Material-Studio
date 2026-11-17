@@ -78,6 +78,7 @@ void next() {
 	else if (step == 4) {
 		check_last(a, 10, "merge down");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[tl_op_replay] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "TL_OP_REPLAY PASS" : "TL_OP_REPLAY FAIL");
 		script_quit();

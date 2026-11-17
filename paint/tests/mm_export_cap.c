@@ -55,6 +55,7 @@ void next() {
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[mm_export_cap] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "MM_EXPORT_CAP PASS" : "MM_EXPORT_CAP FAIL");
 		script_quit();

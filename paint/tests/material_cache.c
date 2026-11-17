@@ -165,6 +165,7 @@ void finish() {
 	material_cache_test_min_ms(-1.0);
 	material_cache_set_enabled(1);
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+	check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 	printf("[matcache] %d checks, %d failures", checks, fails);
 	printf(fails == 0 ? "MATCACHE PASS" : "MATCACHE FAIL");
 	script_quit();

@@ -86,6 +86,7 @@ void next() {
 	else if (step == 3) {
 		check(string_equals(layer_hash(a), hashes->buffer[6]), "undo of the stroke after the restore");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[undo_coalesce] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "UNDO_COALESCE PASS" : "UNDO_COALESCE FAIL");
 		script_quit();

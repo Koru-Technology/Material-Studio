@@ -213,6 +213,7 @@ void next() {
 		if (kase == 13) {
 			check(paint_rec_test_stored() >= 11, string("strokes stored (%d)", paint_rec_test_stored()));
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+			check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 			printf("[rec_replay] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "REC_REPLAY PASS" : "REC_REPLAY FAIL");
 			script_quit();

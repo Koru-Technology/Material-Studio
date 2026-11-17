@@ -201,6 +201,7 @@ void next() {
 		printf("[rec_hires] strokes base vs live 2048: replayed %d over (mean %f), 1024 scaled up %d over (mean %f)", over_r, mean_r, over_s, mean_s);
 		check(over_r < over_s, "strokes: replay at 2048 is closer to live 2048 than scaling 1024 up");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[rec_hires] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "REC_HIRES PASS" : "REC_HIRES FAIL");
 		script_quit();

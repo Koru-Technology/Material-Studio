@@ -398,6 +398,7 @@ void next() {
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		mm_buffers_test_res(0);
 		printf("[mm_buffers] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "MM_BUFFERS PASS" : "MM_BUFFERS FAIL");

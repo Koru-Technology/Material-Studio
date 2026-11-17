@@ -139,6 +139,7 @@ void next() {
 		frame = 0;
 		if (kase == 6) {
 			check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+			check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 			printf("[dab_resolve] %d checks, %d failures", checks, fails);
 			printf(fails == 0 ? "DAB_RESOLVE PASS" : "DAB_RESOLVE FAIL");
 			script_quit();

@@ -91,6 +91,7 @@ void next() {
 		check(iabs(counts[2] - counts[3]) * 50 <= counts[3], string("small brush the same (%d, %d)", counts[2], counts[3]));
 		check(kept[2] < 0.5, string("small brush draws part of the mesh (%.3f)", kept[2]));
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[cull] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "CULL PASS" : "CULL FAIL");
 		script_quit();

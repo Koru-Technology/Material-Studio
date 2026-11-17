@@ -98,6 +98,7 @@ void next() {
 		check(tiles1 == 0 && tiles * 1000 <= painted, string("4 tiles are within 1/255 of the whole replay, on all but 0.1 percent exactly (%d differ)", tiles));
 		check(diff3(whole, blank, 1.0) > 10000, "the whole replay paints");
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 		printf("[rec_hires] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "REC_HIRES PASS" : "REC_HIRES FAIL");
 		script_quit();

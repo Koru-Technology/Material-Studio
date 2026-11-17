@@ -123,6 +123,7 @@ void check_new(char *what) {
 
 void finish() {
 	check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
+	check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
 	printf("[pick] %d checks, %d failures", checks, fails);
 	printf(fails == 0 ? "PICK PASS" : "PICK FAIL");
 	script_quit();
