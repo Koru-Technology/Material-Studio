@@ -235,20 +235,13 @@ static int32_t app_read_rgba8(gpu_texture_t *t, int32_t max_size, bool premultip
 	return bytes;
 }
 
-bool app_native_chrome     = false;
-i32  app_overlay_top_inset = 0;
+i32 app_overlay_top_inset = 0;
 
 void app_set_overlay_top_inset(int32_t pixels) {
 	app_overlay_top_inset = pixels > 0 ? pixels : 0;
 	if (ui_nodes_hwnd != NULL) {
 		ui_nodes_hwnd->redraws = 2;
 	}
-}
-
-void app_set_native_chrome(bool on) {
-	app_native_chrome = on;
-	ui_base_show      = !on;
-	base_resize();
 }
 
 // Tool and brush
@@ -337,7 +330,7 @@ void app_view_face(int32_t face) {
 	if (!app_ready()) {
 		return;
 	}
-	ui_view_cube_set_view(face); // ui_panels.c
+	viewport_set_face(face);
 	iron_delay_idle_sleep();
 }
 
@@ -534,8 +527,8 @@ void app_command(int32_t command) {
 		sys_notify_on_next_frame(app_capture_screenshot, NULL); // After the frame, with the ui hidden
 		break;
 	case APP_COMMAND_DELETE_UNUSED:
-		tab_materials_delete_unused();
-		tab_textures_delete_unused();
+		slot_material_delete_unused();
+		util_texture_delete_unused();
 		break;
 	}
 	g_context->ddirty = 2;
@@ -612,14 +605,14 @@ bool app_layer_set_visible(int32_t id, bool visible) {
 	if (l == NULL || l->visible == visible) {
 		return false;
 	}
-	tab_layers_layer_toggle_visible(l);
+	layers_toggle_visible(l);
 	iron_delay_idle_sleep();
 	return true;
 }
 
 bool app_layer_delete(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
-	if (l == NULL || !tab_layers_can_delete(l)) {
+	if (l == NULL || !layers_can_delete(l)) {
 		return false;
 	}
 	layers_op_delete(l);

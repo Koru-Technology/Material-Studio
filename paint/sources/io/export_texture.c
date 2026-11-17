@@ -665,7 +665,6 @@ static void export_texture_create_baked_material(slot_material_t *source) {
 
 	make_material_parse_paint_material(true);
 	util_render_make_material_preview();
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	history_new_material();
 }
 

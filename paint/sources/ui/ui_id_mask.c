@@ -181,7 +181,7 @@ static void ui_id_mask_import_on_next_frame(void *_) {
 		ui_id_mask_start_picking();
 	}
 	else if (g_project->_->assets->length > ui_id_mask_assets_before && array_index_of(g_project->_->assets, a) >= ui_id_mask_assets_before) {
-		tab_textures_delete_texture(a); // Imported for this only
+		util_texture_delete(a); // Imported for this only
 	}
 }
 
@@ -325,7 +325,6 @@ static void ui_id_mask_build(void *_m) {
 	mask_stack_mark_dirty(m);
 	g_context->layer_preview_dirty = true;
 	layers_update_fill_layers();
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	base_redraw_ui();
 }
 
@@ -351,7 +350,6 @@ static void ui_id_mask_done_effect() {
 	history_mask_stack();
 	g_context->layer = _layer;
 	mask_stack_set(m, ui_id_mask_effect, picked);
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 }
 
 // The picked parts become a mask of the layer
@@ -366,9 +364,9 @@ void ui_id_mask_done() {
 	slot_layer_t *l = ui_id_mask_target;
 	ui_id_mask_cancel(); // Back to the tool from before
 
-	slot_layer_t_array_t *pointers = tab_layers_init_layer_map();
+	slot_layer_t_array_t *pointers = layers_init_layer_map();
 	slot_layer_t         *m        = layers_new_mask(false, l, -1);
-	tab_layers_remap_all_layer_pointers(pointers);
+	layers_remap_layer_pointers(pointers);
 	if (m == NULL) {
 		console_error(tr("Too many layers"));
 		return;
@@ -409,7 +407,7 @@ void ui_id_mask_render_ui() {
 	i32 w   = math_floor(320 * UI_SCALE());
 	i32 h   = UI_ELEMENT_H() * 2 + UI_ELEMENT_OFFSET() * 3 + pad * 2;
 	i32 x   = base_view_x(0) + math_floor((base_view_w() - w) / 2.0);
-	i32 y   = base_y() + ui_header_h + pad;
+	i32 y   = base_y() + math_floor(30 * UI_SCALE()) + pad; // Clear of the top of the view
 
 	if (ui_base_panel_window(ui_id_mask_bar, x, y, w, h, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR, false)) {
 		g_ui->_x += pad;

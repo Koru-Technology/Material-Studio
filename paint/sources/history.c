@@ -343,9 +343,6 @@ void history_flush_restores(slot_layer_t *l) {
 static void history_restore_job(void *_) {
 	history_restore_scheduled = false;
 	history_flush_restores(NULL);
-	if (g_config->touch_ui) {
-		ui_menubar_menu_handle->redraws = 2; // Undo and redo buttons leave their busy state
-	}
 }
 
 // Layers still to be restored after undo or redo
@@ -637,19 +634,10 @@ void history_undo() {
 		}
 		g_context->rtdirty = 1;
 		g_context->ddirty  = 2;
-
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 		if (ui_view2d_show) {
 			ui_view2d_hwnd->redraws = 2;
 		}
-
-		if (g_config->touch_ui) {
-			// Refresh undo & redo buttons
-			ui_menubar_menu_handle->redraws = 2;
-		}
 	}
-	base_redraw_status();
 }
 
 static void history_redo_duplicate_layer(void *_) {
@@ -796,19 +784,10 @@ void history_redo() {
 		}
 		g_context->rtdirty = 1;
 		g_context->ddirty  = 2;
-
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 		if (ui_view2d_show) {
 			ui_view2d_hwnd->redraws = 2;
 		}
-
-		if (g_config->touch_ui) {
-			// Refresh undo & redo buttons
-			ui_menubar_menu_handle->redraws = 2;
-		}
 	}
-	base_redraw_status();
 }
 
 // Low memory, not in a stroke: snapshots go, the tiles of the last 4 steps only stay, older ones undo from their
@@ -885,11 +864,6 @@ history_step_t *history_push(history_action_t action) {
 	                                                                       string_length(g_project->_->filepath) - 4);
 	sys_title_set(string("%s* - %s", filename, manifest_title));
 #endif
-
-	if (g_config->touch_ui) {
-		// Refresh undo & redo buttons
-		ui_menubar_menu_handle->redraws = 2;
-	}
 
 	history_undos++;
 	if (history_redos > 0) {

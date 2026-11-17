@@ -85,12 +85,10 @@ any_map_t *keymap_get_default() {
 	any_map_set(keymap, "view_orbit_opposite", "9");
 	any_map_set(keymap, "view_zoom_in", "");
 	any_map_set(keymap, "view_zoom_out", "");
-	any_map_set(keymap, "view_distract_free", "f11");
 	any_map_set(keymap, "view_pivot_center", "alt+middle");
 	any_map_set(keymap, "viewport_mode", "ctrl+m");
 	any_map_set(keymap, "toggle_node_editor", "tab");
 	any_map_set(keymap, "toggle_2d_view", "shift+tab");
-	any_map_set(keymap, "toggle_browser", "`");
 	any_map_set(keymap, "node_overview", "z");
 	any_map_set(keymap, "node_search", "space");
 	any_map_set(keymap, "keymap_search", "space");

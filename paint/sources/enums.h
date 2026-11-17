@@ -342,53 +342,13 @@ typedef enum {
 	CLONE_LAYERS_VISIBLE  = 1,
 } clone_layers_t;
 
+// Views sharing the window, see ui_dock.c
 typedef enum {
-	TAB_AREA_SIDEBAR0 = 0,
-	TAB_AREA_SIDEBAR1 = 1,
-	TAB_AREA_STATUS   = 2,
-} tab_area_t;
-
-// Stored in config, append only
-typedef enum {
-	TAB_LAYERS    = 0,
-	TAB_MESHES    = 1,
-	TAB_SCRIPTS   = 2,
-	TAB_MATERIALS = 3,
-	TAB_BRUSHES   = 4,
-	TAB_PLUGINS   = 5, // Retired, kept as saved layouts store tab ids
-	TAB_BROWSER   = 6,
-	TAB_TEXTURES  = 7,
-	TAB_FONTS     = 8,
-	TAB_SOUNDS    = 9,
-	TAB_SWATCHES  = 10,
-	TAB_TIMELINE  = 11,
-	TAB_CONSOLE   = 12,
-	TAB_DEBUG     = 13,
-	TAB_VIEW3D    = 14,
-	TAB_VIEW2D    = 15,
-	TAB_NODES     = 16,
-	TAB_LIBRARY   = 17,
-	TAB_SMART     = 18,
-	TAB_COUNT     = 19,
-} tab_id_t;
-
-typedef enum {
-	DOCK_ZONE_CENTER = 0,
-	DOCK_ZONE_LEFT   = 1,
-	DOCK_ZONE_RIGHT  = 2,
-	DOCK_ZONE_TOP    = 3,
-	DOCK_ZONE_BOTTOM = 4,
-} dock_zone_t;
-
-// Splits of the default layout, stored in config
-typedef enum {
-	DOCK_ROLE_NONE          = 0,
-	DOCK_ROLE_SIDEBAR       = 1,
-	DOCK_ROLE_SIDEBAR_INNER = 2,
-	DOCK_ROLE_STATUS        = 3,
-	DOCK_ROLE_VIEWS         = 4,
-	DOCK_ROLE_VIEWS_INNER   = 5,
-} dock_role_t;
+	DOCK_VIEW_3D    = 0,
+	DOCK_VIEW_2D    = 1,
+	DOCK_VIEW_NODES = 2,
+	DOCK_VIEW_COUNT = 3,
+} dock_view_t;
 
 typedef enum {
 	TEXTURE_RES_RES2048  = 0,

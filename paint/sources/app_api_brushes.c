@@ -1,5 +1,5 @@
-// app_api_brushes.h, #included by main.c after app_api.c (it reuses app_hash and the brush library, tab_brushes, tab_swatches
-// and ui_quick_menu state of the same unit)
+// app_api_brushes.h, #included by main.c after app_api.c (it reuses app_hash, the brush library and the ui_quick_menu
+// state of the same unit)
 
 #include "app_api_brushes.h"
 
@@ -181,7 +181,6 @@ int32_t app_brush_duplicate(int32_t id) {
 	if (c == NULL) {
 		return -1;
 	}
-	tab_brushes_show_group(group);
 	brush_library_use(c);
 	iron_delay_idle_sleep();
 	return c->id;
@@ -306,7 +305,6 @@ bool app_color_get(app_color_t *out) {
 }
 
 static void app_color_changed(void) {
-	ui_header_handle->redraws = 2;
 	g_context->ddirty         = 2; // The picker's color mask reads it
 	iron_delay_idle_sleep();
 }
@@ -346,7 +344,7 @@ static bool app_color_new_material_pending = false;
 static void app_color_apply_on_next_frame(void *_) {
 	app_color_apply_pending = false;
 	if (g_context->picked_color != NULL) {
-		tab_materials_apply_picked_color(g_context->picked_color);
+		slot_material_apply_picked_color(g_context->picked_color);
 	}
 }
 
@@ -362,7 +360,7 @@ void app_color_apply(void) {
 static void app_color_new_material_on_next_frame(void *_) {
 	app_color_new_material_pending = false;
 	if (g_context->picked_color != NULL) {
-		tab_materials_accept_swatch_drop(project_clone_swatch(g_context->picked_color));
+		slot_material_new_from_swatch(project_clone_swatch(g_context->picked_color));
 	}
 }
 
@@ -427,7 +425,6 @@ int32_t app_swatch_add(void) {
 	g_context->swatch = s;
 	any_array_push(g_project->swatches, s);
 	history_new_swatch();
-	ui_dock_redraw(TAB_AREA_STATUS);
 	iron_delay_idle_sleep();
 	return g_project->swatches->length - 1;
 }
@@ -437,7 +434,7 @@ bool app_swatch_delete(int32_t index) {
 	if (s == NULL || g_project->swatches->length <= 1) {
 		return false;
 	}
-	tab_swatches_delete_swatch(s);
+	project_delete_swatch(s);
 	iron_delay_idle_sleep();
 	return true;
 }

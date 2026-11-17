@@ -22,7 +22,7 @@ typedef enum {
 	APP_LAYER_CHANNEL_COUNT        = 11,
 } app_layer_channel_t;
 
-// What a layer is and which of the layer menu's actions apply to it, as the engine's layers tab decides
+// What a layer is and which of the layer menu's actions apply to it, as util_layer_ops.c decides
 typedef struct {
 	int32_t id;
 	bool    has_children; // A group with layers, or a layer with masks or filters
@@ -115,7 +115,7 @@ bool app_layer_can_move_below(int32_t id, int32_t upper_id);
 bool app_layer_move_below(int32_t id, int32_t upper_id);
 bool app_layer_set_group(int32_t id, int32_t group_id); // Into a group at its top, -1: out of its group, below it
 
-// Properties. Each change is an undo step, except channels and the UV map (no history, as the layers tab)
+// Properties. Each change is an undo step, except channels and the UV map (no history)
 bool app_layer_set_blending(int32_t id, int32_t blending);
 bool app_layer_set_channel(int32_t id, int32_t channel, bool on);
 bool app_layer_set_uv_map(int32_t id, int32_t uv_map);

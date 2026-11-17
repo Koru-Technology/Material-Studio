@@ -122,7 +122,6 @@ static void bc_save() {
 		d->s             = bc_edit.s;
 		d->group         = g != NULL && !g->builtin ? g->id : brush_library_user_group();
 		brush_library_add(d, bc_tip);
-		tab_brushes_show_group(d->group);
 		brush_library_use(d);
 	}
 	else {
@@ -164,7 +163,7 @@ static void bc_render_row(void *_) {
 	if (!bc_show || brush_pad_busy()) {
 		return;
 	}
-	tab_brushes_render_row(&bc_edit.s, bc_tip, &bc_row);
+	brush_previews_render_row(&bc_edit.s, bc_tip, &bc_row);
 	bc_row_stale = false;
 	ui_brush_creator_redraw();
 }
@@ -607,7 +606,7 @@ static void bc_draw_settings() {
 		if (ui_is_visible(h)) {
 			draw_set_color(BC_COL_PILL);
 			ui_base_fill_round(g_ui->_x + 8 * s, g_ui->_y, g_ui->_w - 16 * s, h, 12 * s);
-			tab_brushes_draw_stroke(bc_row, g_ui->_x + 20 * s, g_ui->_y + 8 * s, g_ui->_w - 40 * s, h - 16 * s);
+			brush_previews_draw_stroke(bc_row, g_ui->_x + 20 * s, g_ui->_y + 8 * s, g_ui->_w - 40 * s, h - 16 * s);
 		}
 		ui_end_element_of_size(h);
 		if (bc_row_stale && !bc_row_pending && !brush_pad_busy()) {
@@ -673,7 +672,6 @@ void ui_brush_creator_render_ui() {
 	f32 py = m + hh + m;
 	f32 ph = wh - py - m;
 
-	ui_base_panel_add_rect(0, 0, ww, wh); // Touches neither paint nor turn the view
 	bool input          = g_ui->input_enabled;
 	g_ui->input_enabled = base_ui_enabled && !bc_closing;
 	bool interactive    = g_ui->input_enabled && !ui_menu_show && !ui_box_show;

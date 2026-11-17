@@ -137,7 +137,6 @@ void import_arm_import_materials(project_t *project, char *path, i32_array_t *se
 	import_arm_material_files = NULL;
 	sys_notify_on_next_frame(&import_arm_run_material_from_project_on_next_frame, imported);
 	ui_nodes_group_stack = any_array_create_from_raw((void *[]){}, 0);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	if (delete_blob) {
 		data_delete_blob(path);
 	}
@@ -164,7 +163,6 @@ void import_arm_run_swatches_from_project(project_t *project, char *path, bool r
 			any_array_push(g_project->swatches, s);
 		}
 	}
-	ui_dock_redraw(TAB_AREA_STATUS);
 	data_delete_blob(path);
 }
 
@@ -214,8 +212,6 @@ void import_arm_run_brush_from_project(project_t *project, char *path) {
 		brush_output_node_parse_inputs();
 		util_render_make_brush_preview();
 	}
-
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	data_delete_blob(path);
 }
 

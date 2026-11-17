@@ -24,24 +24,15 @@ void console_toast(char *s) {
 }
 
 void console_info(char *s) {
-	console_message_timer = 5.0;
-	console_message       = string_copy(s);
-	console_message_color = 0x00000000;
-	base_redraw_status();
 	console_log(s);
 }
 
 void console_error(char *s) {
-	console_message_timer = 8.0;
-	console_message       = string_copy(s);
-	console_message_color = 0xffaa0000;
-	base_redraw_status();
 	console_log(s);
 }
 
 void console_log(char *s) {
 	iron_log(s);
-	base_redraw_console();
 	string_array_push(console_last_traces, string_copy(s));
 	if (console_last_traces->length > 100) {
 		array_shift(console_last_traces);

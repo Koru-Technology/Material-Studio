@@ -190,7 +190,6 @@ void ui_nodes_push_undo(ui_node_canvas_t *last_canvas) {
 	if (ui_nodes_group_stack->length > 0) {
 		canvas_group = array_index_of(ui_nodes_groups(), ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1]);
 	}
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	history_edit_nodes(last_canvas, CANVAS_TYPE_MATERIAL, canvas_group);
 }
 
@@ -269,8 +268,6 @@ void ui_nodes_recompile() {
 		if (ui_view2d_show && ui_view2d_type == VIEW_2D_TYPE_NODE) {
 			ui_view2d_hwnd->redraws = 2;
 		}
-
-		ui_dock_redraw(TAB_AREA_SIDEBAR1);
 		if (g_context->split_view) {
 			g_context->ddirty = 2;
 		}
@@ -293,8 +290,6 @@ void ui_nodes_recompile() {
 		if (decal) {
 			util_render_make_decal_preview();
 		}
-
-		ui_dock_redraw(TAB_AREA_SIDEBAR0);
 		ui_nodes_recompile_mat_final = false;
 	}
 }

@@ -62,7 +62,6 @@ static void util_brush_hold_pick() {
 		if (!mouse_down("left")) {
 			context_select_tool(util_brush_hold_tool);
 			util_brush_hold_tool       = -1;
-			ui_toolbar_handle->redraws = 2;
 		}
 		return;
 	}
@@ -84,7 +83,7 @@ static void util_brush_hold_pick() {
 	if (math_abs(mouse_x - util_brush_hold_x) + math_abs(mouse_y - util_brush_hold_y) > 12 * UI_SCALE()) {
 		util_brush_hold_moved = true;
 	}
-	bool brush = g_context->tool == TOOL_TYPE_BRUSH && ui_toolbar_tool_visible(TOOL_TYPE_PICKER) && context_in_paint_area();
+	bool brush = g_context->tool == TOOL_TYPE_BRUSH && context_in_paint_area();
 	if (!util_brush_hold_moved && brush && sys_time() - util_brush_hold_time > 0.5) {
 		util_brush_hold_time  = 0;
 		history_step_t *last  = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
@@ -327,7 +326,7 @@ void util_brush_update() {
 				util_brush_clone_source_down = true;
 			}
 			else {
-				if (g_context->brush_time == 0 && !base_is_dragging && !base_is_resizing && !ui_dock_is_dragging() &&
+				if (g_context->brush_time == 0 &&
 				    g_ui->combo_selected_id == 0) { // Paint started
 
 					// A fill layer is painted through its mask. Another material than the fill layer's asks for a new fill
@@ -403,6 +402,5 @@ void util_brush_update() {
 	if (util_brush_clone_source_down && !paint_down && !pen_down("tip")) {
 		util_brush_clone_source_down = false;
 		g_context->clone_set_source  = false;
-		ui_header_handle->redraws    = 2;
 	}
 }

@@ -254,9 +254,6 @@ void import_mesh_make_mesh(raw_mesh_t *mesh) {
 	array_delete(old_paint_objects);
 
 	g_context->ddirty = 4;
-
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	util_uv_uvmap_cached       = false;
 	util_uv_seammap_cached     = false;
 	util_uv_dilatemap_cached   = false;
@@ -309,8 +306,6 @@ void import_mesh_add_mesh(raw_mesh_t *mesh) {
 	}
 
 	g_context->ddirty = 4;
-
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	util_uv_uvmap_cached       = false;
 	util_uv_seammap_cached     = false;
 	util_uv_dilatemap_cached   = false;

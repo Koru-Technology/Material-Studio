@@ -129,7 +129,7 @@ string_array_t *export_arm_fonts_to_files(char *project_path, slot_font_t_array_
 static bool export_arm_show_progress = false;
 static void export_arm_progress(f32 progress) {
 	if (export_arm_show_progress) {
-		ui_header_draw_progress(progress);
+		base_draw_progress(progress);
 	}
 }
 

@@ -352,7 +352,6 @@ static slot_material_t *mm_import_new_material(char *name, char *ptex, size_t le
 	slot_material_t_array_t *imported = any_array_create_from_raw((void *[]){}, 0);
 	any_array_push(imported, m);
 	sys_notify_on_next_frame(&import_arm_run_material_from_project_on_next_frame, imported);
-	ui_dock_redraw(TAB_AREA_SIDEBAR1);
 	return m;
 }
 

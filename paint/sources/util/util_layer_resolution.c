@@ -230,7 +230,6 @@ static void layers_resolution_finish() {
 	layers_set_object_mask();
 	make_material_parse_paint_material(true);
 	g_context->layer_preview_dirty = true;
-	ui_dock_redraw(TAB_AREA_SIDEBAR0);
 	lr.active = false;
 	if (lr.push) {
 		history_resolution(lr.w0, lr.h0, lr.w1, lr.h1);

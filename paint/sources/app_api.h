@@ -41,7 +41,6 @@ typedef struct {
 void app_get_state(app_state_t *out);
 
 // The native UI draws the panels: the engine draws only its views (3D, 2D, nodes) and its popups
-void app_set_native_chrome(bool on);
 
 // Height of the native controls floating over the top of the canvas, in canvas pixels: the node editor's menubar goes
 // below them

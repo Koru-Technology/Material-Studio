@@ -78,11 +78,8 @@ void import_arm_run_swatches(char *path, bool replace_existing);
 // ---- io/import_arm_mesh.c ----
 mesh_data_t_array_t *import_arm_get_mesh_datas(project_t *project, string_array_t *mesh_names);
 void                 import_arm_run_mesh(project_t *raw);
-project_t           *import_arm_decode_project(buffer_t *b);
 bool                 import_arm_is_selected(i32_array_t *selected, i32 i);
 bool                 import_arm_object_name_exists(char *name);
-i32                  import_arm_material_name_index(char *name);
-void                 import_arm_append(project_t *project, char *path, i32_array_t *mesh_selected, i32_array_t *material_selected);
 
 // ---- io/import_asset.c ----
 void import_asset_run(char *path, f32 drop_x, f32 drop_y, bool show_box, bool hdr_as_envmap, void (*done)(void));
@@ -945,10 +942,15 @@ u32              project_uid_take(); // Next stable uid of a layer or material (
 char            *project_uuid_get(); // Random 128-bit id of the project in hex, names its history journal
 void             project_uuid_new();
 void             slot_material_unload(slot_material_t *raw);
-void             slot_material_delete(slot_material_t *raw);
-
-// ---- ui/box_append.c ----
-void box_append_show(char *path);
+void slot_material_delete(slot_material_t *raw);
+void slot_material_delete_unused();
+void slot_material_new_on_next_frame(void *_);
+void slot_material_apply_picked_color(swatch_color_t *swatch);
+void slot_material_new_from_swatch(swatch_color_t *swatch);
+void slot_material_refresh();
+void slot_material_duplicate(i32 i);
+void slot_material_update_pointers(ui_node_t_array_t *nodes, i32 deleted);
+void slot_material_remove(slot_material_t *m);
 
 // ---- ui/box_bake_maps.c ----
 void           box_bake_maps_update();
@@ -957,7 +959,6 @@ void           box_bake_maps_show();
 void           box_bake_maps_bake();
 void           box_bake_maps_inpaint_stroke();
 void           box_bake_maps_inpaint_stroke_end();
-void           box_bake_maps_inpaint_header();
 gpu_texture_t *box_bake_maps_inpaint_overlay();
 i32            box_bake_maps_inpaint_color();
 
@@ -968,7 +969,6 @@ void box_export_parse_preset();
 void box_export_show_textures();
 void box_export_show_bake_material();
 void box_export_show_mesh();
-void box_export_show_material();
 
 // ---- ui/box_import_mesh.c ----
 void project_import_mesh_box(char *path, bool replace_existing, bool clear_layers, bool keep_camera, void (*done)(void));
@@ -998,85 +998,19 @@ void  box_projects_import();
 void  box_projects_show();
 void  box_projects_recent_tab();
 
-// ---- ui/tab_browser.c ----
-void tab_browser_show_directory(char *directory);
-void tab_browser_draw(i32 *htab);
-
-// ---- ui/tab_brushes.c ----
-void tab_brushes_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture_t **dst);
-void tab_brushes_draw_stroke(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h);
-void tab_brushes_show_group(i32 id);
-void tab_brushes_draw_content();
-void tab_brushes_draw(i32 *htab);
-
-// ---- ui/tab_console.c ----
-void tab_console_draw(i32 *htab);
-
-// ---- ui/tab_debug.c ----
-void tab_debug_draw(i32 *htab);
-
-// ---- ui/tab_fonts.c ----
-void tab_fonts_draw(i32 *htab);
-void tab_fonts_accept_font_drop(slot_font_t *font);
-
-// ---- ui/tab_layers.c ----
-void          tab_layers_delete_layer(slot_layer_t *l);
-bool          tab_layers_can_delete(slot_layer_t *l);
-bool          tab_layers_can_merge_down(slot_layer_t *l);
-void          tab_layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m);
-slot_layer_t *tab_layers_fill_target(slot_layer_t *l);
-void          tab_layers_fill_properties(slot_layer_t *l, bool menu);
-void          tab_layers_draw_edit();
-void          tab_layers_draw(i32 *htab);
-bool          tab_layers_can_drop_new_layer(i32 position);
-
-// ---- ui/tab_materials.c ----
-void tab_materials_delete_material(slot_material_t *m);
-void tab_materials_delete_unused();
-void tab_materials_button_new_on_next_frame(void *_);
-void tab_materials_draw(i32 *htab);
-void tab_materials_accept_material_drop(slot_material_t *material);
-void tab_materials_apply_picked_color(swatch_color_t *swatch);
-void tab_materials_accept_swatch_drop(swatch_color_t *swatch);
-
-// ---- ui/tab_library.c ----
-void tab_library_draw(i32 *htab);
-
-// ---- ui/tab_smart_materials.c ----
-void tab_smart_materials_show_save();
-void tab_smart_materials_draw(i32 *htab);
-
-// ---- ui/tab_swatches.c ----
-gpu_texture_t *tab_swatches_empty_get();
-void           tab_swatches_draw(i32 *htab);
-void           tab_swatches_accept_swatch_drop(swatch_color_t *swatch);
-
-// ---- ui/tab_textures.c ----
-void tab_textures_delete_texture(asset_t *asset);
-void tab_textures_delete_unused();
-void tab_textures_draw(i32 *htab);
-void tab_textures_accept_asset_drop(asset_t *asset);
-
 // ---- ui/ui_base.c ----
 void                  ui_base_init_on_next_frame(void *_);
-tab_draw_t           *ui_base_get_tab(i32 id);
-void                  ui_window_sync_redraws(ui_window_t *handle, ui_window_t *split_handle, bool split);
 bool                  ui_base_picker_button();
 void                  ui_base_init();
 void                  ui_base_menu_draw_viewport_mode();
 void                  ui_base_update_next_frame(void *_);
 void                  ui_base_update(void *_);
-tab_draw_t           *_draw_callback_create(void (*f)(i32 *), i32 id, char *name, i32 area);
-void                  ui_base_init_tabs();
-void                  ui_base_toggle_distract_free();
 void                  ui_base_show_material_nodes();
 void                  ui_base_show_2d_view(view_2d_type_t type);
 i32                   ui_base_view_mode();
 void                  ui_base_cycle_view_mode();
-void                  ui_base_show_3d_view();
 i32                   ui_base_panel_shadow();
 void                  ui_base_fill_round(f32 x, f32 y, f32 w, f32 h, f32 r);
-void                  ui_base_panel_add_rect(i32 x, i32 y, i32 w, i32 h);
 bool                  ui_base_panel_window(ui_window_t *handle, i32 x, i32 y, i32 w, i32 h, i32 corners, bool shadow_left);
 
 // ---- ui/ui_box.c ----
@@ -1086,55 +1020,16 @@ void ui_box_show_custom(void (*commands)(void), i32 mw, i32 mh, void (*on_hide)(
 void ui_box_hide();
 
 // ---- ui/ui_dock.c ----
-void ui_dock_reset();
-void ui_dock_set_size(i32 role, f32 size);
-f32  ui_dock_get_size(i32 role);
-void ui_dock_save();
-void ui_dock_set_preset(bool b);
-void ui_dock_load();
 void ui_dock_layout();
+void ui_dock_reset();
+void ui_dock_show_view(dock_view_t view, bool show);
 i32  ui_dock_view3d_w();
 i32  ui_dock_view3d_h();
-bool ui_dock_is_empty();
-bool ui_dock_is_menubar_row();
-i32  ui_dock_menubar_max_w();
-bool ui_dock_tab_open(i32 id);
-void ui_base_show_tab(i32 id);
-void ui_base_close_tab(i32 id);
-void ui_dock_show_view(i32 id, bool show);
-void ui_dock_redraw(i32 area);
-void ui_dock_view_tabs(i32 id);
-void tab_view3d_draw(i32 *htab);
-void tab_view2d_draw(i32 *htab);
-void tab_nodes_draw(i32 *htab);
-bool ui_dock_on_tab_dock(int *handle);
-void ui_dock_on_tab_drop(int *to, i32 to_position, int *from, i32 from_position);
-void ui_dock_on_tab_context_menu(int *handle, i32 position);
-bool ui_dock_status_minimized();
-i32  ui_dock_status_expanded_h(bool large);
-void ui_base_toggle_browser();
-void ui_sidebar_show(bool b);
-i32  ui_dock_sidebar_button_inset();
-void ui_dock_render_ui();
-bool ui_dock_is_dragging();
-void ui_dock_render_drag();
-void ui_dock_render_resize_line();
-void ui_dock_update();
+void ui_dock_load();
 
 // ---- ui/ui_files.c ----
 void  ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files_done)(char *));
 char *ui_files_save_preset(char *folder, char *name, char *json);
-char *ui_files_file_browser(char **path, bool drag_files, char *search, bool refresh, void (*context_menu)(char *));
-void  ui_files_enter_selected(char **path);
-void  ui_files_navigate(i32 dx, i32 dy);
-void  ui_files_select_letter(char c);
-void  ui_files_go_up(char **path);
-
-// ---- ui/ui_header.c ----
-void ui_header_init();
-void ui_header_render_ui();
-void ui_header_draw_tool_properties();
-void ui_header_draw_progress(f32 progress);
 
 // ---- ui/ui_id_mask.c ----
 asset_t *project_id_map_asset();
@@ -1157,14 +1052,8 @@ void ui_menu_draw(void (*commands)(void), i32 x, i32 y);
 void ui_menu_separator();
 bool ui_menu_button(char *text, char *label, icon_t icon);
 bool ui_icon_button(char *text, icon_t icon, ui_align_t align);
-bool ui_menu_sub_left();
-bool ui_menu_sub_button(char *text);
-void ui_menu_label(char *text, char *shortcut);
-void ui_menu_align();
 void ui_menu_begin();
 void ui_menu_end();
-void ui_menu_sub_begin(i32 items);
-void ui_menu_sub_end();
 
 // ---- history_tiles.c ----
 extern i32      history_tiles_size;
@@ -1196,22 +1085,6 @@ bool        ui_quick_menu_blocking();
 void        ui_quick_menu_update();
 void        ui_quick_menu_render();
 
-// ---- ui/ui_menubar.c ----
-void      ui_menubar_init();
-i32       ui_menubar_top_pad();
-i32       ui_menubar_side_pad();
-i32       ui_menu_top_y();
-void      ui_menubar_update_w();
-void      ui_menubar_render_ui();
-uintptr_t ui_bounce_here(i32 id);
-f32       ui_bounce_scale(uintptr_t key);
-void      ui_bounce_start(uintptr_t key);
-bool      ui_menubar_icon_button_select(i32 i, bool selected);
-bool      ui_menubar_icon_button(i32 i);
-
-// ---- ui/ui_node_params.c ----
-void ui_node_params_draw(i32 canvas_type, bool *show);
-
 // ---- ui/ui_nodes.c ----
 ui_nodes_editor_state_t *ui_nodes_editor_state(ui_node_t *node);
 void                     ui_nodes_set_menu_path(char *node_type, char *path);
@@ -1224,16 +1097,7 @@ void                     ui_nodes_update_rect();
 void                     ui_nodes_update(void *_);
 void                     ui_nodes_render_popup();
 void                     ui_nodes_accept_asset_drop(i32 index);
-void                     ui_nodes_accept_layer_drop(i32 index);
-void                     ui_nodes_accept_material_drop(i32 index);
-void                     ui_nodes_accept_swatch_drop(swatch_color_t *swatch);
 void                     ui_viewnodes_init();
-
-// ---- ui/ui_panels.c ----
-i32  ui_panels_history_h();
-void ui_panels_radius_slider_id(i32 which, f32 *radius);
-bool ui_panels_radius_dragging();
-void ui_panels_render_ui();
 
 // ---- ui/ui_brush_creator.c ----
 bool ui_brush_creator_shown();
@@ -1276,17 +1140,8 @@ void             ui_material_studio_render_ui();
 void ui_base_operator_search_menu_draw();
 void ui_base_operator_search();
 
-// ---- ui/ui_toolbar.c ----
-void ui_toolbar_init();
-bool ui_toolbar_tool_visible(i32 tool);
-void ui_toolbar_update();
-i32  ui_toolbar_w(bool screen_size_request);
-i32  ui_toolbar_x();
-void ui_toolbar_render_ui();
-
 // ---- ui/ui_view2d.c ----
 void          ui_view2d_init();
-i32           ui_view2d_top();
 void          ui_view2d_tex_rect(f32 aspect, f32 *x, f32 *y, f32 *w, f32 *h);
 f32           ui_view2d_world_scale();
 slot_layer_t *ui_view2d_move_layer(i32 *dx, i32 *dy);
@@ -1341,9 +1196,8 @@ void layers_enable_translucency();
 void layers_set_object_mask();
 void layers_history_with_prev(void (*push)(void));
 bool layers_sync_nodes();
-slot_layer_t_array_t *tab_layers_init_layer_map();
-void                  tab_layers_remap_all_layer_pointers(slot_layer_t_array_t *old_layers);
-void                  tab_layers_make_mask_preview_rgba32(slot_layer_t *l);
+slot_layer_t_array_t *layers_init_layer_map();
+void                  layers_remap_layer_pointers(slot_layer_t_array_t *old_layers);
 
 // ---- util/util_layer_create.c ----
 slot_layer_t *layers_new_layer(bool clear, i32 position, slot_layer_t *parent);
@@ -1388,6 +1242,16 @@ slot_layer_t *layers_op_new_path(bool curved);
 slot_layer_t *layers_op_new_text(char *text);
 bool          layers_op_add_path_point(slot_layer_t *l, f32 x, f32 y);
 void          layers_op_repaint_path(slot_layer_t *l);
+void layers_delete(slot_layer_t *l);
+bool layers_can_delete(slot_layer_t *l);
+bool layers_can_merge_down(slot_layer_t *l);
+void layers_set_fill_material_later(slot_layer_t *l, slot_material_t *m);
+slot_layer_t *layers_fill_target(slot_layer_t *l);
+void          layers_repaint_text(slot_layer_t *l);
+void          layers_toggle_visible(slot_layer_t *l);
+bool          layers_has_children(slot_layer_t *l);
+void          layers_export_on_file_picked(char *path);
+bool          layers_mask_has_stack(slot_layer_t *l);
 
 // ---- util/util_layer_fill.c ----
 bool layers_is_fill_material();
@@ -1550,9 +1414,6 @@ ui_node_t            *ui_nodes_make_node(ui_node_t *n, ui_nodes_t *nodes, ui_nod
 
 // ---- util/util_particle.c ----
 void  util_particle_init_mesh();
-i32   util_particle_preset_count();
-char *util_particle_preset_name(i32 i);
-void  util_particle_apply_preset(i32 i);
 void  util_particle_update();
 
 // ---- util/util_path.c ----
@@ -1604,7 +1465,6 @@ void                 util_render_create_screen_aligned_full_data();
 void   util_render_make_node_preview(ui_node_canvas_t *canvas, ui_node_t *node, gpu_texture_t *image, ui_node_canvas_t *group, ui_node_t_array_t *parents);
 void   util_render_pick_pos_nor_tex();
 bool   util_render_picked_on_mesh();
-mat4_t util_render_get_decal_mat();
 
 // ---- util/util_shortcut.c ----
 void util_shortcut_undo_redo();
@@ -1650,6 +1510,9 @@ void  util_texture_release_target(gpu_texture_t **t);
 i64   util_texture_tracked_bytes();
 i64   util_texture_tracked_peak();
 void  util_texture_tracked_peak_reset();
+void util_texture_delete(asset_t *asset);
+void util_texture_delete_unused();
+char *util_texture_mesh_maps_of(asset_t *asset);
 
 // ---- util/util_touch.c ----
 void util_touch_update();
@@ -1664,11 +1527,7 @@ rect_t *ui_base_get_brush_stencil_rect();
 bool    ui_base_hit_rect(f32 mx, f32 my, i32 x, i32 y, i32 w, i32 h);
 void    ui_base_make_empty_envmap(i32 col);
 f32     ui_base_asset_scale();
-i32     ui_base_sidebar_mini_w(bool large);
-i32     ui_base_sidebar_full_w(bool large);
-i32     ui_base_sidebar_default_w(bool large);
 i32     ui_base_asset_icon_size();
-void    ui_base_asset_name(char *name, f32 x, f32 icon_w);
 void    ui_base_set_icon_scale();
 void    ui_base_set_viewport_col(i32 col);
 
@@ -1719,10 +1578,7 @@ void            base_resize();
 string_array_t *base_combo_enum_texts(char *node_type);
 any_array_t    *base_combo_enum_textures(char *node_type);
 i32             base_get_asset_index_by_file(char *file);
-void            base_toggle_fullscreen();
 bool            base_is_decal_layer();
-void            base_redraw_status();
-void            base_redraw_console();
 void            base_redraw_ui();
 void            base_set_workspace(workspace_preset_t preset);
 void            base_apply_workspace();
@@ -1730,9 +1586,9 @@ void            base_update_tools();
 uint32_t        base_darker(uint32_t x, uint32_t y);
 string_array_t *base_get_viewport_modes();
 string_array_t *base_get_viewport_mode_shortcuts();
+void base_draw_progress(f32 progress);
 
 // ---- camera.c ----
-void camera_orbit_drag();
 void camera_roll(f32 radians, bool held);
 void camera_turn(f32 x, f32 y, vec4_t pivot);
 vec4_t camera_view_pivot();
@@ -1750,7 +1606,6 @@ i32_array_t           *config_default_quick_menu_slots();
 void                   config_init();
 config_t              *config_from_json(char *s);
 char                  *config_get_sha();
-char                  *config_get_date();
 iron_window_options_t *config_get_options();
 void                   config_restore();
 void                   config_import_from(config_t *from);
@@ -1769,7 +1624,6 @@ bool                   config_is_raytrace_fast();
 // ---- library.c ----
 gpu_texture_t   *library_entry_icon(library_entry_t *e);
 void             library_rescan();
-void             library_pick_folder();
 void             library_init();
 bool             library_has_folder();
 char            *library_status();
@@ -1834,6 +1688,8 @@ bool           smart_materials_save(slot_layer_t *root, char *name);
 slot_layer_t  *smart_materials_insert(char *name);
 slot_layer_t  *smart_materials_apply(char *name);
 void           smart_materials_delete(i32 i);
+void smart_materials_show_save();
+slot_layer_t *smart_materials_save_target();
 
 // ---- saved_materials.c ----
 void           saved_materials_refresh();
@@ -1849,6 +1705,8 @@ void brush_previews_start();
 void brush_previews_update();
 i32  brush_previews_stat(i32 what);
 void brush_previews_forget(bool delete_files);
+void brush_previews_render_row(brush_settings_t *s, gpu_texture_t *tip, gpu_texture_t **dst);
+void brush_previews_draw_stroke(gpu_texture_t *img, f32 x, f32 y, f32 w, f32 h);
 
 // ---- console.c ----
 void console_toast(char *s);
@@ -1860,8 +1718,6 @@ void console_log(char *s);
 void           context_init();
 void           context_select_material(i32 i);
 void           context_set_material(slot_material_t *m);
-void           context_set_font(slot_font_t *f);
-void           context_select_font(i32 i);
 void           context_select_layer(i32 i);
 void           context_set_layer(slot_layer_t *l);
 void           context_select_tool(i32 i);
@@ -1872,12 +1728,6 @@ bool           context_layer_filter_used();
 bool           context_object_mask_used();
 bool           context_in_3d_view();
 bool           context_in_paint_area();
-bool           context_in_layers();
-bool           context_in_materials();
-bool           context_in_swatches();
-bool           context_in_fonts();
-bool           context_in_textures();
-bool           context_in_browser();
 bool           context_in_2d_view(view_2d_type_t type);
 bool           context_in_nodes();
 bool           context_is_pixel_snap();
@@ -1889,7 +1739,6 @@ bool           context_is_ruler_paint();
 bool           context_is_brush_camera_align();
 bool           context_is_decal_mask_paint();
 bool           context_is_decal_mask_paint_pass();
-bool           context_is_floating_toolbar();
 void           context_set_viewport_mode(viewport_mode_t mode);
 void           context_set_camera_controls(int i);
 void           context_load_envmap();
@@ -2038,10 +1887,8 @@ void            history_smart_material(char *name);
 void            history_layer_fill_material(slot_layer_t *l);
 void            history_layer_uv_type();
 void            history_new_swatch();
-void            history_duplicate_swatch();
 void            history_delete_swatch(swatch_color_t *swatch);
 void            history_replace_swatches(char *name);
-void            history_edit_swatch(i32 index, swatch_color_t *prev);
 void            history_new_material();
 void            history_delete_material();
 void            history_duplicate_material();
@@ -2315,12 +2162,12 @@ swatch_color_t        *project_clone_swatch(swatch_color_t *swatch);
 void                   project_set_default_swatches();
 node_group_t          *project_get_material_group_by_name(char *group_name);
 bool                   project_is_material_group_in_use(node_group_t *group);
+void project_delete_swatch(swatch_color_t *swatch);
 
 // ---- resource.c ----
 void           resource_load(string_array_t *names);
 gpu_texture_t *resource_get(char *name);
 rect_t        *resource_tile50(gpu_texture_t *img, i32 i);
-rect_t        *resource_tile18(gpu_texture_t *img, i32 i);
 
 // ---- strings.c ----
 char *strings_arm_file_expected();
@@ -2330,7 +2177,6 @@ char *strings_failed_to_read_mesh_data();
 char *strings_asset_already_imported();
 char *strings_number_ext(i32 i);
 i32   strings_split_number_ext(char *name, char **base);
-char *strings_graphics_api();
 
 // ---- translator.c ----
 char           *_tr(char *s);
@@ -2364,10 +2210,7 @@ void viewport_save_texture(gpu_texture_t *screenshot);
 void viewport_save_texture_to_file(gpu_texture_t *screenshot, char *path);
 void viewport_capture_screenshot();
 void viewport_capture_screenshot_to(gpu_texture_t *target, float x, float y, float w, float h);
-void viewport_capture_video_frame();
-void viewport_capture_video_draw();
-void viewport_capture_video_begin();
-void viewport_capture_video_end();
+void viewport_set_face(i32 face);
 
 // ---- minic_api.c ----
 char *minic_api_header_generate();
@@ -2443,9 +2286,7 @@ i32   hstore_test_refs(i32 id);
 
 // ---- io/project_container.c ----
 bool        project_container_is(char *path);
-bool        project_container_is_buffer(buffer_t *b);
 project_t  *project_container_open(char *path);
-project_t  *project_container_decode(buffer_t *b);
 void        project_container_attach();
 void        project_container_forget();
 bool        project_container_writing();

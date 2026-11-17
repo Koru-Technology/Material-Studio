@@ -1,6 +1,6 @@
 import SwiftUI
 
-// The "+" menu: the layer kinds of the engine's layers tab (tab_layers_button_new_menu)
+// The "+" menu: the layer kinds
 struct NewLayerMenu: View {
 	private var store  = AppStore.shared
 	private var layers = LayersStore.shared
@@ -46,7 +46,7 @@ struct NewLayerMenu: View {
 	}
 }
 
-// A row's menu, the items and their enabled state as the engine's layer menu (tab_layers_draw_layer_context_menu_draw)
+// A row's menu, the items and their enabled state as app_layer_props reports them
 struct LayerContextMenu: View {
 	let layer: LayerRow
 

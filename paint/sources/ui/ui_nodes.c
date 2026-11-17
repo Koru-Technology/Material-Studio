@@ -533,7 +533,6 @@ void ui_viewnodes_on_canvas_context_menu() {
 			g_context->swatch          = new_swatch;
 			any_array_push(g_project->swatches, new_swatch);
 			history_new_swatch();
-			ui_dock_redraw(TAB_AREA_STATUS);
 		}
 	}
 	if (selected != NULL && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL && mm_node_is(selected) && mm_node_export_count(selected) > 0) {
@@ -995,7 +994,6 @@ static void ui_nodes_edit_end() {
 	if (ui_nodes_show && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL) {
 		ui_base_show_material_nodes(); // Closes the editor
 	}
-	ui_dock_redraw(-1);
 }
 
 static void ui_nodes_edit_save(void *_) {
@@ -1018,25 +1016,84 @@ static void ui_nodes_edit_cancel(void *_) {
 	ui_nodes_edit_end();
 }
 
-extern bool app_native_chrome;      // app_api.c: the native UI has the panels, the node editor keeps its menubar
-extern i32  app_overlay_top_inset; // app_api.c: the native controls at the top of the screen, pixels
+extern i32 app_overlay_top_inset; // app_api.c: the native controls at the top of the screen, pixels
 
-// The node editor's own menubar: categories, search, group back, save and cancel
-static bool ui_nodes_menubar_shown() {
-	return ui_base_show || app_native_chrome;
+// A tapped button gives a little bounce: pressed in, then springing back past its size and settling
+static uintptr_t ui_bounce_key  = 0;
+static f64       ui_bounce_time = 0.0;
+
+static i32 ui_menu_top_y() {
+#ifdef IRON_IOS
+	if (config_is_iphone()) {
+		return UI_ELEMENT_H() + UI_ELEMENT_OFFSET();
+	}
+#endif
+
+	if (g_config->touch_ui) {
+		return 0;
+	}
+
+	return UI_ELEMENT_H();
+}
+
+// Key of the button at the current place in the current window
+static uintptr_t ui_bounce_here(i32 id) {
+	return (uintptr_t)g_ui->current_window + (uintptr_t)((i32)g_ui->_x * 131 + (i32)g_ui->_y * 7 + id * 31);
+}
+
+static f32 ui_bounce_scale(uintptr_t key) {
+	if (key != ui_bounce_key) {
+		return 1.0;
+	}
+	f64 t = iron_time() - ui_bounce_time;
+	if (t > 0.5) {
+		ui_bounce_key = 0;
+		return 1.0;
+	}
+	if (g_ui->current_window != NULL) {
+		g_ui->current_window->redraws = 2; // Next frame too
+	}
+	iron_delay_idle_sleep();
+	return 1.0 - 0.2 * exp(-9.0 * t) * cos(22.0 * t);
+}
+
+static void ui_bounce_start(uintptr_t key) {
+	ui_bounce_key  = key;
+	ui_bounce_time = iron_time();
+	if (g_ui->current_window != NULL) {
+		g_ui->current_window->redraws = 2;
+	}
+}
+
+// Icon button of the bars: the icon turns the highlight color when selected, a tap bounces it
+static bool ui_menubar_icon_button_select(i32 i, bool selected) {
+	u32            col         = g_theme->WINDOW_BG_COL;
+	bool           light       = col > 0xff666666;
+	i32            icon_accent = light ? 0xff666666 : 0xffaaaaaa;
+	gpu_texture_t *img         = resource_get("icons.k");
+	rect_t        *rect        = resource_tile50(img, i);
+	uintptr_t      key         = ui_bounce_here(i);
+	ui_image_draw_scale        = ui_bounce_scale(key);
+	ui_state_t state           = ui_sub_image(img, selected ? g_theme->HIGHLIGHT_COL : icon_accent, -1.0, rect->x, rect->y, rect->w, rect->h);
+	ui_image_draw_scale        = 1.0;
+	if (state == UI_STATE_STARTED) {
+		ui_bounce_start(key);
+	}
+	return state == UI_STATE_RELEASED;
+}
+
+static bool ui_menubar_icon_button(i32 i) {
+	return ui_menubar_icon_button_select(i, false);
 }
 
 // Top of the menubar in the node window, below the native controls floating over the canvas
 static i32 ui_nodes_menubar_top() {
-	return ui_menu_top_y() + (app_native_chrome && ui_nodes_wy < app_overlay_top_inset ? app_overlay_top_inset - ui_nodes_wy : 0);
+	return ui_menu_top_y() + (ui_nodes_wy < app_overlay_top_inset ? app_overlay_top_inset - ui_nodes_wy : 0);
 }
 
 // Height over the node canvas that the menubar takes, the nodes do not take input there
 static i32 ui_nodes_header_h() {
-	if (ui_base_show) {
-		return ui_header_h * 2;
-	}
-	return app_native_chrome ? ui_nodes_menubar_top() + UI_ELEMENT_H() + UI_ELEMENT_OFFSET() * 2 : 0;
+	return ui_nodes_menubar_top() + UI_ELEMENT_H() + UI_ELEMENT_OFFSET() * 2;
 }
 
 void ui_nodes_draw_menubar() {
@@ -1137,7 +1194,7 @@ void ui_nodes_draw_menubar() {
 	bool editing = ui_nodes_editing();
 	f32  save_w  = ui_nodes_menubar_button_w(tr("Save to Library"));
 	f32  cancel_w = ui_nodes_menubar_button_w(tr("Cancel"));
-	f32  close_w = app_native_chrome && !editing ? ew : 0; // Native: the editor closes from its menubar
+	f32  close_w = !editing ? ew : 0; // The editor closes from its menubar
 	f32  edit_w  = editing ? save_w + cancel_w + 9 : close_w;
 	f32 avail    = ui_nodes_ww - g_ui->_x - search_w - back_w - edit_w;
 	f32 used     = 0;
@@ -1389,10 +1446,6 @@ void ui_nodes_update(void *_) {
 
 	if (ui_window(ui_nodes_hwnd, ui_nodes_wx, ui_nodes_wy, ui_nodes_ww, ui_nodes_wh, false)) {
 
-		if (!g_config->touch_ui && ui_base_show) {
-			ui_dock_view_tabs(TAB_NODES);
-		}
-
 		// Grid
 		draw_set_color(0xffffffff);
 		f32                  step            = ui_nodes_grid_cell_w * ui_nodes->zoom;
@@ -1408,7 +1461,7 @@ void ui_nodes_update(void *_) {
 
 		// Nodes
 		bool _input_enabled        = g_ui->input_enabled;
-		i32  header_h              = ui_base_show ? UI_ELEMENT_H() * 2 + UI_ELEMENT_OFFSET() * 2 : ui_nodes_header_h();
+		i32  header_h              = ui_nodes_header_h();
 		bool header_hover          = g_ui->input_y < g_ui->_window_y + header_h;
 		g_ui->input_enabled        = _input_enabled && !ui_nodes_show_menu && !header_hover;
 		g_ui->window_border_right  = iron_window_width() - ui_nodes_wx - ui_nodes_ww;
@@ -1509,9 +1562,7 @@ void ui_nodes_update(void *_) {
 			}
 		}
 
-		if (ui_nodes_menubar_shown()) {
-			ui_nodes_draw_menubar();
-		}
+		ui_nodes_draw_menubar();
 
 		g_ui->window_border_right  = 0;
 		g_ui->window_border_top    = 0;
@@ -1644,46 +1695,6 @@ void ui_nodes_accept_asset_drop(i32 index) {
             n->id,
         },
         1);
-}
-
-void ui_nodes_accept_layer_drop(i32 index) {
-	ui_nodes_push_undo(NULL);
-	if (slot_layer_is_group(g_project->_->layers->buffer[index])) {
-		return;
-	}
-	node_group_t *g                                 = ui_nodes_group_stack->length > 0 ? ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1] : NULL;
-	ui_node_t    *n = nodes_material_create_node(slot_layer_is_mask(g_context->layer) ? "LAYER_MASK" : "LAYER", g);
-	n->buttons->buffer[0]->default_value->buffer[0] = index;
-	ui_nodes_get_nodes()->nodes_selected_id         = i32_array_create_from_raw(
-        (i32[]){
-            n->id,
-        },
-        1);
-}
-
-void ui_nodes_accept_material_drop(i32 index) {
-	ui_nodes_push_undo(NULL);
-	node_group_t *g                                 = ui_nodes_group_stack->length > 0 ? ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1] : NULL;
-	ui_node_t    *n                                 = nodes_material_create_node("MATERIAL", g);
-	n->buttons->buffer[0]->default_value->buffer[0] = index;
-	ui_nodes_get_nodes()->nodes_selected_id         = i32_array_create_from_raw(
-        (i32[]){
-            n->id,
-        },
-        1);
-}
-
-void ui_nodes_accept_swatch_drop(swatch_color_t *swatch) {
-	ui_nodes_push_undo(NULL);
-	node_group_t *g                         = ui_nodes_group_stack->length > 0 ? ui_nodes_group_stack->buffer[ui_nodes_group_stack->length - 1] : NULL;
-	ui_node_t    *n                         = nodes_material_create_node("RGB", g);
-	n->outputs->buffer[0]->default_value    = f32_array_create_xyzw(color_get_rb(swatch->base) / 255.0, color_get_gb(swatch->base) / 255.0,
-	                                                                color_get_bb(swatch->base) / 255.0, color_get_ab(swatch->base) / 255.0);
-	ui_nodes_get_nodes()->nodes_selected_id = i32_array_create_from_raw(
-	    (i32[]){
-	        n->id,
-	    },
-	    1);
 }
 
 void ui_viewnodes_init() {

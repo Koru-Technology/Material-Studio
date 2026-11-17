@@ -191,7 +191,7 @@ slot_material_t *material_studio_new() {
 
 	any_array_push(g_project->_->materials, m);
 	context_set_material(m);
-	tab_materials_update_material();
+	slot_material_refresh();
 	history_new_material();
 	material_studio_open(m);
 	return m;
@@ -607,7 +607,6 @@ static void studio_apply_paint() {
 	if (g_context->material != studio_material) {
 		make_material_parse_paint_material(true);
 	}
-	ui_dock_redraw(-1);
 	ui_nodes_hwnd->redraws = 2;
 }
 
@@ -772,7 +771,6 @@ static void studio_save_next(void *m) {
 	if (saved_materials_save(m)) {
 		console_info(string("%s %s", tr("Saved to the library:"), ((slot_material_t *)m)->canvas->name));
 	}
-	ui_dock_redraw(-1);
 }
 
 // Closes the studio and saves the material to the library, it stays in the project's materials
@@ -801,7 +799,6 @@ void material_studio_cancel() {
 	studio_need_commit = false; // Nothing to commit, the edits are gone
 	studio_undo_canvas = NULL;
 	material_studio_close();
-	ui_dock_redraw(-1);
 }
 
 bool material_studio_is_open() {
@@ -1783,7 +1780,6 @@ static void studio_draw_title(f32 w, f32 h) {
 	draw_set_font(g_ui->ops->font, g_ui->font_size);
 	if (ui_item_changed() && !string_equals(name, "")) {
 		studio_material->canvas->name = string_copy(slot_material_unique_name(studio_material->canvas, name));
-		ui_dock_redraw(-1);
 	}
 }
 
