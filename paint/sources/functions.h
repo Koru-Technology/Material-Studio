@@ -1023,6 +1023,7 @@ void ui_dock_reset();
 void ui_dock_show_view(dock_view_t view, bool show);
 i32  ui_dock_view3d_w();
 i32  ui_dock_view3d_h();
+void ui_dock_load();
 
 // ---- ui/ui_files.c ----
 void  ui_files_show(char *filters, bool is_save, bool open_multiple, void (*files_done)(char *));

@@ -309,7 +309,6 @@ typedef struct config {
 	bool  texture_filter;
 	// Application
 	struct string_array *recent_projects; // Recently opened projects
-	struct string_array *bookmarks;       // Bookmarked folders in browser
 	char                *keymap;          // Link to keymap file
 	char                *theme;           // Link to theme file
 	f32                  camera_fov;
@@ -319,12 +318,8 @@ typedef struct config {
 	bool                 camera_upside_down;
 	i32                  zoom_direction;
 	bool                 wrap_mouse;
-	bool                 show_asset_names;
-	bool                 material_params;
 	bool                 touch_ui;
 	bool                 splash_screen;
-	bool                 header_pinned;   // Tool properties in the header, floating toolbar otherwise
-	struct i32_array    *layout_tabs;     // Docked tabs
 	i32                  camera_pivot;    // Cursor, camera center
 	i32                  camera_controls; // Orbit, rotate, fly
 	i32                  viewport_mode;
@@ -347,14 +342,11 @@ typedef struct config {
 	i32                  view2d_grid_cell;
 	bool                 view2d_grid_snap;
 	bool                 pixel_snap;
+	i32                  view_layout; // Views shown, a bit per dock_view_t (ui_dock.c)
 	bool                 large_asset_previews;
 	bool                 tooltips;
 	char                *materials_folder; // Library root, "" when not set
 	bool                 reload_project;   // Open the last project on startup
-	i32                  cloud_resolution; // Cloud materials texture size, 0 - 1K, 1 - 2K, 2 - 4K, 3 - 8K
-	bool                 library_cloud;      // Library tab shows the cloud materials
-	i32                  library_cloud_type; // Type shown in the cloud view, -1 for all
-	f32                  library_scroll;     // Scroll position of the Library tab
 	f32                  brush_radius; // Brush settings kept across launches, the others come with the picked brush
 	f32                  brush_opacity;
 	f32                  brush_strength;

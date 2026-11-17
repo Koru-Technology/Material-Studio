@@ -83,7 +83,6 @@ void config_brush_save_update() {
 	X(STRING, lut_path, CONFIG_ANY)                                                              \
 	X(BOOL, texture_filter, CONFIG_ANY)                                                          \
 	X(STRINGS, recent_projects, CONFIG_ANY)                                                      \
-	X(STRINGS, bookmarks, CONFIG_ANY)                                                            \
 	X(STRING, keymap, CONFIG_ANY)                                                                \
 	X(STRING, theme, CONFIG_ANY)                                                                 \
 	X(F32, camera_fov, 0.01, 3.1)                                                                \
@@ -93,12 +92,8 @@ void config_brush_save_update() {
 	X(BOOL, camera_upside_down, CONFIG_ANY)                                                      \
 	X(I32, zoom_direction, ZOOM_DIRECTION_VERTICAL, ZOOM_DIRECTION_VERTICAL_HORIZONTAL_INVERTED) \
 	X(BOOL, wrap_mouse, CONFIG_ANY)                                                              \
-	X(BOOL, show_asset_names, CONFIG_ANY)                                                        \
-	X(BOOL, material_params, CONFIG_ANY)                                                         \
 	X(BOOL, touch_ui, CONFIG_ANY)                                                                \
 	X(BOOL, splash_screen, CONFIG_ANY)                                                           \
-	X(BOOL, header_pinned, CONFIG_ANY)                                                           \
-	X(I32S, layout_tabs, CONFIG_ANY)                                                             \
 	X(I32, camera_pivot, CAMERA_PIVOT_CURSOR, CAMERA_PIVOT_CENTER)                               \
 	X(I32, camera_controls, CAMERA_CONTROLS_ORBIT, CAMERA_CONTROLS_FLY)                          \
 	X(I32, viewport_mode, VIEWPORT_MODE_LIT, VIEWPORT_MODE_PLUGIN)                               \
@@ -121,14 +116,11 @@ void config_brush_save_update() {
 	X(I32, view2d_grid_cell, 1, 16384)                                                           \
 	X(BOOL, view2d_grid_snap, CONFIG_ANY)                                                        \
 	X(BOOL, pixel_snap, CONFIG_ANY)                                                              \
+	X(I32, view_layout, 1, 7)                                                                    \
 	X(BOOL, large_asset_previews, CONFIG_ANY)                                                    \
 	X(BOOL, tooltips, CONFIG_ANY)                                                                \
 	X(STRING, materials_folder, CONFIG_ANY)                                                      \
 	X(BOOL, reload_project, CONFIG_ANY)                                                          \
-	X(I32, cloud_resolution, CONFIG_ANY)                                                         \
-	X(BOOL, library_cloud, CONFIG_ANY)                                                           \
-	X(I32, library_cloud_type, CONFIG_ANY)                                                       \
-	X(F32, library_scroll, CONFIG_ANY)                                                           \
 	X(F32, brush_radius, 0, 1)                                                                   \
 	X(F32, brush_opacity, 0, 1)                                                                  \
 	X(F32, brush_strength, 0, 1)                                                                 \
@@ -288,7 +280,6 @@ config_t *config_create_default() {
 	c->rp_ssao          = 1.0;
 	c->rp_supersample   = 1.0;
 	c->recent_projects = any_array_create_from_raw((void *[]){}, 0);
-	c->bookmarks       = any_array_create_from_raw((void *[]){}, 0);
 #if defined(IRON_IOS)
 	c->keymap = "touch.json";
 #else
@@ -314,11 +305,9 @@ config_t *config_create_default() {
 	c->layer_res          = TEXTURE_RES_RES2048;
 #if defined(IRON_IOS)
 	c->touch_ui      = true;
-	c->header_pinned = false;
 	c->splash_screen = true;
 #else
 	c->touch_ui      = false;
-	c->header_pinned = true;
 	c->splash_screen = false;
 #endif
 	c->node_previews     = false;
@@ -331,12 +320,6 @@ config_t *config_create_default() {
 	c->brush_angle_reject  = true;
 	c->brush_alpha_discard = 0.1;
 	c->brush_live          = false;
-	c->show_asset_names    = false;
-#if defined(IRON_IOS)
-	c->material_params = false;
-#else
-	c->material_params = true;
-#endif
 	c->dilate_radius    = 2;
 	c->blender          = "";
 	c->pathtrace_mode   = PATHTRACE_MODE_FAST;
@@ -346,6 +329,7 @@ config_t *config_create_default() {
 	c->view2d_grid_cell = 64;
 	c->view2d_grid_snap = false;
 	c->pixel_snap       = false;
+	c->view_layout      = 1 << DOCK_VIEW_3D;
 #if defined(IRON_IOS)
 	c->large_asset_previews = false;
 	c->tooltips             = false;
@@ -357,10 +341,6 @@ config_t *config_create_default() {
 	c->neural_res       = 512;
 	c->materials_folder = "";
 	c->reload_project   = true;
-	c->cloud_resolution   = 1;
-	c->library_cloud      = false;
-	c->library_cloud_type = -1;
-	c->library_scroll     = 0.0;
 	c->brush_radius = 0.5;
 	c->brush_opacity = 1.0;
 	c->brush_strength = 0.5;
@@ -471,9 +451,15 @@ config_t *config_from_map_to_config(any_map_t *old) {
 	return c;
 }
 
+// The engine panels were removed, their keys are dropped (header_pinned, layout_tabs and others), the views shown are
+// in view_layout
+config_t *config_from_version_19(any_map_t *old) {
+	return config_from_map_to_config(old);
+}
+
 // The built-in materials were replaced by Material Maker's library, hide_builtin_materials is dropped
 config_t *config_from_version_18(any_map_t *old) {
-	return config_from_map_to_config(old);
+	return config_from_version_19(old);
 }
 
 // Stroke settings and pen dynamics moved into the brushes (brush library), their keys are dropped
@@ -549,14 +535,10 @@ config_t *config_from_version_9(any_map_t *old) {
 }
 
 config_t *config_from_version_8(any_map_t *old) {
-	armpack_map_set_i32(old, "library_cloud", false);
-	armpack_map_set_i32(old, "library_cloud_type", -1);
-	armpack_map_set_f32(old, "library_scroll", 0.0);
 	return config_from_version_9(old);
 }
 
 config_t *config_from_version_7(any_map_t *old) {
-	armpack_map_set_i32(old, "cloud_resolution", 1);
 	return config_from_version_8(old);
 }
 
@@ -588,10 +570,7 @@ config_t *config_from_version_2(any_map_t *old) {
 
 config_t *config_from_version_1(any_map_t *old) {
 	config_t *def = config_create_default();
-	armpack_map_set_i32(old, "material_params", def->material_params);
-	armpack_map_set_i32(old, "header_pinned", def->header_pinned);
 	armpack_map_set_i32(old, "pixel_snap", def->pixel_snap);
-	any_map_set(old, "layout_tabs", def->layout_tabs);
 	armpack_map_set_f32(old, "rp_vignette", def->rp_vignette);
 	armpack_map_set_i32(old, "viewport_mode", def->viewport_mode);
 	armpack_map_set_i32(old, "pathtrace_mode", def->pathtrace_mode);
@@ -625,6 +604,7 @@ config_t *config_from_old(char *s) {
 	    config_from_version_16,
 	    config_from_version_17,
 	    config_from_version_18,
+	    config_from_version_19,
 	};
 	for (i32 v = ARRAY_LENGTH(fns) - 1; v >= 0; --v) {
 		if (config_is_version(s, i32_to_string(v + 1))) {

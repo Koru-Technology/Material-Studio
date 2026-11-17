@@ -671,6 +671,11 @@ void base_set_workspace(workspace_preset_t preset) {
 
 void base_apply_workspace() {
 	base_workspace_pending = false;
+	if (base_workspace_preset == WORKSPACE_PRESET_NONE) {
+		ui_dock_load();
+		base_resize();
+		return;
+	}
 	ui_dock_reset();
 	if (base_workspace_preset == WORKSPACE_PRESET_VIEW_2D) {
 		ui_dock_show_view(DOCK_VIEW_3D, false);

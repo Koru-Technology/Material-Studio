@@ -7,7 +7,7 @@
 // ---- Shared (written by several files) ----
 char        *manifest_title           = "Material Studio";
 char        *manifest_version_project = "31";
-char        *manifest_version_config  = "19";
+char        *manifest_version_config  = "20";
 context_t   *g_context;
 project_t   *g_project;
 config_t    *g_config;

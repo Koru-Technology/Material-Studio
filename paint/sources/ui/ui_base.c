@@ -48,7 +48,7 @@ void ui_base_init() {
 
 	g_ui = ui_create(ops);
 
-	ui_dock_reset();
+	ui_dock_load();
 	if (UI_SCALE() > 1) {
 		ui_base_set_icon_scale();
 	}

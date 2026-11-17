@@ -164,12 +164,6 @@ void box_preferences_interface_tab() {
 	}
 
 	g_ui->changed = false;
-	ui_check(&g_config->show_asset_names, tr("Show Asset Names"), "");
-	if (g_ui->changed) {
-		base_redraw_ui();
-	}
-
-	g_ui->changed = false;
 	ui_check(&g_config->touch_ui, tr("Touch UI"), "");
 	if (g_ui->changed) {
 		config_set_touch_ui(g_config->touch_ui);

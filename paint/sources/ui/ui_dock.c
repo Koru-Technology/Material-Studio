@@ -57,17 +57,32 @@ void ui_dock_layout() {
 	ui_dock_laid_out = true;
 }
 
-// The 3D view alone
-void ui_dock_reset() {
-	ui_dock_shown[DOCK_VIEW_3D]    = true;
-	ui_dock_shown[DOCK_VIEW_2D]    = false;
-	ui_dock_shown[DOCK_VIEW_NODES] = false;
+// The views shown last time (config view_layout)
+void ui_dock_load() {
+	for (i32 i = 0; i < DOCK_VIEW_COUNT; ++i) {
+		ui_dock_shown[i] = (g_config->view_layout & (1 << i)) != 0;
+	}
 	ui_dock_layout();
 }
 
 void ui_dock_show_view(dock_view_t view, bool show) {
 	ui_dock_shown[view] = show;
 	ui_dock_layout();
+	i32 layout = 0;
+	for (i32 i = 0; i < DOCK_VIEW_COUNT; ++i) {
+		layout |= ui_dock_shown[i] ? 1 << i : 0;
+	}
+	if (layout != 0 && layout != g_config->view_layout) {
+		g_config->view_layout = layout;
+		config_save();
+	}
+}
+
+// The 3D view alone
+void ui_dock_reset() {
+	ui_dock_show_view(DOCK_VIEW_2D, false);
+	ui_dock_show_view(DOCK_VIEW_NODES, false);
+	ui_dock_show_view(DOCK_VIEW_3D, true);
 }
 
 i32 ui_dock_view3d_w() {
