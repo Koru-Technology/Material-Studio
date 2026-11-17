@@ -370,14 +370,7 @@ void render_path_paint_clone_snapshot() {
 	render_path_draw_shader(string_tmp("Scene/copy_mrt3_pass/%s", pipe));
 }
 
-// are collected, uploaded as a small texture and painted at once instead of a full size pass each.
-#define RENDER_PATH_PAINT_BATCH_MAX 64
-
-static f32     render_path_paint_batch[RENDER_PATH_PAINT_BATCH_MAX * 12];
-static i32     render_path_paint_batch_count  = 0;
-static bool    render_path_paint_batch_ready  = false; // Uploaded for the next paint draw
-gpu_texture_t *render_path_paint_batch_texture = NULL;
-f32            render_path_paint_batch_drawn   = 0.0; // Dabs in the texture
+#define RENDER_PATH_PAINT_BATCH_MAX 64 // Dabs of a batched draw
 
 // Whether the paint shader in use reads resolved dabs (make_paint_resolved), its draws go through the paint executor
 bool render_path_paint_resolved() {
@@ -410,94 +403,26 @@ bool render_path_paint_batched() { // Its dab count: shaders reading resolved da
 	return false;
 }
 
-// Adds a dab from the current brush state, as the uniforms of a single draw would see it
-void render_path_paint_batch_add() {
-	if (paint_exec_on()) {
-		paint_exec_batch_add();
-		return;
-	}
-	if (render_path_paint_batch_count == RENDER_PATH_PAINT_BATCH_MAX) {
-		render_path_paint_batch_flush(false);
-	}
-	vec4_t inp   = uniforms_input_brush();
-	vec4_t last  = uniforms_input_brush_last();
-	vec2_t angle = uniforms_brush_angle();
-	vec2_t dab   = uniforms_brush_dab_angle();
-	f32   *d     = &render_path_paint_batch[render_path_paint_batch_count * 12];
-	d[0]         = inp.x;
-	d[1]         = inp.y;
-	d[2]         = last.x;
-	d[3]         = last.y;
-	d[4]         = uniforms_brush_radius();
-	d[5]         = uniforms_brush_opacity();
-	d[6]         = uniforms_brush_hardness();
-	d[7]         = uniforms_brush_flow();
-	d[8]         = angle.x * dab.x - angle.y * dab.y; // Both rotations of the mask
-	d[9]         = angle.x * dab.y + angle.y * dab.x;
-	vec2_t tilt  = util_brush_tilt_shape();
-	d[10]        = tilt.x;
-	d[11]        = tilt.y;
-	render_path_paint_batch_count++;
-}
-
-static void render_path_paint_batch_upload() {
-	if (render_path_paint_batch_texture != NULL) {
-		gpu_delete_texture(render_path_paint_batch_texture); // Freed after the frame
-	}
-	buffer_t b                      = {.buffer = (u8 *)render_path_paint_batch, .length = render_path_paint_batch_count * 12 * sizeof(f32)};
-	render_path_paint_batch_texture = gpu_create_texture_from_bytes(&b, render_path_paint_batch_count * 3, 1, GPU_TEXTURE_FORMAT_RGBA128);
-	render_path_paint_batch_drawn   = render_path_paint_batch_count;
-	render_path_paint_batch_count   = 0;
-	render_path_paint_batch_ready   = true;
-}
-
 // Only the parts of the mesh near the dabs of this draw, see paint_cull.c
 static void render_path_paint_cull(mesh_object_t *o) {
 	tool_type_t      tool = g_context->tool;
 	paint_exec_op_t *op   = paint_exec_current();
 	if ((tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_BLUR) || g_context->paint2d ||
 	    context_is_decal() || g_context->xray || context_is_pixel_snap() || context_is_brush_camera_align() || g_context->pick_pos_nor_tex ||
-	    g_context->layer->fill_material != NULL) {
+	    g_context->layer->fill_material != NULL || op == NULL) {
 		return;
 	}
 	static paint_cull_dab_t dabs[RENDER_PATH_PAINT_BATCH_MAX];
 	i32                     count   = 0;
 	f32                     stretch = g_context->brush_tilt_shading ? 3.0 : 1.0;
-	if (op != NULL) { // The dabs of the draw being executed
-		for (i32 i = 0; i < op->dab_count && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) {
-			f32 *d = paint_exec_dab(op->dab_first + i);
-			if (!paint_exec_replay && d[4] != PAINT_DAB_MODE_BRUSH) {
-				continue; // A decal anchor
-			}
-			dabs[count++] = (paint_cull_dab_t){d[16] * 2.0 - 1.0, 1.0 - d[17] * 2.0, d[18] * 2.0 - 1.0, 1.0 - d[19] * 2.0, d[12] * stretch};
+	for (i32 i = 0; i < op->dab_count && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) { // The dabs of the draw being executed
+		f32 *d = paint_exec_dab(op->dab_first + i);
+		if (!paint_exec_replay && d[4] != PAINT_DAB_MODE_BRUSH) {
+			continue; // A decal anchor
 		}
-	}
-	else if (render_path_paint_batched()) {
-		for (i32 i = 0; i < (i32)render_path_paint_batch_drawn && i < RENDER_PATH_PAINT_BATCH_MAX; ++i) {
-			f32 *d       = &render_path_paint_batch[i * 12];
-			dabs[count++] = (paint_cull_dab_t){d[0] * 2.0 - 1.0, 1.0 - d[1] * 2.0, d[2] * 2.0 - 1.0, 1.0 - d[3] * 2.0, d[4] * stretch};
-		}
-	}
-	else {
-		vec4_t inp    = uniforms_input_brush();
-		vec4_t last   = uniforms_input_brush_last();
-		f32    radius = uniforms_brush_radius();
-		dabs[count++] = (paint_cull_dab_t){inp.x * 2.0 - 1.0, 1.0 - inp.y * 2.0, last.x * 2.0 - 1.0, 1.0 - last.y * 2.0, radius * stretch};
+		dabs[count++] = (paint_cull_dab_t){d[16] * 2.0 - 1.0, 1.0 - d[17] * 2.0, d[18] * 2.0 - 1.0, 1.0 - d[19] * 2.0, d[12] * stretch};
 	}
 	paint_cull_draw_next(o, dabs, count);
-}
-
-// Paints the collected dabs
-void render_path_paint_batch_flush(bool dilation) {
-	if (paint_exec_on()) {
-		paint_exec_batch_flush(dilation);
-		return;
-	}
-	if (render_path_paint_batch_count == 0) {
-		return;
-	}
-	render_path_paint_batch_upload();
-	render_path_paint_commands_paint_stroke(dilation);
 }
 
 static void render_path_paint_commands_paint_internal(bool dilation);
@@ -541,8 +466,6 @@ void render_path_paint_commands_paint(bool dilation) {
 void render_path_paint_commands_paint_now(bool dilation) {
 	bool exec = paint_exec_current() != NULL;
 	if (g_context->pdirty <= 0) {
-		render_path_paint_batch_count = 0;
-		render_path_paint_batch_ready = false;
 		return;
 	}
 	material_cache_paint_check(); // A paint shader reading a material cache that no longer fits paints live
@@ -550,28 +473,21 @@ void render_path_paint_commands_paint_now(bool dilation) {
 		g_context->layer->mask_stack_dirty = true; // The paint effect changes
 	}
 	mask_stack_layer_changed(g_context->layer); // Masks anchoring it follow the stroke
-	if (!exec && render_path_paint_batched() && !render_path_paint_batch_ready) { // Single draw, from the current brush state
-		render_path_paint_batch_count = 0;
-		render_path_paint_batch_add();
-		render_path_paint_batch_upload();
-	}
 	if (render_path_paint_timing < 0) {
 		render_path_paint_timing = getenv("IRON_PAINT_TIMING") != NULL ? 1 : 0;
 	}
 	if (!render_path_paint_timing || render_path_paint_band_h > 0 || exec) { // A band: its caller times it, the executor its ops
 		render_path_paint_commands_paint_internal(dilation);
-		render_path_paint_batch_ready = false;
 		return;
 	}
 	render_path_paint_timing_t *p = malloc(sizeof(render_path_paint_timing_t));
 	p->t                          = iron_glsl_now_ms();
-	p->dabs                       = render_path_paint_batch_count;
+	p->dabs                       = 1;
 	render_path_paint_timing_flush();
 	if (!gpu_in_use) {
 		gpu_commit(NULL, NULL);
 	}
 	render_path_paint_commands_paint_internal(dilation);
-	render_path_paint_batch_ready = false;
 	render_path_paint_timing_flush();
 	p->cpu = iron_glsl_now_ms() - p->t;
 	if (gpu_in_use) { // Inside a pass of the caller: no time of its own

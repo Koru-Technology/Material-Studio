@@ -655,7 +655,6 @@ void make_blur_run(node_shader_t *shader);
 
 // ---- render/make_brush.c ----
 void make_brush_run(node_shader_t *shader, bool depth_reject);
-void make_brush_dab_dist(node_shader_t *shader);
 void make_brush_run_batched(node_shader_t *shader, bool depth_reject);
 void make_brush_run_batched_coverage(node_shader_t *shader);
 
@@ -798,11 +797,7 @@ void                  render_path_paint_set_band(i32 y, i32 w, i32 h);
 mesh_object_t        *render_path_paint_target();
 void                  render_path_paint_draw_target();
 void                  render_path_paint_release_scratch();
-extern gpu_texture_t *render_path_paint_batch_texture;
-extern f32            render_path_paint_batch_drawn;
 bool                  render_path_paint_batched();
-void                  render_path_paint_batch_add();
-void                  render_path_paint_batch_flush(bool dilation);
 void                  render_path_paint_commands_paint(bool dilation); // From outside the stroke model: isolated (paint_exec.c)
 void                  render_path_paint_commands_paint_stroke(bool dilation);
 void                  render_path_paint_use_live_layer(bool use);

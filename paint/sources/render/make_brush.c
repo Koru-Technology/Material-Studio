@@ -4,13 +4,7 @@
 // Angle reject: wn is the normal under the brush, fragments facing away from it are dropped
 static void make_brush_angle_reject(node_shader_t *shader) {
 	node_shader_add_function(shader, str_octahedron_wrap);
-	if (make_paint_resolved) {
-		node_shader_write_frag(shader, string_tmp("vec2 g0 = %s.xy;", make_brush_dab("dab_k0", 2)));
-	}
-	else {
-		node_shader_add_texture(shader, "gbuffer0", NULL);
-		node_shader_write_frag(shader, "vec2 g0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
-	}
+	node_shader_write_frag(shader, string_tmp("vec2 g0 = %s.xy;", make_brush_dab("dab_k0", 2)));
 	node_shader_write_frag(shader, "vec3 wn;");
 	node_shader_write_frag(shader, "wn.z = 1.0 - abs(g0.x) - abs(g0.y);");
 	node_shader_write_frag(shader, "if (wn.z >= 0.0) { wn.x = g0.x; wn.y = g0.y; } else { vec2 f2 = octahedron_wrap(g0.xy); wn.x = f2.x; wn.y = f2.y; }");
@@ -64,36 +58,18 @@ void make_brush_run(node_shader_t *shader, bool depth_reject) {
 		node_shader_write_frag(shader, "if (constants.decal_mask.z > 0.0) {");
 	}
 
-	if (make_paint_resolved) { // depth and depthlast: 1 off the mesh, all the rest reads of them test
-		node_shader_write_frag(shader, string_tmp("vec4 dab_r2 = %s;", make_brush_dab("dab_k0", 2)));
-		node_shader_write_frag(shader, "float depth = dab_r2.z > 0.5 ? 1.0 : 0.0;");
-		node_shader_write_frag(shader, string_tmp("vec4 winp = %s;", make_brush_dab("dab_k0", 0)));
-	}
-	else {
-		node_shader_write_frag(shader, "float depth = textureLod(sampler2D(gbufferD, sampler_linear), constants.inp.xy, 0.0).r;");
-
-		node_shader_add_constant(shader, "mat4 invVP", "_inv_view_proj_matrix");
-		node_shader_write_frag(shader, "vec4 winp = vec4(vec2(constants.inp.x, 1.0 - constants.inp.y) * 2.0 - 1.0, depth, 1.0);");
-		node_shader_write_frag(shader, "winp = constants.invVP * winp;");
-		node_shader_write_frag(shader, "winp.xyz = winp.xyz / winp.w;");
-	}
+	// The dab resolved (paint_exec.c): depth and depthlast 1 off the mesh, all the rest reads of them test
+	node_shader_write_frag(shader, string_tmp("vec4 dab_r2 = %s;", make_brush_dab("dab_k0", 2)));
+	node_shader_write_frag(shader, "float depth = dab_r2.z > 0.5 ? 1.0 : 0.0;");
+	node_shader_write_frag(shader, string_tmp("vec4 winp = %s;", make_brush_dab("dab_k0", 0)));
 	shader->frag_wposition = true;
 
 	if (!fast && (g_config->brush_angle_reject || g_context->xray)) {
 		make_brush_angle_reject(shader);
 	}
 
-	if (make_paint_resolved) {
-		node_shader_write_frag(shader, "float depthlast = dab_r2.w > 0.5 ? 1.0 : 0.0;");
-		node_shader_write_frag(shader, string_tmp("vec4 winplast = %s;", make_brush_dab("dab_k0", 1)));
-	}
-	else {
-		node_shader_write_frag(shader, "float depthlast = textureLod(sampler2D(gbufferD, sampler_linear), constants.inplast.xy, 0.0).r;");
-
-		node_shader_write_frag(shader, "vec4 winplast = vec4(vec2(constants.inplast.x, 1.0 - constants.inplast.y) * 2.0 - 1.0, depthlast, 1.0);");
-		node_shader_write_frag(shader, "winplast = constants.invVP * winplast;");
-		node_shader_write_frag(shader, "winplast.xyz = winplast.xyz / winplast.w;");
-	}
+	node_shader_write_frag(shader, "float depthlast = dab_r2.w > 0.5 ? 1.0 : 0.0;");
+	node_shader_write_frag(shader, string_tmp("vec4 winplast = %s;", make_brush_dab("dab_k0", 1)));
 
 	node_shader_write_frag(shader, "vec3 pa = input.wposition - winp.xyz;");
 	if (g_context->xray) {
@@ -120,19 +96,9 @@ void make_brush_run(node_shader_t *shader, bool depth_reject) {
 		node_shader_write_frag(shader, "vec2 pixel_last = constants.pixel_snap_uv.zw;");
 		node_shader_write_frag(shader, "if (constants.pixel_snap_2d == 0.0) {");
 		node_shader_write_frag(shader, "if (depth >= 1.0) { discard; }");
-		if (make_paint_resolved) {
-			node_shader_write_frag(shader, string_tmp("vec4 dab_uv = %s;", make_brush_dab("dab_k0", 5)));
-			node_shader_write_frag(shader, "pixel_inp = dab_uv.xy;");
-			node_shader_write_frag(shader, "pixel_last = dab_uv.zw;");
-		}
-		else {
-			node_shader_write_frag(shader, "vec4 pg = texelFetch(sampler2D(gbuffer2, sampler_linear), ivec2(uint(constants.inp.x * constants.gbuffer_size.x), "
-			                             "uint(constants.inp.y * constants.gbuffer_size.y)), 0);");
-			node_shader_write_frag(shader, "pixel_inp = pg.ba + pg.rg;");
-			node_shader_write_frag(shader, "vec4 pgl = texelFetch(sampler2D(gbuffer2, sampler_linear), ivec2(uint(constants.inplast.x * constants.gbuffer_size.x), "
-			                             "uint(constants.inplast.y * constants.gbuffer_size.y)), 0);");
-			node_shader_write_frag(shader, "pixel_last = pgl.ba + pgl.rg;");
-		}
+		node_shader_write_frag(shader, string_tmp("vec4 dab_uv = %s;", make_brush_dab("dab_k0", 5)));
+		node_shader_write_frag(shader, "pixel_inp = dab_uv.xy;");
+		node_shader_write_frag(shader, "pixel_last = dab_uv.zw;");
 		node_shader_write_frag(shader, "if (depthlast >= 1.0 || length(pixel_last - pixel_inp) > 0.1) { pixel_last = pixel_inp; }");
 		node_shader_write_frag(shader, "}");
 		node_shader_write_frag(shader, "float pixel_width = max(floor(constants.brush_radius * 750.0 + 0.5), 1.0);");
@@ -186,13 +152,11 @@ void make_brush_run(node_shader_t *shader, bool depth_reject) {
 	}
 }
 
-// Batched dabs: one draw paints every dab of a frame. Each dab is three texels of texpaintdabs:
-// inp.xy inplast.xy, radius opacity hardness flow, mask rotation cos sin and tilt shape (util_brush_tilt_shape).
+// Batched dabs: one draw paints every dab of a frame, its dabs resolved (paint_exec.c, PAINT_DAB_TEXELS texels each).
 // Painting them one after another in a loop gives the same result as one draw per dab.
 
-// Declares dab0, dab1, dab_winp and dab_dist for dab k. Resolved (make_paint_resolved): dab k of the draw, dab_k0 + k,
-// in PAINT_DAB_TEXELS texels, dab0 is not declared.
-static void make_brush_dab_dist_resolved(node_shader_t *shader) {
+// Declares dab1, dab_winp and dab_dist for dab k of the draw, dab_k0 + k
+static void make_brush_dab_dist(node_shader_t *shader) {
 	node_shader_write_frag(shader, "int dab_k = dab_k0 + k;");
 	node_shader_write_frag(shader, string_tmp("vec4 dab1 = %s;", make_brush_dab("dab_k", 3)));
 	node_shader_write_frag(shader, string_tmp("vec4 dab_winp = %s;", make_brush_dab("dab_k", 0)));
@@ -207,38 +171,10 @@ static void make_brush_dab_dist_resolved(node_shader_t *shader) {
 	node_shader_write_frag(shader, "float dab_dist = length(dab_pa - dab_ba * dab_h);");
 }
 
-void make_brush_dab_dist(node_shader_t *shader) {
-	if (make_paint_resolved) {
-		make_brush_dab_dist_resolved(shader);
-		return;
-	}
-	node_shader_write_frag(shader, "vec4 dab0 = texelFetch(sampler2D(texpaintdabs, sampler_linear), ivec2(uint(k * 3), uint(0)), 0);");
-	node_shader_write_frag(shader, "vec4 dab1 = texelFetch(sampler2D(texpaintdabs, sampler_linear), ivec2(uint(k * 3 + 1), uint(0)), 0);");
-	node_shader_write_frag(shader, "float dab_depth = textureLod(sampler2D(gbufferD, sampler_linear), dab0.xy, 0.0).r;");
-	node_shader_write_frag(shader, "vec4 dab_winp = vec4(vec2(dab0.x, 1.0 - dab0.y) * 2.0 - 1.0, dab_depth, 1.0);");
-	node_shader_write_frag(shader, "dab_winp = constants.invVP * dab_winp;");
-	node_shader_write_frag(shader, "dab_winp.xyz = dab_winp.xyz / dab_winp.w;");
-	node_shader_write_frag(shader, "float dab_depthlast = textureLod(sampler2D(gbufferD, sampler_linear), dab0.zw, 0.0).r;");
-	node_shader_write_frag(shader, "vec4 dab_winplast = vec4(vec2(dab0.z, 1.0 - dab0.w) * 2.0 - 1.0, dab_depthlast, 1.0);");
-	node_shader_write_frag(shader, "dab_winplast = constants.invVP * dab_winplast;");
-	node_shader_write_frag(shader, "dab_winplast.xyz = dab_winplast.xyz / dab_winplast.w;");
-	node_shader_write_frag(shader, "vec3 dab_pa = input.wposition - dab_winp.xyz;");
-	node_shader_write_frag(shader, "vec3 dab_ba = dab_winplast.xyz - dab_winp.xyz;");
-	if (make_brush_tilt_shading()) { // Shape of each dab in the third texel, zw
-		node_shader_write_frag(shader, "vec2 dab_tilt = texelFetch(sampler2D(texpaintdabs, sampler_linear), ivec2(uint(k * 3 + 2), uint(0)), 0).zw;");
-		make_brush_tilt_stretch(shader, "dab_tilt", "dab_pa", "dab_ba");
-	}
-	node_shader_write_frag(shader, "float dab_h = clamp(dot(dab_pa, dab_ba) / max(dot(dab_ba, dab_ba), 0.00000001), 0.0, 1.0);");
-	node_shader_write_frag(shader, "float dab_dist = length(dab_pa - dab_ba * dab_h);");
-}
-
 // Before the material: texels no dab reaches are dropped
 void make_brush_run_batched(node_shader_t *shader, bool depth_reject) {
 	node_shader_write_frag(shader, "float dist = 0.0;");
 	shader->frag_wposition = true;
-	if (!make_paint_resolved) {
-		node_shader_add_constant(shader, "mat4 invVP", "_inv_view_proj_matrix");
-	}
 	node_shader_add_constant(shader, "float paint_dab_count", "_paint_dab_count");
 	node_shader_add_texture(shader, "texpaintdabs", "_texpaintdabs");
 	if (depth_reject) {
@@ -259,9 +195,6 @@ void make_brush_run_batched_coverage(node_shader_t *shader) {
 	bool mask         = g_context->brush_mask_image != NULL;
 	if (angle_reject || mask) {
 		node_shader_add_function(shader, str_octahedron_wrap);
-		if (!make_paint_resolved) {
-			node_shader_add_texture(shader, "gbuffer0", NULL);
-		}
 	}
 	if (mask) {
 		node_shader_add_texture(shader, "texbrushmask", "_texbrushmask");
@@ -273,21 +206,11 @@ void make_brush_run_batched_coverage(node_shader_t *shader) {
 	node_shader_write_frag(shader, "float dab_touched = 0.0;");
 	node_shader_write_frag(shader, "for (int k = 0; k < dab_count; k += 1) {");
 	make_brush_dab_dist(shader);
-	if (make_paint_resolved) {
-		node_shader_write_frag(shader, string_tmp("vec4 dab2 = %s;", make_brush_dab("dab_k", 6)));
-	}
-	else {
-		node_shader_write_frag(shader, "vec4 dab2 = texelFetch(sampler2D(texpaintdabs, sampler_linear), ivec2(uint(k * 3 + 2), uint(0)), 0);");
-	}
+	node_shader_write_frag(shader, string_tmp("vec4 dab2 = %s;", make_brush_dab("dab_k", 6)));
 	node_shader_write_frag(shader, "if (dab_dist <= dab1.x) {");
 	node_shader_write_frag(shader, "float dab_op = opacity * dab1.y;");
 	if (angle_reject || mask) { // Normal of the surface under the dab
-		if (make_paint_resolved) {
-			node_shader_write_frag(shader, string_tmp("vec2 dg0 = %s.xy;", make_brush_dab("dab_k", 2)));
-		}
-		else {
-			node_shader_write_frag(shader, "vec2 dg0 = textureLod(sampler2D(gbuffer0, sampler_linear), dab0.xy, 0.0).rg;");
-		}
+		node_shader_write_frag(shader, string_tmp("vec2 dg0 = %s.xy;", make_brush_dab("dab_k", 2)));
 		node_shader_write_frag(shader, "vec3 dwn;");
 		node_shader_write_frag(shader, "dwn.z = 1.0 - abs(dg0.x) - abs(dg0.y);");
 		node_shader_write_frag(shader, "if (dwn.z >= 0.0) { dwn.x = dg0.x; dwn.y = dg0.y; } else { vec2 df2 = octahedron_wrap(dg0.xy); dwn.x = df2.x; dwn.y = df2.y; }");

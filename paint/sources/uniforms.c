@@ -1,7 +1,7 @@
 
 #include "global.h"
 
-// Brush state as the paint shaders see it, also read by the dab batches (render_path_paint_batch_add). While the paint
+// Brush state as the paint shaders see it, also read by the dab batches (paint_exec_batch_add). While the paint
 // executor runs a draw, the state it was emitted with: its first dab (paint_exec.c).
 static f32 *uniforms_exec_dab() {
 	paint_exec_op_t *op = paint_exec_current();
@@ -212,7 +212,7 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_paint_dab_count")) {
 		paint_exec_op_t *op = paint_exec_current();
-		return op != NULL ? op->dab_count : render_path_paint_batch_drawn;
+		return op != NULL ? op->dab_count : 0.0;
 	}
 	else if (string_equals(link, "_paint_dab_replay")) {
 		return paint_exec_replay ? 1.0 : 0.0;
@@ -539,7 +539,7 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		return g_context->text_tool_image;
 	}
 	else if (string_equals(link, "_texpaintdabs")) {
-		gpu_texture_t *t = paint_exec_current() != NULL ? render_path_target_image("texpaint_dabs_resolved") : render_path_paint_batch_texture;
+		gpu_texture_t *t = paint_exec_current() != NULL ? render_path_target_image("texpaint_dabs_resolved") : NULL;
 		return t != NULL ? t : render_path_empty_black();
 	}
 	else if (string_equals(link, "_texpaintdabsin")) {

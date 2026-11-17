@@ -139,8 +139,8 @@ static void render_path_paint_dab_paint(render_path_paint_dab_t *d, f32 size, f3
 	g_context->last_paint_vec_x   = d->x;
 	g_context->last_paint_vec_y   = d->y;
 	if (g_context->brush_dab_opacity > 0.001 && g_context->brush_dab_radius > 0.001) {
-		if (render_path_paint_batched()) { // Painted with the other stamps of the frame by render_path_paint_batch_flush
-			render_path_paint_batch_add();
+		if (render_path_paint_batched()) { // Painted with the other stamps of the frame by paint_exec_batch_flush
+			paint_exec_batch_add();
 		}
 		else {
 			render_path_paint_commands_symmetry();
@@ -194,7 +194,7 @@ void render_path_paint_tail_flush() {
 	render_path_paint_tail_count   = 0;
 	render_path_paint_tail_pending = false;
 	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(true);
+		paint_exec_batch_flush(true);
 	}
 	paint_exec_end();
 	g_context->brush_dab_radius  = 1.0;
@@ -313,7 +313,7 @@ void render_path_paint_commands_stamps() {
 		}
 	}
 	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(true);
+		paint_exec_batch_flush(true);
 	}
 	else if (stamps > 0) {
 		render_path_paint_dilate_after_paint();
@@ -478,7 +478,7 @@ void render_path_paint_commands_samples() {
 		g_context->paint_vec.y      = pts[i].y;
 		render_path_paint_point_use(&pts[i]);
 		if (render_path_paint_batched()) {
-			render_path_paint_batch_add();
+			paint_exec_batch_add();
 		}
 		else {
 			render_path_paint_commands_symmetry();
@@ -487,7 +487,7 @@ void render_path_paint_commands_samples() {
 		render_path_paint_samples_last = pts[i];
 	}
 	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(true);
+		paint_exec_batch_flush(true);
 	}
 	paint_exec_end();
 	render_path_paint_point_clear();
@@ -544,7 +544,7 @@ void render_path_paint_commands_samples_stamps() {
 	g_context->brush_dab_x         = a.x;
 	g_context->brush_dab_y         = a.y;
 	if (render_path_paint_batched()) {
-		render_path_paint_batch_flush(false);
+		paint_exec_batch_flush(false);
 	}
 	if (stamps > 0) {
 		render_path_paint_dilate_after_paint();

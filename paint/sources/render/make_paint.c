@@ -768,13 +768,7 @@ static node_shader_context_t *make_paint_run_context_internal(material_t *data, 
 		node_shader_add_constant(shader, "vec3 camera_up", "_camera_up");
 		node_shader_add_constant(shader, "float camera_align", "_brush_camera_align");
 		node_shader_add_constant(shader, "mat4 VP", "_view_proj_matrix");
-		if (make_paint_resolved) {
-			node_shader_write_frag(shader, string_tmp("vec2 mn0 = %s.xy;", make_brush_dab("dab_k0", 2)));
-		}
-		else {
-			node_shader_add_texture(shader, "gbuffer0", NULL);
-			node_shader_write_frag(shader, "vec2 mn0 = textureLod(sampler2D(gbuffer0, sampler_linear), constants.inp.xy, 0.0).rg;");
-		}
+		node_shader_write_frag(shader, string_tmp("vec2 mn0 = %s.xy;", make_brush_dab("dab_k0", 2)));
 		node_shader_write_frag(shader, "vec3 mn;");
 		node_shader_write_frag(shader, "mn.z = 1.0 - abs(mn0.x) - abs(mn0.y);");
 		node_shader_write_frag(shader,
