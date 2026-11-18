@@ -4,8 +4,10 @@
 // its strokes bulge. A square of paint (u and v 0.25 to 0.75) of height 0 over a base of height 0: at raise 0 the
 // composite is flat; raised, its height is the raise inside and 0 outside, the normals tilt at its edge in the flattened
 // layers and in the exported normal map (height folded into it, at any resolution the same slope), and the viewport
-// draws it (soft stripes over the whole layer). A soft edge, a ramp of coverage over 1/64 of the width, tilts the exported normals as much at 4096 as at
-// 2048. Undo and redo, save and load keep it; merge down bakes it into the merged layer's height.
+// draws it (soft stripes over the whole layer). A soft edge, a ramp of coverage over 1/64 of the width, tilts the
+// exported normals as much at 4096 as at 2048. Undo and redo, save and load keep it; merge down bakes it into the merged
+// layer's height. A negative raise sinks the square below 0 (an 8 bit project: the flattened and exported height are
+// float), its edge tilts the other way; merged down, the merged layer keeps the groove as its raise.
 
 int fails  = 0;
 int checks = 0;
@@ -16,8 +18,10 @@ slot_layer_t *base   = NULL;
 slot_layer_t *thread = NULL;
 char         *root   = NULL;
 char         *file   = NULL;
+char         *title  = "untitled"; // Of the exported files
 
-float RAISE = 0.5;
+float RAISE       = 0.5;
+float raised_edge = 0.0; // The exported normal's x - 0.5 at the raised square's edge, signed
 
 void check(int ok, char *name) {
 	checks = checks + 1;
@@ -48,6 +52,25 @@ float edge_tilt() {
 		m       = d > m ? d : m;
 	}
 	return m;
+}
+
+// The tilt of largest size across the left edge, signed
+float edge_signed() {
+	float m = 0.0;
+	for (int i = -12; i <= 12; ++i) {
+		float d = script_texel(0.25 + i / 2048.0, 0.5, 0) - 0.5;
+		m       = fabs(d) > fabs(m) ? d : m;
+	}
+	return m;
+}
+
+void draw_square() {
+	gpu_texture_t *t = thread->texpaint;
+	draw_begin(t, 1, 0x00000000);
+	draw_set_color(0xffc0a080);
+	draw_filled_rect(t->width * 0.25, t->height * 0.25, t->width * 0.5, t->height * 0.5);
+	draw_end();
+	script_layer_update(thread);
 }
 
 float middle_tilt() {
@@ -88,7 +111,7 @@ void draw_stripes() {
 float export_ramp_tilt(char *name) {
 	char *d = dir(name);
 	export_texture_run(d, 0);
-	int ok = script_image_read(string("%s/untitled_nor.png", d));
+	int ok = script_image_read(string("%s/%s_nor.png", d, title));
 	check(ok, string("%s: normal map exported", name));
 	return ok ? fabs(script_texel(0.5 + 1.0 / 128.0, 0.5, 0) - 0.5) : -1.0;
 }
@@ -102,7 +125,7 @@ float flat_edge_tilt() {
 float export_edge_tilt(char *name) {
 	char *d = dir(name);
 	export_texture_run(d, 0);
-	int ok = script_image_read(string("%s/untitled_nor.png", d));
+	int ok = script_image_read(string("%s/%s_nor.png", d, title));
 	check(ok, string("%s: normal map exported", name));
 	return ok ? edge_tilt() : -1.0;
 }
@@ -153,6 +176,7 @@ void next() {
 		float e = export_edge_tilt("raised");
 		check(e > 0.2, string("the exported normal map tilts at the edge (%.3f)", e));
 		check(middle_tilt() < 0.02, "and is flat in the middle");
+		raised_edge = edge_signed();
 	}
 	else if (step == 4) {
 		draw_ramp(64);
@@ -164,12 +188,7 @@ void next() {
 		export_tiled_set_resolution(0, 0);
 		check(a > 0.1 && a < 0.4, string("a soft edge tilts the normals without flattening them out (%.3f)", a));
 		check(fabs(a - b) < 0.03, string("as much at 4096 as at 2048 (%.3f, %.3f)", b, a));
-		gpu_texture_t *t = thread->texpaint; // The square again
-		draw_begin(t, 1, 0x00000000);
-		draw_set_color(0xffc0a080);
-		draw_filled_rect(t->width * 0.25, t->height * 0.25, t->width * 0.5, t->height * 0.5);
-		draw_end();
-		script_layer_update(thread);
+		draw_square();
 		history_undo();
 	}
 	else if (step == 6) {
@@ -193,6 +212,7 @@ void next() {
 		thread = script_layer_get("thread");
 		base   = script_layer_get("base");
 		check(thread != NULL && base != NULL, "loaded");
+		title = "height_raise_test";
 		check(thread != NULL && thread->height_raise == RAISE, "the raise is saved");
 		check(base != NULL && base->height_raise == 0.0, "the other layer has none");
 	}
@@ -230,6 +250,36 @@ void next() {
 	else if (step == 16) {
 		int n = script_diff_images(string("%s/flat.png", root), string("%s/raised.png", root), 6.0);
 		check(n > 20000, string("the viewport shows the raise (%d values change)", n));
+		draw_square();
+		app_layer_set_raise(thread->id, -RAISE);
+	}
+	else if (step == 17) { // A groove
+		float h = flat_height(0.5, 0.5);
+		check(fabs(h + RAISE) < 0.02, string("sunk: the square's height goes below 0 (%.3f)", h));
+		check(fabs(flat_height(0.1, 0.1)) < 0.02, "outside the square: no height");
+		script_texture_read(layers_flatten(1, NULL)->texpaint_nor);
+		float f = edge_signed();
+		check(fabs(f) > 0.2 && f * raised_edge < 0.0, string("the flattened normals tilt the other way at its edge (%.3f, raised %.3f)", f, raised_edge));
+		float e = export_edge_tilt("sunk") >= 0.0 ? edge_signed() : 0.0;
+		check(fabs(e) > 0.2 && e * raised_edge < 0.0, string("so do the exported ones (%.3f)", e));
+		app_layer_set_raise(thread->id, -2.0);
+		check(thread->height_raise == -1.0, "the raise stops at -1");
+		app_layer_set_raise(thread->id, -RAISE);
+	}
+	else if (step == 18) {
+		float         before = flat_height(0.5, 0.5);
+		slot_layer_t *merged = script_layer_merge_down(thread);
+		check(merged != NULL && merged->height_raise == -RAISE, "merged down: the merged layer keeps the groove as its raise");
+		if (merged != NULL) {
+			float after = flat_height(0.5, 0.5);
+			check(fabs(after - before) < 0.02, string("the composite height is kept (%.3f, before %.3f)", after, before));
+			check(fabs(flat_height(0.1, 0.1)) < 0.02, "and stays 0 where the sunk layer had no paint");
+		}
+		history_undo();
+	}
+	else if (step == 19) {
+		thread = script_layer_get("thread");
+		check(thread != NULL && thread->height_raise == -RAISE, "undo of the merge: the sunk layer is back");
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));

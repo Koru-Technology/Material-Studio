@@ -53,9 +53,9 @@ struct LayerDetailSections: View {
 			            set: { _ = app_layer_set_opacity(layer.id, $0) },
 			            end: { app_drag_end() })
 			if p.showsRaise {
-				LayerSlider("Raise", value: p.raise, range: 0...1, format: { "\(Int(($0 * 100).rounded()))%" },
+				LayerSlider("Raise", value: p.raise, range: -1...1, format: { "\(Int(($0 * 100).rounded()))%" },
 				            begin: { app_layer_raise_begin(layer.id) },
-				            set: { _ = app_layer_set_raise(layer.id, $0) },
+				            set: { _ = app_layer_set_raise(layer.id, abs($0) < 0.02 ? 0 : $0) }, // Snaps to flat
 				            end: { app_drag_end() })
 			}
 			if p.showsBlending {

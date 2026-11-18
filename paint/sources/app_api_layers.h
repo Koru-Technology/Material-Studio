@@ -36,7 +36,7 @@ typedef struct {
 	int32_t uv_map;       // 0 uv0, 1 uv1
 	bool    has_uv1;      // The mesh has a second UV map
 	uint32_t channels;    // 1 << app_layer_channel_t
-	float    height_raise; // 0..1: app_layer_set_raise
+	float    height_raise; // -1..1: app_layer_set_raise
 	// Masks
 	int32_t effect_count;         // app_mask_effect_count
 	// Menu items: shown

@@ -359,8 +359,10 @@ static void export_texture_merge_pack(gpu_texture_t *temp, gpu_pipeline_t *pipe,
 }
 
 // Composites layer l1, index i of the job's count layers, into acc (base, normal, pack) through mask. temp: a scratch of
-// acc's size and format. Every pass is a screen quad: acc can be a whole texture or a tile of one (io/export_tiled.c).
-static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp, slot_layer_t *l1, gpu_texture_t *mask, i32 i, i32 count) {
+// acc[0]'s size and format, temp_pack of acc[2]'s (layers_pack_format). Every pass is a screen quad: acc can be a whole
+// texture or a tile of one (io/export_tiled.c).
+static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp, gpu_texture_t *temp_pack, slot_layer_t *l1, gpu_texture_t *mask, i32 i,
+                                       i32 count) {
 	gpu_texture_t       *empty = render_path_empty_white();
 	gpu_texture_format_t f     = acc[0]->format;
 	if (l1->paint_base || l1->paint_opac) {
@@ -400,28 +402,29 @@ static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp,
 	}
 
 	if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
-		util_copy_texture(temp, acc[2], export_texture_copy_pipe(f));
+		gpu_texture_format_t pf = acc[2]->format;
+		util_copy_texture(temp_pack, acc[2], export_texture_copy_pipe(pf));
 
 		// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
 		bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
 		i32  pack_mode  = pack_blend ? 300 + slot_layer_get_blending(l1) : 101;
 		if (l1->paint_occ && l1->paint_rough && l1->paint_met && l1->paint_height) {
-			export_texture_merge_pack(temp, export_texture_merge_pipe(f, 0), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+			export_texture_merge_pack(temp_pack, export_texture_merge_pipe(pf, 0), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
 			                           pack_blend ? (l1->paint_height_blend ? 400 : 300) + slot_layer_get_blending(l1) : l1->paint_height_blend ? 103 : 101);
 		}
 		else {
 			if (l1->paint_occ)
-				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 1), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+				export_texture_merge_pack(temp_pack, export_texture_merge_pipe(pf, 1), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 			if (l1->paint_rough)
-				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 2), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+				export_texture_merge_pack(temp_pack, export_texture_merge_pipe(pf, 2), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 			if (l1->paint_met)
-				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 3), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
+				export_texture_merge_pack(temp_pack, export_texture_merge_pipe(pf, 3), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode);
 			if (l1->paint_height)
-				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 4), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
+				export_texture_merge_pack(temp_pack, export_texture_merge_pipe(pf, 4), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
 				                           l1->paint_height_blend ? 103 : 101);
 		}
-		if (l1->paint_height && l1->height_raise > 0.0) {
-			layers_raise(acc[2], temp, l1->texpaint, mask, slot_layer_get_opacity(l1), l1->height_raise);
+		if (l1->paint_height && l1->height_raise != 0.0) {
+			layers_raise(acc[2], temp_pack, l1->texpaint, mask, slot_layer_get_opacity(l1), l1->height_raise);
 		}
 	}
 }

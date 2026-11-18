@@ -18,6 +18,12 @@ gpu_texture_format_t layers_format(texture_bits_t bits) {
 	return bits == TEXTURE_BITS_BITS8 ? GPU_TEXTURE_FORMAT_RGBA32 : bits == TEXTURE_BITS_BITS16 ? GPU_TEXTURE_FORMAT_RGBA64 : GPU_TEXTURE_FORMAT_RGBA128;
 }
 
+// The flattened and exported occlusion, roughness, metallic and height: at least 16 bit float, raised layers take the
+// height below 0 and above 1
+gpu_texture_format_t layers_pack_format(texture_bits_t bits) {
+	return bits == TEXTURE_BITS_BITS8 ? GPU_TEXTURE_FORMAT_RGBA64 : layers_format(bits);
+}
+
 gpu_pipeline_t *layers_copy_pipe(texture_bits_t bits) {
 	return bits == TEXTURE_BITS_BITS8 ? pipes_copy : bits == TEXTURE_BITS_BITS16 ? pipes_copy64 : pipes_copy128;
 }
@@ -166,7 +172,7 @@ void layers_make_export_img() {
 		i32   h      = l->texpaint->height;
 		layers_expa  = render_path_add_target("expa", w, h, format, 1.0)->_image;
 		layers_expb  = render_path_add_target("expb", w, h, format, 1.0)->_image;
-		layers_expc  = render_path_add_target("expc", w, h, format, 1.0)->_image;
+		layers_expc  = render_path_add_target("expc", w, h, gpu_texture_format_name(layers_pack_format(base_bits)), 1.0)->_image;
 	}
 }
 

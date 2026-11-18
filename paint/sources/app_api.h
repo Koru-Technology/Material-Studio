@@ -192,8 +192,8 @@ bool    app_layer_delete(int32_t id);
 // A set without a begin is its own undo step. app_drag_end ends any drag (opacity, layer values, mask effect values).
 void app_layer_opacity_begin(int32_t id);
 bool app_layer_set_opacity(int32_t id, float value);
-// Height raise of a layer that paints height, 0..1: height added where it has paint, times its coverage, so its strokes
-// bulge from the surface (slot_layer_t.height_raise)
+// Height raise of a layer that paints height, -1..1: height added where it has paint, times its coverage, so its strokes
+// bulge from the surface, or sink into it below 0 (slot_layer_t.height_raise)
 void app_layer_raise_begin(int32_t id);
 bool app_layer_set_raise(int32_t id, float value);
 void app_drag_end(void);

@@ -119,6 +119,7 @@ static struct {
 
 static gpu_texture_t  *et_acc[3];
 static gpu_texture_t  *et_temp;
+static gpu_texture_t  *et_temp_pack; // A copy of et_acc[2], in its format (layers_pack_format)
 static gpu_texture_t  *et_src[3];
 static gpu_texture_t  *et_mask;
 static gpu_texture_t  *et_mask_temp;
@@ -156,15 +157,17 @@ static i64 export_tiled_budget() {
 static i64 export_tiled_target_bytes(i32 s, i32 halo, gpu_texture_format_t format) {
 	i64 n = (i64)(s + 2 * halo) * (s + 2 * halo);
 	i32 f = export_tiled_bytes_per_texel(format);
-	return n * (4 * f + 3 * 16 + 3 * 4 + 2); // Composites and temp, layer sources (16 at most), masks, coverage and reach
+	i32 p = export_tiled_bytes_per_texel(layers_pack_format(base_bits));
+	return n * (3 * f + 2 * p + 3 * 16 + 3 * 4 + 2); // Composites and temps, layer sources (16 at most), masks, coverage and reach
 }
 
 static void export_tiled_targets(i32 s, i32 halo) {
 	i32 n = s + 2 * halo;
 	for (i32 k = 0; k < 3; ++k) {
-		util_texture_ensure_target(&et_acc[k], n, n, et.format);
+		util_texture_ensure_target(&et_acc[k], n, n, k == 2 ? layers_pack_format(base_bits) : et.format);
 	}
 	util_texture_ensure_target(&et_temp, n, n, et.format);
+	util_texture_ensure_target(&et_temp_pack, n, n, layers_pack_format(base_bits));
 	util_texture_ensure_target(&et_mask, n, n, GPU_TEXTURE_FORMAT_RGBA32);
 	util_texture_ensure_target(&et_mask_temp, n, n, GPU_TEXTURE_FORMAT_RGBA32);
 	util_texture_ensure_target(&et_cov, n, n, GPU_TEXTURE_FORMAT_R8);
@@ -178,6 +181,7 @@ static void export_tiled_release_targets() {
 		util_texture_release_target(&et_grown[k]);
 	}
 	util_texture_release_target(&et_temp);
+	util_texture_release_target(&et_temp_pack);
 	util_texture_release_target(&et_mask);
 	util_texture_release_target(&et_mask_temp);
 	util_texture_release_target(&et_mask_src);
@@ -795,7 +799,7 @@ static void export_tiled_merge_source(export_tiled_job_t *job, i32 i, export_til
 		}
 		mask = et_mask;
 	}
-	export_texture_merge_layer(et_acc, et_temp, &tl, mask, i, job->layers->length);
+	export_texture_merge_layer(et_acc, et_temp, et_temp_pack, &tl, mask, i, job->layers->length);
 }
 
 // Tile t rendered over steps until deadline (a layer materializing its timeline replays a few strokes a step, its
@@ -865,15 +869,21 @@ static bool export_tiled_render_tile(export_tiled_job_t *job, export_tiled_tile_
 	}
 	if (et.padding) {
 		for (i32 k = 0; k < 3; ++k) {
-			export_tiled_copy(et_temp, et_acc[k]);
-			export_tiled_dilate(et_acc[k], et_temp, et_cov, EXPORT_TILED_NEAR);
+			gpu_texture_t *temp = k == 2 ? et_temp_pack : et_temp;
+			export_tiled_copy(temp, et_acc[k]);
+			export_tiled_dilate(et_acc[k], temp, et_cov, EXPORT_TILED_NEAR);
 		}
 		export_tiled_copy(et_reach, et_cov);
 		export_tiled_dilate(et_reach, et_cov, et_cov, EXPORT_TILED_NEAR); // Covered or reached
 	}
 
 	u8            *comp[4];
-	gpu_texture_t *read[4] = {et_acc[0], et_acc[1], et_acc[2], et_reach};
+	gpu_texture_t *pack = et_acc[2];
+	if (pack->format != et.format) { // Read at the export's depth, height clamped to 0..1 as a file stores it
+		export_tiled_copy(et_temp, pack);
+		pack = et_temp;
+	}
+	gpu_texture_t *read[4] = {et_acc[0], et_acc[1], pack, et_reach};
 	export_tiled_read(read, et.padding ? 4 : 3, et.halo, et.halo, t->w, t->h, comp);
 	for (i32 k = 0; k < 3; ++k) {
 		export_tiled_spool_write(t, k, comp[k], t->w * t->h * et.bpp);
@@ -1151,7 +1161,7 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	et.height   = false;
 	for (i32 i = 0; i < job->layers->length; ++i) {
 		slot_layer_t *l = job->layers->buffer[i];
-		et.height       = et.height || (slot_layer_is_layer(l) && l->paint_height && (make_material_height_used || l->height_raise > 0.0));
+		et.height       = et.height || (slot_layer_is_layer(l) && l->paint_height && (make_material_height_used || l->height_raise != 0.0));
 	}
 	et.halo = et.height && et.halo < 2 ? 2 : et.halo; // The normals read the height a texel around
 	et.need_cov = et.padding || fills;
@@ -1794,8 +1804,8 @@ void export_tiled_set_mode(i32 mode) {
 i32 export_tiled_stat(i32 what) {
 	if (what == 6) {
 		i64 kb = 0;
-		gpu_texture_t *t[] = {et_acc[0], et_acc[1], et_acc[2], et_temp, et_src[0], et_src[1], et_src[2], et_mask, et_mask_temp, et_mask_src, et_cov, et_reach};
-		for (i32 i = 0; i < 12; ++i) {
+		gpu_texture_t *t[] = {et_acc[0], et_acc[1], et_acc[2], et_temp, et_temp_pack, et_src[0], et_src[1], et_src[2], et_mask, et_mask_temp, et_mask_src, et_cov, et_reach};
+		for (i32 i = 0; i < 13; ++i) {
 			kb += t[i] != NULL ? (i64)t[i]->width * t[i]->height * gpu_texture_format_size(t[i]->format) / 1024 : 0;
 		}
 		return (i32)kb;

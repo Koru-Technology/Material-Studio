@@ -341,7 +341,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		make_fill_uses(&make_material_emis_used, &make_material_height_used); // Fill layers with emission or height
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {                 // Raised layers
 			slot_layer_t *l = g_project->_->layers->buffer[i];
-			if (slot_layer_is_layer(l) && slot_layer_is_visible(l) && l->paint_height && l->height_raise > 0.0) {
+			if (slot_layer_is_layer(l) && slot_layer_is_visible(l) && l->paint_height && l->height_raise != 0.0) {
 				make_material_height_used = true;
 			}
 		}
@@ -658,7 +658,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 					                     i32_to_string(l->id), tex_coord, tex_coord));
 					node_shader_write_frag(shader, "}");
 				}
-				if (l->paint_height && make_material_height_used && l->height_raise > 0.0) {
+				if (l->paint_height && make_material_height_used && l->height_raise != 0.0) {
 					make_mesh_write_raise(shader, l, tex_coord);
 				}
 			}

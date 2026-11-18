@@ -1287,6 +1287,7 @@ slot_layer_t  *layers_udim_remap(slot_layer_t *l, gpu_texture_t **mask, i32 slot
 i32            layers_udim_tile_slot(slot_layer_t *l);
 slot_layer_t  *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers);
 f32            layers_bump_scale(i32 res);
+gpu_texture_format_t layers_pack_format(texture_bits_t bits);
 void           layers_raise(gpu_texture_t *pack, gpu_texture_t *temp, gpu_texture_t *texpaint, gpu_texture_t *mask, f32 opacity, f32 raise);
 void           layers_height_to_normal(gpu_texture_t *nor, gpu_texture_t *temp, gpu_texture_t *pack, f32 scale);
 

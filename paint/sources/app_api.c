@@ -770,8 +770,8 @@ bool app_layer_set_raise(int32_t id, float value) {
 	if (!app_dragging(APP_DRAG_RAISE, id, 0, 0)) {
 		app_layer_raise_begin(id);
 	}
-	f32  v       = math_max(0.0, math_min(1.0, value));
-	bool reshape = (l->height_raise > 0.0) != (v > 0.0); // The shader reads the raise while it is above 0
+	f32  v       = math_max(-1.0, math_min(1.0, value));
+	bool reshape = (l->height_raise != 0.0) != (v != 0.0); // The shader reads the raise while it is not 0
 	l->height_raise = v;
 	if (reshape) {
 		make_material_parse_mesh_material();

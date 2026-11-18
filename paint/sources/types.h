@@ -239,7 +239,7 @@ typedef struct slot_layer {
 	bool                  paint_nor_blend;
 	bool                  paint_height;
 	bool                  paint_height_blend;
-	f32                   height_raise; // Height added where the layer has paint, times its coverage: strokes bulge (layers_raise)
+	f32                   height_raise; // -1..1, height added where the layer has paint, times its coverage: strokes bulge or sink (layers_raise)
 	bool                  paint_emis;
 	bool                  paint_subs;
 	mat4_t                decal_mat; // Decal layer

@@ -4,7 +4,7 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 0) float opac;
 	layout(offset = 4) int blending;
 	layout(offset = 8) float tex1w;
-	layout(offset = 12) float raise; // Read by 108 only
+	layout(offset = 12) float raise; // Read by 108 and 109 only
 } constants;
 
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
@@ -232,6 +232,9 @@ void main() {
 	}
 	if (constants.blending == 108) { // Height raise of a layer into _pack: its coverage (str) times the raise
 		{ frag_color = vec4(cola.rgb, cola.a + str * constants.raise); return; }
+	}
+	if (constants.blending == 109) { // Merging two height blended layers: the merged raise once more where they overlap, weight (105) g * r / a
+		{ frag_color = vec4(cola.rgb, cola.a + col0.g * col0.a * constants.raise); return; }
 	}
 	if (constants.blending == 104) { // Merge _pack.height into _nor, opac: the slope of a height difference (layers_bump_scale)
 		float tex_step = 1.0 / constants.tex1w;

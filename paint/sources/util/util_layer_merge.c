@@ -166,14 +166,16 @@ slot_layer_t *layers_merge_group(slot_layer_t *l) {
 	return children->buffer[0];
 }
 
-// The raise of l into its own height, everywhere (its paint's alpha weighs it when composited): merging bakes it
-static void layers_bake_raise(slot_layer_t *l, gpu_texture_t *temp) {
-	if (!l->paint_height || l->height_raise <= 0.0 || l->texpaint_pack == NULL) {
-		return;
+static void layers_raise_pass(gpu_texture_t *pack, gpu_texture_t *temp, gpu_texture_t *tex0, gpu_texture_t *mask, f32 opacity, f32 raise, i32 mode);
+
+// The raise the layer merged from l0 and l1 keeps when both paint height: the lowest of theirs and, height blended, of
+// their sum where they overlap; the rest of each goes into its height. What is baked stays above 0 (8 bit layers).
+static f32 layers_merged_raise(slot_layer_t *l0, slot_layer_t *l1) {
+	if (!l0->paint_height || !l1->paint_height) {
+		return 0.0;
 	}
-	gpu_texture_t *white = render_path_empty_white();
-	layers_raise(l->texpaint_pack, temp, white, white, 1.0, l->height_raise);
-	l->height_raise = 0.0;
+	f32 r = math_min(l0->height_raise, l1->height_raise);
+	return l1->paint_height_blend ? math_min(r, l0->height_raise + l1->height_raise) : r;
 }
 
 void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
@@ -275,7 +277,12 @@ void layers_merge_layer_ex(slot_layer_t *l0, slot_layer_t *l1, bool use_mask, gp
 		}
 
 		if (l0->texpaint_pack != NULL) {
-			layers_bake_raise(l0, temp); // The merged layer has one raise: both go into the height
+			// The merged layer has one raise (layers_merged_raise), the rest of each layer's goes into the height
+			f32 raise = layers_merged_raise(l0, l1);
+			if (l0->paint_height && l0->height_raise != raise) {
+				gpu_texture_t *white = render_path_empty_white(); // Everywhere: its paint's alpha weighs it when composited
+				layers_raise(l0->texpaint_pack, temp, white, white, 1.0, l0->height_raise - raise);
+			}
 			util_copy_texture(temp, l0->texpaint_pack, layers_pipe_for(pipes_copy, temp->format));
 
 			if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
@@ -298,9 +305,13 @@ void layers_merge_layer_ex(slot_layer_t *l0, slot_layer_t *l1, bool use_mask, gp
 					}
 				}
 			}
-			if (l1->paint_height && l1->height_raise > 0.0) { // Weighed as l1's height was: weight.a (105)
-				layers_raise(l0->texpaint_pack, temp, weight, empty, 1.0, l1->height_raise);
+			if (l1->paint_height && l1->height_raise != raise) { // Weighed as l1's height was: weight.a (105)
+				layers_raise(l0->texpaint_pack, temp, weight, empty, 1.0, l1->height_raise - raise);
 			}
+			if (l1->paint_height_blend && raise != 0.0) { // Both heights add up where they overlap, so do both raises
+				layers_raise_pass(l0->texpaint_pack, temp, weight, empty, 1.0, raise, 109);
+			}
+			l0->height_raise = raise;
 		}
 
 		gpu_delete_texture(weight);
@@ -444,12 +455,15 @@ static slot_layer_t *layers_move_preview(slot_layer_t *l) {
 	return &moved;
 }
 
+static gpu_texture_t *layers_temp_pack = NULL; // A copy of layers_expc while a layer merges into it
+
 slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers) {
 	if (layers == NULL) {
 		layers = g_project->_->layers;
 	}
 	layers_make_temp_img();
 	layers_make_export_img();
+	util_texture_ensure_target(&layers_temp_pack, layers_expc->width, layers_expc->height, layers_expc->format);
 	gpu_texture_t *empty = render_path_empty_white();
 
 	// Clear export layer
@@ -531,32 +545,32 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 		}
 
 		if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
-			util_copy_texture(layers_temp_image, layers_expc, layers_pipe_for(pipes_copy, layers_temp_image->format));
+			util_copy_texture(layers_temp_pack, layers_expc, layers_pipe_for(pipes_copy, layers_temp_pack->format));
 
 			// The layer blend mode also applies to occlusion, roughness and metallic, as in the viewport
 			bool pack_blend = make_material_blend_mode_channels(slot_layer_get_blending(l1)) && i > 0;
 			i32  pack_mode  = pack_blend ? 300 + slot_layer_get_blending(l1) : 101;
 			if (l1->paint_occ && l1->paint_rough && l1->paint_met && l1->paint_height) {
 				layers_commands_merge_pack(layers_pipe_for(pipes_merge, layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
-				                           pack_blend ? (l1->paint_height_blend ? 400 : 300) + slot_layer_get_blending(l1) : l1->paint_height_blend ? 103 : 101, layers_temp_image);
+				                           pack_blend ? (l1->paint_height_blend ? 400 : 300) + slot_layer_get_blending(l1) : l1->paint_height_blend ? 103 : 101, layers_temp_pack);
 			}
 			else {
 				if (l1->paint_occ) {
-					layers_commands_merge_pack(layers_pipe_for(pipes_get_merge_r(), layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode, layers_temp_image);
+					layers_commands_merge_pack(layers_pipe_for(pipes_get_merge_r(), layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode, layers_temp_pack);
 				}
 				if (l1->paint_rough) {
-					layers_commands_merge_pack(layers_pipe_for(pipes_get_merge_g(), layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode, layers_temp_image);
+					layers_commands_merge_pack(layers_pipe_for(pipes_get_merge_g(), layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode, layers_temp_pack);
 				}
 				if (l1->paint_met) {
-					layers_commands_merge_pack(layers_pipe_for(pipes_get_merge_b(), layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode, layers_temp_image);
+					layers_commands_merge_pack(layers_pipe_for(pipes_get_merge_b(), layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask, pack_mode, layers_temp_pack);
 				}
 				if (l1->paint_height) {
 					layers_commands_merge_pack(layers_pipe_for(pipes_get_merge_a(), layers_expc->format), layers_expc, l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
-					                           l1->paint_height_blend ? 103 : 101, layers_temp_image);
+					                           l1->paint_height_blend ? 103 : 101, layers_temp_pack);
 				}
 			}
-			if (l1->paint_height && l1->height_raise > 0.0) {
-				layers_raise(layers_expc, layers_temp_image, l1->texpaint, mask, slot_layer_get_opacity(l1), l1->height_raise);
+			if (l1->paint_height && l1->height_raise != 0.0) {
+				layers_raise(layers_expc, layers_temp_pack, l1->texpaint, mask, slot_layer_get_opacity(l1), l1->height_raise);
 			}
 		}
 	}
@@ -580,17 +594,22 @@ f32 layers_bump_scale(i32 res) {
 // alpha through mask at opacity, times raise. The edges of the strokes become slopes, they bulge. temp: a scratch of
 // pack's size and format.
 void layers_raise(gpu_texture_t *pack, gpu_texture_t *temp, gpu_texture_t *texpaint, gpu_texture_t *mask, f32 opacity, f32 raise) {
+	layers_raise_pass(pack, temp, texpaint, mask, opacity, raise, 108);
+}
+
+// A pass of layer_merge.glsl adding to the height of pack: 108 (layers_raise), 109 (the overlap of a merge)
+static void layers_raise_pass(gpu_texture_t *pack, gpu_texture_t *temp, gpu_texture_t *tex0, gpu_texture_t *mask, f32 opacity, f32 raise, i32 mode) {
 	util_copy_texture(temp, pack, layers_pipe_for(pipes_copy, temp->format));
 	_gpu_begin(pack, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
 	gpu_set_pipeline(layers_pipe_for(pipes_get_merge_a(), pack->format));
-	gpu_set_texture(pipes_tex0, texpaint);
+	gpu_set_texture(pipes_tex0, tex0);
 	gpu_set_texture(pipes_tex1, render_path_empty_white());
 	gpu_set_texture(pipes_texmask, mask);
 	gpu_set_texture(pipes_texa, temp);
 	gpu_set_float(pipes_opac, opacity);
 	gpu_set_float(pipes_tex1w, pack->width);
 	gpu_set_float(pipes_raise, raise);
-	gpu_set_int(pipes_blending, 108);
+	gpu_set_int(pipes_blending, mode);
 	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
 	gpu_set_index_buffer(const_data_screen_aligned_ib);
 	gpu_draw();
