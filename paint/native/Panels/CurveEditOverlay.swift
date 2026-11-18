@@ -1,7 +1,8 @@
 import SwiftUI
 
-// The points of a curve being edited (CurveStore), over the canvas: a dot each, dragged to reshape the curve. The dot's
-// hit area takes the touch, so dragging never paints; a touch between them reaches the canvas and confirms the curve.
+// The points of a curve being edited (CurveStore), over the canvas: a dot each, dragged to reshape the curve, a double
+// tap removes it (not the ends). The dot's hit area takes the touch, so dragging never paints; a touch between them
+// reaches the canvas: on the curve a tap adds a point, elsewhere it confirms the curve (the engine).
 // Placed as an overlay of the canvas: its coordinates are the canvas' pixels over the display scale.
 struct CurveEditOverlay: View {
 	private var curve = CurveStore.shared
@@ -30,6 +31,7 @@ private struct CurveHandle: View {
 	let scale: CGFloat
 
 	@State private var grab: CGSize? // From the finger to the dot's center, kept while dragging: the dot does not jump
+	@State private var dragging = false // Moved past a tap's slop
 
 	var body: some View {
 		Circle()
@@ -46,12 +48,20 @@ private struct CurveHandle: View {
 					.onChanged { g in
 						let offset = grab ?? CGSize(width: position.x - g.startLocation.x, height: position.y - g.startLocation.y)
 						grab       = offset
-						let x      = Float((g.location.x + offset.width) * scale)
-						let y      = Float((g.location.y + offset.height) * scale)
+						if !dragging && hypot(g.translation.width, g.translation.height) < 4 {
+							return // Still a tap: the point stays where it is
+						}
+						dragging = true
+						let x    = Float((g.location.x + offset.width) * scale)
+						let y    = Float((g.location.y + offset.height) * scale)
 						AppStore.shared.perform { app_curve_move(index, x, y) }
 					}
 					.onEnded { _ in
-						grab = nil
+						if !dragging {
+							CurveStore.shared.tapped(index)
+						}
+						grab     = nil
+						dragging = false
 					}
 			)
 			.animation(.easeOut(duration: 0.12), value: grab != nil)

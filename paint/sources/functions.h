@@ -1464,6 +1464,7 @@ void util_curve_stroke_confirm();
 void util_curve_stroke_discard();
 bool util_curve_stroke_point(i32 i, f32 *x, f32 *y);
 void util_curve_stroke_move(i32 i, f32 x, f32 y);
+bool util_curve_stroke_remove(i32 i);
 void util_curve_stroke_update();
 bool util_curve_stroke_test_hold(f32_array_t *xyp);
 f32  util_curve_stroke_test_point(i32 i, i32 axis);

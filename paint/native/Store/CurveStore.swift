@@ -10,6 +10,17 @@ final class CurveStore: ChangeOnly {
 
 	private(set) var editing = false
 	private(set) var points: [CGPoint?] = [] // nil: behind the view or off it
+	@ObservationIgnored private var lastTap: (index: Int32, time: Date)?
+
+	// A tap on dot index: the second one in a row removes it (not the ends, app_curve_remove)
+	func tapped(_ index: Int32) {
+		if let last = lastTap, last.index == index, Date().timeIntervalSince(last.time) < 0.35 {
+			lastTap = nil
+			AppStore.shared.perform { _ = app_curve_remove(index) }
+			return
+		}
+		lastTap = (index, Date())
+	}
 
 	func refresh(_ s: app_state_t) {
 		update(\.editing, s.curve_editing)

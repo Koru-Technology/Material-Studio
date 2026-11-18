@@ -169,6 +169,7 @@ bool        app_history_busy(void); // Undo or redo still restores layers, the c
 // Confirm (or a new touch on the canvas) paints it as a stroke, undo drops it. Positions in canvas pixels.
 bool app_curve_point(int32_t index, float *x, float *y); // Through the current camera, false behind it or off the view
 void app_curve_move(int32_t index, float x, float y);    // To the surface under it, off the mesh it stays
+bool app_curve_remove(int32_t index);                    // Not the first or the last; a tap on the curve adds one (engine side)
 void app_curve_confirm(void);
 
 // Layers, listed top of the stack first (the order the layers panel shows)

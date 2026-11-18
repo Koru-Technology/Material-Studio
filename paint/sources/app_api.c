@@ -647,6 +647,10 @@ void app_curve_move(int32_t index, float x, float y) {
 	iron_delay_idle_sleep();
 }
 
+bool app_curve_remove(int32_t index) {
+	return app_ready() && util_curve_stroke_remove(index);
+}
+
 void app_curve_confirm(void) {
 	if (!app_ready()) {
 		return;

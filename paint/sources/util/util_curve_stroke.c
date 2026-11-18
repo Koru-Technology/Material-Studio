@@ -6,9 +6,13 @@
 // from, so the view can turn while they are dragged; each segment paints from the camera of its end point (as path
 // layers, util_path.c). Until confirmed the curve paints into the live layer, shown in place of the layer. Confirming
 // paints it as a stroke of the layer through the brush (spacing, taper, jitter, the pen's pressure along the stroke):
-// one undo step, recorded and replayed as any stroke. Undo drops it. Runtime only, never saved.
+// one undo step, recorded and replayed as any stroke. Undo drops it. A tap on the curve adds a point there, a point
+// between the ends can be removed (a double tap on its dot, the native UI). Runtime only, never saved.
 
-#define CURVE_MAX_POINTS  8
+#define CURVE_MAX_POINTS  32 // Added by taps on the curve
+#define CURVE_FIT_POINTS  8  // From the stroke held
+#define CURVE_TAP_REACH   28.0 // Points (UI_SCALE) from the curve a tap adds a point
+#define CURVE_TAP_MOVE    10.0 // Points a tap may move
 #define CURVE_CAPTURE_MAX 4096
 #define CURVE_PROFILE     64
 #define CURVE_HOLD_TIME   1.0  // Seconds still
@@ -46,7 +50,10 @@ static struct {
 	f32           move_y;
 	bool          finger_pending; // A finger touched the canvas
 	f64           finger_time;
-	u32           gen; // A new curve: picks still in flight for the one before do not move its points
+	u32           gen; // A new curve, a point added or removed: picks still in flight do not move its points
+	bool          tap; // A touch landed on the curve: lifted where it was, it adds a point there
+	f32           tap_x; // Pixels where it landed
+	f32           tap_y;
 } curve = {0};
 
 // The stroke painted now
@@ -163,7 +170,7 @@ static void curve_simplify(i32 a, i32 b, f32 tol, bool *keep) {
 	}
 }
 
-// The points of the curve through the capture, CURVE_MAX_POINTS at most, into idx: their count
+// The points of the curve through the capture, CURVE_FIT_POINTS at most, into idx: their count
 static i32 curve_fit(i32 *idx) {
 	bool *keep = calloc(cap.n, sizeof(bool));
 	f32   diag = sqrtf((f32)base_paint_view_w() * base_paint_view_w() + (f32)base_paint_view_h() * base_paint_view_h());
@@ -178,12 +185,12 @@ static i32 curve_fit(i32 *idx) {
 		for (i32 i = 0; i < cap.n; ++i) {
 			n += keep[i] ? 1 : 0;
 		}
-		if (n <= CURVE_MAX_POINTS) {
+		if (n <= CURVE_FIT_POINTS) {
 			break;
 		}
 	}
 	n = 0;
-	for (i32 i = 0; i < cap.n && n < CURVE_MAX_POINTS; ++i) {
+	for (i32 i = 0; i < cap.n && n < CURVE_FIT_POINTS; ++i) {
 		if (keep[i]) {
 			idx[n++] = i;
 		}
@@ -211,7 +218,7 @@ static bool curve_from_capture() {
 	if (cap.n < 2) {
 		return false;
 	}
-	i32 idx[CURVE_MAX_POINTS];
+	i32 idx[CURVE_FIT_POINTS];
 	i32 n = curve_fit(idx);
 	f32 cam[9];
 	util_camera_get(cam);
@@ -271,6 +278,7 @@ static bool curve_hold() {
 		history_undo();
 	}
 	curve.active         = true;
+	curve.tap            = false;
 	curve.gen++;
 	curve.layer          = g_context->layer;
 	curve.seed           = ((u32)(sys_time() * 1000.0) * 2654435761u) | 1u;
@@ -719,9 +727,86 @@ void util_curve_stroke_discard() {
 // A touch on the canvas while the curve shows (util_brush_update, before it paints). The pen and the mouse confirm it
 // and paint. A finger confirms it once it is not the first of a two finger gesture (turning the view, the curve stays):
 // true while the touch paints nothing.
+// The point of the curve nearest to pixel (x, y) of the canvas through the current camera, within reach: its segment,
+// and its place on the canvas in *at. -1 when the curve is not that close.
+static i32 curve_hit(f32 x, f32 y, vec2_t *at) {
+	f32    px    = x - base_paint_view_x();
+	f32    py    = y - base_paint_view_y();
+	f32    reach = CURVE_TAP_REACH * UI_SCALE();
+	f32    best  = reach * reach;
+	i32    seg   = -1;
+	for (i32 s = 0; s < curve.n - 1; ++s) {
+		vec2_t p0, p1, p2, p3;
+		if (!curve_project(s, &p1) || !curve_project(s + 1, &p2)) {
+			continue;
+		}
+		if (s == 0 || !curve_project(s - 1, &p0)) {
+			p0 = (vec2_t){2.0 * p1.x - p2.x, 2.0 * p1.y - p2.y};
+		}
+		if (s + 2 >= curve.n || !curve_project(s + 2, &p3)) {
+			p3 = (vec2_t){2.0 * p2.x - p1.x, 2.0 * p2.y - p1.y};
+		}
+		for (i32 k = 1; k < 64; ++k) { // Not the ends: those are the dots
+			vec2_t q = curve_eval(p0, p1, p2, p3, k / 64.0);
+			f32    d = (q.x - px) * (q.x - px) + (q.y - py) * (q.y - py);
+			if (d < best) {
+				best = d;
+				seg  = s;
+				*at  = q;
+			}
+		}
+	}
+	return seg;
+}
+
+// A point on the curve where the canvas pixel (x, y) is closest to it, after point index of its segment: false when
+// the tap is not on the curve or the surface is not under it
+static bool curve_insert_at(f32 x, f32 y) {
+	vec2_t at;
+	i32    s = curve_hit(x, y, &at);
+	if (s < 0 || curve.n >= CURVE_MAX_POINTS) {
+		return false;
+	}
+	vec4_t       world;
+	draw_saved_t gpu = draw_suspend();
+	bool         hit = curve_pick(at.x / base_paint_view_w(), at.y / base_paint_view_h(), &world);
+	draw_resume(gpu);
+	if (!hit) {
+		return false;
+	}
+	memmove(&curve.pts[s + 2], &curve.pts[s + 1], sizeof(curve_point_t) * (curve.n - s - 1));
+	curve.pts[s + 1].world = world;
+	util_camera_get(curve.pts[s + 1].cam);
+	curve.n++;
+	curve.gen++;
+	curve.dirty = true;
+	return true;
+}
+
+// Removes point i between the ends (the curve keeps two points at least)
+bool util_curve_stroke_remove(i32 i) {
+	if (!curve.active || i <= 0 || i >= curve.n - 1) {
+		return false;
+	}
+	memmove(&curve.pts[i], &curve.pts[i + 1], sizeof(curve_point_t) * (curve.n - i - 1));
+	curve.n--;
+	curve.gen++;
+	curve.dirty = true;
+	return true;
+}
+
 bool util_curve_stroke_touch(bool started) {
 	if (!curve.active) {
 		return false;
+	}
+	f32 tx = pen_down("tip") ? pen_x : mouse_x;
+	f32 ty = pen_down("tip") ? pen_y : mouse_y;
+	vec2_t at;
+	if (started && curve_hit(tx, ty, &at) >= 0) { // On the curve: a tap there adds a point, the touch paints nothing
+		curve.tap   = true;
+		curve.tap_x = tx;
+		curve.tap_y = ty;
+		return true;
 	}
 	bool finger = g_config->touch_ui && !pen_down("tip") && !pen_in_use;
 	if (!finger) {
@@ -768,6 +853,18 @@ void util_curve_stroke_move(i32 i, f32 x, f32 y) {
 void util_curve_stroke_update() {
 	if (!curve.active) {
 		return;
+	}
+	if (curve.tap) {
+		bool down = mouse_down("left") || pen_down("tip");
+		f32  x    = pen_down("tip") ? pen_x : mouse_x;
+		f32  y    = pen_down("tip") ? pen_y : mouse_y;
+		if (mouse_down("right") || math_abs(x - curve.tap_x) + math_abs(y - curve.tap_y) > CURVE_TAP_MOVE * UI_SCALE()) {
+			curve.tap = false; // A second finger (the view turns) or a drag: no point
+		}
+		else if (!down) {
+			curve.tap = false;
+			curve_insert_at(curve.tap_x, curve.tap_y);
+		}
 	}
 	if (curve.finger_pending) {
 		if (mouse_down("right")) { // Two fingers: the view turns

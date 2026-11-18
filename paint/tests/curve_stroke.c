@@ -5,7 +5,9 @@
 // dragged lands on the surface; Confirm paints the curve as one stroke, along where the points are now (as a stroke
 // painted straight between them), recorded for replay; undo and redo it. Undo while editing drops the curve. A new
 // touch on the canvas confirms it. With real mouse input: a stroke held still for a second becomes a curve, one that
-// keeps moving does not. The view turned before a point is dragged: it still confirms as one stroke.
+// keeps moving does not. The view turned before a point is dragged: it still confirms as one stroke. A tap on the curve
+// adds a point there and keeps editing, a drag starting on it adds none; a point between the ends can be removed, the
+// ends can not.
 
 int fails  = 0;
 int checks = 0;
@@ -20,6 +22,8 @@ float     ax     = 0.0; // The curve's points after the drag, paint view 0-1
 float     ay     = 0.0;
 float     bx     = 0.0;
 float     by     = 0.0;
+float     mx     = 0.0; // The middle of the curve, canvas pixels
+float     my     = 0.0;
 double    held   = 0.0;
 int       cx     = 0;
 int       cy     = 0;
@@ -184,13 +188,13 @@ void next() {
 	}
 	else if (step == 8) { // A new touch confirms
 		util_curve_stroke_test_hold(paint_line(0.42, 0.5, 0.58, 0.5));
-		script_mouse_press(cx, cy + 20, 0);
+		script_mouse_press(cx, cy + 150, 0); // Away from the curve
 	}
 	else if (step == 9) {
-		script_mouse_move(cx + 20, cy + 20);
+		script_mouse_move(cx + 20, cy + 150);
 	}
 	else if (step == 10) {
-		script_mouse_release(cx + 20, cy + 20, 0);
+		script_mouse_release(cx + 20, cy + 150, 0);
 	}
 	else if (step == 11) {
 		tick = tick + 1;
@@ -271,6 +275,41 @@ void next() {
 		check(changed() > 0, string("turned: it painted (%d)", changed()));
 		script_camera_restore();
 		history_undo();
+	}
+	else if (step == 21) { // A tap on the curve
+		util_curve_stroke_test_hold(paint_line(0.42, 0.5, 0.58, 0.5));
+		mx = (util_curve_stroke_test_point(0, 0) + util_curve_stroke_test_point(1, 0)) * 0.5;
+		my = (util_curve_stroke_test_point(0, 1) + util_curve_stroke_test_point(1, 1)) * 0.5 + 6.0; // A little off it
+		script_mouse_press(mx, my, 0);
+	}
+	else if (step == 22) {
+		script_mouse_release(mx, my, 0);
+	}
+	else if (step == 23) {
+		check(util_curve_stroke_active(), "a tap on the curve keeps editing");
+		check(util_curve_stroke_count() == 3, string("and adds a point (%d)", util_curve_stroke_count()));
+		float x = util_curve_stroke_test_point(1, 0);
+		float y = util_curve_stroke_test_point(1, 1);
+		check(fabs(x - mx) < 12.0 && fabs(y - (my - 6.0)) < 12.0, string("on the curve where it was tapped (%.0f %.0f, tapped %.0f %.0f)", x, y, mx, my));
+		check(!app_curve_remove(0) && !app_curve_remove(2), "the ends can not be removed");
+		check(app_curve_remove(1) && util_curve_stroke_count() == 2, "a point between them can");
+		script_mouse_press(mx, my, 0); // A drag starting on the curve
+	}
+	else if (step == 24) {
+		tick = tick + 1;
+		if (tick < 8) {
+			script_mouse_move(mx + tick * 8, my);
+			script_notify_on_next_frame(next);
+			frame = 4;
+			return;
+		}
+		tick = 0;
+		script_mouse_release(mx + 64, my, 0);
+	}
+	else if (step == 25) {
+		check(util_curve_stroke_active() && util_curve_stroke_count() == 2, string("a drag from the curve adds no point (%d)", util_curve_stroke_count()));
+		check(changed() == 0, "and paints nothing");
+		history_user_undo();
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
