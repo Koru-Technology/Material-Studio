@@ -449,6 +449,7 @@ void import_arm_run_project(char *path) {
 			l->paint_nor_blend    = ld->paint_nor_blend;
 			l->paint_height       = ld->paint_height;
 			l->paint_height_blend = ld->paint_height_blend;
+			l->height_raise       = ld->height_raise;
 			if (is_mask && ld->mask_effects != NULL && ld->mask_effects->length > 0) {
 				l->mask_effects     = mask_stack_copy_effects(ld->mask_effects); // Owned, the decoded one lives in the project blob
 				l->mask_stack_dirty = true;                                       // Evaluated before the first frame renders

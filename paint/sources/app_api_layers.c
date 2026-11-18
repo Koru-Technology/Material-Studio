@@ -92,10 +92,12 @@ bool app_layer_props(int32_t id, app_layer_props_t *out) {
 	    .uv_map                 = l->uv_map,
 	    .has_uv1                = app_mesh_has_uv1(),
 	    .channels               = app_layer_channels(l),
+	    .height_raise           = l->height_raise,
 	    .effect_count           = app_mask_effect_count(l->id),
 
 	    .shows_blending            = !group && !mask && !filter,
 	    .shows_channels            = !group,
+	    .shows_raise               = layer && l->paint_height,
 	    .shows_to_fill             = layer && !fill,
 	    .shows_to_paint            = !group && fill,
 	    .shows_clear               = l->fill == NULL,
@@ -138,6 +140,7 @@ uint32_t app_layers_props_signature(void) {
 		h               = app_hash(h, l->path_material != NULL);
 		h               = app_hash(h, l->path_text);
 		h               = app_hash(h, app_layer_channels(l));
+		h               = app_hash_fq(h, l->height_raise);
 		for (i32 j = 0; slot_layer_is_mask(l) && l->mask_effects != NULL && j < l->mask_effects->length; ++j) {
 			h = app_hash_fq(h, l->mask_effects->buffer[j]);
 		}

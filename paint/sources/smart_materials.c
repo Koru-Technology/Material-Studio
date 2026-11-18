@@ -268,6 +268,7 @@ bool smart_materials_save(slot_layer_t *root, char *name) {
 		json_encode_i32("paint_nor_blend", l->paint_nor_blend);
 		json_encode_i32("paint_height", l->paint_height);
 		json_encode_i32("paint_height_blend", l->paint_height_blend);
+		json_encode_f32("height_raise", l->height_raise);
 		json_encode_i32("paint_emis", l->paint_emis);
 		json_encode_i32("paint_subs", l->paint_subs);
 		if (l->mask_effects != NULL) {
@@ -396,6 +397,7 @@ slot_layer_t *smart_materials_insert(char *name) {
 		l->paint_nor_blend        = smart_materials_i32(m, p, "paint_nor_blend", 1) != 0;
 		l->paint_height           = smart_materials_i32(m, p, "paint_height", 1) != 0;
 		l->paint_height_blend     = smart_materials_i32(m, p, "paint_height_blend", 1) != 0;
+		l->height_raise           = smart_materials_f32(m, p, "height_raise", 0.0);
 		l->paint_emis             = smart_materials_i32(m, p, "paint_emis", 1) != 0;
 		l->paint_subs             = smart_materials_i32(m, p, "paint_subs", 1) != 0;
 		if (slot_layer_is_mask(l)) {

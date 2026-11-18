@@ -151,6 +151,40 @@ static void make_mesh_write_masks(node_shader_t *shader, slot_layer_t *l, char *
 	}
 }
 
+// The height raise of l (slot_layer_t.height_raise, a shader constant: dragging it needs no new shader): its coverage times
+// the raise, at the texel and at each height neighbour with that neighbour's own coverage, so the edges of its strokes slope
+static void make_mesh_write_raise(node_shader_t *shader, slot_layer_t *l, char *coord) {
+	node_shader_add_constant(shader, string("float layer_raise%d", l->id), string("_layer_raise%d", l->id));
+	char *raise = string("constants.layer_raise%d", l->id);
+	char *opac  = make_mesh_opacity(shader, l);
+	bool  masks = make_mesh_layer_has_visible_mask(l);
+	node_shader_write_frag(shader, string_tmp("height += %s * texpaint_opac;", raise));
+	node_shader_write_frag(shader, "{");
+	node_shader_add_constant(shader, "vec2 texpaint_size", "_texpaint_size");
+	node_shader_write_frag(shader, "float tex_step = 1.0 / constants.texpaint_size.x;");
+	char *offsets[] = {"vec2(%s.x - tex_step, %s.y)", "vec2(%s.x + tex_step, %s.y)", "vec2(%s.x, %s.y - tex_step)", "vec2(%s.x, %s.y + tex_step)"};
+	for (i32 k = 0; k < 4; ++k) {
+		node_shader_write_frag(shader, "{");
+		char *nco_fmt = string("vec2 nco = %s;", offsets[k]);
+		node_shader_write_frag(shader, string_tmp(nco_fmt, coord, coord));
+		if (l->fill != NULL) {
+			node_shader_write_frag(shader, string_tmp("float ncov = fill%d_base_at(nco, %s, n).a;", l->id, make_mesh_fill_neighbour_wp(k)));
+		}
+		else {
+			node_shader_add_texture(shader, string_tmp("texpaint%s", i32_to_string(l->id)), NULL);
+			node_shader_write_frag(shader, string_tmp("float ncov = textureLod(sampler2D(texpaint%s, sampler_linear), nco, 0.0).a;", i32_to_string(l->id)));
+		}
+		if (masks) {
+			node_shader_write_frag(shader, "float nmask = 1.0;");
+			make_mesh_write_masks(shader, l, "nmask", "nco");
+			node_shader_write_frag(shader, "ncov *= clamp(nmask, 0.0, 1.0);");
+		}
+		node_shader_write_frag(shader, string_tmp("height%d += %s * ncov * %s;", k, raise, opac));
+		node_shader_write_frag(shader, "}");
+	}
+	node_shader_write_frag(shader, "}");
+}
+
 node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 	bool                   bake       = make_mesh_bake;
 	bool                   cached     = !bake && layer_pass == 0 && layer_cache_active();
@@ -305,6 +339,12 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		node_shader_write_frag(shader, "float texpaint_opac;");
 
 		make_fill_uses(&make_material_emis_used, &make_material_height_used); // Fill layers with emission or height
+		for (i32 i = 0; i < g_project->_->layers->length; ++i) {                 // Raised layers
+			slot_layer_t *l = g_project->_->layers->buffer[i];
+			if (slot_layer_is_layer(l) && slot_layer_is_visible(l) && l->paint_height && l->height_raise > 0.0) {
+				make_material_height_used = true;
+			}
+		}
 
 		if (make_material_height_used && cached) { // The height a texel away each way, as the cache has it
 			node_shader_add_texture(shader, "layer_cache3", NULL);
@@ -618,6 +658,9 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 					                     i32_to_string(l->id), tex_coord, tex_coord));
 					node_shader_write_frag(shader, "}");
 				}
+				if (l->paint_height && make_material_height_used && l->height_raise > 0.0) {
+					make_mesh_write_raise(shader, l, tex_coord);
+				}
 			}
 
 			if (slot_layer_get_object_mask(l) > 0) {
@@ -682,12 +725,14 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		}
 
 		if (make_material_height_used) {
-			node_shader_write_frag(shader, "if (height > 0.0) {");
+			// Everywhere a neighbour has height, also the texels just outside a bump: its slope starts there
+			node_shader_add_constant(shader, "float bump_scale", "_bump_scale");
 			node_shader_write_frag(shader, "float height_dx = height0 - height1;");
 			node_shader_write_frag(shader, "float height_dy = height2 - height3;");
+			node_shader_write_frag(shader, "if (height_dx != 0.0 || height_dy != 0.0) {");
 			// Whiteout blend
 			node_shader_write_frag(shader, "vec3 n1 = ntex * vec3(2.0, 2.0, 2.0) - vec3(1.0, 1.0, 1.0);");
-			node_shader_write_frag(shader, "vec3 n2 = normalize(vec3(height_dx * 16.0, height_dy * 16.0, 1.0));");
+			node_shader_write_frag(shader, "vec3 n2 = normalize(vec3(height_dx * constants.bump_scale, height_dy * constants.bump_scale, 1.0));");
 			node_shader_write_frag(shader, "ntex = normalize(vec3(n1.xy + n2.xy, n1.z * n2.z)) * vec3(0.5, 0.5, 0.5) + vec3(0.5, 0.5, 0.5);");
 			node_shader_write_frag(shader, "}");
 		}

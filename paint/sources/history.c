@@ -51,6 +51,8 @@ static char *history_action_to_string(history_action_t action) {
 		return tr("Layer Opacity");
 	case HISTORY_ACTION_LAYER_BLENDING:
 		return tr("Layer Blending");
+	case HISTORY_ACTION_LAYER_RAISE:
+		return tr("Layer Raise");
 	case HISTORY_ACTION_DELETE_NODE_GROUP:
 		return tr("Delete Node Group");
 	case HISTORY_ACTION_NEW_MATERIAL:
@@ -580,7 +582,7 @@ void history_undo() {
 		else if (step->action == HISTORY_ACTION_MERGE_LAYERS) {
 			history_swap_merge(step, true);
 		}
-		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
+		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_RAISE || step->action == HISTORY_ACTION_LAYER_BLENDING ||
 		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_FILL ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
@@ -721,7 +723,7 @@ void history_redo() {
 		else if (step->action == HISTORY_ACTION_MERGE_LAYERS) {
 			history_swap_merge(step, false);
 		}
-		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_BLENDING ||
+		else if (step->action == HISTORY_ACTION_LAYER_OPACITY || step->action == HISTORY_ACTION_LAYER_RAISE || step->action == HISTORY_ACTION_LAYER_BLENDING ||
 		         step->action == HISTORY_ACTION_LAYER_VISIBLE || step->action == HISTORY_ACTION_LAYER_NAME || step->action == HISTORY_ACTION_LAYER_OBJECT ||
 		         step->action == HISTORY_ACTION_LAYER_FILL ||
 		         step->action == HISTORY_ACTION_MASK_STACK) {
@@ -892,6 +894,7 @@ history_step_t *history_push(history_action_t action) {
 	                                .material       = mpos,
 	                                .brush          = bpos,
 	                                .layer_opacity  = g_context->layer->mask_opacity,
+	                                .layer_raise    = g_context->layer->height_raise,
 	                                .layer_object   = g_context->layer->object_mask,
 	                                .layer_blending = g_context->layer->blending});
 

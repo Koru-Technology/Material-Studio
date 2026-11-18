@@ -4,6 +4,7 @@ layout(set = 0, binding = 0, std140) uniform Constants {
 	layout(offset = 0) float opac;
 	layout(offset = 4) int blending;
 	layout(offset = 8) float tex1w;
+	layout(offset = 12) float raise; // Read by 108 only
 } constants;
 
 layout(set = 0, binding = 1) uniform sampler sampler_linear;
@@ -229,7 +230,10 @@ void main() {
 		vec4 col1 = textureLod(sampler2D(tex1, sampler_linear), vin.tex, 0.0);
 		{ frag_color = vec4(mix(cola.rgb, col1.rgb, str), cola.a + col1.a * str); return; }
 	}
-	if (constants.blending == 104) { // Merge _pack.height into _nor
+	if (constants.blending == 108) { // Height raise of a layer into _pack: its coverage (str) times the raise
+		{ frag_color = vec4(cola.rgb, cola.a + str * constants.raise); return; }
+	}
+	if (constants.blending == 104) { // Merge _pack.height into _nor, opac: the slope of a height difference (layers_bump_scale)
 		float tex_step = 1.0 / constants.tex1w;
 		float height0 = textureLod(sampler2D(tex1, sampler_linear), vec2(vin.tex.x - tex_step, vin.tex.y), 0.0).a;
 		float height1 = textureLod(sampler2D(tex1, sampler_linear), vec2(vin.tex.x + tex_step, vin.tex.y), 0.0).a;
@@ -239,7 +243,7 @@ void main() {
 		float height_dy = height2 - height3;
 		// Whiteout blend
 		vec3 n1 = col0.rgb * vec3(2.0, 2.0, 2.0) - vec3(1.0, 1.0, 1.0);
-		vec3 n2 = normalize(vec3(height_dx * 16.0, height_dy * 16.0, 1.0));
+		vec3 n2 = normalize(vec3(height_dx * constants.opac, height_dy * constants.opac, 1.0));
 		{ frag_color = vec4(
 			normalize(vec3(n1.xy + n2.xy, n1.z * n2.z)) * vec3(0.5, 0.5, 0.5) + vec3(0.5, 0.5, 0.5),
 			col0.a); return; }

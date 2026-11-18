@@ -37,7 +37,7 @@ void history_record_children(const u8 *data, u32 len, hstore_visit_fn visit, voi
 }
 
 // Props of a layer record (every layer_data_t field but the pixels, and uid, timeline, id), bools as i32
-#define HISTORY_RECORD_PROPS 32
+#define HISTORY_RECORD_PROPS 33
 
 static void hrec_i32(char *k, i32 v) {
 	armpack_encode_string(k);
@@ -78,6 +78,7 @@ static u32 history_record_props(slot_layer_t *l, u8 *out) {
 	hrec_i32("id", l->id);
 	hrec_i32("visible", l->visible);
 	hrec_f32("opacity_mask", l->mask_opacity);
+	hrec_f32("height_raise", l->height_raise);
 	hrec_i32("show_panel", l->show_panel);
 	hrec_i32("blending", l->blending);
 	hrec_i32("object_mask", l->object_mask);
@@ -148,6 +149,7 @@ slot_layer_t *history_record_layer(hash128_t record) {
 	l->id              = armpack_map_get_i32(m, "id");
 	l->visible         = armpack_map_get_i32(m, "visible") != 0;
 	l->mask_opacity    = armpack_map_get_f32(m, "opacity_mask");
+	l->height_raise    = armpack_map_get_f32(m, "height_raise");
 	l->show_panel      = armpack_map_get_i32(m, "show_panel") != 0;
 	l->blending        = armpack_map_get_i32(m, "blending");
 	l->object_mask     = armpack_map_get_i32(m, "object_mask");
@@ -436,6 +438,13 @@ void history_swap_layer_props(history_step_t *step) {
 		f32 t               = l->mask_opacity;
 		l->mask_opacity     = step->layer_opacity;
 		step->layer_opacity = t;
+		make_material_parse_mesh_material();
+	}
+	else if (step->action == HISTORY_ACTION_LAYER_RAISE) {
+		context_set_layer(l);
+		f32 t             = l->height_raise;
+		l->height_raise   = step->layer_raise;
+		step->layer_raise = t;
 		make_material_parse_mesh_material();
 	}
 	else if (step->action == HISTORY_ACTION_LAYER_BLENDING) {

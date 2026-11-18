@@ -715,6 +715,7 @@ void minic_register_builtins() {
 	MINIC_B(paint_nor_blend);
 	MINIC_B(paint_height);
 	MINIC_B(paint_height_blend);
+	MINIC_F(height_raise);
 	MINIC_B(paint_emis);
 	MINIC_B(paint_subs);
 	MINIC_O(mask_effects, f32_array_t);

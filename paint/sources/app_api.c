@@ -690,6 +690,7 @@ bool app_layer_delete(int32_t id) {
 typedef enum {
 	APP_DRAG_NONE,
 	APP_DRAG_OPACITY,
+	APP_DRAG_RAISE,
 	APP_DRAG_LAYER_VALUE,
 	APP_DRAG_MASK_VALUE,
 } app_drag_kind_t;
@@ -745,6 +746,41 @@ bool app_layer_set_opacity(int32_t id, float value) {
 		g_context->ddirty = 2;
 		render_path_base_redraw();
 	}
+	iron_delay_idle_sleep();
+	return true;
+}
+
+void app_layer_raise_begin(int32_t id) {
+	slot_layer_t *l = app_layer_by_id(id);
+	if (l == NULL || !slot_layer_is_layer(l)) {
+		return;
+	}
+	if (l != g_context->layer) {
+		context_set_layer(l);
+	}
+	history_layer_raise();
+	app_drag_begin(APP_DRAG_RAISE, id, 0, 0);
+}
+
+bool app_layer_set_raise(int32_t id, float value) {
+	slot_layer_t *l = app_layer_by_id(id);
+	if (l == NULL || !slot_layer_is_layer(l)) {
+		return false;
+	}
+	if (!app_dragging(APP_DRAG_RAISE, id, 0, 0)) {
+		app_layer_raise_begin(id);
+	}
+	f32  v       = math_max(0.0, math_min(1.0, value));
+	bool reshape = (l->height_raise > 0.0) != (v > 0.0); // The shader reads the raise while it is above 0
+	l->height_raise = v;
+	if (reshape) {
+		make_material_parse_mesh_material();
+	}
+	else { // A shader constant, see make_mesh_write_raise
+		g_context->ddirty = 2;
+		render_path_base_redraw();
+	}
+	g_context->rtdirty = 1; // The path tracer's flattened layers
 	iron_delay_idle_sleep();
 	return true;
 }

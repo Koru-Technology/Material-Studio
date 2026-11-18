@@ -420,6 +420,9 @@ static void export_texture_merge_layer(gpu_texture_t **acc, gpu_texture_t *temp,
 				export_texture_merge_pack(temp, export_texture_merge_pipe(f, 4), acc[2], l1->texpaint, l1->texpaint_pack, slot_layer_get_opacity(l1), mask,
 				                           l1->paint_height_blend ? 103 : 101);
 		}
+		if (l1->paint_height && l1->height_raise > 0.0) {
+			layers_raise(acc[2], temp, l1->texpaint, mask, slot_layer_get_opacity(l1), l1->height_raise);
+		}
 	}
 }
 

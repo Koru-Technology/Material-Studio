@@ -166,6 +166,16 @@ slot_layer_t *layers_merge_group(slot_layer_t *l) {
 	return children->buffer[0];
 }
 
+// The raise of l into its own height, everywhere (its paint's alpha weighs it when composited): merging bakes it
+static void layers_bake_raise(slot_layer_t *l, gpu_texture_t *temp) {
+	if (!l->paint_height || l->height_raise <= 0.0 || l->texpaint_pack == NULL) {
+		return;
+	}
+	gpu_texture_t *white = render_path_empty_white();
+	layers_raise(l->texpaint_pack, temp, white, white, 1.0, l->height_raise);
+	l->height_raise = 0.0;
+}
+
 void layers_merge_layer(slot_layer_t *l0, slot_layer_t *l1, bool use_mask) {
 	layers_make_temp_img();
 	layers_merge_layer_ex(l0, l1, use_mask, layers_temp_image);
@@ -265,6 +275,7 @@ void layers_merge_layer_ex(slot_layer_t *l0, slot_layer_t *l1, bool use_mask, gp
 		}
 
 		if (l0->texpaint_pack != NULL) {
+			layers_bake_raise(l0, temp); // The merged layer has one raise: both go into the height
 			util_copy_texture(temp, l0->texpaint_pack, layers_pipe_for(pipes_copy, temp->format));
 
 			if (l1->paint_occ || l1->paint_rough || l1->paint_met || l1->paint_height) {
@@ -286,6 +297,9 @@ void layers_merge_layer_ex(slot_layer_t *l0, slot_layer_t *l1, bool use_mask, gp
 						                           l1->paint_height_blend ? 107 : 101, temp);
 					}
 				}
+			}
+			if (l1->paint_height && l1->height_raise > 0.0) { // Weighed as l1's height was: weight.a (105)
+				layers_raise(l0->texpaint_pack, temp, weight, empty, 1.0, l1->height_raise);
 			}
 		}
 
@@ -541,29 +555,65 @@ slot_layer_t *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers
 					                           l1->paint_height_blend ? 103 : 101, layers_temp_image);
 				}
 			}
+			if (l1->paint_height && l1->height_raise > 0.0) {
+				layers_raise(layers_expc, layers_temp_image, l1->texpaint, mask, slot_layer_get_opacity(l1), l1->height_raise);
+			}
 		}
 	}
 
 	slot_layer_t *l0 = ALLOC_INIT(slot_layer_t, {.texpaint = layers_expa, .texpaint_nor = layers_expb, .texpaint_pack = layers_expc});
 
-	// Merge height map into normal map
 	if (height_to_normal && make_material_height_used) {
-		util_copy_texture(layers_temp_image, l0->texpaint_nor, layers_pipe_for(pipes_copy, layers_temp_image->format));
-
-		_gpu_begin(l0->texpaint_nor, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
-		gpu_set_pipeline(layers_pipe_for(pipes_merge, l0->texpaint_nor->format));
-		gpu_set_texture(pipes_tex0, layers_temp_image);
-		gpu_set_texture(pipes_tex1, l0->texpaint_pack);
-		gpu_set_texture(pipes_texmask, empty);
-		gpu_set_texture(pipes_texa, empty);
-		gpu_set_float(pipes_opac, 1.0);
-		gpu_set_float(pipes_tex1w, l0->texpaint_pack->width);
-		gpu_set_int(pipes_blending, 104);
-		gpu_set_vertex_buffer(const_data_screen_aligned_vb);
-		gpu_set_index_buffer(const_data_screen_aligned_ib);
-		gpu_draw();
-		gpu_end();
+		layers_height_to_normal(l0->texpaint_nor, layers_temp_image, l0->texpaint_pack, layers_bump_scale(config_get_texture_res_x()));
 	}
 
 	return l0;
+}
+
+// The normal slope a height difference across two texels makes in a texture res texels wide: a bump keeps its shape at
+// every resolution (16 per texel at 2048)
+f32 layers_bump_scale(i32 res) {
+	return res / 128.0;
+}
+
+// Adds a layer's height raise (slot_layer_t.height_raise) to the height of pack (.a): where texpaint has paint, its
+// alpha through mask at opacity, times raise. The edges of the strokes become slopes, they bulge. temp: a scratch of
+// pack's size and format.
+void layers_raise(gpu_texture_t *pack, gpu_texture_t *temp, gpu_texture_t *texpaint, gpu_texture_t *mask, f32 opacity, f32 raise) {
+	util_copy_texture(temp, pack, layers_pipe_for(pipes_copy, temp->format));
+	_gpu_begin(pack, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	gpu_set_pipeline(layers_pipe_for(pipes_get_merge_a(), pack->format));
+	gpu_set_texture(pipes_tex0, texpaint);
+	gpu_set_texture(pipes_tex1, render_path_empty_white());
+	gpu_set_texture(pipes_texmask, mask);
+	gpu_set_texture(pipes_texa, temp);
+	gpu_set_float(pipes_opac, opacity);
+	gpu_set_float(pipes_tex1w, pack->width);
+	gpu_set_float(pipes_raise, raise);
+	gpu_set_int(pipes_blending, 108);
+	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+	gpu_set_index_buffer(const_data_screen_aligned_ib);
+	gpu_draw();
+	gpu_end();
+}
+
+// Folds the height of pack (.a) into the normals of nor, whiteout blended, slopes times scale (layers_bump_scale). temp:
+// a scratch of nor's size and format.
+void layers_height_to_normal(gpu_texture_t *nor, gpu_texture_t *temp, gpu_texture_t *pack, f32 scale) {
+	gpu_texture_t *empty = render_path_empty_white();
+	util_copy_texture(temp, nor, layers_pipe_for(pipes_copy, temp->format));
+
+	_gpu_begin(nor, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+	gpu_set_pipeline(layers_pipe_for(pipes_merge, nor->format));
+	gpu_set_texture(pipes_tex0, temp);
+	gpu_set_texture(pipes_tex1, pack);
+	gpu_set_texture(pipes_texmask, empty);
+	gpu_set_texture(pipes_texa, empty);
+	gpu_set_float(pipes_opac, scale);
+	gpu_set_float(pipes_tex1w, pack->width);
+	gpu_set_int(pipes_blending, 104);
+	gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+	gpu_set_index_buffer(const_data_screen_aligned_ib);
+	gpu_draw();
+	gpu_end();
 }

@@ -248,6 +248,7 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .paint_nor_blend    = l->paint_nor_blend,
 		                              .paint_height       = l->paint_height,
 		                              .paint_height_blend = l->paint_height_blend,
+		                              .height_raise       = l->height_raise,
 		                              .paint_emis         = l->paint_emis,
 		                              .paint_subs         = l->paint_subs,
 		                              .path_points        = l->path_points,

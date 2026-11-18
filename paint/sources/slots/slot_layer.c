@@ -354,6 +354,7 @@ static slot_layer_t *slot_layer_copy(slot_layer_t *raw) {
 	l->paint_nor_blend    = raw->paint_nor_blend;
 	l->paint_height       = raw->paint_height;
 	l->paint_height_blend = raw->paint_height_blend;
+	l->height_raise       = raw->height_raise;
 	l->paint_emis         = raw->paint_emis;
 	l->paint_subs         = raw->paint_subs;
 

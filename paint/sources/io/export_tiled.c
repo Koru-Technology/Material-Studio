@@ -80,6 +80,7 @@ static struct {
 	i32                  bpp; // Bytes a texel of a composite
 	gpu_texture_format_t format;
 	bool                 padding;
+	bool                 height;          // A layer paints height: it goes into the normals (layers_height_to_normal)
 	bool                 need_cov;        // The tile's uv coverage: padding, fill dilation
 	slot_layer_t       **blur_masks;      // Blurred results of blur effects (mask_stack_blur_prefix), for the whole export
 	i32                 *blur_index;
@@ -859,6 +860,9 @@ static bool export_tiled_render_tile(export_tiled_job_t *job, export_tiled_tile_
 
 	et.tile_stage = 0;
 	u8 *reach     = NULL;
+	if (et.height) {
+		layers_height_to_normal(et_acc[1], et_temp, et_acc[2], layers_bump_scale(et.w));
+	}
 	if (et.padding) {
 		for (i32 k = 0; k < 3; ++k) {
 			export_tiled_copy(et_temp, et_acc[k]);
@@ -1144,6 +1148,12 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	et.halo     = reach > et.halo ? reach : et.halo;
 	reach       = gens ? (i32)math_ceil(1.25 * 8) + 2 : 0; // Generators dilate up to 8 texels (util_mask_generators.c)
 	et.halo     = reach > et.halo ? reach : et.halo;
+	et.height   = false;
+	for (i32 i = 0; i < job->layers->length; ++i) {
+		slot_layer_t *l = job->layers->buffer[i];
+		et.height       = et.height || (slot_layer_is_layer(l) && l->paint_height && (make_material_height_used || l->height_raise > 0.0));
+	}
+	et.halo = et.height && et.halo < 2 ? 2 : et.halo; // The normals read the height a texel around
 	et.need_cov = et.padding || fills;
 	if (et.need_cov) {
 		util_uv_cache_dilate_map();

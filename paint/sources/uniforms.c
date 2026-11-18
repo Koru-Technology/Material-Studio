@@ -133,6 +133,16 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 		}
 		return 1.0;
 	}
+	if (starts_with(link, "_layer_raise")) { // _layer_raise<layer id>, see make_mesh_write_raise
+		i32 id = atoi(link + 12);
+		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+			slot_layer_t *l = g_project->_->layers->buffer[i];
+			if (l->id == id) {
+				return l->height_raise;
+			}
+		}
+		return 0.0;
+	}
 	if (string_equals(link, "_brush_radius")) {
 		return uniforms_brush_radius();
 	}
@@ -191,6 +201,9 @@ f32 uniforms_ext_f32_link(object_t *object, shader_data_t *mat, char *link) {
 	}
 	else if (string_equals(link, "_mask_value")) {
 		return g_context->mask_value;
+	}
+	else if (string_equals(link, "_bump_scale")) {
+		return layers_bump_scale(config_get_texture_res_x());
 	}
 	else if (string_equals(link, "_atlas_stride")) {
 		return util_mesh_udim_active() ? util_mesh_atlas_stride() : 1.0;

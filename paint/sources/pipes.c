@@ -94,6 +94,7 @@ void pipes_init() {
 	pipes_opac     = pipes_get_constant_location("float");
 	pipes_blending = pipes_get_constant_location("int");
 	pipes_tex1w    = pipes_get_constant_location("float");
+	pipes_raise    = pipes_get_constant_location("float");
 
 	pipes_copy = pipes_create("layer_copy", PIPES_LAYOUT_POS_TEX_COL);
 	gpu_pipeline_compile(pipes_copy);

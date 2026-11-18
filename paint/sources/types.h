@@ -239,6 +239,7 @@ typedef struct slot_layer {
 	bool                  paint_nor_blend;
 	bool                  paint_height;
 	bool                  paint_height_blend;
+	f32                   height_raise; // Height added where the layer has paint, times its coverage: strokes bulge (layers_raise)
 	bool                  paint_emis;
 	bool                  paint_subs;
 	mat4_t                decal_mat; // Decal layer
@@ -760,6 +761,7 @@ typedef struct history_step {
 	i32                          material;
 	i32                          brush;
 	f32                          layer_opacity;
+	f32                          layer_raise;
 	i32                          layer_object;
 	i32                          layer_blending;
 	i32                          prev_order; // Previous layer position
@@ -925,6 +927,7 @@ typedef struct layer_data {
 	bool              paint_nor_blend;
 	bool              paint_height;
 	bool              paint_height_blend;
+	f32               height_raise;
 	bool              paint_emis;
 	bool              paint_subs;
 	i32               uv_map;

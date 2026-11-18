@@ -1286,6 +1286,9 @@ gpu_texture_t *layers_height_below(slot_layer_t *l);
 slot_layer_t  *layers_udim_remap(slot_layer_t *l, gpu_texture_t **mask, i32 slot, bool to_tile);
 i32            layers_udim_tile_slot(slot_layer_t *l);
 slot_layer_t  *layers_flatten(bool height_to_normal, slot_layer_t_array_t *layers);
+f32            layers_bump_scale(i32 res);
+void           layers_raise(gpu_texture_t *pack, gpu_texture_t *temp, gpu_texture_t *texpaint, gpu_texture_t *mask, f32 opacity, f32 raise);
+void           layers_height_to_normal(gpu_texture_t *nor, gpu_texture_t *temp, gpu_texture_t *pack, f32 scale);
 
 // ---- util/util_mask_stack.c ----
 mask_effect_param_t *mask_effect_params(i32 type, i32 *count);
@@ -1897,6 +1900,7 @@ void            history_to_fill_layer();
 void            history_to_paint_layer();
 void            history_to_paint_mask();
 void            history_layer_opacity();
+void            history_layer_raise();
 void            history_layer_blending();
 void            history_layer_visible(slot_layer_t *l);
 void            history_layer_name(slot_layer_t *l, char *prev_name);

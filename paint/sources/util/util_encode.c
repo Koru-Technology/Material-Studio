@@ -136,6 +136,7 @@ static const armpack_field_t util_layer_data_fields[] = {
     ARMPACK_FIELD(layer_data_t, paint_nor_blend, ARMPACK_BOOL, .def = 1),
     ARMPACK_FIELD(layer_data_t, paint_height, ARMPACK_BOOL, .def = 1),
     ARMPACK_FIELD(layer_data_t, paint_height_blend, ARMPACK_BOOL, .def = 1),
+    ARMPACK_FIELD(layer_data_t, height_raise, ARMPACK_F32),
     ARMPACK_FIELD(layer_data_t, paint_emis, ARMPACK_BOOL, .def = 1),
     ARMPACK_FIELD(layer_data_t, paint_subs, ARMPACK_BOOL, .def = 1),
     ARMPACK_FIELD(layer_data_t, uv_map, ARMPACK_I32),

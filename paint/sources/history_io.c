@@ -146,7 +146,7 @@ static void hio_swatch(swatch_color_t *s, f32 *out) {
 	memcpy(out, v, sizeof(v));
 }
 
-#define HISTORY_IO_STEP_KEYS 44
+#define HISTORY_IO_STEP_KEYS 45
 
 static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	armpack_encode_map(HISTORY_IO_STEP_KEYS);
@@ -159,6 +159,7 @@ static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	hio_i32("material", s->material);
 	hio_i32("brush", s->brush);
 	hio_f32("layer_opacity", s->layer_opacity);
+	hio_f32("layer_raise", s->layer_raise);
 	hio_i32("layer_object", s->layer_object);
 	hio_i32("layer_blending", s->layer_blending);
 	hio_i32("prev_order", s->prev_order);
@@ -343,6 +344,7 @@ static history_step_t *history_io_decode_step(any_map_t *m) {
 	s->material       = armpack_map_get_i32(m, "material");
 	s->brush          = armpack_map_get_i32(m, "brush");
 	s->layer_opacity  = armpack_map_get_f32(m, "layer_opacity");
+	s->layer_raise    = armpack_map_get_f32(m, "layer_raise");
 	s->layer_object   = armpack_map_get_i32(m, "layer_object");
 	s->layer_blending = armpack_map_get_i32(m, "layer_blending");
 	s->prev_order     = armpack_map_get_i32(m, "prev_order");

@@ -342,6 +342,7 @@ i32             pipes_texa;
 i32             pipes_opac;
 i32             pipes_blending;
 i32             pipes_tex1w;
+i32             pipes_raise;
 i32             pipes_tex0_mask;
 i32             pipes_texa_mask;
 i32             pipes_opac_apply_mask;

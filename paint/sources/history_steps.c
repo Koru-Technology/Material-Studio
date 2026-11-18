@@ -180,6 +180,10 @@ void history_layer_opacity() {
 	history_push(HISTORY_ACTION_LAYER_OPACITY);
 }
 
+void history_layer_raise() {
+	history_push(HISTORY_ACTION_LAYER_RAISE);
+}
+
 void history_layer_blending() {
 	history_push(HISTORY_ACTION_LAYER_BLENDING);
 }

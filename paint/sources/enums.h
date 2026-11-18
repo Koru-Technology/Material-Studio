@@ -683,6 +683,7 @@ typedef enum {
 	HISTORY_ACTION_PATH,       // Points of a path layer added, removed or moved (util/util_path.c)
 	HISTORY_ACTION_CLEAR_PAINT, // A mask's paint to black
 	HISTORY_ACTION_FILL_PAINT,  // A mask's paint to white
+	HISTORY_ACTION_LAYER_RAISE, // A layer's height raise (slot_layer_t.height_raise)
 } history_action_t;
 
 // Rounded corners of floating panels

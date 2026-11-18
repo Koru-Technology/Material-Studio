@@ -49,6 +49,8 @@ typedef struct tl_merge_params {
 	u8  paint[8]; // base nor nor_blend occ rough met height height_blend
 	u8  linear;   // The project's linear blending
 	u8  pad[2];
+	f32 raise_below; // Height raises (slot_layer_t.height_raise) of both, baked by the merge. Entries made before the
+	f32 raise;       // raises end here: they replay with none.
 } tl_merge_params_t;
 
 typedef struct tl_params {
@@ -200,7 +202,7 @@ void timeline_record_merge(slot_layer_t *l0, slot_layer_t *l1) {
 	bool              plain = slot_layer_is_layer(l0) && slot_layer_is_layer(l1) && !slot_layer_is_filter(l1) && !slot_layer_has_masks(l0, false) &&
 	                          !slot_layer_has_masks(l1, false);
 	tl_merge_params_t p     = {.opacity_below = l0->mask_opacity, .opacity = l1->mask_opacity, .blending = l1->blending, .visible = l1->visible,
-	                           .linear = g_project->linear_blending};
+	                           .linear = g_project->linear_blending, .raise_below = l0->paint_height ? l0->height_raise : 0.0, .raise = l1->height_raise};
 	bool              f[8]  = {l1->paint_base, l1->paint_nor, l1->paint_nor_blend, l1->paint_occ, l1->paint_rough, l1->paint_met, l1->paint_height, l1->paint_height_blend};
 	for (i32 i = 0; i < 8; ++i) {
 		p.paint[i] = f[i];
@@ -376,7 +378,7 @@ bool timeline_ops_replays(timeline_t *tl, i32 index) {
 	case TL_APPLY_MASK:
 		return tl_ops_params_ok(e, sizeof(f32), 0) && timeline_find(e->src_tl) != NULL;
 	case TL_MERGE:
-		return tl_ops_params_ok(e, sizeof(tl_merge_params_t), 0) && timeline_find(e->src_tl) != NULL;
+		return tl_ops_params_ok(e, offsetof(tl_merge_params_t, raise_below), 0) && timeline_find(e->src_tl) != NULL;
 	default:
 		return false;
 	}
@@ -638,16 +640,17 @@ static bool tl_ops_replay_merge(tl_entry_t *e, tl_params_t *p, paint_target_t *t
 	if (t->channels != 3 || !tl_ops_src_materialize(e, t, 3, &s)) {
 		return false;
 	}
-	tl_merge_params_t mp;
-	memcpy(&mp, p->body, sizeof(mp));
+	tl_merge_params_t mp = {0};
+	memcpy(&mp, p->body, p->len < sizeof(mp) ? p->len : sizeof(mp));
 	draw_saved_t saved = draw_suspend();
 	util_texture_ensure_target(&tl_ops_temp, t->w, t->h, t->out[0]->format);
 	if (mp.opacity_below < 1.0) { // layers_bake_opacity
 		layers_apply_mask_pass(t->out[0], tl_ops_temp, render_path_empty_black(), 1.0 - mp.opacity_below);
 	}
-	slot_layer_t l0 = {.texpaint = t->out[0], .texpaint_nor = t->out[1], .texpaint_pack = t->out[2], .visible = true, .mask_opacity = 1.0};
+	slot_layer_t l0 = {.texpaint = t->out[0], .texpaint_nor = t->out[1], .texpaint_pack = t->out[2], .visible = true, .mask_opacity = 1.0,
+	                   .paint_height = true, .height_raise = mp.raise_below};
 	slot_layer_t l1 = {.texpaint = s.out[0], .texpaint_nor = s.out[1], .texpaint_pack = s.out[2], .visible = mp.visible, .mask_opacity = mp.opacity,
-	                   .blending = mp.blending};
+	                   .blending = mp.blending, .height_raise = mp.raise};
 	bool *f[8] = {&l1.paint_base, &l1.paint_nor, &l1.paint_nor_blend, &l1.paint_occ, &l1.paint_rough, &l1.paint_met, &l1.paint_height, &l1.paint_height_blend};
 	for (i32 i = 0; i < 8; ++i) {
 		*f[i] = mp.paint[i] != 0;
