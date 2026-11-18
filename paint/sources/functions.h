@@ -787,6 +787,8 @@ void                  render_path_paint_draw();
 void                  render_path_paint_bind_layers();
 void                  render_path_paint_unbind_layers();
 void                  render_path_paint_live_layer_used();
+void                  render_path_paint_live_layer_copy();
+bool                  render_path_paint_live_shown();
 void                  render_path_paint_live_layer_release_idle();
 void                  render_path_paint_dilate_after_paint();
 void                  render_path_paint_dilate(bool base, bool nor_pack);
@@ -825,6 +827,7 @@ void render_path_paint_filter_apply(render_path_paint_filter_t *f, f32 *x, f32 *
 f32  render_path_paint_spacing();
 bool render_path_paint_stamps();
 void render_path_paint_tail_flush();
+void render_path_paint_tail_drop();
 void render_path_paint_stroke_end();
 void render_path_paint_commands_stamps();
 bool render_path_paint_use_samples();
@@ -1444,6 +1447,26 @@ void   util_layer_add_path_point(slot_layer_t *l, f32 screen_x, f32 screen_y);
 void   util_layer_repaint_path(slot_layer_t *l);
 void   util_layer_check_path_grab();
 void   util_layer_update_path();
+bool   util_project_to_screen(vec4_t wpos, f32 *sx, f32 *sy);
+void   util_camera_get(f32 *c);
+void   util_camera_set(const f32 *c);
+
+// ---- util/util_curve_stroke.c ----
+bool util_curve_stroke_active();
+i32  util_curve_stroke_count();
+bool util_curve_stroke_previewing();
+void util_curve_stroke_capture_begin();
+void util_curve_stroke_capture_end();
+bool util_curve_stroke_capture();
+bool util_curve_stroke_touch(bool started);
+void util_curve_stroke_render();
+void util_curve_stroke_confirm();
+void util_curve_stroke_discard();
+bool util_curve_stroke_point(i32 i, f32 *x, f32 *y);
+void util_curve_stroke_move(i32 i, f32 x, f32 y);
+void util_curve_stroke_update();
+bool util_curve_stroke_test_hold(f32_array_t *xyp);
+f32  util_curve_stroke_test_point(i32 i, i32 axis);
 
 // ---- util/util_primitives.c ----
 raw_mesh_t  *geom_make_plane(f32 size_x, f32 size_y, i32 verts_x, i32 verts_y, f32 uv_scale);

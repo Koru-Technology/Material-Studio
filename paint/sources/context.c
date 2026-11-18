@@ -226,6 +226,7 @@ void context_set_layer(slot_layer_t *l) {
 	if (l == g_context->layer) {
 		return;
 	}
+	util_curve_stroke_confirm(); // A curve being edited paints on its layer first
 	g_context->layer          = l;
 	g_context->mask_effect    = -1; // Effect rows belong to the previous mask
 	draw_saved_t saved_draw = draw_suspend();
@@ -258,6 +259,9 @@ void context_parse_mesh_material() {
 void context_select_tool(i32 i) {
 	if (!(i >= 0 && i <= TOOL_TYPE_INPAINT)) {
 		return;
+	}
+	if (i != g_context->tool) {
+		util_curve_stroke_confirm(); // Painted with the tool it was drawn with
 	}
 	i32 old         = g_context->tool;
 	g_context->tool = i;

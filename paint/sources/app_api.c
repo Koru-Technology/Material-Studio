@@ -99,7 +99,7 @@ void app_get_state(app_state_t *out) {
 	out->brush_radius      = g_context->brush_radius;
 	out->brush_opacity     = g_context->brush_opacity;
 	out->brush_hardness    = g_context->brush_hardness;
-	out->undos             = history_undos;
+	out->undos             = history_undos + (util_curve_stroke_active() ? 1 : 0); // Undo drops a curve being edited
 	out->redos             = history_redos;
 	out->selected_layer_id = g_context->layer != NULL ? g_context->layer->id : -1;
 	out->layers_signature  = app_layers_signature();
@@ -120,6 +120,8 @@ void app_get_state(app_state_t *out) {
 	out->camera_type     = g_context->camera_type;
 	out->projects_shown  = box_projects_native_shown;
 	out->finger_paint    = g_config->finger_paint;
+	out->curve_editing     = util_curve_stroke_active();
+	out->curve_point_count = util_curve_stroke_count();
 	uint32_t h           = 2166136261u;
 	for (i32 i = 0; i < g_config->recent_projects->length; ++i) {
 		h = app_hash_str(h, g_config->recent_projects->buffer[i]);
@@ -622,6 +624,34 @@ void app_redo(void) {
 		return;
 	}
 	history_user_redo();
+	iron_delay_idle_sleep();
+}
+
+// Curve strokes
+
+bool app_curve_point(int32_t index, float *x, float *y) {
+	f32 px, py;
+	if (!app_ready() || !util_curve_stroke_point(index, &px, &py) || px < 0.0 || px > 1.0 || py < 0.0 || py > 1.0) {
+		return false;
+	}
+	*x = base_paint_screen_x(px);
+	*y = base_paint_screen_y(py);
+	return true;
+}
+
+void app_curve_move(int32_t index, float x, float y) {
+	if (!app_ready()) {
+		return;
+	}
+	util_curve_stroke_move(index, base_paint_x(x), base_paint_y(y));
+	iron_delay_idle_sleep();
+}
+
+void app_curve_confirm(void) {
+	if (!app_ready()) {
+		return;
+	}
+	util_curve_stroke_confirm();
 	iron_delay_idle_sleep();
 }
 

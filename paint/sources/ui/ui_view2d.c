@@ -406,7 +406,7 @@ void ui_view2d_update(void *_) {
 		else if (ui_view2d_type == VIEW_2D_TYPE_LAYER) {
 			slot_layer_t *layer = l;
 
-			if (g_config->brush_live && render_path_paint_live_layer_drawn > 0) {
+			if (render_path_paint_live_shown()) {
 				layer = render_path_paint_live_layer;
 			}
 

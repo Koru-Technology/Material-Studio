@@ -197,6 +197,7 @@
 #include "util/util_nodes.c"
 #include "util/util_particle.c"
 #include "util/util_path.c"
+#include "util/util_curve_stroke.c"
 #include "util/util_primitives.c"
 #include "util/util_raycast.c"
 #include "util/util_render.c"

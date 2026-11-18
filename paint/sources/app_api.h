@@ -37,6 +37,8 @@ typedef struct {
 	bool     projects_shown;     // iPad: the projects screen is up, the native UI shows it
 	uint32_t projects_signature; // The recent projects list
 	int32_t  finger_paint;       // 0 auto (fingers paint until the pencil is used), 1 always, 2 never
+	bool     curve_editing;      // A stroke held still became a curve: its points (app_curve_point) and Confirm show
+	int32_t  curve_point_count;
 } app_state_t;
 
 void app_get_state(app_state_t *out);
@@ -162,6 +164,12 @@ app_history_notice_t app_history_notice(void);
 void        app_undo(void); // Returns at once: layers to restore from history follow over the next frames
 void        app_redo(void);
 bool        app_history_busy(void); // Undo or redo still restores layers, the counts are already the new ones
+
+// A brush stroke held still for a second at its end becomes a curve (util_curve_stroke.c): its points can be dragged,
+// Confirm (or a new touch on the canvas) paints it as a stroke, undo drops it. Positions in canvas pixels.
+bool app_curve_point(int32_t index, float *x, float *y); // Through the current camera, false behind it or off the view
+void app_curve_move(int32_t index, float x, float y);    // To the surface under it, off the mesh it stays
+void app_curve_confirm(void);
 
 // Layers, listed top of the stack first (the order the layers panel shows)
 typedef enum {

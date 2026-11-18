@@ -227,6 +227,7 @@ void project_save_now() {
 }
 
 void project_save(bool save_and_quit) {
+	util_curve_stroke_confirm(); // A curve being edited is in the file
 	if (string_equals(g_project->_->filepath, "") && !project_set_default_path()) {
 		project_save_as(save_and_quit);
 		return;
@@ -307,6 +308,7 @@ void project_save_as(bool save_and_quit) {
 }
 
 void project_cleanup() {
+	util_curve_stroke_discard();
 	util_mesh_remove_merged();
 
 	if (g_project->_->paint_objects != NULL) {

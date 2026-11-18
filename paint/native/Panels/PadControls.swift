@@ -34,6 +34,14 @@ struct PadControls: View {
 					PadViewControls()
 				}
 			}
+			VStack {
+				Spacer()
+				if CurveStore.shared.editing { // A stroke held into a curve
+					CurveConfirmButton()
+						.transition(.opacity)
+				}
+			}
+			.animation(.easeOut(duration: 0.15), value: CurveStore.shared.editing)
 		}
 		.padding(16)
 		.padPanelHost()

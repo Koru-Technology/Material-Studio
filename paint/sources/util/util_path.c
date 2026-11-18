@@ -24,7 +24,8 @@ static void path_destroy_spheres() {
 	path_point_sphere_count = 0;
 }
 
-static bool project_to_screen(vec4_t wpos, f32 *sx, f32 *sy) {
+// World position to 0-1 of the 3D view through the current camera, false behind it
+bool util_project_to_screen(vec4_t wpos, f32 *sx, f32 *sy) {
 	vec4_t clip = vec4_apply_mat4(wpos, scene_camera->vp);
 	if (clip.w > 0.0f) {
 		*sx = (clip.x / clip.w + 1.0f) * 0.5f;
@@ -114,7 +115,7 @@ f32 util_layer_brush_screen_radius() {
 	vec4_t right = camera_object_right_world(scene_camera);
 	vec4_t e_w   = vec4_add(c_w, vec4_mult(right, r_world));
 	f32    cx, cy, ex, ey;
-	if (!project_to_screen(c_w, &cx, &cy) || !project_to_screen(e_w, &ex, &ey)) {
+	if (!util_project_to_screen(c_w, &cx, &cy) || !util_project_to_screen(e_w, &ex, &ey)) {
 		return r_world;
 	}
 	f32 aspect = base_window_aspect();
@@ -123,18 +124,28 @@ f32 util_layer_brush_screen_radius() {
 	return sqrtf(dx * dx + dy * dy);
 }
 
-static void path_push_camera(f32_array_t *ar) {
+// The camera as 9 floats: location xyzw, rotation xyzw, aspect
+void util_camera_get(f32 *c) {
 	vec4_t loc = scene_camera->base->transform->loc;
 	quat_t rot = scene_camera->base->transform->rot;
-	f32_array_push(ar, loc.x);
-	f32_array_push(ar, loc.y);
-	f32_array_push(ar, loc.z);
-	f32_array_push(ar, loc.w);
-	f32_array_push(ar, rot.x);
-	f32_array_push(ar, rot.y);
-	f32_array_push(ar, rot.z);
-	f32_array_push(ar, rot.w);
-	f32_array_push(ar, base_window_aspect());
+	f32    v[9] = {loc.x, loc.y, loc.z, loc.w, rot.x, rot.y, rot.z, rot.w, base_window_aspect()};
+	memcpy(c, v, sizeof(v));
+}
+
+// The camera util_camera_get gave, its matrices built (the gbuffer is not drawn again)
+void util_camera_set(const f32 *c) {
+	scene_camera->base->transform->loc = (vec4_t){c[0], c[1], c[2], c[3]};
+	scene_camera->base->transform->rot = (quat_t){c[4], c[5], c[6], c[7]};
+	camera_object_build_proj(scene_camera, c[8]);
+	camera_object_build_mat(scene_camera);
+}
+
+static void path_push_camera(f32_array_t *ar) {
+	f32 c[9];
+	util_camera_get(c);
+	for (i32 i = 0; i < 9; ++i) {
+		f32_array_push(ar, c[i]);
+	}
 }
 
 // Camera last applied by path_set_camera during the current repaint
@@ -148,13 +159,8 @@ static void path_set_camera(f32_array_t *points_camera, i32 num_camera, i32 ci) 
 			return;
 		}
 		memcpy(path_camera_applied_values, &points_camera->buffer[ci * 9], sizeof(path_camera_applied_values));
-		path_camera_applied                = true;
-		scene_camera->base->transform->loc = (vec4_t){points_camera->buffer[ci * 9 + 0], points_camera->buffer[ci * 9 + 1], points_camera->buffer[ci * 9 + 2],
-		                                              points_camera->buffer[ci * 9 + 3]};
-		scene_camera->base->transform->rot = (quat_t){points_camera->buffer[ci * 9 + 4], points_camera->buffer[ci * 9 + 5], points_camera->buffer[ci * 9 + 6],
-		                                              points_camera->buffer[ci * 9 + 7]};
-		camera_object_build_proj(scene_camera, points_camera->buffer[ci * 9 + 8]);
-		camera_object_build_mat(scene_camera);
+		path_camera_applied = true;
+		util_camera_set(&points_camera->buffer[ci * 9]);
 		render_path_base_draw_gbuffer();
 	}
 }
@@ -183,7 +189,7 @@ static void path_flat_samples(f32 wx0, f32 wy0, f32 wz0, f32 wcx, f32 wcy, f32 w
 		f32    t = s / 17.0f;
 		vec4_t p = (vec4_t){bezier_eval(wx0, wcx, wx1, t), bezier_eval(wy0, wcy, wy1, t), bezier_eval(wz0, wcz, wz1, t), 1.0f};
 		keep[s]  = true;
-		ok       = project_to_screen(p, &sx[s], &sy[s]) && ok;
+		ok       = util_project_to_screen(p, &sx[s], &sy[s]) && ok;
 		sx[s] *= sys_w();
 		sy[s] *= sys_h();
 		sl[s] = s == 0 ? 0.0f : sl[s - 1] + vec4_dist(p, prev);
@@ -264,7 +270,7 @@ static void path_paint_curved(f32_array_t *points, f32_array_t *points_world, f3
 		// Restore the start anchor camera and re-project its position as prev
 		if (p < num_camera) {
 			path_set_camera(points_camera, num_camera, p);
-			project_to_screen((vec4_t){wx0, wy0, wz0, 1.0f}, &prev_px, &prev_py);
+			util_project_to_screen((vec4_t){wx0, wy0, wz0, 1.0f}, &prev_px, &prev_py);
 		}
 
 		bool have_j                 = j < num_camera;
@@ -305,7 +311,7 @@ static void path_paint_curved(f32_array_t *points, f32_array_t *points_world, f3
 				f32 bwz = sbz[k - 1] + a * (sbz[k] - sbz[k - 1]);
 				if (s == n && have_j) {
 					path_set_camera(points_camera, num_camera, j);
-					project_to_screen((vec4_t){prev_bwx, prev_bwy, prev_bwz, 1.0f}, &prev_px, &prev_py);
+					util_project_to_screen((vec4_t){prev_bwx, prev_bwy, prev_bwz, 1.0f}, &prev_px, &prev_py);
 					g_context->prev_paint_vec_x = prev_px;
 					g_context->prev_paint_vec_y = prev_py;
 				}
@@ -313,7 +319,7 @@ static void path_paint_curved(f32_array_t *points, f32_array_t *points_world, f3
 				vec4_t w  = (vec4_t){bwx, bwy, bwz, 0.0f};
 				f32    sg = slen[32] > 0.0f ? s0 + (s1 - s0) * tgt / slen[32] : s1;
 				path_segment_set(w, sg, w, sg);
-				project_to_screen((vec4_t){bwx, bwy, bwz, 1.0f}, &bx, &by);
+				util_project_to_screen((vec4_t){bwx, bwy, bwz, 1.0f}, &bx, &by);
 				path_paint(bx, by, &prev_px, &prev_py, sphere_mode);
 				prev_bwx = bwx;
 				prev_bwy = bwy;
@@ -341,7 +347,7 @@ static void path_paint_curved(f32_array_t *points, f32_array_t *points_world, f3
 					path_set_camera(points_camera, num_camera, j);
 					// Re-project the previous world pos from the new camera so that
 					// last_paint_vec and paint_vec are in the same screen space
-					project_to_screen((vec4_t){prev_bwx, prev_bwy, prev_bwz, 1.0f}, &prev_px, &prev_py);
+					util_project_to_screen((vec4_t){prev_bwx, prev_bwy, prev_bwz, 1.0f}, &prev_px, &prev_py);
 					g_context->prev_paint_vec_x = prev_px;
 					g_context->prev_paint_vec_y = prev_py;
 				}
@@ -349,7 +355,7 @@ static void path_paint_curved(f32_array_t *points, f32_array_t *points_world, f3
 				f32 sa = warc[17] > 0.0f ? s0 + (s1 - s0) * warc[prev_s] / warc[17] : s0;
 				f32 sb = warc[17] > 0.0f ? s0 + (s1 - s0) * warc[s] / warc[17] : s1;
 				path_segment_set((vec4_t){prev_bwx, prev_bwy, prev_bwz, 0.0f}, sa, (vec4_t){bwx, bwy, bwz, 0.0f}, sb);
-				project_to_screen((vec4_t){bwx, bwy, bwz, 1.0f}, &bx, &by);
+				util_project_to_screen((vec4_t){bwx, bwy, bwz, 1.0f}, &bx, &by);
 				path_paint(bx, by, &prev_px, &prev_py, sphere_mode);
 				prev_bwx = bwx;
 				prev_bwy = bwy;
@@ -388,7 +394,7 @@ static void path_paint_straight(f32_array_t *points, f32_array_t *points_world, 
 			f32 cwy = points_world->buffer[i * 3 + 1];
 			f32 cwz = points_world->buffer[i * 3 + 2];
 			f32 ppx = cur_px, ppy = cur_py;
-			project_to_screen((vec4_t){pwx, pwy, pwz, 1.0f}, &ppx, &ppy);
+			util_project_to_screen((vec4_t){pwx, pwy, pwz, 1.0f}, &ppx, &ppy);
 			prev_px                     = ppx;
 			prev_py                     = ppy;
 			f32 dx                      = cwx - pwx;
@@ -405,7 +411,7 @@ static void path_paint_straight(f32_array_t *points, f32_array_t *points_world, 
 				f32 iwy = pwy + t * (cwy - pwy);
 				f32 iwz = pwz + t * (cwz - pwz);
 				f32 ix = 0.0f, iy = 0.0f;
-				if (project_to_screen((vec4_t){iwx, iwy, iwz, 1.0f}, &ix, &iy)) {
+				if (util_project_to_screen((vec4_t){iwx, iwy, iwz, 1.0f}, &ix, &iy)) {
 					vec4_t w  = vec4_add(wpar, vec4_mult(vec4_sub(wcur, wpar), t));
 					f32    sg = spar + t * (sl[i] - spar);
 					path_segment_set(w, sg, w, sg);
@@ -418,7 +424,7 @@ static void path_paint_straight(f32_array_t *points, f32_array_t *points_world, 
 				f32 pwx = points_world->buffer[parent * 3];
 				f32 pwy = points_world->buffer[parent * 3 + 1];
 				f32 pwz = points_world->buffer[parent * 3 + 2];
-				project_to_screen((vec4_t){pwx, pwy, pwz, 1.0f}, &prev_px, &prev_py);
+				util_project_to_screen((vec4_t){pwx, pwy, pwz, 1.0f}, &prev_px, &prev_py);
 			}
 			path_segment_set(wpar, spar, wcur, sl[i]);
 			path_paint(cur_px, cur_py, &prev_px, &prev_py, sphere_mode);
@@ -556,15 +562,15 @@ static void path_paint_text(slot_layer_t *l) {
 			}
 
 			f32 px, py;
-			if (!project_to_screen((vec4_t){wx, wy, wz, 1.0f}, &px, &py)) {
+			if (!util_project_to_screen((vec4_t){wx, wy, wz, 1.0f}, &px, &py)) {
 				continue;
 			}
 
 			// Rotate the letter
 			f32 ax, ay, bx, by;
 			f32 angle = 0.0f;
-			if (project_to_screen((vec4_t){spos->buffer[(k - 1) * 3], spos->buffer[(k - 1) * 3 + 1], spos->buffer[(k - 1) * 3 + 2], 1.0f}, &ax, &ay) &&
-			    project_to_screen((vec4_t){spos->buffer[k * 3], spos->buffer[k * 3 + 1], spos->buffer[k * 3 + 2], 1.0f}, &bx, &by)) {
+			if (util_project_to_screen((vec4_t){spos->buffer[(k - 1) * 3], spos->buffer[(k - 1) * 3 + 1], spos->buffer[(k - 1) * 3 + 2], 1.0f}, &ax, &ay) &&
+			    util_project_to_screen((vec4_t){spos->buffer[k * 3], spos->buffer[k * 3 + 1], spos->buffer[k * 3 + 2], 1.0f}, &bx, &by)) {
 				angle = -atan2f(-(by - ay), (bx - ax) * aspect) * (180.0f / math_pi());
 			}
 
@@ -898,17 +904,7 @@ static void path_point_move(slot_layer_t *l, i32 idx, f32 new_x, f32 new_y) {
 		points_world->buffer[idx * 3 + 1] = g_context->posy_picked;
 		points_world->buffer[idx * 3 + 2] = g_context->posz_picked;
 		if (points_camera->length >= (idx + 1) * 9) {
-			vec4_t loc                         = scene_camera->base->transform->loc;
-			quat_t rot                         = scene_camera->base->transform->rot;
-			points_camera->buffer[idx * 9 + 0] = loc.x;
-			points_camera->buffer[idx * 9 + 1] = loc.y;
-			points_camera->buffer[idx * 9 + 2] = loc.z;
-			points_camera->buffer[idx * 9 + 3] = loc.w;
-			points_camera->buffer[idx * 9 + 4] = rot.x;
-			points_camera->buffer[idx * 9 + 5] = rot.y;
-			points_camera->buffer[idx * 9 + 6] = rot.z;
-			points_camera->buffer[idx * 9 + 7] = rot.w;
-			points_camera->buffer[idx * 9 + 8] = base_window_aspect();
+			util_camera_get(&points_camera->buffer[idx * 9]);
 		}
 	}
 }

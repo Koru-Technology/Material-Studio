@@ -179,6 +179,13 @@ static void render_path_paint_tail_release(f32 len, f32 taper_end) {
 	}
 }
 
+// The stroke was taken back: its kept back stamps never paint
+void render_path_paint_tail_drop() {
+	render_path_paint_tail_first   = 0;
+	render_path_paint_tail_count   = 0;
+	render_path_paint_tail_pending = false;
+}
+
 // The stroke ended: its kept back stamps paint, tapered towards the end
 void render_path_paint_tail_flush() {
 	paint_exec_begin(); // The dabs resolve together (paint_exec.c)

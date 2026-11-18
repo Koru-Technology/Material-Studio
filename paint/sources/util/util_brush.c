@@ -282,6 +282,10 @@ void util_brush_update() {
 		down = false;
 	}
 
+	if (!down) {
+		util_curve_stroke_capture_end();
+	}
+
 	// A dropped stroke paints nothing until the touch is lifted. A new touch always paints: the update does not run
 	// while the dialog that dropped the stroke is open, and may not run between touches (idle frames sleep), so the
 	// lift is not always seen.
@@ -290,6 +294,16 @@ void util_brush_update() {
 			return;
 		}
 		util_brush_stroke_dropped = false;
+	}
+
+	// A curve being edited (util_curve_stroke.c): a new touch on the canvas confirms it
+	if (down && g_context->brush_time == 0 && util_curve_stroke_active()) {
+		i32 mx = mouse_x - base_paint_view_x();
+		i32 my = mouse_y - base_paint_view_y();
+		if (mx < base_paint_view_w() && mx > 0 && my < base_paint_view_h() && my > 0 && util_curve_stroke_touch(true)) {
+			util_brush_stroke_dropped = true;
+			return;
+		}
 	}
 
 	// A material just picked compiles its paint shader on a thread (make_material_parse_paint_material_async). A stroke
@@ -343,6 +357,7 @@ void util_brush_update() {
 					g_context->brush_dab_x = -1.0;
 					g_context->brush_dab_y = -1.0;
 					render_path_paint_samples_reset();
+					util_curve_stroke_capture_begin(); // Held still at its end, it becomes a curve
 
 					// Draw line
 					if (context_is_ruler_paint()) {
@@ -374,6 +389,10 @@ void util_brush_update() {
 				}
 				else {
 					brush_output_node_run();
+					if (util_curve_stroke_capture()) { // Held into a curve: the touch paints no more
+						util_brush_stroke_dropped = true;
+						return;
+					}
 				}
 			}
 		}

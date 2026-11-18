@@ -927,6 +927,11 @@ static void history_notice(char *name, bool redo) {
 }
 
 void history_user_undo() {
+	if (util_curve_stroke_active()) { // The curve being edited goes, its stroke stays taken back
+		util_curve_stroke_discard();
+		history_notice(tr("Curve"), false);
+		return;
+	}
 	if (history_undos <= 0) {
 		return;
 	}
@@ -939,6 +944,7 @@ void history_user_undo() {
 }
 
 void history_user_redo() {
+	util_curve_stroke_discard(); // Redo brings the stroke back as it was drawn
 	if (history_redos <= 0) {
 		return;
 	}

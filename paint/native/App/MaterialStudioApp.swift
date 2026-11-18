@@ -44,6 +44,17 @@ struct MacRootView: View {
 				.ignoresSafeArea()
 				.studioCanvas()
 				.overlay {
+					CurveEditOverlay()
+				}
+				.overlay(alignment: .bottom) {
+					if CurveStore.shared.editing {
+						CurveConfirmButton()
+							.padding(16)
+							.transition(.opacity)
+					}
+				}
+				.animation(.easeOut(duration: 0.15), value: CurveStore.shared.editing)
+				.overlay {
 					if StudioStore.shared.open {
 						MaterialStudioView()
 							.transition(.opacity)
@@ -130,6 +141,10 @@ struct PadRootView: View {
 			EngineCanvas()
 				.ignoresSafeArea()
 				.studioCanvas()
+				.overlay {
+					CurveEditOverlay()
+						.ignoresSafeArea()
+				}
 			if StudioStore.shared.open {
 				MaterialStudioView()
 					.transition(.opacity)

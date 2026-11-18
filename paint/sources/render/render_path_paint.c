@@ -771,21 +771,8 @@ void render_path_paint_commands_symmetry() {
 	paint_exec_end();
 }
 
-void render_path_paint_commands_live_brush() {
-	tool_type_t tool = g_context->tool;
-	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_DECAL && tool != TOOL_TYPE_TEXT &&
-	    tool != TOOL_TYPE_BLUR) {
-		return;
-	}
-
-	if (render_path_paint_live_layer_locked || ui_brush_creator_shown()) { // The drawing pad paints its strokes in the live layer
-		return;
-	}
-
-	if (make_material_paint_pending()) { // The material just picked compiles: its preview once it is ready, not the previous one's
-		return;
-	}
-
+// The live layer becomes a copy of the selected layer, made when there is none
+void render_path_paint_live_layer_copy() {
 	if (render_path_paint_live_layer == NULL) {
 		render_path_paint_live_layer = slot_layer_create("_live", LAYER_SLOT_TYPE_LAYER, NULL);
 	}
@@ -810,7 +797,24 @@ void render_path_paint_commands_live_brush() {
 		render_path_bind_target(string_tmp("texpaint_pack%d", tid), "tex2");
 		render_path_draw_shader("Scene/copy_mrt3_pass/copy_mrt3_pass");
 	}
+}
 
+void render_path_paint_commands_live_brush() {
+	tool_type_t tool = g_context->tool;
+	if (tool != TOOL_TYPE_BRUSH && tool != TOOL_TYPE_ERASER && tool != TOOL_TYPE_CLONE && tool != TOOL_TYPE_DECAL && tool != TOOL_TYPE_TEXT &&
+	    tool != TOOL_TYPE_BLUR) {
+		return;
+	}
+
+	if (render_path_paint_live_layer_locked || ui_brush_creator_shown()) { // The drawing pad paints its strokes in the live layer
+		return;
+	}
+
+	if (make_material_paint_pending()) { // The material just picked compiles: its preview once it is ready, not the previous one's
+		return;
+	}
+
+	render_path_paint_live_layer_copy();
 	render_path_paint_use_live_layer(true);
 
 	render_path_paint_live_layer_drawn = 2;
@@ -917,6 +921,8 @@ void render_path_paint_begin() {
 	if (g_context->paint2d) {
 		render_path_paint_set_plane_mesh();
 	}
+
+	util_curve_stroke_render(); // A curve being edited, painted again when it changed
 
 	if (g_config->brush_live && g_context->pdirty <= 0 && g_context->ddirty <= 0 && g_context->brush_time == 0) {
 		// Depth is unchanged, draw before gbuffer gets updated
@@ -1154,9 +1160,18 @@ void render_path_paint_draw() {
 	}
 }
 
+// The selected layer shows as the live layer: the live brush's preview, a curve being edited (util_curve_stroke.c)
+bool render_path_paint_live_shown() {
+	return (g_config->brush_live && render_path_paint_live_layer_drawn > 0) || util_curve_stroke_previewing();
+}
+
+// The live layer swapped in by render_path_paint_bind_layers, not by a caller already painting into it (the gbuffer
+// drawn again while a curve paints its preview from another view, util_curve_stroke.c)
+static bool render_path_paint_bound_live = false;
+
 void render_path_paint_bind_layers() {
-	bool is_live = g_config->brush_live && render_path_paint_live_layer_drawn > 0;
-	if (is_live) {
+	render_path_paint_bound_live = render_path_paint_live_shown() && !render_path_paint_live_layer_locked;
+	if (render_path_paint_bound_live) {
 		render_path_paint_use_live_layer(true);
 	}
 
@@ -1181,8 +1196,8 @@ void render_path_paint_bind_layers() {
 }
 
 void render_path_paint_unbind_layers() {
-	bool is_live = g_config->brush_live && render_path_paint_live_layer_drawn > 0;
-	if (is_live) {
+	if (render_path_paint_bound_live) {
+		render_path_paint_bound_live = false;
 		render_path_paint_use_live_layer(false);
 	}
 }

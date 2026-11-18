@@ -110,6 +110,7 @@ void ui_base_update(void *_) {
 		util_touch_update();
 		util_stencil_transform();
 		util_layer_check_path_grab();
+		util_curve_stroke_update();
 		util_brush_update();
 		util_layer_update_preview();
 		util_shortcut_undo_redo();
