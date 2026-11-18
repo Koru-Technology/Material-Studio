@@ -39,6 +39,7 @@ typedef struct {
 	int32_t  finger_paint;       // 0 auto (fingers paint until the pencil is used), 1 always, 2 never
 	bool     curve_editing;      // A stroke held still became a curve: its points (app_curve_point) and Confirm show
 	int32_t  curve_point_count;
+	float    curve_width;        // The whole curve's, 0.05 to 10 (app_curve_set_width)
 } app_state_t;
 
 void app_get_state(app_state_t *out);
@@ -170,6 +171,9 @@ bool        app_history_busy(void); // Undo or redo still restores layers, the c
 bool app_curve_point(int32_t index, float *x, float *y); // Through the current camera, false behind it or off the view
 void app_curve_move(int32_t index, float x, float y);    // To the surface under it, off the mesh it stays
 bool app_curve_remove(int32_t index);                    // Not the first or the last; a tap on the curve adds one (engine side)
+float app_curve_point_size(int32_t index);               // Width of the stroke at a point, 0 to 10, 1 the brush's
+void app_curve_set_point_size(int32_t index, float size); // Clamped
+void app_curve_set_width(float width);                   // Of the whole curve, clamped: the points keep their proportions
 void app_curve_confirm(void);
 void app_curve_cancel(void); // Drops it: nothing painted, the stroke it came from stays taken back (as undo)
 

@@ -122,6 +122,7 @@ void app_get_state(app_state_t *out) {
 	out->finger_paint    = g_config->finger_paint;
 	out->curve_editing     = util_curve_stroke_active();
 	out->curve_point_count = util_curve_stroke_count();
+	out->curve_width       = util_curve_stroke_width();
 	uint32_t h           = 2166136261u;
 	for (i32 i = 0; i < g_config->recent_projects->length; ++i) {
 		h = app_hash_str(h, g_config->recent_projects->buffer[i]);
@@ -649,6 +650,24 @@ void app_curve_move(int32_t index, float x, float y) {
 
 bool app_curve_remove(int32_t index) {
 	return app_ready() && util_curve_stroke_remove(index);
+}
+
+float app_curve_point_size(int32_t index) {
+	return app_ready() ? util_curve_stroke_size(index) : 1.0;
+}
+
+void app_curve_set_point_size(int32_t index, float size) {
+	if (app_ready()) {
+		util_curve_stroke_set_size(index, size);
+		iron_delay_idle_sleep();
+	}
+}
+
+void app_curve_set_width(float width) {
+	if (app_ready()) {
+		util_curve_stroke_set_width(width);
+		iron_delay_idle_sleep();
+	}
 }
 
 void app_curve_cancel(void) {

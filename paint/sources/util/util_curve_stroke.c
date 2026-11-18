@@ -5,16 +5,19 @@
 // straight stroke. The points sit on the surface, a world position picked under each with the camera it was placed
 // from, so the view can turn while they are dragged; each segment paints from the camera of its end point (as path
 // layers, util_path.c). Until confirmed the curve paints into the live layer, shown in place of the layer. Confirming
-// paints it as a stroke of the layer through the brush (spacing, taper, jitter, the pen's pressure along the stroke):
-// one undo step, recorded and replayed as any stroke. Undo drops it. A tap on the curve adds a point there, a point
-// between the ends can be removed (a double tap on its dot, the native UI). Runtime only, never saved.
+// paints it as a stroke of the layer through the brush (spacing, taper, jitter): one undo step, recorded and replayed as
+// any stroke. Undo drops it. Its width is even (the pen's pressure averaged), times the size of each point (along the
+// curve between them) and the width of the whole curve. The touch that held the stroke drags its end on until it
+// lifts. A tap on the curve adds a point there, a point between the ends can be removed (a double tap on its dot, the
+// native UI). Runtime only, never saved.
 
 #define CURVE_MAX_POINTS  32 // Added by taps on the curve
 #define CURVE_FIT_POINTS  8  // From the stroke held
 #define CURVE_TAP_REACH   28.0 // Points (UI_SCALE) from the curve a tap adds a point
 #define CURVE_TAP_MOVE    10.0 // Points a tap may move
 #define CURVE_CAPTURE_MAX 4096
-#define CURVE_PROFILE     64
+#define CURVE_SIZE_MAX    10.0 // Of a point and of the whole curve, times the brush
+#define CURVE_WIDTH_MIN   0.05
 #define CURVE_HOLD_TIME   1.0  // Seconds still
 #define CURVE_HOLD_MOVE   6.0  // Points (UI_SCALE) the touch may wander while still
 #define CURVE_MIN_TRAVEL  24.0 // Points a stroke goes before holding it makes a curve
@@ -23,12 +26,13 @@
 typedef struct curve_point {
 	vec4_t world;
 	f32    cam[9]; // util_camera_get
+	f32    size;   // Width of the stroke at it, 0 to CURVE_SIZE_MAX, 1 the brush's
 } curve_point_t;
 
 typedef struct curve_sample {
 	f32 x; // 0-1 of the paint view, through the camera of point cam
 	f32 y;
-	f32 t; // Along the curve, 0-1
+	f32 size; // Of the points around it, along the segment
 	i32 cam;
 } curve_sample_t;
 
@@ -38,7 +42,11 @@ static struct {
 	curve_point_t pts[CURVE_MAX_POINTS];
 	i32           n;
 	bool          pen;
-	f32           profile[CURVE_PROFILE]; // The pen's pressure along the stroke
+	f32           pressure; // The pen's, averaged along the stroke: an even width
+	f32           width;    // Of the whole curve, CURVE_WIDTH_MIN to CURVE_SIZE_MAX, 1 the brush's
+	bool          grab;     // The touch that held the stroke drags the end on until it lifts
+	f32           grab_x;   // Pixels it was at last
+	f32           grab_y;
 	f32           altitude;
 	f32           azimuth;
 	u32           seed; // Jitter of its stamps, alike in the preview and the stroke
@@ -227,6 +235,7 @@ static bool curve_from_capture() {
 		curve_point_t *p = &curve.pts[curve.n];
 		if (curve_pick(cap.x[idx[i]], cap.y[idx[i]], &p->world)) {
 			memcpy(p->cam, cam, sizeof(cam));
+			p->size = 1.0;
 			curve.n++;
 		}
 	}
@@ -234,25 +243,16 @@ static bool curve_from_capture() {
 		return false;
 	}
 
-	// Pressure along the stroke, by its length
-	f32 *len = malloc(sizeof(f32) * cap.n);
-	len[0]   = 0.0;
+	// The pen's pressure averaged by length: the stroke as wide everywhere
+	f32 sum = 0.0;
+	f32 len = 0.0;
 	for (i32 i = 1; i < cap.n; ++i) {
-		len[i] = len[i - 1] + curve_dist(cap.x[i - 1], cap.y[i - 1], cap.x[i], cap.y[i]);
+		f32 d = curve_dist(cap.x[i - 1], cap.y[i - 1], cap.x[i], cap.y[i]);
+		sum += (cap.p[i - 1] + cap.p[i]) * 0.5 * d;
+		len += d;
 	}
-	f32 total = len[cap.n - 1] > 0.0 ? len[cap.n - 1] : 1.0;
-	i32 j     = 0;
-	for (i32 k = 0; k < CURVE_PROFILE; ++k) {
-		f32 at = total * k / (CURVE_PROFILE - 1);
-		while (j < cap.n - 2 && len[j + 1] < at) {
-			j++;
-		}
-		f32 span = len[j + 1] - len[j];
-		f32 f    = span > 0.0 ? (at - len[j]) / span : 0.0;
-		f        = f < 0.0 ? 0.0 : f > 1.0 ? 1.0 : f;
-		curve.profile[k] = cap.p[j] + (cap.p[j + 1] - cap.p[j]) * f;
-	}
-	free(len);
+	curve.pressure = len > 0.0 ? sum / len : cap.p[0];
+	curve.width    = 1.0;
 	curve.pen      = cap.pen;
 	curve.altitude = cap.n > 0 ? cap.altitude / cap.n : 0.0;
 	curve.azimuth  = cap.n > 0 ? cap.azimuth / cap.n : 0.0;
@@ -279,6 +279,9 @@ static bool curve_hold() {
 	}
 	curve.active         = true;
 	curve.tap            = false;
+	curve.grab           = true;
+	curve.grab_x         = curve_input_x();
+	curve.grab_y         = curve_input_y();
 	curve.gen++;
 	curve.layer          = g_context->layer;
 	curve.seed           = ((u32)(sys_time() * 1000.0) * 2654435761u) | 1u;
@@ -387,23 +390,21 @@ static bool curve_segment_seen(i32 s, i32 c) {
 
 // The samples being made: where the last one is, the length so far
 static struct {
-	vec2_t last;
-	f32    length;
-	i32    cam;
-	f32    max_len;
+	i32 seg; // Its start point
+	i32 cam;
+	f32 max_len;
 } curve_flat;
 
-static void curve_emit(vec2_t q, bool restart) {
-	if (!restart) {
-		curve_flat.length += sqrtf((q.x - curve_flat.last.x) * (q.x - curve_flat.last.x) + (q.y - curve_flat.last.y) * (q.y - curve_flat.last.y));
-	}
-	curve_flat.last = q;
-	curve_samples_push(q.x / base_paint_view_w(), q.y / base_paint_view_h(), curve_flat.length, curve_flat.cam);
+// A sample at u of the segment, its size between the sizes of the segment's points
+static void curve_emit(vec2_t q, f32 u) {
+	f32 a = curve.pts[curve_flat.seg].size;
+	f32 b = curve.pts[curve_flat.seg + 1].size;
+	curve_samples_push(q.x / base_paint_view_w(), q.y / base_paint_view_h(), a + (b - a) * u, curve_flat.cam);
 }
 
 // The curve from a (at u0) to b (at u1) as straight pieces: split where it strays more than half a pixel from the
-// chord, or where the chord is longer than curve_flat.max_len (the pen's pressure changes along it). The brush's
-// spacing places the dabs along each piece, as along the pieces of a pen stroke.
+// chord, or where the chord is longer than curve_flat.max_len (the width changes along it). The brush's spacing places
+// the dabs along each piece, as along the pieces of a pen stroke.
 static void curve_flatten(vec2_t p0, vec2_t p1, vec2_t p2, vec2_t p3, f32 u0, vec2_t a, f32 u1, vec2_t b, i32 depth) {
 	f32    um  = (u0 + u1) * 0.5;
 	vec2_t m   = curve_eval(p0, p1, p2, p3, um);
@@ -416,7 +417,7 @@ static void curve_flatten(vec2_t p0, vec2_t p1, vec2_t p2, vec2_t p3, f32 u0, ve
 		curve_flatten(p0, p1, p2, p3, um, m, u1, b, depth + 1);
 		return;
 	}
-	curve_emit(b, false);
+	curve_emit(b, u1);
 }
 
 // Points along the curve (pixels of the paint view apart as the curve bends, curve_flatten), each segment through the
@@ -425,8 +426,11 @@ static void curve_sample() {
 	curve_samples_n = 0;
 	f32 live[9];
 	util_camera_get(live);
-	curve_flat.length  = 0.0;
-	curve_flat.max_len = curve.pen ? 24.0 : 96.0;
+	bool sizes = false; // The width changes along it: shorter pieces
+	for (i32 i = 1; i < curve.n; ++i) {
+		sizes = sizes || curve.pts[i].size != curve.pts[0].size;
+	}
+	curve_flat.max_len = sizes ? 24.0 : 96.0;
 	i32 prev_cam       = -1;
 	for (i32 s = 0; s < curve.n - 1; ++s) {
 		i32 cam = curve_segment_seen(s, s + 1) || !curve_segment_seen(s, s) ? s + 1 : s;
@@ -444,16 +448,13 @@ static void curve_sample() {
 		bool restart = prev_cam < 0 || memcmp(curve.pts[cam].cam, curve.pts[prev_cam].cam, sizeof(f32) * 9) != 0; // The start, or another view
 		prev_cam     = cam;
 		curve_flat.cam = cam;
+		curve_flat.seg = s;
 		if (restart) {
-			curve_emit(p1, true);
+			curve_emit(p1, 0.0);
 		}
 		curve_flatten(p0, p1, p2, p3, 0.0, p1, 1.0, p2, 0);
 	}
 	curve_camera_restore(live);
-	f32 length = curve_flat.length;
-	for (i32 i = 0; i < curve_samples_n; ++i) {
-		curve_samples[i].t = length > 0.0 ? curve_samples[i].t / length : 0.0;
-	}
 }
 
 // The view's camera back (util_camera_get gave it), its projection as the view builds it
@@ -464,13 +465,6 @@ static void curve_camera_restore(const f32 *c) {
 	camera_object_build_mat(scene_camera);
 }
 
-static f32 curve_pressure(f32 t) {
-	f32 at = t * (CURVE_PROFILE - 1);
-	i32 i  = (i32)at;
-	i      = i < 0 ? 0 : i > CURVE_PROFILE - 2 ? CURVE_PROFILE - 2 : i;
-	f32 f  = at - i;
-	return curve.profile[i] + (curve.profile[i + 1] - curve.profile[i]) * f;
-}
 
 // Paints the samples through the brush, as a stroke of the pen or the finger that drew it, in one paint executor scope:
 // its dabs resolve and draw together (paint_exec.c), not a pass each. The gbuffer is drawn again for each camera other
@@ -490,6 +484,8 @@ static void curve_paint() {
 	util_brush_sample_altitude         = curve.pen ? curve.altitude : -1.0;
 	util_brush_sample_azimuth          = curve.azimuth;
 	util_brush_sample_roll             = 0.0;
+	util_brush_sample_pressure         = curve.pen ? curve.pressure : -1.0;
+	f32  radius                        = g_context->brush_radius;
 	i32  applied                       = -1; // Point whose camera the gbuffer shows, -1 the view's
 	bool moved                         = false;
 	paint_exec_begin();
@@ -522,8 +518,9 @@ static void curve_paint() {
 		if (!first && (s->x != q->x || s->y != q->y)) {
 			g_context->brush_stroke_angle = atan2f(-(s->y - q->y), (s->x - q->x) * ratio);
 		}
-		util_brush_sample_pressure = curve.pen ? curve_pressure(s->t) : -1.0;
-		g_context->pdirty          = 2;
+		f32 size                = s->size * curve.width;
+		g_context->brush_radius = radius * (size > 0.02 ? size : 0.02); // The dabs keep it (a radius 0 would place them without end)
+		g_context->pdirty       = 2;
 		if (stamps) {
 			if (i == 0) {
 				g_context->brush_dab_x = -1.0;
@@ -541,6 +538,7 @@ static void curve_paint() {
 		render_path_paint_tail_flush();
 	}
 	paint_exec_end();
+	g_context->brush_radius            = radius;
 	render_path_paint_stamp_seed_fixed = 0;
 	util_brush_preview_pen             = false;
 	util_brush_sample_pressure         = -1.0;
@@ -721,6 +719,7 @@ void util_curve_stroke_discard() {
 	curve.active         = false;
 	curve.finger_pending = false;
 	curve.move_pending   = false;
+	curve.grab           = false;
 	g_context->ddirty    = 2;
 }
 
@@ -728,8 +727,8 @@ void util_curve_stroke_discard() {
 // and paint. A finger confirms it once it is not the first of a two finger gesture (turning the view, the curve stays):
 // true while the touch paints nothing.
 // The point of the curve nearest to pixel (x, y) of the canvas through the current camera, within reach: its segment,
-// and its place on the canvas in *at. -1 when the curve is not that close.
-static i32 curve_hit(f32 x, f32 y, vec2_t *at) {
+// its place on the canvas in *at and on the segment in *u. -1 when the curve is not that close.
+static i32 curve_hit(f32 x, f32 y, vec2_t *at, f32 *u) {
 	f32    px    = x - base_paint_view_x();
 	f32    py    = y - base_paint_view_y();
 	f32    reach = CURVE_TAP_REACH * UI_SCALE();
@@ -753,6 +752,7 @@ static i32 curve_hit(f32 x, f32 y, vec2_t *at) {
 				best = d;
 				seg  = s;
 				*at  = q;
+				*u   = k / 64.0;
 			}
 		}
 	}
@@ -763,7 +763,8 @@ static i32 curve_hit(f32 x, f32 y, vec2_t *at) {
 // the tap is not on the curve or the surface is not under it
 static bool curve_insert_at(f32 x, f32 y) {
 	vec2_t at;
-	i32    s = curve_hit(x, y, &at);
+	f32    u;
+	i32    s = curve_hit(x, y, &at, &u);
 	if (s < 0 || curve.n >= CURVE_MAX_POINTS) {
 		return false;
 	}
@@ -776,6 +777,7 @@ static bool curve_insert_at(f32 x, f32 y) {
 	}
 	memmove(&curve.pts[s + 2], &curve.pts[s + 1], sizeof(curve_point_t) * (curve.n - s - 1));
 	curve.pts[s + 1].world = world;
+	curve.pts[s + 1].size  = curve.pts[s].size + (curve.pts[s + 2].size - curve.pts[s].size) * u; // As wide as the curve was there
 	util_camera_get(curve.pts[s + 1].cam);
 	curve.n++;
 	curve.gen++;
@@ -795,6 +797,32 @@ bool util_curve_stroke_remove(i32 i) {
 	return true;
 }
 
+// Width of the stroke at point i, times the brush and the curve's width
+f32 util_curve_stroke_size(i32 i) {
+	return curve.active && i >= 0 && i < curve.n ? curve.pts[i].size : 1.0;
+}
+
+void util_curve_stroke_set_size(i32 i, f32 size) {
+	if (!curve.active || i < 0 || i >= curve.n) {
+		return;
+	}
+	curve.pts[i].size = size < 0.0 ? 0.0 : size > CURVE_SIZE_MAX ? CURVE_SIZE_MAX : size;
+	curve.dirty       = true;
+}
+
+// Width of the whole curve, times the brush: the points' sizes keep their proportions
+f32 util_curve_stroke_width() {
+	return curve.active ? curve.width : 1.0;
+}
+
+void util_curve_stroke_set_width(f32 width) {
+	if (!curve.active) {
+		return;
+	}
+	curve.width = width < CURVE_WIDTH_MIN ? CURVE_WIDTH_MIN : width > CURVE_SIZE_MAX ? CURVE_SIZE_MAX : width;
+	curve.dirty = true;
+}
+
 bool util_curve_stroke_touch(bool started) {
 	if (!curve.active) {
 		return false;
@@ -802,7 +830,8 @@ bool util_curve_stroke_touch(bool started) {
 	f32 tx = pen_down("tip") ? pen_x : mouse_x;
 	f32 ty = pen_down("tip") ? pen_y : mouse_y;
 	vec2_t at;
-	if (started && curve_hit(tx, ty, &at) >= 0) { // On the curve: a tap there adds a point, the touch paints nothing
+	f32    u;
+	if (started && curve_hit(tx, ty, &at, &u) >= 0) { // On the curve: a tap there adds a point, the touch paints nothing
 		curve.tap   = true;
 		curve.tap_x = tx;
 		curve.tap_y = ty;
@@ -853,6 +882,17 @@ void util_curve_stroke_move(i32 i, f32 x, f32 y) {
 void util_curve_stroke_update() {
 	if (!curve.active) {
 		return;
+	}
+	if (curve.grab) { // The touch that held the stroke drags its end on
+		bool down = pen_down("tip") || mouse_down("left");
+		if (!down || mouse_down("right")) {
+			curve.grab = false;
+		}
+		else if (curve_input_x() != curve.grab_x || curve_input_y() != curve.grab_y) {
+			curve.grab_x = curve_input_x();
+			curve.grab_y = curve_input_y();
+			util_curve_stroke_move(curve.n - 1, base_paint_x(curve.grab_x), base_paint_y(curve.grab_y));
+		}
 	}
 	if (curve.tap) {
 		bool down = mouse_down("left") || pen_down("tip");

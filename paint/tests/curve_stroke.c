@@ -7,7 +7,8 @@
 // touch on the canvas confirms it. With real mouse input: a stroke held still for a second becomes a curve, one that
 // keeps moving does not. The view turned before a point is dragged: it still confirms as one stroke. A tap on the curve
 // adds a point there and keeps editing, a drag starting on it adds none; a point between the ends can be removed, the
-// ends can not. Cancel drops the curve.
+// ends can not. Cancel drops the curve. The end follows the touch that held the stroke while it is down; an added point
+// is as wide as the curve was there. Twice the width paints more, an end of size 0 less; the widths stay in bounds.
 
 int fails  = 0;
 int checks = 0;
@@ -22,6 +23,8 @@ float     ax     = 0.0; // The curve's points after the drag, paint view 0-1
 float     ay     = 0.0;
 float     bx     = 0.0;
 float     by     = 0.0;
+int       c1     = 0;   // Texels a straight curve paints at its width
+float     ey     = 0.0; // The end of the held curve, canvas pixels
 float     mx     = 0.0; // The middle of the curve, canvas pixels
 float     my     = 0.0;
 double    held   = 0.0;
@@ -232,7 +235,22 @@ void next() {
 			return;
 		}
 		check(util_curve_stroke_active(), string("held still for a second: a curve (%d points)", util_curve_stroke_count()));
-		script_mouse_release(cx - 120 + 23 * 10, cy, 0);
+		ey = util_curve_stroke_test_point(util_curve_stroke_count() - 1, 1);
+	}
+	else if (step == 140) { // Still down: dragging on moves the end
+		tick = tick + 1;
+		if (tick < 8) {
+			script_mouse_move(cx - 120 + 23 * 10, cy + tick * 8);
+			script_notify_on_next_frame(next);
+			frame = 4;
+			return;
+		}
+		tick = 0;
+	}
+	else if (step == 141) {
+		float y = util_curve_stroke_test_point(util_curve_stroke_count() - 1, 1);
+		check(y > ey + 30.0, string("the end follows the touch that held it (%.0f from %.0f)", y, ey));
+		script_mouse_release(cx - 120 + 23 * 10, cy + 56, 0);
 	}
 	else if (step == 15) {
 		check(changed() == 0, "the held stroke is taken back");
@@ -288,6 +306,7 @@ void next() {
 	else if (step == 23) {
 		check(util_curve_stroke_active(), "a tap on the curve keeps editing");
 		check(util_curve_stroke_count() == 3, string("and adds a point (%d)", util_curve_stroke_count()));
+		check(app_curve_point_size(1) == 1.0, "as wide as the curve was there");
 		float x = util_curve_stroke_test_point(1, 0);
 		float y = util_curve_stroke_test_point(1, 1);
 		check(fabs(x - mx) < 12.0 && fabs(y - (my - 6.0)) < 12.0, string("on the curve where it was tapped (%.0f %.0f, tapped %.0f %.0f)", x, y, mx, my));
@@ -312,6 +331,41 @@ void next() {
 		app_curve_cancel();
 		check(!util_curve_stroke_active() && changed() == 0 && history_test_undos() == undos0, "Cancel drops the curve: nothing painted, no step");
 	}
+	else if (step == 26) { // Widths
+		util_curve_stroke_test_hold(paint_line(0.42, 0.5, 0.58, 0.5));
+		util_curve_stroke_confirm();
+		c1 = changed();
+		history_undo();
+	}
+	else if (step == 27) {
+		util_curve_stroke_test_hold(paint_line(0.42, 0.5, 0.58, 0.5));
+		app_curve_set_width(2.0);
+		util_curve_stroke_confirm();
+		int c2 = changed();
+		check(c2 > c1 * 1.5, string("twice the width paints more (%d, %d at width 1)", c2, c1));
+		history_undo();
+	}
+	else if (step == 28) {
+		util_curve_stroke_test_hold(paint_line(0.42, 0.5, 0.58, 0.5));
+		app_curve_set_point_size(1, 0.0);
+		check(app_curve_point_size(1) == 0.0, "an end of size 0");
+		util_curve_stroke_confirm();
+		int c3 = changed();
+		check(c3 > 0 && c3 < c1, string("tapers: it paints less (%d, %d at width 1)", c3, c1));
+		history_undo();
+	}
+	else if (step == 29) {
+		util_curve_stroke_test_hold(paint_line(0.42, 0.5, 0.58, 0.5));
+		app_curve_set_width(100.0);
+		float big = util_curve_stroke_width();
+		app_curve_set_width(0.0);
+		float small = util_curve_stroke_width();
+		app_curve_set_point_size(0, -1.0);
+		app_curve_set_point_size(1, 100.0);
+		check(big == 10.0 && small > 0.0 && app_curve_point_size(0) == 0.0 && app_curve_point_size(1) == 10.0,
+		      string("the widths stay in bounds (%.2f, %.2f)", big, small));
+		app_curve_cancel();
+	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));
 		check(gpu_errors() == 0, string("the GPU dropped no work (%d command buffers)", gpu_errors()));
@@ -320,7 +374,7 @@ void next() {
 		script_quit();
 		return;
 	}
-	step = step + 1;
+	step = step == 14 ? 140 : step == 141 ? 15 : step + 1;
 	script_notify_on_next_frame(next);
 }
 
