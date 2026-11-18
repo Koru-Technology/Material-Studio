@@ -15,7 +15,7 @@
 // with the shared noise block, params[MASK_EFFECT_NOISE_*].
 
 #define MASK_NOISE_PARAMS                                                                                                   \
-	{"Noise Scale", MASK_EFFECT_NOISE_SCALE, MASK_PARAM_SLIDER, 0.5, 32.0, 4.0, NULL},                                     \
+	{"Noise Scale", MASK_EFFECT_NOISE_SCALE, MASK_PARAM_SLIDER, 0.5, 124.0, 4.0, NULL},                                     \
 	    {"Noise Amount", MASK_EFFECT_NOISE_AMOUNT, MASK_PARAM_SLIDER, 0.0, 1.0, 0.3, NULL},                                \
 	    {"Noise Detail", MASK_EFFECT_NOISE_DETAIL, MASK_PARAM_SLIDER, 1.0, 6.0, 3.0, NULL},                                \
 	{                                                                                                                       \
