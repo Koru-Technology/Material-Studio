@@ -1503,6 +1503,8 @@ void                 util_render_resize_asset_icons(void *_);
 void                 util_render_create_screen_aligned_full_data();
 void   util_render_make_node_preview(ui_node_canvas_t *canvas, ui_node_t *node, gpu_texture_t *image, ui_node_canvas_t *group, ui_node_t_array_t *parents);
 void   util_render_pick_pos_nor_tex();
+void   util_render_pick_pos_nor_tex_async(gpu_transfer_t *t, void (*done)(gpu_transfer_t *t, void *ud), void *ud);
+extern gpu_transfer_t *util_render_pick_transfer;
 bool   util_render_picked_on_mesh();
 
 // ---- util/util_shortcut.c ----

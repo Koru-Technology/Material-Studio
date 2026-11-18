@@ -958,6 +958,18 @@ void util_render_pick_pos_nor_tex() {
 	g_context->pdirty = 0;
 }
 
+// The surface under paint_vec read back without waiting for the GPU: done(t, ud) runs once it finished (at the start of
+// a later frame, gpu_transfer_poll), t's 32 bytes as util_render_pick_pos_nor_tex reads them: position xyz and uv x,
+// normal xyz and uv y. A drag picking every frame then does not wait for the frame before it.
+gpu_transfer_t *util_render_pick_transfer = NULL;
+
+void util_render_pick_pos_nor_tex_async(gpu_transfer_t *t, void (*done)(gpu_transfer_t *t, void *ud), void *ud) {
+	util_render_pick_transfer = t;
+	util_render_pick_pos_nor_tex();
+	util_render_pick_transfer = NULL;
+	gpu_transfer_commit(t, done, ud);
+}
+
 // Background pixels reconstruct to the far plane
 bool util_render_picked_on_mesh() {
 	camera_object_t *cam = scene_camera;

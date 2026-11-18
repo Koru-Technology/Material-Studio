@@ -542,6 +542,17 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 			render_path_paint_draw_fullscreen_triangle();
 			gpu_texture_t *texpaint_posnortex_picker0 = render_path_target_image("texpaint_posnortex_picker0");
 			gpu_texture_t *texpaint_posnortex_picker1 = render_path_target_image("texpaint_posnortex_picker1");
+			if (util_render_pick_transfer != NULL) { // Read back without waiting (util_render_pick_pos_nor_tex_async)
+				if (_render_path_current_image != NULL) {
+					render_path_end();
+				}
+				gpu_transfer_map(util_render_pick_transfer, 32);
+				gpu_copy_regions_begin();
+				gpu_copy_region_to_transfer(util_render_pick_transfer, texpaint_posnortex_picker0, 0, 0, 1, 1, 0);
+				gpu_copy_region_to_transfer(util_render_pick_transfer, texpaint_posnortex_picker1, 0, 0, 1, 1, 16);
+				gpu_copy_regions_end();
+				return;
+			}
 			buffer_t        *a                          = gpu_get_texture_pixels(texpaint_posnortex_picker0);
 			buffer_t        *b                          = gpu_get_texture_pixels(texpaint_posnortex_picker1);
 			g_context->posx_picked                      = buffer_get_f32(a, 0);

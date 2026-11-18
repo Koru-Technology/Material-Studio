@@ -46,6 +46,7 @@ static struct {
 	f32           move_y;
 	bool          finger_pending; // A finger touched the canvas
 	f64           finger_time;
+	u32           gen; // A new curve: picks still in flight for the one before do not move its points
 } curve = {0};
 
 // The stroke painted now
@@ -269,6 +270,7 @@ static bool curve_hold() {
 		history_undo();
 	}
 	curve.active         = true;
+	curve.gen++;
 	curve.layer          = g_context->layer;
 	curve.seed           = ((u32)(sys_time() * 1000.0) * 2654435761u) | 1u;
 	curve.dirty          = true;
@@ -374,18 +376,49 @@ static bool curve_segment_seen(i32 s, i32 c) {
 	       b.y >= 0.0 && b.y <= h;
 }
 
-// Samples about a pixel apart along the curve, each segment through the camera of its end point, or of its start
-// point when only that one sees both (an end dragged from a view turned away)
+// The samples being made: where the last one is, the length so far
+static struct {
+	vec2_t last;
+	f32    length;
+	i32    cam;
+	f32    max_len;
+} curve_flat;
+
+static void curve_emit(vec2_t q, bool restart) {
+	if (!restart) {
+		curve_flat.length += sqrtf((q.x - curve_flat.last.x) * (q.x - curve_flat.last.x) + (q.y - curve_flat.last.y) * (q.y - curve_flat.last.y));
+	}
+	curve_flat.last = q;
+	curve_samples_push(q.x / base_paint_view_w(), q.y / base_paint_view_h(), curve_flat.length, curve_flat.cam);
+}
+
+// The curve from a (at u0) to b (at u1) as straight pieces: split where it strays more than half a pixel from the
+// chord, or where the chord is longer than curve_flat.max_len (the pen's pressure changes along it). The brush's
+// spacing places the dabs along each piece, as along the pieces of a pen stroke.
+static void curve_flatten(vec2_t p0, vec2_t p1, vec2_t p2, vec2_t p3, f32 u0, vec2_t a, f32 u1, vec2_t b, i32 depth) {
+	f32    um  = (u0 + u1) * 0.5;
+	vec2_t m   = curve_eval(p0, p1, p2, p3, um);
+	f32    dx  = b.x - a.x;
+	f32    dy  = b.y - a.y;
+	f32    len = sqrtf(dx * dx + dy * dy);
+	f32    dev = len > 0.0001 ? math_abs((m.x - a.x) * dy - (m.y - a.y) * dx) / len : sqrtf((m.x - a.x) * (m.x - a.x) + (m.y - a.y) * (m.y - a.y));
+	if (depth < 2 || (depth < 14 && (dev > 0.5 || len > curve_flat.max_len))) {
+		curve_flatten(p0, p1, p2, p3, u0, a, um, m, depth + 1);
+		curve_flatten(p0, p1, p2, p3, um, m, u1, b, depth + 1);
+		return;
+	}
+	curve_emit(b, false);
+}
+
+// Points along the curve (pixels of the paint view apart as the curve bends, curve_flatten), each segment through the
+// camera of its end point, or of its start point when only that one sees both (an end dragged from a view turned away)
 static void curve_sample() {
 	curve_samples_n = 0;
 	f32 live[9];
 	util_camera_get(live);
-	f32 w      = base_paint_view_w();
-	f32 h      = base_paint_view_h();
-	f32 length = 0.0;
-	vec2_t last;
-	bool   has_last = false;
-	i32 prev_cam = -1;
+	curve_flat.length  = 0.0;
+	curve_flat.max_len = curve.pen ? 24.0 : 96.0;
+	i32 prev_cam       = -1;
 	for (i32 s = 0; s < curve.n - 1; ++s) {
 		i32 cam = curve_segment_seen(s, s + 1) || !curve_segment_seen(s, s) ? s + 1 : s;
 		util_camera_set(curve.pts[cam].cam);
@@ -399,23 +432,16 @@ static void curve_sample() {
 		if (s + 2 >= curve.n || !curve_project(s + 2, &p3)) {
 			p3 = (vec2_t){2.0 * p2.x - p1.x, 2.0 * p2.y - p1.y};
 		}
-		f32 chord = sqrtf((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y));
-		i32 steps = (i32)(chord / 1.0);
-		steps     = steps < 2 ? 2 : steps > 4096 ? 4096 : steps;
-		bool new_cam = prev_cam >= 0 && memcmp(curve.pts[cam].cam, curve.pts[prev_cam].cam, sizeof(f32) * 9) != 0;
+		bool restart = prev_cam < 0 || memcmp(curve.pts[cam].cam, curve.pts[prev_cam].cam, sizeof(f32) * 9) != 0; // The start, or another view
 		prev_cam     = cam;
-		for (i32 k = (s == 0 || new_cam) ? 0 : 1; k <= steps; ++k) {
-			vec2_t q = curve_eval(p0, p1, p2, p3, (f32)k / steps);
-			if (has_last && !new_cam) {
-				length += sqrtf((q.x - last.x) * (q.x - last.x) + (q.y - last.y) * (q.y - last.y));
-			}
-			new_cam  = false;
-			last     = q;
-			has_last = true;
-			curve_samples_push(q.x / w, q.y / h, length, cam);
+		curve_flat.cam = cam;
+		if (restart) {
+			curve_emit(p1, true);
 		}
+		curve_flatten(p0, p1, p2, p3, 0.0, p1, 1.0, p2, 0);
 	}
 	curve_camera_restore(live);
+	f32 length = curve_flat.length;
 	for (i32 i = 0; i < curve_samples_n; ++i) {
 		curve_samples[i].t = length > 0.0 ? curve_samples[i].t / length : 0.0;
 	}
@@ -437,8 +463,10 @@ static f32 curve_pressure(f32 t) {
 	return curve.profile[i] + (curve.profile[i + 1] - curve.profile[i]) * f;
 }
 
-// Paints the samples through the brush, as a stroke of the pen or the finger that drew it. The gbuffer is drawn again
-// for each camera other than the view's, the view's is back after.
+// Paints the samples through the brush, as a stroke of the pen or the finger that drew it, in one paint executor scope:
+// its dabs resolve and draw together (paint_exec.c), not a pass each. The gbuffer is drawn again for each camera other
+// than the view's (the scope closes first: dabs resolve against the depth they were placed on), the view's is back
+// after.
 static void curve_paint() {
 	curve_sample();
 	if (curve_samples_n == 0) {
@@ -455,14 +483,17 @@ static void curve_paint() {
 	util_brush_sample_roll             = 0.0;
 	i32  applied                       = -1; // Point whose camera the gbuffer shows, -1 the view's
 	bool moved                         = false;
+	paint_exec_begin();
 	for (i32 i = 0; i < curve_samples_n; ++i) {
 		curve_sample_t *s     = &curve_samples[i];
 		bool            first = i == 0;
 		if (applied < 0 || memcmp(curve.pts[s->cam].cam, curve.pts[applied].cam, sizeof(f32) * 9) != 0) {
 			bool same = memcmp(curve.pts[s->cam].cam, live, sizeof(live)) == 0;
 			if (!same || moved) {
+				paint_exec_end();
 				util_camera_set(curve.pts[s->cam].cam);
 				render_path_base_draw_gbuffer();
+				paint_exec_begin();
 				moved = !same;
 			}
 			first   = true; // From another view: the stroke goes on from here
@@ -500,6 +531,7 @@ static void curve_paint() {
 		g_context->pdirty = 2;
 		render_path_paint_tail_flush();
 	}
+	paint_exec_end();
 	render_path_paint_stamp_seed_fixed = 0;
 	util_brush_preview_pen             = false;
 	util_brush_sample_pressure         = -1.0;
@@ -565,10 +597,80 @@ void util_curve_stroke_render() {
 	g_context->rtdirty           = 1;
 }
 
+// The pick of a dragged point, read back without waiting (util_render_pick_pos_nor_tex_async): one in flight, the
+// latest drag position waits for it
+static struct {
+	gpu_transfer_t *t;
+	bool            busy;
+	bool            ready;
+	bool            hit;
+	i32             index;
+	u32             gen;
+	vec4_t          world;
+	f32             cam[9]; // The view it was picked from
+	vec4_t          loc;
+	vec4_t          look;
+	f32             far;
+} curve_drag = {0};
+
+static void curve_drag_done(gpu_transfer_t *t, void *ud) {
+	f32   *v = gpu_transfer_map(t, 0);
+	vec4_t p = {v[0], v[1], v[2], 1.0};
+	f32    d = (p.x - curve_drag.loc.x) * curve_drag.look.x + (p.y - curve_drag.loc.y) * curve_drag.look.y + (p.z - curve_drag.loc.z) * curve_drag.look.z;
+	curve_drag.hit   = d < curve_drag.far * 0.99; // Background reconstructs to the far plane (util_render_picked_on_mesh)
+	curve_drag.world = p;
+	curve_drag.busy  = false;
+	curve_drag.ready = true;
+}
+
+// A finished pick moves its point, the latest drag position starts the next one
+static void curve_drag_update() {
+	if (curve_drag.ready) {
+		curve_drag.ready = false;
+		if (curve_drag.hit && curve_drag.gen == curve.gen && curve.active && curve_drag.index < curve.n) { // Off the mesh it stays
+			curve.pts[curve_drag.index].world = curve_drag.world;
+			memcpy(curve.pts[curve_drag.index].cam, curve_drag.cam, sizeof(curve_drag.cam));
+			curve.dirty = true;
+		}
+	}
+	if (!curve.move_pending || curve_drag.busy) {
+		return;
+	}
+	curve.move_pending = false;
+	if (curve_drag.t == NULL) {
+		curve_drag.t = gpu_transfer_create(32);
+	}
+	camera_object_t *cam = scene_camera;
+	curve_drag.index     = curve.move_index;
+	curve_drag.gen       = curve.gen;
+	util_camera_get(curve_drag.cam);
+	curve_drag.loc  = (vec4_t){transform_world_x(cam->base->transform), transform_world_y(cam->base->transform), transform_world_z(cam->base->transform), 0.0};
+	curve_drag.look = camera_object_look_world(cam);
+	curve_drag.far  = cam->data->far_plane;
+	curve_drag.busy = true;
+	vec4_t       saved  = g_context->paint_vec;
+	draw_saved_t gpu    = draw_suspend();
+	g_context->paint_vec.x = curve.move_x;
+	g_context->paint_vec.y = curve.move_y;
+	util_render_pick_pos_nor_tex_async(curve_drag.t, curve_drag_done, NULL);
+	g_context->paint_vec = saved;
+	draw_resume(gpu);
+}
+
 // The curve as a stroke of its layer, one undo step
 void util_curve_stroke_confirm() {
 	if (!curve.active) {
 		return;
+	}
+	for (i32 k = 0; k < 2 && (curve_drag.busy || curve.move_pending || curve_drag.ready); ++k) { // The last drag lands before it paints
+		if (curve_drag.busy) {
+			gpu_transfer_wait();
+		}
+		curve_drag_update();
+	}
+	if (curve_drag.busy) {
+		gpu_transfer_wait();
+		curve_drag_update();
 	}
 	curve.active         = false;
 	curve.finger_pending = false;
@@ -675,18 +777,7 @@ void util_curve_stroke_update() {
 			return;
 		}
 	}
-	if (curve.move_pending) {
-		curve.move_pending = false;
-		vec4_t       world;
-		draw_saved_t gpu = draw_suspend();
-		bool         hit = curve_pick(curve.move_x, curve.move_y, &world);
-		draw_resume(gpu);
-		if (hit) { // Off the mesh it stays
-			curve.pts[curve.move_index].world = world;
-			util_camera_get(curve.pts[curve.move_index].cam);
-			curve.dirty = true;
-		}
-	}
+	curve_drag_update();
 }
 
 // ---- Scripts ----
