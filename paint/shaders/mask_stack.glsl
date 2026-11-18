@@ -149,6 +149,15 @@ void main() {
 		float band = (1.0 - smoothstep(0.0, 0.25, m)) * -3.0 + smoothstep(0.75, 1.0, m) * 3.0;
 		r          = (m * 2.0 - 1.0 + (top - other + constants.params0.z) * constants.params0.x + band) * constants.params0.y * 0.5 + 0.5;
 	}
+	else if (constants.type == 18) { // Edge Breakup: width, amount, softness. texsrc the result below blurred across its edge
+		// (1 deep inside, falling across the edge), textop noise. Kept where the blur is above the noise times the amount:
+		// amount 0 the result below as it is, more frays it in from the edge; deep inside stays, nothing grows.
+		float c = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
+		float n = textureLod(sampler2D(textop, sampler_linear), vin.tex, 0.0).r;
+		float s = max(constants.params0.z * 0.1, 0.005);
+		float t = n * constants.params0.y * 0.85; // At most 0.95 with the softness: the full inside never frays
+		r       = a * smoothstep(t - s, t + s, c);
+	}
 	else if (constants.type == 13) { // Blur, texsrc the blurred result
 		r = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
 	}

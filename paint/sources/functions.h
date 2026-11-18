@@ -1304,6 +1304,7 @@ char                *mask_blend_name(i32 blending);
 bool                 mask_effect_is_filter(i32 type);
 bool                 mask_effect_is_generator(i32 type);
 bool                 mask_effect_is_rendered(mask_effect_t *e);
+bool                 mask_effect_rendered_as(mask_effect_t *e, mask_effect_t *out);
 i32                  mask_effect_fill_source(mask_effect_t *e);
 asset_t             *mask_effect_image(mask_effect_t *e);
 bool                 mask_stack_uses_asset(i32 index);

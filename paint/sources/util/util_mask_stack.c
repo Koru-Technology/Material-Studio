@@ -118,6 +118,15 @@ static mask_effect_param_t mask_params_height_blend[] = {
     {"Offset", MASK_HB_OFFSET, MASK_PARAM_SLIDER, -1.0, 1.0, 0.0, NULL},
     {"Reach", MASK_HB_REACH, MASK_PARAM_SLIDER, 0.0, 64.0, 30.0, NULL},
 };
+// Width: how far in from the edge it frays, texels of a 1024 mask (the blur of the result below it compares with noise)
+static mask_effect_param_t mask_params_edge_breakup[] = {
+    {"Width", 0, MASK_PARAM_SLIDER, 1.0, 64.0, 6.0, NULL},
+    {"Amount", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.7, NULL},
+    {"Softness", 2, MASK_PARAM_SLIDER, 0.0, 1.0, 0.15, NULL},
+    {"Noise Scale", MASK_EFFECT_NOISE_SCALE, MASK_PARAM_SLIDER, 0.5, 124.0, 60.0, NULL},
+    {"Noise Detail", MASK_EFFECT_NOISE_DETAIL, MASK_PARAM_SLIDER, 1.0, 6.0, 4.0, NULL},
+    {"Seed", MASK_EFFECT_NOISE_SEED, MASK_PARAM_SEED, 0.0, 1000.0, 0.0, NULL},
+};
 static mask_effect_param_t mask_params_histogram[] = {
     {"Position", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     {"Contrast", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
@@ -165,6 +174,8 @@ mask_effect_param_t *mask_effect_params(i32 type, i32 *count) {
 		MASK_PARAMS_OF(mask_params_ao);
 	case MASK_EFFECT_HEIGHT_BLEND:
 		MASK_PARAMS_OF(mask_params_height_blend);
+	case MASK_EFFECT_EDGE_BREAKUP:
+		MASK_PARAMS_OF(mask_params_edge_breakup);
 	}
 	*count = 0;
 	return NULL;
@@ -240,6 +251,8 @@ char *mask_effect_name(i32 type) {
 		return "Ambient Occlusion";
 	case MASK_EFFECT_HEIGHT_BLEND:
 		return "Height Blend";
+	case MASK_EFFECT_EDGE_BREAKUP:
+		return "Edge Breakup";
 	}
 	return "Effect";
 }
@@ -254,7 +267,7 @@ char *mask_blend_name(i32 blending) {
 // Filters transform the result below (their blending is ignored), the other effects are sources blended over it
 bool mask_effect_is_filter(i32 type) {
 	return type == MASK_EFFECT_LEVELS || type == MASK_EFFECT_INVERT || type == MASK_EFFECT_HISTOGRAM || type == MASK_EFFECT_BLUR ||
-	       type == MASK_EFFECT_HEIGHT_BLEND;
+	       type == MASK_EFFECT_HEIGHT_BLEND || type == MASK_EFFECT_EDGE_BREAKUP;
 }
 
 // Generators are computed from the mesh (util_mask_generators.c)
@@ -272,6 +285,33 @@ i32 mask_effect_fill_source(mask_effect_t *e) {
 // image or grunge projected on the mesh
 bool mask_effect_is_rendered(mask_effect_t *e) {
 	return mask_effect_is_generator(e->type) || mask_effect_fill_source(e) > MASK_FILL_VALUE;
+}
+
+// The noise an Edge Breakup compares its blurred result below with: 3D Noise clouds, raw (coverage 0.5, soft)
+static mask_effect_t mask_edge_breakup_noise(mask_effect_t *e) {
+	mask_effect_t n                     = mask_effect_default(MASK_EFFECT_NOISE);
+	n.params[0]                         = 0.0; // Clouds
+	n.params[1]                         = 0.5;
+	n.params[2]                         = 0.0;
+	n.params[MASK_EFFECT_NOISE_SCALE]   = e->params[MASK_EFFECT_NOISE_SCALE];
+	n.params[MASK_EFFECT_NOISE_AMOUNT]  = 0.0;
+	n.params[MASK_EFFECT_NOISE_DETAIL]  = e->params[MASK_EFFECT_NOISE_DETAIL];
+	n.params[MASK_EFFECT_NOISE_SEED]    = e->params[MASK_EFFECT_NOISE_SEED];
+	return n;
+}
+
+// The generator effect e needs rendered (util_mask_generators.c) into *out: e itself, or an Edge Breakup's noise.
+// False for none.
+bool mask_effect_rendered_as(mask_effect_t *e, mask_effect_t *out) {
+	if (mask_effect_is_rendered(e)) {
+		*out = *e;
+		return true;
+	}
+	if (e->type == MASK_EFFECT_EDGE_BREAKUP) {
+		*out = mask_edge_breakup_noise(e);
+		return true;
+	}
+	return false;
 }
 
 // The image fill e reads, NULL for none (another source, none picked, or deleted)
@@ -986,7 +1026,7 @@ static void mask_stack_pass(gpu_texture_t *dst, gpu_texture_t *acc, mask_pass_in
 
 // The blur radius of effect e before its pass, 0 for none: a Blur's, a Height Blend's reach
 f32 mask_effect_blur_radius(mask_effect_t *e) {
-	return e->type == MASK_EFFECT_BLUR ? e->params[0] : e->type == MASK_EFFECT_HEIGHT_BLEND ? e->params[MASK_HB_REACH] : 0.0;
+	return e->type == MASK_EFFECT_BLUR || e->type == MASK_EFFECT_EDGE_BREAKUP ? e->params[0] : e->type == MASK_EFFECT_HEIGHT_BLEND ? e->params[MASK_HB_REACH] : 0.0;
 }
 
 // acc (w x h) blurred by radius (texels of a 1024 mask). No pass may be open.
@@ -1072,6 +1112,10 @@ static mask_pass_in_t mask_stack_inputs(slot_layer_t *m, mask_effect_t *e, gpu_t
 	else if (e->type == MASK_EFFECT_HEIGHT_BLEND) {
 		in.src = k > 0 && r > 0.0 ? mask_stack_blur(acc, r, w, h) : acc;
 		mask_hb_heights(m, e, &in.top, &in.cmp);
+	}
+	else if (e->type == MASK_EFFECT_EDGE_BREAKUP) { // The result below blurred across its edge, and the noise
+		in.src = k == 0 ? mask_stack_black() : mask_stack_blur(acc, r, w, h);
+		in.top = mask_gen_texture(m, mask_edge_breakup_noise(e));
 	}
 	else {
 		in.src = mask_stack_source(m, e, &in.src_w, &in.src_h);
@@ -1370,6 +1414,11 @@ void mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t
 		}
 		else if (e.type == MASK_EFFECT_PAINT || e.type == MASK_EFFECT_ANCHOR || (e.type == MASK_EFFECT_BLUR && k > 0)) {
 			in.src = src(m, &e, i, 0, data);
+		}
+		else if (e.type == MASK_EFFECT_EDGE_BREAKUP) { // The blurred result below from the export, the noise for the tile
+			in.src = k > 0 ? src(m, &e, i, 0, data) : NULL;
+			mask_gen_render_rect(m, mask_edge_breakup_noise(&e), gen_scratch, gen_out, rect);
+			in.top = gen_out;
 		}
 		mask_stack_pass(out, acc, &in, &e);
 		acc = out;

@@ -317,6 +317,7 @@ typedef enum {
 	                               // optionally a layer's material, MASK_BUILDER_*
 	MASK_EFFECT_AO           = 16, // Generator: side (0 occluded, 1 open), amount, sharpness
 	MASK_EFFECT_HEIGHT_BLEND = 17, // Filter: the edge of the result below moves with its layer's height, MASK_HB_*
+	MASK_EFFECT_EDGE_BREAKUP = 18, // Filter: the edge of the result below frays with noise: width, amount, softness; the noise block
 	MASK_EFFECT_COUNT,
 } mask_effect_type_t;
 

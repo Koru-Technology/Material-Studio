@@ -590,7 +590,7 @@ static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *
 	if (e->type == MASK_EFFECT_PAINT) {
 		return export_tiled_mask_paint(mk, c->m, c->hx, c->hy, p);
 	}
-	if (e->type == MASK_EFFECT_BLUR) {
+	if (e->type == MASK_EFFECT_BLUR || e->type == MASK_EFFECT_EDGE_BREAKUP) {
 		return export_tiled_blurred(mk, index, c, p);
 	}
 	if (e->type == MASK_EFFECT_HEIGHT_BLEND) {

@@ -188,6 +188,8 @@ void build_scene() {
 	script_mask_set_effect_param(layer_mask, b, 0, 6.0);
 	int h = script_mask_add_effect(layer_mask, 17, -1); // Height Blend: its reach blurred whole, its heights per tile
 	script_mask_set_effect_param(layer_mask, h, 3, 12.0);
+	int e = script_mask_add_effect(layer_mask, 18, -1); // Edge Breakup: its width blurred whole, its noise per tile
+	script_mask_set_effect_param(layer_mask, e, 0, 8.0);
 
 	layer_paint = script_layer_new();
 	script_layer_set_name(layer_paint, "et_paint");

@@ -150,6 +150,7 @@ func maskEffectSymbol(_ type: Int32) -> String {
 	case APP_MASK_EFFECT_MASK_BUILDER: "square.stack.3d.up"
 	case APP_MASK_EFFECT_AO: "circle.dotted"
 	case APP_MASK_EFFECT_HEIGHT_BLEND: "mountain.2"
+	case APP_MASK_EFFECT_EDGE_BREAKUP: "scribble.variable"
 	default: "wand.and.stars"
 	}
 }

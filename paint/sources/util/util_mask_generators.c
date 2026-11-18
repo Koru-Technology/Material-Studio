@@ -123,7 +123,8 @@ static bool mask_gen_has_generator(slot_layer_t *m) {
 	i32 n = mask_stack_count(m);
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
-		if (mask_effect_is_rendered(&e)) {
+		mask_effect_t g;
+		if (mask_effect_rendered_as(&e, &g)) {
 			return true;
 		}
 	}
@@ -136,7 +137,7 @@ static u64 mask_gen_key(slot_layer_t *m, u64 epoch) {
 	i32 n   = mask_stack_count(m);
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
-		if (e.visible && mask_effect_is_rendered(&e)) {
+		if (e.visible && mask_effect_rendered_as(&e, &e)) { // Its own output, or what it reads (an Edge Breakup's noise)
 			u64 s = mask_gen_signature(m, &e, epoch);
 			key   = hash_fnv1a(key, &s, sizeof(s));
 		}
@@ -377,7 +378,7 @@ void mask_gen_update(slot_layer_t *m) {
 	// Outputs still matching are kept
 	for (i32 i = 0; i < n; ++i) {
 		mask_effect_t e = mask_stack_get(m, i);
-		if (!e.visible || !mask_effect_is_rendered(&e)) {
+		if (!e.visible || !mask_effect_rendered_as(&e, &e)) {
 			continue;
 		}
 		u64 s = mask_gen_signature(m, &e, epoch);
