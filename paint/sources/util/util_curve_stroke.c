@@ -62,7 +62,8 @@ static struct {
 	bool            pen;
 	f32             altitude;
 	f32             azimuth;
-	history_step_t *step;  // The last step before the stroke
+	u32             serial; // Of the next history step when the stroke started: its own step is at least this (an address
+	                        // could be a step freed since)
 	bool            done;  // Held: no curve twice from one touch
 	bool            touch; // Begun for the touch down now: a stroke start seen again (a first frame without time) keeps it
 } cap = {0};
@@ -116,7 +117,7 @@ void util_curve_stroke_capture_begin() {
 	cap.pen        = pen_down("tip");
 	cap.altitude   = 0.0;
 	cap.azimuth    = 0.0;
-	cap.step       = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
+	cap.serial     = history_serial_peek();
 	cap.done       = false;
 }
 
@@ -266,7 +267,7 @@ static bool curve_hold() {
 	g_context->brush_dab_y       = -1;
 	g_context->brush_blend_dirty = true;
 	history_step_t *last         = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
-	if (last != NULL && last != cap.step && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
+	if (last != NULL && last->serial >= cap.serial && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
 		history_undo();
 	}
 	curve.active         = true;
@@ -787,7 +788,7 @@ void util_curve_stroke_update() {
 bool util_curve_stroke_test_hold(f32_array_t *xyp) {
 	cap.n    = 0;
 	cap.pen  = xyp->length >= 3 && xyp->buffer[2] >= 0.0;
-	cap.step = NULL;
+	cap.serial = 0;
 	cap.altitude = 0.0;
 	cap.azimuth  = 0.0;
 	for (i32 i = 0; i + 2 < xyp->length && cap.n < CURVE_CAPTURE_MAX; i += 3) {

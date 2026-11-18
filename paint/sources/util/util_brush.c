@@ -8,7 +8,8 @@ static bool util_brush_clone_source_down = false;
 #define UTIL_BRUSH_FINGER_CANCEL 0.35
 static f64             util_brush_finger_time    = 0;
 static bool            util_brush_finger_blocked = false;
-static history_step_t *util_brush_finger_step    = NULL; // Last history step before the finger stroke
+static u32             util_brush_finger_serial  = 0; // Serial of the next history step when the finger stroke started (a step's
+                                                       // address could be one freed since)
 static bool            util_brush_finger_stroke  = false;
 
 // Returns false once a finger touch turned into a two finger gesture
@@ -24,7 +25,7 @@ static bool util_brush_finger_allowed(bool paint_down) {
 		// Second finger: undo the stroke the first one just started
 		if (util_brush_finger_stroke && sys_time() - util_brush_finger_time < UTIL_BRUSH_FINGER_CANCEL) {
 			history_step_t *last = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
-			if (last != NULL && last != util_brush_finger_step && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
+			if (last != NULL && last->serial >= util_brush_finger_serial && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
 				history_undo();
 			}
 		}
@@ -40,7 +41,7 @@ static bool util_brush_finger_allowed(bool paint_down) {
 	}
 	if (g_context->brush_time == 0 && !util_brush_finger_stroke) {
 		util_brush_finger_stroke = true;
-		util_brush_finger_step   = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
+		util_brush_finger_serial = history_serial_peek();
 	}
 	return true;
 }
@@ -55,7 +56,7 @@ static f64             util_brush_hold_time  = 0;
 static f32             util_brush_hold_x     = 0;
 static f32             util_brush_hold_y     = 0;
 static bool            util_brush_hold_moved = false;
-static history_step_t *util_brush_hold_step  = NULL;
+static u32             util_brush_hold_serial = 0; // As util_brush_finger_serial
 
 static void util_brush_hold_pick() {
 	if (util_brush_hold_tool >= 0) {
@@ -74,7 +75,7 @@ static void util_brush_hold_pick() {
 		util_brush_hold_x     = mouse_x;
 		util_brush_hold_y     = mouse_y;
 		util_brush_hold_moved = false;
-		util_brush_hold_step  = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
+		util_brush_hold_serial = history_serial_peek();
 	}
 	if (!mouse_down("left") || mouse_down("right") || util_brush_hold_time == 0) {
 		util_brush_hold_time = 0;
@@ -87,7 +88,7 @@ static void util_brush_hold_pick() {
 	if (!util_brush_hold_moved && brush && sys_time() - util_brush_hold_time > 0.5) {
 		util_brush_hold_time  = 0;
 		history_step_t *last  = history_steps->length > 0 ? history_steps->buffer[history_steps->length - 1] : NULL;
-		if (last != NULL && last != util_brush_hold_step && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
+		if (last != NULL && last->serial >= util_brush_hold_serial && last->action == HISTORY_ACTION_PAINT && history_undos > 0) {
 			history_undo();
 		}
 		util_brush_hold_tool = g_context->tool;

@@ -116,6 +116,10 @@ void next() {
 		script_notify_on_next_frame(next);
 		return;
 	}
+	if (history_busy()) { // An undo still restores its layer over the next frames (the first one after launch is slow)
+		script_notify_on_next_frame(next);
+		return;
+	}
 	frame = 0;
 	cx    = sys_x() + sys_w() / 2;
 	cy    = sys_h() / 2;
