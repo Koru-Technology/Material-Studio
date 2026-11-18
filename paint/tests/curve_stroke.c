@@ -7,7 +7,7 @@
 // touch on the canvas confirms it. With real mouse input: a stroke held still for a second becomes a curve, one that
 // keeps moving does not. The view turned before a point is dragged: it still confirms as one stroke. A tap on the curve
 // adds a point there and keeps editing, a drag starting on it adds none; a point between the ends can be removed, the
-// ends can not.
+// ends can not. Cancel drops the curve.
 
 int fails  = 0;
 int checks = 0;
@@ -309,7 +309,8 @@ void next() {
 	else if (step == 25) {
 		check(util_curve_stroke_active() && util_curve_stroke_count() == 2, string("a drag from the curve adds no point (%d)", util_curve_stroke_count()));
 		check(changed() == 0, "and paints nothing");
-		history_user_undo();
+		app_curve_cancel();
+		check(!util_curve_stroke_active() && changed() == 0 && history_test_undos() == undos0, "Cancel drops the curve: nothing painted, no step");
 	}
 	else {
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));

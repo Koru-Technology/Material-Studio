@@ -68,21 +68,37 @@ private struct CurveHandle: View {
 	}
 }
 
-// Paints the curve as a stroke
-struct CurveConfirmButton: View {
+// Cancel drops the curve, Confirm paints it as a stroke
+struct CurveButtons: View {
 	var body: some View {
-		Button {
-			AppStore.shared.perform { app_curve_confirm() }
-		} label: {
-			Text("Confirm")
-				.font(.headline)
-				.foregroundStyle(.white)
-				.padding(.horizontal, 24)
-				.frame(height: 44)
-				.contentShape(.capsule)
+		GlassEffectContainer(spacing: 12) {
+			HStack(spacing: 12) {
+				Button {
+					AppStore.shared.perform { app_curve_cancel() }
+				} label: {
+					label("Cancel")
+				}
+				.buttonStyle(.plain)
+				.glassEffect(.regular.interactive(), in: .capsule)
+				.keyboardShortcut(.cancelAction)
+				Button {
+					AppStore.shared.perform { app_curve_confirm() }
+				} label: {
+					label("Confirm")
+						.foregroundStyle(.white)
+				}
+				.buttonStyle(.plain)
+				.glassEffect(.regular.tint(.accentColor).interactive(), in: .capsule)
+				.keyboardShortcut(.defaultAction)
+			}
 		}
-		.buttonStyle(.plain)
-		.glassEffect(.regular.tint(.accentColor).interactive(), in: .capsule)
-		.keyboardShortcut(.defaultAction)
+	}
+
+	private func label(_ text: String) -> some View {
+		Text(text)
+			.font(.headline)
+			.padding(.horizontal, 24)
+			.frame(height: 44)
+			.contentShape(.capsule)
 	}
 }

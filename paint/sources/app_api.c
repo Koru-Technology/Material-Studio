@@ -651,6 +651,14 @@ bool app_curve_remove(int32_t index) {
 	return app_ready() && util_curve_stroke_remove(index);
 }
 
+void app_curve_cancel(void) {
+	if (!app_ready()) {
+		return;
+	}
+	util_curve_stroke_discard();
+	iron_delay_idle_sleep();
+}
+
 void app_curve_confirm(void) {
 	if (!app_ready()) {
 		return;

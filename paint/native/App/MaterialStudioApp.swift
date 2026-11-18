@@ -48,7 +48,7 @@ struct MacRootView: View {
 				}
 				.overlay(alignment: .bottom) {
 					if CurveStore.shared.editing {
-						CurveConfirmButton()
+						CurveButtons()
 							.padding(16)
 							.transition(.opacity)
 					}

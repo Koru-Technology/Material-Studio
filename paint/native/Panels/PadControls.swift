@@ -37,7 +37,7 @@ struct PadControls: View {
 			VStack {
 				Spacer()
 				if CurveStore.shared.editing { // A stroke held into a curve
-					CurveConfirmButton()
+					CurveButtons()
 						.transition(.opacity)
 				}
 			}
