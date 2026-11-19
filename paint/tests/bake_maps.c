@@ -14,7 +14,8 @@ int wait   = 0;
 int objects_before = 0;
 int textures_before = 0;
 int layers_before  = 0;
-char *high = "";
+char *high  = "";
+char *shell = "";
 
 // app_bake_map_t bits
 int NORMAL    = 1;
@@ -52,7 +53,7 @@ void next() {
 	}
 	frame = 0;
 
-	// A bake runs over frames: wait for it, at most ~60 s
+	// A bake runs over frames: wait for it, at most ~60 s, then one more round for its layer (added the frame after)
 	if (app_bake_running()) {
 		wait = wait + 1;
 		if (wait < 900) {
@@ -62,7 +63,11 @@ void next() {
 		check(0, "the bake finished in time");
 		app_bake_cancel();
 	}
-	wait = 0;
+	if (wait > 0) {
+		wait = 0;
+		script_notify_on_next_frame(next);
+		return;
+	}
 
 	if (step == 0) {
 		high = string("%s/koru_bake_high.obj", script_save_path());
@@ -111,6 +116,27 @@ void next() {
 	}
 	else if (step == 3) {
 		check(app_layer_count() == layers_before, "a bake without normal, occlusion or height adds no layer");
+		// Raised detail: the high poly is the mesh and a shell 1% larger around it, inside the cage. The bake must take
+		// the shell (the first surface from the cage), not the surface under it, buried in the shell
+		shell = string("%s/koru_bake_shell.obj", script_save_path());
+		check(app_test_write_shell_obj(high, shell, 1.01), "a high poly with a shell over the mesh is written");
+		check(app_bake_set_high(shell) > 0, "the shell high poly is read");
+		app_test_bake_options(AO + HEIGHT, 1024, 16);
+		check(app_bake_start(), "a bake from the shell starts");
+	}
+	else if (step == 4) {
+		float ao = app_test_texture_bright(app_mesh_map_texture(MM_AO));
+		check(ao > 0.6, string("the shell's occlusion is light, not the buried surface's black (%.2f bright)", ao));
+		int hi = -1;
+		for (int i = 0; i < app_texture_count(); ++i) {
+			if (ends_with(app_texture_name(i), "_height.png")) {
+				hi = i;
+			}
+		}
+		float h = app_test_texture_bright(hi);
+		check(h > 0.6, string("the shell is raised in the height map (%.2f above mid gray)", h));
+		app_bake_close();
+		iron_delete_file(shell);
 		check(objects() == objects_before, "the scene still has its objects only");
 		iron_delete_file(high);
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));

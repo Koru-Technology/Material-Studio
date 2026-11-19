@@ -732,9 +732,10 @@ static void bake_rays_surface_at(i32 ti, f32 px, f32 py, bool use_high, bake_ray
 	f32 o[3]   = {s->p[0] + rn[0] * bake_rays_dist, s->p[1] + rn[1] * bake_rays_dist, s->p[2] + rn[2] * bake_rays_dist};
 	f32 dir[3] = {-rn[0], -rn[1], -rn[2]};
 	f32 t, u, v;
-	// Keep the high poly surface nearest to the low poly, not the first one met from the cage:
-	// parts like eyelids or teeth inside the cage would otherwise shadow the real surface
-	i32 hit = bake_rays_trace(&bake_rays_hp, o, dir, 0.0, bake_rays_dist * 2.0, bake_rays_dist, true, false, &t, &u, &v);
+	// The first front facing surface met from the cage, as other bakers do: detail raised over the surface (an emblem
+	// on a cover) is what shows. The surface nearest the low poly would be the one under it, buried in the detail: its
+	// occlusion all black, its normals flat.
+	i32 hit = bake_rays_trace(&bake_rays_hp, o, dir, 0.0, bake_rays_dist * 2.0, -1.0, true, false, &t, &u, &v);
 	if (hit < 0) {
 		return;
 	}
@@ -1119,7 +1120,7 @@ static bool bake_rays_misses(f32 *p, f32 *n) {
 	f32 o[3]   = {p[0] + n[0] * bake_rays_dist, p[1] + n[1] * bake_rays_dist, p[2] + n[2] * bake_rays_dist};
 	f32 dir[3] = {-n[0], -n[1], -n[2]};
 	f32 t, u, v;
-	return bake_rays_trace(&bake_rays_hp, o, dir, 0.0, bake_rays_dist * 2.0, bake_rays_dist, true, false, &t, &u, &v) < 0;
+	return bake_rays_trace(&bake_rays_hp, o, dir, 0.0, bake_rays_dist * 2.0, -1.0, true, false, &t, &u, &v) < 0;
 }
 
 // Cast a few rays per low poly triangle to find areas the high poly is not reached from

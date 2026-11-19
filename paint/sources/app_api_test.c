@@ -214,3 +214,76 @@ int32_t app_test_bake_preview(int32_t high) {
 	int32_t        w, h;
 	return app_bake_preview(0.8, 0.35, 1.0, high != 0, false, 320, 240, pixels, sizeof(pixels), &w, &h);
 }
+
+// An obj of the mesh in src plus a copy scaled by scale around its center: a shell over the surface, raised detail
+// for a high poly bake. False when src can not be read.
+bool app_test_write_shell_obj(char *src, char *dst, float scale) {
+	FILE *in = fopen(src, "r");
+	if (in == NULL) {
+		return false;
+	}
+	FILE *out = fopen(dst, "w");
+	if (out == NULL) {
+		fclose(in);
+		return false;
+	}
+	f32  lo[3] = {1e30, 1e30, 1e30}, hi[3] = {-1e30, -1e30, -1e30};
+	i32  verts = 0;
+	char line[1024];
+	while (fgets(line, sizeof(line), in) != NULL) {
+		f32 x, y, z;
+		if (sscanf(line, "v %f %f %f", &x, &y, &z) == 3) {
+			f32 v[3] = {x, y, z};
+			for (i32 k = 0; k < 3; ++k) {
+				lo[k] = v[k] < lo[k] ? v[k] : lo[k];
+				hi[k] = v[k] > hi[k] ? v[k] : hi[k];
+			}
+			verts++;
+		}
+	}
+	// Pass 1: the mesh as it is. Pass 2: its vertices scaled, its faces offset past the first copy's vertices.
+	for (i32 pass = 0; pass < 2; ++pass) {
+		rewind(in);
+		while (fgets(line, sizeof(line), in) != NULL) {
+			f32 x, y, z;
+			if (sscanf(line, "v %f %f %f", &x, &y, &z) == 3) {
+				f32 v[3] = {x, y, z};
+				for (i32 k = 0; k < 3 && pass == 1; ++k) {
+					f32 c = (lo[k] + hi[k]) * 0.5;
+					v[k]  = c + (v[k] - c) * scale;
+				}
+				fprintf(out, "v %f %f %f\n", v[0], v[1], v[2]);
+			}
+			else if (line[0] == 'f' && line[1] == ' ') {
+				fputs("f", out);
+				char *tok = strtok(line + 2, " \n");
+				while (tok != NULL) {
+					i32 vi = atoi(tok);
+					fprintf(out, " %d", vi + (pass == 1 ? verts : 0)); // Positions only: normals are rebuilt from faces
+					tok = strtok(NULL, " \n");
+				}
+				fputs("\n", out);
+			}
+		}
+	}
+	fclose(in);
+	fclose(out);
+	return true;
+}
+
+// Fraction of a project texture's texels brighter than half, in its red channel
+float app_test_texture_bright(int32_t texture) {
+	if (texture < 0 || texture >= (i32)g_project->_->assets->length) {
+		return -1.0;
+	}
+	gpu_texture_t *t = project_get_image(g_project->_->assets->buffer[texture]);
+	buffer_t      *p = t != NULL ? gpu_get_texture_pixels(t) : NULL;
+	if (p == NULL || p->length < 4) {
+		return -1.0;
+	}
+	i32 bright = 0;
+	for (i32 i = 0; i < p->length; i += 4) {
+		bright += p->buffer[i + 2] > 127 ? 1 : 0; // BGRA or RGBA: a gray map has the same value in each
+	}
+	return bright / (f32)(p->length / 4);
+}

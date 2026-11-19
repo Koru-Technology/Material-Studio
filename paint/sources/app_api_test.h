@@ -33,6 +33,8 @@ float app_test_bake_progress(void);
 float app_test_bake_missed(void);
 uint32_t    app_test_layer_channels(void); // The selected layer's, bits of app_layer_channel_t
 const char *app_test_layer_name(void);
+bool        app_test_write_shell_obj(char *src, char *dst, float scale);
+float       app_test_texture_bright(int32_t texture); // Fraction of texels over half, -1 when unreadable
 int32_t app_test_bake_preview(int32_t high); // Bytes of a 320 x 240 preview, 0 for none
 
 // Materials (app_api_materials.h)
