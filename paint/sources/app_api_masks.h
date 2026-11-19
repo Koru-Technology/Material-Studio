@@ -92,9 +92,26 @@ bool    app_mask_set_effect_visible(int32_t id, int32_t index, bool on);
 bool    app_mask_set_effect_blending(int32_t id, int32_t index, int32_t blending);
 bool    app_mask_reset_effect(int32_t id, int32_t index); // Settings to their defaults
 
-// Picks the parts of an ID Selection effect on the ID map, from the next frame: the engine's bar takes over (engine_modal)
-// and asks to import an ID map when the project has none. Done sets the parts as one undo step, Cancel leaves them.
+// Picks the parts of an ID Selection effect on the ID map, from the next frame (asks to import an ID map when the project
+// has none). The native UI lists the ID map's parts beside the canvas to pick from, a tap on the model picks the part
+// under it as well. Confirm sets the parts as one undo step, Cancel leaves them.
 bool app_mask_effect_pick_ids(int32_t id, int32_t index);
+
+typedef struct {
+	bool     active;  // Picking
+	int32_t  parts;   // The ID map's parts, largest first: app_id_part_*
+	int32_t  picked;
+	int32_t  max;     // Parts one ID Selection holds
+	uint32_t version; // Changes with the parts and the picked ones
+} app_id_pick_t;
+
+void        app_id_pick(app_id_pick_t *out);
+uint32_t    app_id_part_color(int32_t i); // 0xrrggbb
+const char *app_id_part_name(int32_t i);  // The bake's name of it (the high poly object), "Part n" for an imported map
+bool        app_id_part_picked(int32_t i);
+void        app_id_part_toggle(int32_t i);
+void        app_id_pick_confirm(void);
+void        app_id_pick_cancel(void);
 
 // Layers an Anchor or a Mask Builder of mask id can reference, top first: paint and fill layers other than
 // the mask's own

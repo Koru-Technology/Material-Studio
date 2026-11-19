@@ -378,6 +378,12 @@ int32_t app_test_texture_colors(int32_t texture) {
 	return colors;
 }
 
+int32_t app_test_id_parts(void) {
+	app_id_pick_t p;
+	app_id_pick(&p);
+	return p.parts;
+}
+
 const char *app_test_id_map(void) {
 	return app_str(g_project->id_map);
 }

@@ -37,7 +37,8 @@ bool        app_test_write_shell_obj(char *src, char *dst, float scale, bool onl
 void        app_test_bake_max_distance(float d);
 bool        app_test_write_split_obj(char *src, char *dst);
 int32_t     app_test_texture_colors(int32_t texture); // Colors but black covering 1% or more, -1 when unreadable
-const char *app_test_id_map(void);                    // The project's ID map asset name, "" for none
+const char *app_test_id_map(void);
+int32_t     app_test_id_parts(void); // app_id_pick_t.parts                    // The project's ID map asset name, "" for none
 float       app_test_texture_bright(int32_t texture); // Fraction of texels over half, -1 when unreadable
 int32_t app_test_bake_preview(int32_t high); // Bytes of a 320 x 240 preview, 0 for none
 

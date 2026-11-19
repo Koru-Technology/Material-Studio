@@ -165,6 +165,17 @@ void next() {
 		int colors = app_test_texture_colors(id);
 		check(colors >= 2, string("a flat color per part (%d colors)", colors));
 		check(string_equals(app_test_id_map(), app_texture_name(id)), string("it is the project's ID map (%s)", app_test_id_map()));
+		check(app_layer_new(11), "ID Mask... picks parts on it"); // APP_LAYER_NEW_ID_MASK
+	}
+	else if (step == 6) {
+		int parts = app_test_id_parts();
+		check(parts == 2, string("its two parts are listed (%d)", parts));
+		bool named = parts == 2 && ((string_equals(app_id_part_name(0), "part0") && string_equals(app_id_part_name(1), "part1")) ||
+		                            (string_equals(app_id_part_name(0), "part1") && string_equals(app_id_part_name(1), "part0")));
+		check(named, string("by the high poly's object names (%s, %s)", app_id_part_name(0), app_id_part_name(1)));
+		app_id_part_toggle(0);
+		check(app_id_part_picked(0) && !app_id_part_picked(1), "a part picked from the list");
+		app_id_pick_cancel();
 		app_bake_close();
 		iron_delete_file(shell);
 		check(objects() == objects_before, "the scene still has its objects only");

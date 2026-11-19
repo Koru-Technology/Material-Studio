@@ -111,7 +111,7 @@ void app_get_state(app_state_t *out) {
 	out->sym_x             = g_context->sym_x;
 	out->sym_y             = g_context->sym_y;
 	out->sym_z             = g_context->sym_z;
-	out->engine_modal      = ui_box_show || ui_menu_show || ui_brush_creator_shown() || material_studio_show || ui_id_mask_active;
+	out->engine_modal      = ui_box_show || ui_menu_show || ui_brush_creator_shown() || material_studio_show;
 	if (scene_camera != NULL) {
 		out->camera_fov = scene_camera->data->fov;
 	}

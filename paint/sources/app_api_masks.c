@@ -227,6 +227,51 @@ bool app_mask_effect_pick_ids(int32_t id, int32_t index) {
 	return true;
 }
 
+void app_id_pick(app_id_pick_t *out) {
+	*out = (app_id_pick_t){0};
+	if (!app_ready()) {
+		return;
+	}
+	out->active  = ui_id_mask_active;
+	out->parts   = ui_id_mask_part_count();
+	out->picked  = ui_id_mask_selected();
+	out->max     = ui_id_mask_pick_max();
+	out->version = ui_id_mask_pick_version();
+}
+
+uint32_t app_id_part_color(int32_t i) {
+	return app_ready() ? ui_id_mask_part_color(i) : 0;
+}
+
+const char *app_id_part_name(int32_t i) {
+	return app_ready() ? app_str(ui_id_mask_part_label(i)) : "";
+}
+
+bool app_id_part_picked(int32_t i) {
+	return app_ready() && ui_id_mask_part_picked(i);
+}
+
+void app_id_part_toggle(int32_t i) {
+	if (app_ready() && i >= 0 && i < ui_id_mask_part_count()) {
+		ui_id_mask_toggle(ui_id_mask_part_color(i));
+		iron_delay_idle_sleep();
+	}
+}
+
+void app_id_pick_confirm(void) {
+	if (app_ready()) {
+		ui_id_mask_done();
+		iron_delay_idle_sleep();
+	}
+}
+
+void app_id_pick_cancel(void) {
+	if (app_ready()) {
+		ui_id_mask_cancel();
+		iron_delay_idle_sleep();
+	}
+}
+
 // Anchors: an Anchor effect reads another paint or fill layer, not the layer the mask is of
 static bool app_mask_anchors(slot_layer_t *m, slot_layer_t *l) {
 	return l != m->parent && slot_layer_is_layer(l) && !slot_layer_is_filter(l);

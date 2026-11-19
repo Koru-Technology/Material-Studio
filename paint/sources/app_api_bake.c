@@ -248,7 +248,13 @@ void app_bake_update() {
 			app_bake_baked_types[type] = true;
 		}
 		if (map == APP_BAKE_MAP_ID && a >= 0) { // The project's ID map: flat colors by construction, not checked
-			g_project->id_map = string_copy(g_project->_->assets->buffer[a]->name);
+			g_project->id_map       = string_copy(g_project->_->assets->buffer[a]->name);
+			g_project->id_map_parts = any_array_create_from_raw((void *[]){}, 0); // Its parts by name, for picking
+			for (i32 i = 0; i < bake_maps_id_part_count(); ++i) {
+				char *name = bake_maps_id_part_name(i);
+				name       = name[0] != '\0' ? name : string("%s %d", tr("Part"), i + 1);
+				any_array_push(g_project->id_map_parts, string_copy(string("%06x %s", bake_maps_id_part_rgb(i), name)));
+			}
 			g_context->ddirty = 2;
 		}
 	}

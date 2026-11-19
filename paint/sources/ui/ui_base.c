@@ -130,7 +130,6 @@ void ui_base_update(void *_) {
 	// The native UI has the panels; the full screen editors without a native version yet still draw here
 	g_ui->input_enabled = base_ui_enabled && !ui_brush_creator_shown();
 	ui_begin(g_ui);
-	ui_id_mask_render_ui();
 	ui_material_studio_render_ui();
 	ui_brush_creator_render_ui();
 	ui_end();

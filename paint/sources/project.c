@@ -405,6 +405,7 @@ void project_new(bool reset_layers) {
 	}
 	g_project->linear_blending = true; // New projects blend colors in linear space
 	g_project->id_map          = NULL;
+	g_project->id_map_parts    = NULL;
 	g_project->mesh_maps       = NULL;
 	g_project->uuid            = NULL;
 	g_project->next_uid        = 0;

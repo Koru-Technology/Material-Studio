@@ -41,6 +41,7 @@ int TYPES       = 18;
 int AO          = 0;
 int THICK_MAP   = 3;
 int NEW_ID_MASK = 11;
+int fifteenth   = 0; // Color of the fifteenth part picked
 int RED         = 16711680; // 0xff0000
 int BLUE        = 255;
 
@@ -113,6 +114,22 @@ bool is_filter(slot_layer_t *l) {
 // Paint and fill layers: not groups (no texpaint), masks (no texpaint_nor) or filters
 bool is_paint_or_fill(slot_layer_t *l) {
 	return l->texpaint != NULL && l->texpaint_nor != NULL && !is_filter(l);
+}
+
+// Twenty flat stripes, green 12 apart: more parts than one ID Selection holds
+void write_id_map_stripes(char *path) {
+	int       w   = 80;
+	buffer_t *buf = buffer_create(w * 64 * 4);
+	for (int y = 0; y < 64; ++y) {
+		for (int x = 0; x < w; ++x) {
+			int i = (y * w + x) * 4;
+			buffer_set_u8(buf, i, 64);
+			buffer_set_u8(buf, i + 1, (x / 4 + 1) * 12);
+			buffer_set_u8(buf, i + 2, 0);
+			buffer_set_u8(buf, i + 3, 255);
+		}
+	}
+	iron_write_png(path, buf, w, 64, 0);
 }
 
 // Four flat quadrants: red, green, blue, yellow
@@ -347,6 +364,8 @@ void next() {
 		check(app_mask_effect_count(m) == n, "undo the ID Selection");
 		write_id_map(test_path("koru_app_api_masks_id.png"));
 		script_import_asset(test_path("koru_app_api_masks_id.png"), 0);
+		write_id_map_stripes(test_path("koru_app_api_masks_id20.png"));
+		script_import_asset(test_path("koru_app_api_masks_id20.png"), 0);
 	}
 	else if (step == 12) {
 		sig_changed();
@@ -357,10 +376,22 @@ void next() {
 	}
 	else if (step == 13) {
 		check(picking() && ui_id_mask_selected() == 0, "adding an ID Selection starts picking");
-		ui_id_mask_toggle(RED);
-		ui_id_mask_toggle(BLUE);
+		check(app_test_id_parts() == 4, string("the ID map's four parts are listed (%d)", app_test_id_parts()));
+		check(string_equals(app_id_part_name(0), "Part 1"), string("an imported map's parts are numbered (%s)", app_id_part_name(0)));
+		int red = -1;
+		for (int i = 0; i < app_test_id_parts(); ++i) {
+			if (app_id_part_color(i) == RED) {
+				red = i;
+			}
+		}
+		check(red >= 0 && !app_id_part_picked(red), "red is a part, not picked");
+		app_id_part_toggle(red);
+		check(app_id_part_picked(red) && ui_id_mask_selected() == 1, "picked from the list");
+		ui_id_mask_toggle(BLUE); // A tap on the model
 		check(ui_id_mask_selected() == 2, "two parts picked");
-		ui_id_mask_done();
+		ui_id_mask_toggle(4194304 + 12 * 256);
+		check(ui_id_mask_selected() == 2, "a color not in the ID map picks nothing");
+		app_id_pick_confirm();
 	}
 	else if (step == 14) {
 		check(!picking(), "done leaves the ID map view");
@@ -384,19 +415,28 @@ void next() {
 		check(!picking() && near(app_mask_effect_value(m, 0, 0), 2.0), "cancel leaves the parts as they were");
 		app_mask_effect_pick_ids(m, 0);
 	}
-	else if (step == 17) {
-		for (int i = 1; i <= 20; ++i) {
-			ui_id_mask_toggle(4194304 + i * 12 * 256); // 0x40 red, green apart by more than the tolerance
-		}
-		check(ui_id_mask_selected() == 15, "at most fifteen parts");
-		ui_id_mask_done();
+	else if (step == 17) { // An ID map of twenty parts
+		app_id_pick_cancel();
+		check(script_set_id_map(script_asset_index("koru_app_api_masks_id20.png")) == 1, "a twenty part ID map");
+		app_mask_effect_pick_ids(m, 0);
 	}
 	else if (step == 18) {
-		check(near(app_mask_effect_value(m, 0, 0), 15.0) && same(app_mask_effect_value(m, 0, 15), 4194304 + 13 * 12 * 256), "fifteen written");
+		check(app_test_id_parts() == 20, string("twenty parts listed (%d)", app_test_id_parts()));
+		check(ui_id_mask_selected() == 0, "the parts of the other ID map are dropped");
+		for (int i = 0; i < 20; ++i) {
+			ui_id_mask_toggle(app_id_part_color(i)); // A tap on each stripe
+		}
+		check(ui_id_mask_selected() == 15, string("at most fifteen parts (%d)", ui_id_mask_selected()));
+		fifteenth = app_id_part_color(14);
+		ui_id_mask_done();
+	}
+	else if (step == 19) {
+		check(near(app_mask_effect_value(m, 0, 0), 15.0) && same(app_mask_effect_value(m, 0, 15), fifteenth), "fifteen written");
 		app_undo();
 		check(near(app_mask_effect_value(m, 0, 0), 2.0), "undo");
+		script_set_id_map(script_asset_index("koru_app_api_masks_id.png"));
 	}
-	else if (step == 19) { // "ID Mask...": an ID Selection in the layer's mask, made first when it has none
+	else if (step == 20) { // "ID Mask...": an ID Selection in the layer's mask, made first when it has none
 		check(app_layer_new(0), "paint layer for an ID mask");
 		c = selected();
 		n = app_layer_count();
@@ -405,12 +445,12 @@ void next() {
 		check(app_layer_count() == n + 1 && layer_by_id(k)->parent == layer_by_id(c), "makes its mask");
 		check(app_mask_effect_count(k) == 2 && app_mask_effect_type(k, 0) == ID && app_mask_effect_type(k, 1) == PAINT, "with an ID Selection on its paint");
 	}
-	else if (step == 20) {
+	else if (step == 21) {
 		check(picking(), "and picks its parts");
 		ui_id_mask_toggle(65280);
 		ui_id_mask_done();
 	}
-	else if (step == 21) {
+	else if (step == 22) {
 		check(near(app_mask_effect_value(k, 0, 0), 1.0), "one part");
 		app_undo();
 		check(near(app_mask_effect_value(k, 0, 0), 0.0), "undo the part");
@@ -423,16 +463,16 @@ void next() {
 		k = selected();
 		check(app_layer_count() == n + 1 && app_mask_effect_count(k) == 3 && app_mask_effect_type(k, 0) == ID, "adds to its mask");
 	}
-	else if (step == 22) {
+	else if (step == 23) {
 		check(picking(), "picking");
 		ui_id_mask_cancel();
 	}
-	else if (step == 23) {
+	else if (step == 24) {
 		check(!picking() && app_mask_effect_count(k) == 3 && near(app_mask_effect_value(k, 0, 0), 0.0), "cancel leaves the new effect, no parts");
 		check(app_layer_pick(c) && app_layer_new(7) && !app_layer_can_new(NEW_ID_MASK), "a group takes no ID mask");
 		check(app_layer_pick(c) && app_layer_new(8), "filter, next frame");
 	}
-	else if (step == 24) { // Anchor: other paint and fill layers
+	else if (step == 25) { // Anchor: other paint and fill layers
 		int  count    = app_mask_anchor_layer_count(m);
 		int  expected = 0;
 		bool filters  = false;

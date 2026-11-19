@@ -24,8 +24,15 @@ struct PadControls: View {
 			HStack {
 				PadToolColumn()
 				Spacer()
-				PadBrushControls()
+				if IDPickStore.shared.active { // Picking ID Selection parts: their list in place of the brush sliders
+					IDPartsPanel()
+						.transition(.opacity)
+				}
+				else {
+					PadBrushControls()
+				}
 			}
+			.animation(.easeOut(duration: 0.15), value: IDPickStore.shared.active)
 			VStack {
 				Spacer()
 				HStack(alignment: .bottom) {

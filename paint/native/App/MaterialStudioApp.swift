@@ -54,6 +54,14 @@ struct MacRootView: View {
 					}
 				}
 				.animation(.easeOut(duration: 0.15), value: CurveStore.shared.editing)
+				.overlay(alignment: .trailing) {
+					if IDPickStore.shared.active { // Picking ID Selection parts
+						IDPartsPanel()
+							.padding(16)
+							.transition(.opacity)
+					}
+				}
+				.animation(.easeOut(duration: 0.15), value: IDPickStore.shared.active)
 				.overlay {
 					if StudioStore.shared.open {
 						MaterialStudioView()

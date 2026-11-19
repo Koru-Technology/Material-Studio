@@ -1163,6 +1163,7 @@ bool project_session_overlay(project_t *p) {
 	p->camera_fov             = s->camera_fov;
 	p->linear_blending        = s->linear_blending;
 	p->id_map                 = s->id_map;
+	p->id_map_parts           = s->id_map_parts;
 	p->mesh_maps              = s->mesh_maps;
 	p->next_uid               = s->next_uid;
 	p->timelines              = s->timelines;

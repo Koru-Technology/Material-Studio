@@ -77,6 +77,7 @@ final class AppStore: ChangeOnly {
 		BrushesStore.shared.refresh()
 		ProjectsStore.shared.refresh(s)
 		CurveStore.shared.refresh(s)
+		IDPickStore.shared.refresh()
 	}
 
 

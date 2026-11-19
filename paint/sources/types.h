@@ -873,6 +873,7 @@ typedef struct project {
 	struct string_array                         *atlas_names;
 	bool                                         linear_blending; // Layers and brush strokes blend colors in linear space
 	char                                        *id_map;          // Asset name of the ID map used by ID masks, NULL for none
+	struct string_array                         *id_map_parts;    // Names of its parts, "rrggbb name" each (a baked ID map), NULL for none
 	struct string_array                         *mesh_maps;       // Asset name per mesh_map_t, "" for none, NULL when none ever set
 	char                                        *uuid;            // project_uuid
 	u32                                          next_uid;        // project_uid_next

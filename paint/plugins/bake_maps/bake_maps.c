@@ -64,6 +64,9 @@ static bake_rays_bvh_t bake_rays_hp  = {0}; // High poly
 static bake_rays_bvh_t bake_rays_lpb = {0}; // Low poly, for occlusion when baking without high poly
 
 static i32 *bake_rays_hp_part = NULL; // Part of the high poly file (object, mesh) per triangle
+static char **bake_rays_hp_names = NULL; // Name per part, from the file
+static i32    bake_rays_hp_parts = 0;
+static void   bake_rays_free_names();
 static f32 bake_rays_hp_min[3];
 static f32 bake_rays_hp_max[3];
 
@@ -437,6 +440,7 @@ static bool bake_rays_set_high_raw(raw_mesh_t_array_t *parts) {
 	bake_rays_free_bvh(&bake_rays_hp);
 	free(bake_rays_hp_part);
 	bake_rays_hp_part = NULL;
+	bake_rays_free_names();
 	bake_rays_miss_dirty = true;
 	bake_rays_version++;
 	if (parts == NULL) {
@@ -465,6 +469,7 @@ static bool bake_rays_set_high_raw(raw_mesh_t_array_t *parts) {
 	}
 	i32 ti   = 0;
 	i32 part = 0;
+	bake_rays_hp_names = calloc(parts->length, sizeof(char *));
 	for (i32 i = 0; i < parts->length; ++i) {
 		raw_mesh_t *m = parts->buffer[i];
 		if (m->posa == NULL || m->inda == NULL) {
@@ -473,7 +478,9 @@ static bool bake_rays_set_high_raw(raw_mesh_t_array_t *parts) {
 		for (i32 t = 0; t < m->inda->length / 3; ++t) {
 			bake_rays_hp_part[ti + t] = part;
 		}
+		bake_rays_hp_names[part] = strdup(m->name != NULL && m->name[0] != '\0' ? m->name : "");
 		part++;
+		bake_rays_hp_parts = part;
 		i16 *pos = m->posa->buffer;
 		i16 *nor = m->nora != NULL ? m->nora->buffer : NULL;
 		f32  sc  = m->scale_pos;
@@ -796,6 +803,15 @@ static void bake_rays_hemisphere(f32 *n, i32 i, i32 count, f32 r0, f32 r1, f32 *
 	dir[1] = n[1] + r * sinf(a);
 	dir[2] = n[2] + z;
 	bake_rays_v3_norm(dir);
+}
+
+static void bake_rays_free_names() {
+	for (i32 i = 0; bake_rays_hp_names != NULL && i < bake_rays_hp_parts; ++i) {
+		free(bake_rays_hp_names[i]);
+	}
+	free(bake_rays_hp_names);
+	bake_rays_hp_names = NULL;
+	bake_rays_hp_parts = 0;
 }
 
 // A flat color per part: hues a golden angle apart, two brightnesses, distinct for dozens of parts (an ID map)
@@ -1446,6 +1462,27 @@ i32 bake_maps_load_high(char *path) {
 	return bake_rays_hp.count;
 }
 
+// int bake_maps_id_part_count(): the parts an ID map colors: of the high poly file, or the paint objects without one
+i32 bake_maps_id_part_count(void) {
+	return bake_rays_hp.count > 0 ? bake_rays_hp_parts : g_project->_->paint_objects->length;
+}
+
+// char *bake_maps_id_part_name(int part)
+char *bake_maps_id_part_name(i32 part) {
+	if (bake_rays_hp.count > 0) {
+		return part >= 0 && part < bake_rays_hp_parts ? bake_rays_hp_names[part] : "";
+	}
+	mesh_object_t_array_t *lows = g_project->_->paint_objects;
+	return part >= 0 && part < lows->length && lows->buffer[part]->base->name != NULL ? lows->buffer[part]->base->name : "";
+}
+
+// int bake_maps_id_part_rgb(int part): its color in the ID map, 0xrrggbb
+u32 bake_maps_id_part_rgb(i32 part) {
+	f32 c[3];
+	bake_rays_id_color(part, c);
+	return ((u32)bake_rays_unorm(c[0]) << 16) | ((u32)bake_rays_unorm(c[1]) << 8) | bake_rays_unorm(c[2]);
+}
+
 // float bake_maps_high_fit(): size of the high poly relative to the low poly, 0 when the bounds do not overlap
 f32 bake_maps_high_fit(void) {
 	if (bake_rays_hp.count == 0 || bake_rays_lp_count == 0) {
@@ -1737,6 +1774,7 @@ void bake_maps_end(void) {
 	bake_rays_free_bvh(&bake_rays_hp);
 	free(bake_rays_hp_part);
 	bake_rays_hp_part = NULL;
+	bake_rays_free_names();
 	free(bake_rays_zbuf);
 	bake_rays_zbuf   = NULL;
 	bake_rays_zbuf_n = 0;

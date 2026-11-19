@@ -204,6 +204,7 @@ static const armpack_field_t util_project_fields[] = {
     ARMPACK_FIELD(project_t, atlas_names, ARMPACK_STRING_ARRAY),
     ARMPACK_FIELD(project_t, linear_blending, ARMPACK_BOOL),
     ARMPACK_FIELD(project_t, id_map, ARMPACK_STRING),
+    ARMPACK_FIELD(project_t, id_map_parts, ARMPACK_STRING_ARRAY),
     ARMPACK_FIELD(project_t, mesh_maps, ARMPACK_STRING_ARRAY),
     ARMPACK_FIELD(project_t, uuid, ARMPACK_STRING),
     ARMPACK_FIELD(project_t, next_uid, ARMPACK_I32),

@@ -1001,7 +1001,12 @@ void     ui_id_mask_toggle(u32 color);
 i32      ui_id_mask_selected();
 void     ui_id_mask_done();
 void     ui_id_mask_update();
-void     ui_id_mask_render_ui();
+i32      ui_id_mask_part_count();
+u32      ui_id_mask_part_color(i32 i);
+char    *ui_id_mask_part_label(i32 i);
+bool     ui_id_mask_part_picked(i32 i);
+u32      ui_id_mask_pick_version();
+i32      ui_id_mask_pick_max();
 
 // ---- ui/ui_menu.c ----
 i32  ui_menu_padding();
@@ -2281,6 +2286,9 @@ scene_t *startup_get_scene(void);
 #ifdef WITH_PLUGINS
 i32            bake_maps_load_high(char *path);
 f32            bake_maps_high_fit(void);
+i32            bake_maps_id_part_count(void);
+char          *bake_maps_id_part_name(i32 part);
+u32            bake_maps_id_part_rgb(i32 part);
 i32            bake_maps_set_low(void);
 void           bake_maps_set_cage(f32 dist, bool average);
 void           bake_maps_set_ao(f32 strength, f32 radius, f32 offset);

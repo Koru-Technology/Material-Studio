@@ -2,7 +2,8 @@
 
 // ID masks: the project's ID map paints each part of the model a flat color. Picking parts on the mesh makes a mask of them,
 // or sets the parts of a mask's ID Selection effect (ui_id_mask_begin_effect).
-// While picking, the viewport shows the ID map (TOOL_TYPE_COLORID) and each tap adds or removes the part under it.
+// While picking, the viewport shows the ID map (TOOL_TYPE_COLORID) and each tap adds or removes the part under it; the
+// native UI lists the parts beside the canvas to pick from as well, and confirms or cancels (app_api_masks.h).
 
 #define UI_ID_MASK_MAX       16    // Parts in one mask, texels of texpaint_colorid_sel
 #define UI_ID_MASK_TOLERANCE 0.02f // Per channel, compressed or filtered ID maps are not exact
@@ -13,8 +14,6 @@ static u32           ui_id_mask_colors[UI_ID_MASK_MAX];
 static i32           ui_id_mask_count        = 0;
 static i32           ui_id_mask_assets_before = 0; // Assets before importing an ID map, an invalid one is removed again
 static char         *ui_id_mask_import_path  = NULL;
-static ui_window_t  *ui_id_mask_bar          = NULL;
-static i32           ui_id_mask_bar_count    = -1; // Count the bar was drawn with
 static slot_layer_t *ui_id_mask_effect_mask  = NULL; // Picking for effect ui_id_mask_effect of this mask, NULL: a new mask
 static i32           ui_id_mask_effect       = -1;   // Stack index
 static slot_layer_t *ui_id_mask_next_mask    = NULL; // Effect of the next begin
@@ -144,18 +143,136 @@ static bool ui_id_mask_effect_get(mask_effect_t *e) {
 	return e->type == MASK_EFFECT_ID_SELECTION;
 }
 
+// The parts of the ID map, read when picking starts: its flat colors, largest first, and their names from the bake
+#define UI_ID_MASK_PARTS     64
+#define UI_ID_MASK_PART_MIN  32 // Texels: fewer is an edge between parts or a stray texel
+static u32   ui_id_mask_part_colors[UI_ID_MASK_PARTS];
+static char *ui_id_mask_part_names[UI_ID_MASK_PARTS];
+static i32   ui_id_mask_parts = 0;
+static u32   ui_id_mask_version = 0; // Changes with the parts and the picked ones
+
+// The name the bake gave a part, NULL for none
+static char *ui_id_mask_part_name(u32 color) {
+	string_array_t *names = g_project->id_map_parts;
+	for (i32 i = 0; names != NULL && i < names->length; ++i) {
+		char *e = names->buffer[i];
+		if (e != NULL && string_length(e) > 7 && ui_id_mask_same_color((u32)strtoul(substring(e, 0, 6), NULL, 16), color)) {
+			return substring(e, 7, string_length(e));
+		}
+	}
+	return NULL;
+}
+
+static void ui_id_mask_read_parts() {
+	ui_id_mask_parts = 0;
+	ui_id_mask_version++;
+	asset_t       *map   = project_id_map_asset();
+	gpu_texture_t *image = map != NULL ? project_get_image(map) : NULL;
+	bool           rgba8 = image != NULL && image->format != GPU_TEXTURE_FORMAT_RGBA64 && image->format != GPU_TEXTURE_FORMAT_RGBA128 &&
+	                 image->format != GPU_TEXTURE_FORMAT_R8 && image->format != GPU_TEXTURE_FORMAT_R16 && image->format != GPU_TEXTURE_FORMAT_R32;
+	buffer_t      *px    = rgba8 ? gpu_get_texture_pixels_rgba8(image) : NULL; // RGBA32 or a decompressed BC7
+	if (px == NULL) {
+		return;
+	}
+	// Count the colors, open addressing over the rgb
+	const i32 slots = 1 << 16;
+	u32      *keys  = calloc(slots, sizeof(u32));
+	i32      *hits  = calloc(slots, sizeof(i32));
+	i32       n     = px->length / 4;
+	for (i32 i = 0; i < n; ++i) {
+		u8  *p = px->buffer + i * 4;
+		u32 c  = 0x1000000 | (p[0] << 16 | p[1] << 8 | p[2]);
+		u32 h  = (c * 2654435761u) & (slots - 1);
+		for (i32 k = 0; k < slots && keys[h] != 0 && keys[h] != c; ++k) {
+			h = (h + 1) & (slots - 1);
+		}
+		if (keys[h] == 0 || keys[h] == c) {
+			keys[h] = c;
+			hits[h]++;
+		}
+	}
+	// Largest first; colors within the tolerance of a listed part are that part (filtered or compressed maps)
+	bool baked = g_project->id_map_parts != NULL && g_project->id_map_parts->length > 0;
+	while (ui_id_mask_parts < UI_ID_MASK_PARTS) {
+		i32 best = -1;
+		for (i32 i = 0; i < slots; ++i) {
+			if (hits[i] >= UI_ID_MASK_PART_MIN && (best < 0 || hits[i] > hits[best])) {
+				best = i;
+			}
+		}
+		if (best < 0) {
+			break;
+		}
+		u32 c      = keys[best] & 0xffffff;
+		hits[best] = 0;
+		bool known = false;
+		for (i32 j = 0; j < ui_id_mask_parts && !known; ++j) {
+			known = ui_id_mask_same_color(ui_id_mask_part_colors[j], c);
+		}
+		char *name = ui_id_mask_part_name(c);
+		if (known || (baked && name == NULL)) {
+			continue; // Black around the uv islands of a baked map, blends at the edges
+		}
+		ui_id_mask_part_colors[ui_id_mask_parts] = c;
+		ui_id_mask_part_names[ui_id_mask_parts]  = string_copy(name != NULL ? name : string("%s %d", tr("Part"), ui_id_mask_parts + 1));
+		ui_id_mask_parts++;
+	}
+	free(keys);
+	free(hits);
+	gpu_release_texture_pixels(image);
+}
+
+i32 ui_id_mask_part_count() {
+	return ui_id_mask_active ? ui_id_mask_parts : 0;
+}
+
+u32 ui_id_mask_part_color(i32 i) {
+	return ui_id_mask_active && i >= 0 && i < ui_id_mask_parts ? ui_id_mask_part_colors[i] : 0;
+}
+
+char *ui_id_mask_part_label(i32 i) {
+	return ui_id_mask_active && i >= 0 && i < ui_id_mask_parts ? ui_id_mask_part_names[i] : "";
+}
+
+bool ui_id_mask_part_picked(i32 i) {
+	if (!ui_id_mask_active || i < 0 || i >= ui_id_mask_parts) {
+		return false;
+	}
+	for (i32 k = 0; k < ui_id_mask_count; ++k) {
+		if (ui_id_mask_same_color(ui_id_mask_colors[k], ui_id_mask_part_colors[i])) {
+			return true;
+		}
+	}
+	return false;
+}
+
+u32 ui_id_mask_pick_version() {
+	return ui_id_mask_version;
+}
+
+i32 ui_id_mask_pick_max() {
+	return ui_id_mask_effect_mask != NULL ? MASK_ID_SELECTION_MAX : UI_ID_MASK_MAX;
+}
+
 static void ui_id_mask_start_picking() {
 	ui_id_mask_count        = 0;
 	ui_id_mask_pick_pending = false;
 	ui_id_mask_pressed      = false;
 	ui_id_mask_prev_tool    = g_context->tool == TOOL_TYPE_COLORID ? TOOL_TYPE_BRUSH : g_context->tool;
 	ui_id_mask_active       = true;
-	ui_id_mask_bar_count    = -1;
+	ui_id_mask_read_parts();
 	mask_effect_t e;
 	if (ui_id_mask_effect_get(&e)) { // Its parts picked already
 		i32 n = math_min(math_max((i32)e.params[0], 0), MASK_ID_SELECTION_MAX);
 		for (i32 i = 0; i < n; ++i) {
-			ui_id_mask_colors[ui_id_mask_count++] = (u32)e.params[1 + i] & 0x00ffffff;
+			u32  c    = (u32)e.params[1 + i] & 0x00ffffff;
+			bool part = ui_id_mask_parts == 0; // Parts of another ID map (it was baked or set again) are dropped
+			for (i32 j = 0; j < ui_id_mask_parts && !part; ++j) {
+				part = ui_id_mask_same_color(ui_id_mask_part_colors[j], c);
+			}
+			if (part) {
+				ui_id_mask_colors[ui_id_mask_count++] = c;
+			}
 		}
 	}
 	sys_notify_on_next_frame(&ui_id_mask_write_colors, NULL);
@@ -267,6 +384,7 @@ void ui_id_mask_cancel() {
 	}
 	ui_id_mask_active       = false;
 	ui_id_mask_pick_pending = false;
+	ui_id_mask_version++;
 	if (g_context->tool == TOOL_TYPE_COLORID) {
 		context_select_tool(ui_id_mask_prev_tool);
 	}
@@ -279,6 +397,17 @@ void ui_id_mask_toggle(u32 color) {
 		return;
 	}
 	color = color & 0x00ffffff;
+	if (ui_id_mask_parts > 0) { // A listed part's color: a tap on an edge or around the islands picks nothing
+		i32 part = -1;
+		for (i32 j = 0; j < ui_id_mask_parts && part < 0; ++j) {
+			part = ui_id_mask_same_color(ui_id_mask_part_colors[j], color) ? j : -1;
+		}
+		if (part < 0) {
+			return;
+		}
+		color = ui_id_mask_part_colors[part];
+	}
+	ui_id_mask_version++;
 	for (i32 i = 0; i < ui_id_mask_count; ++i) {
 		if (ui_id_mask_same_color(ui_id_mask_colors[i], color)) {
 			ui_id_mask_colors[i] = ui_id_mask_colors[--ui_id_mask_count];
@@ -286,7 +415,7 @@ void ui_id_mask_toggle(u32 color) {
 			return;
 		}
 	}
-	if (ui_id_mask_count < (ui_id_mask_effect_mask != NULL ? MASK_ID_SELECTION_MAX : UI_ID_MASK_MAX)) {
+	if (ui_id_mask_count < ui_id_mask_pick_max()) {
 		ui_id_mask_colors[ui_id_mask_count++] = color;
 		sys_notify_on_next_frame(&ui_id_mask_write_colors, NULL);
 	}
@@ -388,42 +517,4 @@ void ui_id_mask_update() {
 	if (!mouse_down("left") && !pen_down("tip")) {
 		ui_id_mask_pressed = false;
 	}
-}
-
-// Bar on top of the 3D view: what to do, Cancel and Done
-void ui_id_mask_render_ui() {
-	if (!ui_id_mask_active || !base_view3d_show) {
-		return;
-	}
-	if (ui_id_mask_bar == NULL) {
-		ui_id_mask_bar = ui_window_create();
-	}
-	if (ui_id_mask_bar_count != ui_id_mask_count) {
-		ui_id_mask_bar_count     = ui_id_mask_count;
-		ui_id_mask_bar->redraws  = 2;
-	}
-
-	i32 pad = math_floor(10 * UI_SCALE());
-	i32 w   = math_floor(320 * UI_SCALE());
-	i32 h   = UI_ELEMENT_H() * 2 + UI_ELEMENT_OFFSET() * 3 + pad * 2;
-	i32 x   = base_view_x(0) + math_floor((base_view_w() - w) / 2.0);
-	i32 y   = base_y() + math_floor(30 * UI_SCALE()) + pad; // Clear of the top of the view
-
-	if (ui_base_panel_window(ui_id_mask_bar, x, y, w, h, UI_BASE_CORNER_TL | UI_BASE_CORNER_TR | UI_BASE_CORNER_BL | UI_BASE_CORNER_BR, false)) {
-		g_ui->_x += pad;
-		g_ui->_y += pad;
-		g_ui->_w = w - pad * 2;
-		char *picked = ui_id_mask_count == 0 ? tr("Tap the parts to mask") : string("%s: %d", tr("Parts"), ui_id_mask_count);
-		ui_text(picked, UI_ALIGN_CENTER, 0x00000000);
-		ui_row2();
-		if (ui_icon_button(tr("Cancel"), ICON_CLOSE, UI_ALIGN_CENTER)) {
-			ui_id_mask_cancel();
-		}
-		g_ui->enabled = ui_id_mask_count > 0 || ui_id_mask_effect_mask != NULL; // An effect may pick none
-		if (ui_icon_button(tr("Done"), ICON_CHECK, UI_ALIGN_CENTER)) {
-			ui_id_mask_done();
-		}
-		g_ui->enabled = true;
-	}
-	ui_end_window();
 }
