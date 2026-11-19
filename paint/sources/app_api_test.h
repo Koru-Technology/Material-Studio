@@ -31,7 +31,8 @@ uint32_t app_layer_previews_version(void); // app_state_t.previews_version
 void  app_test_bake_options(int32_t maps, int32_t size, int32_t rays); // Bits of app_bake_map_t
 float app_test_bake_progress(void);
 float app_test_bake_missed(void);
-bool  app_test_bake_has_baked(void);
+uint32_t    app_test_layer_channels(void); // The selected layer's, bits of app_layer_channel_t
+const char *app_test_layer_name(void);
 int32_t app_test_bake_preview(int32_t high); // Bytes of a 320 x 240 preview, 0 for none
 
 // Materials (app_api_materials.h)

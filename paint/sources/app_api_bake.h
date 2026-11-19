@@ -4,7 +4,8 @@
 // Self-contained, imported by Swift. The rest of app_api.h's rules apply.
 // Maps bake from the paint meshes, or from a high poly file read straight into the ray tracer (never into the scene).
 // Each is saved as <mesh>_<suffix>.png in the project's Mesh Maps folder, added to the project textures and, for the
-// mesh map kinds, registered as the project's mesh map.
+// mesh map kinds, registered as the project's mesh map. A bake that made a normal, occlusion or height map adds a fill
+// layer "<mesh> Baked Maps" with those channels only.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -49,7 +50,6 @@ typedef struct {
 	bool    running;
 	float   progress;  // Of the whole bake, 0 to 1
 	int32_t map;       // app_bake_map_t baking now
-	bool    has_baked; // A normal, occlusion or height map of this mesh is in the project (app_bake_add_layer)
 	bool    stale;     // The paint meshes changed since the mesh maps were baked
 } app_bake_state_t;
 
@@ -68,7 +68,6 @@ int32_t app_bake_preview(float yaw, float pitch, float zoom, bool high, bool fas
 bool app_bake_start(void); // False when no map is selected or one runs
 void app_bake_cancel(void);
 void app_bake_close(void);     // The sheet went away: the ray tracer's data (gigabytes with a high poly) is released
-bool app_bake_add_layer(void); // A fill layer with the baked normal, occlusion and height
 
 // The project's mesh maps (mask generators read them): a project texture per kind
 int32_t     app_mesh_map_count(void);

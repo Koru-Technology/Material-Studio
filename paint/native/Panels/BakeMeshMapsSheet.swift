@@ -75,14 +75,6 @@ struct BakeMeshMapsSheet: View {
 					.disabled(bake.state.running)
 				}
 				meshMapsSection
-				if bake.state.has_baked {
-					Section {
-						Button("Add Baked Layer", systemImage: "square.3.layers.3d") {
-							AppStore.shared.perform { _ = app_bake_add_layer() }
-							dismiss()
-						}
-					}
-				}
 			}
 			.formStyle(.grouped)
 			.navigationTitle("Bake Mesh Maps")

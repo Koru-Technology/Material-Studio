@@ -2,7 +2,8 @@
 
 // Bake Mesh Maps (app_api_bake.h): maps bake from the paint mesh and register as the project's mesh maps; a high poly
 // file is read into the ray tracer only (the scene and the project textures stay as they were), bakes against it, and
-// is released when the sheet closes; the baked maps make a fill layer.
+// is released when the sheet closes. A bake making a normal, occlusion or height map adds a fill layer "<mesh> Baked
+// Maps" with those channels only.
 
 int fails  = 0;
 int checks = 0;
@@ -20,6 +21,11 @@ int NORMAL    = 1;
 int HEIGHT    = 2;
 int AO        = 4;
 int CURVATURE = 8;
+// app_layer_channel_t bits
+int CH_NORMAL    = 4;
+int CH_HEIGHT    = 64;
+int CH_OCCLUSION = 1024;
+int CH_BLENDS    = 136; // Normal Blend and Height Blend: how those channels mix, left at their defaults
 // mesh_map_t
 int MM_AO        = 0;
 int MM_CURVATURE = 1;
@@ -64,10 +70,14 @@ void next() {
 		check(iron_file_exists(high), "the mesh exported as a high poly file");
 		app_test_bake_options(NORMAL + HEIGHT + AO + CURVATURE, 1024, 16);
 		check(app_test_bake_preview(0) > 0, "the low poly preview renders");
+		layers_before = app_layer_count();
 		check(app_bake_start(), "a bake from the paint mesh starts");
 	}
 	else if (step == 1) {
-		check(app_test_bake_has_baked(), "the baked maps are in the project");
+		check(app_layer_count() == layers_before + 1, string("the bake adds a layer (%d, was %d)", app_layer_count(), layers_before));
+		check(ends_with(app_test_layer_name(), " Baked Maps"), string("named after the bake (%s)", app_test_layer_name()));
+		int ch = app_test_layer_channels();
+		check(ch == CH_NORMAL + CH_HEIGHT + CH_OCCLUSION + CH_BLENDS, string("normal, height and occlusion only (channels %d)", ch));
 		check(app_mesh_map_texture(MM_AO) >= 0, "the occlusion is the project's AO map");
 		check(app_mesh_map_texture(MM_CURVATURE) >= 0, "the curvature is the project's curvature map");
 		check(app_mesh_map_texture(MM_NORMAL) >= 0, "the normal is the project's normal map");
@@ -82,20 +92,25 @@ void next() {
 		check(app_test_bake_preview(0) > 0, "the low poly preview renders with missed rays");
 		float missed = app_test_bake_missed();
 		check(missed < 0.05, string("rays find the high poly, the same shape (%.3f missed)", missed));
+		layers_before = app_layer_count();
+		app_test_bake_options(AO + CURVATURE, 1024, 16);
 		check(app_bake_start(), "a bake from the high poly starts");
 	}
 	else if (step == 2) {
 		check(objects() == objects_before, "baking from the high poly adds no object");
 		check(app_texture_count() == textures_before, "baking again replaces the maps, no new textures");
+		check(app_layer_count() == layers_before + 1, "a second baked layer");
+		check(app_test_layer_channels() == CH_OCCLUSION + CH_BLENDS, string("occlusion only, the one map it baked of the three (%d)", app_test_layer_channels()));
 		app_bake_close();
 		check(string_equals(app_bake_high_name(), ""), "closing releases the high poly");
 		app_test_bake_options(0, 1024, 16);
 		check(!app_bake_start(), "no map selected, no bake");
 		layers_before = app_layer_count();
-		check(app_bake_add_layer(), "the baked layer is added");
+		app_test_bake_options(CURVATURE, 1024, 16);
+		check(app_bake_start(), "a curvature bake starts");
 	}
 	else if (step == 3) {
-		check(app_layer_count() == layers_before + 1, "a fill layer with the baked maps");
+		check(app_layer_count() == layers_before, "a bake without normal, occlusion or height adds no layer");
 		check(objects() == objects_before, "the scene still has its objects only");
 		iron_delete_file(high);
 		check(gpu_shader_failures() == 0, string("no shader failed to compile (%d)", gpu_shader_failures()));

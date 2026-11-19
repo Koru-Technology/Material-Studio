@@ -199,10 +199,14 @@ float app_test_bake_missed(void) {
 	return s.missed;
 }
 
-bool app_test_bake_has_baked(void) {
-	app_bake_state_t s;
-	app_bake_state(&s);
-	return s.has_baked;
+// The selected layer's channels (bits of app_layer_channel_t) and name: the baked layer is selected once added
+uint32_t app_test_layer_channels(void) {
+	app_layer_props_t p;
+	return g_context->layer != NULL && app_layer_props(g_context->layer->id, &p) ? p.channels : 0;
+}
+
+const char *app_test_layer_name(void) {
+	return g_context->layer != NULL ? app_str(g_context->layer->name) : "";
 }
 
 int32_t app_test_bake_preview(int32_t high) {

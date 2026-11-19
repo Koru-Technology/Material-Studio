@@ -54,6 +54,7 @@ static i32   app_bake_done      = 0;
 static char *app_bake_folder_   = "";
 static char *app_bake_name_     = "";
 static bool  app_bake_baked_types[MESH_MAP_COUNT]; // Mesh maps baked by this run
+static bool  app_bake_baked_maps[APP_BAKE_MAP_COUNT];
 
 static f32 app_bake_clamp(f32 v, f32 lo, f32 hi) {
 	return v < lo ? lo : v > hi ? hi : v;
@@ -123,6 +124,8 @@ static void app_bake_release() {
 	app_bake_release_pending = false;
 }
 
+static void app_bake_layer_after_bake();
+
 static void app_bake_finish() {
 	app_bake_running_ = false;
 	bake_maps_end_images();
@@ -137,6 +140,7 @@ static void app_bake_finish() {
 	if (fresh) {
 		mesh_maps_stale = false;
 	}
+	app_bake_layer_after_bake();
 	if (app_bake_release_pending) {
 		app_bake_release();
 	}
@@ -170,6 +174,7 @@ static void app_bake_run() {
 	app_bake_queue_i   = 0;
 	app_bake_done      = 0;
 	memset(app_bake_baked_types, 0, sizeof(app_bake_baked_types));
+	memset(app_bake_baked_maps, 0, sizeof(app_bake_baked_maps));
 	app_bake_start_next();
 }
 
@@ -232,6 +237,7 @@ void app_bake_update() {
 	char *path = app_bake_map_path(app_bake_folder_, app_bake_name_, map);
 	if (bake_maps_save(app_bake_folder_, string("%s_%s.png", app_bake_name_, app_bake_maps[map].suffix))) {
 		app_bake_done++;
+		app_bake_baked_maps[map] = true;
 		// The baked map becomes the project's mesh map of its kind
 		i32 type = app_bake_maps[map].mesh_map;
 		i32 a    = script_asset_index(path);
@@ -289,19 +295,6 @@ int32_t app_bake_preview(float yaw, float pitch, float zoom, bool high, bool fas
 	return width * height * 4;
 }
 
-// Baked maps, layer
-
-static char *app_bake_layer_maps[3]  = {"ao", "normal", "height"};
-static i32   app_bake_layer_sockets[3] = {2, 5, 7}; // Occlusion, Normal Map, Height of OUTPUT_MATERIAL_PBR
-
-static i32 app_bake_layer_asset(i32 k) {
-	char *folder = app_bake_folder();
-	if (folder == NULL) {
-		folder = app_bake_folder_;
-	}
-	return script_asset_index(string("%s%s%s_%s.png", folder, PATH_SEP, app_bake_mesh_name(), app_bake_layer_maps[k]));
-}
-
 void app_bake_state(app_bake_state_t *out) {
 	*out = (app_bake_state_t){.high_fit = 1.0};
 	if (!app_ready()) {
@@ -319,49 +312,56 @@ void app_bake_state(app_bake_state_t *out) {
 		out->map      = app_bake_queue[i];
 		out->progress = (app_bake_queue_i + bake_maps_progress()) / app_bake_queue_len;
 	}
-	for (i32 k = 0; k < 3 && !app_bake_running_; ++k) {
-		out->has_baked = out->has_baked || app_bake_layer_asset(k) >= 0;
-	}
 	out->stale = mesh_maps_stale;
 }
 
-// "<mesh> Baked": a material with the baked maps linked to the output, on a new fill layer
-bool app_bake_add_layer(void) {
-	if (!app_ready() || app_bake_running_) {
-		return false;
+// The baked layer: a fill layer named after the bake, its normal, occlusion and height channels from the maps this
+// bake made, every other channel off
+
+static const i32 app_bake_layer_maps[3]     = {APP_BAKE_MAP_NORMAL, APP_BAKE_MAP_AO, APP_BAKE_MAP_HEIGHT};
+static const i32 app_bake_layer_channels[3] = {FILL_CHANNEL_NORMAL, FILL_CHANNEL_OCCLUSION, FILL_CHANNEL_HEIGHT};
+static i32       app_bake_layer_assets[3]; // Asset ids, -1 for a map not baked
+
+static void app_bake_add_layer(void *_) {
+	slot_layer_t *l = layers_new_layer(false, -1, NULL);
+	if (l == NULL) {
+		return;
 	}
-	i32  assets[3];
-	bool any = false;
+	history_new_layer();
+	l->name     = string_copy(string("%s %s", app_bake_name_, tr("Baked Maps")));
+	fill_t *f   = layers_new_fill_layer_fill();
+	l->paint_base = l->paint_opac = l->paint_rough = l->paint_met = l->paint_emis = l->paint_subs = false;
+	l->paint_nor = l->paint_occ = l->paint_height = false;
 	for (i32 k = 0; k < 3; ++k) {
-		assets[k] = app_bake_layer_asset(k);
-		any       = any || assets[k] >= 0;
-	}
-	if (!any) {
-		return false;
-	}
-	char            *name = string("%s Baked", app_bake_mesh_name());
-	slot_material_t *old  = script_get_material(name);
-	if (old != NULL) {
-		script_material_delete(old);
-	}
-	if (script_material_create(name) == NULL) {
-		return false;
-	}
-	// Image nodes go left of the default nodes
-	ui_node_t *out = script_material_get_node("OUTPUT_MATERIAL_PBR");
-	ui_node_t *rgb = script_material_get_node("RGB");
-	f32        x   = (rgb != NULL && rgb->x < out->x ? rgb->x : out->x) - 260;
-	for (i32 k = 0; k < 3; ++k) {
-		if (assets[k] < 0) {
+		if (app_bake_layer_assets[k] < 0) {
 			continue;
 		}
-		ui_node_t *n = script_material_create_node_at("TEX_IMAGE", x, 100 + 180 * k);
-		script_material_set_button(n, 0, assets[k]);
-		script_material_connect(n, 0, out, app_bake_layer_sockets[k]);
+		fill_source_t *src = &f->ch[app_bake_layer_channels[k]];
+		fill_source_set_kind(src, app_bake_layer_channels[k], FILL_SOURCE_TEXTURE);
+		src->image = app_bake_layer_assets[k];
+		*(k == 0 ? &l->paint_nor : k == 1 ? &l->paint_occ : &l->paint_height) = true;
 	}
-	script_material_update();
-	layers_create_fill_layer(FILL_PROJECTION_UV, mat4_nan(), -1, true);
-	return true;
+	slot_layer_to_fill_layer(l, f);
+	layers_history_with_prev(history_to_fill_layer); // One undo removes it
+	make_material_parse_paint_material(true);
+}
+
+// After a bake: the layer, when it made a normal, occlusion or height map
+static void app_bake_layer_after_bake() {
+	bool any = false;
+	for (i32 k = 0; k < 3; ++k) {
+		app_bake_layer_assets[k] = -1;
+		if (!app_bake_cancelled && app_bake_baked_maps[app_bake_layer_maps[k]]) {
+			i32 a = script_asset_index(app_bake_map_path(app_bake_folder_, app_bake_name_, app_bake_layer_maps[k]));
+			if (a >= 0) {
+				app_bake_layer_assets[k] = g_project->_->assets->buffer[a]->id;
+				any                      = true;
+			}
+		}
+	}
+	if (any) {
+		sys_notify_on_next_frame(&app_bake_add_layer, NULL);
+	}
 }
 
 // Mesh maps
