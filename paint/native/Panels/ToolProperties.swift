@@ -60,7 +60,8 @@ let paintTools: [Tool] = [
 	Tool(APP_TOOL_DECAL, "Decal", "star.square.on.square", .place, [.radius, .opacity, .symmetry]),
 	Tool(APP_TOOL_TEXT, "Text", "text.cursor", .place, [.radius, .opacity, .symmetry]),
 	Tool(APP_TOOL_ERASER, "Eraser", "eraser.line.dashed", .remove, .stroke),
-	Tool(APP_TOOL_CLONE, "Clone", "square.on.square.dashed", .retouch, .stroke),
+	// Hidden for now: nothing on the iPad sets its source (Alt + paint), and it reads only the layer painted
+	// Tool(APP_TOOL_CLONE, "Clone", "square.on.square.dashed", .retouch, .stroke),
 	Tool(APP_TOOL_BLUR, "Blur", "circle.dotted.and.circle", .retouch, .stroke),
 	Tool(APP_TOOL_PICKER, "Picker", "eyedropper", .sample, []),
 ]
