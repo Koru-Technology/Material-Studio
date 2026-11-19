@@ -37,11 +37,42 @@ static bool                        discard_depth_store = false;
 
 static bool metal_timing(void);
 
+// Serials of the command buffers the frames record (gpu_work_mark / gpu_work_done): the one being recorded gets
+// cb_serial when committed, cb_completed is the highest one done
+static uint64_t          cb_serial    = 1;
+static _Atomic uint64_t  cb_completed = 0;
+static uint64_t          frames_serial[GPU_FRAMES_IN_FLIGHT];
+
+static void cb_done(uint64_t serial) {
+	uint64_t v = atomic_load(&cb_completed);
+	while (v < serial && !atomic_compare_exchange_weak(&cb_completed, &v, serial)) {
+	}
+}
+
+// Commits the command buffer being recorded, returns its serial
+static uint64_t commit_main(void) {
+	uint64_t serial = cb_serial++;
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+	  cb_done(serial);
+	}];
+	[command_buffer commit];
+	return serial;
+}
+
+uint64_t gpu_work_mark(void) {
+	return cb_serial;
+}
+
+bool gpu_work_done(uint64_t mark) {
+	return atomic_load(&cb_completed) >= mark;
+}
+
 static void wait_for_frames() {
 	for (int i = 0; i < GPU_FRAMES_IN_FLIGHT; ++i) {
 		if (frames_pending[i] != nil) {
 			[frames_pending[i] waitUntilCompleted];
 			frames_pending[i] = nil;
+			cb_done(frames_serial[i]); // Before its completed handler may have run
 		}
 		gpu_release_retired(i);
 	}
@@ -314,8 +345,22 @@ void gpu_begin_internal(gpu_clear_t flags, unsigned color, float depth) {
 	current_scissor.height   = current_render_targets[0]->height;
 }
 
+// Pass names for GPU captures and traces: off unless IRON_GPU_LABELS is set or Xcode captures a frame (debug builds:
+// always). Building them took about 6% of the main thread while painting.
+static bool metal_labels(void) {
+#ifdef NDEBUG
+	static int env = -1;
+	if (env < 0) {
+		env = getenv("IRON_GPU_LABELS") != NULL ? 1 : 0;
+	}
+	return env == 1 || [MTLCaptureManager sharedCaptureManager].isCapturing;
+#else
+	return true;
+#endif
+}
+
 void gpu_label_pass(const char *label) {
-	if (command_encoder == nil || label == NULL) {
+	if (command_encoder == nil || label == NULL || !metal_labels()) {
 		return;
 	}
 	NSString *old = command_encoder.label;
@@ -364,8 +409,9 @@ void gpu_execute_and_wait() {
 		[command_encoder endEncoding];
 	}
 
-	[command_buffer commit];
+	uint64_t serial = commit_main();
 	[command_buffer waitUntilCompleted];
+	cb_done(serial);
 	gpu_report_error(command_buffer, "execute");
 	wait_for_frames();
 	id<MTLCommandQueue> queue = get_metal_queue();
@@ -407,7 +453,7 @@ void gpu_commit(void (*done)(void *data, double gpu_ms), void *data) {
 		  done(data, cb.error == nil ? (cb.GPUEndTime - cb.GPUStartTime) * 1000.0 : -1.0);
 	  }
 	}];
-	[command_buffer commit];
+	commit_main();
 	command_buffer = [get_metal_queue() commandBuffer];
 }
 
@@ -507,7 +553,7 @@ void gpu_present_internal() {
 	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
 	  gpu_report_error(cb, "frame");
 	}];
-	[command_buffer commit];
+	frames_serial[gpu_frame_index]  = commit_main();
 	frames_pending[gpu_frame_index] = command_buffer;
 	gpu_retire_deleted(gpu_frame_index); // Freed once this frame completed
 
@@ -520,6 +566,7 @@ void gpu_present_internal() {
 	if (frames_pending[gpu_frame_index] != nil) {
 		[frames_pending[gpu_frame_index] waitUntilCompleted];
 		frames_pending[gpu_frame_index] = nil;
+		cb_done(frames_serial[gpu_frame_index]);
 	}
 	gpu_release_retired(gpu_frame_index);
 	// The next drawable is taken when the next frame first draws to the screen (gpu_begin): taken here, the main
@@ -1052,6 +1099,14 @@ static void bc7_compute_encode(id<MTLTexture> tex, void *pixels, uint32_t width,
 }
 
 #endif
+
+// Rows 0..height of a texture made by gpu_texture_init_from_bytes, written by the cpu: only once the gpu is done with
+// it (gpu_work_done)
+void gpu_texture_upload(gpu_texture_t *texture, void *data, uint32_t width, uint32_t height) {
+	id<MTLTexture> tex           = (__bridge id<MTLTexture>)texture->impl._tex;
+	int            bytes_per_row = width * gpu_texture_format_size(texture->format);
+	[tex replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 slice:0 withBytes:data bytesPerRow:bytes_per_row bytesPerImage:bytes_per_row * height];
+}
 
 void gpu_texture_init_from_bytes(gpu_texture_t *texture, void *data, uint32_t width, uint32_t height, gpu_texture_format_t format, bool compress) {
 	texture->width  = width;

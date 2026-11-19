@@ -170,6 +170,10 @@ void gpu_execute_and_wait(void);
 // (-1 when unknown), on any thread. Elsewhere than Metal: gpu_execute_and_wait.
 void gpu_commit(void (*done)(void *data, double gpu_ms), void *data);
 void gpu_cleanup(void);
+// The command buffer being recorded (a mark), and whether the gpu finished it: a resource it reads can then be reused
+uint64_t gpu_work_mark(void);
+bool     gpu_work_done(uint64_t mark);
+void     gpu_texture_upload(gpu_texture_t *texture, void *data, uint32_t width, uint32_t height);
 void gpu_retire_deleted(int slot);
 void gpu_release_retired(int slot);
 bool gpu_cleanup_pending(void);

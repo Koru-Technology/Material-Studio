@@ -65,6 +65,12 @@ static bool render_path_base_path_trace() {
 	return g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE && g_context->tool != TOOL_TYPE_COLORID;
 }
 
+// While a stroke paints, frames show without TAA: the image changes every frame, TAA and its jitter only cost (the
+// settle frames after the stroke smooth it again, as when the view stops moving)
+static bool render_path_base_painting() {
+	return g_context->pdirty > 0;
+}
+
 void render_path_base_begin() {
 	// Begin split
 	if (base_is_split() && !g_context->paint2d_view) {
@@ -96,8 +102,13 @@ void render_path_base_begin() {
 	}
 
 	// Match projection matrix jitter
+	static bool was_painting = false;
+	if (was_painting && !render_path_base_painting()) {
+		render_path_base_redraw(); // TAA and ssao settle on the painted image
+	}
+	was_painting  = render_path_base_painting();
 	bool skip_taa = g_context->split_view || render_path_base_path_trace() || g_context->camera_type == CAMERA_TYPE_ORTHOGRAPHIC ||
-	                ((g_context->tool == TOOL_TYPE_CLONE || g_context->tool == TOOL_TYPE_BLUR || context_is_pixel_snap()) && g_context->pdirty > 0);
+	                render_path_base_painting();
 
 	if (skip_taa || g_config->brush_live) {
 		scene_camera->frame = 0;
@@ -369,12 +380,21 @@ static i32 render_path_base_ssao_paint_frames = 0;
 void render_path_base_draw_ssao() {
 	// The gbuffer of this frame predates this frame's dab, and the two ssao targets alternate per frame:
 	// keep updating for two frames after the last dab so both targets see the final normals
-	if (g_context->pdirty > 0) {
+	// While the stroke paints, every fourth frame: the occlusion is soft, a few frames behind the painted normals
+	// do not show, the frames after the stroke make it exact again
+	static i32 stroke_frames = 0;
+	bool       paint_dirty   = false;
+	if (render_path_base_painting()) {
 		render_path_base_ssao_paint_frames = 3;
+		paint_dirty                        = stroke_frames % 4 == 0;
+		stroke_frames++;
 	}
-	bool paint_dirty = render_path_base_ssao_paint_frames > 0;
-	if (paint_dirty) {
-		render_path_base_ssao_paint_frames--;
+	else {
+		stroke_frames = 0;
+		paint_dirty   = render_path_base_ssao_paint_frames > 0;
+		if (paint_dirty) {
+			render_path_base_ssao_paint_frames--;
+		}
 	}
 
 	bool ssao = g_config->rp_ssao > 0.0 && g_context->camera_type == CAMERA_TYPE_PERSPECTIVE;
@@ -435,6 +455,18 @@ static gpu_texture_t *render_path_base_taa_history = NULL;
 mat4_t                render_path_base_taa_prev_vp = {0}; // Camera of the frame in the history, without jitter
 
 void render_path_base_draw_taa(char *bufa, char *bufb) {
+	if (render_path_base_painting() && !render_path_base_ssaa4()) {
+		// Straight to the screen, no TAA pass and no copy: the frame becomes "last" (screenshots, the image reused
+		// while nothing changes), the history starts again after the stroke
+		render_path_set_target("", NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		render_path_bind_target(bufa, "tex");
+		render_path_draw_shader("Scene/copy_pass/copy_pass");
+		render_path_base_swap_buf(bufa);
+		render_path_base_presented   = "last";
+		render_path_base_taa_history = NULL;
+		render_path_base_taa_prev_vp = mat4_mult_mat(scene_camera->v, scene_camera->no_jitter_p);
+		return;
+	}
 	render_path_set_target(bufb, NULL, NULL, GPU_CLEAR_DONT_LOAD_COLOR, 0, 0.0);
 	render_path_bind_target(bufa, "tex");
 

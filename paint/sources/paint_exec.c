@@ -27,6 +27,54 @@ static i32              paint_exec_batch_first = -1; // Dabs of the batch being 
 static i32              paint_exec_depth       = 0;
 static paint_exec_op_t *paint_exec_op          = NULL;
 static gpu_texture_t   *paint_exec_in_tex      = NULL;
+
+// The dab input textures, at the size of a full flush: one is written again once the gpu finished the command buffer
+// that read it (made and freed for each batch, that took about 9% of the main thread while painting)
+#define PAINT_EXEC_IN_POOL 32
+typedef struct {
+	gpu_texture_t *tex;
+	uint64_t       mark;
+	i32            pins; // Isolation levels that resolve it again when they end
+} paint_exec_in_t;
+static paint_exec_in_t paint_exec_in_pool[PAINT_EXEC_IN_POOL];
+
+static gpu_texture_t *paint_exec_in_upload(f32 *data, i32 rows) {
+	i32              width = PAINT_DAB_ROW * PAINT_DAB_TEXELS;
+	paint_exec_in_t *slot  = NULL;
+	for (i32 i = 0; i < PAINT_EXEC_IN_POOL && slot == NULL; ++i) {
+		paint_exec_in_t *e = &paint_exec_in_pool[i];
+		if (e->tex == NULL || (e->pins == 0 && gpu_work_done(e->mark))) {
+			slot = e;
+		}
+	}
+	if (slot == NULL) { // All in flight: many flushes in one frame (a replay), the gpu catches up
+		if (_render_path_current_image != NULL) {
+			render_path_end();
+		}
+		gpu_execute_and_wait();
+		for (i32 i = 0; i < PAINT_EXEC_IN_POOL && slot == NULL; ++i) {
+			slot = paint_exec_in_pool[i].pins == 0 ? &paint_exec_in_pool[i] : NULL;
+		}
+	}
+	if (slot->tex == NULL) {
+		i32      max_rows = PAINT_DAB_MAX / PAINT_DAB_ROW;
+		buffer_t b        = {.buffer = calloc(1, width * max_rows * 16), .length = width * max_rows * 16};
+		slot->tex         = gpu_create_texture_from_bytes(&b, width, max_rows, GPU_TEXTURE_FORMAT_RGBA128);
+		free(b.buffer);
+	}
+	gpu_texture_upload(slot->tex, data, width, rows);
+	slot->mark = gpu_work_mark();
+	return slot->tex;
+}
+
+static void paint_exec_in_pin(gpu_texture_t *t, i32 d) {
+	for (i32 i = 0; t != NULL && i < PAINT_EXEC_IN_POOL; ++i) {
+		if (paint_exec_in_pool[i].tex == t) {
+			paint_exec_in_pool[i].pins += d;
+			paint_exec_in_pool[i].mark = gpu_work_mark(); // Read again by the resolve when the level ends
+		}
+	}
+}
 static i32              paint_exec_resolved_n  = 0; // Dabs of paint_exec_in_tex resolved last
 static bool             paint_exec_flushing    = false;
 static i32              paint_exec_isolated    = 0;
@@ -180,12 +228,8 @@ static void paint_exec_flush() {
 	}
 
 	if (ndabs > 0) {
-		if (paint_exec_in_tex != NULL) {
-			gpu_delete_texture(paint_exec_in_tex); // Freed after the frame
-		}
-		i32      rows = (ndabs + PAINT_DAB_ROW - 1) / PAINT_DAB_ROW;
-		buffer_t b    = {.buffer = (u8 *)paint_exec_in, .length = rows * PAINT_DAB_ROW * PAINT_DAB_TEXELS * 4 * sizeof(f32)};
-		paint_exec_in_tex = gpu_create_texture_from_bytes(&b, PAINT_DAB_ROW * PAINT_DAB_TEXELS, rows, GPU_TEXTURE_FORMAT_RGBA128);
+		i32 rows          = (ndabs + PAINT_DAB_ROW - 1) / PAINT_DAB_ROW;
+		paint_exec_in_tex = paint_exec_in_upload(paint_exec_in, rows);
 		make_dab_resolve_run(ndabs);
 		paint_exec_resolved_n = ndabs;
 	}
@@ -528,6 +572,7 @@ void paint_exec_isolate_begin() {
 	                                             .in_tex      = paint_exec_in_tex,
 	                                             .resolved_n  = paint_exec_resolved_n,
 	                                             .ctx         = paint_exec_queue_ctx};
+	paint_exec_in_pin(paint_exec_in_tex, 1);
 	paint_exec_isolated++;
 	i32 k = paint_exec_isolated;
 	if (paint_exec_level_ops[k] == NULL) {
@@ -555,10 +600,7 @@ void paint_exec_isolate_end() {
 	}
 	paint_exec_depth = 0;
 	paint_exec_flush();
-	bool resolved = paint_exec_in_tex != NULL;
-	if (paint_exec_in_tex != NULL) {
-		gpu_delete_texture(paint_exec_in_tex); // Freed after the frame
-	}
+	bool resolved = paint_exec_in_tex != NULL; // A pool texture, kept
 	paint_exec_isolated--;
 	paint_exec_level_t *s  = &paint_exec_levels[paint_exec_isolated];
 	paint_exec_ops         = s->ops;
@@ -569,6 +611,7 @@ void paint_exec_isolate_end() {
 	paint_exec_depth       = s->depth;
 	paint_exec_op          = s->op;
 	paint_exec_in_tex      = s->in_tex;
+	paint_exec_in_pin(paint_exec_in_tex, -1);
 	paint_exec_resolved_n  = s->resolved_n;
 	paint_exec_queue_ctx   = s->ctx;
 	if (resolved && paint_exec_flushing && paint_exec_in_tex != NULL && paint_exec_resolved_n > 0) {
