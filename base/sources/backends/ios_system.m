@@ -176,6 +176,26 @@ UIViewController *iron_ios_view_controller(void) {
 	return my_view_controller;
 }
 
+// The controller to present pickers from: the top of the key window's presentation stack. The canvas controller is
+// embedded in the SwiftUI views, a sheet may be up over it.
+UIViewController *iron_ios_presenter(void) {
+	UIWindow *key = nil;
+	for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+		if ([scene isKindOfClass:UIWindowScene.class]) {
+			for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+				if (w.isKeyWindow) {
+					key = w;
+				}
+			}
+		}
+	}
+	UIViewController *top = key != nil ? key.rootViewController : my_view_controller;
+	while (top.presentedViewController != nil && !top.presentedViewController.isBeingDismissed) {
+		top = top.presentedViewController;
+	}
+	return top;
+}
+
 #ifdef IRON_EXTERNAL_LOOP
 void *iron_apple_engine_view_controller(void) {
 	if (my_view_controller == nil) {

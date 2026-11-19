@@ -1,22 +1,20 @@
 #import "ios_file_dialog.h"
 
 #import <UIKit/UIKit.h>
-
-static UIDocumentPickerViewController *documentPicker = nil;
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 UIViewController *iron_ios_view_controller(void); // ios_system.m, the canvas view controller (picks import files)
+UIViewController *iron_ios_presenter(void);
 
 void IOSFileDialogOpen() {
-	UIViewController<UIDocumentPickerDelegate> *myViewController = (UIViewController<UIDocumentPickerDelegate> *)iron_ios_view_controller();
-	if (documentPicker == nil) {
-		// public.folder lets a whole material folder be picked; multiple selection imports several at once
-		documentPicker          = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.data", @"public.folder" ]
-                                                                                     inMode:UIDocumentPickerModeOpen];
-		documentPicker.delegate = myViewController;
-		documentPicker.allowsMultipleSelection = YES;
-		documentPicker.modalPresentationStyle = UIModalPresentationFormSheet;
-	}
-	[myViewController presentViewController:documentPicker animated:YES completion:nil];
+	// A new picker each time: one presented again after a dismissal can come up empty (no locations, no files)
+	// UTTypeFolder lets a whole material folder be picked; multiple selection imports several at once
+	UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeData, UTTypeFolder ]
+	                                                                                                     asCopy:NO];
+	picker.delegate                = (id<UIDocumentPickerDelegate>)iron_ios_view_controller();
+	picker.allowsMultipleSelection = YES;
+	picker.modalPresentationStyle  = UIModalPresentationFormSheet;
+	[iron_ios_presenter() presentViewController:picker animated:YES completion:nil];
 }
 
 wchar_t *IOSFileDialogSave() {

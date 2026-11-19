@@ -174,18 +174,20 @@ static void iron_folder_save_bookmark(NSURL *url) {
 
 @end
 
+UIViewController *iron_ios_presenter(void); // ios_system.m
+
 void iron_folder_pick(void (*done)(char *path)) {
 	if (iron_folder_picker == nil) {
-		iron_folder_picker        = [[IronFolderPicker alloc] init];
-		UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ] asCopy:NO];
-		picker.allowsMultipleSelection         = NO;
-		picker.modalPresentationStyle          = UIModalPresentationFormSheet;
-		picker.delegate                        = iron_folder_picker;
-		iron_folder_picker.picker              = picker;
+		iron_folder_picker = [[IronFolderPicker alloc] init];
 	}
-	iron_folder_picker.done = done;
-	UIViewController *root  = [UIApplication sharedApplication].keyWindow.rootViewController;
-	[root presentViewController:iron_folder_picker.picker animated:YES completion:nil];
+	// A new picker each time: one presented again after a dismissal can come up empty
+	UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ] asCopy:NO];
+	picker.allowsMultipleSelection         = NO;
+	picker.modalPresentationStyle          = UIModalPresentationFormSheet;
+	picker.delegate                        = iron_folder_picker;
+	iron_folder_picker.picker              = picker;
+	iron_folder_picker.done                = done;
+	[iron_ios_presenter() presentViewController:picker animated:YES completion:nil];
 }
 
 char *iron_folder_restore(void) {
