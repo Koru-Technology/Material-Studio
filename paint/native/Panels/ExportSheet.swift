@@ -1,7 +1,7 @@
 import SwiftUI
 
-// Texture export (app_api_export.h): the export's resolution (the last picked, the project's at first) and layers, as
-// PNG (preset and padding hidden for now); the layers it will scale up from the project's resolution; progress and
+// Texture export (app_api_export.h): the export's resolution (the last picked, the project's at first), preset and
+// layers, as PNG (padding hidden for now); the layers it will scale up from the project's resolution; progress and
 // Cancel while it runs.
 struct ExportSheet: View {
 	@Environment(\.dismiss) private var dismiss
@@ -33,8 +33,7 @@ struct ExportSheet: View {
 		}
 	}
 
-	// Hidden for now, the options stay as they are
-	private let showPreset  = false
+	// Hidden for now, the option stays as it is
 	private let showPadding = false
 
 	var body: some View {
@@ -48,11 +47,9 @@ struct ExportSheet: View {
 					}
 				}
 				Section("Textures") {
-					if showPreset {
-						Picker("Preset", selection: binding(\.preset)) {
-							ForEach(presets.indices, id: \.self) { i in
-								Text(presets[i]).tag(Int32(i))
-							}
+					Picker("Preset", selection: binding(\.preset)) {
+						ForEach(presets.indices, id: \.self) { i in
+							Text(presets[i]).tag(Int32(i))
 						}
 					}
 					Picker("Layers", selection: binding(\.layers)) {
