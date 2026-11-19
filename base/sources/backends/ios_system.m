@@ -176,6 +176,19 @@ UIViewController *iron_ios_view_controller(void) {
 	return my_view_controller;
 }
 
+static bool iron_ios_picker_requested = false;
+
+// A picker is about to be presented: the app stops drawing until it is gone (FrameDriver.swift)
+void iron_ios_picker_request(void) {
+	iron_ios_picker_requested = true;
+}
+
+bool iron_apple_take_picker_request(void) {
+	bool r                    = iron_ios_picker_requested;
+	iron_ios_picker_requested = false;
+	return r;
+}
+
 // The controller to present pickers from: the top of the key window's presentation stack. The canvas controller is
 // embedded in the SwiftUI views, a sheet may be up over it.
 UIViewController *iron_ios_presenter(void) {

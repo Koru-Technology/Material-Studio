@@ -25,3 +25,4 @@ void iron_apple_resign_active(void);
 void iron_apple_enter_background(void);
 void iron_apple_enter_foreground(void);
 void iron_apple_open_url(const char *url); // A file shared with the app (Open in / Share sheet)
+bool iron_apple_take_picker_request(void);  // A file or folder picker was asked for since the last call

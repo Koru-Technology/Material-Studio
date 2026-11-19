@@ -170,6 +170,7 @@ struct BakeMeshMapsSheet: View {
 				Button("Choose High Poly…", systemImage: "cube") {
 					failed  = false
 					picking = true
+					FrameDriver.shared.pickerWillShow()
 				}
 				if failed {
 					warning("Could not read the mesh")

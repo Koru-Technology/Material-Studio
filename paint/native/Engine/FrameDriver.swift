@@ -16,6 +16,8 @@ final class FrameDriver: NSObject {
 	private(set) var isStopped = false
 	private(set) var inTick    = false // In a frame: app_* calls wait for its end (app_api.h)
 	private var link: CADisplayLink?
+	private weak var view: PlatformView?
+	private var pickerRequested: CFTimeInterval = 0 // A file picker was asked for and is not up yet, 0 for none
 	private var fallback: Timer?
 	private var waitTimer: Timer?
 	private var lastTick: CFTimeInterval = 0
@@ -54,6 +56,7 @@ final class FrameDriver: NSObject {
 			return false
 		}
 		isStarted = true
+		self.view = view
 		iron_apple_start()
 #if os(iOS)
 		// The menu and popover buttons float 16 + 44 points down the top of the screen: the node editor's menubar goes below
@@ -88,7 +91,7 @@ final class FrameDriver: NSObject {
 
 	private func tick() {
 		// A frame can open a nested modal loop (alerts, file panels) that keeps the timers firing
-		if inTick || isStopped {
+		if inTick || isStopped || pickerShown {
 			return
 		}
 		lastTick = CACurrentMediaTime()
@@ -111,6 +114,36 @@ final class FrameDriver: NSObject {
 				}
 			}
 		}
+	}
+
+	// A system file picker (the engine's, the folder picker, SwiftUI's fileImporter) runs in another process and often
+	// comes up empty: its scene's setup times out while that process hangs resolving the app's Documents folder. With
+	// the canvas drawing every frame it failed every time (0 of 6 opens), without frames it worked half the time (3 of 6,
+	// 2026-11-19). No frames from when it is asked for, through its setup (it is presented once its remote side is
+	// ready), until it is gone. The engine takes the picked files once it closes.
+	func pickerWillShow() {
+		pickerRequested = CACurrentMediaTime()
+	}
+
+	private var pickerShown: Bool {
+#if os(iOS)
+		if iron_apple_take_picker_request() {
+			pickerWillShow()
+		}
+		var top = view?.window?.rootViewController
+		while let presented = top?.presentedViewController {
+			if presented is UIDocumentPickerViewController {
+				pickerRequested = 0 // Up: shown until dismissed
+				return true
+			}
+			top = presented
+		}
+		if pickerRequested > 0 && CACurrentMediaTime() - pickerRequested < 10 { // Not up after 10 s: it failed
+			return true
+		}
+		pickerRequested = 0
+#endif
+		return false
 	}
 
 	// Runs an action between frames once the next one has drawn: what the UI just changed reaches the screen before a

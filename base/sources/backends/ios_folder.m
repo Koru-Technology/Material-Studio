@@ -175,6 +175,7 @@ static void iron_folder_save_bookmark(NSURL *url) {
 @end
 
 UIViewController *iron_ios_presenter(void); // ios_system.m
+void              iron_ios_picker_request(void);
 
 void iron_folder_pick(void (*done)(char *path)) {
 	if (iron_folder_picker == nil) {
@@ -187,6 +188,7 @@ void iron_folder_pick(void (*done)(char *path)) {
 	picker.delegate                        = iron_folder_picker;
 	iron_folder_picker.picker              = picker;
 	iron_folder_picker.done                = done;
+	iron_ios_picker_request();
 	[iron_ios_presenter() presentViewController:picker animated:YES completion:nil];
 }
 

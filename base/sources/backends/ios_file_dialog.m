@@ -5,6 +5,7 @@
 
 UIViewController *iron_ios_view_controller(void); // ios_system.m, the canvas view controller (picks import files)
 UIViewController *iron_ios_presenter(void);
+void              iron_ios_picker_request(void);
 
 void IOSFileDialogOpen() {
 	// A new picker each time: one presented again after a dismissal can come up empty (no locations, no files)
@@ -14,6 +15,7 @@ void IOSFileDialogOpen() {
 	picker.delegate                = (id<UIDocumentPickerDelegate>)iron_ios_view_controller();
 	picker.allowsMultipleSelection = YES;
 	picker.modalPresentationStyle  = UIModalPresentationFormSheet;
+	iron_ios_picker_request();
 	[iron_ios_presenter() presentViewController:picker animated:YES completion:nil];
 }
 
