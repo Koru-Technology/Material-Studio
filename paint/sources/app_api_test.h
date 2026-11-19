@@ -27,6 +27,13 @@ bool     app_mask_effect_needs_thickness(int32_t id, int32_t index);
 bool     app_mask_effect_needs_id_map(int32_t id, int32_t index);
 uint32_t app_layer_previews_version(void); // app_state_t.previews_version
 
+// Bake Mesh Maps (app_api_bake.h)
+void  app_test_bake_options(int32_t maps, int32_t size, int32_t rays); // Bits of app_bake_map_t
+float app_test_bake_progress(void);
+float app_test_bake_missed(void);
+bool  app_test_bake_has_baked(void);
+int32_t app_test_bake_preview(int32_t high); // Bytes of a 320 x 240 preview, 0 for none
+
 // Materials (app_api_materials.h)
 int32_t app_material_id_at(int32_t index);
 int32_t app_material_preview_version(int32_t id);

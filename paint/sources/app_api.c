@@ -251,7 +251,7 @@ void app_set_overlay_top_inset(int32_t pixels) {
 // Tool and brush
 
 void app_set_tool(int32_t tool) {
-	if (!app_ready() || tool < 0 || tool > TOOL_TYPE_INPAINT || tool == g_context->tool) {
+	if (!app_ready() || tool < 0 || tool > TOOL_TYPE_BAKE || tool == g_context->tool) {
 		return;
 	}
 	context_select_tool(tool);
@@ -558,9 +558,6 @@ void app_command(int32_t command) {
 		break;
 	case APP_COMMAND_BAKE_MATERIAL:
 		box_export_show_bake_material();
-		break;
-	case APP_COMMAND_BAKE_MESH_MAPS:
-		box_bake_maps_show();
 		break;
 	case APP_COMMAND_VIEW_RESET:
 		viewport_reset();

@@ -370,8 +370,8 @@ void util_brush_update() {
 						}
 					}
 
-					// Inpaint repairs baked textures, ID mask picking changes no layer
-					history_push_undo = g_context->tool != TOOL_TYPE_INPAINT && g_context->tool != TOOL_TYPE_COLORID;
+					// ID mask picking changes no layer
+					history_push_undo = g_context->tool != TOOL_TYPE_COLORID;
 
 					if (g_context->tool == TOOL_TYPE_CLONE && g_context->clone_start_x >= 0.0) { // Clone delta
 						g_context->clone_delta_x = (g_context->clone_start_x - mx) / (float)ww;
@@ -385,15 +385,10 @@ void util_brush_update() {
 
 				util_brush_update_motion();
 				g_context->brush_time += sys_delta();
-				if (g_context->tool == TOOL_TYPE_INPAINT) {
-					box_bake_maps_inpaint_stroke();
-				}
-				else {
-					brush_output_node_run();
-					if (util_curve_stroke_capture()) { // Held into a curve: the touch paints no more
-						util_brush_stroke_dropped = true;
-						return;
-					}
+				brush_output_node_run();
+				if (util_curve_stroke_capture()) { // Held into a curve: the touch paints no more
+					util_brush_stroke_dropped = true;
+					return;
 				}
 			}
 		}
@@ -407,10 +402,6 @@ void util_brush_update() {
 		g_context->brush_dab_y         = -1;
 		g_context->brush_blend_dirty   = true; // Update brush mask
 		g_context->layer_preview_dirty = true; // Update layer preview
-
-		if (g_context->tool == TOOL_TYPE_INPAINT) {
-			box_bake_maps_inpaint_stroke_end();
-		}
 	}
 
 	if (util_brush_clone_source_down && !paint_down && !pen_down("tip")) {

@@ -85,6 +85,9 @@ struct MacRootView: View {
 		.sheet(isPresented: $app.newProjectShown) {
 			NewProjectSheet()
 		}
+		.sheet(isPresented: $app.bakeShown) {
+			BakeMeshMapsSheet()
+		}
 	}
 }
 
@@ -95,6 +98,11 @@ struct FileCommands: Commands {
 				AppStore.shared.newProjectShown = true
 			}
 			.keyboardShortcut("n")
+		}
+		CommandGroup(after: .importExport) {
+			Button("Bake Mesh Maps…") {
+				AppStore.shared.bakeShown = true
+			}
 		}
 	}
 }
@@ -167,6 +175,9 @@ struct PadRootView: View {
 			.defersSystemGestures(on: .all)
 			.sheet(isPresented: $app.newProjectShown) {
 				NewProjectSheet()
+			}
+			.sheet(isPresented: $app.bakeShown) {
+				BakeMeshMapsSheet()
 			}
 			.onOpenURL { url in
 				iron_apple_open_url(url.absoluteString)

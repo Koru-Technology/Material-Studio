@@ -33,6 +33,7 @@ final class AppStore: ChangeOnly {
 	// The new project sheet, also asked for by the engine (its projects box, the shortcut). Launch argument
 	// "-NativeShow NewProject" opens it (screenshots from scripted runs)
 	var newProjectShown = UserDefaults.standard.string(forKey: "NativeShow") == "NewProject"
+	var bakeShown       = UserDefaults.standard.string(forKey: "NativeShow") == "Bake" // Bake Mesh Maps
 	private(set) var cameraRotation      = SIMD4<Float>(0, 0, 0, 1)
 
 

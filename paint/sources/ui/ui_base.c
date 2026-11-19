@@ -121,7 +121,7 @@ void ui_base_update(void *_) {
 		util_particle_update();
 	}
 
-	box_bake_maps_update();
+	app_bake_update();
 	project_autosave_update();
 	config_brush_save_update();
 

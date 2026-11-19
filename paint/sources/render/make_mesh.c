@@ -366,10 +366,6 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_add_texture(shader, "texuvmap", "_texuvmap");
 		}
 
-		if (box_bake_maps_inpaint_overlay() != NULL && !bake) {
-			texture_count++; // Added in the last pass
-		}
-
 		if (g_context->viewport_mode == VIEWPORT_MODE_MASK && slot_layer_get_masks(g_context->layer, true) != NULL && !bake) {
 			for (i32 i = 0; i < slot_layer_get_masks(g_context->layer, true)->length; ++i) {
 				slot_layer_t *m = slot_layer_get_masks(g_context->layer, true)->buffer[i];
@@ -707,15 +703,6 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(shader, "if (texel0xmod == texel0ymod) { basecol = basecol * 0.9; }");
 			node_shader_write_frag(shader, "if (texel1xmod == texel1ymod) { basecol = basecol * 0.9; }");
 			node_shader_write_frag(shader, "if (texel2xmod == texel2ymod) { basecol = basecol * 0.9; }");
-		}
-
-		if (last_pass && box_bake_maps_inpaint_overlay() != NULL) {
-			i32 c = box_bake_maps_inpaint_color();
-			node_shader_add_texture(shader, "texinpaint_overlay", "_texinpaint_overlay");
-			node_shader_write_frag(shader, string_tmp("float inpaint_overlay = textureLod(sampler2D(texinpaint_overlay, sampler_linear), %s, 0.0).r * %f;", tex_coord_layer,
-			                                        color_get_ab(c) / 255.0));
-			node_shader_write_frag(shader, string_tmp("basecol = mix(basecol, vec3(%f, %f, %f), inpaint_overlay);", color_get_rb(c) / 255.0,
-			                                        color_get_gb(c) / 255.0, color_get_bb(c) / 255.0));
 		}
 
 		if (last_pass && g_context->draw_wireframe) {

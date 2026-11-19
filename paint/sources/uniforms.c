@@ -521,10 +521,6 @@ gpu_texture_t *uniforms_ext_tex_link(object_t *object, shader_data_t *mat, char 
 		gpu_texture_t *image = g_context->viewport_texture;
 		return image != NULL ? image : render_path_empty_black();
 	}
-	else if (string_equals(link, "_texinpaint_overlay")) {
-		gpu_texture_t *overlay = box_bake_maps_inpaint_overlay();
-		return overlay != NULL ? overlay : render_path_empty_black();
-	}
 	else if (string_equals(link, "_texcolorid")) {
 		asset_t *map = project_id_map_asset();
 		if (map == NULL) {

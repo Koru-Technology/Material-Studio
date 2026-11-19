@@ -860,10 +860,6 @@ void render_path_paint_commands_live_brush() {
 }
 
 bool render_path_paint_paint_enabled() {
-	if (g_context->tool == TOOL_TYPE_INPAINT) {
-		return false; // Inpaint handles the strokes itself
-	}
-
 	if (g_context->tool == TOOL_TYPE_BAKE) {
 		return true;
 	}

@@ -44,7 +44,7 @@ char *project_icon_path(char *path) {
 //     <name>.arm                  the project, .<name>_icon.png its preview (hidden)
 //     Sources/                    models and textures imported into it (project_take_import)
 //     Exports/                    texture, mesh and layer exports (ui_files_show)
-//     Mesh Maps/                  baked maps (box_bake_maps.c)
+//     Mesh Maps/                  baked maps (app_api_bake.c)
 //   .imports/                     files picked or shared with the app until a project takes them (ios_system.m)
 //   .tests/                       test scripts (README)
 // The container is /var/mobile/... in the paths iOS hands over (pickers, launch arguments) and /private/var/mobile/...
@@ -164,7 +164,7 @@ static bool project_set_default_path() {
 }
 
 static bool project_autosave_busy() {
-	return g_context->brush_time > 0 || box_bake_maps_running() || g_context->paint_object == NULL;
+	return g_context->brush_time > 0 || app_bake_running() || g_context->paint_object == NULL;
 }
 
 // Wall clock time of the first change since the last save, 0 when unchanged.

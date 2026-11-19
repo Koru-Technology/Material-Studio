@@ -235,7 +235,7 @@ private struct MaskEffectSections: View {
 				ForEach(own) { setting($0) }
 				if effect.needsAO || effect.needsThickness {
 					Button("Bake Mesh Maps…", systemImage: "flame") {
-						AppStore.shared.perform { app_command(Int32(APP_COMMAND_BAKE_MESH_MAPS.rawValue)) }
+						AppStore.shared.bakeShown = true
 					}
 				}
 			} header: {

@@ -265,7 +265,7 @@ struct PadMenuBar: View {
 						Button("Reimport Mesh", systemImage: "arrow.triangle.2.circlepath") { run(APP_COMMAND_REIMPORT_MESH) }
 						Button("Reimport Textures", systemImage: "arrow.triangle.2.circlepath") { run(APP_COMMAND_REIMPORT_TEXTURES) }
 						Button("Bake Material…", systemImage: "flame") { run(APP_COMMAND_BAKE_MATERIAL) }
-						Button("Bake Mesh Maps…", systemImage: "flame") { run(APP_COMMAND_BAKE_MESH_MAPS) }
+						Button("Bake Mesh Maps…", systemImage: "flame") { AppStore.shared.bakeShown = true }
 						Button("Delete Unused Assets", systemImage: "trash") { run(APP_COMMAND_DELETE_UNUSED) }
 					}
 					Section {

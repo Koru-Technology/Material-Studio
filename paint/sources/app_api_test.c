@@ -175,3 +175,38 @@ uint32_t app_swatch_base(int32_t index) {
 	app_color_t c;
 	return app_swatch_info(index, &c) ? c.base : 0;
 }
+
+// Bake Mesh Maps
+
+void app_test_bake_options(int32_t maps, int32_t size, int32_t rays) {
+	app_bake_options_t o;
+	app_bake_get(&o);
+	o.maps = maps;
+	o.size = size;
+	o.rays = rays;
+	app_bake_set(&o);
+}
+
+float app_test_bake_progress(void) {
+	app_bake_state_t s;
+	app_bake_state(&s);
+	return s.progress;
+}
+
+float app_test_bake_missed(void) {
+	app_bake_state_t s;
+	app_bake_state(&s);
+	return s.missed;
+}
+
+bool app_test_bake_has_baked(void) {
+	app_bake_state_t s;
+	app_bake_state(&s);
+	return s.has_baked;
+}
+
+int32_t app_test_bake_preview(int32_t high) {
+	static uint8_t pixels[320 * 240 * 4];
+	int32_t        w, h;
+	return app_bake_preview(0.8, 0.35, 1.0, high != 0, false, 320, 240, pixels, sizeof(pixels), &w, &h);
+}

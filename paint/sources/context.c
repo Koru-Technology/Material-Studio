@@ -257,7 +257,7 @@ void context_parse_mesh_material() {
 }
 
 void context_select_tool(i32 i) {
-	if (!(i >= 0 && i <= TOOL_TYPE_INPAINT)) {
+	if (!(i >= 0 && i <= TOOL_TYPE_BAKE)) {
 		return;
 	}
 	if (i != g_context->tool) {

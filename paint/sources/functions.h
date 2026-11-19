@@ -929,15 +929,9 @@ void slot_material_duplicate(i32 i);
 void slot_material_update_pointers(ui_node_t_array_t *nodes, i32 deleted);
 void slot_material_remove(slot_material_t *m);
 
-// ---- ui/box_bake_maps.c ----
-void           box_bake_maps_update();
-bool           box_bake_maps_running();
-void           box_bake_maps_show();
-void           box_bake_maps_bake();
-void           box_bake_maps_inpaint_stroke();
-void           box_bake_maps_inpaint_stroke_end();
-gpu_texture_t *box_bake_maps_inpaint_overlay();
-i32            box_bake_maps_inpaint_color();
+// ---- app_api_bake.c ----
+void           app_bake_update();
+bool           app_bake_running();
 
 // ---- ui/box_export.c ----
 void box_export_tiled_update(void *_);
@@ -2292,24 +2286,15 @@ void           bake_maps_set_cage(f32 dist, bool average);
 void           bake_maps_set_ao(f32 strength, f32 radius, f32 offset);
 void           bake_maps_set_curvature(f32 strength, f32 radius, f32 offset, i32 smooth);
 void           bake_maps_set_cavity(f32 detail_texels, f32 contrast);
-bool           bake_maps_start(i32 type, i32 rays, i32 axis, i32 up_axis, bool use_high, i32 w, i32 h);
-bool           bake_maps_gpu_supported(void);
-i32            bake_maps_gpu_res(void);
-bool           bake_maps_gpu_start(i32 type, i32 samples, f32 ao_strength, f32 ao_radius, f32 ao_offset);
+bool           bake_maps_start(i32 type, i32 rays, bool use_high, i32 w, i32 h);
 f32            bake_maps_progress(void);
 bool           bake_maps_step(void);
 void           bake_maps_cancel(void);
 bool           bake_maps_save(char *folder, char *file_name);
-gpu_texture_t *bake_maps_preview(i32 w, i32 h, f32 yaw, f32 pitch, f32 zoom, bool show_low, bool show_high, bool show_cage, bool show_miss, bool fast);
+u8            *bake_maps_preview(i32 w, i32 h, f32 yaw, f32 pitch, f32 zoom, bool show_low, bool show_high, bool show_miss, bool fast);
 f32            bake_maps_miss_ratio(void);
 void           bake_maps_end_images(void);
 void           bake_maps_end(void);
-bool           bake_maps_inpaint_begin(char *path);
-void           bake_maps_inpaint_stroke(void);
-gpu_texture_t *bake_maps_inpaint_mask(void);
-void           bake_maps_inpaint_clear(void);
-bool           bake_maps_inpaint_apply(char *path, i32 mode, bool vector);
-void           bake_maps_inpaint_end(void);
 #endif
 
 // ---- history_store.c ----

@@ -161,7 +161,6 @@
 #include "slots/slot_layer.c"
 #include "slots/slot_material.c"
 
-#include "ui/box_bake_maps.c"
 #include "ui/box_export.c"
 #include "ui/box_import_mesh.c"
 #include "ui/box_projects.c"
@@ -242,6 +241,7 @@
 #include "app_api_masks.c"
 #include "app_api_materials.c"
 #include "app_api_studio.c"
+#include "app_api_bake.c"
 #include "app_api_test.c"
 #include "node_shader.c"
 #include "nodes_brush.c"
@@ -297,9 +297,8 @@ void _kickstart() {
 	        _tr("ID"),      _tr("Picker"), _tr("Preview"),  _tr("Move"),    _tr("Select"), _tr("Empty"),   _tr("Plane"), _tr("Cube"),
 	        _tr("Sphere"),  _tr("Cone"),   _tr("Cylinder"), _tr("Capsule"), _tr("Torus"),  _tr("3D Text"), _tr("Path"),  _tr("Curve"),
 	        _tr("Bake"),
-	        _tr("Inpaint"),
 	    },
-	    26);
+	    25);
 
 	import_mesh_importers   = any_map_create();
 	translator_translations = any_map_create();
