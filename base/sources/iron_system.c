@@ -170,6 +170,7 @@ void iron_set_open_file_callback(void (*callback)(char *)) {
 }
 
 void iron_internal_open_file_callback(char *path) {
+	iron_delay_idle_sleep(); // The engine opens it on its next frame
 	if (open_file_callback != NULL) {
 		open_file_callback(path);
 	}
@@ -460,6 +461,7 @@ void iron_internal_pen_trigger_sample(float x, float y, float pressure, float al
 }
 
 void iron_internal_pen_trigger_hover(float x, float y, float height) {
+	iron_delay_idle_sleep(); // The brush cursor follows the pencil
 	pen_hover_listener(x, y, height);
 }
 
@@ -468,6 +470,7 @@ void iron_internal_pen_trigger_predicted(float x, float y) {
 }
 
 void iron_internal_mouse_trigger_twist(float radians) {
+	iron_delay_idle_sleep();
 #ifdef IRON_IOS
 	mouse_twist_listener(radians);
 #endif
@@ -490,6 +493,7 @@ void iron_set_pencil_gesture_callback(void (*callback)(int gesture, float x, flo
 }
 
 void iron_internal_pencil_gesture_callback(int gesture, float x, float y) {
+	iron_delay_idle_sleep();
 	if (pencil_gesture_callback != NULL) {
 		pencil_gesture_callback(gesture, x, y);
 	}

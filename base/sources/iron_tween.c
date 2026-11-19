@@ -43,6 +43,11 @@ tween_anim_t *tween_timer(f32 delay, void (*done)(void *data), void *data) {
 	return tween_to(a);
 }
 
+// Animations running: they advance with frames, not with the clock
+bool tween_active(void) {
+	return _tween_anims != NULL && _tween_anims->length > 0;
+}
+
 void tween_reset(void) {
 	_tween_anims = any_array_create(0);
 }

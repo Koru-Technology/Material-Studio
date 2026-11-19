@@ -183,17 +183,25 @@ static bool project_autosave_due() {
 	return iron_time() - project_autosave_since >= minutes * 60.0;
 }
 
-// Saves modified projects every few minutes, from the update loop. Journals the session head for crash recovery.
-void project_autosave_update() {
-	project_session_update();
+// An auto save is due and can run now
+static bool project_autosave_ready() {
 	if (!project_autosave_due() || project_autosave_busy()) {
-		return;
+		return false;
 	}
 #ifndef IRON_IOS
 	if (string_equals(g_project->_->filepath, "")) {
-		return; // No surprise save dialog
+		return false; // No surprise save dialog
 	}
 #endif
+	return true;
+}
+
+// Saves modified projects every few minutes, from the update loop. Journals the session head for crash recovery.
+void project_autosave_update() {
+	project_session_update();
+	if (!project_autosave_ready()) {
+		return;
+	}
 	project_autosave_since = 0.0;
 	project_save(false);
 	console_info(tr("Auto saved"));
@@ -201,8 +209,9 @@ void project_autosave_update() {
 
 static bool (*project_idle_wake_next)(void) = NULL;
 
+// Not when the save would be skipped: the engine woke again and again for it
 static bool project_idle_wake(void) {
-	return project_autosave_due() || project_session_due() || (project_idle_wake_next != NULL && project_idle_wake_next());
+	return project_autosave_ready() || project_session_due() || (project_idle_wake_next != NULL && project_idle_wake_next());
 }
 
 // Wakes the idle app up when an auto save is due

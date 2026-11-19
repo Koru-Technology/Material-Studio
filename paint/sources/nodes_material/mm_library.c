@@ -424,6 +424,21 @@ gpu_texture_t *mm_library_icon(i32 i) {
 	return l->icon_state == 2 ? l->icon : NULL;
 }
 
+// The thumbnail could not be made, asking again does not help
+bool mm_library_icon_failed(i32 i) {
+	return mm_library_entries[i].icon_state == 3;
+}
+
+// Thumbnails requested and not loaded yet: they load in the engine's frames
+bool mm_library_icons_loading() {
+	for (i32 i = 0; i < mm_library_n; ++i) {
+		if (mm_library_entries[i].icon_state == 1) {
+			return true;
+		}
+	}
+	return false;
+}
+
 i32 mm_library_icons_loaded() {
 	return mm_library_icons;
 }

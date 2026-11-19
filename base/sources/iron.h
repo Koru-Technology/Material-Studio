@@ -62,7 +62,11 @@ void _kickstart();
 bool enable_window           = true;
 bool in_background           = false;
 int  paused_frames           = 0;
-bool (*iron_idle_wake)(void) = NULL;
+bool (*iron_idle_wake)(void) = NULL; // Time driven work is due (an autosave): wakes the sleeping engine
+bool (*iron_idle_busy)(void) = NULL; // Work spread over frames is under way: the engine stays awake
+void (*iron_on_wake)(void)   = NULL; // The host resumes its frames (it stopped them while the engine slept)
+static bool iron_sleeping    = false;
+void        iron_delay_idle_sleep();
 #ifdef IDLE_SLEEP
 bool input_down         = false;
 int  last_window_width  = 0;
@@ -169,21 +173,25 @@ void untar_here(const char *path);
 void _update() {
 
 #ifdef IDLE_SLEEP
+	// Frames stop a moment after the last input or change, unless work spread over frames is under way: a frame
+	// that changes nothing still draws and presents, at the display's rate
 	if (last_window_width != iron_window_width() || last_window_height != iron_window_height()) {
 		last_window_width  = iron_window_width();
 		last_window_height = iron_window_height();
 		paused_frames      = 0;
 	}
-#ifdef IRON_IOS
-	const int start_sleep = 1200;
-#else
 	const int start_sleep = 120;
-#endif
 	++paused_frames;
+	if (iron_idle_busy != NULL && iron_idle_busy()) {
+		paused_frames = 0;
+	}
+#ifndef IRON_EXTERNAL_LOOP // The host checks iron_idle_wake while it holds the frames
 	if (paused_frames > start_sleep && paused_frames % 100 == 0 && iron_idle_wake != NULL && iron_idle_wake()) {
 		paused_frames = 0;
 	}
+#endif
 	if (paused_frames > start_sleep && !input_down) {
+		iron_sleeping = true;
 #ifndef IRON_EXTERNAL_LOOP // An external loop is paced by the display
 		struct timespec t;
 		t.tv_sec  = 0;
@@ -192,6 +200,7 @@ void _update() {
 #endif
 		return;
 	}
+	iron_sleeping = false;
 #endif
 
 	string_tmp_reset();
@@ -217,13 +226,13 @@ void _paste(char *text, void *data) {
 void _foreground(void *data) {
 	iron_foreground();
 	in_background = false;
-	paused_frames = 0;
+	iron_delay_idle_sleep();
 }
 
+// No frames in the background: the gpu can not be used there
 void _background(void *data) {
 	iron_background();
 	in_background = true;
-	paused_frames = 0;
 }
 
 void _shutdown(void *data) {
@@ -236,9 +245,9 @@ void _key_down(int code, void *data) {
 		ui_key_down(ui_get_current(), code);
 
 #ifdef IDLE_SLEEP
-	input_down    = true;
-	paused_frames = 0;
+	input_down = true;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _key_up(int code, void *data) {
@@ -247,18 +256,16 @@ void _key_up(int code, void *data) {
 		ui_key_up(ui_get_current(), code);
 
 #ifdef IDLE_SLEEP
-	input_down    = false;
-	paused_frames = 0;
+	input_down = false;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _key_press(unsigned int character, void *data) {
 	if (ui_get_current())
 		ui_key_press(ui_get_current(), character);
 
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
+	iron_delay_idle_sleep();
 }
 
 void _mouse_down(int button, int x, int y, void *data) {
@@ -267,9 +274,9 @@ void _mouse_down(int button, int x, int y, void *data) {
 		ui_mouse_down(ui_get_current(), button, x, y);
 
 #ifdef IDLE_SLEEP
-	input_down    = true;
-	paused_frames = 0;
+	input_down = true;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _mouse_up(int button, int x, int y, void *data) {
@@ -278,9 +285,9 @@ void _mouse_up(int button, int x, int y, void *data) {
 		ui_mouse_up(ui_get_current(), button, x, y);
 
 #ifdef IDLE_SLEEP
-	input_down    = false;
-	paused_frames = 0;
+	input_down = false;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _mouse_move(int x, int y, int mx, int my, void *data) {
@@ -288,9 +295,7 @@ void _mouse_move(int x, int y, int mx, int my, void *data) {
 	if (ui_get_current())
 		ui_mouse_move(ui_get_current(), x, y, mx, my);
 
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
+	iron_delay_idle_sleep();
 }
 
 void _mouse_wheel(float delta, void *data) {
@@ -298,9 +303,7 @@ void _mouse_wheel(float delta, void *data) {
 	if (ui_get_current())
 		ui_mouse_wheel(ui_get_current(), delta);
 
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
+	iron_delay_idle_sleep();
 }
 
 void _touch_move(int index, int x, int y) {
@@ -311,9 +314,7 @@ void _touch_move(int index, int x, int y) {
 		ui_touch_move(ui_get_current(), index, x, y);
 #endif
 
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
+	iron_delay_idle_sleep();
 }
 
 void _touch_down(int index, int x, int y) {
@@ -325,9 +326,9 @@ void _touch_down(int index, int x, int y) {
 #endif
 
 #ifdef IDLE_SLEEP
-	input_down    = true;
-	paused_frames = 0;
+	input_down = true;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _touch_up(int index, int x, int y) {
@@ -339,9 +340,9 @@ void _touch_up(int index, int x, int y) {
 #endif
 
 #ifdef IDLE_SLEEP
-	input_down    = false;
-	paused_frames = 0;
+	input_down = false;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _pen_down(int x, int y, float pressure) {
@@ -350,9 +351,9 @@ void _pen_down(int x, int y, float pressure) {
 		ui_pen_down(ui_get_current(), x, y, pressure);
 
 #ifdef IDLE_SLEEP
-	input_down    = true;
-	paused_frames = 0;
+	input_down = true;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _pen_up(int x, int y, float pressure) {
@@ -361,9 +362,9 @@ void _pen_up(int x, int y, float pressure) {
 		ui_pen_up(ui_get_current(), x, y, pressure);
 
 #ifdef IDLE_SLEEP
-	input_down    = false;
-	paused_frames = 0;
+	input_down = false;
 #endif
+	iron_delay_idle_sleep();
 }
 
 void _pen_move(int x, int y, float pressure) {
@@ -371,9 +372,7 @@ void _pen_move(int x, int y, float pressure) {
 	if (ui_get_current())
 		ui_pen_move(ui_get_current(), x, y, pressure);
 
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
+	iron_delay_idle_sleep();
 }
 
 void _drop_files(char *file_path, void *data) {
@@ -382,9 +381,7 @@ void _drop_files(char *file_path, void *data) {
 	iron_drop_files(file_path);
 
 	in_background = false;
-#ifdef IDLE_SLEEP
-	paused_frames = 0;
-#endif
+	iron_delay_idle_sleep();
 }
 
 f32 math_floor(f32 x) {
@@ -924,6 +921,31 @@ void iron_set_save_and_quit_callback(void (*callback)(bool)) {
 	iron_window_set_close_callback(_save_and_quit_callback, NULL);
 }
 
+// Something changed: the next frames come (an asleep engine wakes and its host resumes the frames)
 void iron_delay_idle_sleep() {
 	paused_frames = 0;
+	if (iron_sleeping) {
+		iron_sleeping = false;
+		if (iron_on_wake != NULL) {
+			iron_on_wake();
+		}
+	}
 }
+
+#ifdef IRON_EXTERNAL_LOOP
+bool iron_apple_asleep(void) {
+	return iron_sleeping;
+}
+
+void iron_apple_set_wake_callback(void (*callback)(void)) {
+	iron_on_wake = callback;
+}
+
+bool iron_apple_idle_check(void) {
+	if (iron_sleeping && iron_idle_wake != NULL && iron_idle_wake()) {
+		iron_delay_idle_sleep();
+		return true;
+	}
+	return false;
+}
+#endif

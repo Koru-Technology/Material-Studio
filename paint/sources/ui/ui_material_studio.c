@@ -23,6 +23,7 @@ static mesh_object_t    *studio_cube          = NULL;
 static shader_context_t *studio_scon          = NULL;
 static bool              studio_need_compile  = false; // The preview shader is out of date
 static bool              studio_need_render   = false; // The preview image is out of date
+static bool              studio_tiles_pending = false; // Layer shaders left to compile, one a frame
 static bool              studio_need_commit   = false; // An edit to commit once the touch ends
 static bool              studio_native_drag   = false; // A native control is held: its edits make one undo step
 static bool              studio_hooked        = false;
@@ -540,7 +541,8 @@ static void studio_update_tiles(ui_node_canvas_t *c, f64 values) {
 	if (!studio_graph_read(c, &g)) {
 		return;
 	}
-	bool draw = values != studio_layer_values;
+	bool draw            = values != studio_layer_values;
+	studio_tiles_pending = false;
 	for (i32 k = 0; k < g.count; ++k) {
 		u32 key = studio_layer_hash(&g, k);
 		if (key == studio_layer_key[k] && studio_layer_scon[k] != NULL) {
@@ -552,6 +554,7 @@ static void studio_update_tiles(ui_node_canvas_t *c, f64 values) {
 		studio_layer_scon[k] = studio_compile_node(g.layers[k].n[STUDIO_ROLE_RAMP], c, 1 + k);
 		studio_layer_key[k]  = key;
 		draw                 = true;
+		studio_tiles_pending = true;
 		break;
 	}
 	if (!draw) {
@@ -616,6 +619,14 @@ void material_studio_apply() {
 		studio_commit();
 	}
 	studio_apply_paint();
+}
+
+// Work the studio spreads over frames: shaders to compile, the preview to render, the open or close animation
+bool material_studio_busy() {
+	if (studio_material == NULL) {
+		return false;
+	}
+	return studio_need_compile || studio_need_render || studio_tiles_pending || iron_time() - studio_anim_start < STUDIO_ANIM_TIME;
 }
 
 // Rendering is not allowed while the windows draw, it happens here at the start of the frame

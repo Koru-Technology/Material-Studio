@@ -26,4 +26,5 @@ typedef struct tween_anim {
 tween_anim_t *tween_to(tween_anim_t *anim);
 tween_anim_t *tween_timer(f32 delay, void (*done)(void *data), void *data);
 void          tween_reset(void);
+bool          tween_active(void);
 void          tween_update(void *unused);

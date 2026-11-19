@@ -1012,8 +1012,7 @@ bool project_session_write() {
 		return false;
 	}
 	pc_session_register();
-	history_flush_restores(NULL);
-	timeline_finalize();
+	history_settle();
 	pc_writer_t w = {.session = true};
 	pc_w          = &w;
 	buffer_t *head = export_arm_encode_project(g_project->_->filepath);
@@ -1077,8 +1076,7 @@ void project_session_update() {
 	if (!project_session_due()) {
 		return;
 	}
-	history_flush_restores(NULL);
-	timeline_finalize();
+	history_settle(); // The last stroke's changed tiles first: without them its capture reads the whole layer back
 	slot_layer_t *l = pc_session_stale_layer();
 	if (l != NULL) {
 		hstore_unref(timeline_live_map(l)); // The layer remembers it, the head next frame references it

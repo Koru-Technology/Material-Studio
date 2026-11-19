@@ -83,6 +83,8 @@ iron_window_mode_t iron_window_get_mode();
 void               iron_window_show();
 void               iron_window_hide();
 void               iron_window_set_title(const char *title);
+// Something changed: frames come again (iron.h), an asleep engine wakes and its host resumes the frames
+void               iron_delay_idle_sleep();
 void               iron_window_set_resize_callback(void (*callback)(int x, int y, void *data), void *data);
 void               iron_window_set_close_callback(bool (*callback)(void *data), void *data);
 void               iron_internal_call_resize_callback(int width, int height);

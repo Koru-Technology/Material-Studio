@@ -78,6 +78,81 @@ bool base_startup_covering() {
 	return base_startup_cover;
 }
 
+// Work spread over frames that is under way without input: the engine keeps drawing frames until it is done
+// (iron_idle_busy), otherwise it sleeps a moment after the last change. One that stays busy for long is logged.
+static const char *base_idle_busy_work() {
+	if (_sys_on_next_frames->length > 0) {
+		return "next frame callbacks";
+	}
+	if (script_is_running()) {
+		return "script";
+	}
+	if (gpu_transfer_pending() > 0) {
+		return "gpu readbacks";
+	}
+	if (history_busy()) {
+		return "undo restores";
+	}
+	if (paint_refine_stat(1) > 0 || (paint_refine_stat(0) > 0 && mm_buffers_stat(11) > 0)) {
+		return "stroke sharpening";
+	}
+	if (mm_buffers_stat(11) > 0) {
+		return "material maker renders";
+	}
+	if (material_cache_building()) {
+		return "material cache";
+	}
+	if (make_material_paint_pending()) {
+		return "paint shader";
+	}
+	if (fill_stat(2) > 0) {
+		return "fill layers";
+	}
+	if (layers_resolution_running()) {
+		return "layer resolution";
+	}
+	if (export_tiled_running() || app_bake_running() || bake_texture_node_baking) {
+		return "export or bake";
+	}
+	if (project_session_due()) {
+		return "session journal";
+	}
+	if (brush_previews_stat(3) > 0) {
+		return "brush previews";
+	}
+	if (util_particle_alive() || brush_pad_busy()) {
+		return "particles";
+	}
+	if (base_startup_covering() || base_drop_paths->length > 0) {
+		return "project load";
+	}
+	if (library_busy() || mm_library_icons_loading()) {
+		return "library";
+	}
+	if (material_studio_busy()) {
+		return "material studio";
+	}
+	if (tween_active()) {
+		return "animations";
+	}
+	return NULL;
+}
+
+static bool base_idle_busy() {
+	static f64         since = 0.0;
+	static const char *last  = NULL;
+	const char        *work  = base_idle_busy_work();
+	if (work != last) {
+		last  = work;
+		since = iron_time();
+	}
+	else if (work != NULL && since > 0.0 && iron_time() - since > 30.0) {
+		iron_log("Busy for 30 s without input: %s", work);
+		since = 0.0;
+	}
+	return work != NULL;
+}
+
 // The project reopened on startup has not loaded yet
 bool base_startup_loading() {
 	return base_startup_cover && base_startup_cover_frames < 0;
@@ -202,6 +277,7 @@ void base_update(void *_) {
 	ui_nodes_update(NULL);
 	ui_base_update(NULL);
 	camera_update(NULL);
+	history_settle_after_stroke();
 
 	bool in_3d               = mouse_view_x() >= 0 && mouse_view_x() <= sys_w() && mouse_view_y() >= 0 && mouse_view_y() <= sys_h();
 	iron_mouse_trackpad_drag = base_ui_enabled && (in_3d || context_in_2d_view(ui_view2d_type) || context_in_nodes());
@@ -278,6 +354,7 @@ void base_init() {
 	iron_set_pointer_hidden_callback(&base_pointer_hidden);
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
 	project_autosave_init();
+	iron_idle_busy = base_idle_busy;
 
 	g_font = data_get_font(base_ui_font_file());
 

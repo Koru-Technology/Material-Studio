@@ -854,6 +854,23 @@ void history_settle(void) {
 	timeline_finalize();
 }
 
+// From the update loop: a stroke's changed tiles and captures are taken a few frames after it ends, once its last dabs
+// are in and the work that paints over its snapshot is done (the sharpening, the material cache build), instead of
+// when the next stroke starts (its first frame held at the touch-down)
+void history_settle_after_stroke(void) {
+	static i32 frames = 0;
+	bool       idle   = g_context->brush_time == 0 && g_context->pdirty <= 0 && !paint_rec_active() && !util_curve_stroke_active() &&
+	            !mouse_down("left") && !pen_down("tip") && !material_cache_building() && paint_refine_stat(0) == 0 && paint_refine_stat(1) == 0;
+	if (!idle || (history_tiles_pending_step(NULL) == NULL && !timeline_captures_pending())) {
+		frames = 0;
+		return;
+	}
+	if (++frames >= 3) {
+		frames = 0;
+		history_tiles_finalize(); // Restores spread over frames (an undo's) keep going
+	}
+}
+
 history_step_t *history_push(history_action_t action) {
 	history_flush_restores(action == HISTORY_ACTION_PAINT ? g_context->layer : NULL); // A stroke waits only for its own layer
 	history_tiles_finalize(); // The last stroke is over

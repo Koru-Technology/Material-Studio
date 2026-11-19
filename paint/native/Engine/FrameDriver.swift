@@ -8,7 +8,8 @@ typealias PlatformView = UIView
 #endif
 
 // Drives the engine: one frame per display refresh from a display link in the common run loop modes,
-// so the canvas keeps drawing while menus, sliders and sheets track input.
+// so the canvas keeps drawing while menus, sliders and sheets track input. The link pauses while the engine sleeps
+// (nothing changed for a moment, no work under way) and resumes when the engine wakes (apple_host.h).
 final class FrameDriver: NSObject {
 	static let shared = FrameDriver()
 
@@ -19,6 +20,8 @@ final class FrameDriver: NSObject {
 	private weak var view: PlatformView?
 	private var pickerRequested: CFTimeInterval = 0 // A file picker was asked for and is not up yet, 0 for none
 	private var fallback: Timer?
+	private var idleTimer: Timer? // While paused: time driven work (an autosave, the session journal) wakes the engine
+	private var paused = false
 	private var waitTimer: Timer?
 	private var lastTick: CFTimeInterval = 0
 	private var afterFrames: [() -> Void] = []
@@ -70,11 +73,20 @@ final class FrameDriver: NSObject {
 #endif
 		link.add(to: .main, forMode: .common)
 		self.link = link
-		// The display link stops while the window is hidden (minimized, covered, screen locked):
-		// keep frames going at a low rate, scripts and background work still run, as with the engine's own loop
+		iron_apple_set_wake_callback {
+			if Thread.isMainThread {
+				MainActor.assumeIsolated { FrameDriver.shared.resume() }
+			}
+			else {
+				DispatchQueue.main.async { FrameDriver.shared.resume() }
+			}
+		}
+#if os(macOS)
+		// The display link stops while the window is hidden (minimized, covered): keep frames going at a low rate,
+		// scripts and background work still run. iOS draws nothing in the background.
 		let fallback = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
 			MainActor.assumeIsolated {
-				guard let self, CACurrentMediaTime() - self.lastTick > 0.1 else {
+				guard let self, !self.paused, CACurrentMediaTime() - self.lastTick > 0.1 else {
 					return
 				}
 				self.tick()
@@ -82,7 +94,35 @@ final class FrameDriver: NSObject {
 		}
 		RunLoop.main.add(fallback, forMode: .common)
 		self.fallback = fallback
+#endif
 		return true
+	}
+
+	// The engine slept: no frames until it wakes, a slow timer checks for time driven work meanwhile
+	private func pauseIfAsleep() {
+		guard !paused, afterFrames.isEmpty, iron_apple_asleep() else {
+			return
+		}
+		paused         = true
+		link?.isPaused = true
+		let timer = Timer(timeInterval: 1, repeats: true) { _ in
+			MainActor.assumeIsolated {
+				_ = iron_apple_idle_check() // Calls the wake callback when it wakes the engine
+			}
+		}
+		timer.tolerance = 0.5
+		RunLoop.main.add(timer, forMode: .common)
+		idleTimer = timer
+	}
+
+	private func resume() {
+		guard paused, !isStopped else {
+			return
+		}
+		paused         = false
+		link?.isPaused = false
+		idleTimer?.invalidate()
+		idleTimer = nil
 	}
 
 	@objc private func displayTick(_ link: CADisplayLink) {
@@ -114,6 +154,7 @@ final class FrameDriver: NSObject {
 				}
 			}
 		}
+		pauseIfAsleep()
 	}
 
 	// A system file picker (the engine's, the folder picker, SwiftUI's fileImporter) runs in another process and often
@@ -150,6 +191,7 @@ final class FrameDriver: NSObject {
 	// long engine call (a tool change parses materials, 50-100 ms) holds the main thread
 	func afterNextFrame(_ action: @escaping () -> Void) {
 		afterFrames.append(action)
+		resume()
 	}
 
 	// The engine stopped (a script quit, the user quit and saved): nothing draws or takes input any more
@@ -159,6 +201,8 @@ final class FrameDriver: NSObject {
 		link = nil
 		fallback?.invalidate()
 		fallback = nil
+		idleTimer?.invalidate()
+		idleTimer = nil
 		iron_external_shutdown()
 #if os(macOS)
 		NSApp.terminate(nil)

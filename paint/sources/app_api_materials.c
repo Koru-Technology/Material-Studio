@@ -724,10 +724,13 @@ int32_t app_library_icon(int32_t index, uint8_t *out, int32_t capacity, int32_t 
 	}
 	default:
 		icon = mm_library_icon(r->index); // Requests it, loaded a few per frame
+		if (icon == NULL && mm_library_icon_failed(r->index)) {
+			return -1; // Asked again every frame, it kept the engine awake
+		}
 		break;
 	}
 	if (icon == NULL) {
-		// Requested: it loads in the engine's frames, which stop when the engine idles. Touches on the native popover
+		// Requested: it loads in the engine's frames (base_idle_busy keeps them coming). Touches on the native popover
 		// do not reach the engine, so scrolling the library alone would not wake it.
 		iron_delay_idle_sleep();
 		return 0;

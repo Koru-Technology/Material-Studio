@@ -17,6 +17,14 @@ void iron_apple_start(void);
 bool iron_external_tick(void);
 void iron_external_shutdown(void);
 
+// Idle: the engine sleeps a moment after the last input or change, unless work spread over frames is under way. The
+// host stops its frames while it sleeps and resumes them when the wake callback is called (input, an app_* call, a file
+// opened, a resize), on the main thread. iron_apple_idle_check, now and then while asleep: true when time driven work
+// (an autosave, the session journal) woke it.
+bool iron_apple_asleep(void);
+void iron_apple_set_wake_callback(void (*callback)(void));
+bool iron_apple_idle_check(void);
+
 // macOS: the app is asked to quit. Runs the save prompt; true: the engine stopped, quit now
 bool iron_apple_should_terminate(void);
 

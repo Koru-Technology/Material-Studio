@@ -890,6 +890,7 @@ int main(int argc, char **argv) {
 }
 
 void iron_internal_call_resize_callback(int width, int height) {
+	iron_delay_idle_sleep(); // Drawn at the new size
 	if (windows[0].resize_callback != NULL) {
 		windows[0].resize_callback(width, height, windows[0].resize_callback_data);
 	}

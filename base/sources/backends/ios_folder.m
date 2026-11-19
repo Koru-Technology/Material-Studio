@@ -158,6 +158,7 @@ static void iron_folder_save_bookmark(NSURL *url) {
 @implementation IronFolderPicker
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+	iron_delay_idle_sleep(); // The engine takes the folder on its next frames
 	NSURL *url = urls.firstObject;
 	if (url == nil) {
 		self.done(NULL);
@@ -169,6 +170,7 @@ static void iron_folder_save_bookmark(NSURL *url) {
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+	iron_delay_idle_sleep();
 	self.done(NULL);
 }
 

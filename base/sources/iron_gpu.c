@@ -2,6 +2,7 @@
 #include "iron_math.h"
 #include "iron_system.h"
 #include "iron_thread.h"
+#include <stdlib.h>
 #include <string.h>
 
 static gpu_buffer_t   constant_buffer;
@@ -60,6 +61,9 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 		gpu_thrown = true;
 		iron_log("End before you begin");
 	}
+	if (targets == NULL && gpu_framebuffer_redirect == NULL) {
+		gpu_acquire_framebuffer(); // Before the pass begins: the passes before it are submitted first
+	}
 	gpu_in_use = true;
 
 	if (current_render_targets_count > 0 && current_render_targets[0] != &framebuffers[framebuffer_index]) {
@@ -77,7 +81,6 @@ void gpu_begin(gpu_texture_t **targets, int count, gpu_texture_t *depth_buffer, 
 		current_depth_buffer         = NULL;
 	}
 	else if (targets == NULL) {
-		gpu_acquire_framebuffer();
 		current_render_targets[0]    = &framebuffers[framebuffer_index];
 		current_render_targets_count = 1;
 		current_depth_buffer         = framebuffer_depth.width > 0 ? &framebuffer_depth : NULL;
@@ -167,8 +170,67 @@ void gpu_end() {
 	gpu_end_internal();
 }
 
+// Resources deleted while a frame records are freed once the GPU is done with them: at present they retire to that
+// frame's slot, and are freed when the slot's command buffer has completed (gpu_release_retired), without the CPU
+// waiting for the GPU. gpu_cleanup frees everything at once, for callers that waited for the GPU themselves.
+typedef struct {
+	gpu_texture_t  *textures;
+	gpu_buffer_t   *buffers;
+	gpu_pipeline_t *pipelines;
+	int             textures_count;
+	int             buffers_count;
+	int             pipelines_count;
+} gpu_retired_t;
+
+static gpu_retired_t retired[GPU_FRAMES_IN_FLIGHT];
+
+static void *retire_append(void *list, int count, const void *items, int n, size_t size) {
+	if (n == 0) {
+		return list;
+	}
+	list = realloc(list, (count + n) * size);
+	memcpy((uint8_t *)list + count * size, items, n * size);
+	return list;
+}
+
+void gpu_retire_deleted(int slot) {
+	iron_mutex_lock(&to_destroy_mutex);
+	gpu_retired_t *r = &retired[slot];
+	r->textures      = retire_append(r->textures, r->textures_count, textures_to_destroy, textures_to_destroy_count, sizeof(gpu_texture_t));
+	r->buffers       = retire_append(r->buffers, r->buffers_count, buffers_to_destroy, buffers_to_destroy_count, sizeof(gpu_buffer_t));
+	r->pipelines     = retire_append(r->pipelines, r->pipelines_count, pipelines_to_destroy, pipelines_to_destroy_count, sizeof(gpu_pipeline_t));
+	r->textures_count += textures_to_destroy_count;
+	r->buffers_count += buffers_to_destroy_count;
+	r->pipelines_count += pipelines_to_destroy_count;
+	textures_to_destroy_count  = 0;
+	buffers_to_destroy_count   = 0;
+	pipelines_to_destroy_count = 0;
+	iron_mutex_unlock(&to_destroy_mutex);
+}
+
+void gpu_release_retired(int slot) {
+	iron_mutex_lock(&to_destroy_mutex);
+	gpu_retired_t *r = &retired[slot];
+	for (int i = 0; i < r->textures_count; ++i) {
+		gpu_texture_destroy_internal(&r->textures[i]);
+	}
+	for (int i = 0; i < r->buffers_count; ++i) {
+		gpu_buffer_destroy_internal(&r->buffers[i]);
+	}
+	for (int i = 0; i < r->pipelines_count; ++i) {
+		gpu_pipeline_destroy_internal(&r->pipelines[i]);
+	}
+	r->textures_count  = 0;
+	r->buffers_count   = 0;
+	r->pipelines_count = 0;
+	iron_mutex_unlock(&to_destroy_mutex);
+}
+
 void gpu_cleanup() {
 	iron_mutex_lock(&to_destroy_mutex);
+	for (int i = 0; i < GPU_FRAMES_IN_FLIGHT; ++i) {
+		gpu_release_retired(i);
+	}
 	while (textures_to_destroy_count > 0) {
 		textures_to_destroy_count--;
 		gpu_texture_destroy_internal(&textures_to_destroy[textures_to_destroy_count]);
@@ -185,7 +247,11 @@ void gpu_cleanup() {
 }
 
 bool gpu_cleanup_pending() {
-	return textures_to_destroy_count > 0 || buffers_to_destroy_count > 0 || pipelines_to_destroy_count > 0;
+	bool pending = textures_to_destroy_count > 0 || buffers_to_destroy_count > 0 || pipelines_to_destroy_count > 0;
+	for (int i = 0; i < GPU_FRAMES_IN_FLIGHT; ++i) {
+		pending = pending || retired[i].textures_count > 0 || retired[i].buffers_count > 0 || retired[i].pipelines_count > 0;
+	}
+	return pending;
 }
 
 void gpu_present() {
@@ -197,7 +263,6 @@ void gpu_present() {
 	gpu_debug_draw_calls_frame = gpu_debug_draw_calls;
 	gpu_debug_draw_calls       = 0;
 #endif
-	gpu_cleanup();
 }
 
 void gpu_resize(int width, int height) {

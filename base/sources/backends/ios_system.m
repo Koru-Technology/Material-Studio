@@ -33,6 +33,7 @@ static void  pencil_flush(bool all);
 static bool  ios_presses(NSSet<UIPress *> *presses, bool down, bool typing);
 
 void iron_internal_call_resize_callback(int width, int height) {
+	iron_delay_idle_sleep(); // Drawn at the new size
 	if (resize_callback != NULL) {
 		resize_callback(width, height, resize_callback_data);
 	}

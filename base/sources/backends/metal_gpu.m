@@ -43,6 +43,7 @@ static void wait_for_frames() {
 			[frames_pending[i] waitUntilCompleted];
 			frames_pending[i] = nil;
 		}
+		gpu_release_retired(i);
 	}
 }
 
@@ -148,6 +149,10 @@ void gpu_resize_internal(int width, int height) {
 void gpu_acquire_framebuffer() {
 	if (drawable != nil) {
 		return;
+	}
+	// The frame's passes so far start on the gpu while the drawable is waited for (until the display gives one back)
+	if (!gpu_in_use && command_buffer != nil) {
+		gpu_commit(NULL, NULL);
 	}
 	CAMetalLayer *layer = get_metal_layer();
 	if (resized) {
@@ -504,10 +509,7 @@ void gpu_present_internal() {
 	}];
 	[command_buffer commit];
 	frames_pending[gpu_frame_index] = command_buffer;
-
-	if (gpu_cleanup_pending()) {
-		wait_for_frames();
-	}
+	gpu_retire_deleted(gpu_frame_index); // Freed once this frame completed
 
 	drawable                                  = nil;
 	framebuffers[framebuffer_index].impl._tex = NULL;
@@ -519,8 +521,9 @@ void gpu_present_internal() {
 		[frames_pending[gpu_frame_index] waitUntilCompleted];
 		frames_pending[gpu_frame_index] = nil;
 	}
-
-	gpu_acquire_framebuffer();
+	gpu_release_retired(gpu_frame_index);
+	// The next drawable is taken when the next frame first draws to the screen (gpu_begin): taken here, the main
+	// thread waited most of a refresh for the display to give one back, and touches and the native ui waited with it
 }
 
 void gpu_barrier(gpu_texture_t *render_target, gpu_texture_state_t state_after) {}

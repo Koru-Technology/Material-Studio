@@ -858,6 +858,12 @@ static void library_update(void *_) {
 	}
 }
 
+// Folders scanned, imported or iconified over the coming frames
+bool library_busy() {
+	return library_scan_state != 0 || library_load_state != 0 || library_icon_state != 0 || library_queue_pos < library_queue_len ||
+	       library_pending != NULL;
+}
+
 void library_rescan() {
 	if (library_root == NULL || library_scan_state != 0) {
 		return;

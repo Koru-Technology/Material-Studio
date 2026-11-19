@@ -170,6 +170,8 @@ void gpu_execute_and_wait(void);
 // (-1 when unknown), on any thread. Elsewhere than Metal: gpu_execute_and_wait.
 void gpu_commit(void (*done)(void *data, double gpu_ms), void *data);
 void gpu_cleanup(void);
+void gpu_retire_deleted(int slot);
+void gpu_release_retired(int slot);
 bool gpu_cleanup_pending(void);
 void gpu_acquire_framebuffer(void);
 void gpu_present(void);
