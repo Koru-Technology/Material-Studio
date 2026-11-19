@@ -708,6 +708,7 @@ shader_data_t *make_particle_get_bullet_material();
 void           make_particle_mask(node_shader_t *shader);
 
 // ---- render/make_picking.c ----
+bool make_picking_visible();
 void make_picking_run(node_shader_t *shader);
 
 // ---- render/make_texcoord.c ----
@@ -922,6 +923,7 @@ void             slot_material_unload(slot_material_t *raw);
 void slot_material_delete(slot_material_t *raw);
 void slot_material_delete_unused();
 void slot_material_new_on_next_frame(void *_);
+bool slot_material_is_plain(slot_material_t *m);
 void slot_material_apply_picked_color(swatch_color_t *swatch);
 void slot_material_new_from_swatch(swatch_color_t *swatch);
 void slot_material_refresh();
@@ -1111,7 +1113,7 @@ slot_layer_t *ui_view2d_move_layer(i32 *dx, i32 *dy);
 void          ui_view2d_update(void *_);
 
 // ---- util/util_brush.c ----
-void   util_brush_render_hold_loupe();
+void   util_brush_render_pick_loupe();
 f32    util_brush_pen_pressure();
 bool   util_brush_pen_active();
 f32    util_brush_pen_tilt();

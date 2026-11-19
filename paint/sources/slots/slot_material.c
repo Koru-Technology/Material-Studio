@@ -251,12 +251,17 @@ void slot_material_new_on_next_frame(void *_) {
 }
 
 // Copy picked values into the Material Output node when it is the only node in the selected material
+// A color material: its output node alone, its values set directly
+bool slot_material_is_plain(slot_material_t *m) {
+	ui_node_canvas_t *canvas = m->canvas;
+	return canvas->nodes->length == 1 && string_equals(canvas->nodes->buffer[0]->type, "OUTPUT_MATERIAL_PBR");
+}
+
 void slot_material_apply_picked_color(swatch_color_t *swatch) {
-	ui_node_canvas_t *canvas = g_context->material->canvas;
-	if (canvas->nodes->length != 1 || !string_equals(canvas->nodes->buffer[0]->type, "OUTPUT_MATERIAL_PBR")) {
+	if (!slot_material_is_plain(g_context->material)) {
 		return;
 	}
-	ui_node_t *node = canvas->nodes->buffer[0];
+	ui_node_t *node = g_context->material->canvas->nodes->buffer[0];
 	node->inputs->buffer[0]->default_value =
 	    f32_array_create_xyzw(color_get_rb(swatch->base) / 255.0, color_get_gb(swatch->base) / 255.0, color_get_bb(swatch->base) / 255.0, 1.0);
 	node->inputs->buffer[1]->default_value->buffer[0] = swatch->opacity;

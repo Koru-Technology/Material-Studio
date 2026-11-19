@@ -98,14 +98,30 @@ static void util_brush_hold_pick() {
 }
 #endif
 
-// The picked color above the finger while holding
-void util_brush_render_hold_loupe() {
-	if (util_brush_hold_tool < 0) {
+// The picked color above the finger or pencil while picking (the picker tool, touch and hold), a moment after it lifts
+static f64 util_brush_loupe_time = 0.0;
+static f32 util_brush_loupe_x    = 0.0;
+static f32 util_brush_loupe_y    = 0.0;
+
+void util_brush_render_pick_loupe() {
+	bool pen     = pen_down("tip");
+	bool picking = util_brush_hold_tool >= 0 || (g_context->tool == TOOL_TYPE_PICKER && g_context->color_picker_callback == NULL &&
+	                                             !g_context->picker_select_material && (mouse_down("left") || pen) && context_in_paint_area());
+	if (picking) {
+		util_brush_loupe_time = sys_time();
+		util_brush_loupe_x    = pen ? pen_x : mouse_x;
+		util_brush_loupe_y    = pen ? pen_y : mouse_y;
+	}
+	else if (util_brush_loupe_time == 0.0 || sys_time() - util_brush_loupe_time > 0.6) {
+		util_brush_loupe_time = 0.0;
 		return;
 	}
+	else {
+		iron_delay_idle_sleep(); // Frames until it goes
+	}
 	f32 r = 34 * UI_SCALE();
-	f32 x = mouse_x;
-	f32 y = mouse_y - r * 2.5; // Above the finger, it covers the spot
+	f32 x = util_brush_loupe_x;
+	f32 y = util_brush_loupe_y - r * 2.5; // Above the finger, it covers the spot
 	draw_set_color(0xff000000);
 	draw_filled_circle(x, y, r + 3 * UI_SCALE(), 48);
 	draw_set_color(g_context->picked_color->base | 0xff000000);

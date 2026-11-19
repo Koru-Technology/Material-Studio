@@ -6,7 +6,29 @@
 
 // Picker results: surface values under the cursor into the picked color, the material and fill layers with picker nodes.
 // tool is the tool when the pick was drawn, the values may arrive a frame later.
+static bool render_path_paint_picker_new_pending = false;
+
+static void render_path_paint_picker_new_material(void *_) {
+	render_path_paint_picker_new_pending = false;
+	slot_material_new_from_swatch(project_clone_swatch(g_context->picked_color));
+}
+
+// The picked color into the material painted: a plain color material takes it, any other (a library material, a node
+// graph) gives way to a new color material of it, made on the next frame
+static void render_path_paint_picker_to_material() {
+	if (slot_material_is_plain(g_context->material)) {
+		slot_material_apply_picked_color(g_context->picked_color);
+	}
+	else if (!render_path_paint_picker_new_pending) {
+		render_path_paint_picker_new_pending = true;
+		sys_notify_on_next_frame(&render_path_paint_picker_new_material, NULL);
+	}
+}
+
 static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_mask, tool_type_t tool) {
+	if (!is_mask && a[3] == 0) { // Off the mesh, or a texel of the layer with nothing in it: the color stays
+		return;
+	}
 	i32 i0 = 2;
 	i32 i1 = 1;
 	i32 i2 = 0;
@@ -50,7 +72,7 @@ static void render_path_paint_picker_apply(u8 *a, u8 *b, u8 *c, u8 *d, bool is_m
 	}
 
 	if (tool == TOOL_TYPE_PICKER && g_context->color_picker_callback == NULL && !g_context->picker_select_material) {
-		slot_material_apply_picked_color(g_context->picked_color);
+		render_path_paint_picker_to_material();
 	}
 
 	// Update fill layers which are using materials containing a PICKER node

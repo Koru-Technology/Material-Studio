@@ -138,6 +138,6 @@ void util_cursor_render(void *_) {
 		f32 radius = g_context->brush_lazy_radius * util_layer_brush_screen_radius() * 3.0 * 2.0 * sys_h();
 		util_cursor_draw_2d(mx, my, radius * 0.46, 0xff666666);
 	}
-	util_brush_render_hold_loupe();
+	util_brush_render_pick_loupe();
 	draw_end();
 }

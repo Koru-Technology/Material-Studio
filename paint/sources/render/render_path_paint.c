@@ -588,9 +588,17 @@ static void render_path_paint_commands_paint_internal(bool dilation) {
 				    3);
 				render_path_set_target("texpaint_picker", additional, NULL, GPU_CLEAR_NONE, 0, 0.0);
 				render_path_bind_target("gbuffer2", "gbuffer2");
-				render_path_bind_target(string_tmp("texpaint%d", tid), "texpaint");
-				render_path_bind_target(string_tmp("texpaint_nor%d", tid), "texpaint_nor");
-				render_path_bind_target(string_tmp("texpaint_pack%d", tid), "texpaint_pack");
+				if (make_picking_visible()) { // What shows (make_picking.c)
+					render_path_bind_target("gbuffer0", "gbuffer0");
+					render_path_bind_target("gbuffer1", "gbuffer1");
+					render_path_bind_target("main", "gbufferD");
+					render_path_bind_target(string_tmp("texpaint_nor%d", tid), "texpaint_nor");
+				}
+				else {
+					render_path_bind_target(string_tmp("texpaint%d", tid), "texpaint");
+					render_path_bind_target(string_tmp("texpaint_nor%d", tid), "texpaint_nor");
+					render_path_bind_target(string_tmp("texpaint_pack%d", tid), "texpaint_pack");
+				}
 				render_path_paint_draw_fullscreen_triangle();
 			}
 			render_path_paint_picker_read(is_mask);

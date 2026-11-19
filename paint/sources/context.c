@@ -381,6 +381,9 @@ void context_set_viewport_mode(viewport_mode_t mode) {
 		render_path_commands = render_path_unlit_commands;
 	}
 	make_material_parse_mesh_material();
+	if (g_context->tool == TOOL_TYPE_PICKER) { // It reads what shows when lit, the selected layer in a channel view
+		make_material_parse_paint_material(false);
+	}
 
 	if (g_context->viewport_mode == VIEWPORT_MODE_PATH_TRACE) {
 		util_mesh_visibility_changed();
