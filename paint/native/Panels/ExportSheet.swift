@@ -1,7 +1,8 @@
 import SwiftUI
 
-// Texture export (app_api_export.h): the export's resolution apart from the project's, preset, layers, format and
-// padding; the layers it will scale up from the project's resolution; progress and Cancel while it runs.
+// Texture export (app_api_export.h): the export's resolution (the project's at first, above or below it), preset,
+// layers, format and padding; the layers it will scale up from the project's resolution; progress and Cancel while it
+// runs.
 struct ExportSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var options     = app_export_options_t()
@@ -10,8 +11,15 @@ struct ExportSheet: View {
 	@State private var progress    = Float(1)
 	@State private var running     = false
 
-	private var sizes: [Int32] {
-		[2048, 4096, 8192, 16384].filter { $0 <= options.max_size }
+	// The project's size (tag 0) in order among the others
+	private var sizes: [(Int32, String)] {
+		let w = options.working_width, h = options.working_height
+		var s: [(Int32, String)] = ([256, 512, 2048, 4096, 8192, 16384] as [Int32])
+			.filter { $0 <= options.max_size && !(w == h && $0 == w) }
+			.map { ($0, "\($0) × \($0)") }
+		let i = s.firstIndex { $0.0 > w } ?? s.count
+		s.insert((0, "\(w) × \(h) (Project)"), at: i)
+		return s
 	}
 
 	private var formats: [(Int32, String)] {
@@ -27,9 +35,8 @@ struct ExportSheet: View {
 			Form {
 				Section("Resolution") {
 					Picker("Size", selection: binding(\.size)) {
-						Text("Project, \(options.working_width) × \(options.working_height)").tag(Int32(0))
-						ForEach(sizes, id: \.self) { s in
-							Text("\(s) × \(s)").tag(s)
+						ForEach(sizes, id: \.0) { s in
+							Text(s.1).tag(s.0)
 						}
 					}
 				}
@@ -114,6 +121,11 @@ struct ExportSheet: View {
 
 	private func load() {
 		app_export_get(&options)
+		if !options.running && options.size != 0 { // The project's resolution each time the sheet opens
+			options.size = 0
+			var o = options
+			AppStore.shared.perform { app_export_set(&o) }
+		}
 		presets = (0 ..< options.preset_count).map { String(cString: app_export_preset_name($0)) }
 		running = options.running
 		readNotUpscaled()

@@ -14,7 +14,7 @@ char                    *box_export_preset_template = "{\
 
 // The export's resolution apart from the project's: an index of box_export_sizes, 0 the working resolution
 static i32 box_export_size = 0;
-static i32 box_export_sizes[] = {0, 2048, 4096, 8192, 16384};
+static i32 box_export_sizes[] = {0, 256, 512, 2048, 4096, 8192, 16384};
 #ifdef IRON_IOS
 #define BOX_EXPORT_SIZES_HIDDEN 1 // 16384: 8K at most on iOS
 #else
@@ -80,6 +80,8 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 		string_array_t *size_combo = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        string_tmp("%s (%dx%d)", tr("Project"), config_get_texture_res_x(), config_get_texture_res_y()),
+		        "256",
+		        "512",
 		        "2048",
 		        "4096",
 		        "8192",

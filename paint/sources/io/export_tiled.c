@@ -130,6 +130,7 @@ static timeline_job_t  et_job;      // A layer of a tile materializing over step
 static gpu_texture_t  *et_grown[3]; // Its part grown by what its strokes read around it
 static gpu_pipeline_t *et_pipe_uv     = NULL;
 static gpu_pipeline_t *et_pipe_dilate[4]; // RGBA32, RGBA64, RGBA128, R8
+static gpu_texture_t  *et_half[4][8];     // export_tiled_halved: per format as et_pipe_dilate, a level each
 #ifdef IRON_METAL
 static gpu_transfer_t *et_xfer = NULL;
 #endif
@@ -187,6 +188,11 @@ static void export_tiled_release_targets() {
 	util_texture_release_target(&et_mask_src);
 	util_texture_release_target(&et_cov);
 	util_texture_release_target(&et_reach);
+	for (i32 k = 0; k < 4; ++k) {
+		for (i32 i = 0; i < 8; ++i) {
+			util_texture_release_target(&et_half[k][i]);
+		}
+	}
 #ifdef IRON_METAL
 	gpu_transfer_destroy(et_xfer);
 	et_xfer = NULL;
@@ -335,6 +341,28 @@ static void export_tiled_blit(gpu_texture_t *dst, gpu_texture_t *src, export_til
 	draw_end();
 }
 
+// Below a layer's resolution its live pixels halve first (2 x 2 averages, as layers_resolution_scale) while they hold at
+// least twice the texels the output reads of them: a box filter, the bilinear blit then misses none.
+static gpu_texture_t *export_tiled_halved(gpu_texture_t *src, export_tiled_map_t m) {
+	i32 stride = m.mode != 0 ? util_mesh_atlas_stride() : 1; // The output's texels a source texel spans, as export_tiled_map_rect
+	f32 ax     = m.mode == 1 ? src->width / (f32)et.w / stride : m.mode == 2 ? src->width * stride / (f32)et.w : src->width / (f32)et.w;
+	f32 ay     = m.mode == 1 ? src->height / (f32)et.h / stride : m.mode == 2 ? src->height * stride / (f32)et.h : src->height / (f32)et.h;
+	i32 k      = src->format == GPU_TEXTURE_FORMAT_RGBA64 ? 1 : src->format == GPU_TEXTURE_FORMAT_RGBA128 ? 2 : src->format == GPU_TEXTURE_FORMAT_R8 ? 3 : 0;
+	gpu_texture_t *cur = src;
+	for (i32 i = 0; i < 8 && ax >= 2.0 && ay >= 2.0; ++i) {
+		util_texture_ensure_target(&et_half[k][i], cur->width / 2, cur->height / 2, src->format);
+		draw_begin(et_half[k][i], false, 0);
+		draw_set_pipeline(src->format == GPU_TEXTURE_FORMAT_R8 ? NULL : export_texture_copy_pipe(src->format));
+		draw_scaled_image(cur, 0, 0, et_half[k][i]->width, et_half[k][i]->height); // A texel between four: their average
+		draw_set_pipeline(NULL);
+		draw_end();
+		cur = et_half[k][i];
+		ax /= 2.0;
+		ay /= 2.0;
+	}
+	return cur;
+}
+
 static gpu_texture_t *export_tiled_target(gpu_texture_t **t, gpu_texture_format_t f) {
 	i32 n = et.size + 2 * et.halo;
 	util_texture_ensure_target(t, n, n, f);
@@ -422,12 +450,12 @@ static export_tiled_evicted_t *export_tiled_evicted_find(slot_layer_t *l) {
 	return NULL;
 }
 
-// The timeline l materializes for tiles: above the layer's resolution, NULL at it
+// The timeline l materializes for tiles: above the layer's resolution, NULL at it and below (its live pixels, box-filtered)
 static timeline_t *export_tiled_timeline(slot_layer_t *l) {
 	i32                     w     = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
 	i32                     h     = et_res_h > 0 ? et_res_h : config_get_texture_res_y();
 	export_tiled_evicted_t *ev    = export_tiled_evicted_find(l);
-	bool                    above = w != (ev != NULL ? ev->w : l->texpaint->width) || h != (ev != NULL ? ev->hh : l->texpaint->height);
+	bool                    above = w > (ev != NULL ? ev->w : l->texpaint->width) || h > (ev != NULL ? ev->hh : l->texpaint->height);
 	return above ? timeline_of(l) : NULL;
 }
 
@@ -439,13 +467,13 @@ static void export_tiled_source_live(slot_layer_t *l, export_tiled_map_t m, i32 
 	}
 	gpu_texture_t *live[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};
 	for (i32 k = 0; k < t->channels; ++k) {
-		export_tiled_blit(t->out[k], live[k], m, hx, hy);
+		export_tiled_blit(t->out[k], export_tiled_halved(live[k], m), m, hx, hy);
 	}
 }
 
 // Layer or mask l's pixels for the tile, into t->out (a mask: out[0]). Fill layers and fill masks render for t->uv_rect
 // at the export resolution (fill_render), dilated as the live ones. At the working resolution paint layers
-// are the live layer's pixels, exactly what shows. Above it they materialize their timeline (stroke_rec.h) at the state
+// are the live layer's pixels, exactly what shows, below it those box-filtered. Above it they materialize their timeline (stroke_rec.h) at the state
 // they show: strokes replay there, what can not replay is resampled (export_tiled_not_upscaled). Without a timeline the
 // live layer's pixels, scaled. False when its timeline materializes over the next steps (et_job, export_tiled_job_done).
 static bool export_tiled_source_begin(slot_layer_t *l, export_tiled_map_t m, i32 hx, i32 hy, paint_target_t *t) {
@@ -458,7 +486,7 @@ static bool export_tiled_source_begin(slot_layer_t *l, export_tiled_map_t m, i32
 			return true;
 		}
 	}
-	// Above the layer's resolution its timeline (udim maps: the live layer for now). At it, the live layer as it shows.
+	// Above the layer's resolution its timeline (udim maps: the live layer for now). At it and below, the live layer as it shows.
 	timeline_t *tl = m.mode == 0 ? export_tiled_timeline(l) : NULL;
 	if (tl != NULL) { // At the export's resolution, for the tile's rectangle
 		timeline_job_begin(&et_job, tl, tl->cursor, t, et_grown);
