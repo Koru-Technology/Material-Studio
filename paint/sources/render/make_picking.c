@@ -79,9 +79,8 @@ void make_picking_run(node_shader_t *shader) {
 			                             "0.062485207147583624058737396240234375, 0.0, 1.0);");
 			node_shader_write_frag(shader, "vec3 pick_base = pick_g1.rgb;");
 			node_shader_write_frag(shader, "if (pick_matid == uint(1)) { pick_base = pick_base / 10.0; }"); // Emission is drawn 10x
-			if (!g_project->linear_blending) { // The surface is linear for lighting, the layers keep gamma
-				node_shader_write_frag(shader, "pick_base = pow(clamp(pick_base, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)), vec3(0.4545, 0.4545, 0.4545));");
-			}
+			// The surface is linear for lighting (gamma layers raised, linear blending ones as they are), colors are gamma
+			node_shader_write_frag(shader, "pick_base = pow(clamp(pick_base, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)), vec3(0.4545, 0.4545, 0.4545));");
 			node_shader_write_frag(shader, "float pick_on = pick_depth < 1.0 ? 1.0 : 0.0;");
 			node_shader_write_frag(shader, "output[0] = vec4(pick_base, pick_on);");
 			node_shader_write_frag(shader, "output[1] = vec4(0.5, 0.5, 1.0, textureLod(sampler2D(texpaint_nor, sampler_linear), tex_coord_inp, 0.0).a);"); // Its material id
