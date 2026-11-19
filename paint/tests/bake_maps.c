@@ -22,6 +22,7 @@ int NORMAL    = 1;
 int HEIGHT    = 2;
 int AO        = 4;
 int CURVATURE = 8;
+int ID        = 256;
 // app_layer_channel_t bits
 int CH_NORMAL    = 4;
 int CH_HEIGHT    = 64;
@@ -119,7 +120,19 @@ void next() {
 		// Raised detail: the high poly is the mesh and a shell 1% larger around it, inside the cage. The bake must take
 		// the shell (the first surface from the cage), not the surface under it, buried in the shell
 		shell = string("%s/koru_bake_shell.obj", script_save_path());
-		check(app_test_write_shell_obj(high, shell, 1.01), "a high poly with a shell over the mesh is written");
+		// The missed rays readout: a high poly that is only a shell 5% out is out of reach at the smallest distance,
+		// within it at the largest
+		check(app_test_write_shell_obj(high, shell, 1.05, 1), "a high poly of a shell alone is written");
+		check(app_bake_set_high(shell) > 0, "the shell alone is read");
+		app_test_bake_max_distance(0.001);
+		check(app_test_bake_preview(0) > 0, "the preview renders");
+		float near = app_test_bake_missed();
+		check(near > 0.9, string("at the smallest distance the rays miss the shell (%.2f)", near));
+		app_test_bake_max_distance(0.2);
+		float far = app_test_bake_missed();
+		check(far < 0.05, string("at the largest they reach it (%.2f)", far));
+		app_test_bake_max_distance(0.02);
+		check(app_test_write_shell_obj(high, shell, 1.01, 0), "a high poly with a shell over the mesh is written");
 		check(app_bake_set_high(shell) > 0, "the shell high poly is read");
 		app_test_bake_options(AO + HEIGHT, 1024, 16);
 		check(app_bake_start(), "a bake from the shell starts");
@@ -135,6 +148,23 @@ void next() {
 		}
 		float h = app_test_texture_bright(hi);
 		check(h > 0.6, string("the shell is raised in the height map (%.2f above mid gray)", h));
+		// ID map: a high poly of two parts, the same shape as the mesh
+		check(app_test_write_split_obj(high, shell), "a high poly of two parts is written");
+		check(app_bake_set_high(shell) > 0, "the two part high poly is read");
+		app_test_bake_options(ID, 1024, 16);
+		check(app_bake_start(), "an ID bake starts");
+	}
+	else if (step == 5) {
+		int id = -1;
+		for (int i = 0; i < app_texture_count(); ++i) {
+			if (ends_with(app_texture_name(i), "_id.png")) {
+				id = i;
+			}
+		}
+		check(id >= 0, "the ID map is in the project");
+		int colors = app_test_texture_colors(id);
+		check(colors >= 2, string("a flat color per part (%d colors)", colors));
+		check(string_equals(app_test_id_map(), app_texture_name(id)), string("it is the project's ID map (%s)", app_test_id_map()));
 		app_bake_close();
 		iron_delete_file(shell);
 		check(objects() == objects_before, "the scene still has its objects only");

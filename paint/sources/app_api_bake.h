@@ -19,6 +19,8 @@ typedef enum {
 	APP_BAKE_MAP_THICKNESS    = 5,
 	APP_BAKE_MAP_POSITION     = 6,
 	APP_BAKE_MAP_WORLD_NORMAL = 7,
+	APP_BAKE_MAP_ID           = 8, // A flat color per part of the high poly file (its objects or meshes), becomes the
+	                               // project's ID map: ID Selection picks the parts
 	APP_BAKE_MAP_COUNT,
 } app_bake_map_t;
 

@@ -3,7 +3,8 @@
 
 #include "app_api_bake.h"
 
-#define APP_BAKE_TYPE_CAVITY 14 // The ray tracer's own, not a bake_type_t
+#define APP_BAKE_TYPE_CAVITY 14 // The ray tracer's own, not bake_type_t
+#define APP_BAKE_TYPE_ID     15
 
 typedef struct {
 	char *name;
@@ -21,6 +22,7 @@ static const app_bake_map_info_t app_bake_maps[APP_BAKE_MAP_COUNT] = {
     [APP_BAKE_MAP_THICKNESS]    = {"Thickness", "thickness", BAKE_TYPE_THICKNESS, MESH_MAP_THICKNESS},
     [APP_BAKE_MAP_POSITION]     = {"Position", "position", BAKE_TYPE_POSITION, MESH_MAP_POSITION},
     [APP_BAKE_MAP_WORLD_NORMAL] = {"World Space Normal", "world_normal", BAKE_TYPE_NORMAL_OBJECT, MESH_MAP_WORLD_NORMAL},
+    [APP_BAKE_MAP_ID]           = {"ID", "id", APP_BAKE_TYPE_ID, -1},
 };
 
 static app_bake_options_t app_bake_opts = {
@@ -244,6 +246,10 @@ void app_bake_update() {
 		if (type >= 0 && a >= 0) {
 			mesh_maps_set(type, g_project->_->assets->buffer[a]);
 			app_bake_baked_types[type] = true;
+		}
+		if (map == APP_BAKE_MAP_ID && a >= 0) { // The project's ID map: flat colors by construction, not checked
+			g_project->id_map = string_copy(g_project->_->assets->buffer[a]->name);
+			g_context->ddirty = 2;
 		}
 	}
 	app_bake_queue_i++;

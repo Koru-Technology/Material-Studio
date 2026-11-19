@@ -33,6 +33,7 @@ void               project_reimport_texture(asset_t *asset);
 void               console_error(char *s);
 
 #define BAKE_TYPE_CAVITY 14 // Cpu only, signed curvature of the sampled surface
+#define BAKE_TYPE_ID     15 // Cpu only, a flat color per part of the high poly (or object of the low poly without one)
 
 typedef struct bake_rays_node {
 	f32 min[3];
@@ -62,6 +63,7 @@ typedef struct bake_rays_tri {
 static bake_rays_bvh_t bake_rays_hp  = {0}; // High poly
 static bake_rays_bvh_t bake_rays_lpb = {0}; // Low poly, for occlusion when baking without high poly
 
+static i32 *bake_rays_hp_part = NULL; // Part of the high poly file (object, mesh) per triangle
 static f32 bake_rays_hp_min[3];
 static f32 bake_rays_hp_max[3];
 
@@ -433,6 +435,8 @@ static void bake_rays_join() {
 static bool bake_rays_set_high_raw(raw_mesh_t_array_t *parts) {
 	bake_rays_join();
 	bake_rays_free_bvh(&bake_rays_hp);
+	free(bake_rays_hp_part);
+	bake_rays_hp_part = NULL;
 	bake_rays_miss_dirty = true;
 	bake_rays_version++;
 	if (parts == NULL) {
@@ -449,19 +453,27 @@ static bool bake_rays_set_high_raw(raw_mesh_t_array_t *parts) {
 		return false;
 	}
 	bake_rays_hp.count = count;
+	bake_rays_hp_part  = malloc(sizeof(i32) * count);
 	bake_rays_hp.pos   = malloc(sizeof(f32) * 9 * count);
 	bake_rays_hp.nor   = malloc(sizeof(f32) * 9 * count);
 	bake_rays_hp.index = malloc(sizeof(i32) * count);
-	if (bake_rays_hp.pos == NULL || bake_rays_hp.nor == NULL || bake_rays_hp.index == NULL) {
+	if (bake_rays_hp.pos == NULL || bake_rays_hp.nor == NULL || bake_rays_hp.index == NULL || bake_rays_hp_part == NULL) {
 		bake_rays_free_bvh(&bake_rays_hp);
+		free(bake_rays_hp_part);
+		bake_rays_hp_part = NULL;
 		return false;
 	}
-	i32 ti = 0;
+	i32 ti   = 0;
+	i32 part = 0;
 	for (i32 i = 0; i < parts->length; ++i) {
 		raw_mesh_t *m = parts->buffer[i];
 		if (m->posa == NULL || m->inda == NULL) {
 			continue;
 		}
+		for (i32 t = 0; t < m->inda->length / 3; ++t) {
+			bake_rays_hp_part[ti + t] = part;
+		}
+		part++;
 		i16 *pos = m->posa->buffer;
 		i16 *nor = m->nora != NULL ? m->nora->buffer : NULL;
 		f32  sc  = m->scale_pos;
@@ -694,6 +706,7 @@ typedef struct bake_rays_surf {
 	f32              bc[3]; // Low poly barycentrics
 	bool             high;  // Sample comes from the high poly
 	f32              t;     // Distance from the cage to the high poly
+	i32              hit;   // High poly triangle, -1 for none
 } bake_rays_surf_t;
 
 // px, py in texels, extrapolated from the given triangle like gpu derivatives
@@ -724,6 +737,7 @@ static void bake_rays_surface_at(i32 ti, f32 px, f32 py, bool use_high, bake_ray
 	s->bc[2] = b2;
 	s->high  = false;
 	s->t     = 0.0;
+	s->hit   = -1;
 	if (!use_high || bake_rays_hp.count == 0) {
 		return;
 	}
@@ -748,6 +762,7 @@ static void bake_rays_surface_at(i32 ti, f32 px, f32 py, bool use_high, bake_ray
 	bake_rays_v3_norm(s->n);
 	s->high = true;
 	s->t    = t;
+	s->hit  = hit;
 }
 
 // Small hash based random numbers, one stream per texel
@@ -781,6 +796,18 @@ static void bake_rays_hemisphere(f32 *n, i32 i, i32 count, f32 r0, f32 r1, f32 *
 	dir[1] = n[1] + r * sinf(a);
 	dir[2] = n[2] + z;
 	bake_rays_v3_norm(dir);
+}
+
+// A flat color per part: hues a golden angle apart, two brightnesses, distinct for dozens of parts (an ID map)
+static void bake_rays_id_color(i32 part, f32 *rgb) {
+	f32 h = fmodf(part * 0.618034f, 1.0f) * 6.0f;
+	f32 v = part % 2 == 0 ? 0.95f : 0.7f;
+	f32 s = 0.8f;
+	f32 f = h - floorf(h);
+	f32 p = v * (1.0f - s), q = v * (1.0f - s * f), t = v * (1.0f - s * (1.0f - f));
+	i32 i = (i32)floorf(h) % 6;
+	f32 c[6][3] = {{v, t, p}, {q, v, p}, {p, v, t}, {p, q, v}, {t, p, v}, {v, p, q}};
+	memcpy(rgb, c[i], sizeof(f32) * 3);
 }
 
 static u8 bake_rays_unorm(f32 f) {
@@ -982,6 +1009,16 @@ static void bake_rays_texel(i32 x, i32 y) {
 	else if (type == BAKE_TYPE_POSITION) {
 		f32 p[3] = {s.p[0] / s.tri->scale, s.p[1] / s.tri->scale, s.p[2] / s.tri->scale};
 		bake_rays_store_vector(o, p, 0.5);
+	}
+	else if (type == BAKE_TYPE_ID) {
+		// The high poly part the texel's ray met, black where it met none; the low poly object without a high poly
+		if (bake_rays_job.use_high && !s.high) {
+			bake_rays_store(o, 0.0, 0.0, 0.0);
+			return;
+		}
+		f32 c[3];
+		bake_rays_id_color(s.high && bake_rays_hp_part != NULL ? bake_rays_hp_part[s.hit] : s.tri->object, c);
+		bake_rays_store(o, c[0], c[1], c[2]);
 	}
 }
 
@@ -1698,6 +1735,8 @@ void bake_maps_end(void) {
 	bake_rays_free_images();
 	bake_rays_free_low();
 	bake_rays_free_bvh(&bake_rays_hp);
+	free(bake_rays_hp_part);
+	bake_rays_hp_part = NULL;
 	free(bake_rays_zbuf);
 	bake_rays_zbuf   = NULL;
 	bake_rays_zbuf_n = 0;

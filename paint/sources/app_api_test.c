@@ -199,6 +199,13 @@ float app_test_bake_missed(void) {
 	return s.missed;
 }
 
+void app_test_bake_max_distance(float d) {
+	app_bake_options_t o;
+	app_bake_get(&o);
+	o.max_distance = d;
+	app_bake_set(&o);
+}
+
 // The selected layer's channels (bits of app_layer_channel_t) and name: the baked layer is selected once added
 uint32_t app_test_layer_channels(void) {
 	app_layer_props_t p;
@@ -216,8 +223,8 @@ int32_t app_test_bake_preview(int32_t high) {
 }
 
 // An obj of the mesh in src plus a copy scaled by scale around its center: a shell over the surface, raised detail
-// for a high poly bake. False when src can not be read.
-bool app_test_write_shell_obj(char *src, char *dst, float scale) {
+// for a high poly bake. only: the scaled copy alone. False when src can not be read.
+bool app_test_write_shell_obj(char *src, char *dst, float scale, bool only) {
 	FILE *in = fopen(src, "r");
 	if (in == NULL) {
 		return false;
@@ -242,7 +249,7 @@ bool app_test_write_shell_obj(char *src, char *dst, float scale) {
 		}
 	}
 	// Pass 1: the mesh as it is. Pass 2: its vertices scaled, its faces offset past the first copy's vertices.
-	for (i32 pass = 0; pass < 2; ++pass) {
+	for (i32 pass = only ? 1 : 0; pass < 2; ++pass) {
 		rewind(in);
 		while (fgets(line, sizeof(line), in) != NULL) {
 			f32 x, y, z;
@@ -259,7 +266,7 @@ bool app_test_write_shell_obj(char *src, char *dst, float scale) {
 				char *tok = strtok(line + 2, " \n");
 				while (tok != NULL) {
 					i32 vi = atoi(tok);
-					fprintf(out, " %d", vi + (pass == 1 ? verts : 0)); // Positions only: normals are rebuilt from faces
+					fprintf(out, " %d", vi + (pass == 1 && !only ? verts : 0)); // Positions only: normals are rebuilt from faces
 					tok = strtok(NULL, " \n");
 				}
 				fputs("\n", out);
@@ -286,4 +293,91 @@ float app_test_texture_bright(int32_t texture) {
 		bright += p->buffer[i + 2] > 127 ? 1 : 0; // BGRA or RGBA: a gray map has the same value in each
 	}
 	return bright / (f32)(p->length / 4);
+}
+
+// An obj of the mesh in src as two objects: its first half of faces, then its second half. The same shape, two parts
+// for an ID map.
+bool app_test_write_split_obj(char *src, char *dst) {
+	FILE *in = fopen(src, "r");
+	if (in == NULL) {
+		return false;
+	}
+	FILE *out = fopen(dst, "w");
+	if (out == NULL) {
+		fclose(in);
+		return false;
+	}
+	i32  verts = 0, faces = 0;
+	char line[1024];
+	while (fgets(line, sizeof(line), in) != NULL) {
+		verts += line[0] == 'v' && line[1] == ' ' ? 1 : 0;
+		faces += line[0] == 'f' && line[1] == ' ' ? 1 : 0;
+	}
+	for (i32 part = 0; part < 2; ++part) {
+		fprintf(out, "o part%d\n", part); // Two objects, as an exporter writes them
+		rewind(in);
+		while (fgets(line, sizeof(line), in) != NULL) {
+			if (line[0] == 'v' && line[1] == ' ') {
+				fputs(line, out);
+			}
+		}
+		rewind(in);
+		i32 face = 0;
+		while (fgets(line, sizeof(line), in) != NULL) {
+			if (line[0] != 'f' || line[1] != ' ') {
+				continue;
+			}
+			bool mine = part == 0 ? face < faces / 2 : face >= faces / 2;
+			face++;
+			if (!mine) {
+				continue;
+			}
+			fputs("f", out);
+			char *tok = strtok(line + 2, " \n");
+			while (tok != NULL) {
+				fprintf(out, " %d", atoi(tok) + part * verts);
+				tok = strtok(NULL, " \n");
+			}
+			fputs("\n", out);
+		}
+	}
+	fclose(in);
+	fclose(out);
+	return true;
+}
+
+// Colors (rgb) other than black covering at least 1% of a project texture, -1 when unreadable
+int32_t app_test_texture_colors(int32_t texture) {
+	if (texture < 0 || texture >= (i32)g_project->_->assets->length) {
+		return -1;
+	}
+	gpu_texture_t *t = project_get_image(g_project->_->assets->buffer[texture]);
+	buffer_t      *p = t != NULL ? gpu_get_texture_pixels(t) : NULL;
+	if (p == NULL || p->length < 4) {
+		return -1;
+	}
+	enum { SLOTS = 4096 };
+	u32 *keys = calloc(SLOTS, sizeof(u32));
+	i32 *hits = calloc(SLOTS, sizeof(i32));
+	i32  n    = p->length / 4;
+	for (i32 i = 0; i < n; ++i) {
+		u32 c = 0x1000000 | (p->buffer[i * 4] << 16) | (p->buffer[i * 4 + 1] << 8) | p->buffer[i * 4 + 2];
+		u32 h = (c * 2654435761u) % SLOTS;
+		for (i32 k = 0; k < SLOTS && keys[h] != 0 && keys[h] != c; ++k) {
+			h = (h + 1) % SLOTS;
+		}
+		keys[h] = c;
+		hits[h]++;
+	}
+	i32 colors = 0;
+	for (i32 i = 0; i < SLOTS; ++i) {
+		colors += hits[i] >= n / 100 && keys[i] != 0x1000000 ? 1 : 0; // Black: texels out of the uv islands
+	}
+	free(keys);
+	free(hits);
+	return colors;
+}
+
+const char *app_test_id_map(void) {
+	return app_str(g_project->id_map);
 }
