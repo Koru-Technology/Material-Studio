@@ -127,6 +127,12 @@ static mask_effect_param_t mask_params_edge_breakup[] = {
     {"Noise Detail", MASK_EFFECT_NOISE_DETAIL, MASK_PARAM_SLIDER, 1.0, 6.0, 4.0, NULL},
     {"Seed", MASK_EFFECT_NOISE_SEED, MASK_PARAM_SEED, 0.0, 1000.0, 0.0, NULL},
 };
+// Distance: texels of a 1024 mask, the same on the model at any texture size
+static mask_effect_param_t mask_params_grow[] = {
+    {"Mode", 1, MASK_PARAM_CHOICE, 0.0, 1.0, 0.0, "Grow,Shrink"},
+    {"Distance", 0, MASK_PARAM_SLIDER, 1.0, 64.0, 4.0, NULL},
+    {"Corners", 2, MASK_PARAM_CHOICE, 0.0, 1.0, 0.0, "Round,Square"},
+};
 static mask_effect_param_t mask_params_histogram[] = {
     {"Position", 0, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
     {"Contrast", 1, MASK_PARAM_SLIDER, 0.0, 1.0, 0.5, NULL},
@@ -176,6 +182,8 @@ mask_effect_param_t *mask_effect_params(i32 type, i32 *count) {
 		MASK_PARAMS_OF(mask_params_height_blend);
 	case MASK_EFFECT_EDGE_BREAKUP:
 		MASK_PARAMS_OF(mask_params_edge_breakup);
+	case MASK_EFFECT_GROW:
+		MASK_PARAMS_OF(mask_params_grow);
 	}
 	*count = 0;
 	return NULL;
@@ -253,6 +261,8 @@ char *mask_effect_name(i32 type) {
 		return "Height Blend";
 	case MASK_EFFECT_EDGE_BREAKUP:
 		return "Edge Breakup";
+	case MASK_EFFECT_GROW:
+		return "Grow / Shrink";
 	}
 	return "Effect";
 }
@@ -267,7 +277,7 @@ char *mask_blend_name(i32 blending) {
 // Filters transform the result below (their blending is ignored), the other effects are sources blended over it
 bool mask_effect_is_filter(i32 type) {
 	return type == MASK_EFFECT_LEVELS || type == MASK_EFFECT_INVERT || type == MASK_EFFECT_HISTOGRAM || type == MASK_EFFECT_BLUR ||
-	       type == MASK_EFFECT_HEIGHT_BLEND || type == MASK_EFFECT_EDGE_BREAKUP;
+	       type == MASK_EFFECT_HEIGHT_BLEND || type == MASK_EFFECT_EDGE_BREAKUP || type == MASK_EFFECT_GROW;
 }
 
 // Generators are computed from the mesh (util_mask_generators.c)
@@ -1075,6 +1085,41 @@ static gpu_texture_t *mask_stack_blur(gpu_texture_t *acc, f32 radius, i32 w, i32
 	return dst;
 }
 
+// acc (w x h) grown or shrunk by e's distance (texels of a 1024 mask), along the surface across uv seams, at a 1024
+// texture at most: the pass takes the max (min) of it and the full size result below. No pass may be open.
+static gpu_texture_t *mask_stack_grow(gpu_texture_t *acc, mask_effect_t *e, i32 w, i32 h) {
+	i32 s = 1;
+	while (s < 32 && w / (s * 2) >= 16 && h / (s * 2) >= 16 && w / s > MASK_STACK_BLUR_MAX_RES) {
+		s *= 2;
+	}
+	i32            bw     = math_max(w / s, 1);
+	i32            bh     = math_max(h / s, 1);
+	i32            passes = math_max(1, (i32)math_floor(e->params[0] * bw / 1024.0 + 0.5)); // A texel each
+	gpu_texture_t *src    = acc;
+	if (s > 1) {
+		mask_effect_t  d  = {.type = -1, .opacity = 1.0};
+		mask_pass_in_t in = {.src = mask_stack_black(), .src_w = (f32)w, .src_h = (f32)h};
+		d.params[0]       = (f32)s;
+		src               = mask_stack_blur_texture(0, bw, bh, GPU_TEXTURE_FORMAT_RGBA32);
+		mask_stack_pass(src, acc, &in, &d);
+	}
+	util_uv_cache_seam_map(bw, bh);
+	gpu_texture_t *dst = mask_stack_blur_texture(1, bw, bh, GPU_TEXTURE_FORMAT_RGBA64);
+	gpu_texture_t *tmp = mask_stack_blur_texture(2, bw, bh, GPU_TEXTURE_FORMAT_RGBA64);
+	util_uv_grow_seamless(dst, tmp, src, passes, e->params[1] > 0.5, e->params[2] > 0.5);
+	return dst;
+}
+
+// Effects reading the result below processed whole before their pass: blurred (Blur, Edge Breakup, a Height Blend's
+// reach) or grown. Export tiles cut it from the whole (mask_stack_blur_prefix).
+bool mask_effect_reads_below_whole(mask_effect_t *e) {
+	return mask_effect_blur_radius(e) > 0.0 || e->type == MASK_EFFECT_GROW;
+}
+
+static gpu_texture_t *mask_stack_below_whole(gpu_texture_t *acc, mask_effect_t *e, i32 w, i32 h) {
+	return e->type == MASK_EFFECT_GROW ? mask_stack_grow(acc, e, w, h) : mask_stack_blur(acc, mask_effect_blur_radius(e), w, h);
+}
+
 // Passes
 
 // Source effect e of m reads, its size in *w x *h (ID map texels)
@@ -1112,6 +1157,9 @@ static mask_pass_in_t mask_stack_inputs(slot_layer_t *m, mask_effect_t *e, gpu_t
 	else if (e->type == MASK_EFFECT_HEIGHT_BLEND) {
 		in.src = k > 0 && r > 0.0 ? mask_stack_blur(acc, r, w, h) : acc;
 		mask_hb_heights(m, e, &in.top, &in.cmp);
+	}
+	else if (e->type == MASK_EFFECT_GROW) { // The result below grown or shrunk
+		in.src = k == 0 ? mask_stack_black() : mask_stack_grow(acc, e, w, h);
 	}
 	else if (e->type == MASK_EFFECT_EDGE_BREAKUP) { // The result below blurred across its edge, and the noise
 		in.src = k == 0 ? mask_stack_black() : mask_stack_blur(acc, r, w, h);
@@ -1357,7 +1405,7 @@ bool mask_stack_blur_prefix(slot_layer_t *m, i32 index, gpu_texture_t **out) {
 		acc = dst;
 		k++;
 	}
-	gpu_texture_t *blurred = mask_stack_blur(acc, mask_effect_blur_radius(&blur), w, h);
+	gpu_texture_t *blurred = mask_stack_below_whole(acc, &blur, w, h);
 	util_texture_ensure_target(out, blurred->width, blurred->height, blurred->format);
 	draw_begin(*out, false, 0);
 	draw_set_pipeline(blurred->format == GPU_TEXTURE_FORMAT_RGBA64 ? pipes_copy64 : blurred->format == GPU_TEXTURE_FORMAT_RGBA128 ? pipes_copy128 : pipes_copy);
@@ -1412,7 +1460,7 @@ void mask_stack_evaluate_tile(slot_layer_t *m, gpu_texture_t *dst, gpu_texture_t
 			in.top              = src(m, &e, i, 1, data);
 			in.cmp              = mask_hb_compare(&e) == MASK_HB_COMPARE_FLAT ? NULL : src(m, &e, i, 2, data);
 		}
-		else if (e.type == MASK_EFFECT_PAINT || e.type == MASK_EFFECT_ANCHOR || (e.type == MASK_EFFECT_BLUR && k > 0)) {
+		else if (e.type == MASK_EFFECT_PAINT || e.type == MASK_EFFECT_ANCHOR || ((e.type == MASK_EFFECT_BLUR || e.type == MASK_EFFECT_GROW) && k > 0)) {
 			in.src = src(m, &e, i, 0, data);
 		}
 		else if (e.type == MASK_EFFECT_EDGE_BREAKUP) { // The blurred result below from the export, the noise for the tile

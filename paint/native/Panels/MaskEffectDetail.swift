@@ -151,6 +151,7 @@ func maskEffectSymbol(_ type: Int32) -> String {
 	case APP_MASK_EFFECT_AO: "circle.dotted"
 	case APP_MASK_EFFECT_HEIGHT_BLEND: "mountain.2"
 	case APP_MASK_EFFECT_EDGE_BREAKUP: "scribble.variable"
+	case APP_MASK_EFFECT_GROW: "arrow.up.left.and.arrow.down.right"
 	default: "wand.and.stars"
 	}
 }

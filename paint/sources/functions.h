@@ -1304,6 +1304,7 @@ bool                 mask_effect_is_filter(i32 type);
 bool                 mask_effect_is_generator(i32 type);
 bool                 mask_effect_is_rendered(mask_effect_t *e);
 bool                 mask_effect_rendered_as(mask_effect_t *e, mask_effect_t *out);
+bool                 mask_effect_reads_below_whole(mask_effect_t *e);
 i32                  mask_effect_fill_source(mask_effect_t *e);
 asset_t             *mask_effect_image(mask_effect_t *e);
 bool                 mask_stack_uses_asset(i32 index);
@@ -1582,6 +1583,7 @@ void util_uv_cache_uv_map();
 void util_uv_cache_dilate_map();
 void util_uv_cache_seam_map(i32 res_x, i32 res_y);
 void util_uv_blur_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t *src, i32 passes);
+void util_uv_grow_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t *src, i32 passes, bool shrink, bool square);
 
 // ---- util/util_uv_unwrap.c ----
 void util_uv_unwrap_run(raw_mesh_t *mesh);

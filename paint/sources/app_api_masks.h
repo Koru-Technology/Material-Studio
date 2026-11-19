@@ -31,6 +31,7 @@ typedef enum {
 	APP_MASK_EFFECT_AO           = 16, // Generator
 	APP_MASK_EFFECT_HEIGHT_BLEND = 17, // Filter: the edge moves with the layer's height against a level, the layers below or a layer
 	APP_MASK_EFFECT_EDGE_BREAKUP = 18, // Filter: the edge of the result below frays with noise
+	APP_MASK_EFFECT_GROW         = 19, // Filter: the result below grown or shrunk by a distance, hard edged
 } app_mask_effect_type_t;
 
 #define APP_MASK_EFFECT_PARAMS    16

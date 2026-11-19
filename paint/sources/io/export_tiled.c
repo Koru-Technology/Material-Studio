@@ -590,7 +590,7 @@ static gpu_texture_t *export_tiled_mask_effect(slot_layer_t *mk, mask_effect_t *
 	if (e->type == MASK_EFFECT_PAINT) {
 		return export_tiled_mask_paint(mk, c->m, c->hx, c->hy, p);
 	}
-	if (e->type == MASK_EFFECT_BLUR || e->type == MASK_EFFECT_EDGE_BREAKUP) {
+	if (e->type == MASK_EFFECT_BLUR || e->type == MASK_EFFECT_EDGE_BREAKUP || e->type == MASK_EFFECT_GROW) {
 		return export_tiled_blurred(mk, index, c, p);
 	}
 	if (e->type == MASK_EFFECT_HEIGHT_BLEND) {
@@ -1310,7 +1310,7 @@ static void export_tiled_blurs_begin() {
 		i32 n = mask_stack_count(m);
 		for (i32 k = 0; k < n; ++k) {
 			mask_effect_t e = mask_stack_get(m, k);
-			if (!e.visible || mask_effect_blur_radius(&e) <= 0.0) {
+			if (!e.visible || !mask_effect_reads_below_whole(&e)) {
 				continue;
 			}
 			gpu_texture_t *t = NULL;

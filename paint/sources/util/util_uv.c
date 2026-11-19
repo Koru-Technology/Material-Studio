@@ -511,3 +511,51 @@ void util_uv_blur_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t
 		gpu_end();
 	}
 }
+
+static gpu_pipeline_t *util_uv_pipe_grow_seam        = NULL;
+static i32             util_uv_pipe_grow_seam_format = -1;
+static i32             util_uv_grow_seam_size;
+static i32             util_uv_grow_seam_mode;
+
+// Grows (max) or shrinks (min) src into dst along the surface by passes texels, tmp a scratch target of the dst size and
+// format. square: every step takes the diagonal neighbors (square corners), otherwise every other one (rounded corners).
+// The seam map of the dst size must be cached (util_uv_cache_seam_map).
+void util_uv_grow_seamless(gpu_texture_t *dst, gpu_texture_t *tmp, gpu_texture_t *src, i32 passes, bool shrink, bool square) {
+	if (util_uv_pipe_grow_seam != NULL && util_uv_pipe_grow_seam_format != (i32)dst->format) {
+		gpu_delete_pipeline(util_uv_pipe_grow_seam);
+		util_uv_pipe_grow_seam = NULL;
+	}
+	if (util_uv_pipe_grow_seam == NULL) {
+		gpu_pipeline_t *pipe       = gpu_create_pipeline();
+		pipe->vertex_shader        = sys_get_shader("grow_seam.vert");
+		pipe->fragment_shader      = sys_get_shader("grow_seam.frag");
+		gpu_vertex_structure_t *vs = ALLOC_INIT(gpu_vertex_structure_t, {0});
+		gpu_vertex_structure_add(vs, "pos", GPU_VERTEX_DATA_F32_2X);
+		pipe->input_layout           = vs;
+		pipe->color_attachment_count = 1;
+		pipe->color_attachment[0]    = dst->format;
+		gpu_pipeline_compile(pipe);
+		util_uv_pipe_grow_seam        = pipe;
+		util_uv_pipe_grow_seam_format = dst->format;
+		pipes_offset                  = 0;
+		util_uv_grow_seam_size        = pipes_get_constant_location("float2");
+		util_uv_grow_seam_mode        = pipes_get_constant_location("float2");
+	}
+
+	// The last pass lands in dst
+	for (i32 i = 0; i < passes; ++i) {
+		gpu_texture_t *from = i == 0 ? src : ((passes - i) % 2 == 0 ? dst : tmp);
+		gpu_texture_t *to   = (passes - 1 - i) % 2 == 0 ? dst : tmp;
+		_gpu_begin(to, NULL, NULL, GPU_CLEAR_NONE, 0, 0.0);
+		gpu_set_pipeline(util_uv_pipe_grow_seam);
+		gpu_set_texture(0, from);
+		gpu_set_texture(1, util_uv_seammap0);
+		gpu_set_texture(2, util_uv_seammap1);
+		gpu_set_float2(util_uv_grow_seam_size, dst->width, dst->height);
+		gpu_set_float2(util_uv_grow_seam_mode, shrink ? 1.0 : 0.0, square || i % 2 == 1 ? 1.0 : 0.0);
+		gpu_set_vertex_buffer(const_data_screen_aligned_vb);
+		gpu_set_index_buffer(const_data_screen_aligned_ib);
+		gpu_draw();
+		gpu_end();
+	}
+}

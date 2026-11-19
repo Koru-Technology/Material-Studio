@@ -158,6 +158,11 @@ void main() {
 		float t = n * constants.params0.y * 0.85; // At most 0.95 with the softness: the full inside never frays
 		r       = a * smoothstep(t - s, t + s, c);
 	}
+	else if (constants.type == 19) { // Grow / Shrink: distance, mode, corners. texsrc the result below grown (shrunk) at a
+		// lower resolution: the max (min) with the full size result below keeps its edge inside, moves it outside (inside)
+		float g = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
+		r       = constants.params0.y > 0.5 ? min(a, g) : max(a, g);
+	}
 	else if (constants.type == 13) { // Blur, texsrc the blurred result
 		r = textureLod(sampler2D(texsrc, sampler_linear), vin.tex, 0.0).r;
 	}
