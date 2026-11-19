@@ -37,7 +37,8 @@ int ANCHOR      = 14;
 int BUILDER     = 15;
 int AO_GEN      = 16;
 int HB          = 17;
-int TYPES       = 18;
+int EB          = 18;
+int TYPES       = 19;
 int AO          = 0;
 int THICK_MAP   = 3;
 int NEW_ID_MASK = 11;
@@ -163,11 +164,11 @@ void next() {
 	frame = 0;
 
 	if (step == 0) {
-		check(app_mask_effect_type_count() == TYPES, "eighteen effect types");
+		check(app_mask_effect_type_count() == TYPES, "nineteen effect types");
 		check(!string_equals(app_mask_effect_type_name(ANCHOR), "") && string_equals(app_mask_effect_type_name(TYPES), ""), "type names, empty past the last");
 		bool classified = true;
 		for (int t = 0; t <= TYPES; ++t) {
-			bool filter    = t == LEVELS || t == INVERT || t == HISTOGRAM || t == BLUR || t == HB;
+			bool filter    = t == LEVELS || t == INVERT || t == HISTOGRAM || t == BLUR || t == HB || t == EB;
 			bool generator = (t >= EDGE_WEAR && t <= DIRECTIONAL) || (t >= NOISE && t <= THICKNESS) || t == BUILDER || t == AO_GEN;
 			classified     = classified && app_mask_effect_type_is_filter(t) == filter && app_mask_effect_type_is_generator(t) == generator;
 		}
@@ -175,8 +176,9 @@ void next() {
 		check(app_mask_effect_param_count(ANCHOR) == 2 && app_mask_effect_param_count(ID) == 0, "anchor: layer and channel, ID Selection: picked");
 		check(app_mask_effect_param_count(PAINT) == 0 && app_mask_effect_param_count(FILL) == 11 && app_mask_effect_param_count(LEVELS) == 5,
 		      "settings of the plain effects");
-		check(app_mask_effect_param_count(BUILDER) == 16 && app_mask_effect_param_count(AO_GEN) == 7 && app_mask_effect_param_count(HB) == 6,
-		      "mask builder, ambient occlusion and height blend settings");
+		check(app_mask_effect_param_count(BUILDER) == 16 && app_mask_effect_param_count(AO_GEN) == 7 && app_mask_effect_param_count(HB) == 6 &&
+		          app_mask_effect_param_count(EB) == 6,
+		      "mask builder, ambient occlusion, height blend and edge breakup settings");
 		check(app_mask_effect_param_count(EDGE_WEAR) == 6 && app_mask_effect_param_count(DIRT) == 7, "generators end with the noise block");
 		check(app_mask_blending_count() == 7, "seven mask blendings");
 		check(app_layer_new(0), "paint layer");
