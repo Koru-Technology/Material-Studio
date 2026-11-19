@@ -21,7 +21,7 @@ typedef enum {
 } app_export_format_t;
 
 typedef struct {
-	int32_t size;           // Export resolution (square), 0 the working one
+	int32_t size;           // Export resolution (square), 0 the working one. The last picked (config export_size).
 	int32_t working_width;  // The project's
 	int32_t working_height;
 	int32_t max_size;       // 8192 on iOS, 16384 elsewhere
@@ -43,7 +43,8 @@ const char *app_export_preset_name(int32_t i);
 int32_t     app_export_not_upscaled_count(void);
 const char *app_export_not_upscaled_name(int32_t i);
 
-// Asks for a folder, then exports into it over the frames that follow. False when there is nothing to export.
+// Asks for a folder, then exports into a folder of the export's resolution in it ("256", "4096") over the frames that
+// follow. False when there is nothing to export.
 bool  app_export_start(void);
 float app_export_progress(void); // 0 to 1, 1 when none is in progress
 void  app_export_cancel(void);
@@ -59,7 +60,7 @@ typedef struct {
 } app_resolution_t;
 
 void app_resolution_get(app_resolution_t *out);
-bool app_resolution_set(int32_t size); // Square, from 512 to max_size; false when it is the current one or one runs
+bool app_resolution_set(int32_t size); // Square, from 256 to max_size; false when it is the current one or one runs
 
 // Project history (the undo history saved in the project, phase 5b)
 typedef struct {

@@ -4,8 +4,7 @@
 
 _Static_assert((i32)APP_EXPORT_LAYERS_PER_UDIM == (i32)EXPORT_MODE_PER_UDIM_TILE, "app_api_export.h mirrors enums.h");
 
-static i32             app_export_size = 0;
-static string_array_t *app_export_names = NULL; // Not upscaled at app_export_size
+static string_array_t *app_export_names = NULL; // Not upscaled at the export's size
 
 static void app_export_presets() {
 	if (box_export_files == NULL) {
@@ -18,7 +17,7 @@ static void app_export_presets() {
 void app_export_get(app_export_options_t *out) {
 	app_export_presets();
 	*out                = (app_export_options_t){0};
-	out->size           = app_export_size;
+	out->size           = g_config->export_size;
 	out->working_width  = config_get_texture_res_x();
 	out->working_height = config_get_texture_res_y();
 #ifdef IRON_IOS
@@ -44,7 +43,11 @@ void app_export_set(const app_export_options_t *in) {
 #ifdef IRON_IOS
 	max = 8192;
 #endif
-	app_export_size = in->size > max ? max : in->size < 0 ? 0 : in->size;
+	i32 size = in->size > max ? max : in->size < 0 ? 0 : in->size;
+	if (size != g_config->export_size) { // Picked again next time
+		g_config->export_size = size;
+		config_save();
+	}
 	if (in->preset >= 0 && in->preset < box_export_files->length && in->preset != box_export_preset_index) {
 		box_export_preset_index = in->preset;
 		box_export_preset       = NULL;
@@ -70,7 +73,7 @@ const char *app_export_preset_name(int32_t i) {
 }
 
 int32_t app_export_not_upscaled_count(void) {
-	i32 n            = export_tiled_not_upscaled(app_export_size, app_export_size);
+	i32 n            = export_tiled_not_upscaled(g_config->export_size, g_config->export_size);
 	app_export_names = any_array_create_from_raw((void *[]){}, 0);
 	for (i32 i = 0; i < n; ++i) {
 		any_array_push(app_export_names, string_copy(export_tiled_not_upscaled_name(i)));
@@ -90,9 +93,14 @@ static void app_export_update(void *_) {
 	}
 }
 
+// The textures go in a folder of their resolution inside the one picked ("256", "4096"): exports at several sit side by side
 static void app_export_run(void *_) {
-	export_tiled_set_resolution(app_export_size, app_export_size);
-	if (export_tiled_start(g_context->texture_export_path, false)) {
+	i32   w   = g_config->export_size > 0 ? g_config->export_size : config_get_texture_res_x();
+	i32   h   = g_config->export_size > 0 ? g_config->export_size : config_get_texture_res_y();
+	char *dir = w == h ? string("%s%s%d", g_context->texture_export_path, PATH_SEP, w) : string("%s%s%dx%d", g_context->texture_export_path, PATH_SEP, w, h);
+	iron_create_directory(dir);
+	export_tiled_set_resolution(g_config->export_size, g_config->export_size);
+	if (export_tiled_start(dir, false)) {
 		sys_notify_on_update(&app_export_update, NULL);
 	}
 	else {
@@ -141,7 +149,7 @@ void app_resolution_get(app_resolution_t *out) {
 bool app_resolution_set(int32_t size) {
 	app_resolution_t r;
 	app_resolution_get(&r);
-	if (r.running || size < 512 || size > r.max_size || (size == r.width && size == r.height)) {
+	if (r.running || size < 256 || size > r.max_size || (size == r.width && size == r.height)) {
 		return false;
 	}
 	return layers_resolution_begin(size, size);

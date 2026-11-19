@@ -1,8 +1,8 @@
 import SwiftUI
 
-// Texture export (app_api_export.h): the export's resolution (the project's at first, above or below it), preset,
-// layers, format and padding; the layers it will scale up from the project's resolution; progress and Cancel while it
-// runs.
+// Texture export (app_api_export.h): the export's resolution (the last picked, the project's at first) and layers, as
+// PNG (preset and padding hidden for now); the layers it will scale up from the project's resolution; progress and
+// Cancel while it runs.
 struct ExportSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var options     = app_export_options_t()
@@ -14,7 +14,7 @@ struct ExportSheet: View {
 	// The project's size (tag 0) in order among the others
 	private var sizes: [(Int32, String)] {
 		let w = options.working_width, h = options.working_height
-		var s: [(Int32, String)] = ([256, 512, 2048, 4096, 8192, 16384] as [Int32])
+		var s: [(Int32, String)] = ([256, 512, 1024, 2048, 4096, 8192, 16384] as [Int32])
 			.filter { $0 <= options.max_size && !(w == h && $0 == w) }
 			.map { ($0, "\($0) × \($0)") }
 		let i = s.firstIndex { $0.0 > w } ?? s.count
@@ -22,28 +22,37 @@ struct ExportSheet: View {
 		return s
 	}
 
-	private var formats: [(Int32, String)] {
-		var f = [(Int32(APP_EXPORT_FORMAT_PNG.rawValue), "PNG"), (Int32(APP_EXPORT_FORMAT_JPG.rawValue), "JPG")]
-#if os(macOS)
-		f += [(Int32(APP_EXPORT_FORMAT_EXR16.rawValue), "EXR 16 bit"), (Int32(APP_EXPORT_FORMAT_EXR32.rawValue), "EXR 32 bit")]
-#endif
-		return f
+	// A size picked earlier that is the project's now shows as the project's entry
+	private var sizeBinding: Binding<Int32> {
+		let b = binding(\.size)
+		return Binding {
+			let w = options.working_width
+			return w == options.working_height && b.wrappedValue == w ? 0 : b.wrappedValue
+		} set: {
+			b.wrappedValue = $0
+		}
 	}
+
+	// Hidden for now, the options stay as they are
+	private let showPreset  = false
+	private let showPadding = false
 
 	var body: some View {
 		NavigationStack {
 			Form {
 				Section("Resolution") {
-					Picker("Size", selection: binding(\.size)) {
+					Picker("Size", selection: sizeBinding) {
 						ForEach(sizes, id: \.0) { s in
 							Text(s.1).tag(s.0)
 						}
 					}
 				}
 				Section("Textures") {
-					Picker("Preset", selection: binding(\.preset)) {
-						ForEach(presets.indices, id: \.self) { i in
-							Text(presets[i]).tag(Int32(i))
+					if showPreset {
+						Picker("Preset", selection: binding(\.preset)) {
+							ForEach(presets.indices, id: \.self) { i in
+								Text(presets[i]).tag(Int32(i))
+							}
 						}
 					}
 					Picker("Layers", selection: binding(\.layers)) {
@@ -52,17 +61,9 @@ struct ExportSheet: View {
 						Text("Per Object").tag(Int32(APP_EXPORT_LAYERS_PER_OBJECT.rawValue))
 						Text("Per UDIM Tile").tag(Int32(APP_EXPORT_LAYERS_PER_UDIM.rawValue))
 					}
-					Picker("Format", selection: binding(\.format)) {
-						ForEach(formats, id: \.0) { f in
-							Text(f.1).tag(f.0)
-						}
+					if showPadding {
+						Toggle("Padding", isOn: binding(\.padding))
 					}
-					if options.format == Int32(APP_EXPORT_FORMAT_JPG.rawValue) {
-						LabeledContent("Quality") {
-							Slider(value: binding(\.quality), in: 0 ... 100)
-						}
-					}
-					Toggle("Padding", isOn: binding(\.padding))
 				}
 				if !notUpscaled.isEmpty {
 					Section {
@@ -121,8 +122,8 @@ struct ExportSheet: View {
 
 	private func load() {
 		app_export_get(&options)
-		if !options.running && options.size != 0 { // The project's resolution each time the sheet opens
-			options.size = 0
+		if options.format != Int32(APP_EXPORT_FORMAT_PNG.rawValue) { // PNG only
+			options.format = Int32(APP_EXPORT_FORMAT_PNG.rawValue)
 			var o = options
 			AppStore.shared.perform { app_export_set(&o) }
 		}

@@ -11,7 +11,7 @@ struct ProjectSettingsSheet: View {
 	@State private var clearing = false
 
 	private var sizes: [Int32] {
-		[1024, 2048, 4096, 8192, 16384].filter { $0 <= info.max_size }
+		[256, 512, 1024, 2048, 4096, 8192, 16384].filter { $0 <= info.max_size }
 	}
 
 	var body: some View {

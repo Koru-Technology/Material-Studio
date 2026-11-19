@@ -392,6 +392,7 @@ typedef struct config {
 	i32                  history_disk_mb;   // History journal size above which it is compacted
 	i32                  history_budget_mb; // History saved with a project, thinned above it; 0: 4x the live layers, 1 GB at least
 	i32                  history_max_steps; // Undo steps kept at most
+	i32                  export_size;       // The texture export's resolution last picked (square), 0 the project's
 } config_t;
 
 // ---- Materials ----

@@ -3,7 +3,8 @@
 // Tiled export below the working resolution (io/export_tiled.c): from a 2048 project at 512 and 256. Paint layers are
 // their live pixels box-filtered (no stroke replays): the 512 export is what the project changed to 512
 // (layers_resolution_apply, box-filtered down) exports at its own resolution, within rounding (the stroke's edge read
-// bilinear from 2048 is up to 106/255 off). Nothing is listed as not upscaled.
+// bilinear from 2048 is up to 106/255 off), and the same at 256 (the smallest project resolution). Nothing is listed as
+// not upscaled.
 
 char *root = "";
 
@@ -110,6 +111,17 @@ void next() {
 		check(d >= 0 && d <= 512 * 512 * 4 / 1000, string("roughness at 512 as the project at 512 exports it (%d values over 1/255)", d));
 		check(script_diff_images(file("lo256", "base"), file("lo256", "base"), 1.0) == 0 && script_diff_images(file("lo256", "base"), file("ref", "base"), 255.0) < 0,
 		      "the 256 export is there, not at 512");
+		layers_resolution_apply(256, 256); // The smallest project resolution
+	}
+	else if (step == 4) {
+		if (layers_resolution_running()) {
+			script_notify_on_next_frame(next);
+			return;
+		}
+		check(config_get_texture_res_x() == 256, string("the project at %d", config_get_texture_res_x()));
+		export_texture_run(fresh_dir("ref256"), 0);
+		int d = script_diff_images(file("lo256", "base"), file("ref256", "base"), 1.0);
+		check(d >= 0 && d <= 256 * 256 * 4 / 100 && script_diff_max() <= 8.0, string("base color at 256 as the project at 256 exports it (%d values over 1/255, max %.1f)", d, script_diff_max()));
 	}
 	else {
 		printf("[export_lowres] %d checks, %d failures", checks, fails);
