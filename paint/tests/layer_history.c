@@ -95,19 +95,21 @@ void next() {
 	}
 	else if (step == 7) {
 		check(m != NULL && opaque(m) == 0, "black mask");
-		script_layer_clear(m); // Clears a mask white
+		check(app_layer_fill_paint(m->id), "fill paint on a mask"); // Fills a mask white
 	}
 	else if (step == 8) {
 		texels = opaque(m);
-		check(texels > 1000, "cleared mask is white");
+		check(texels > 1000, "filled mask is white");
 		history_undo();
 	}
 	else if (step == 9) {
-		check(opaque(m) == 0, "undo of the clear brings the black mask back");
+		check(opaque(m) == 0, "undo of the fill brings the black mask back");
 		history_redo();
 	}
 	else if (step == 10) {
-		check(opaque(m) == texels, "redo of a mask clear clears it white again");
+		check(opaque(m) == texels, "redo of a mask fill whites it again");
+		script_layer_clear(m); // Clears a mask black
+		check(opaque(m) == 0, "clear paint on a mask is black");
 		script_material_set(mat_blue); // Another material selected than the one of the fill layer
 		check(script_layer_to_paint(a) && a->fill == NULL, "a to paint layer");
 	}

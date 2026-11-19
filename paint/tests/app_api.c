@@ -75,6 +75,12 @@ void next() {
 		check(app_layer_delete(added), "deleted");
 		check(app_layer_count() == count0 && layer_by_id(added) == NULL, "layer gone");
 		check(!app_layer_select(added), "a deleted id is not found");
+		check(script_asset_index("/packed/screenshot") < 0, "no screenshot yet");
+		app_command(20); // APP_COMMAND_SCREENSHOT: drawn without the overlays the frame after, captured the one after
+	}
+	else if (step == 5) {
+		check(script_asset_index("/packed/screenshot") >= 0, "the screenshot command adds the screenshot texture");
+		check(!script_get_context()->capturing_screenshot, "the screenshot is taken, overlays shown again");
 	}
 	else {
 		printf("[app_api] %d checks, %d failures", checks, fails);

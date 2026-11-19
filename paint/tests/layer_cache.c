@@ -32,8 +32,11 @@ void check(int ok, char *name) {
 	printf("[layer_cache] %s %s", ok ? "ok  " : "FAIL", name);
 }
 
+// The last frame, drawn without the gizmo and decal box of the selected layer (capturing_screenshot): the next frames
+// are drawn without them too, for the next capture
 buffer_t *capture(char *name) {
 	viewport_capture_screenshot_to(shot, 0.0, 0.0, SIZE * 1.0, SIZE * 1.0);
+	script_get_context()->capturing_screenshot = 1;
 	buffer_t *p = script_get_texture_pixels(shot);
 	buffer_t *c = buffer_create(p->length);
 	for (int i = 0; i < p->length; ++i) {
@@ -92,7 +95,9 @@ void next() {
 		}
 		app_layer_select(bottom_id);
 		check(!layer_cache_active(), "the bottom layer selected: no cache");
-		wait = SETTLE;
+		script_get_context()->capturing_screenshot = 1; // Captures compare the scene, not the selected layer's gizmo
+		script_get_context()->ddirty               = 2;
+		wait                                       = SETTLE;
 	}
 	else if (step == 1) {
 		live = capture("live");
@@ -159,6 +164,7 @@ void next() {
 		check(m <= SIZE * SIZE / 100, "the new opacity shows as it does live");
 		app_layer_set_opacity(low_id, 1.0);
 		app_layer_select(bottom_id);
+		script_get_context()->capturing_screenshot = 0;
 		printf("[layer_cache] ORBIT LIVE start");
 		frame = 0;
 		wait  = 30;

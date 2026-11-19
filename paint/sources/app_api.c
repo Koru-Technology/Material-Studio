@@ -416,8 +416,13 @@ void app_set_camera_type(int32_t type) {
 	iron_delay_idle_sleep();
 }
 
+// The frame after the request is drawn without the grid, gizmo and decal box, the one after captures it
 static void app_capture_screenshot(void *_) {
 	viewport_capture_screenshot();
+}
+
+static void app_capture_screenshot_drawn(void *_) {
+	sys_notify_on_next_frame(app_capture_screenshot, NULL);
 }
 
 // Projects screen
@@ -576,7 +581,9 @@ void app_command(int32_t command) {
 		viewport_orbit_opposite();
 		break;
 	case APP_COMMAND_SCREENSHOT:
-		sys_notify_on_next_frame(app_capture_screenshot, NULL); // After the frame, with the ui hidden
+		g_context->capturing_screenshot = true;
+		g_context->ddirty               = 2;
+		sys_notify_on_next_frame(app_capture_screenshot_drawn, NULL);
 		break;
 	case APP_COMMAND_DELETE_UNUSED:
 		slot_material_delete_unused();

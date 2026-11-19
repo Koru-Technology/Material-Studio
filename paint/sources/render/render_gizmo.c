@@ -30,7 +30,7 @@ void render_gizmo_draw() {
 
 void render_gizmo_update() {
 	object_t *gizmo = g_context->gizmo;
-	bool      hide  = context_is_stencil_hidden();
+	bool      hide  = context_is_stencil_hidden() || g_context->capturing_screenshot;
 	gizmo->visible  = base_is_decal_layer() && !hide;
 	if (!gizmo->visible) {
 		return;

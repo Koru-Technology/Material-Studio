@@ -654,7 +654,7 @@ void render_path_base_draw_gbuffer() {
 		}
 	}
 
-	bool hide     = context_is_stencil_hidden() || keyboard_down("control");
+	bool hide     = context_is_stencil_hidden() || keyboard_down("control") || g_context->capturing_screenshot;
 	bool is_decal = base_is_decal_layer();
 	if (is_decal && !hide) {
 		line_draw_color            = 0xff000000;
