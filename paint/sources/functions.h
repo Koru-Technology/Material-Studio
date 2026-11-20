@@ -692,6 +692,7 @@ void                layer_cache_plan_put(layer_cache_plan_t *p, shader_context_t
 void                layer_cache_plan_free(layer_cache_plan_t *p);
 void layer_cache_bind(void);
 void layer_cache_update(void);
+bool layer_cache_pending(void);
 i32  layer_cache_bake_count(void);
 
 // ---- render/make_mesh_preview.c ----

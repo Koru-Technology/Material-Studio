@@ -335,6 +335,21 @@ static void layer_cache_bake(void) {
 	layer_cache_dilate();
 }
 
+// A cache whose inputs keep changing is made again once they stayed for LAYER_CACHE_SETTLE_FRAMES frames, and at most
+// every LAYER_CACHE_REFRESH seconds meanwhile: after an open the Material Maker buffers and fill tiles land frame after
+// frame, Book 1 made it 80 to 130 times in 25 s (60 to 80 ms of GPU each). A new plan (key 0) is made at once.
+#define LAYER_CACHE_SETTLE_FRAMES 2
+#define LAYER_CACHE_REFRESH       1.0
+
+static u64 layer_cache_seen       = 0; // Inputs key of the last frame
+static i32 layer_cache_seen_for   = 0; // Frames it stayed
+static f64 layer_cache_baked_time = 0.0;
+
+// Its inputs changed and it is not made again yet (the idle sleep keeps frames coming for it)
+bool layer_cache_pending(void) {
+	return layer_cache_ok && layer_cache_seen != 0 && layer_cache_seen != layer_cache_key;
+}
+
 // Before the viewport draws its layers: the cache made again if what it reads changed
 void layer_cache_update(void) {
 	if (!layer_cache_ok) {
@@ -350,9 +365,18 @@ void layer_cache_update(void) {
 	}
 	u64 key = layer_cache_inputs_key();
 	if (key == layer_cache_key) {
+		layer_cache_seen = key;
 		return;
 	}
+	layer_cache_seen_for = key == layer_cache_seen ? layer_cache_seen_for + 1 : 0;
+	layer_cache_seen     = key;
+	f64  now             = iron_time();
+	bool settled         = layer_cache_seen_for >= LAYER_CACHE_SETTLE_FRAMES;
+	if (layer_cache_key != 0 && !settled && now - layer_cache_baked_time < LAYER_CACHE_REFRESH) {
+		return; // Drawn from the cache as it is, a little behind
+	}
 	layer_cache_bake();
-	layer_cache_key = key;
+	layer_cache_key        = key;
+	layer_cache_baked_time = now;
 	layer_cache_bakes++;
 }
