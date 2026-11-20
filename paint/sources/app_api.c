@@ -175,9 +175,213 @@ static void app_texel(gpu_texture_t *t, uint8_t *px, i32 i, float *c) {
 	}
 }
 
+// Texels of a w x h texture of format as RGBA8 (raw: as read back, RGBA order), box filtered down by f into out
+static void app_rgba8_convert(gpu_texture_t *fmt, i32 tw, uint8_t *raw, i32 f, bool premultiply, uint8_t *out, i32 ow, i32 oh) {
+	if (f == 1 && !premultiply && fmt->format == GPU_TEXTURE_FORMAT_RGBA32) { // As it is
+		memcpy(out, raw, (size_t)ow * oh * 4);
+		return;
+	}
+	float n = (float)(f * f);
+	for (i32 y = 0; y < oh; ++y) {
+		for (i32 x = 0; x < ow; ++x) {
+			float s[4] = {0, 0, 0, 0}; // Sums, premultiplied or not
+			for (i32 j = 0; j < f; ++j) {
+				for (i32 i = 0; i < f; ++i) {
+					float c[4];
+					app_texel(fmt, raw, (y * f + j) * tw + x * f + i, c);
+					float a = premultiply ? c[3] : 1.0f;
+					s[0] += c[0] * a;
+					s[1] += c[1] * a;
+					s[2] += c[2] * a;
+					s[3] += c[3];
+				}
+			}
+			uint8_t *o = &out[(y * ow + x) * 4];
+			for (i32 k = 0; k < 4; ++k) {
+				o[k] = (uint8_t)(app_clamp01(s[k] / n) * 255.0f + 0.5f);
+			}
+		}
+	}
+}
+
+// Textures the native UI shows (material thumbnails, icons, brush images, studio tiles) are read back without waiting
+// for the GPU: a read gives the texels of the texture as last written (gpu_texture_t.written) once they arrived, 0 until
+// then, and asks for them; they come with a later frame and the previews version tells the UI to read again. A read at
+// once waited behind the GPU's queue: material thumbnails held Book 1's open for 0.5 s on the iPad.
+// The copy is recorded when asked for, while the texture surely exists; a texture is never used after that (a slot only
+// compares its address), so one deleted meanwhile is no matter.
+#define APP_READS_MAX   256
+#define APP_READS_BATCH 32
+#define APP_READS_BYTES (8 * 1024 * 1024) // Of a batch: a read that does not fit waits for the next one
+
+typedef struct {
+	gpu_texture_t *t; // Compared, never used: NULL for a free slot
+	i32            max_size;
+	bool           premultiply;
+	u64            have;     // Stamp of rgba
+	bool           inflight; // Copied in the batch being read back
+	u32            gen;      // Changes when the slot is given to another read
+	u32            used;     // Tick of the last read, the least recent slot is given away
+	uint8_t       *rgba;
+	i32            w;
+	i32            h;
+} app_read_t;
+
+typedef struct {
+	i32           slot;
+	u32           gen;
+	u64           stamp;
+	gpu_texture_t fmt; // Format, size and state when recorded
+	size_t        offset;
+} app_read_item_t;
+
+typedef struct {
+	app_read_item_t items[APP_READS_BATCH];
+	i32             count;
+	size_t          used;
+} app_read_batch_t;
+
+static app_read_t        app_reads[APP_READS_MAX];
+static u32               app_reads_tick     = 0;
+static bool              app_reads_inflight = false;
+static bool              app_reads_hooked   = false;
+static app_read_batch_t *app_reads_batch    = NULL; // Recorded this frame, committed by app_reads_flush
+static gpu_transfer_t   *app_reads_transfer = NULL;
+
+static bool app_reads_async(gpu_texture_t *t) {
+	return t->format == GPU_TEXTURE_FORMAT_RGBA32 || t->format == GPU_TEXTURE_FORMAT_RGBA64 || t->format == GPU_TEXTURE_FORMAT_RGBA128 ||
+	       t->format == GPU_TEXTURE_FORMAT_R8;
+}
+
+static void app_reads_done(gpu_transfer_t *tr, void *ud) {
+	app_read_batch_t *b   = ud;
+	uint8_t          *mem = gpu_transfer_map(tr, 0);
+	for (i32 i = 0; i < b->count; ++i) {
+		app_read_item_t *it = &b->items[i];
+		app_read_t      *r  = &app_reads[it->slot];
+		if (r->gen != it->gen) {
+			continue; // The slot went to another read meanwhile
+		}
+		r->inflight      = false;
+		gpu_texture_t *f = &it->fmt;
+		uint8_t       *raw = mem + it->offset;
+#ifdef IRON_BGRA
+		uint8_t *swapped = NULL;
+		if (f->format == GPU_TEXTURE_FORMAT_RGBA32 && f->state == GPU_TEXTURE_STATE_RENDER_TARGET) { // As gpu_get_texture_pixels_rgba8
+			size_t size = (size_t)f->width * f->height * 4;
+			swapped     = malloc(size);
+			for (size_t k = 0; k < size; k += 4) {
+				swapped[k]     = raw[k + 2];
+				swapped[k + 1] = raw[k + 1];
+				swapped[k + 2] = raw[k];
+				swapped[k + 3] = raw[k + 3];
+			}
+			raw = swapped;
+		}
+#endif
+		i32 fac = 1;
+		if (r->max_size > 0) {
+			i32 big = f->width > f->height ? f->width : f->height;
+			fac     = (big + r->max_size - 1) / r->max_size;
+		}
+		r->w    = f->width / fac;
+		r->h    = f->height / fac;
+		r->rgba = realloc(r->rgba, (size_t)r->w * r->h * 4);
+		app_rgba8_convert(f, f->width, raw, fac, r->premultiply, r->rgba, r->w, r->h);
+		r->have = it->stamp;
+#ifdef IRON_BGRA
+		free(swapped);
+#endif
+	}
+	free(b);
+	app_reads_inflight = false;
+	app_notify_previews(); // The UI reads them again
+}
+
+// Each frame: the copies recorded since the last one are read back together
+static void app_reads_flush(void *_) {
+	if (app_reads_batch == NULL || app_reads_inflight) {
+		return;
+	}
+	app_read_batch_t *b = app_reads_batch;
+	app_reads_batch     = NULL;
+	app_reads_inflight  = true;
+	gpu_transfer_commit(app_reads_transfer, app_reads_done, b);
+	iron_delay_idle_sleep(); // Its done runs in a later frame
+}
+
+// The read of t (at max_size, premultiplied or not): its slot, given the least recently read one the first time
+static app_read_t *app_reads_slot(gpu_texture_t *t, i32 max_size, bool premultiply) {
+	if (!app_reads_hooked) {
+		app_reads_hooked = true;
+		sys_notify_on_update(app_reads_flush, NULL);
+	}
+	if (t->written == 0) {
+		gpu_texture_written(t); // A stamp of its own: another texture made at the same address is not this one
+	}
+	app_read_t *oldest = &app_reads[0];
+	for (i32 i = 0; i < APP_READS_MAX; ++i) {
+		app_read_t *r = &app_reads[i];
+		if (r->t == t && r->max_size == max_size && r->premultiply == premultiply) {
+			r->used = ++app_reads_tick;
+			return r;
+		}
+		if (r->t == NULL || (oldest->t != NULL && r->used < oldest->used)) {
+			oldest = r;
+		}
+	}
+	oldest->t           = t;
+	oldest->max_size    = max_size;
+	oldest->premultiply = premultiply;
+	oldest->have        = 0;
+	oldest->inflight    = false;
+	oldest->gen++;
+	oldest->used = ++app_reads_tick;
+	return oldest;
+}
+
+// t's texels copied into this frame's batch, false when it waits (a batch in flight, or this one full)
+static bool app_reads_record(app_read_t *r, gpu_texture_t *t) {
+	if (app_reads_inflight) {
+		return false; // The transfer is not mapped while its batch is pending: asked again once it landed
+	}
+	size_t bytes = ((size_t)t->width * t->height * gpu_texture_format_size(t->format) + 255) & ~(size_t)255;
+	if (app_reads_batch == NULL) {
+		if (app_reads_transfer == NULL) {
+			app_reads_transfer = gpu_transfer_create(0);
+		}
+		gpu_transfer_map(app_reads_transfer, APP_READS_BYTES);
+		app_reads_batch = calloc(1, sizeof(app_read_batch_t));
+	}
+	app_read_batch_t *b = app_reads_batch;
+	if (b->count == APP_READS_BATCH || b->used + bytes > APP_READS_BYTES) {
+		return false;
+	}
+	app_read_item_t *it = &b->items[b->count++];
+	it->slot            = (i32)(r - app_reads);
+	it->gen             = r->gen;
+	it->stamp           = t->written;
+	it->fmt             = *t;
+	it->offset          = b->used;
+	b->used += bytes;
+	draw_saved_t saved = draw_suspend();
+	gpu_copy_regions_begin();
+	gpu_copy_region_to_transfer(app_reads_transfer, t, 0, 0, t->width, t->height, it->offset);
+	gpu_copy_regions_end();
+	draw_resume(saved);
+	r->inflight = true;
+	return true;
+}
+
+// Reads in progress (the idle sleep, tests)
+bool app_reads_busy(void) {
+	return app_reads_inflight || app_reads_batch != NULL;
+}
+
 // Pixels of t as RGBA8 rows top to bottom, box filtered down by an integer factor to max_size or less (0: full size).
 // premultiply: alpha multiplied in, so the transparent background does not darken the edges; straight alpha otherwise.
-// With out NULL: the byte count needed, nothing read back. Returns the byte count written, 0 when none.
+// With out NULL: the byte count needed, nothing read back. Returns the byte count written, 0 when none (yet: uncompressed
+// textures are read back without waiting, see app_reads_slot).
 static int32_t app_read_rgba8(gpu_texture_t *t, int32_t max_size, bool premultiply, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
 	if (t == NULL || t->width <= 0 || t->height <= 0 || t->format == GPU_TEXTURE_FORMAT_D32 || t->format == GPU_TEXTURE_FORMAT_R16 ||
 	    t->format == GPU_TEXTURE_FORMAT_R32) {
@@ -200,40 +404,28 @@ static int32_t app_read_rgba8(gpu_texture_t *t, int32_t max_size, bool premultip
 	if (capacity < bytes) {
 		return 0;
 	}
+	if (app_reads_async(t)) {
+		app_read_t *r = app_reads_slot(t, max_size, premultiply);
+		if (r->have != t->written || r->rgba == NULL || r->w != ow || r->h != oh) {
+			if (!r->inflight) {
+				app_reads_record(r, t);
+			}
+			return 0; // Asked for: it comes with a later frame
+		}
+		memcpy(out, r->rgba, bytes);
+		*w = ow;
+		*h = oh;
+		return bytes;
+	}
 	draw_saved_t saved  = draw_suspend();
-	buffer_t    *pixels = gpu_get_texture_pixels_rgba8(t); // RGBA order, render targets included
+	buffer_t    *pixels = gpu_get_texture_pixels_rgba8(t); // RGBA order, render targets included (BC7 decompressed)
 	draw_resume(saved);
 	i32 need = t->width * t->height * (t->format == GPU_TEXTURE_FORMAT_R8 ? 1 : t->format == GPU_TEXTURE_FORMAT_RGBA64 ? 8 : t->format == GPU_TEXTURE_FORMAT_RGBA128 ? 16 : 4);
 	if (pixels == NULL || pixels->buffer == NULL || pixels->length < need) {
 		gpu_release_texture_pixels(t);
 		return 0;
 	}
-	if (f == 1 && !premultiply && t->format == GPU_TEXTURE_FORMAT_RGBA32) { // As it is
-		memcpy(out, pixels->buffer, bytes);
-	}
-	else {
-		float n = (float)(f * f);
-		for (i32 y = 0; y < oh; ++y) {
-			for (i32 x = 0; x < ow; ++x) {
-				float s[4] = {0, 0, 0, 0}; // Sums, premultiplied or not
-				for (i32 j = 0; j < f; ++j) {
-					for (i32 i = 0; i < f; ++i) {
-						float c[4];
-						app_texel(t, pixels->buffer, (y * f + j) * t->width + x * f + i, c);
-						float a = premultiply ? c[3] : 1.0f;
-						s[0] += c[0] * a;
-						s[1] += c[1] * a;
-						s[2] += c[2] * a;
-						s[3] += c[3];
-					}
-				}
-				uint8_t *o = &out[(y * ow + x) * 4];
-				for (i32 k = 0; k < 4; ++k) {
-					o[k] = (uint8_t)(app_clamp01(s[k] / n) * 255.0f + 0.5f);
-				}
-			}
-		}
-	}
+	app_rgba8_convert(t, t->width, pixels->buffer, f, premultiply, out, ow, oh);
 	gpu_release_texture_pixels(t);
 	*w = ow;
 	*h = oh;
@@ -885,5 +1077,19 @@ bool app_layer_set_raise(int32_t id, float value) {
 
 int32_t app_layer_thumbnail(int32_t id, uint8_t *out, int32_t capacity, int32_t *w, int32_t *h) {
 	slot_layer_t *l = app_layer_by_id(id);
-	return l != NULL ? app_read_rgba8(l->texpaint_preview, 0, false, out, capacity, w, h) : 0;
+	if (l == NULL || (l->thumb == NULL && l->texpaint_preview == NULL)) {
+		return 0;
+	}
+	i32 size  = l->thumb != NULL ? l->thumb_size : l->texpaint_preview->width;
+	i32 bytes = size * size * 4;
+	*w        = size;
+	*h        = size;
+	if (out == NULL) {
+		return bytes;
+	}
+	if (l->thumb == NULL || l->thumb_size != size || capacity < bytes) {
+		return 0; // Not read back yet: the list shows it once it is (app_notify_previews)
+	}
+	memcpy(out, l->thumb, bytes);
+	return bytes;
 }

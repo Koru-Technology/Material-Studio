@@ -406,10 +406,12 @@ void project_container_loaded() {
 	free(pc.maps);
 	pc.maps = NULL;
 	for (i32 i = 0; g_project->layer_datas != NULL && i < g_project->layer_datas->length; ++i) {
-		u8_array_t *tm = (u8_array_t *)g_project->layer_datas->buffer[i]->tilemap;
-		hash128_t   h  = pc_hash_at(tm, 0);
-		if (!hash128_is_none(h)) {
-			pc_maps_push(&pc.maps, &pc.maps_count, &cap, h);
+		layer_data_t *ld    = g_project->layer_datas->buffer[i];
+		hash128_t     hs[2] = {pc_hash_at((u8_array_t *)ld->tilemap, 0), pc_hash_at((u8_array_t *)ld->thumb, 0)};
+		for (i32 k = 0; k < 2; ++k) {
+			if (!hash128_is_none(hs[k])) {
+				pc_maps_push(&pc.maps, &pc.maps_count, &cap, hs[k]);
+			}
 		}
 	}
 	hash128_t *roots = NULL;
@@ -446,7 +448,19 @@ bool project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, bool *ha
 	return true;
 }
 
-// Blobs the file's state holds (the tile maps of its live layers), roots for hstore_rebuild_refs
+// The layer list's thumbnail of a layer of a container (layer_data_t.thumb), shown before the previews are drawn again
+void project_container_layer_thumb_restore(layer_data_t *ld, slot_layer_t *l) {
+	hash128_t h = pc_hash_at((u8_array_t *)ld->thumb, 0);
+	u32       n = 0;
+	u8       *p = hash128_is_none(h) ? NULL : hstore_get(h, &n);
+	i32       s = util_render_layer_preview_size;
+	if (p != NULL && n == (u32)(s * s * 4)) {
+		layers_thumb_set(l, p, s);
+	}
+	free(p);
+}
+
+// Blobs the file's state holds (the tile maps of its live layers and their thumbnails), roots for hstore_rebuild_refs
 i32 project_container_roots(hash128_t *out, i32 cap) {
 	for (i32 i = 0; i < pc.maps_count && i < cap; ++i) {
 		out[i] = pc.maps[i];
@@ -551,6 +565,21 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (hash128_is_none(h)) {
 		iron_log("Layer %s could not be captured, it is saved empty", l->name);
 	}
+	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
+	u8_array_t *a = u8_array_create(16);
+	memcpy(a->buffer, &h.lo, 8);
+	memcpy(a->buffer + 8, &h.hi, 8);
+	return a;
+}
+
+// The layer's thumbnail (layer_data_t.thumb), a blob of the save as its tile map is: an open shows the layer list at
+// once. NULL while it was not read back.
+u8_array_t *project_container_layer_thumb(slot_layer_t *l) {
+	if (l->thumb == NULL || pc_w == NULL) {
+		return NULL;
+	}
+	i32       s = l->thumb_size;
+	hash128_t h = hstore_put_texels(HSTORE_TILE, l->thumb, (u32)(s * s * 4), (u32)s, 4); // The save state's reference
 	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
 	u8_array_t *a = u8_array_create(16);
 	memcpy(a->buffer, &h.lo, 8);

@@ -74,6 +74,13 @@ void next() {
 	}
 	else if (step == 2) {
 		int bytes = app_material_thumbnail(created, 128, pixels->buffer, pixels->length, size->buffer, size->buffer + 4);
+		if (bytes == 0 && tries < 60) { // Read back without waiting: it comes with a later frame
+			tries = tries + 1;
+			frame = 2;
+			script_notify_on_next_frame(next);
+			return;
+		}
+		tries = 0;
 		check(bytes == 128 * 128 * 4 && buffer_get_i32(size, 0) == 128 && buffer_get_i32(size, 4) == 128, "thumbnail read back at 128");
 		print_texel("green material", 64, 64);
 		print_texel("green material", 2, 2);
@@ -157,6 +164,12 @@ void next() {
 		printf("[app_api_materials] icon after %d frames", tries);
 		check(app_library_icon_size(item) == 128 * 128 * 4, "library icon loads");
 		int bytes = app_library_icon(item, pixels->buffer, pixels->length, size->buffer, size->buffer + 4);
+		if (bytes == 0 && tries < 360) { // Read back without waiting: it comes with a later frame
+			tries = tries + 1;
+			frame = 2;
+			script_notify_on_next_frame(next);
+			return;
+		}
 		check(bytes == 128 * 128 * 4, "library icon read back");
 		print_texel("library icon", 64, 64);
 		print_texel("library icon", 1, 1);

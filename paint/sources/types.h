@@ -222,6 +222,8 @@ typedef struct slot_layer {
 	struct gpu_texture   *texpaint_nor;
 	struct gpu_texture   *texpaint_pack;
 	struct gpu_texture   *texpaint_preview; // Layer preview
+	u8                   *thumb;            // The preview's texels, RGBA, read back without waiting (util_layer_thumbs.c), NULL until then
+	i32                   thumb_size;       // Its width and height
 	f32                   mask_opacity;     // Opacity mask
 	fill_t               *fill;             // Fill layer or fill mask, NULL for paint layers (malloc'd)
 	bool                  fill_dirty;       // Its textures are rasterized again before they are read (util_fill.c)
@@ -945,6 +947,7 @@ typedef struct layer_data {
 	u32               uid;          // slot_layer_t.uid
 	u32               timeline;     // Uid of the layer's timeline (stroke_rec.h), 0 for none
 	struct u8_array  *tilemap;      // hash128 of the HSTORE_TILEMAP of the layer's state, all its channels; NULL for groups
+	struct u8_array  *thumb;        // hash128 of its thumbnail (HSTORE_TILE, square RGBA texels), NULL for none
 } layer_data_t;
 
 // ---- Shader outputs, export presets ----

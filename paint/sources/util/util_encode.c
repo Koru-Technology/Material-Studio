@@ -152,6 +152,7 @@ static const armpack_field_t util_layer_data_fields[] = {
     ARMPACK_FIELD(layer_data_t, uid, ARMPACK_I32),
     ARMPACK_FIELD(layer_data_t, timeline, ARMPACK_I32),
     ARMPACK_FIELD(layer_data_t, tilemap, ARMPACK_U8_ARRAY),
+    ARMPACK_FIELD(layer_data_t, thumb, ARMPACK_U8_ARRAY),
 };
 static const armpack_schema_t util_layer_data_schema = ARMPACK_SCHEMA(layer_data_t, util_layer_data_fields);
 

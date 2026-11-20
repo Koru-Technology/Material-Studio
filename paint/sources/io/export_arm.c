@@ -262,7 +262,8 @@ buffer_t *export_arm_encode_project(char *path) {
 		                              .path_material      = l->path_material != NULL ? array_index_of(g_project->_->materials, l->path_material) : -1,
 		                              .uid                = l->uid,
 		                              .timeline           = project_container_writing_history() ? l->timeline : 0,
-		                              .tilemap            = tilemap});
+		                              .tilemap            = tilemap,
+		                              .thumb              = project_container_layer_thumb(l)});
 		any_array_push(ld, d);
 	}
 
@@ -397,6 +398,7 @@ buffer_t *export_arm_encode_project(char *path) {
 	for (i32 i = 0; i < ld->length; ++i) {
 		layer_data_t *d = ld->buffer[i];
 		export_arm_free_buffer(d->tilemap);
+		export_arm_free_buffer(d->thumb);
 		if (d->decal_mat != NULL) {
 			array_free(d->decal_mat);
 			free(d->decal_mat);

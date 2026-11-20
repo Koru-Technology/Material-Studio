@@ -34,6 +34,9 @@ static void util_layer_draw_preview(slot_layer_t *l, gpu_texture_t *target) {
 	draw_scaled_image(slot_layer_is_mask(l) ? slot_layer_mask_texture(l) : l->texpaint, 0, 0, target->width, target->height);
 	draw_set_pipeline(NULL);
 	draw_end();
+	if (target == l->texpaint_preview) {
+		layers_thumb_queue(l); // The list's thumbnail read back (util_layer_thumbs.c)
+	}
 }
 
 void util_layer_update_preview() {
@@ -76,6 +79,7 @@ void util_layer_update_preview() {
 			util_layer_draw_preview(l, target);
 		}
 	}
+	layers_thumbs_flush();
 }
 
 void layers_init() {

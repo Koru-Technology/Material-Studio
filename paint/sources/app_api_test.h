@@ -9,6 +9,8 @@
 // Layers (app_api.h)
 int32_t app_layer_id_at(int32_t index); // -1 past the last
 int32_t app_layer_thumbnail_size(int32_t id);
+bool    app_layer_thumbnail_ready(int32_t id);
+bool    app_thumbnails_busy(void);
 bool    app_layer_select(int32_t id);
 bool    app_layer_add(void); // A paint layer above the selected one
 bool    app_layer_can_delete(int32_t id);

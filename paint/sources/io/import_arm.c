@@ -428,6 +428,7 @@ void import_arm_run_project(char *path) {
 		if (!is_group) {
 			// See-through meshes when the bottom layer is not fully opaque
 			project_container_layer_restore(ld, l, i == 0 ? &g_project->_->translucency : NULL);
+			project_container_layer_thumb_restore(ld, l);
 
 			l->uv_map = ld->uv_map;
 			if (ld->decal_mat != NULL) {

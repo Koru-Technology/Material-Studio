@@ -84,7 +84,13 @@ void next() {
 		buffer_t *b  = buffer_create(n);
 		buffer_t *wb = buffer_create(4);
 		buffer_t *hb = buffer_create(4);
-		check(app_brush_preview(copy, b->buffer, n, wb->buffer, hb->buffer) == n, "it reads back");
+		int got = app_brush_preview(copy, b->buffer, n, wb->buffer, hb->buffer);
+		if (got == 0 && waited < 600) { // Read back without waiting: it comes with a later frame
+			waited = waited + 1;
+			script_notify_on_next_frame(next);
+			return;
+		}
+		check(got == n, "it reads back");
 		int w   = buffer_get_i32(wb, 0);
 		int h   = buffer_get_i32(hb, 0);
 		int lit = 0;

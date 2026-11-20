@@ -151,6 +151,9 @@ void slot_layer_delete(slot_layer_t *raw) {
 }
 
 void slot_layer_unload(slot_layer_t *raw) {
+	free(raw->thumb);
+	raw->thumb      = NULL;
+	raw->thumb_size = 0;
 	if (slot_layer_is_group(raw)) {
 		if (raw->texpaint_preview != NULL) {
 			gpu_delete_texture(raw->texpaint_preview);
@@ -196,6 +199,12 @@ void slot_layer_swap(slot_layer_t *raw, slot_layer_t *other) {
 		gpu_texture_t *_texpaint_preview = raw->texpaint_preview;
 		raw->texpaint_preview            = other->texpaint_preview;
 		other->texpaint_preview          = _texpaint_preview;
+		u8 *_thumb                       = raw->thumb;
+		i32 _thumb_size                  = raw->thumb_size;
+		raw->thumb                       = other->thumb;
+		raw->thumb_size                  = other->thumb_size;
+		other->thumb                     = _thumb;
+		other->thumb_size                = _thumb_size;
 
 		mask_stack_mark_dirty(raw); // Undo brought back other paint
 		mask_stack_mark_dirty(other);

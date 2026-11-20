@@ -14,6 +14,7 @@ int a      = -1; // Paint layer
 int m      = -1; // Its mask
 int sig    = 0;
 int pv     = 0;
+int pv_set = 0;
 int b      = -1; // Paint layer of the newer types
 int c      = -1; // Paint layer of "ID Mask..."
 int k      = -1; // Its mask
@@ -298,6 +299,14 @@ void next() {
 		pv = app_layer_previews_version();
 	}
 	else if (step == 6) {
+		if (app_thumbnails_busy() || !pv_set) { // Thumbnails read back land first, bumping the version once
+			if (!app_thumbnails_busy()) {
+				pv     = app_layer_previews_version();
+				pv_set = 1;
+			}
+			script_notify_on_next_frame(next);
+			return;
+		}
 		check(app_layer_previews_version() == pv, "no thumbnail redraws while idle");
 		check(app_mask_set_effect_value(m, index_of(FILL), 0, 0.25), "fill value edited");
 		check(!app_mask_set_effect_value(m, index_of(FILL), 2, app_mask_image_count() * 1.0), "a fill's image past the project's refused");

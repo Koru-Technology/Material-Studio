@@ -108,6 +108,12 @@ static const char *base_idle_busy_work() {
 	if (make_material_mesh_pending()) {
 		return "viewport shaders";
 	}
+	if (layers_thumbs_busy()) {
+		return "layer thumbnails";
+	}
+	if (app_reads_busy()) {
+		return "thumbnail reads";
+	}
 	if (fill_stat(2) > 0) {
 		return "fill layers";
 	}

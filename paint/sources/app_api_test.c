@@ -14,6 +14,17 @@ int32_t app_layer_thumbnail_size(int32_t id) {
 	return app_layer_thumbnail(id, NULL, 0, &w, &h);
 }
 
+// Thumbnails and icons being read back (util_layer_thumbs.c, app_read_rgba8): their landing bumps the previews version
+bool app_thumbnails_busy(void) {
+	return layers_thumbs_busy() || app_reads_busy();
+}
+
+// Its texels are there to show (read back, or from the project file)
+bool app_layer_thumbnail_ready(int32_t id) {
+	slot_layer_t *l = app_layer_by_id(id);
+	return l != NULL && l->thumb != NULL;
+}
+
 bool app_layer_select(int32_t id) {
 	slot_layer_t *l = app_layer_by_id(id);
 	if (l == NULL) {

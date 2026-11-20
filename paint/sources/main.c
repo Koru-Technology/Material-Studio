@@ -185,6 +185,7 @@
 #include "util/util_fill.c"
 #include "util/util_env.c"
 #include "util/util_layer.c"
+#include "util/util_layer_thumbs.c"
 #include "util/util_layer_create.c"
 #include "util/util_layer_ops.c"
 #include "util/util_layer_fill.c"
