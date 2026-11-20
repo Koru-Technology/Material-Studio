@@ -95,7 +95,6 @@ struct DecalBar: View {
 						.frame(width: 44, height: 44)
 				}
 				.glassEffect(popovers.shown == "Decal" ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
-				.disabled(store.image < 0)
 				.accessibilityLabel("Decal Channels")
 				.padPopover("Decal") {
 					DecalChannelsPanel()
@@ -132,10 +131,18 @@ struct DecalChannelsPanel: View {
 		let image = store.channelImages[c]
 		return Section(DecalStore.channelNames[c]) {
 			Picker("Image", selection: Binding(get: { image }, set: { v in
-				AppStore.shared.perform { _ = app_decal_set_channel_image(ch, v) }
+				if ch == APP_DECAL_BASE.id && store.image < 0 { // Not a decal material yet: the image makes one, as the bar does
+					store.use(v)
+				}
+				else {
+					AppStore.shared.perform { _ = app_decal_set_channel_image(ch, v) }
+				}
 			})) {
 				if ch != APP_DECAL_BASE.id {
 					Text(ch == APP_DECAL_NORMAL.id ? "None" : "Value").tag(Int32(-1))
+				}
+				else if image < 0 { // The selected material's own color
+					Text("Color").tag(Int32(-1))
 				}
 				ForEach(Array(store.images.enumerated()), id: \.offset) { i, name in
 					Text(name).tag(Int32(i))
