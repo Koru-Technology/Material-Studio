@@ -548,6 +548,7 @@ typedef struct {
 	hstore_loc_t    *locs;
 	u8              *status; // 0 to do on a thread, 1 inline, 2 on the main thread (not located, or failed), 3 a copy of same[i]
 	i32             *same;   // The first slot of the same tile (read once)
+	bool             image;  // mem holds the channels as images (lw x lh each, every tile listed): one copy each
 	i32            (*rects)[4];
 	u8              *mem;
 	i32              bytes;
@@ -566,6 +567,29 @@ static void tl_tiles_pack(const u8 *tile, i32 x, i32 y, i32 tw, const i32 *rect,
 	}
 }
 
+// Where tile slot i goes: its packed slot, or its place in its channel's image
+static void tl_tiles_put(tl_tiles_job_t *j, i32 i, const u8 *tile, i32 x, i32 y, i32 tw, i32 th) {
+	if (!j->image) {
+		tl_tiles_pack(tile, x, y, tw, j->rects[i], j->bpt, j->mem + (size_t)i * j->bytes);
+		return;
+	}
+	u8 *img = j->mem + (size_t)(j->list[i] / j->per) * j->lw * j->lh * j->bpt;
+	for (i32 row = 0; row < th; ++row) {
+		memcpy(img + ((size_t)(y + row) * j->lw + x) * j->bpt, tile + (size_t)row * tw * j->bpt, (size_t)tw * j->bpt);
+	}
+}
+
+// A uniform tile's texels (bytes of them in p)
+static void tl_tiles_fill(hash128_t h, u8 *p, i32 bytes, i32 bpt) {
+	if (bytes <= 0) {
+		return;
+	}
+	memcpy(p, &h.lo, bpt);
+	for (i32 n = bpt; n < bytes; n *= 2) { // Doubling copies
+		memcpy(p + n, p, n * 2 <= bytes ? n : bytes - n);
+	}
+}
+
 static void *tl_tiles_worker(void *param) {
 	tl_tiles_job_t *j    = param;
 	ZSTD_DCtx      *dctx = ZSTD_createDCtx();
@@ -576,12 +600,19 @@ static void *tl_tiles_worker(void *param) {
 			break;
 		}
 		for (i32 i = i0; i < i0 + 32 && i < j->n; ++i) {
-			if (j->status[i] != 0) {
+			if (j->status[i] != 0 && j->status[i] != 1) {
 				continue;
 			}
 			i32 idx = j->list[i];
 			i32 x, y, tw, th;
 			tl_tiles_rect(j->lw, j->lh, idx % j->per, &x, &y, &tw, &th);
+			if (j->status[i] == 1) { // Uniform
+				u8 *tile = malloc((size_t)tw * th * j->bpt);
+				tl_tiles_fill(j->want[idx], tile, tw * th * j->bpt, j->bpt);
+				tl_tiles_put(j, i, tile, x, y, tw, th);
+				free(tile);
+				continue;
+			}
 			bool from_disk = false;
 			u8  *tile      = hstore_read_located(&j->locs[i], dctx, &from_disk);
 			disk += from_disk;
@@ -590,7 +621,7 @@ static void *tl_tiles_worker(void *param) {
 				j->status[i] = 2;
 				continue;
 			}
-			tl_tiles_pack(tile, x, y, tw, j->rects[i], j->bpt, j->mem + (size_t)i * j->bytes);
+			tl_tiles_put(j, i, tile, x, y, tw, th);
 			free(tile);
 		}
 	}
@@ -618,7 +649,9 @@ static bool tl_tiles_restore_all(const hash128_t *want, const i32 *list, i32 n, 
 	i32 *first = malloc(sizeof(i32) * cap); // Open addressing by hash: a tile in several slots is read once
 	memset(first, 0xff, sizeof(i32) * cap);
 	j.rects  = malloc(sizeof(i32[4]) * n);
-	j.mem    = gpu_transfer_map(tl_tiles_transfer, (size_t)n * bytes);
+	// Every tile of every channel, the target the layer's size: the channels as images, one copy each
+	j.image  = n == dst->channels * per && ox == 0 && oy == 0 && tex->width == lw && tex->height == lh;
+	j.mem    = gpu_transfer_map(tl_tiles_transfer, j.image ? (size_t)dst->channels * lw * lh * bpt : (size_t)n * bytes);
 	for (i32 i = 0; i < n; ++i) { // The store is read on this thread only: where each tile is
 		i32 idx = list[i];
 		i32 x, y, tw, th;
@@ -669,8 +702,8 @@ static bool tl_tiles_restore_all(const hash128_t *want, const i32 *list, i32 n, 
 
 	bool ok   = true;
 	u8  *tile = malloc(bytes);
-	for (i32 i = 0; i < n; ++i) { // Inline tiles, and the ones a thread could not read: here, as one at a time
-		if (j.status[i] == 0 || j.status[i] == 3) {
+	for (i32 i = 0; i < n; ++i) { // The ones a thread could not read: here, as one at a time
+		if (j.status[i] != 2) {
 			continue;
 		}
 		i32 idx = list[i];
@@ -680,19 +713,39 @@ static bool tl_tiles_restore_all(const hash128_t *want, const i32 *list, i32 n, 
 			ok = false;
 			memset(tile, 0, tw * th * bpt);
 		}
-		tl_tiles_pack(tile, x, y, tw, j.rects[i], bpt, j.mem + (size_t)i * bytes);
+		tl_tiles_put(&j, i, tile, x, y, tw, th);
 	}
-	free(tile);
 	for (i32 i = 0; i < n; ++i) { // Copies of a tile read once (the same size: same hash, same bytes)
-		if (j.status[i] == 3) {
-			memcpy(j.mem + (size_t)i * bytes, j.mem + (size_t)j.same[i] * bytes, (size_t)j.rects[i][2] * j.rects[i][3] * bpt);
+		if (j.status[i] != 3) {
+			continue;
+		}
+		i32 k = j.same[i];
+		if (!j.image) {
+			memcpy(j.mem + (size_t)i * bytes, j.mem + (size_t)k * bytes, (size_t)j.rects[i][2] * j.rects[i][3] * bpt);
+			continue;
+		}
+		i32 x, y, tw, th, kx, ky, ktw, kth;
+		tl_tiles_rect(lw, lh, list[i] % per, &x, &y, &tw, &th);
+		tl_tiles_rect(lw, lh, list[k] % per, &kx, &ky, &ktw, &kth);
+		u8 *src = j.mem + (size_t)(list[k] / per) * lw * lh * bpt;
+		u8 *dsti = j.mem + (size_t)(list[i] / per) * lw * lh * bpt;
+		for (i32 row = 0; row < th; ++row) {
+			memcpy(dsti + ((size_t)(y + row) * lw + x) * bpt, src + ((size_t)(ky + row) * lw + kx) * bpt, (size_t)tw * bpt);
 		}
 	}
+	free(tile);
 	gpu_copy_regions_begin();
-	for (i32 i = 0; i < n; ++i) {
-		i32 idx = list[i];
-		gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[idx / per], j.rects[i][0] - ox, j.rects[i][1] - oy, j.rects[i][2], j.rects[i][3],
-		                              (size_t)i * bytes);
+	if (j.image) {
+		for (i32 c = 0; c < dst->channels; ++c) {
+			gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[c], 0, 0, lw, lh, (size_t)c * lw * lh * bpt);
+		}
+	}
+	else {
+		for (i32 i = 0; i < n; ++i) {
+			i32 idx = list[i];
+			gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[idx / per], j.rects[i][0] - ox, j.rects[i][1] - oy, j.rects[i][2], j.rects[i][3],
+			                              (size_t)i * bytes);
+		}
 	}
 	gpu_copy_regions_end();
 	gpu_execute_and_wait(); // The memory is filled again by the next restore
