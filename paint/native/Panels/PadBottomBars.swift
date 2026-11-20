@@ -39,6 +39,10 @@ struct FillEffectsBar: View {
 		let effects = mask?.effects ?? [] // Top first
 		GlassEffectContainer(spacing: 6) {
 			HStack(spacing: 6) {
+				Text("Mask")
+					.font(.subheadline.weight(.semibold))
+					.foregroundStyle(.secondary)
+					.padding(.leading, 6)
 				if effects.last?.isPaint != true { // Nothing goes below the paint, always applied first
 					addButton(mask: mask, at: effects.count)
 				}
@@ -91,12 +95,17 @@ struct FillEffectsBar: View {
 		}
 		.accessibilityLabel("Add Effect")
 		.padPopover(name) {
-			List {
-				MaskEffectAddItems { type in
-					add(type, mask: mask, at: index)
+			NavigationStack {
+				List {
+					MaskEffectAddItems { type in
+						add(type, mask: mask, at: index)
+					}
 				}
+				.listStyle(.insetGrouped)
+				.contentMargins(.top, 8, for: .scrollContent)
+				.navigationTitle("New Mask Effect")
+				.navigationBarTitleDisplayMode(.inline)
 			}
-			.listStyle(.insetGrouped)
 			.frame(width: 280, height: 480)
 		}
 	}

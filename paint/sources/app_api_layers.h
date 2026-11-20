@@ -107,6 +107,16 @@ void app_layer_save_smart_material(int32_t id);
 bool app_layer_can_move_below(int32_t id, int32_t upper_id);
 bool app_layer_move_below(int32_t id, int32_t upper_id);
 bool app_layer_move_below_flat(int32_t id, int32_t upper_id); // Below upper's top level layer and all of it: never into a group or layer
+// A layer dropped on a row of the layers list: above or below it in its group (or none), or into it (a group). Groups do
+// not nest. One undo step.
+typedef enum {
+	APP_LAYER_DROP_ABOVE = 0,
+	APP_LAYER_DROP_BELOW = 1,
+	APP_LAYER_DROP_INTO  = 2,
+} app_layer_drop_t;
+bool    app_layer_drop(int32_t id, int32_t target_id, int32_t where);
+int32_t app_layer_group_with(int32_t id, int32_t other_id); // A new group of other (a layer in no group) and id above it.
+                                                            // One undo step, its id, -1: refused
 bool app_layer_set_group(int32_t id, int32_t group_id); // Into a group at its top, -1: out of its group, below it
 
 // Properties. Each change is an undo step, except channels and the UV map (no history)

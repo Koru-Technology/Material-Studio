@@ -517,6 +517,66 @@ bool app_layer_move_below_flat(int32_t id, int32_t upper_id) {
 	return ok;
 }
 
+// The steps an action pushed since history held `before` undo as one
+static void app_layer_steps_as_one(i32 before) {
+	for (i32 i = before + 1; i < history_steps->length; ++i) {
+		history_steps->buffer[i]->with_prev = true;
+	}
+}
+
+bool app_layer_drop(int32_t id, int32_t target_id, int32_t where) {
+	slot_layer_t *l      = app_layer_by_id(id);
+	slot_layer_t *target = app_layer_by_id(target_id);
+	if (l == NULL || target == NULL || l == target || slot_layer_is_mask(l) || slot_layer_is_filter(l) || slot_layer_is_mask(target) ||
+	    slot_layer_is_filter(target) || slot_layer_is_descendant(target, l) || where < APP_LAYER_DROP_ABOVE || where > APP_LAYER_DROP_INTO) {
+		return false;
+	}
+	slot_layer_t *parent = where == APP_LAYER_DROP_INTO ? target : target->parent;
+	if ((where == APP_LAYER_DROP_INTO && !slot_layer_is_group(target)) || (slot_layer_is_group(l) && parent != NULL)) {
+		return false; // Into groups only, and groups do not nest
+	}
+	if (where == APP_LAYER_DROP_INTO) {
+		return app_layer_set_group(id, target_id);
+	}
+	slot_layer_t_array_t *layers = g_project->_->layers;
+	i32                   before = history_steps->length;
+	bool                  ok;
+	if (where == APP_LAYER_DROP_ABOVE) { // Below what is right above it in the stack
+		i32 above = array_index_of(layers, target) + 1;
+		ok        = app_layer_move_below(id, above < layers->length ? layers->buffer[above]->id : -1);
+	}
+	else { // Below the lowest of it and its masks, filters and children
+		slot_layer_t *lowest = layers->buffer[array_index_of(layers, target) - slot_layer_count_descendants(target)];
+		ok                   = lowest != l && app_layer_move_below(id, lowest->id);
+	}
+	if (ok && l->parent != parent) { // Beside target, in its group or none
+		app_layer_reparent(l, parent);
+		app_layer_steps_as_one(before);
+	}
+	return ok;
+}
+
+int32_t app_layer_group_with(int32_t id, int32_t other_id) {
+	slot_layer_t *l     = app_layer_by_id(id);
+	slot_layer_t *other = app_layer_by_id(other_id);
+	if (l == NULL || other == NULL || l == other || !slot_layer_is_layer(l) || !slot_layer_is_layer(other) || other->parent != NULL) {
+		return -1; // Two layers, the other one not in a group already
+	}
+	i32           before = history_steps->length;
+	slot_layer_t *group  = layers_op_new_group(other);
+	if (group == NULL) {
+		return -1;
+	}
+	group->show_panel = true;
+	if (!layers_op_set_group(l, group)) {
+		history_undo(); // No group of one
+		return -1;
+	}
+	app_layer_steps_as_one(before);
+	context_set_layer(l);
+	return app_layer_done(true) ? group->id : -1;
+}
+
 bool app_layer_set_group(int32_t id, int32_t group_id) {
 	slot_layer_t *l = app_layer_by_id(id);
 	if (l == NULL || slot_layer_is_mask(l) || slot_layer_is_filter(l)) {
