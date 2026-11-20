@@ -267,48 +267,27 @@ private struct LayerTableCell: View {
 	}
 }
 
-// A row's menu, as LayerContextMenu (the Mac's), for the table
+// A row's long press menu. A group: Rename. A layer: Rename, Duplicate, its mask's Fill and Clear, Move to Group, Save as
+// Smart Material and Export.
 @MainActor
 func layerMenu(for layer: LayerRow) -> UIMenu {
 	let store  = AppStore.shared
 	let layers = LayersStore.shared
 	let p      = layer.props
-	func action(_ title: String, _ symbol: String, destructive: Bool = false, disabled: Bool = false, _ run: @escaping () -> Void) -> UIAction {
-		var attributes: UIMenuElement.Attributes = []
-		if destructive {
-			attributes.insert(.destructive)
-		}
-		if disabled {
-			attributes.insert(.disabled)
-		}
-		return UIAction(title: title, image: UIImage(systemName: symbol), attributes: attributes) { _ in
+	func action(_ title: String, _ symbol: String, _ run: @escaping () -> Void) -> UIAction {
+		UIAction(title: title, image: UIImage(systemName: symbol)) { _ in
 			run()
 		}
 	}
-	var sections: [UIMenuElement] = []
-	sections.append(UIMenu(options: .displayInline, children: [
-		action("Rename…", "pencil") { renameLayer(layer) },
+	let rename = action("Rename…", "pencil") { renameLayer(layer) }
+	if layer.kind == .group {
+		return UIMenu(children: [rename])
+	}
+	var sections: [UIMenuElement] = [UIMenu(options: .displayInline, children: [
+		rename,
 		action("Duplicate", "plus.square.on.square") { store.perform { _ = app_layer_duplicate(layer.id) } },
-		action(layer.visible ? "Hide" : "Show", layer.visible ? "eye.slash" : "eye") {
-			store.perform { _ = app_layer_set_visible(layer.id, !layer.visible) }
-		},
-	]))
-	var merge: [UIMenuElement] = [action("Merge Down", "arrow.down.to.line", disabled: !p.canMergeDown) {
-		store.perform { _ = app_layer_merge_down(layer.id) }
-	}]
-	if p.showsMergeGroup {
-		merge.append(action("Merge Group", "square.stack.3d.down.forward", disabled: !p.canMergeGroup) {
-			store.perform { _ = app_layer_merge_group(layer.id) }
-		})
-	}
-	if p.showsToFill {
-		merge.append(action("To Fill Layer", "drop.fill") { store.perform { _ = app_layer_to_fill(layer.id) } })
-	}
-	if p.showsToPaint {
-		merge.append(action("To Paint Layer", "paintbrush") { store.perform { _ = app_layer_to_paint(layer.id) } })
-	}
-	sections.append(UIMenu(options: .displayInline, children: merge))
-	if layer.isFill, let mask = layers.layer(p.maskID) { // Its mask, which the list does not show
+	])]
+	if let mask = layers.layer(p.maskID) { // Its mask, which the list does not show
 		var items: [UIMenuElement] = []
 		if mask.props.showsFillPaint {
 			items.append(action("Fill Mask", "circle.fill") { store.perform { _ = app_layer_fill_paint(mask.id) } })
@@ -318,49 +297,18 @@ func layerMenu(for layer: LayerRow) -> UIMenu {
 		}
 		sections.append(UIMenu(options: .displayInline, children: items))
 	}
-	var more: [UIMenuElement] = []
-	if p.showsAddMask {
-		more.append(UIMenu(title: "Add Mask", image: UIImage(systemName: "circle.lefthalf.filled"), children: [
-			action("Black Mask", "circle.fill") { store.perform { _ = app_layer_add_mask(layer.id, Int32(APP_LAYER_NEW_BLACK_MASK.rawValue)) } },
-			action("White Mask", "circle") { store.perform { _ = app_layer_add_mask(layer.id, Int32(APP_LAYER_NEW_WHITE_MASK.rawValue)) } },
-		]))
-	}
-	if p.showsAddEffect {
-		func effects(_ title: String, _ types: [Int32]) -> UIMenu {
-			UIMenu(title: title, options: .displayInline, children: types.map { type in
-				action(LayersStore.effectTypeNames[Int(type)], maskEffectSymbol(type)) { store.perform { _ = app_layer_add_effect(layer.id, type) } }
-			})
-		}
-		more.append(UIMenu(title: "Add Effect", image: UIImage(systemName: "wand.and.stars"), children: [
-			effects("Sources", LayersStore.effectSources), effects("Filters", LayersStore.effectFilters),
-			effects("Generators", LayersStore.effectGenerators),
-		]))
-	}
 	let groups = layers.groups(for: layer)
 	if !groups.isEmpty {
-		more.append(UIMenu(title: "Move to Group", image: UIImage(systemName: "folder"), children: groups.map { group in
+		sections.append(UIMenu(title: "Move to Group", image: UIImage(systemName: "folder"), children: groups.map { group in
 			action(group.name, "folder") { store.perform { _ = app_layer_set_group(layer.id, group.id) } }
 		}))
 	}
-	if layer.kind != .mask && layer.kind != .filter, let parent = layers.layer(layer.parentID), parent.kind == .group {
-		more.append(action("Remove from Group", "folder.badge.minus") { store.perform { _ = app_layer_set_group(layer.id, -1) } })
-	}
-	sections.append(UIMenu(options: .displayInline, children: more))
 	var files: [UIMenuElement] = []
 	if p.showsSaveSmartMaterial {
 		files.append(action("Save as Smart Material…", "square.and.arrow.down") { store.perform { _ = app_layer_save_smart_material(layer.id) } })
 	}
 	files.append(action("Export…", "square.and.arrow.up") { store.perform { _ = app_layer_export(layer.id) } })
 	sections.append(UIMenu(options: .displayInline, children: files))
-	var last: [UIMenuElement] = []
-	if p.showsFillPaint {
-		last.append(action("Fill Paint", "circle.fill") { store.perform { _ = app_layer_fill_paint(layer.id) } })
-	}
-	if p.showsClear {
-		last.append(action("Clear", "eraser", destructive: true) { store.perform { _ = app_layer_clear(layer.id) } })
-	}
-	last.append(action("Delete", "trash", destructive: true, disabled: !p.canDelete) { store.perform { _ = app_layer_delete(layer.id) } })
-	sections.append(UIMenu(options: .displayInline, children: last))
 	return UIMenu(children: sections)
 }
 #endif

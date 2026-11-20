@@ -222,7 +222,7 @@ struct LayerRowView: View {
 			Spacer(minLength: 4)
 			visibility
 #if os(iOS)
-			if pushesDetail {
+			if pushesDetail && layer.kind != .group { // A group has no settings of its own here
 				Button {
 					let maskSelected = layer.props.maskID >= 0 && layers.selectedLayerID == layer.props.maskID
 					if !layer.selected && !maskSelected {
