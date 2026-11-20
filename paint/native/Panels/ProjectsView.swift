@@ -28,7 +28,8 @@ struct ProjectsView: View {
 					          spacing: 24) {
 						if folder == nil {
 							ForEach(store.folders, id: \.self) { f in
-								FolderTile(name: f, count: store.count(in: f), size: tile, labelWidth: tile + gap - 16) {
+								FolderTile(name: f, count: store.count(in: f), recent: Array(store.projects(in: f).prefix(3)), iconsVersion: store.iconsVersion,
+								           size: tile, labelWidth: tile + gap - 16) {
 									withAnimation(.easeOut(duration: 0.15)) {
 										folder = f
 									}
@@ -163,6 +164,8 @@ struct ProjectsView: View {
 private struct FolderTile: View {
 	let name: String
 	let count: Int
+	let recent: [ProjectRow] // Its most recently opened projects, the most recent first: their previews stack
+	let iconsVersion: Int
 	let size: CGFloat
 	let labelWidth: CGFloat
 	let onOpen: () -> Void
@@ -170,30 +173,54 @@ private struct FolderTile: View {
 	@State private var targeted = false
 	private var store = ProjectsStore.shared
 
-	init(name: String, count: Int, size: CGFloat, labelWidth: CGFloat, onOpen: @escaping () -> Void) {
-		self.name       = name
-		self.count      = count
-		self.size       = size
-		self.labelWidth = labelWidth
-		self.onOpen     = onOpen
+	// Each card's turn and shift, the most recent (front) first
+	private static let angles: [Double]   = [-4, 9, -14]
+	private static let shifts: [CGFloat]  = [0, 6, -6]
+
+	init(name: String, count: Int, recent: [ProjectRow], iconsVersion: Int, size: CGFloat, labelWidth: CGFloat, onOpen: @escaping () -> Void) {
+		self.name         = name
+		self.count        = count
+		self.recent       = recent
+		self.iconsVersion = iconsVersion
+		self.size         = size
+		self.labelWidth   = labelWidth
+		self.onOpen       = onOpen
 	}
 
 	var body: some View {
 		Button(action: onOpen) {
 			VStack(spacing: 10) {
 				ZStack {
-					Color(white: targeted ? 0.3 : 0.2)
-					Image(systemName: "folder.fill")
-						.font(.system(size: size * 0.36))
-						.foregroundStyle(targeted ? Color.accentColor : Color.white.opacity(0.55))
+					if recent.isEmpty {
+						ZStack {
+							Color(white: targeted ? 0.3 : 0.2)
+							Image(systemName: "folder.fill")
+								.font(.system(size: size * 0.36))
+								.foregroundStyle(targeted ? Color.accentColor : Color.white.opacity(0.55))
+						}
+						.frame(width: size, height: size)
+						.clipShape(.rect(cornerRadius: 14, style: .continuous))
+						.shadow(color: .black.opacity(0.4), radius: 10, y: 5)
+					}
+					else {
+						ForEach(Array(recent.enumerated().reversed()), id: \.element.id) { i, project in // The most recent on top
+							ProjectPreview(path: project.iconPath, iconsVersion: iconsVersion, size: size * 0.74)
+								.clipShape(.rect(cornerRadius: 12, style: .continuous))
+								.overlay {
+									RoundedRectangle(cornerRadius: 12, style: .continuous)
+										.strokeBorder(.white.opacity(0.15), lineWidth: 1)
+								}
+								.shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+								.rotationEffect(.degrees(Self.angles[i]))
+								.offset(x: Self.shifts[i] * size / 160)
+						}
+					}
 				}
 				.frame(width: size, height: size)
-				.clipShape(.rect(cornerRadius: 14, style: .continuous))
 				.overlay {
 					RoundedRectangle(cornerRadius: 14, style: .continuous)
 						.strokeBorder(Color.accentColor, lineWidth: targeted ? 3 : 0)
 				}
-				.shadow(color: .black.opacity(0.4), radius: 10, y: 5)
 				VStack(spacing: 2) {
 					Text(name)
 						.font(.body)
@@ -329,6 +356,37 @@ private struct ProjectTile: View {
 					ProjectsStore.shared.projectMoved(from: row.entry, to: entry)
 				}
 			}
+		}
+	}
+}
+
+// A project's preview image, read off the main thread, the grey of the previews' background behind it
+private struct ProjectPreview: View {
+	let path: String
+	let iconsVersion: Int
+	let size: CGFloat
+
+	@State private var image: UIImage?
+
+	var body: some View {
+		ZStack {
+			Color(white: 0.353)
+			if let image {
+				Image(uiImage: image)
+					.resizable()
+					.interpolation(.high)
+					.scaledToFill()
+			}
+			else {
+				Image(systemName: "cube")
+					.font(.system(size: size * 0.3, weight: .light))
+					.foregroundStyle(.white.opacity(0.35))
+			}
+		}
+		.frame(width: size, height: size)
+		.task(id: "\(path)#\(iconsVersion)") {
+			let path = path
+			image = await Task.detached(priority: .userInitiated) { UIImage(contentsOfFile: path) }.value
 		}
 	}
 }
