@@ -1,6 +1,6 @@
 import SwiftUI
 
-// A mask's effects in its settings, top first as they apply: a tap opens an effect's settings (pushed in the iPad
+// A mask's effects in its settings, in the order they apply (the paint first, the top of the stack last): a tap opens an effect's settings (pushed in the iPad
 // popover, a popover of its own in the Mac inspector), a drag reorders them
 struct MaskEffectsSection: View {
 	let layer: LayerRow
@@ -14,8 +14,8 @@ struct MaskEffectsSection: View {
 
 	var body: some View {
 		Section {
-			ForEach(Array(layer.effects.enumerated()), id: \.offset) { i, effect in
-				row(Int32(i), effect)
+			ForEach(Array(layer.effects.indices.reversed()), id: \.self) { i in // Read as applied: the paint first
+				row(Int32(i), layer.effects[i])
 			}
 			.onMove(perform: move)
 			addMenu
@@ -91,8 +91,9 @@ struct MaskEffectsSection: View {
 		guard let source = from.first, from.count == 1, to != source, to != source + 1 else {
 			return
 		}
+		let last   = layer.effects.count - 1 // Listed bottom of the stack first
 		let target = to > source ? to - 1 : to
-		AppStore.shared.perform { app_mask_move_effect(layer.id, Int32(source), Int32(target)) }
+		AppStore.shared.perform { app_mask_move_effect(layer.id, Int32(last - source), Int32(last - target)) }
 	}
 
 	private var addMenu: some View {

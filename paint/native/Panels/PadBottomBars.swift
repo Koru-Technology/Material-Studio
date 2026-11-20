@@ -22,9 +22,9 @@ struct ApplyMaterialBar: View {
 	}
 }
 
-// A fill layer selected, on the right: the effects of its mask top to bottom as the stack is, the paint at the bottom
-// (applied first). A tap opens an effect's settings to the left, a long press drags it up or down (the others make room,
-// one undo step when let go). The + on top adds one on top.
+// A fill layer selected, on the right: the effects of its mask in the order they apply, read top to bottom: the paint
+// first, the top of the stack last. A tap opens an effect's settings to the left, a long press drags it up or down (the
+// others make room, one undo step when let go). The + at the bottom adds one on top of the stack.
 struct FillEffectsColumn: View {
 	let layer: LayerRow
 
@@ -41,28 +41,30 @@ struct FillEffectsColumn: View {
 
 	var body: some View {
 		let mask    = layers.layer(layer.props.maskID)
-		let effects = mask?.effects ?? [] // Top first
+		let effects = mask?.effects ?? []                // Top of the stack first
+		let order   = Array(effects.indices.reversed()) // Top to bottom on screen: stack indices, the paint first
 		GlassEffectContainer(spacing: 6) {
 			VStack(spacing: 6) {
 				Text("Mask")
 					.font(.caption.weight(.semibold))
 					.foregroundStyle(.secondary)
 					.padding(.top, 4)
-				addButton(mask: mask, at: 0) // On top: applied last
 				if let mask {
-					ForEach(Array(effects.enumerated()), id: \.offset) { i, effect in
+					ForEach(Array(order.enumerated()), id: \.element) { pos, i in
+						let effect = effects[i]
 						effectButton(mask: mask, index: i, effect: effect)
 							.scaleEffect(dragging == i ? 1.12 : 1)
 							.shadow(color: .black.opacity(dragging == i ? 0.35 : 0), radius: 8, y: 4)
-							.offset(y: dragging == i ? dragY : shift(i, effects: effects))
+							.offset(y: dragging == i ? dragY : shift(pos, order: order, effects: effects))
 							.zIndex(dragging == i ? 1 : 0)
-							.gesture(reorderGesture(mask: mask, index: i, effects: effects), including: effect.isPaint ? .subviews : .all)
+							.gesture(reorderGesture(mask: mask, index: i, order: order, effects: effects), including: effect.isPaint ? .subviews : .all)
 					}
 				}
+				addButton(mask: mask, at: 0) // Last: on top of the stack, applied last
 			}
 			.padding(.horizontal, 6)
 			.padding(.vertical, 8)
-			.animation(.snappy(duration: 0.2), value: target(effects: effects))
+			.animation(.snappy(duration: 0.2), value: target(order: order, effects: effects))
 			.animation(.snappy(duration: 0.15), value: dragging)
 		}
 		.glassEffect(.regular, in: .capsule)
@@ -70,7 +72,7 @@ struct FillEffectsColumn: View {
 	}
 
 	// Held, then dragged: the effect follows the finger, the others make room, let go it takes that place
-	private func reorderGesture(mask: LayerRow, index: Int, effects: [MaskEffect]) -> some Gesture {
+	private func reorderGesture(mask: LayerRow, index: Int, order: [Int], effects: [MaskEffect]) -> some Gesture {
 		LongPressGesture(minimumDuration: 0.25)
 			.sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
 			.onChanged { value in
@@ -84,34 +86,35 @@ struct FillEffectsColumn: View {
 				dragY = drag?.translation.height ?? 0
 			}
 			.onEnded { _ in
-				let to = target(effects: effects)
+				let to = target(order: order, effects: effects)
 				dragging = nil
 				dragY    = 0
-				if let to, to != index {
-					let from = Int32(index)
-					AppStore.shared.perform { _ = app_mask_move_effect(mask.id, from, Int32(to)) }
+				if let to, order[to] != index {
+					let from  = Int32(index)
+					let stack = Int32(order[to]) // The stack index of the effect whose place it takes
+					AppStore.shared.perform { _ = app_mask_move_effect(mask.id, from, stack) }
 				}
 			}
 	}
 
-	// The place the dragged effect would take, top first; never below the paint
-	private func target(effects: [MaskEffect]) -> Int? {
-		guard let dragging else {
+	// The place on screen the dragged effect would take; never above the paint, which is first
+	private func target(order: [Int], effects: [MaskEffect]) -> Int? {
+		guard let dragging, let from = order.firstIndex(of: dragging) else {
 			return nil
 		}
-		let last = effects.last?.isPaint == true ? effects.count - 2 : effects.count - 1
-		return min(max(dragging + Int((dragY / Self.slot).rounded()), 0), max(last, 0))
+		let first = order.first.map { effects[$0].isPaint } == true ? 1 : 0
+		return min(max(from + Int((dragY / Self.slot).rounded()), first), order.count - 1)
 	}
 
 	// The others slide over to open the gap
-	private func shift(_ i: Int, effects: [MaskEffect]) -> CGFloat {
-		guard let dragging, let to = target(effects: effects) else {
+	private func shift(_ pos: Int, order: [Int], effects: [MaskEffect]) -> CGFloat {
+		guard let dragging, let from = order.firstIndex(of: dragging), let to = target(order: order, effects: effects) else {
 			return 0
 		}
-		if dragging < to && i > dragging && i <= to {
+		if from < to && pos > from && pos <= to {
 			return -Self.slot
 		}
-		if to < dragging && i >= to && i < dragging {
+		if to < from && pos >= to && pos < from {
 			return Self.slot
 		}
 		return 0
