@@ -222,6 +222,21 @@ private struct MaskEffectSections: View {
 			}
 		}
 
+		if effect.isPaint, let mask = layers.layer(layerID), mask.props.showsFillPaint || mask.props.showsClear { // As the layer's menu
+			Section {
+				if mask.props.showsFillPaint {
+					Button("Fill", systemImage: "circle.fill") {
+						AppStore.shared.perform { _ = app_layer_fill_paint(layerID) }
+					}
+				}
+				if mask.props.showsClear {
+					Button("Clear", systemImage: "circle") {
+						AppStore.shared.perform { _ = app_layer_clear(layerID) }
+					}
+				}
+			}
+		}
+
 		if effect.type == Int32(APP_MASK_EFFECT_ID_SELECTION.rawValue) {
 			let parts = max(Int(effect.params[0]), 0)
 			Section {
