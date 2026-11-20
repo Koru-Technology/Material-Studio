@@ -128,6 +128,17 @@ struct FillEffectsColumn: View {
 			.opacity(effect.visible ? 1 : 0.4)
 			.background(popovers.shown == name ? Color.accentColor.opacity(0.35) : Color.white.opacity(dragging == index ? 0.2 : 0.08),
 			            in: .rect(cornerRadius: 10, style: .continuous))
+			.overlay(alignment: .topLeading) {
+				if !effect.visible { // Hidden
+					Image(systemName: "eye.slash.fill")
+						.font(.system(size: 9, weight: .bold))
+						.foregroundStyle(.white)
+						.padding(3)
+						.background(.black.opacity(0.6), in: .circle)
+						.offset(x: -4, y: -4)
+						.allowsHitTesting(false)
+				}
+			}
 			.contentShape(.rect)
 			.onTapGesture {
 				popovers.toggle(name)
@@ -135,10 +146,8 @@ struct FillEffectsColumn: View {
 			.accessibilityLabel(effect.name)
 			.accessibilityAddTraits(.isButton)
 			.padPopover(name, arrowEdge: .trailing) { // To the left of the column
-				NavigationStack {
-					MaskEffectDetailView(layerID: mask.id, index: Int32(index))
-				}
-				.frame(width: 340, height: 480)
+				EffectPopover(maskID: mask.id, index: Int32(index))
+					.frame(width: 340, height: 480)
 			}
 	}
 
@@ -195,6 +204,58 @@ struct FillEffectsColumn: View {
 			DispatchQueue.main.async { // Once the new effect's button is there
 				PadPopovers.shared.toggle(name)
 			}
+		}
+	}
+}
+
+// An effect's settings from the column, Hide or Show and Delete under them (the paint is never deleted)
+private struct EffectPopover: View {
+	let maskID: Int32
+	let index: Int32
+
+	private var layers = LayersStore.shared
+
+	init(maskID: Int32, index: Int32) {
+		self.maskID = maskID
+		self.index  = index
+	}
+
+	private var effect: MaskEffect? {
+		guard let effects = layers.layer(maskID)?.effects, effects.indices.contains(Int(index)) else {
+			return nil
+		}
+		return effects[Int(index)]
+	}
+
+	var body: some View {
+		NavigationStack {
+			MaskEffectDetailView(layerID: maskID, index: index)
+				.safeAreaInset(edge: .bottom) {
+					if let effect {
+						HStack(spacing: 10) {
+							Button {
+								AppStore.shared.perform { _ = app_mask_set_effect_visible(maskID, index, !effect.visible) }
+							} label: {
+								Label(effect.visible ? "Hide" : "Show", systemImage: effect.visible ? "eye.slash" : "eye")
+									.frame(maxWidth: .infinity)
+							}
+							if !effect.isPaint {
+								Button(role: .destructive) {
+									PadPopovers.shared.close()
+									AppStore.shared.perform { _ = app_mask_remove_effect(maskID, index) }
+								} label: {
+									Label("Delete", systemImage: "trash")
+										.frame(maxWidth: .infinity)
+								}
+							}
+						}
+						.buttonStyle(.bordered)
+						.controlSize(.large)
+						.padding(.horizontal, 16)
+						.padding(.vertical, 12)
+						.background(Color(uiColor: PadPanelContent.background)) // The settings scroll under it, not through it
+					}
+				}
 		}
 	}
 }
