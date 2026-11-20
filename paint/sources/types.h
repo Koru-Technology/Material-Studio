@@ -1213,7 +1213,10 @@ struct studio_graph {
 #define HSTORE_CHUNK_HEADER   32 // "CHNK" u8 kind, u8 codec, u16 flags, u64 hash.lo, u64 hash.hi, u32 raw_len, u32 comp_len
 #define HSTORE_JOURNAL_HEADER 16 // "MSJN" u32 version, 8 bytes 0
 #define HSTORE_CODEC_RAW      0
-#define HSTORE_CODEC_LZ4      1  // iron_lz4 block
+#define HSTORE_CODEC_LZ4      1  // iron_lz4 block (read only: older files and journals)
+#define HSTORE_CODEC_ZSTD     2  // A zstd frame
+#define HSTORE_CODEC_TEXELS   3  // Texels: u16 row texels, u8 texel bytes, u8 0, then a zstd frame of the byte planes as
+                                 // residuals of the median predictor (history_store.c, hstore_texels_split)
 #define HSTORE_CHUNK_MARK     1  // Flag of a kind 0 chunk: the project was saved here (journal only)
 
 typedef struct hstore_chunk {

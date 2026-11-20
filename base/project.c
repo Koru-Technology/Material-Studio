@@ -39,6 +39,13 @@ project_t *main() {
 	}
 	add_define(project, "IRON_BGRA");
 
+	// zstd: project file and undo blobs (history_store.c)
+	add_define(project, "ZSTD_DISABLE_ASM");
+	add_include_dir(project, "sources/libs/zstd");
+	add_cfiles(project, "sources/libs/zstd/common/*.c");
+	add_cfiles(project, "sources/libs/zstd/compress/*.c");
+	add_cfiles(project, "sources/libs/zstd/decompress/*.c");
+
 	// GLSL shaders: glslang (GLSL -> SPIR-V) and SPIRV-Cross (SPIR-V -> MSL), see iron_glsl.c
 	add_define(project, "WITH_GLSL");
 	add_define(project, "SPIRV_CROSS_C_API_MSL=1");

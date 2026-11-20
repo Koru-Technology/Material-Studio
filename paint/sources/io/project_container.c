@@ -607,7 +607,9 @@ static bool pc_put_blob(hash128_t h, void *ud) {
 	hstore_chunk_t c;
 	u8            *payload = hstore_chunk_payload(h, &c);
 	if (payload != NULL) {
-		pc_put(c.kind, c.codec, h, c.raw_len, payload, c.comp_len);
+		u8 *recoded = hstore_chunk_recode(&c, payload); // A chunk of an older codec, as a put encodes it now
+		pc_put(c.kind, c.codec, h, c.raw_len, recoded != NULL ? recoded : payload, c.comp_len);
+		free(recoded);
 		free(payload);
 	}
 	return true;
@@ -642,6 +644,18 @@ static bool pc_local(char *path) {
 #endif
 }
 
+// Bytes of the file the last save used, less its chunks the save's trim let go (packed assets are not store blobs: the
+// save lists them itself)
+static i64 pc_live_now() {
+	i64 live = pc.live;
+	for (i32 i = 0; i < pc.count; ++i) {
+		if (pc.index[i].kind != HSTORE_ASSET && !hstore_has(pc.index[i].h)) {
+			live -= HSTORE_CHUNK_HEADER + pc.index[i].comp_len;
+		}
+	}
+	return live;
+}
+
 // Whether a save of path appends: the file is the one opened or saved last, unchanged since (its size, and its end is
 // the footer it had: no timestamps), local, and mostly live
 static bool pc_can_append(char *path) {
@@ -653,7 +667,7 @@ static bool pc_can_append(char *path) {
 	    !iron_file_read_range(path, pc.size - PC_FOOTER, PC_FOOTER, tail) || memcmp(tail, pc.footer, PC_FOOTER) != 0) {
 		return false; // Changed by something else, a failed append or a torn tail
 	}
-	return pc.live >= pc.size * 6 / 10 && pc_local(path);
+	return pc_live_now() >= pc.size * 6 / 10 && pc_local(path);
 }
 
 i32 project_container_last_save_appended = 0; // 1 when the last save appended (tests)
@@ -681,13 +695,15 @@ i64 project_container_history_budget() {
 	return b > (i64)1024 * 1024 * 1024 ? b : (i64)1024 * 1024 * 1024;
 }
 
-// A save keeps the history within its budget: the undo track thins it (history_io_thin)
+// A save keeps the history within its budget (the undo track thins it, history_io_thin), and the blobs nothing
+// references any more leave the store: a save writes what the store holds, an append lists the file's blobs it still
+// holds again (pc_carry). Without the trim they stayed: 984 MB of Book 1's 1.9 GB file were tiles nothing referenced.
 static void pc_history_fit() {
 	i64 budget = project_container_history_budget();
 	if (hstore_live_bytes() > budget) {
 		history_io_thin(budget);
-		hstore_trim(false);
 	}
+	hstore_trim(false);
 }
 
 // Clear history: steps and checkpoints go, timeline entries stay (hi-res export replays them)
@@ -697,6 +713,11 @@ void project_clear_history() {
 }
 
 static bool pc_save(char *path, bool copy) {
+	history_flush_restores(NULL); // Deferred undo restores land: the live layers are the ones shown
+	timeline_finalize(); // Pending entry states captured
+	if (!copy) {
+		pc_history_fit(); // Before the append is decided: what is live after it
+	}
 	bool                append = !copy && pc_can_append(path);
 	char               *target = append ? path : string_copy(string("%s.saving", path));
 	iron_file_stream_t *s      = iron_file_stream_open(target, append);
@@ -715,11 +736,6 @@ static bool pc_save(char *path, bool copy) {
 		iron_file_stream_write(s, header, PC_HEADER);
 	}
 
-	history_flush_restores(NULL); // Deferred undo restores land: the live layers are the ones shown
-	timeline_finalize(); // Pending entry states captured
-	if (!copy) {
-		pc_history_fit();
-	}
 	pc_writer_t w = {.s = s, .old = append ? pc.index : NULL, .old_count = append ? pc.count : 0, .no_history = copy};
 	pc_w          = &w;
 	char *uuid    = project_uuid_get();

@@ -332,7 +332,7 @@ void timeline_tiles_children(const u8 *data, u32 len, hstore_visit_fn visit, voi
 
 // The hash of a tile's bytes, the tile stored (a reference added) unless it is uniform. A tile of no texels (a texture
 // narrower than the grid) is the empty inline tile.
-static hash128_t tl_tiles_store(const u8 *p, i32 bytes, i32 bpt) {
+static hash128_t tl_tiles_store(const u8 *p, i32 bytes, i32 tw, i32 bpt) {
 	if (bytes == 0) {
 		return (hash128_t){0, HASH128_INLINE_BIT};
 	}
@@ -350,7 +350,7 @@ static hash128_t tl_tiles_store(const u8 *p, i32 bytes, i32 bpt) {
 			return h;
 		}
 	}
-	return hstore_put(HSTORE_TILE, p, bytes);
+	return hstore_put_texels(HSTORE_TILE, p, bytes, tw, bpt);
 }
 
 // Texel bytes of tile h into p, false when missing
@@ -470,7 +470,7 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 			tl_tiles_rect(tex->width, tex->height, t, &x, &y, &tw, &th);
 			for (i32 c = 0; c < channels; ++c) {
 				i32 idx      = c * per + t;
-				m.tiles[idx] = tl_tiles_store(mem + ((size_t)i * channels + c) * bytes, tw * th * bpt, bpt);
+				m.tiles[idx] = tl_tiles_store(mem + ((size_t)i * channels + c) * bytes, tw * th * bpt, tw, bpt);
 				read[idx]    = true;
 			}
 		}

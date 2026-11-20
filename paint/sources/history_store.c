@@ -1,7 +1,12 @@
 #include "global.h"
 
 // Content-addressed blobs of the stroke recorded history (stroke_rec.h): an open addressed table of entries keyed by
-// hash, payloads LZ4 compressed in RAM (T1) and appended to a journal file per project (T2). Main thread only.
+// hash, payloads compressed in RAM (T1) and appended to a journal file per project (T2). Main thread only.
+//
+// Codecs: tiles (hstore_put_texels) are split into byte planes, each the residual of the median predictor of its
+// texel's left, upper and upper left neighbours (LOCO-I), then zstd; other blobs zstd. Stored raw when that is not
+// smaller. On Book 1's paint tiles this took 47% of LZ4's bytes, and compressed faster than LZFSE or zlib. LZ4 chunks of
+// older files and journals still decode, a whole rewrite of a project encodes them again (hstore_chunk_recode).
 //
 // Chunk, the unit of the journal and of the v31 container (io/project_container.c), little endian:
 //   "CHNK" u8 kind, u8 codec, u16 flags, u64 hash.lo, u64 hash.hi, u32 raw_len, u32 comp_len, comp_len payload bytes
@@ -14,6 +19,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <zstd.h>
 #ifdef IRON_IOS
 #include <os/proc.h>
 #endif
@@ -92,7 +98,76 @@ bool hstore_chunk_header_read(const u8 *p, hstore_chunk_t *c) {
 	memcpy(&c->h.hi, p + 16, 8);
 	memcpy(&c->raw_len, p + 24, 4);
 	memcpy(&c->comp_len, p + 28, 4);
-	return c->codec <= HSTORE_CODEC_LZ4;
+	return c->codec <= HSTORE_CODEC_TEXELS;
+}
+
+#define HSTORE_ZSTD_LEVEL    1 // Smaller than 3 on 4 KB tiles, and faster
+#define HSTORE_TEXELS_HEADER 4
+
+static ZSTD_CCtx *hstore_zc = NULL;
+static ZSTD_DCtx *hstore_zd = NULL;
+
+// The texel's prediction from its left (a), upper (b) and upper left (c) neighbours: the first texel 0, the first row
+// its left one, the first column its upper one
+static inline u8 hstore_texels_predict(const u8 *p, u32 x, u32 y, u32 stride, u32 bpt) {
+	if (y == 0) {
+		return x > 0 ? p[-(i32)bpt] : 0;
+	}
+	if (x == 0) {
+		return p[-(i32)stride];
+	}
+	i32 a  = p[-(i32)bpt];
+	i32 b  = p[-(i32)stride];
+	i32 c  = p[-(i32)stride - (i32)bpt];
+	i32 mx = a > b ? a : b;
+	i32 mn = a < b ? a : b;
+	return (u8)(c >= mx ? mn : c <= mn ? mx : a + b - c);
+}
+
+// Texels (rows of w texels of bpt bytes) into bpt byte planes of prediction residuals, and back
+static void hstore_texels_split(const u8 *raw, u8 *out, u32 len, u32 w, u32 bpt) {
+	u32 h      = len / (w * bpt);
+	u32 n      = w * h;
+	u32 stride = w * bpt;
+	for (u32 y = 0; y < h; ++y) {
+		for (u32 x = 0; x < w; ++x) {
+			const u8 *p = raw + y * stride + x * bpt;
+			for (u32 k = 0; k < bpt; ++k) {
+				out[k * n + y * w + x] = (u8)(p[k] - hstore_texels_predict(p + k, x, y, stride, bpt));
+			}
+		}
+	}
+}
+
+static void hstore_texels_join(const u8 *planes, u8 *raw, u32 len, u32 w, u32 bpt) {
+	u32 h      = len / (w * bpt);
+	u32 n      = w * h;
+	u32 stride = w * bpt;
+	for (u32 y = 0; y < h; ++y) {
+		for (u32 x = 0; x < w; ++x) {
+			u8 *p = raw + y * stride + x * bpt;
+			for (u32 k = 0; k < bpt; ++k) {
+				p[k] = (u8)(planes[k * n + y * w + x] + hstore_texels_predict(p + k, x, y, stride, bpt));
+			}
+		}
+	}
+}
+
+// A zstd frame of data at out + at (malloc'd, at + the bound), 0 when it does not compress
+static u32 hstore_zstd(const void *data, u32 len, u8 *out, u32 at) {
+	if (hstore_zc == NULL) {
+		hstore_zc = ZSTD_createCCtx();
+	}
+	size_t n = ZSTD_compressCCtx(hstore_zc, out + at, ZSTD_compressBound(len), data, len, HSTORE_ZSTD_LEVEL);
+	return ZSTD_isError(n) ? 0 : (u32)n;
+}
+
+static bool hstore_unzstd(const u8 *src, u32 n, u8 *dst, u32 len) {
+	if (hstore_zd == NULL) {
+		hstore_zd = ZSTD_createDCtx();
+	}
+	size_t r = ZSTD_decompressDCtx(hstore_zd, dst, len, src, n);
+	return !ZSTD_isError(r) && r == len;
 }
 
 // The raw bytes of a payload (malloc'd, at least 1 byte), NULL when it does not decode to raw_len bytes of hash h
@@ -105,7 +180,7 @@ u8 *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify)
 		out = malloc(c->raw_len > 0 ? c->raw_len : 1);
 		memcpy(out, payload, c->raw_len);
 	}
-	else {
+	else if (c->codec == HSTORE_CODEC_LZ4) {
 		buffer_t  in  = {.buffer = (u8 *)payload, .length = c->comp_len, .capacity = c->comp_len};
 		buffer_t *dec = lz4_decode(&in, c->raw_len);
 		if (dec == NULL) {
@@ -114,6 +189,30 @@ u8 *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify)
 		out = dec->buffer;
 		free(dec);
 	}
+	else if (c->codec == HSTORE_CODEC_ZSTD) {
+		out = malloc(c->raw_len > 0 ? c->raw_len : 1);
+		if (!hstore_unzstd(payload, c->comp_len, out, c->raw_len)) {
+			free(out);
+			return NULL;
+		}
+	}
+	else {
+		u16 w = 0;
+		memcpy(&w, payload, 2);
+		u32 bpt = payload[2];
+		if (c->comp_len < HSTORE_TEXELS_HEADER || w == 0 || bpt == 0 || c->raw_len % (w * bpt) != 0) {
+			return NULL;
+		}
+		u8 *planes = malloc(c->raw_len > 0 ? c->raw_len : 1);
+		out        = malloc(c->raw_len > 0 ? c->raw_len : 1);
+		if (!hstore_unzstd(payload + HSTORE_TEXELS_HEADER, c->comp_len - HSTORE_TEXELS_HEADER, planes, c->raw_len)) {
+			free(planes);
+			free(out);
+			return NULL;
+		}
+		hstore_texels_join(planes, out, c->raw_len, w, bpt);
+		free(planes);
+	}
 	if (verify && !hash128_eq(hstore_hash(out, c->raw_len), c->h)) {
 		free(out);
 		return NULL;
@@ -121,22 +220,33 @@ u8 *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify)
 	return out;
 }
 
-// The payload of data, compressed when that makes it smaller (malloc'd)
-static u8 *hstore_encode(const void *data, u32 len, u32 *comp_len, u8 *codec) {
+// The payload of data, compressed when that makes it smaller (malloc'd). Texels of rows of w texels of bpt bytes (w 0:
+// other bytes) go through the predictor.
+static u8 *hstore_encode(const void *data, u32 len, u32 w, u32 bpt, u32 *comp_len, u8 *codec) {
 	if (len >= HSTORE_RAW_BELOW) {
-		buffer_t  in  = {.buffer = (u8 *)data, .length = len, .capacity = len};
-		buffer_t *enc = lz4_encode(&in);
-		if (enc != NULL && enc->length < len) {
-			u8 *p     = enc->buffer;
-			*comp_len = enc->length;
-			*codec    = HSTORE_CODEC_LZ4;
-			free(enc);
-			return p;
+		bool texels = w > 0 && w <= 0xffff && bpt > 0 && bpt <= 255 && len % (w * bpt) == 0;
+		u32  at     = texels ? HSTORE_TEXELS_HEADER : 0;
+		u8  *p      = malloc(at + ZSTD_compressBound(len));
+		u32  n      = 0;
+		if (texels) {
+			u8 *planes = malloc(len);
+			hstore_texels_split(data, planes, len, w, bpt);
+			n = hstore_zstd(planes, len, p, at);
+			free(planes);
+			u16 w16 = (u16)w;
+			memcpy(p, &w16, 2);
+			p[2] = (u8)bpt;
+			p[3] = 0;
 		}
-		if (enc != NULL) {
-			array_free(enc);
-			free(enc);
+		else {
+			n = hstore_zstd(data, len, p, at);
 		}
+		if (n > 0 && at + n < len) {
+			*comp_len = at + n;
+			*codec    = texels ? HSTORE_CODEC_TEXELS : HSTORE_CODEC_ZSTD;
+			return realloc(p, at + n);
+		}
+		free(p);
 	}
 	u8 *p = malloc(len > 0 ? len : 1);
 	memcpy(p, data, len);
@@ -747,7 +857,51 @@ void hstore_rebuild_refs(const hash128_t *roots, i32 n) {
 
 // ---- API (stroke_rec.h) ----
 
+// A chunk of an older codec (LZ4, or raw) encoded as a put does now, for a whole rewrite of a project: the new payload
+// (malloc'd, c takes its codec and length), NULL when it stays as it is. A tile's texel layout is not in its bytes: square
+// tiles of 4 byte texels, as the paint layers' (any other layout still decodes, its predictor is only less apt).
+u8 *hstore_chunk_recode(hstore_chunk_t *c, const u8 *payload) {
+	if (c->codec != HSTORE_CODEC_LZ4 && c->codec != HSTORE_CODEC_RAW) {
+		return NULL;
+	}
+	u8 *raw = hstore_chunk_decode(c, payload, false);
+	if (raw == NULL) {
+		return NULL;
+	}
+	u32 w = 0;
+	if (c->kind == HSTORE_TILE) {
+		u32 texels = c->raw_len / 4;
+		u32 side   = 1;
+		while ((side + 1) * (side + 1) <= texels) {
+			side++;
+		}
+		w = side * side * 4 == c->raw_len ? side : 0;
+	}
+	u32 comp_len;
+	u8  codec;
+	u8 *p = hstore_encode(raw, c->raw_len, w, 4, &comp_len, &codec);
+	free(raw);
+	if (codec == HSTORE_CODEC_RAW && c->codec == HSTORE_CODEC_RAW) {
+		free(p);
+		return NULL;
+	}
+	c->codec    = codec;
+	c->comp_len = comp_len;
+	return p;
+}
+
+static hash128_t hstore_put_as(hstore_kind_t kind, const void *data, u32 len, u32 w, u32 bpt);
+
 hash128_t hstore_put(hstore_kind_t kind, const void *data, u32 len) {
+	return hstore_put_as(kind, data, len, 0, 0);
+}
+
+// A blob of texels, rows of w texels of bpt bytes: compressed through the predictor
+hash128_t hstore_put_texels(hstore_kind_t kind, const void *data, u32 len, u32 w, u32 bpt) {
+	return hstore_put_as(kind, data, len, w, bpt);
+}
+
+static hash128_t hstore_put_as(hstore_kind_t kind, const void *data, u32 len, u32 w, u32 bpt) {
 	hash128_t       h = hstore_hash(data, len);
 	hstore_entry_t *e = hstore_find(h);
 	if (e != NULL) {
@@ -773,7 +927,7 @@ hash128_t hstore_put(hstore_kind_t kind, const void *data, u32 len) {
 	e->raw_len  = len;
 	e->refs     = 1;
 	e->tick     = ++hstore_tick;
-	e->ram      = hstore_encode(data, len, &e->comp_len, &e->codec);
+	e->ram      = hstore_encode(data, len, w, bpt, &e->comp_len, &e->codec);
 	hstore_ram += e->comp_len;
 	hstore_dirty += e->comp_len;
 	hstore_children_fn fn = hstore_children_of((u8)kind);
@@ -959,6 +1113,18 @@ void hstore_attach_project(char *path, const hstore_index_entry_t *entries, i32 
 		}
 		else if (e->disk_off >= 0 && e->src == HSTORE_SRC_JOURNAL) {
 			continue; // Its journal copy stays
+		}
+		if (e->codec != x->codec || e->comp_len != x->comp_len) { // Encoded again by the save: its bytes are the file's now
+			if (e->ram != NULL) {
+				hstore_ram -= e->comp_len;
+				if (e->disk_off < 0) {
+					hstore_dirty -= e->comp_len;
+				}
+				free(e->ram);
+				e->ram = NULL;
+			}
+			e->codec    = x->codec;
+			e->comp_len = x->comp_len;
 		}
 		if (e->ram != NULL && e->disk_off < 0) {
 			hstore_dirty -= e->comp_len; // Clean now

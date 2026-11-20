@@ -46,6 +46,7 @@ typedef struct hstore_stats {
 
 hash128_t      hstore_hash(const void *data, u32 len); // hash128 with HASH128_INLINE_BIT cleared, what hstore_put returns
 hash128_t      hstore_put(hstore_kind_t kind, const void *data, u32 len); // Adds a reference (stores it the first time)
+hash128_t      hstore_put_texels(hstore_kind_t kind, const void *data, u32 len, u32 w, u32 bpt); // As hstore_put, rows of w texels of bpt bytes
 u8            *hstore_get(hash128_t h, u32 *len);                          // malloc'd copy, the caller frees; NULL if missing
 bool           hstore_has(hash128_t h);
 void           hstore_ref(hash128_t h);

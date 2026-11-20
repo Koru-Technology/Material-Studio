@@ -2334,6 +2334,7 @@ void           bake_maps_end(void);
 void  hstore_chunk_header_write(u8 *p, u8 kind, u8 codec, u16 flags, hash128_t h, u32 raw_len, u32 comp_len);
 bool  hstore_chunk_header_read(const u8 *p, hstore_chunk_t *c);
 u8   *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify);
+u8   *hstore_chunk_recode(hstore_chunk_t *c, const u8 *payload);
 char *hstore_journal_path(char *uuid);
 void  hstore_journal_mark_saved();
 bool  hstore_journal_pending(char *uuid);
