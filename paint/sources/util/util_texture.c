@@ -122,7 +122,10 @@ void util_texture_update_pointers(ui_node_t_array_t *nodes, i32 index) {
 	}
 }
 
+static bool util_texture_deleted_pending = false;
+
 void util_texture_deleted_on_next_frame(void *_) {
+	util_texture_deleted_pending = false;
 	make_material_parse_paint_material(true);
 	util_render_make_material_preview();
 }
@@ -152,7 +155,10 @@ void util_texture_delete(asset_t *asset) {
 
 	data_delete_texture(asset->file);
 	array_splice(g_project->_->assets, index, 1);
-	sys_notify_on_next_frame(&util_texture_deleted_on_next_frame, NULL);
+	if (!util_texture_deleted_pending) { // Once for all the images Delete Unused deletes
+		util_texture_deleted_pending = true;
+		sys_notify_on_next_frame(&util_texture_deleted_on_next_frame, NULL);
+	}
 
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
 		slot_material_t *m = g_project->_->materials->buffer[i];
@@ -193,6 +199,14 @@ bool util_texture_is_used(i32 index) {
 	}
 	if (mask_stack_uses_asset(index)) {
 		return true;
+	}
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) { // A fill's image channels
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		for (i32 c = 0; l->fill != NULL && c < FILL_CHANNEL_COUNT; ++c) {
+			if (fill_source_asset(&l->fill->ch[c]) == asset) {
+				return true;
+			}
+		}
 	}
 
 	for (i32 i = 0; i < g_project->_->materials->length; ++i) {

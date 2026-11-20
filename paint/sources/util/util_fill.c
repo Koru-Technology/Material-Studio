@@ -502,8 +502,8 @@ typedef struct fill_tile {
 	shader_context_t *scon;
 	gpu_texture_t    *tex[3];
 	i32               res;
-	i32               landed; // mm_buffers_landed_count when rendered
-	bool              full;   // Its Material Maker buffers were full then
+	i32               tier;   // The lowest tier of its Material Maker buffers when rendered (mm_buffers_links_tier)
+	bool              full;   // They were full then
 	u64               keys[64];
 	i32               nkeys;
 	u64               disk_key;     // Its disk cache entry looked for (fill_tile_disk_load)
@@ -591,8 +591,8 @@ static void fill_tile_render(fill_tile_t *e, slot_material_t *m) {
 		fill_tile_parse(e, m);
 	}
 	fill_tile_renders++;
-	e->landed = mm_buffers_landed_count();
-	e->full   = e->nkeys == 0 || mm_buffers_links_tier(e->keys, e->nkeys) >= MM_BUFFERS_FULL;
+	e->tier = e->nkeys == 0 ? MM_BUFFERS_FULL : mm_buffers_links_tier(e->keys, e->nkeys);
+	e->full = e->tier >= MM_BUFFERS_FULL;
 	if (e->scon == NULL || e->scon->_->pipe == NULL) {
 		return;
 	}
@@ -756,7 +756,7 @@ static bool fill_tile_disk_load(fill_tile_t *e, u64 sig) {
 		}
 		e->sig          = sig;
 		e->full         = true;
-		e->landed       = mm_buffers_landed_count();
+		e->tier         = MM_BUFFERS_FULL;
 		e->nkeys        = 0; // Its passes are not needed
 		e->disk_written = key;
 		fill_tile_loads++;
@@ -819,8 +819,11 @@ static bool fill_tiles_update(void) {
 			e->uid = used[j];
 		}
 		u64  sig   = material_cache_graph_signature(m);
+		// Not full: rendered again once every one of its buffers has the next tier (tiny, low, full), not as each lands.
+		// A tile can take long on the GPU (600 ms for one of BookLowPoly 2's): again for each of the passes landing in
+		// the frames after an open took 35 s, frames of 700 ms.
 		bool stale = e->tex[0] == NULL || sig != e->sig || e->res != fill_tile_res() ||
-		             (!e->full && mm_buffers_landed_count() != e->landed);
+		             (!e->full && mm_buffers_links_tier(e->keys, e->nkeys) > e->tier);
 		if (!stale) {
 			if (e->save_at > 0.0 && iron_time() >= e->save_at) {
 				e->save_at = 0.0;
