@@ -267,8 +267,8 @@ private struct LayerTableCell: View {
 	}
 }
 
-// A row's long press menu. A group: Rename. A layer: Rename, Duplicate, its mask's Fill and Clear, Move to Group, Save as
-// Smart Material and Export.
+// A row's long press menu. A group: Rename and Delete. A layer: Rename, Duplicate, its mask's Fill and Clear, Move to
+// Group, Save as Smart Material, Export and Delete (its mask goes with it).
 @MainActor
 func layerMenu(for layer: LayerRow) -> UIMenu {
 	let store  = AppStore.shared
@@ -280,8 +280,12 @@ func layerMenu(for layer: LayerRow) -> UIMenu {
 		}
 	}
 	let rename = action("Rename…", "pencil") { renameLayer(layer) }
+	let delete = UIAction(title: "Delete", image: UIImage(systemName: "trash"),
+	                      attributes: p.canDelete ? .destructive : [.destructive, .disabled]) { _ in
+		store.perform { _ = app_layer_delete(layer.id) }
+	}
 	if layer.kind == .group {
-		return UIMenu(children: [rename])
+		return UIMenu(children: [rename, UIMenu(options: .displayInline, children: [delete])])
 	}
 	var sections: [UIMenuElement] = [UIMenu(options: .displayInline, children: [
 		rename,
@@ -309,6 +313,7 @@ func layerMenu(for layer: LayerRow) -> UIMenu {
 	}
 	files.append(action("Export…", "square.and.arrow.up") { store.perform { _ = app_layer_export(layer.id) } })
 	sections.append(UIMenu(options: .displayInline, children: files))
+	sections.append(UIMenu(options: .displayInline, children: [delete]))
 	return UIMenu(children: sections)
 }
 #endif
