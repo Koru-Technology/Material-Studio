@@ -6,7 +6,7 @@
 #include <string.h>
 
 // Compass and gizmo meshes are generated: x / y / z colored arrows, gizmo adds scale cubes and rotate rings.
-// The overlay shader reads only pos and col, so faces share vertices.
+// The overlay shader reads only pos and col, so faces share vertices. The axes are colored as the iPad's view cube.
 
 #define OVERLAY_ARROW_SEGS 32
 #define OVERLAY_RING_SEGS  8
@@ -44,10 +44,18 @@ static uint32_t overlay_vert(float x, float y, float z) {
 	return _overlay_v++;
 }
 
-static void overlay_color(uint32_t from, int color) {
-	int16_t *col = _overlay_col->buffer + color;
+// x, y, z as the view cube's faces (paint/native/Panels/PadViewControls.swift), linear: the shader encodes them
+static const float overlay_axis_colors[3][3] = {
+    {0.6994f, 0.2578f, 0.2474f},
+    {0.2904f, 0.5954f, 0.2684f},
+    {0.2684f, 0.4281f, 0.7549f},
+};
+
+static void overlay_color(uint32_t from, int axis) {
 	for (uint32_t v = from; v < _overlay_v; ++v) {
-		col[v * 4] = 32767;
+		for (int c = 0; c < 3; ++c) {
+			_overlay_col->buffer[v * 4 + c] = startup_quantize(overlay_axis_colors[axis][c]);
+		}
 	}
 }
 
@@ -159,7 +167,7 @@ static void overlay_cube(int axis, float dist, float half) {
 }
 
 // Quarter ring sweeping from axis s to axis t, with a diamond cross-section; s, t, n form a right-handed basis
-static void overlay_ring(int color, float *s, float *t, float *n, float radius, float thickness) {
+static void overlay_ring(int axis, float *s, float *t, float *n, float radius, float thickness) {
 	uint32_t from = _overlay_v;
 	for (int k = 0; k <= OVERLAY_RING_SEGS; ++k) {
 		float cs = startup_cos(k * 16 / OVERLAY_RING_SEGS);
@@ -182,7 +190,7 @@ static void overlay_ring(int color, float *s, float *t, float *n, float radius, 
 			overlay_quad(v + j, v + 4 + j, v + 4 + j1, v + j1);
 		}
 	}
-	overlay_color(from, color);
+	overlay_color(from, axis);
 }
 
 static void overlay_begin(mesh_data_t *md, uint32_t verts, uint32_t inds, float scale_pos) {

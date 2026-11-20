@@ -107,3 +107,25 @@ bool        app_smart_apply(int32_t index); // On top of the layers, its top lay
 bool        app_smart_delete(int32_t index);
 const char *app_smart_default_name(void);   // For the save field: the selected fill layer's material or group name
 bool        app_smart_save(const char *name); // The selected fill layer or group (next frame), one of that name is replaced
+
+// Decal tool: it stamps the selected material. A decal material is made of a project image (app_mask_image_*): its color
+// the base color, its alpha the opacity. Each other channel of it takes an image or a value.
+typedef enum {
+	APP_DECAL_BASE      = 0, // The sockets of the material output
+	APP_DECAL_OPACITY   = 1,
+	APP_DECAL_OCCLUSION = 2,
+	APP_DECAL_ROUGHNESS = 3,
+	APP_DECAL_METALLIC  = 4,
+	APP_DECAL_NORMAL    = 5, // An image only
+	APP_DECAL_EMISSION  = 6,
+	APP_DECAL_HEIGHT    = 7,
+	APP_DECAL_CHANNELS  = 8,
+} app_decal_channel_t;
+
+int32_t app_decal_image(void);                // The image the selected material's base color comes from, -1 none
+bool    app_decal_use_image(int32_t image);   // The decal material of the image (made the first time), selected
+int32_t app_decal_channel_image(int32_t channel); // The image a channel of the selected material comes from, -1 a value
+float   app_decal_channel_value(int32_t channel); // Its value, when it has no image
+// One undo step each. The base color always takes an image, the normal never a value
+bool app_decal_set_channel_image(int32_t channel, int32_t image); // -1: back to its value
+bool app_decal_set_channel_value(int32_t channel, float value);   // 0 to 1

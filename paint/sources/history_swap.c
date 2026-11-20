@@ -566,6 +566,7 @@ void history_swap_canvas(history_step_t *step) {
 		history_set_canvas(step, step->canvas);
 		step->canvas        = _canvas;
 		g_context->material = g_project->_->materials->buffer[step->material];
+		slot_material_color_to_picked(g_context->material);
 	}
 	else {
 		ui_node_canvas_t *_canvas                          = g_project->_->brushes->buffer[step->brush]->canvas;

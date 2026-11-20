@@ -4,8 +4,6 @@ import SwiftUI
 struct MaterialsSmartView: View {
 	@Environment(\.dismiss) private var dismiss
 	private var store = MaterialsStore.shared
-	@State private var saving = false
-	@State private var name   = ""
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -15,8 +13,10 @@ struct MaterialsSmartView: View {
 					.foregroundStyle(.secondary)
 				Spacer()
 				Button {
-					name   = store.smartDefaultName
-					saving = true
+					RootAlert.shared.text("Save Smart Material", action: "Save", initial: store.smartDefaultName,
+					                      message: "The selected fill layer or group, with its masks.") { name in
+						store.saveSmart(name: name)
+					}
 				} label: {
 					Label("Save Layer", systemImage: "square.and.arrow.down")
 				}
@@ -73,16 +73,6 @@ struct MaterialsSmartView: View {
 		}
 		.onDisappear {
 			store.smartShown = false
-		}
-		.alert("Save Smart Material", isPresented: $saving) {
-			TextField("Name", text: $name)
-			Button("Save") {
-				store.saveSmart(name: name)
-			}
-			.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-			Button("Cancel", role: .cancel) {}
-		} message: {
-			Text("The selected fill layer or group, with its masks.")
 		}
 	}
 

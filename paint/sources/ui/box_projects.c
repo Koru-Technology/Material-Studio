@@ -138,7 +138,8 @@ static void box_projects_show_box() {
 // The iPad shows its native projects screen (paint/native/Panels/ProjectsView.swift), the Mac a box listing them
 void box_projects_show() {
 #ifdef IRON_IOS
-	box_projects_native_shown = true;
+	box_projects_native_shown    = true;
+	box_projects_native_closable = true;
 #else
 	ui_box_show_custom(&box_projects_show_box, 600, 400, NULL, true, "");
 #endif

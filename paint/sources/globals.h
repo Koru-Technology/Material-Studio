@@ -100,6 +100,7 @@ string_array_t  *box_export_color_spaces;
 i32   box_projects_tab_index;
 char *box_projects_search = "";
 bool  box_projects_native_shown = false; // iPad: the native projects screen is up (app_api.h)
+bool  box_projects_native_closable = false; // Opened from a project: it can close back to it
 bool  box_projects_import_pending = false; // The model picked next starts a new project (box_projects_import)
 
 // ---- util/util_layer_ops.c ----

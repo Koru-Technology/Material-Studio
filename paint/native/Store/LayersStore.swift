@@ -8,7 +8,7 @@ struct LayerProps: Equatable {
 	var expanded = true
 	var isPath = false
 	var isText = false
-	var isDecal = false
+	var isDecal = false // Projected from the decal box: decal or planar fills
 	var maskID: Int32 = -1
 	var blending: Int32 = 0
 	var uvMap: Int32 = 0
@@ -36,6 +36,11 @@ struct LayerProps: Equatable {
 	var canMergeGroup = false
 
 	init() {}
+
+	// A decal layer: its fill is fixed to the decal projection
+	var isDecalLayer: Bool {
+		isFill && fill.projection == Int32(APP_FILL_PROJECTION_DECAL.rawValue)
+	}
 
 	init(_ p: app_layer_props_t) {
 		hasChildren = p.has_children

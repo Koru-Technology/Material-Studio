@@ -132,6 +132,88 @@ char *project_take_import(char *path) {
 	}
 	return string_copy(dst);
 }
+
+// A file of the open project that moved with its folder (from, to: the folder before and after, no trailing slash)
+static char *project_moved_file(char *file, char *from, char *to) {
+	char *prefix = string("%s/", from);
+	if (file == NULL || !starts_with(file, prefix)) {
+		return file;
+	}
+	return string_copy(string("%s%s", to, file + string_length(from)));
+}
+
+// The open project was renamed: its file, title and the files in its folder follow. Loaded textures are found under
+// both paths (history steps and recorded strokes keep the old one).
+static void project_follow_rename(char *from, char *to, char *path, char *name) {
+	g_project->_->filepath = string_copy(path);
+	sys_title_set(name);
+	for (i32 i = 0; i < g_project->_->assets->length; ++i) {
+		asset_t *a    = g_project->_->assets->buffer[i];
+		char    *file = project_moved_file(a->file, from, to);
+		if (file != a->file) {
+			void *image = data_cached_textures != NULL ? any_map_get(data_cached_textures, a->file) : NULL;
+			if (image != NULL) {
+				any_map_set(data_cached_textures, file, image);
+			}
+			a->file = file;
+		}
+	}
+	for (i32 i = 0; g_project->mesh_assets != NULL && i < g_project->mesh_assets->length; ++i) {
+		g_project->mesh_assets->buffer[i] = project_moved_file(g_project->mesh_assets->buffer[i], from, to);
+	}
+	for (i32 i = 0; i < g_project->_->fonts->length; ++i) {
+		slot_font_t *f = g_project->_->fonts->buffer[i];
+		f->file        = project_moved_file(f->file, from, to);
+	}
+	for (i32 i = 0; g_project->packed_assets != NULL && i < g_project->packed_assets->length; ++i) {
+		packed_asset_t *pa = g_project->packed_assets->buffer[i];
+		pa->name           = project_moved_file(pa->name, from, to);
+	}
+	g_project->envmap = project_moved_file(g_project->envmap, from, to);
+}
+
+// Renames a saved project: its folder in Documents/Projects and the files named after it (the project, its preview).
+// Asset paths saved in the project still point into the old folder: import_arm_abs finds them in the new one.
+// Returns the new path, NULL when it could not be renamed.
+char *project_rename(char *path, char *name) {
+	path            = project_canonical(path);
+	i32   slash     = string_last_index_of(path, "/");
+	char *dir       = substring(path, 0, slash);
+	char *old_name  = substring(path, slash + 1, string_length(path) - 4);
+	if (string_equals(name, "") || string_index_of(name, "/") >= 0 || starts_with(name, ".") || !iron_file_exists(path)) {
+		return NULL;
+	}
+	if (string_equals(name, old_name)) {
+		return path;
+	}
+	bool  open      = string_equals(project_canonical(g_project->_->filepath), path);
+	bool  own       = string_equals(dir, project_folder_of(old_name)); // Documents/Projects/<name>/<name>.arm
+	char *new_dir   = dir;
+	char *new_name  = name;
+	if (own) {
+		new_name = strcasecmp(name, old_name) == 0 ? name : project_free_name(name); // Only the case changes: itself
+		new_dir  = project_folder_of(new_name);
+		if (rename(dir, new_dir) != 0) {
+			return NULL;
+		}
+	}
+	char *moved     = string("%s/%s.arm", new_dir, old_name); // The project where it is now, under its old name
+	char *new_path  = string_copy(string("%s/%s.arm", new_dir, new_name));
+	if (!own && iron_file_exists(new_path)) {
+		return NULL;
+	}
+	rename(project_icon_path(moved), project_icon_path(new_path));
+	if (rename(moved, new_path) != 0) {
+		if (own) {
+			rename(new_dir, dir); // Back as it was
+		}
+		return NULL;
+	}
+	if (open) {
+		project_follow_rename(dir, new_dir, new_path, new_name);
+	}
+	return new_path;
+}
 #else
 char *project_take_import(char *path) {
 	return path;

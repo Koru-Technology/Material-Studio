@@ -257,11 +257,76 @@ bool slot_material_is_plain(slot_material_t *m) {
 	return canvas->nodes->length == 1 && string_equals(canvas->nodes->buffer[0]->type, "OUTPUT_MATERIAL_PBR");
 }
 
+static bool slot_material_value_is(ui_node_t *node, i32 input, f32 v) {
+	f32_array_t *a = node->inputs->buffer[input]->default_value;
+	return a != NULL && a->length > 0 && a->buffer[0] == v;
+}
+
+// The plain material already has the color's values
+static bool slot_material_has_color(ui_node_t *node, swatch_color_t *swatch) {
+	f32_array_t *base = node->inputs->buffer[0]->default_value;
+	f32_array_t *nor  = node->inputs->buffer[5]->default_value;
+	return base != NULL && base->length >= 3 && base->buffer[0] == (f32)(color_get_rb(swatch->base) / 255.0) &&
+	       base->buffer[1] == (f32)(color_get_gb(swatch->base) / 255.0) && base->buffer[2] == (f32)(color_get_bb(swatch->base) / 255.0) &&
+	       slot_material_value_is(node, 1, swatch->opacity) && slot_material_value_is(node, 2, swatch->occlusion) &&
+	       slot_material_value_is(node, 3, swatch->roughness) && slot_material_value_is(node, 4, swatch->metallic) &&
+	       slot_material_value_is(node, 7, swatch->height) && nor != NULL && nor->length >= 3 &&
+	       nor->buffer[0] == (f32)(color_get_rb(swatch->normal) / 255.0) && nor->buffer[1] == (f32)(color_get_gb(swatch->normal) / 255.0) &&
+	       nor->buffer[2] == (f32)(color_get_bb(swatch->normal) / 255.0);
+}
+
+// One undo step per color change. The picker applies every frame it is held: its changes go into the step it started
+static u32 slot_material_color_serial = 0;
+static f64 slot_material_color_time   = 0.0;
+
+static void slot_material_color_history() {
+	i32             top  = history_steps->length - 1 - history_redos;
+	history_step_t *last = history_undos > 0 && top >= 0 ? history_steps->buffer[top] : NULL;
+	bool            held = mouse_down("left") && sys_time() - slot_material_color_time < 0.25;
+	if (held && last != NULL && last->serial == slot_material_color_serial && last->material_uid == g_context->material->uid) {
+		return;
+	}
+	history_edit_nodes(g_context->material->canvas, CANVAS_TYPE_MATERIAL, -1);
+	history_step_t *step       = history_steps->buffer[history_steps->length - 1];
+	step->name                 = tr("Material Color");
+	slot_material_color_serial = step->serial;
+}
+
+// After an undo or redo of the material's color: the picked color shows it again
+void slot_material_color_to_picked(slot_material_t *m) {
+	swatch_color_t *c = g_context->picked_color;
+	if (c == NULL || m != g_context->material || !slot_material_is_plain(m)) {
+		return;
+	}
+	ui_node_t   *node = m->canvas->nodes->buffer[0];
+	f32_array_t *base = node->inputs->buffer[0]->default_value;
+	if (base == NULL || base->length < 3) {
+		return;
+	}
+	u8 r         = (u8)(math_max(0.0, math_min(1.0, base->buffer[0])) * 255.0 + 0.5);
+	u8 g         = (u8)(math_max(0.0, math_min(1.0, base->buffer[1])) * 255.0 + 0.5);
+	u8 b         = (u8)(math_max(0.0, math_min(1.0, base->buffer[2])) * 255.0 + 0.5);
+	c->base      = (i32)(0xff000000u | ((u32)r << 16) | ((u32)g << 8) | b);
+	c->opacity   = node->inputs->buffer[1]->default_value->buffer[0];
+	c->occlusion = node->inputs->buffer[2]->default_value->buffer[0];
+	c->roughness = node->inputs->buffer[3]->default_value->buffer[0];
+	c->metallic  = node->inputs->buffer[4]->default_value->buffer[0];
+	c->height    = node->inputs->buffer[7]->default_value->buffer[0];
+}
+
 void slot_material_apply_picked_color(swatch_color_t *swatch) {
 	if (!slot_material_is_plain(g_context->material)) {
 		return;
 	}
 	ui_node_t *node = g_context->material->canvas->nodes->buffer[0];
+	bool       same = slot_material_has_color(node, swatch);
+	if (!same) {
+		slot_material_color_history();
+	}
+	slot_material_color_time = sys_time();
+	if (same) {
+		return;
+	}
 	node->inputs->buffer[0]->default_value =
 	    f32_array_create_xyzw(color_get_rb(swatch->base) / 255.0, color_get_gb(swatch->base) / 255.0, color_get_bb(swatch->base) / 255.0, 1.0);
 	node->inputs->buffer[1]->default_value->buffer[0] = swatch->opacity;

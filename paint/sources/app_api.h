@@ -35,6 +35,7 @@ typedef struct {
 	int32_t  camera_controls; // 0 orbit, 1 rotate, 2 fly
 	int32_t  camera_type;     // 0 perspective, 1 orthographic
 	bool     projects_shown;     // iPad: the projects screen is up, the native UI shows it
+	bool     projects_closable;  // It was opened from a project and can close back to it (app_projects_close)
 	uint32_t projects_signature; // The recent projects list
 	int32_t  finger_paint;       // 0 auto (fingers paint until the pencil is used), 1 always, 2 never
 	bool     curve_editing;      // A stroke held still became a curve: its points (app_curve_point) and Confirm show
@@ -140,6 +141,11 @@ const char *app_project_icon_path(int32_t index); // Its preview, hidden next to
 void        app_project_open(int32_t index); // Closes the screen, the project loads over the next frames
 void        app_project_delete(int32_t index); // With its files
 void        app_project_new(void);           // Closes the screen
+void        app_projects_close(void);        // Back to the open project
+const char *app_project_entry(int32_t index); // Its entry in the recent list: on iOS the path relative to Documents, kept
+                                             // across installs (the projects screen's folders are keyed by it)
+const char *app_project_rename(int32_t index, const char *name); // Its folder and files, the open project follows.
+                                                                // Returns the new entry, "" when it could not be renamed
 
 // New project templates: the meshes and shapes a new project starts on
 int32_t     app_template_count(void);

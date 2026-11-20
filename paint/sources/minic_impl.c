@@ -89,6 +89,15 @@ char *script_save_path() {
 	return (char *)iron_internal_save_path();
 }
 
+// What the Files app shows on iOS (project_documents_dir), the save path elsewhere
+char *script_documents_dir() {
+#ifdef IRON_IOS
+	return project_documents_dir();
+#else
+	return script_save_path();
+#endif
+}
+
 char *project_filepath_get() {
 	return g_project->_->filepath;
 }

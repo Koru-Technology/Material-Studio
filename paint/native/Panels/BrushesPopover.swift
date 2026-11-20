@@ -8,9 +8,6 @@ struct BrushesPopover: View {
 	private var brushes = BrushesStore.shared
 	@Environment(\.dismiss) private var dismiss
 
-	@State private var naming: Naming?
-	@State private var name = ""
-	@State private var deleting: Deleting?
 
 	enum Naming: Identifiable {
 		case newGroup
@@ -89,33 +86,12 @@ struct BrushesPopover: View {
 							Label("New Brush", systemImage: "paintbrush.pointed")
 						}
 						Button {
-							name = "New Group"
-							naming = .newGroup
+							ask(.newGroup, "New Group")
 						} label: {
 							Label("New Group", systemImage: "folder.badge.plus")
 						}
 					} label: {
 						Label("New", systemImage: "plus")
-					}
-				}
-			}
-			.alert(namingTitle, isPresented: $naming.isPresent(), presenting: naming) { what in
-				TextField("Name", text: $name)
-				Button("Cancel", role: .cancel) {}
-				Button("OK") {
-					commit(what)
-				}
-				.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-			}
-			.alert(deleting?.title ?? "", isPresented: $deleting.isPresent(),
-			       presenting: deleting) { what in
-				Button("Cancel", role: .cancel) {}
-				Button("Delete", role: .destructive) {
-					store.perform {
-						switch what {
-						case .group(let g): _ = app_brush_group_delete(g.id)
-						case .brush(let b): _ = app_brush_delete(b.id)
-						}
 					}
 				}
 			}
@@ -148,8 +124,7 @@ struct BrushesPopover: View {
 				Label("Edit", systemImage: "slider.horizontal.3")
 			}
 			Button {
-				name = brush.name
-				naming = .renameBrush(brush)
+				ask(.renameBrush(brush), brush.name)
 			} label: {
 				Label("Rename", systemImage: "pencil")
 			}
@@ -174,7 +149,7 @@ struct BrushesPopover: View {
 		if !brush.builtin {
 			Divider()
 			Button(role: .destructive) {
-				deleting = .brush(brush)
+				confirm(.brush(brush))
 			} label: {
 				Label("Delete", systemImage: "trash")
 			}
@@ -193,13 +168,12 @@ struct BrushesPopover: View {
 						Label("New Brush", systemImage: "paintbrush.pointed")
 					}
 					Button {
-						name = group.name
-						naming = .renameGroup(group)
+						ask(.renameGroup(group), group.name)
 					} label: {
 						Label("Rename", systemImage: "pencil")
 					}
 					Button(role: .destructive) {
-						deleting = .group(group)
+						confirm(.group(group))
 					} label: {
 						Label("Delete", systemImage: "trash")
 					}
@@ -213,25 +187,31 @@ struct BrushesPopover: View {
 		}
 	}
 
-	private var namingTitle: String {
-		switch naming {
+	// Names a new group or renames, from the root view (RootAlert)
+	private func ask(_ what: Naming, _ initial: String) {
+		let title = switch what {
 		case .newGroup: "New Group"
 		case .renameGroup: "Rename Group"
 		case .renameBrush: "Rename Brush"
-		case nil: ""
+		}
+		RootAlert.shared.text(title, action: "OK", initial: initial) { text in
+			AppStore.shared.perform {
+				switch what {
+				case .newGroup: _ = app_brush_group_add(text)
+				case .renameGroup(let g): _ = app_brush_group_rename(g.id, text)
+				case .renameBrush(let b): _ = app_brush_rename(b.id, text)
+				}
+			}
 		}
 	}
 
-	private func commit(_ what: Naming) {
-		let text = name.trimmingCharacters(in: .whitespaces)
-		guard !text.isEmpty else {
-			return
-		}
-		store.perform {
-			switch what {
-			case .newGroup: _ = app_brush_group_add(text)
-			case .renameGroup(let g): _ = app_brush_group_rename(g.id, text)
-			case .renameBrush(let b): _ = app_brush_rename(b.id, text)
+	private func confirm(_ what: Deleting) {
+		RootAlert.shared.confirm(what.title) {
+			AppStore.shared.perform {
+				switch what {
+				case .group(let g): _ = app_brush_group_delete(g.id)
+				case .brush(let b): _ = app_brush_delete(b.id)
+				}
 			}
 		}
 	}

@@ -203,11 +203,10 @@ void next() {
 		check(string_equals(fill_test_shader(f), "ok"), "planar shader compiles");
 		check(variety(l->texpaint, -1) > 4, string("planar projects the pattern (%d)", variety(l->texpaint, -1)));
 		shot("planar");
-		check(app_layer_set_fill_projection(f, 2), "decal");
+		check(!app_layer_set_fill_projection(f, 2) && app_layer_fill_projection(f) == 3, "a fill does not become a decal");
 	}
 	else if (step == 11) {
-		check(string_equals(fill_test_shader(f), "ok"), "decal shader compiles");
-		check(average(l->texpaint, 3) < 0.99, string("a decal leaves the outside of its box clear (alpha %.2f)", average(l->texpaint, 3)));
+		check(average(l->texpaint, 3) < 0.99, string("planar leaves the outside of its box clear (alpha %.2f)", average(l->texpaint, 3)));
 		check(app_layer_set_fill_projection(f, 0), "back to uv");
 		// Every channel from a material
 		int mi = -1;

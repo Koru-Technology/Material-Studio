@@ -47,8 +47,13 @@ struct PadControls: View {
 					CurveButtons()
 						.transition(.opacity)
 				}
+				else if AppStore.shared.tool == APP_TOOL_DECAL.id {
+					DecalBar()
+						.transition(.opacity)
+				}
 			}
 			.animation(.easeOut(duration: 0.15), value: CurveStore.shared.editing)
+			.animation(.easeOut(duration: 0.15), value: AppStore.shared.tool == APP_TOOL_DECAL.id)
 		}
 		.padding(16)
 		.padPanelHost()
@@ -199,6 +204,10 @@ struct PadPanelContent: UIViewControllerRepresentable {
 	func makeUIViewController(context: Context) -> UIHostingController<AnyView> {
 		let host                                = UIHostingController(rootView: content)
 		host.sizingOptions                      = [.intrinsicContentSize]
+		// The panel stays put under the keyboard (PadPanelHost): its content must not avoid it either. Avoiding it in here
+		// laid the panel and its navigation stack out forever once the keyboard came up (a text field or a text alert
+		// with a panel open), freezing the app.
+		host.safeAreaRegions                    = []
 		host.traitOverrides.userInterfaceLevel  = .elevated
 		host.view.backgroundColor               = .clear
 		return host
@@ -386,11 +395,11 @@ struct PadPopoverBar: View {
 		GlassEffectContainer(spacing: 8) {
 			HStack(spacing: 8) {
 				item("Brushes", "paintbrush.pointed") { BrushesPopover() }
+				item("Layers", "square.3.layers.3d") { LayersView() }
 				item("Materials", "circle.circle", image: MaterialsStore.shared.selectedMaterial.flatMap { MaterialsStore.shared.thumbnail(for: $0) }) {
 					MaterialsPopover()
 				}
-				item("Layers", "square.3.layers.3d") { LayersView() }
-				item("Color", "paintpalette") { ColorPopover() }
+				item("Color", "paintpalette") { ColorPopover() } // Next to the material: the color applies to it
 			}
 		}
 	}

@@ -83,8 +83,6 @@ func closePopover(_ dismiss: DismissAction) {
 struct MaterialsProjectView: View {
 	@Environment(\.dismiss) private var dismiss
 	private var store = MaterialsStore.shared
-	@State private var renaming: MaterialRow?
-	@State private var newName = ""
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -116,18 +114,6 @@ struct MaterialsProjectView: View {
 						proxy.scrollTo(id, anchor: .center)
 					}
 				}
-			}
-		}
-		.alert("Rename Material", isPresented: $renaming.isPresent()) {
-			TextField("Name", text: $newName)
-			Button("Rename") {
-				if let m = renaming {
-					AppStore.shared.perform { app_material_rename(m.id, newName) }
-				}
-				renaming = nil
-			}
-			Button("Cancel", role: .cancel) {
-				renaming = nil
 			}
 		}
 	}
@@ -187,8 +173,9 @@ struct MaterialsProjectView: View {
 		}
 		Divider()
 		Button {
-			newName  = m.name
-			renaming = m
+			RootAlert.shared.text("Rename Material", initial: m.name) { name in
+				AppStore.shared.perform { _ = app_material_rename(m.id, name) }
+			}
 		} label: {
 			Label("Rename…", systemImage: "pencil")
 		}

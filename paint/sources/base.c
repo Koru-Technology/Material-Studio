@@ -418,6 +418,7 @@ void base_init() {
 	}
 	else if (g_config->splash_screen && has_projects && !args_use) { // Launched with a file or a script, show it right away
 		box_projects_show();
+		box_projects_native_closable = false; // No project behind it yet
 	}
 }
 

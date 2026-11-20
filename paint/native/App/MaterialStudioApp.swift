@@ -90,6 +90,7 @@ struct MacRootView: View {
 					}
 				}
 		}
+		.rootAlerts()
 		.sheet(isPresented: $app.newProjectShown) {
 			NewProjectSheet()
 		}
@@ -181,6 +182,7 @@ struct PadRootView: View {
 			.statusBarHidden()
 			.persistentSystemOverlays(.hidden)
 			.defersSystemGestures(on: .all)
+			.rootAlerts()
 			.sheet(isPresented: $app.newProjectShown) {
 				NewProjectSheet()
 			}

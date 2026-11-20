@@ -193,7 +193,7 @@ typedef struct {
 bool app_layer_fill(int32_t id, app_fill_t *out);
 bool app_layer_fill_source(int32_t id, int32_t channel, app_fill_source_t *out);
 // Undo steps each
-bool app_layer_set_fill_projection(int32_t id, int32_t projection);
+bool app_layer_set_fill_projection(int32_t id, int32_t projection); // Not to or from decal: decal layers stay decals
 bool app_layer_set_fill_kind(int32_t id, int32_t channel, int32_t kind);
 bool app_layer_set_fill_image(int32_t id, int32_t channel, int32_t image);
 bool app_layer_set_fill_image_channel(int32_t id, int32_t channel, int32_t image_channel);

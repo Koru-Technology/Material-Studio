@@ -78,6 +78,7 @@ final class AppStore: ChangeOnly {
 		ProjectsStore.shared.refresh(s)
 		CurveStore.shared.refresh(s)
 		IDPickStore.shared.refresh()
+		DecalStore.shared.refresh(tool: s.tool)
 	}
 
 

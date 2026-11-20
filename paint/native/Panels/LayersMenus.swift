@@ -50,7 +50,6 @@ struct LayerContextMenu: View {
 
 	private var store  = AppStore.shared
 	private var layers = LayersStore.shared
-	@Environment(\.renameLayer) private var rename
 
 	init(layer: LayerRow) {
 		self.layer = layer
@@ -63,7 +62,7 @@ struct LayerContextMenu: View {
 	var body: some View {
 		Section {
 			Button {
-				rename(layer)
+				renameLayer(layer)
 			} label: {
 				Label("Rename…", systemImage: "pencil")
 			}
@@ -215,34 +214,11 @@ struct LayerContextMenu: View {
 	}
 }
 
-// Rename alert, for the row menu
-extension View {
-	func layerRename(_ layer: Binding<LayerRow?>) -> some View {
-		modifier(LayerRenameAlert(layer: layer))
-	}
-}
-
-private struct LayerRenameAlert: ViewModifier {
-	@Binding var layer: LayerRow?
-	@State private var name = ""
-
-	func body(content: Content) -> some View {
-		content
-			.alert(layer?.props.isText == true ? "Edit Text" : "Rename Layer", isPresented: $layer.isPresent()) {
-				TextField("Name", text: $name)
-				Button("Cancel", role: .cancel) {
-					layer = nil
-				}
-				Button("Rename") {
-					if let id = layer?.id {
-						AppStore.shared.perform { _ = app_layer_set_name(id, name) }
-					}
-					layer = nil
-				}
-				.keyboardShortcut(.defaultAction)
-			}
-			.onChange(of: layer?.id) {
-				name = layer?.name ?? ""
-			}
+// Rename (or edit the text of) a layer, for the row menu and the settings
+@MainActor func renameLayer(_ layer: LayerRow) {
+	let text = layer.props.isText
+	RootAlert.shared.text(text ? "Edit Text" : "Rename Layer", action: text ? "Done" : "Rename", initial: layer.name,
+	                      placeholder: text ? "Text" : "Name") { name in
+		AppStore.shared.perform { _ = app_layer_set_name(layer.id, name) }
 	}
 }

@@ -829,3 +829,195 @@ bool app_smart_save(const char *name) {
 	iron_delay_idle_sleep();
 	return true;
 }
+
+// Decal tool: it stamps the selected material, projected from the view. A decal material is made of an image: its color
+// is the base color, its alpha the opacity. Each other channel takes an image or its value.
+
+static ui_node_t *app_decal_output(slot_material_t *m) {
+	return m != NULL && m->canvas != NULL ? ui_canvas_find_type(m->canvas, "OUTPUT_MATERIAL_PBR") : NULL;
+}
+
+// The image node linked into a socket of the output, NULL when the socket takes a value or another node
+static ui_node_t *app_decal_image_node(slot_material_t *m, i32 socket, i32 *from_socket) {
+	ui_node_t *out = app_decal_output(m);
+	if (out == NULL || socket >= out->inputs->length) {
+		return NULL;
+	}
+	ui_node_link_t *l = ui_canvas_input_link(m->canvas, out, socket);
+	ui_node_t      *n = l != NULL ? ui_get_node(m->canvas->nodes, l->from_id) : NULL;
+	if (n == NULL || !string_equals(n->type, "TEX_IMAGE")) {
+		return NULL;
+	}
+	if (from_socket != NULL) {
+		*from_socket = l->from_socket;
+	}
+	return n;
+}
+
+static i32 app_decal_node_image(ui_node_t *n) {
+	return n != NULL ? (i32)n->buttons->buffer[0]->default_value->buffer[0] : -1;
+}
+
+int32_t app_decal_image(void) {
+	if (!app_mat_project_ready()) {
+		return -1;
+	}
+	i32 image = app_decal_node_image(app_decal_image_node(g_context->material, APP_DECAL_BASE, NULL));
+	return image < g_project->_->assets->length ? image : -1;
+}
+
+// Made by app_decal_use_image: the base color and the opacity from the color and alpha of one image node
+static bool app_decal_made_of(slot_material_t *m, i32 image) {
+	i32        base_from    = -1;
+	i32        opacity_from = -1;
+	ui_node_t *base         = app_decal_image_node(m, APP_DECAL_BASE, &base_from);
+	ui_node_t *opacity      = app_decal_image_node(m, APP_DECAL_OPACITY, &opacity_from);
+	return base != NULL && base == opacity && base_from == 0 && opacity_from == 1 && app_decal_node_image(base) == image;
+}
+
+static ui_node_t *app_decal_add_image_node(slot_material_t *m, i32 image, i32 y) {
+	ui_node_t *n = ui_nodes_make_node(nodes_material_get_node_t("TEX_IMAGE"), m->nodes, m->canvas);
+	any_array_push(m->canvas->nodes, n);
+	n->buttons->buffer[0]->default_value = f32_array_create_x(image);
+	n->x                                 = 72;
+	n->y                                 = y;
+	return n;
+}
+
+static void app_decal_link(slot_material_t *m, ui_node_t *from, i32 from_socket, ui_node_t *to, i32 to_socket) {
+	ui_node_link_t *l = ALLOC_INIT(ui_node_link_t, {.id          = ui_next_link_id(m->canvas->links),
+	                                                .from_id     = from->id,
+	                                                .from_socket = from_socket,
+	                                                .to_id       = to->id,
+	                                                .to_socket   = to_socket});
+	any_array_push(m->canvas->links, l);
+}
+
+// The link into a socket goes, and the node it came from when nothing else reads it
+static void app_decal_unlink(slot_material_t *m, ui_node_t *out, i32 socket) {
+	ui_node_link_t *l = ui_canvas_input_link(m->canvas, out, socket);
+	if (l == NULL) {
+		return;
+	}
+	ui_node_t *from = ui_get_node(m->canvas->nodes, l->from_id);
+	array_remove(m->canvas->links, l);
+	for (i32 i = 0; i < m->canvas->links->length; ++i) {
+		if (m->canvas->links->buffer[i]->from_id == l->from_id) {
+			return;
+		}
+	}
+	if (from != NULL) {
+		ui_remove_node(from, m->canvas);
+	}
+}
+
+// The material painted with is made again, the others only their preview
+static void app_decal_changed(slot_material_t *m) {
+	draw_saved_t gpu = draw_suspend();
+	if (m == g_context->material) {
+		slot_material_refresh();
+	}
+	else {
+		util_render_make_material_preview();
+	}
+	draw_resume(gpu);
+	project_modified = true;
+	iron_delay_idle_sleep();
+}
+
+bool app_decal_use_image(int32_t image) {
+	if (!app_mat_project_ready() || image < 0 || image >= g_project->_->assets->length) {
+		return false;
+	}
+	for (i32 i = 0; i < g_project->_->materials->length; ++i) { // Made before: picked again
+		slot_material_t *m = g_project->_->materials->buffer[i];
+		if (app_decal_made_of(m, image)) {
+			return app_material_select(m->id);
+		}
+	}
+	asset_t         *asset = g_project->_->assets->buffer[image];
+	slot_material_t *m     = slot_material_create(g_project->_->materials->buffer[0]->data, NULL);
+	char            *name  = substring(asset->name, 0, string_last_index_of(asset->name, ".") >= 0 ? string_last_index_of(asset->name, ".") : string_length(asset->name));
+	m->canvas->name        = string_copy(slot_material_unique_name(m->canvas, name));
+	ui_node_t *out         = app_decal_output(m);
+	for (i32 i = 0; i < m->canvas->nodes->length; ++i) { // Only the output and the image
+		ui_node_t *n = m->canvas->nodes->buffer[i];
+		if (n != out) {
+			ui_remove_node(n, m->canvas);
+			--i;
+		}
+	}
+	ui_node_t *n = app_decal_add_image_node(m, image, 100);
+	app_decal_link(m, n, 0, out, APP_DECAL_BASE);
+	app_decal_link(m, n, 1, out, APP_DECAL_OPACITY);
+	any_array_push(g_project->_->materials, m);
+	draw_saved_t gpu = draw_suspend();
+	context_set_material(m);
+	util_render_make_material_preview();
+	draw_resume(gpu);
+	history_new_material();
+	iron_delay_idle_sleep();
+	return true;
+}
+
+int32_t app_decal_channel_image(int32_t channel) {
+	if (!app_mat_project_ready() || channel < 0 || channel >= APP_DECAL_CHANNELS) {
+		return -1;
+	}
+	return app_decal_node_image(app_decal_image_node(g_context->material, channel, NULL));
+}
+
+float app_decal_channel_value(int32_t channel) {
+	ui_node_t *out = app_mat_project_ready() ? app_decal_output(g_context->material) : NULL;
+	if (out == NULL || channel < 0 || channel >= APP_DECAL_CHANNELS || channel >= out->inputs->length) {
+		return 0.0;
+	}
+	f32_array_t *v = out->inputs->buffer[channel]->default_value;
+	return v != NULL && v->length > 0 ? v->buffer[0] : 0.0;
+}
+
+bool app_decal_set_channel_image(int32_t channel, int32_t image) {
+	slot_material_t *m   = app_mat_project_ready() ? g_context->material : NULL;
+	ui_node_t       *out = app_decal_output(m);
+	if (out == NULL || channel < 0 || channel >= APP_DECAL_CHANNELS || image < -1 || image >= g_project->_->assets->length ||
+	    (channel == APP_DECAL_BASE && image < 0) || app_decal_channel_image(channel) == image) {
+		return false;
+	}
+	history_edit_nodes(m->canvas, CANVAS_TYPE_MATERIAL, -1);
+	i32 decal = app_decal_image();
+	app_decal_unlink(m, out, channel);
+	if (image >= 0) {
+		ui_node_t *n = NULL; // An image node of that image already there, its other outputs read
+		for (i32 i = 0; i < m->canvas->nodes->length && n == NULL; ++i) {
+			ui_node_t *c = m->canvas->nodes->buffer[i];
+			if (string_equals(c->type, "TEX_IMAGE") && app_decal_node_image(c) == image) {
+				n = c;
+			}
+		}
+		if (n == NULL) {
+			n = app_decal_add_image_node(m, image, 100 + 180 * channel);
+		}
+		// The decal's own image gives its opacity by its alpha, another image by its color (a gray map)
+		app_decal_link(m, n, channel == APP_DECAL_OPACITY && image == decal ? 1 : 0, out, channel);
+	}
+	app_decal_changed(m);
+	return true;
+}
+
+bool app_decal_set_channel_value(int32_t channel, float value) {
+	slot_material_t *m   = app_mat_project_ready() ? g_context->material : NULL;
+	ui_node_t       *out = app_decal_output(m);
+	if (out == NULL || channel <= APP_DECAL_BASE || channel == APP_DECAL_NORMAL || channel >= APP_DECAL_CHANNELS ||
+	    channel >= out->inputs->length || ui_canvas_input_link(m->canvas, out, channel) != NULL) {
+		return false;
+	}
+	f32_array_t *v = out->inputs->buffer[channel]->default_value;
+	value          = math_max(0.0, math_min(1.0, value));
+	if (v == NULL || v->length == 0 || v->buffer[0] == value) {
+		return false;
+	}
+	history_edit_nodes(m->canvas, CANVAS_TYPE_MATERIAL, -1);
+	v->buffer[0] = value;
+	app_decal_changed(m);
+	return true;
+}

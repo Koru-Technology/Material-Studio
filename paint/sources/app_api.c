@@ -119,6 +119,7 @@ void app_get_state(app_state_t *out) {
 	out->camera_controls = g_context->camera_controls;
 	out->camera_type     = g_context->camera_type;
 	out->projects_shown  = box_projects_native_shown;
+	out->projects_closable = box_projects_native_closable;
 	out->finger_paint    = g_config->finger_paint;
 	out->curve_editing     = util_curve_stroke_active();
 	out->curve_point_count = util_curve_stroke_count();
@@ -471,6 +472,38 @@ void app_project_new(void) {
 		return;
 	}
 	box_projects_new();
+}
+
+const char *app_project_entry(int32_t index) {
+	if (index < 0 || index >= app_project_count()) {
+		return "";
+	}
+	return app_str(g_config->recent_projects->buffer[index]);
+}
+
+const char *app_project_rename(int32_t index, const char *name) {
+#ifdef IRON_IOS
+	if (index < 0 || index >= app_project_count() || name == NULL) {
+		return "";
+	}
+	char *path = project_rename(box_projects_recent_path(index), string_copy((char *)name));
+	if (path == NULL) {
+		return "";
+	}
+	char *entry = string_copy(project_recent_entry(path));
+	g_config->recent_projects->buffer[index] = entry;
+	config_save();
+	iron_delay_idle_sleep();
+	return app_str(entry);
+#else
+	return "";
+#endif
+}
+
+void app_projects_close(void) {
+	box_projects_native_shown   = false;
+	box_projects_import_pending = false;
+	iron_delay_idle_sleep();
 }
 
 int32_t app_template_count(void) {

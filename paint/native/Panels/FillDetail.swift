@@ -80,13 +80,14 @@ struct FillSections: View {
 	@ViewBuilder
 	private func projectionSection(_ f: FillInfo) -> some View {
 		Section {
-			Picker("Projection", selection: Binding(get: { f.projection }, set: { v in
-				AppStore.shared.perform { _ = app_layer_set_fill_projection(layer.id, v) }
-			})) {
-				Text("UV").tag(Int32(APP_FILL_PROJECTION_UV.rawValue))
-				Text("Tri-planar").tag(Int32(APP_FILL_PROJECTION_TRIPLANAR.rawValue))
-				Text("Planar").tag(Int32(APP_FILL_PROJECTION_PLANAR.rawValue))
-				Text("Decal").tag(Int32(APP_FILL_PROJECTION_DECAL.rawValue))
+			if !layer.props.isDecalLayer { // A decal stays a decal
+				Picker("Projection", selection: Binding(get: { f.projection }, set: { v in
+					AppStore.shared.perform { _ = app_layer_set_fill_projection(layer.id, v) }
+				})) {
+					Text("UV").tag(Int32(APP_FILL_PROJECTION_UV.rawValue))
+					Text("Tri-planar").tag(Int32(APP_FILL_PROJECTION_TRIPLANAR.rawValue))
+					Text("Planar").tag(Int32(APP_FILL_PROJECTION_PLANAR.rawValue))
+				}
 			}
 			FillPairSlider(layer: layer, title: "Scale", x: f.scaleX, y: f.scaleY, kinds: (APP_LAYER_VALUE_FILL_SCALE, APP_LAYER_VALUE_FILL_SCALE_X, APP_LAYER_VALUE_FILL_SCALE_Y),
 			               range: 0.05...16)
@@ -97,7 +98,7 @@ struct FillSections: View {
 				FillValueSlider(layer: layer, title: "Hardness", value: f.hardness, kind: APP_LAYER_VALUE_FILL_HARDNESS.rawValue, range: 0...1) { "\(Int(($0 * 100).rounded()))%" }
 			}
 		} header: {
-			Text("Fill")
+			Text(layer.props.isDecalLayer ? "Decal" : "Fill")
 		}
 	}
 }

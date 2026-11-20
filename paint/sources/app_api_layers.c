@@ -624,6 +624,9 @@ bool app_layer_set_fill_projection(int32_t id, int32_t projection) {
 	if (l == NULL || projection < 0 || projection >= FILL_PROJECTION_COUNT || l->fill->projection == projection) {
 		return false;
 	}
+	if (l->fill->projection == FILL_PROJECTION_DECAL || projection == FILL_PROJECTION_DECAL) { // Decal layers stay decals
+		return false;
+	}
 	app_fill_edit_begin(l);
 	bool box = projection == FILL_PROJECTION_DECAL || projection == FILL_PROJECTION_PLANAR;
 	if (box && l->fill->projection != FILL_PROJECTION_DECAL && l->fill->projection != FILL_PROJECTION_PLANAR && mat4_get_scale(l->decal_mat).x <= 1.0) {

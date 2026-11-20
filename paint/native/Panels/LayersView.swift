@@ -104,7 +104,6 @@ struct LayersList: View {
 
 	private var store  = AppStore.shared
 	private var layers = LayersStore.shared
-	@State private var renaming: LayerRow?
 	@State private var compact = false
 
 	init(pushesDetail: Bool) {
@@ -116,8 +115,6 @@ struct LayersList: View {
 			.listStyle(.plain)
 			.environment(\.layersCompact, compact)
 			.onGeometryChange(for: Bool.self) { $0.size.width < 250 } action: { compact = $0 }
-			.layerRename($renaming)
-			.environment(\.renameLayer) { renaming = $0 }
 #if os(macOS)
 			.safeAreaInset(edge: .bottom) {
 				HStack(spacing: 12) {
@@ -294,7 +291,7 @@ struct LayerRowView: View {
 								.font(.system(size: 9, weight: .bold))
 								.foregroundStyle(.white)
 								.padding(2)
-								.background(.tint, in: .circle)
+								.background(layer.props.isDecalLayer ? AnyShapeStyle(ToolGroup.place.color) : AnyShapeStyle(.tint), in: .circle)
 								.offset(x: 3, y: 3)
 						}
 					}
@@ -316,7 +313,7 @@ struct LayerRowView: View {
 		if layer.props.isPath {
 			return "scribble"
 		}
-		if layer.props.isDecal {
+		if layer.props.isDecalLayer {
 			return "seal.fill"
 		}
 		if layer.isFill {
@@ -423,7 +420,6 @@ private struct Checkerboard: View {
 
 extension EnvironmentValues {
 	@Entry var layersCompact = false
-	@Entry var renameLayer: (LayerRow) -> Void = { _ in }
 	@Entry var openLayerDetail: (Int32) -> Void = { _ in }
 	@Entry var openMaskEffect: ((Int32, Int32) -> Void)? = nil // Pushes an effect's settings, nil: no navigation stack (Mac)
 }

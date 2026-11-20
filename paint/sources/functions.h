@@ -927,6 +927,7 @@ void slot_material_delete_unused();
 void slot_material_new_on_next_frame(void *_);
 bool slot_material_is_plain(slot_material_t *m);
 void slot_material_apply_picked_color(swatch_color_t *swatch);
+void slot_material_color_to_picked(slot_material_t *m);
 void slot_material_new_from_swatch(swatch_color_t *swatch);
 void slot_material_refresh();
 void slot_material_duplicate(i32 i);
@@ -1985,6 +1986,7 @@ void              ui_box_show_custom2(void *commands, i32 mw, i32 mh, void *on_h
 bool              script_box_shown();
 f32               script_frame_time();
 char             *script_save_path();
+char             *script_documents_dir();
 char             *project_filepath_get();
 char             *project_basepath_get();
 void              project_filepath_set(char *s);
@@ -2205,6 +2207,7 @@ char                  *project_take_import(char *path);
 char                  *project_recent_entry(char *path);
 #ifdef IRON_IOS
 char                  *project_documents_dir();
+char                  *project_rename(char *path, char *name);
 char                  *project_folder();
 char                  *project_subfolder(char *name);
 #endif
