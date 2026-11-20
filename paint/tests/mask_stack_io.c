@@ -80,17 +80,17 @@ void next() {
 		s1 = effects(mask);
 		script_mask_set_effect_param(mask, 1, 2, 0.5); // Gamma
 		s2 = effects(mask);
-		check(script_mask_add_effect(mask, 1, 0) == 0, "fill goes to the bottom");
+		check(script_mask_add_effect(mask, 1, 0) == 1, "fill asked for the bottom goes above the paint, always the bottom");
 		s3 = effects(mask);
-		script_mask_set_effect_param(mask, 0, 0, 0.25); // Value
+		script_mask_set_effect_param(mask, 1, 0, 0.25); // Value
 		s4 = effects(mask);
-		script_mask_set_effect(mask, 0, 1, 0.75, 1); // Multiply
+		script_mask_set_effect(mask, 1, 1, 0.75, 1); // Multiply
 		s5 = effects(mask);
 
 		check(mask_stack_count(mask) == 3, string("three effects (%d)", mask_stack_count(mask)));
-		check(script_mask_effect_type(mask, 0) == 1 && script_mask_effect_type(mask, 1) == 0 && script_mask_effect_type(mask, 2) == 2,
-		      "fill, paint, levels from the bottom");
-		check(script_mask_get_effect_param(mask, 0, 0) == 0.25 && script_mask_get_effect_param(mask, 2, 2) == 0.5, "params read back");
+		check(script_mask_effect_type(mask, 0) == 0 && script_mask_effect_type(mask, 1) == 1 && script_mask_effect_type(mask, 2) == 2,
+		      "paint, fill, levels from the bottom");
+		check(script_mask_get_effect_param(mask, 1, 0) == 0.25 && script_mask_get_effect_param(mask, 2, 2) == 0.5, "params read back");
 		check(!string_equals(s4, s5) && !string_equals(s3, s4) && !string_equals(s1, s2), "every edit changes the packed effects");
 	}
 	else if (step == 2) {
@@ -156,7 +156,7 @@ void next() {
 		if (mask != NULL && plain != NULL && dup != NULL) {
 			char *e = effects(mask);
 			check(string_equals(e, s5), string("effects survive save and load (%s)", e));
-			check(mask_stack_count(mask) == 3 && script_mask_get_effect_param(mask, 0, 0) == 0.25, "loaded stack reads back");
+			check(mask_stack_count(mask) == 3 && script_mask_get_effect_param(mask, 1, 0) == 0.25, "loaded stack reads back");
 			check(script_mask_get_effect_param(dup, 2, 2) == 2.0, "duplicate's own edit survives");
 			check(plain->mask_effects == NULL, "a mask without a stack loads without one");
 		}

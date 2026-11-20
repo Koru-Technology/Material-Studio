@@ -176,7 +176,7 @@ bool app_mask_move_effect(int32_t id, int32_t from, int32_t to) {
 	slot_layer_t *m = app_mask_by_id(id);
 	i32           f = app_mask_stack_index(m, from);
 	i32           t = app_mask_stack_index(m, to);
-	if (f < 0 || t < 0 || f == t) {
+	if (f < 0 || t < 0 || f == t || !mask_stack_can_move(m, f, t)) { // The paint stays at the bottom
 		return false;
 	}
 	app_mask_history(m);

@@ -39,7 +39,9 @@ struct FillEffectsBar: View {
 		let effects = mask?.effects ?? [] // Top first
 		GlassEffectContainer(spacing: 6) {
 			HStack(spacing: 6) {
-				addButton(mask: mask, at: effects.count) // Applied first: below them all
+				if effects.last?.isPaint != true { // Nothing goes below the paint, always applied first
+					addButton(mask: mask, at: effects.count)
+				}
 				ForEach(Array(effects.indices.reversed()), id: \.self) { i in
 					if let mask {
 						effectButton(mask: mask, index: i, effect: effects[i])

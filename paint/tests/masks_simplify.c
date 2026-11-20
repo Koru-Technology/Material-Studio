@@ -2,7 +2,7 @@
 
 // The simpler masks of the iPad layers panel: a new fill layer comes with a white mask, one undo removes both; a
 // material applied as a new layer goes on top of the stack, selected, with its mask; effects go in a mask at any
-// position (app_mask_insert_effect, 0 the top); a dragged layer goes beside the one it is dropped below, never into a
+// position above the paint, which stays at the bottom (app_mask_insert_effect, 0 the top); a dragged layer goes beside the one it is dropped below, never into a
 // group or a layer (app_layer_move_below_flat), its mask with it.
 
 int fails  = 0;
@@ -95,10 +95,13 @@ void next() {
 		check(mask_of(top) >= 0, "with its mask");
 		int m = mask_of(top);
 		int n = app_mask_effect_count(m);
-		check(app_mask_insert_effect(m, 2, n) == n, "levels at the bottom");
-		check(app_mask_effect_type(m, n) == 2, "applied first");
+		check(app_mask_effect_type(m, n - 1) == 0, "the paint at the bottom");
+		check(app_mask_insert_effect(m, 2, n) == n - 1, "levels asked below the paint goes above it");
+		check(app_mask_effect_type(m, n) == 0 && app_mask_effect_type(m, n - 1) == 2, "the paint still at the bottom");
+		check(!app_mask_move_effect(m, n - 1, n), "nothing moves below the paint");
+		check(!app_mask_move_effect(m, n, 0), "the paint does not move up");
 		check(app_mask_insert_effect(m, 3, 0) == 0 && app_mask_effect_type(m, 0) == 3, "invert on top");
-		check(app_mask_effect_type(m, n + 1) == 2, "levels still at the bottom");
+		check(app_mask_effect_type(m, n + 1) == 0, "the paint still at the bottom");
 		app_undo();
 		check(app_mask_effect_type(m, 0) != 3, "undo: the invert goes");
 		// A group with a layer in it, to drop beside

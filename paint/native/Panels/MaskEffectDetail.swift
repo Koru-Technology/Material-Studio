@@ -62,6 +62,7 @@ struct MaskEffectsSection: View {
 				.foregroundStyle(.tertiary)
 #endif
 		}
+		.moveDisabled(effect.isPaint) // Always at the bottom
 		.swipeActions(edge: .trailing) {
 			if !effect.isPaint {
 				Button(role: .destructive) {
@@ -182,6 +183,7 @@ struct MaskEffectDetailView: View {
 			}
 		}
 		.formStyle(.grouped)
+		.contentMargins(.top, 8, for: .scrollContent) // The first section right under the title
 		.navigationTitle(effect?.name ?? "Effect")
 #if os(iOS)
 		.navigationBarTitleDisplayMode(.inline)

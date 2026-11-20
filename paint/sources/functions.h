@@ -1326,6 +1326,7 @@ bool                 mask_stack_is_trivial(slot_layer_t *m);
 f32_array_t         *mask_stack_copy_effects(f32_array_t *effects);
 i32                  mask_stack_add(slot_layer_t *m, i32 type, i32 index);
 bool                 mask_stack_remove(slot_layer_t *m, i32 i);
+bool                 mask_stack_can_move(slot_layer_t *m, i32 from, i32 to);
 void                 mask_stack_move(slot_layer_t *m, i32 from, i32 to);
 void                 mask_stack_mark_dirty(slot_layer_t *m);
 gpu_texture_t       *mask_stack_get_scratch(i32 w, i32 h);

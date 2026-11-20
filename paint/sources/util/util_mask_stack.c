@@ -427,6 +427,14 @@ i32 mask_stack_add(slot_layer_t *m, i32 type, i32 index) {
 	if (index < 0 || index > n) {
 		index = n;
 	}
+	// The paint is always at the bottom: it goes there, the others above it
+	i32 paint = mask_stack_paint_index(m);
+	if (type == MASK_EFFECT_PAINT) {
+		index = 0;
+	}
+	else if (paint >= 0 && index <= paint) {
+		index = paint + 1;
+	}
 	f32_array_t *a = f32_array_create((n + 1) * MASK_EFFECT_STRIDE);
 	for (i32 i = 0, j = 0; i <= n; ++i) {
 		f32 *dst = a->buffer + i * MASK_EFFECT_STRIDE;
@@ -463,9 +471,18 @@ bool mask_stack_remove(slot_layer_t *m, i32 i) {
 }
 
 // Moves effect from to position to (both indices into the current stack)
-void mask_stack_move(slot_layer_t *m, i32 from, i32 to) {
-	i32 n = mask_stack_count(m);
+// Refused when the paint would leave the bottom or another effect go below it
+bool mask_stack_can_move(slot_layer_t *m, i32 from, i32 to) {
+	i32 n     = mask_stack_count(m);
+	i32 paint = mask_stack_paint_index(m);
 	if (from < 0 || from >= n || to < 0 || to >= n || from == to) {
+		return false;
+	}
+	return from == paint ? to == 0 : paint < 0 || to > paint;
+}
+
+void mask_stack_move(slot_layer_t *m, i32 from, i32 to) {
+	if (!mask_stack_can_move(m, from, to)) {
 		return;
 	}
 	f32 tmp[MASK_EFFECT_STRIDE];
