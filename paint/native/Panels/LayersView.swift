@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 // The layers panel: the iPad layers popover (a navigation stack, a layer's settings push in) and the Mac sidebar
 // (the settings show in the inspector). Rows narrow down with the width they get.
@@ -60,7 +59,7 @@ private struct LayersNavigation: View {
 
 	var body: some View {
 		NavigationStack(path: $state.path) {
-			LayersList(pushesDetail: true)
+			LayersTable(ids: LayersStore.shared.visibleLayers.map(\.id)) // LayersTable.swift: the system's drag to reorder
 				.navigationTitle("Layers")
 				.navigationBarTitleDisplayMode(.inline)
 				.toolbar {
@@ -106,7 +105,6 @@ struct LayersList: View {
 
 	private var store  = AppStore.shared
 	private var layers = LayersStore.shared
-	private var drag   = LayerDrag.shared
 	@State private var compact = false
 
 	init(pushesDetail: Bool) {
@@ -163,63 +161,32 @@ struct LayersList: View {
 
 	private var rows: some View {
 		ForEach(layers.visibleLayers) { layer in
-			if drag.grouping == layer.id { // Held over it: the group it would go in
-				LayerGroupPreviewRow()
-					.padding(.leading, CGFloat(layer.depth) * (compact ? 10 : 14))
-					.onDrop(of: [.text], delegate: LayerDropDelegate(row: previewRow))
-#if os(iOS)
-					.listRowBackground(Color.accentColor.opacity(0.12))
-					.listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-#endif
-					.transition(.opacity)
-			}
 			LayerRowView(layer: layer, pushesDetail: pushesDetail)
-				.padding(.leading, drag.grouping == layer.id ? (compact ? 10 : 14) : 0)
 				.tag(layer.id)
 				.contextMenu {
 					LayerContextMenu(layer: layer)
 				}
-				.onDrag {
-					drag.begin(layer.id)
-					return NSItemProvider(object: "\(layer.id)" as NSString)
-				}
-				.onDrop(of: [.text], delegate: LayerDropDelegate(row: layer))
-				.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { drag.rowHeights[layer.id] = $0 }
-				.overlay(alignment: .top) {
-					if drag.mark(for: layer.id) == .above {
-						dropLine
-					}
-				}
-				.overlay(alignment: .bottom) {
-					if drag.mark(for: layer.id) == .below {
-						dropLine
-					}
-				}
-#if os(iOS)
-				.listRowBackground(rowBackground(layer))
-				.listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-#endif
+		}
+		.onMove { from, to in
+			move(from, to)
 		}
 	}
 
-	private var previewRow: LayerRow {
-		LayerRow(id: LayerDrag.previewGroupID, parentID: -1, depth: 0, kind: .group, visible: true, selected: false, isFill: false,
-		         opacity: 1, name: "")
-	}
-
-	private var dropLine: some View {
-		Capsule()
-			.fill(Color.accentColor)
-			.frame(height: 3)
-			.allowsHitTesting(false)
-	}
-
-	// Selected, or a group a dragged layer would go into
-	private func rowBackground(_ layer: LayerRow) -> Color {
-		if drag.mark(for: layer.id) == .into && layer.kind == .group {
-			return Color.accentColor.opacity(0.35)
+	// A row dropped before visible row `to`: above that row, beside it in its group (or none); at the end, below the last
+	private func move(_ from: IndexSet, _ to: Int) {
+		let rows = layers.visibleLayers
+		guard let source = from.first, from.count == 1, to != source, to != source + 1 else {
+			return
 		}
-		return layer.selected || layer.props.maskID == layers.selectedLayerID ? Color.accentColor.opacity(0.22) : Color.clear
+		let id = rows[source].id
+		store.perform {
+			if to < rows.count {
+				_ = app_layer_drop(id, rows[to].id, Int32(APP_LAYER_DROP_ABOVE.rawValue))
+			}
+			else if let last = rows.last {
+				_ = app_layer_drop(id, last.id, Int32(APP_LAYER_DROP_BELOW.rawValue))
+			}
+		}
 	}
 }
 

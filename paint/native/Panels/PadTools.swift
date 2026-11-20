@@ -24,20 +24,22 @@ struct PadBrushControls: View {
 	var body: some View {
 		let controls = Tool.selected(store.tool)?.controls ?? []
 		GlassEffectContainer(spacing: 10) {
-			VStack(spacing: 10) {
+			HStack(spacing: 10) { // Bottom middle, lying down
 				if controls.contains(.radius) {
 					VerticalSlider(title: "Radius", value: store.brushRadius, range: 0.01...2, symbol: "circle.fill", format: radiusText,
-					               showsBrush: true) { v in
+					               showsBrush: true, horizontal: true) { v in
 						app_set_brush_radius(v)
 					}
 				}
 				if controls.contains(.opacity) {
-					VerticalSlider(title: "Opacity", value: store.brushOpacity, range: 0...1, symbol: "circle.lefthalf.filled") { v in
+					VerticalSlider(title: "Opacity", value: store.brushOpacity, range: 0...1, symbol: "circle.lefthalf.filled",
+					               horizontal: true) { v in
 						app_set_brush_opacity(v)
 					}
 				}
 				if controls.contains(.hardness) {
-					VerticalSlider(title: "Hardness", value: store.brushHardness, range: 0...1, symbol: "smallcircle.filled.circle") { v in
+					VerticalSlider(title: "Hardness", value: store.brushHardness, range: 0...1, symbol: "smallcircle.filled.circle",
+					               horizontal: true) { v in
 						app_set_brush_hardness(v)
 					}
 				}
@@ -45,7 +47,6 @@ struct PadBrushControls: View {
 					SymmetryButton()
 				}
 			}
-			.frame(width: 44) // As wide as the symmetry button also without it: the sliders stay in place
 		}
 		.foregroundStyle(.primary)
 	}
@@ -91,7 +92,7 @@ struct SymmetryButton: View {
 		}
 		.glassEffect(popovers.shown == "Symmetry" ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
 		.accessibilityLabel("Symmetry")
-		.padPopover("Symmetry", arrowEdge: .trailing) {
+		.padPopover("Symmetry") { // Above the button, at the bottom of the screen
 			SymmetryPanel()
 		}
 	}
@@ -299,24 +300,27 @@ struct VerticalSlider: View {
 	let symbol: String
 	var format: (Float) -> String = percent
 	var showsBrush = false
+	var horizontal = false // Lying down, filled from the left: the brush settings at the bottom
 	let set: (Float) -> Void
 
 	@State private var start: Float?
-	@State private var height: CGFloat = 0
+	@State private var length: CGFloat = 0
 
 	private let width: CGFloat = 30 // The track and its padding
+	private let long: CGFloat  = 150
 
 	var body: some View {
 		GeometryReader { geo in
-			let f = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
-			ZStack(alignment: .bottom) {
+			let f    = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+			let size = horizontal ? geo.size.width : geo.size.height
+			ZStack(alignment: horizontal ? .leading : .bottom) {
 				Capsule().fill(.clear)
 				Capsule()
 					.fill(Color.accentColor.opacity(0.55))
-					.frame(height: max(12, geo.size.height * f))
+					.frame(width: horizontal ? max(12, size * f) : nil, height: horizontal ? nil : max(12, size * f))
 				Image(systemName: symbol)
 					.font(.system(size: 10))
-					.padding(.bottom, 8)
+					.padding(horizontal ? .leading : .bottom, 8)
 			}
 			.contentShape(Capsule())
 			.gesture(DragGesture(minimumDistance: 0)
@@ -326,7 +330,8 @@ struct VerticalSlider: View {
 					}
 					let base   = start ?? value
 					start      = base
-					let delta  = Float(-g.translation.height / geo.size.height) * (range.upperBound - range.lowerBound)
+					let moved  = horizontal ? g.translation.width : -g.translation.height
+					let delta  = Float(moved / size) * (range.upperBound - range.lowerBound)
 					let v      = min(range.upperBound, max(range.lowerBound, base + delta))
 					AppStore.shared.perform { set(v) }
 				}
@@ -337,18 +342,20 @@ struct VerticalSlider: View {
 					}
 				})
 		}
-		.frame(width: width - 12, height: 150)
+		.frame(width: horizontal ? long : width - 12, height: horizontal ? width - 12 : long)
 		.padding(6)
 		.glassEffect(.regular.interactive(), in: .capsule)
 		.accessibilityElement()
 		.accessibilityLabel(title)
 		.accessibilityValue(format(value))
-		.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-		.overlay(alignment: .bottomTrailing) {
+		.onGeometryChange(for: CGFloat.self) { horizontal ? $0.size.width : $0.size.height } action: { length = $0 }
+		.overlay(alignment: horizontal ? .topLeading : .bottomTrailing) {
 			if start != nil {
 				let f = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+				let along = max(12, (length - 12) * min(1, max(0, f)))
 				ValueBubble(text: "\(title): \(format(value))")
-					.offset(x: -(width + 10), y: -max(12, (height - 12) * min(1, max(0, f))))
+					.fixedSize()
+					.offset(x: horizontal ? along - 30 : -(width + 10), y: horizontal ? -(width + 10) : -along)
 					.transition(.opacity)
 			}
 		}

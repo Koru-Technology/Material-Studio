@@ -1,8 +1,7 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 #if os(iOS)
-// While the Materials panel is open: the selected material as a new fill layer on top of the stack
+// Under the Materials panel: the selected material as a new fill layer on top of the stack
 struct ApplyMaterialBar: View {
 	private var materials = MaterialsStore.shared
 
@@ -23,14 +22,18 @@ struct ApplyMaterialBar: View {
 	}
 }
 
-// A fill layer selected: the effects of its mask in the order they apply, left to right, the paint first. A tap opens an
-// effect's settings, a long press drags it to another place (one undo step when let go). The + adds one on top.
-struct FillEffectsBar: View {
+// A fill layer selected, on the right: the effects of its mask top to bottom as the stack is, the paint at the bottom
+// (applied first). A tap opens an effect's settings to the left, a long press drags it up or down (the others make room,
+// one undo step when let go). The + on top adds one on top.
+struct FillEffectsColumn: View {
 	let layer: LayerRow
 
 	private var layers   = LayersStore.shared
 	private var popovers = PadPopovers.shared
-	private var reorder  = EffectReorder.shared
+	@State private var dragging: Int?     // The effect held, its index in the stack (0 the top)
+	@State private var dragY: CGFloat = 0 // How far it moved
+
+	private static let slot: CGFloat = 50 // An effect's height and the space after it
 
 	init(layer: LayerRow) {
 		self.layer = layer
@@ -39,63 +42,101 @@ struct FillEffectsBar: View {
 	var body: some View {
 		let mask    = layers.layer(layer.props.maskID)
 		let effects = mask?.effects ?? [] // Top first
-		let shown   = reorder.order(for: mask?.id ?? -1) ?? Array(effects.indices.reversed()) // Left to right
 		GlassEffectContainer(spacing: 6) {
-			HStack(spacing: 6) {
+			VStack(spacing: 6) {
 				Text("Mask")
-					.font(.subheadline.weight(.semibold))
+					.font(.caption.weight(.semibold))
 					.foregroundStyle(.secondary)
-					.padding(.leading, 6)
+					.padding(.top, 4)
+				addButton(mask: mask, at: 0) // On top: applied last
 				if let mask {
-					ForEach(shown, id: \.self) { i in
-						if effects.indices.contains(i) {
-							let effect = effects[i]
-							effectButton(mask: mask, index: i, effect: effect)
-								.onDrag {
-									reorder.begin(mask: mask.id, index: effect.isPaint ? nil : i, order: Array(effects.indices.reversed())) // The paint stays first
-									return NSItemProvider(object: "effect" as NSString)
-								} preview: {
-									Image(systemName: maskEffectSymbol(effect.type))
-										.font(.title3)
-										.frame(width: 44, height: 44)
-										.background(.regularMaterial, in: .rect(cornerRadius: 10, style: .continuous))
-								}
-								.onDrop(of: [.text], delegate: EffectDropDelegate(index: i, isPaint: effect.isPaint))
-						}
+					ForEach(Array(effects.enumerated()), id: \.offset) { i, effect in
+						effectButton(mask: mask, index: i, effect: effect)
+							.scaleEffect(dragging == i ? 1.12 : 1)
+							.shadow(color: .black.opacity(dragging == i ? 0.35 : 0), radius: 8, y: 4)
+							.offset(y: dragging == i ? dragY : shift(i, effects: effects))
+							.zIndex(dragging == i ? 1 : 0)
+							.gesture(reorderGesture(mask: mask, index: i, effects: effects), including: effect.isPaint ? .subviews : .all)
 					}
 				}
-				addButton(mask: mask, at: 0) // On top: applied last
 			}
-			.padding(.horizontal, 8)
-			.padding(.vertical, 6)
-			.animation(.snappy(duration: 0.2), value: shown)
+			.padding(.horizontal, 6)
+			.padding(.vertical, 8)
+			.animation(.snappy(duration: 0.2), value: target(effects: effects))
+			.animation(.snappy(duration: 0.15), value: dragging)
 		}
 		.glassEffect(.regular, in: .capsule)
 		.foregroundStyle(.primary)
-		.onChange(of: effects) {
-			reorder.reset() // Changed under the drag (an undo)
+	}
+
+	// Held, then dragged: the effect follows the finger, the others make room, let go it takes that place
+	private func reorderGesture(mask: LayerRow, index: Int, effects: [MaskEffect]) -> some Gesture {
+		LongPressGesture(minimumDuration: 0.25)
+			.sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+			.onChanged { value in
+				guard case .second(true, let drag) = value else {
+					return
+				}
+				if dragging != index {
+					popovers.close()
+					dragging = index
+				}
+				dragY = drag?.translation.height ?? 0
+			}
+			.onEnded { _ in
+				let to = target(effects: effects)
+				dragging = nil
+				dragY    = 0
+				if let to, to != index {
+					let from = Int32(index)
+					AppStore.shared.perform { _ = app_mask_move_effect(mask.id, from, Int32(to)) }
+				}
+			}
+	}
+
+	// The place the dragged effect would take, top first; never below the paint
+	private func target(effects: [MaskEffect]) -> Int? {
+		guard let dragging else {
+			return nil
 		}
+		let last = effects.last?.isPaint == true ? effects.count - 2 : effects.count - 1
+		return min(max(dragging + Int((dragY / Self.slot).rounded()), 0), max(last, 0))
+	}
+
+	// The others slide over to open the gap
+	private func shift(_ i: Int, effects: [MaskEffect]) -> CGFloat {
+		guard let dragging, let to = target(effects: effects) else {
+			return 0
+		}
+		if dragging < to && i > dragging && i <= to {
+			return -Self.slot
+		}
+		if to < dragging && i >= to && i < dragging {
+			return Self.slot
+		}
+		return 0
 	}
 
 	private func effectButton(mask: LayerRow, index: Int, effect: MaskEffect) -> some View {
 		let name = "Effect.\(mask.id).\(index)"
-		return Button {
-			popovers.toggle(name)
-		} label: {
-			Image(systemName: maskEffectSymbol(effect.type))
-				.font(.title3)
-				.frame(width: 44, height: 44)
-				.opacity(effect.visible ? 1 : 0.4)
-		}
-		.background(popovers.shown == name ? Color.accentColor.opacity(0.35) : Color.white.opacity(0.08),
-		            in: .rect(cornerRadius: 10, style: .continuous))
-		.accessibilityLabel(effect.name)
-		.padPopover(name) {
-			NavigationStack {
-				MaskEffectDetailView(layerID: mask.id, index: Int32(index))
+		return Image(systemName: maskEffectSymbol(effect.type))
+			.font(.title3)
+			.frame(width: 44, height: 44)
+			.opacity(effect.visible ? 1 : 0.4)
+			.background(popovers.shown == name ? Color.accentColor.opacity(0.35) : Color.white.opacity(dragging == index ? 0.2 : 0.08),
+			            in: .rect(cornerRadius: 10, style: .continuous))
+			.contentShape(.rect)
+			.onTapGesture {
+				popovers.toggle(name)
 			}
-			.frame(width: 340, height: 480)
-		}
+			.accessibilityLabel(effect.name)
+			.accessibilityAddTraits(.isButton)
+			.padPopover(name, arrowEdge: .trailing) { // To the left of the column
+				NavigationStack {
+					MaskEffectDetailView(layerID: mask.id, index: Int32(index))
+				}
+				.frame(width: 340, height: 480)
+			}
 	}
 
 	private func addButton(mask: LayerRow?, at index: Int) -> some View {
@@ -107,11 +148,11 @@ struct FillEffectsBar: View {
 				.font(.caption.weight(.bold))
 				.frame(width: 22, height: 22)
 				.background(popovers.shown == name ? Color.accentColor : Color.white.opacity(0.15), in: .circle)
-				.frame(width: 26, height: 44)
+				.frame(width: 44, height: 30)
 				.contentShape(.rect)
 		}
 		.accessibilityLabel("Add Effect")
-		.padPopover(name) {
+		.padPopover(name, arrowEdge: .trailing) {
 			VStack(spacing: 0) { // A title without a navigation bar's height: the effects right under it
 				Text("New Mask Effect")
 					.font(.headline)
@@ -155,92 +196,3 @@ struct FillEffectsBar: View {
 	}
 }
 #endif
-
-// An effect of the bar dragged to another place: the bar shows the order it would take, let go the mask takes it
-@MainActor
-@Observable
-final class EffectReorder {
-	static let shared = EffectReorder()
-
-	private var mask: Int32 = -1
-	private var dragged: Int?       // Its index in the stack, top first
-	private var shown: [Int]?        // Stack indices left to right as the bar shows them
-	@ObservationIgnored private var leave: Task<Void, Never>?
-
-	func order(for mask: Int32) -> [Int]? {
-		mask == self.mask ? shown : nil
-	}
-
-	func begin(mask: Int32, index: Int?, order: [Int]) {
-		leave?.cancel()
-		self.mask = mask
-		dragged   = index
-		shown     = index != nil ? order : nil
-	}
-
-	// Over effect `index`: the dragged one takes its place. Never the paint's, the first
-	func hover(_ index: Int, isPaint: Bool) {
-		leave?.cancel()
-		guard let dragged, var order = shown, index != dragged, !isPaint, let from = order.firstIndex(of: dragged),
-		      let to = order.firstIndex(of: index) else {
-			return
-		}
-		order.remove(at: from)
-		order.insert(dragged, at: to)
-		shown = order
-	}
-
-	// Off the effects: a moment later (another one may take the finger) the order goes back, unless let go
-	func exited() {
-		leave?.cancel()
-		leave = Task { @MainActor [weak self] in
-			try? await Task.sleep(for: .milliseconds(400))
-			if let self, !Task.isCancelled {
-				self.reset()
-			}
-		}
-	}
-
-	func drop() -> Bool {
-		defer {
-			reset()
-		}
-		guard let dragged, let order = shown, let pos = order.firstIndex(of: dragged) else {
-			return false
-		}
-		let to   = order.count - 1 - pos // Left to right is bottom to top
-		let mask = self.mask
-		if to != dragged {
-			AppStore.shared.perform { _ = app_mask_move_effect(mask, Int32(dragged), Int32(to)) }
-		}
-		return true
-	}
-
-	func reset() {
-		leave?.cancel()
-		dragged = nil
-		shown   = nil
-		mask    = -1
-	}
-}
-
-struct EffectDropDelegate: DropDelegate {
-	let index: Int
-	let isPaint: Bool
-
-	func dropEntered(info: DropInfo) {
-		EffectReorder.shared.hover(index, isPaint: isPaint)
-	}
-
-	func dropUpdated(info: DropInfo) -> DropProposal? {
-		DropProposal(operation: .move)
-	}
-
-	func dropExited(info: DropInfo) {
-		EffectReorder.shared.exited()
-	}
-
-	func performDrop(info: DropInfo) -> Bool {
-		EffectReorder.shared.drop()
-	}
-}

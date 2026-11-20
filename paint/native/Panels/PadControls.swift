@@ -20,15 +20,17 @@ struct PadControls: View {
 			HStack {
 				PadToolColumn()
 				Spacer()
-				if IDPickStore.shared.active { // Picking ID Selection parts: their list in place of the brush sliders
+				if IDPickStore.shared.active { // Picking ID Selection parts: their list on the right
 					IDPartsPanel()
 						.transition(.opacity)
 				}
-				else {
-					PadBrushControls()
+				else if let layer = effectsLayer { // A fill layer's mask effects
+					FillEffectsColumn(layer: layer)
+						.transition(.opacity)
 				}
 			}
 			.animation(.easeOut(duration: 0.15), value: IDPickStore.shared.active)
+			.animation(.easeOut(duration: 0.15), value: effectsLayer?.id)
 			VStack {
 				Spacer()
 				HStack(alignment: .bottom) {
@@ -64,25 +66,14 @@ struct PadControls: View {
 
 // Bottom middle, one at a time: a curve's buttons, Apply Material while the Materials panel is open, the Decal tool's
 // image, a fill layer's effects
+// Bottom middle: a curve's buttons, or the brush settings with the Decal tool's image over them
 extension PadControls {
 	private enum BottomBar: Equatable {
-		case none, curve, applyMaterial, decal, effects(Int32)
+		case curve, brush
 	}
 
 	private var bottomBarKind: BottomBar {
-		if CurveStore.shared.editing {
-			return .curve
-		}
-		if PadPopovers.shared.shown == "Materials" {
-			return .applyMaterial
-		}
-		if AppStore.shared.tool == APP_TOOL_DECAL.id {
-			return .decal
-		}
-		if let layer = LayersStore.shared.selectedRowLayer, layer.isFill, layer.kind == .layer {
-			return .effects(layer.id)
-		}
-		return .none
+		CurveStore.shared.editing ? .curve : .brush
 	}
 
 	@ViewBuilder
@@ -91,20 +82,24 @@ extension PadControls {
 		case .curve:
 			CurveButtons()
 				.transition(.opacity)
-		case .applyMaterial:
-			ApplyMaterialBar()
-				.transition(.opacity)
-		case .decal:
-			DecalBar()
-				.transition(.opacity)
-		case .effects(let id):
-			if let layer = LayersStore.shared.layer(id) {
-				FillEffectsBar(layer: layer)
-					.transition(.opacity)
+		case .brush:
+			VStack(spacing: 10) {
+				if AppStore.shared.tool == APP_TOOL_DECAL.id {
+					DecalBar()
+						.transition(.opacity)
+				}
+				PadBrushControls()
 			}
-		case .none:
-			EmptyView()
+			.transition(.opacity)
 		}
+	}
+
+	// The fill layer selected (or its mask): its mask effects show on the right
+	private var effectsLayer: LayerRow? {
+		guard let layer = LayersStore.shared.selectedRowLayer, layer.isFill, layer.kind == .layer else {
+			return nil
+		}
+		return layer
 	}
 }
 
@@ -152,6 +147,7 @@ struct PadPanel {
 	let anchor: Anchor<CGRect>
 	let edge: Edge? // .leading: right of the button, nil: below it, or above it in the lower half of the screen
 	let content: AnyView
+	var accessory: AnyView? // Shown under the panel, outside it (Apply Material as New Layer)
 }
 
 struct PadPanelKey: PreferenceKey {
@@ -164,9 +160,10 @@ struct PadPanelKey: PreferenceKey {
 
 extension View {
 	// The button opens the panel named name (PadPopovers.toggle), PadPanelHost draws it
-	func padPopover<Content: View>(_ name: String, arrowEdge: Edge? = nil, @ViewBuilder content: @escaping () -> Content) -> some View {
+	func padPopover<Content: View>(_ name: String, arrowEdge: Edge? = nil, accessory: AnyView? = nil,
+	                               @ViewBuilder content: @escaping () -> Content) -> some View {
 		anchorPreference(key: PadPanelKey.self, value: .bounds) { anchor in
-			[name: PadPanel(anchor: anchor, edge: arrowEdge, content: AnyView(content()))]
+			[name: PadPanel(anchor: anchor, edge: arrowEdge, content: AnyView(content()), accessory: accessory)]
 		}
 	}
 
@@ -197,15 +194,20 @@ struct PadPanelHost: View {
 				if let name = popovers.shown, let panel = panels[name] {
 					let button = geo[panel.anchor]
 					let below  = button.midY < geo.size.height / 2
-					PadPanelContent(content: panel.content)
-						.background(Color(uiColor: PadPanelContent.background))
-						.clipShape(.rect(cornerRadius: 24, style: .continuous))
-						.overlay {
-							RoundedRectangle(cornerRadius: 24, style: .continuous)
-								.strokeBorder(.white.opacity(0.12), lineWidth: 1)
-								.allowsHitTesting(false)
+					VStack(spacing: 12) {
+						PadPanelContent(content: panel.content)
+							.background(Color(uiColor: PadPanelContent.background))
+							.clipShape(.rect(cornerRadius: 24, style: .continuous))
+							.overlay {
+								RoundedRectangle(cornerRadius: 24, style: .continuous)
+									.strokeBorder(.white.opacity(0.12), lineWidth: 1)
+									.allowsHitTesting(false)
+							}
+							.shadow(color: .black.opacity(0.3), radius: 24, y: 8)
+						if let accessory = panel.accessory {
+							accessory
 						}
-						.shadow(color: .black.opacity(0.3), radius: 24, y: 8)
+					}
 						.alignmentGuide(.leading) { d in
 							let x = panel.edge == .leading ? button.maxX + gap
 							      : panel.edge == .trailing ? button.minX - gap - d.width : button.midX - d.width / 2
@@ -400,7 +402,8 @@ struct PadPopoverBar: View {
 			HStack(spacing: 8) {
 				layersItem
 				item("Brushes", "paintbrush.pointed") { BrushesPopover() }
-				item("Materials", "circle.circle", image: MaterialsStore.shared.selectedMaterial.flatMap { MaterialsStore.shared.thumbnail(for: $0) }) {
+				item("Materials", "circle.circle", image: MaterialsStore.shared.selectedMaterial.flatMap { MaterialsStore.shared.thumbnail(for: $0) },
+				     accessory: AnyView(ApplyMaterialBar())) {
 					MaterialsPopover()
 				}
 				item("Color", "paintpalette") { ColorPopover() } // Next to the material: the color applies to it
@@ -443,7 +446,7 @@ struct PadPopoverBar: View {
 	}
 
 	// image: the button shows it instead of the symbol (the current material's sphere)
-	private func item<Content: View>(_ name: String, _ symbol: String, image: CGImage? = nil,
+	private func item<Content: View>(_ name: String, _ symbol: String, image: CGImage? = nil, accessory: AnyView? = nil,
 	                                 @ViewBuilder content: @escaping () -> Content) -> some View {
 		Button {
 			popovers.toggle(name)
@@ -464,7 +467,7 @@ struct PadPopoverBar: View {
 		.glassEffect(popovers.shown == name ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .circle)
 		.foregroundStyle(.primary)
 		.accessibilityLabel(name)
-		.padPopover(name) {
+		.padPopover(name, accessory: accessory) {
 			content()
 				.frame(width: 380, height: 560)
 		}
