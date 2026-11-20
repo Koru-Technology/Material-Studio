@@ -105,6 +105,9 @@ static const char *base_idle_busy_work() {
 	if (make_material_paint_pending()) {
 		return "paint shader";
 	}
+	if (make_material_mesh_pending()) {
+		return "viewport shaders";
+	}
 	if (fill_stat(2) > 0) {
 		return "fill layers";
 	}

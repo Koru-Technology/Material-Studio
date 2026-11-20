@@ -20,7 +20,7 @@ void layers_op_set(slot_layer_t *l) {
 	if (!slot_layer_alive(l)) {
 		return;
 	}
-	context_set_layer(l);
+	context_pick_layer(l);
 	g_context->ddirty = 2;
 }
 

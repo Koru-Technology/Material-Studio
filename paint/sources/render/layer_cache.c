@@ -102,8 +102,9 @@ static void layer_cache_make_targets(void) {
 }
 
 // Which layers the cache takes, then its shader. Before the mesh shaders are made (make_material_parse_mesh_material):
-// they leave out the cached layers and start from the cache.
-void layer_cache_prepare(void) {
+// they leave out the cached layers and start from the cache. glsl: the shader is not loaded and its GLSL is kept there
+// (malloc'd) to translate and compile on a thread (layer_cache_plan_take), NULL to load it now.
+static void layer_cache_plan(char **glsl) {
 	if (layer_cache_scon != NULL) {
 		make_material_delete_context(layer_cache_scon);
 		layer_cache_scon = NULL;
@@ -147,19 +148,28 @@ void layer_cache_prepare(void) {
 
 	if (layer_cache_layers->length < 2) { // One layer is as cheap live
 		layer_cache_layers->length = 0;
-		layer_cache_free_targets();
+		if (glsl == NULL) {
+			layer_cache_free_targets();
+		}
 		return;
 	}
 
-	layer_cache_ok             = true; // make_mesh_run reads the plan
-	make_mesh_bake             = true;
-	material_t            *mm  = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
-	node_shader_context_t *con = make_mesh_run(mm, 0);
-	make_mesh_bake             = false;
-	shader_context_load(con->data);
-	layer_cache_scon = con->data;
+	layer_cache_ok              = true; // make_mesh_run reads the plan
+	make_mesh_bake              = true;
+	make_mesh_defer_translation = glsl != NULL;
+	material_t            *mm   = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
+	node_shader_context_t *con  = make_mesh_run(mm, 0);
+	make_mesh_bake              = false;
+	make_mesh_defer_translation = false;
+	layer_cache_scon            = con->data;
 	node_shader_context_free(con);
 	free(mm);
+	if (glsl != NULL) {
+		*glsl                   = make_mesh_deferred_glsl;
+		make_mesh_deferred_glsl = NULL;
+		return; // Checked once compiled (make_material.c)
+	}
+	shader_context_load(layer_cache_scon);
 
 	if (layer_cache_scon == NULL || layer_cache_scon->_->pipe == NULL) {
 		layer_cache_ok             = false;
@@ -167,6 +177,73 @@ void layer_cache_prepare(void) {
 		return;
 	}
 	layer_cache_make_targets();
+}
+
+void layer_cache_prepare(void) {
+	layer_cache_plan(NULL);
+}
+
+// A plan made aside while the current one stays in use (make_material_parse_mesh_material_async): the cache's state
+// moved out of it, put in place again with layer_cache_plan_put
+struct layer_cache_plan {
+	slot_layer_t_array_t *layers;
+	shader_context_t     *scon;
+	bool                  ok;
+	u64                   key;
+};
+
+static layer_cache_plan_t *layer_cache_plan_out(void) {
+	layer_cache_plan_t *p = calloc(1, sizeof(layer_cache_plan_t));
+	p->layers             = layer_cache_layers;
+	p->scon               = layer_cache_scon;
+	p->ok                 = layer_cache_ok;
+	p->key                = layer_cache_key;
+	layer_cache_layers    = NULL;
+	layer_cache_scon      = NULL;
+	layer_cache_ok        = false;
+	layer_cache_key       = 0;
+	return p;
+}
+
+// The plan for the context as it is now, made while the current one is set aside, then the current one back in place.
+// Returns the new plan with its shader not loaded (*scon, NULL when it caches nothing) and the GLSL to translate (*glsl,
+// malloc'd). Whatever runs make_mesh_run with the new plan goes in made: called with the new plan in place.
+layer_cache_plan_t *layer_cache_plan_take(shader_context_t **scon, char **glsl, void (*made)(void *), void *data) {
+	layer_cache_plan_t *current = layer_cache_plan_out();
+	*glsl                       = NULL;
+	layer_cache_plan(glsl);
+	*scon = layer_cache_ok ? layer_cache_scon : NULL;
+	made(data);
+	layer_cache_plan_t *next = layer_cache_plan_out();
+	next->scon               = NULL; // Its compile owns it until layer_cache_plan_put
+	layer_cache_plan_put(current, NULL);
+	return next;
+}
+
+// Puts a plan in place, its shader compiled (NULL when it caches nothing, or when the plan holds it). The plan in use is
+// freed.
+void layer_cache_plan_put(layer_cache_plan_t *p, shader_context_t *scon) {
+	if (layer_cache_scon != NULL) {
+		make_material_delete_context(layer_cache_scon);
+	}
+	array_delete(layer_cache_layers);
+	layer_cache_layers = p->layers;
+	layer_cache_scon   = scon != NULL ? scon : p->scon;
+	layer_cache_ok     = p->ok;
+	layer_cache_key    = p->key; // 0 for a new plan: made on the next frame
+	free(p);
+	if (!layer_cache_ok) {
+		layer_cache_free_targets();
+	}
+}
+
+// A plan taken and not put in place
+void layer_cache_plan_free(layer_cache_plan_t *p) {
+	if (p == NULL) {
+		return;
+	}
+	array_delete(p->layers);
+	free(p);
 }
 
 // The viewport samples the cache: bound with the layers (render_path_paint_bind_layers)

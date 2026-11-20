@@ -219,10 +219,10 @@ void context_select_layer(i32 i) {
 	if (i < 0 || i >= g_project->_->layers->length) {
 		return;
 	}
-	context_set_layer(g_project->_->layers->buffer[i]);
+	context_pick_layer(g_project->_->layers->buffer[i]);
 }
 
-void context_set_layer(slot_layer_t *l) {
+static void context_set_layer_as(slot_layer_t *l, bool picked) {
 	if (l == g_context->layer) {
 		return;
 	}
@@ -232,11 +232,28 @@ void context_set_layer(slot_layer_t *l) {
 	draw_saved_t saved_draw = draw_suspend();
 
 	layers_set_object_mask();
-	make_material_parse_mesh_material();
-	make_material_parse_paint_material(true);
+	if (picked) {
+		make_material_parse_mesh_material_async();
+		make_material_parse_paint_material_async(true);
+	}
+	else {
+		make_material_parse_mesh_material();
+		make_material_parse_paint_material(true);
+	}
 
 	draw_resume(saved_draw);
 	ui_view2d_hwnd->redraws = 2;
+}
+
+void context_set_layer(slot_layer_t *l) {
+	context_set_layer_as(l, false);
+}
+
+// The user picked a layer: its shaders are made on threads, the viewport's in use draw until theirs are ready and strokes
+// wait for the paint shader (make_material_paint_ready). In a project with many layers the viewport's took a second
+// at once on the iPad.
+void context_pick_layer(slot_layer_t *l) {
+	context_set_layer_as(l, true);
 }
 
 // The mesh shader and the render path (lit or not) read the tool only for these (make_mesh.c, context_use_lit,

@@ -62,13 +62,17 @@ int differ(buffer_t *a, buffer_t *b, int t) {
 	return n;
 }
 
-// Fill tiles done sharpening, fills rasterized: until then each frame can look sharper, and the cache is made again
+// Fill tiles done sharpening, fills rasterized: until then each frame can look sharper, and the cache is made again.
+// The viewport's shaders for a layer selected in place (they compile on threads).
 int settled() {
-	return fill_stat(1) == 0 && fill_stat(2) == 0 && mm_buffers_stat(11) == 0;
+	return fill_stat(1) == 0 && fill_stat(2) == 0 && mm_buffers_stat(11) == 0 && !make_material_mesh_pending();
 }
 
 void next() {
 	if (wait > 0 || !settled()) {
+		if (!settled() && wait < 3) {
+			wait = 3; // A few frames after: the cache made with what settled
+		}
 		if (wait > 0) {
 			wait = wait - 1;
 		}
@@ -88,26 +92,33 @@ void next() {
 			return;
 		}
 		app_layer_select(top_id);
+	}
+	else if (step == 1) {
 		if (!layer_cache_active()) { // The list may be bottom first
 			int t     = top_id;
 			top_id    = bottom_id;
 			bottom_id = t;
 		}
 		app_layer_select(bottom_id);
+	}
+	else if (step == 2) {
 		check(!layer_cache_active(), "the bottom layer selected: no cache");
 		script_get_context()->capturing_screenshot = 1; // Captures compare the scene, not the selected layer's gizmo
 		script_get_context()->ddirty               = 2;
 		wait                                       = SETTLE;
 	}
-	else if (step == 1) {
+	else if (step == 3) {
 		live = capture("live");
 		wait = 2;
 	}
-	else if (step == 2) {
+	else if (step == 4) {
 		live2 = capture("live2");
 		noise = differ(live, live2, 12);
 		printf("[layer_cache] two live frames: %d pixels differ", noise);
 		app_layer_select(top_id);
+		wait = SETTLE;
+	}
+	else if (step == 5) {
 		check(layer_cache_active(), "the top layer selected: the cache is in use");
 		int nc = 0;
 		for (int i = 0; i < script_layer_count(); ++i) {
@@ -117,9 +128,9 @@ void next() {
 			}
 		}
 		printf("[layer_cache] %d layers in the cache", nc);
-		wait = SETTLE;
+		wait = 2;
 	}
-	else if (step == 3) {
+	else if (step == 6) {
 		buffer_t *c = capture("cached");
 		// Cached fills are at the layer resolution, their finest grain a little softer than live: small differences
 		int n = differ(live, c, 12);
@@ -129,7 +140,7 @@ void next() {
 		bakes = layer_cache_bake_count();
 		wait  = 120;
 	}
-	else if (step == 4) {
+	else if (step == 7) {
 		int b = layer_cache_bake_count() - bakes;
 		check(b == 0, string("an unchanged scene makes no new bake in 120 frames (%d)", b));
 		// The second cached layer from the bottom
@@ -147,17 +158,23 @@ void next() {
 		check(low_id >= 0, "two layers in the cache");
 		app_layer_set_opacity(low_id, 0.2); // Selects that layer, as the slider does
 		app_layer_select(top_id);
-		check(layer_cache_active() && layer_cache_has(script_layer_at(1)), "the top layer selected again: the cache is in use");
 		bakes = layer_cache_bake_count();
 		wait  = SETTLE;
 	}
-	else if (step == 5) {
+	else if (step == 8) {
+		slot_layer_t *low = NULL;
+		for (int i = 0; i < script_layer_count(); ++i) {
+			if (script_layer_at(i)->id == low_id) {
+				low = script_layer_at(i);
+			}
+		}
+		check(layer_cache_active() && layer_cache_has(low), "the top layer selected again: the cache is in use");
 		check(layer_cache_bake_count() > bakes, "a cached layer's opacity makes the cache again");
 		live = capture("cached_opacity");
 		app_layer_select(bottom_id);
 		wait = SETTLE;
 	}
-	else if (step == 6) {
+	else if (step == 9) {
 		buffer_t *c = capture("live_opacity");
 		int       m = differ(live, c, 40);
 		printf("[layer_cache] after the opacity change, cached against live: %d pixels differ by more than 40", m);
@@ -169,7 +186,7 @@ void next() {
 		frame = 0;
 		wait  = 30;
 	}
-	else if (step == 7) { // Orbit, no cache
+	else if (step == 10) { // Orbit, no cache
 		viewport_orbit(0.01, 0.0);
 		frame = frame + 1;
 		if (frame < ORBIT) {
@@ -181,7 +198,7 @@ void next() {
 		frame = 0;
 		wait  = 30;
 	}
-	else if (step == 8) { // Orbit, the cache: the camera is not something it reads
+	else if (step == 11) { // Orbit, the cache: the camera is not something it reads
 		if (frame == 0) {
 			bakes = layer_cache_bake_count();
 		}

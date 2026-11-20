@@ -185,6 +185,24 @@ static void make_mesh_write_raise(node_shader_t *shader, slot_layer_t *l, char *
 	node_shader_write_frag(shader, "}");
 }
 
+// make_material_parse_mesh_material_async: the shader's GLSL is kept in make_mesh_deferred_glsl (malloc'd) to translate on
+// a thread, the context's shaders are left empty
+bool  make_mesh_defer_translation = false;
+char *make_mesh_deferred_glsl     = NULL;
+
+static node_shader_context_t *make_mesh_finish(node_shader_context_t *con_mesh, node_shader_t *shader) {
+	parser_material_finalize(con_mesh);
+	con_mesh->data->shader_from_source = true;
+	if (make_mesh_defer_translation) {
+		free(make_mesh_deferred_glsl);
+		make_mesh_deferred_glsl = strdup(node_shader_get(shader));
+		return con_mesh;
+	}
+	gpu_create_shaders_from_glsl(node_shader_get(shader), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
+	                             &con_mesh->data->_->vertex_shader_size, &con_mesh->data->_->fragment_shader_size);
+	return con_mesh;
+}
+
 node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 	bool                   bake       = make_mesh_bake;
 	bool                   cached     = !bake && layer_pass == 0 && layer_cache_active();
@@ -671,11 +689,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(shader, "output[2] = vec4(occlusion, roughness, metallic, height);");
 			node_shader_write_frag(shader, make_material_height_used ? "output[3] = vec4(height0, height1, height2, height3);"
 			                                                         : "output[3] = vec4(0.0, 0.0, 0.0, 0.0);");
-			parser_material_finalize(con_mesh);
-			con_mesh->data->shader_from_source = true;
-			gpu_create_shaders_from_glsl(node_shader_get(shader), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
-			                             &con_mesh->data->_->vertex_shader_size, &con_mesh->data->_->fragment_shader_size);
-			return con_mesh;
+			return make_mesh_finish(con_mesh, shader);
 		}
 
 		if (transluc) {
@@ -728,11 +742,7 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 			node_shader_write_frag(shader, "output[0] = vec4(basecol, opacity);");
 			node_shader_write_frag(shader, "output[1] = vec4(ntex, matid);");
 			node_shader_write_frag(shader, "output[2] = vec4(occlusion, roughness, metallic, height);");
-			parser_material_finalize(con_mesh);
-			con_mesh->data->shader_from_source = true;
-			gpu_create_shaders_from_glsl(node_shader_get(shader), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
-			                             &con_mesh->data->_->vertex_shader_size, &con_mesh->data->_->fragment_shader_size);
-			return con_mesh;
+			return make_mesh_finish(con_mesh, shader);
 		}
 		shader->frag_vvec = true;
 		node_shader_write_frag(shader, "mat3 TBN = cotangent_frame(n, input.eye_dir, tex_coord);");
@@ -866,10 +876,5 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass) {
 		node_shader_write_frag(shader, string_tmp("output[2] = vec4(%s.xy - tex_coord_hi, tex_coord_hi);", tex_coord_layer));
 	}
 
-	parser_material_finalize(con_mesh);
-
-	con_mesh->data->shader_from_source = true;
-	gpu_create_shaders_from_glsl(node_shader_get(shader), &con_mesh->data->vertex_shader, &con_mesh->data->fragment_shader,
-	                             &con_mesh->data->_->vertex_shader_size, &con_mesh->data->_->fragment_shader_size);
-	return con_mesh;
+	return make_mesh_finish(con_mesh, shader);
 }

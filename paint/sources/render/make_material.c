@@ -99,7 +99,10 @@ void make_material_delete_context(shader_context_t *c) {
 // The first mesh pass shader a preview replaced (make_material_parse_mesh_preview_material), until it is restored
 static shader_context_t *make_material_mesh_scon_replaced = NULL;
 
+static void make_material_mesh_drop(void);
+
 void make_material_parse_mesh_material() {
+	make_material_mesh_drop(); // Made for the context as it was
 	render_path_base_redraw(); // The 3D view shows the change
 	if (make_material_mesh_scons == NULL) {
 		make_material_mesh_scons = any_array_create(0);
@@ -140,6 +143,7 @@ void make_material_parse_mesh_preview_material() {
 
 	// Replaces the first mesh pass shader, make_material_restore_mesh_material() puts it back
 	// (or make_material_parse_mesh_material() makes it again)
+	make_material_mesh_drop(); // Would replace it
 	material_t            *sd  = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
 	node_shader_context_t *con = make_mesh_preview_run(sd, false);
 	shader_context_load(con->data);
@@ -423,6 +427,7 @@ struct make_material_async {
 	bool              started; // Its thread was started: a shader to wait for
 	bool              compiling;
 	bool              ready;
+	bool              uncached; // Not a paint shader: its translation stays out of make_paint.c's cache
 	f64               t0;
 };
 
@@ -538,7 +543,9 @@ static void make_material_async_joined(make_material_async_t *a) {
 	a->compiling = false;
 	make_material_thread_ended(a);
 	shader_context_bind(a->scon);
-	make_paint_cache_put(a->glsl, a->vs, a->fs); // The same material parsed again translates no more
+	if (!a->uncached) {
+		make_paint_cache_put(a->glsl, a->vs, a->fs); // The same material parsed again translates no more
+	}
 	free(a->glsl);
 	free(a->vs);
 	free(a->fs);
@@ -679,8 +686,11 @@ bool make_material_paint_pending(void) {
 	return make_material_pending != NULL;
 }
 
+static void make_material_mesh_poll(void);
+
 // Each frame: the pending shader is used once compiled, dropped ones are freed
 static void make_material_async_update(void *_) {
+	make_material_mesh_poll();
 	for (i32 i = 0; i < make_material_ndropped; ++i) {
 		make_material_async_t *a = make_material_dropped[i];
 		if (!a->compiling || atomic_load(&a->done)) {
@@ -743,6 +753,162 @@ void make_material_parse_paint_material_async(bool bake_previews) {
 	}
 	else {
 		mm_buffers_hold_workers(true); // Metal's compiler on this one first, the material's buffers wait for it
+	}
+}
+
+// The viewport's shaders for a layer picked (make_material_parse_mesh_material_async): the layer cache's plan and the mesh
+// pass shaders, parsed on the main thread, translated and compiled on threads (Metal took 350-500 ms for each of the two
+// on the iPad in a project with 25 layers). The shaders in use draw meanwhile, and the same: the cache is made again when
+// what it reads changes, the layers are split between it and the mesh shader at the previous layer.
+typedef struct {
+	layer_cache_plan_t     *plan;
+	make_material_async_t  *cache; // The layer cache's shader, NULL when it caches nothing
+	make_material_async_t **passes;
+	i32                     pass_count;
+	project_t              *project;
+	slot_layer_t           *layer; // Picked
+	f64                     t0;
+} make_material_mesh_job_t;
+
+static make_material_mesh_job_t *make_material_mesh_job = NULL;
+
+static make_material_async_t *make_material_mesh_compile(shader_context_t *scon, char *glsl) {
+	make_material_async_t *a = make_material_async_compile(scon, glsl);
+	a->uncached              = true;
+	return a;
+}
+
+// The mesh pass shaders, with the new plan in place (layer_cache_plan_take)
+static void make_material_mesh_job_parse(void *data) {
+	make_material_mesh_job_t *job    = data;
+	i32                       passes = make_mesh_layer_pass_count;
+	make_mesh_defer_translation      = true;
+	for (i32 i = 0; i == 0 || i < make_mesh_layer_pass_count; ++i) { // The first pass decides the layer pass count
+		material_t            *mm  = ALLOC_INIT(material_t, {.name = "Material", .canvas = NULL});
+		node_shader_context_t *con = make_mesh_run(mm, i);
+		job->passes                = realloc(job->passes, sizeof(make_material_async_t *) * (i + 1));
+		job->passes[i]             = make_material_mesh_compile(con->data, make_mesh_deferred_glsl);
+		job->pass_count            = i + 1;
+		make_mesh_deferred_glsl    = NULL;
+		node_shader_context_free(con);
+		free(mm);
+	}
+	make_mesh_defer_translation = false;
+	make_mesh_layer_pass_count  = passes; // The shaders in use draw as many
+}
+
+static void make_material_mesh_job_free(make_material_mesh_job_t *job) {
+	make_material_async_drop(job->cache);
+	for (i32 i = 0; i < job->pass_count; ++i) {
+		make_material_async_drop(job->passes[i]);
+	}
+	layer_cache_plan_free(job->plan);
+	free(job->passes);
+	free(job);
+}
+
+static void make_material_mesh_drop(void) {
+	if (make_material_mesh_job != NULL) {
+		make_material_mesh_job_free(make_material_mesh_job);
+		make_material_mesh_job = NULL;
+	}
+}
+
+static bool make_material_compiled(shader_context_t *scon) {
+	return scon != NULL && scon->_ != NULL && scon->_->pipe != NULL && scon->_->pipe->impl.pipeline != NULL;
+}
+
+// The viewport's shaders for the context as make_material_parse_mesh_material, made on threads: the ones in use draw
+// until they are ready. One at a time: picked again meanwhile, the next is made once this one is in place.
+void make_material_parse_mesh_material_async(void) {
+	static int on = -1; // Env MESH_SHADER_ASYNC=0: made at once, as before (comparisons)
+	if (on < 0) {
+		char *e = getenv("MESH_SHADER_ASYNC");
+		on      = e != NULL && e[0] == '0' ? 0 : 1;
+	}
+	if (!on || make_material_mesh_scons == NULL || make_material_mesh_scons->length == 0 || make_material_mesh_scon_replaced != NULL) {
+		make_material_parse_mesh_material(); // The first one, or a preview's in place
+		return;
+	}
+	if (make_material_mesh_job != NULL) {
+		return; // make_material_mesh_poll
+	}
+	make_material_async_register();
+	make_material_mesh_job_t *job = calloc(1, sizeof(make_material_mesh_job_t));
+	job->t0                       = iron_time();
+	job->project                  = g_project;
+	job->layer                    = g_context->layer;
+	shader_context_t *cache_scon  = NULL;
+	char             *cache_glsl  = NULL;
+	job->plan                     = layer_cache_plan_take(&cache_scon, &cache_glsl, make_material_mesh_job_parse, job);
+	if (cache_scon != NULL) {
+		job->cache = make_material_mesh_compile(cache_scon, cache_glsl);
+	}
+	else {
+		free(cache_glsl);
+	}
+	make_material_mesh_job = job;
+	if (make_material_async_timing()) {
+		iron_log("[shader] viewport shaders parsed in %.1f ms, translate and compile on threads", (iron_time() - job->t0) * 1000.0);
+	}
+}
+
+// Viewport shaders compiling
+bool make_material_mesh_pending(void) {
+	return make_material_mesh_job != NULL;
+}
+
+// Each frame: the viewport's shaders in place once all compiled
+static void make_material_mesh_poll(void) {
+	make_material_mesh_job_t *job = make_material_mesh_job;
+	if (job == NULL) {
+		return;
+	}
+	if (job->cache != NULL && !make_material_async_ready(job->cache)) {
+		return;
+	}
+	for (i32 i = 0; i < job->pass_count; ++i) {
+		if (!make_material_async_ready(job->passes[i])) {
+			return;
+		}
+	}
+	make_material_mesh_job = NULL;
+	if (job->project != g_project || !slot_layer_alive(job->layer) ||
+	    (job->cache != NULL && !make_material_compiled(make_material_async_scon(job->cache)))) {
+		// Another project, or the cache's shader failed (the mesh shaders leave its layers out): made at once
+		make_material_mesh_job_free(job);
+		make_material_parse_mesh_material();
+		return;
+	}
+
+	for (i32 i = 0; i < make_material_mesh_scons->length; ++i) {
+		if (make_material_mesh_scons->buffer[i] != NULL) {
+			make_material_delete_context(make_material_mesh_scons->buffer[i]);
+		}
+	}
+	make_material_mesh_scons->length = 0;
+	for (i32 i = 0; i < job->pass_count; ++i) {
+		any_array_push(make_material_mesh_scons, job->passes[i]->scon);
+		job->passes[i]->scon = NULL;
+	}
+	make_mesh_layer_pass_count = job->pass_count;
+	shader_context_t *cache    = NULL;
+	if (job->cache != NULL) {
+		cache            = job->cache->scon;
+		job->cache->scon = NULL;
+	}
+	layer_cache_plan_put(job->plan, cache);
+	job->plan          = NULL;
+	g_context->ddirty  = 2;
+	g_context->rtdirty = 1;
+	render_path_base_redraw();
+	if (make_material_async_timing()) {
+		iron_log("[shader] viewport shaders ready %.1f ms after their parse started", (iron_time() - job->t0) * 1000.0);
+	}
+	slot_layer_t *made_for = job->layer;
+	make_material_mesh_job_free(job);
+	if (g_context->layer != made_for) { // Picked another meanwhile
+		make_material_parse_mesh_material_async();
 	}
 }
 

@@ -648,6 +648,8 @@ bool                   make_material_is_default(shader_data_t *m);
 void                   make_material_free_context(shader_context_t *c);
 void                   make_material_delete_context(shader_context_t *c);
 void                   make_material_parse_mesh_material();
+void                   make_material_parse_mesh_material_async(void);
+bool                   make_material_mesh_pending(void);
 void                   make_material_parse_mesh_preview_material();
 void                   make_material_restore_mesh_material();
 char                  *make_material_node_preview_id(ui_node_t *node, ui_node_t_array_t *parents);
@@ -684,6 +686,10 @@ node_shader_context_t *make_mesh_run(material_t *data, i32 layer_pass);
 bool layer_cache_active(void);
 bool layer_cache_has(slot_layer_t *l);
 void layer_cache_prepare(void);
+typedef struct layer_cache_plan layer_cache_plan_t;
+layer_cache_plan_t *layer_cache_plan_take(shader_context_t **scon, char **glsl, void (*made)(void *), void *data);
+void                layer_cache_plan_put(layer_cache_plan_t *p, shader_context_t *scon);
+void                layer_cache_plan_free(layer_cache_plan_t *p);
 void layer_cache_bind(void);
 void layer_cache_update(void);
 i32  layer_cache_bake_count(void);
@@ -696,6 +702,8 @@ node_shader_context_t *make_node_preview_run(material_t *data, ui_node_t *node, 
 
 // ---- render/make_paint.c ----
 extern bool            make_paint_defer_translation;
+extern bool            make_mesh_defer_translation;
+extern char           *make_mesh_deferred_glsl;
 extern char           *make_paint_deferred_glsl;
 void                   make_paint_cache_put(char *shader, char *vs, char *fs);
 node_shader_context_t *make_paint_run(material_t *data);
@@ -1776,6 +1784,7 @@ void           context_select_material(i32 i);
 void           context_set_material(slot_material_t *m);
 void           context_select_layer(i32 i);
 void           context_set_layer(slot_layer_t *l);
+void           context_pick_layer(slot_layer_t *l);
 void           context_select_tool(i32 i);
 void           context_init_tool();
 void           context_parse_mesh_material();

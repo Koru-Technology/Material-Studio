@@ -176,11 +176,9 @@ bool app_layer_pick(int32_t id) {
 		return false;
 	}
 	layers_op_set(l);
-	if (fill_main_material(l->fill) != NULL) {
-		context_set_material(fill_main_material(l->fill)); // The material editor edits what fills it
-	}
-	else if (l->path_material != NULL) {
-		context_set_material(l->path_material);
+	slot_material_t *m = fill_main_material(l->fill) != NULL ? fill_main_material(l->fill) : l->path_material;
+	if (m != NULL && m != g_context->material) {
+		context_set_material(m); // The material editor edits what fills it
 	}
 	iron_delay_idle_sleep();
 	return true;
