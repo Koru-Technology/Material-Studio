@@ -164,24 +164,19 @@ struct FillEffectsColumn: View {
 				.contentShape(.rect)
 		}
 		.accessibilityLabel("Add Effect")
-		.padPopover(name, arrowEdge: .trailing) {
-			VStack(spacing: 0) { // A title without a navigation bar's height: the effects right under it
-				Text("New Mask Effect")
-					.font(.headline)
-					.padding(.top, 16)
-					.padding(.bottom, 2)
-				List {
+		.padPopover(name, arrowEdge: .trailing) { // Built as an effect's settings (EffectPopover): the same title bar and list
+			NavigationStack {
+				Form {
 					MaskEffectAddItems { type in
 						add(type, mask: mask, at: index)
 					}
 				}
-				.listStyle(.insetGrouped)
-				.listSectionSpacing(.compact)
-				.contentMargins(.top, 0, for: .scrollContent)
-				.environment(\.defaultMinListHeaderHeight, 0)
-				.scrollContentBackground(.hidden)
+				.formStyle(.grouped)
+				.contentMargins(.top, 8, for: .scrollContent)
+				.navigationTitle("New Mask Effect")
+				.navigationBarTitleDisplayMode(.inline)
 			}
-			.frame(width: 280, height: 480)
+			.frame(width: 340, height: 480)
 		}
 	}
 
