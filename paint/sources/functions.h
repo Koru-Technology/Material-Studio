@@ -2236,6 +2236,7 @@ char                  *project_recent_entry(char *path);
 #ifdef IRON_IOS
 char                  *project_documents_dir();
 char                  *project_rename(char *path, char *name);
+char                  *project_duplicate(char *path);
 char                  *project_folder();
 char                  *project_subfolder(char *name);
 #endif
@@ -2395,6 +2396,7 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l);
 bool        project_container_layer_restore(layer_data_t *ld, slot_layer_t *l, bool *has_alpha);
 i32         project_container_roots(hash128_t *out, i32 cap);
 u8_array_t *project_container_layer_thumb(slot_layer_t *l);
+bool        project_container_set_uuid(char *path, char *uuid);
 void        project_container_layer_thumb_restore(layer_data_t *ld, slot_layer_t *l);
 void        project_container_loaded();
 i32         project_container_test_index_count(i32 kind);

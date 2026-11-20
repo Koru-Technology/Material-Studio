@@ -908,6 +908,48 @@ char *project_file_uuid(char *path) {
 	return NULL; // Version 30 files have none (version 31 is always a container)
 }
 
+// A copy of a project file (project_duplicate) gets a uuid of its own, so that its history journal is its own: the old
+// one's 32 hex digits replaced in its last head, the footer's checksums made again. False when there is none to replace.
+bool project_container_set_uuid(char *path, char *uuid) {
+	if (!project_container_is(path) || uuid == NULL) {
+		return false;
+	}
+	int fd = open(path, O_RDWR);
+	if (fd < 0) {
+		return false;
+	}
+	struct stat st;
+	fstat(fd, &st);
+	pc_src_t    s = {.fd = fd, .size = (u64)st.st_size};
+	pc_footer_t f;
+	u64         at;
+	u8         *head  = NULL;
+	u8         *index = NULL;
+	bool        ok    = false;
+	if (pc_footer_last(&s, &at, &f, &head, &index)) {
+		buffer_t   hb  = {.buffer = head, .length = (u32)f.head_len, .capacity = (u32)f.head_len};
+		any_map_t *m   = armpack_decode_to_map(&hb);
+		char      *old = m != NULL && any_map_get(m, "uuid") != NULL ? string_copy(any_map_get(m, "uuid")) : NULL;
+		size_t     n   = old != NULL ? strlen(old) : 0;
+		u8        *pos = n > 0 && n == strlen(uuid) ? memmem(head, f.head_len, old, n) : NULL;
+		if (pos != NULL && memmem(pos + 1, f.head_len - (pos + 1 - head), old, n) == NULL) { // Once: the uuid field
+			memcpy(pos, uuid, n);
+			u8 footer[PC_FOOTER];
+			u32 crc = pc_crc(pc_crc(0, head, f.head_len), index, f.index_len);
+			if (pwrite(fd, pos, n, f.head_off + (pos - head)) == (ssize_t)n && pread(fd, footer, PC_FOOTER, at) == PC_FOOTER) {
+				memcpy(footer + 48, &crc, 4);
+				u32 fcrc = pc_crc(0, footer, 60);
+				memcpy(footer + 60, &fcrc, 4);
+				ok = pwrite(fd, footer, PC_FOOTER, at) == PC_FOOTER;
+			}
+		}
+	}
+	free(head);
+	free(index);
+	close(fd);
+	return ok;
+}
+
 // A project file deleted from the projects screen: its history journal goes too
 void hstore_journal_delete_for_file(char *path) {
 	char *uuid = project_file_uuid(path);

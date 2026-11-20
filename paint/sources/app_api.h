@@ -146,6 +146,8 @@ const char *app_project_entry(int32_t index); // Its entry in the recent list: o
                                              // across installs (the projects screen's folders are keyed by it)
 const char *app_project_rename(int32_t index, const char *name); // Its folder and files, the open project follows.
                                                                 // Returns the new entry, "" when it could not be renamed
+const char *app_project_duplicate(int32_t index); // A copy in a folder of its own ("<name> copy"), first in the list. Returns
+                                                  // its entry, "" when it could not be made
 
 // New project templates: the meshes and shapes a new project starts on
 int32_t     app_template_count(void);

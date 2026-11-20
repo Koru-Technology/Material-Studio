@@ -694,6 +694,25 @@ const char *app_project_rename(int32_t index, const char *name) {
 #endif
 }
 
+const char *app_project_duplicate(int32_t index) {
+#ifdef IRON_IOS
+	if (index < 0 || index >= app_project_count()) {
+		return "";
+	}
+	char *path = project_duplicate(box_projects_recent_path(index));
+	if (path == NULL) {
+		return "";
+	}
+	char *entry = string_copy(project_recent_entry(path));
+	array_insert(g_config->recent_projects, 0, entry); // First, as a project just saved
+	config_save();
+	iron_delay_idle_sleep();
+	return app_str(entry);
+#else
+	return "";
+#endif
+}
+
 void app_projects_close(void) {
 	box_projects_native_shown   = false;
 	box_projects_import_pending = false;

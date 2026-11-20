@@ -305,6 +305,9 @@ private struct ProjectTile: View {
 			Button("Rename", systemImage: "pencil") {
 				rename()
 			}
+			Button("Duplicate", systemImage: "plus.square.on.square") {
+				duplicate()
+			}
 			if !store.folders.isEmpty {
 				Menu("Move to Folder", systemImage: "folder") {
 					ForEach(store.folders.filter { $0 != folder }, id: \.self) { f in
@@ -345,6 +348,19 @@ private struct ProjectTile: View {
 		}
 		.frame(width: size, height: size)
 		.clipShape(.rect(cornerRadius: 14, style: .continuous))
+	}
+
+	// The copy goes in the same folder
+	private func duplicate() {
+		let row    = project
+		let folder = self.folder
+		var entry  = ""
+		AppStore.shared.perform {
+			entry = String(cString: app_project_duplicate(row.index))
+		}
+		if !entry.isEmpty, let folder {
+			store.move(entry, to: folder)
+		}
 	}
 
 	private func rename() {

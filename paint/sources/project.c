@@ -1,5 +1,8 @@
 
 #include "global.h"
+#ifdef IRON_IOS
+#include <copyfile.h>
+#endif
 
 bool _project_save_and_quit;
 bool _project_import_mesh_replace_existing;
@@ -212,6 +215,50 @@ char *project_rename(char *path, char *name) {
 	if (open) {
 		project_follow_rename(dir, new_dir, new_path, new_name);
 	}
+	return new_path;
+}
+
+// A copy of a saved project in a folder of its own, "<name> copy" (numbered when taken): its folder copied (cloned on
+// APFS: instant whatever its size), the files named after it renamed, a uuid of its own (its history journal is its own).
+// The open project with unsaved changes is saved first. Its asset paths point into the original's folder: import_arm_abs
+// finds them in the copy's. Returns the copy's path, NULL when it could not be made.
+char *project_duplicate(char *path) {
+	path           = project_canonical(path);
+	i32   slash    = string_last_index_of(path, "/");
+	char *dir      = substring(path, 0, slash);
+	char *old_name = substring(path, slash + 1, string_length(path) - 4);
+	if (!iron_file_exists(path)) {
+		return NULL;
+	}
+	if (string_equals(project_canonical(g_project->_->filepath), path) && project_modified) {
+		export_arm_run_project(g_project->_->filepath);
+	}
+	char *new_name = project_free_name(string("%s copy", old_name));
+	char *new_dir  = string_copy(project_folder_of(new_name));
+	bool  own      = string_equals(dir, project_folder_of(old_name)); // Documents/Projects/<name>/<name>.arm
+	char *copied   = string_copy(string("%s/%s.arm", new_dir, old_name));
+	int   flags    = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_CLONE;
+	if (own) {
+		if (copyfile(dir, new_dir, NULL, flags) != 0) {
+			return NULL;
+		}
+	}
+	else { // A file elsewhere: it and its preview into a new folder
+		iron_create_directory(new_dir);
+		if (copyfile(path, copied, NULL, COPYFILE_ALL | COPYFILE_CLONE) != 0) {
+			return NULL;
+		}
+		copyfile(project_icon_path(path), project_icon_path(copied), NULL, COPYFILE_ALL | COPYFILE_CLONE);
+	}
+	char *new_path = string_copy(string("%s/%s.arm", new_dir, new_name));
+	rename(project_icon_path(copied), project_icon_path(new_path));
+	if (rename(copied, new_path) != 0) {
+		return NULL;
+	}
+	char *saved_uuid = project_uuid; // project_uuid_new sets the current one: the open project keeps its own
+	project_uuid_new();
+	project_container_set_uuid(new_path, project_uuid);
+	project_uuid = saved_uuid;
 	return new_path;
 }
 #else

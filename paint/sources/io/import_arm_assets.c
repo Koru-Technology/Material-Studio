@@ -20,10 +20,11 @@ char *import_arm_abs(char *file, char *base) {
 			}
 		}
 	}
-	// A file of a project folder, renamed since (project_rename): the same file in the project's folder now
+	// A file of a project folder, renamed since (project_rename), or of the project it was duplicated from
+	// (project_duplicate): the same file in the project's folder now, the original's only when it has none
 	char *projects = "/Documents/Projects/";
 	i32   in       = string_index_of(abs, projects);
-	if (in >= 0 && !iron_file_exists(abs)) {
+	if (in >= 0 && !starts_with(abs, base)) {
 		char *slash = strchr(abs + in + string_length(projects), '/'); // After the project folder
 		if (slash != NULL) {
 			char *moved = string("%s%s", base, slash + 1);
