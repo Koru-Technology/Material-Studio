@@ -391,6 +391,15 @@ bool app_material_to_fill_layer(int32_t id) {
 	return true;
 }
 
+bool app_material_new_top_layer(int32_t id) {
+	if (!app_material_select(id)) {
+		return false;
+	}
+	layers_create_fill_layer(FILL_PROJECTION_UV, mat4_nan(), LAYERS_POSITION_TOP, true);
+	iron_delay_idle_sleep();
+	return true;
+}
+
 bool app_material_apply_to_fill(int32_t id) {
 	slot_material_t *m      = app_mat_by_id(id);
 	slot_layer_t    *target = g_context != NULL ? layers_fill_target(g_context->layer) : NULL;

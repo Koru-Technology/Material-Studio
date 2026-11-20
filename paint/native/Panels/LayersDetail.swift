@@ -1,20 +1,51 @@
 import SwiftUI
 
-// A layer's settings: pushed in the iPad layers popover
+// A layer's settings: pushed in the iPad layers popover. A layer with a mask has a Mask tab, its mask's settings;
+// switching tabs selects the layer or the mask to paint on.
 struct LayerDetailView: View {
 	let layerID: Int32
 
 	private var layers = LayersStore.shared
+	private var panel  = LayersPanelState.shared
 
 	init(layerID: Int32) {
 		self.layerID = layerID
 	}
 
 	var body: some View {
-		Form {
-			LayerDetailSections(layerID: layerID, showsName: true)
+		let maskID = layers.layer(layerID)?.props.maskID ?? -1
+		VStack(spacing: 0) {
+			if maskID >= 0 { // As the Materials panel's segments: right under the title
+				Picker("Settings", selection: Binding(get: { panel.maskTab }, set: { mask in
+					panel.maskTab = mask
+					let id = mask ? maskID : layerID
+					if layers.selectedLayerID != id {
+						AppStore.shared.perform { _ = app_layer_pick(id) }
+					}
+				})) {
+					Text("Layer").tag(false)
+					Text("Mask").tag(true)
+				}
+				.pickerStyle(.segmented)
+				.labelsHidden()
+				.padding(.horizontal, 12)
+				.padding(.top, 4)
+				.padding(.bottom, 8)
+			}
+			Form {
+				if maskID >= 0 && panel.maskTab {
+					LayerDetailSections(layerID: maskID, showsName: false)
+					if let mask = layers.layer(maskID) {
+						MaskActionsSection(mask: mask)
+					}
+				}
+				else {
+					LayerDetailSections(layerID: layerID, showsName: true)
+				}
+			}
+			.formStyle(.grouped)
+			.contentMargins(.top, maskID >= 0 ? 0 : nil, for: .scrollContent)
 		}
-		.formStyle(.grouped)
 		.navigationTitle(layers.layer(layerID)?.name ?? "Layer")
 #if os(iOS)
 		.navigationBarTitleDisplayMode(.inline)
@@ -44,7 +75,7 @@ struct LayerDetailSections: View {
 	@ViewBuilder
 	private func content(_ layer: LayerRow) -> some View {
 		let p = layer.props
-		Section("Layer") {
+		Section(layer.kind == .mask ? "Mask" : "Layer") {
 			if showsName {
 				LayerNameField(layer: layer)
 			}
@@ -88,6 +119,38 @@ struct LayerDetailSections: View {
 		if p.showsChannels && !layer.isFill && layer.kind != .mask { // A fill's channels show with their sources, a mask has none
 			Section("Channels") {
 				LayerChannels(layer: layer)
+			}
+		}
+	}
+}
+
+// What can be done to a mask, under its settings
+struct MaskActionsSection: View {
+	let mask: LayerRow
+
+	private var store = AppStore.shared
+
+	init(mask: LayerRow) {
+		self.mask = mask
+	}
+
+	var body: some View {
+		let p = mask.props
+		Section {
+			if p.showsFillPaint {
+				Button("Fill Mask", systemImage: "circle.fill") {
+					store.perform { _ = app_layer_fill_paint(mask.id) }
+				}
+			}
+			if p.showsClear {
+				Button("Clear Mask", systemImage: "circle") {
+					store.perform { _ = app_layer_clear(mask.id) }
+				}
+			}
+			if p.showsInvert {
+				Button("Invert", systemImage: "circle.righthalf.filled") {
+					store.perform { _ = app_layer_invert_mask(mask.id) }
+				}
 			}
 		}
 	}

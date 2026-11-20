@@ -20,6 +20,7 @@ final class LayersPanelState {
 #if os(iOS)
 	var path: [LayersRoute] = []
 #endif
+	var maskTab = false // A layer's settings show its mask's
 	var expanded: Set<String> = [] // Disclosure groups open
 	var unlinked: Set<String> = [] // Paired values (a fill's scale, offset) set apart
 
@@ -166,7 +167,7 @@ struct LayersList: View {
 					LayerContextMenu(layer: layer)
 				}
 #if os(iOS)
-				.listRowBackground(layer.selected ? Color.accentColor.opacity(0.22) : Color.clear)
+				.listRowBackground(layer.selected || layer.props.maskID == layers.selectedLayerID ? Color.accentColor.opacity(0.22) : Color.clear)
 				.listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
 #endif
 		}
@@ -175,14 +176,14 @@ struct LayersList: View {
 		}
 	}
 
-	// A row dropped before visible row `to`: it goes below the row above the gap
+	// A row dropped before visible row `to`: it goes below the row above the gap, beside it (never into a group or layer)
 	private func move(_ from: IndexSet, _ to: Int) {
 		let rows = layers.visibleLayers
 		guard let source = from.first, from.count == 1, to != source, to != source + 1 else {
 			return
 		}
 		let upper = to == 0 ? -1 : rows[to - 1].id
-		store.perform { _ = app_layer_move_below(rows[source].id, upper) }
+		store.perform { _ = app_layer_move_below_flat(rows[source].id, upper) }
 	}
 }
 
@@ -220,9 +221,11 @@ struct LayerRowView: View {
 #if os(iOS)
 			if pushesDetail {
 				Button {
-					if !layer.selected {
+					let maskSelected = layer.props.maskID >= 0 && layers.selectedLayerID == layer.props.maskID
+					if !layer.selected && !maskSelected {
 						AppStore.shared.perform { _ = app_layer_pick(layer.id) }
 					}
+					LayersPanelState.shared.maskTab = maskSelected // Its mask's settings when the mask is selected
 					openDetail(layer.id)
 				} label: {
 					Image(systemName: "slider.horizontal.3")
@@ -248,10 +251,10 @@ struct LayerRowView: View {
 		.accessibilityAddTraits(layer.selected ? .isSelected : [])
 	}
 
-	// Groups and layers with masks fold
+	// Groups fold
 	@ViewBuilder
 	private var disclosure: some View {
-		if layer.props.hasChildren {
+		if layer.kind == .group && layer.props.hasChildren {
 			Button {
 				AppStore.shared.perform { _ = app_layer_set_expanded(layer.id, !layer.props.expanded) }
 			} label: {
@@ -285,6 +288,11 @@ struct LayerRowView: View {
 			}
 			else {
 				LayerThumbnail(id: layer.id, mask: layer.kind == .mask, size: thumbnailSize)
+					.overlay {
+						if layer.selected && layer.props.maskID >= 0 { // Which of the two paints
+							RoundedRectangle(cornerRadius: 5).strokeBorder(Color.accentColor, lineWidth: 2)
+						}
+					}
 					.overlay(alignment: .bottomTrailing) {
 						if let badge {
 							Image(systemName: badge)
@@ -295,8 +303,22 @@ struct LayerRowView: View {
 								.offset(x: 3, y: 3)
 						}
 					}
-				if layer.props.maskID >= 0 && !compact { // The layer's mask, as it paints through it
-					LayerThumbnail(id: layer.props.maskID, mask: true, size: thumbnailSize)
+				if layer.props.maskID >= 0 { // The layer's mask, as it paints through it: a tap selects it to paint
+					let maskID = layer.props.maskID
+					LayerThumbnail(id: maskID, mask: true, size: thumbnailSize)
+						.overlay {
+							if layers.selectedLayerID == maskID {
+								RoundedRectangle(cornerRadius: 5).strokeBorder(Color.accentColor, lineWidth: 2)
+							}
+						}
+						.contentShape(.rect)
+						.onTapGesture {
+							if layers.selectedLayerID != maskID {
+								AppStore.shared.perform { _ = app_layer_pick(maskID) }
+							}
+						}
+						.accessibilityLabel("Mask")
+						.accessibilityAddTraits(layers.selectedLayerID == maskID ? [.isSelected, .isButton] : .isButton)
 				}
 			}
 		}

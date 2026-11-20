@@ -106,6 +106,7 @@ void app_layer_save_smart_material(int32_t id);
 // Order: id goes directly below upper_id in the list (-1: to the top). Into an open group when upper_id is that group.
 bool app_layer_can_move_below(int32_t id, int32_t upper_id);
 bool app_layer_move_below(int32_t id, int32_t upper_id);
+bool app_layer_move_below_flat(int32_t id, int32_t upper_id); // Below upper's top level layer and all of it: never into a group or layer
 bool app_layer_set_group(int32_t id, int32_t group_id); // Into a group at its top, -1: out of its group, below it
 
 // Properties. Each change is an undo step, except channels and the UV map (no history)

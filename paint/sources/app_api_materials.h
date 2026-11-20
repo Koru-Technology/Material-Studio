@@ -51,6 +51,7 @@ bool app_material_edit(int32_t id);
 bool app_material_open_studio(int32_t id);
 bool app_material_show_nodes(int32_t id);
 bool app_material_to_fill_layer(int32_t id);    // A new fill layer of it
+bool app_material_new_top_layer(int32_t id);    // A new fill layer of it on top of the stack, selected (next frame)
 bool app_material_apply_to_fill(int32_t id);    // The selected fill layer takes it (state.can_apply_to_fill)
 
 // Its preview sphere, box filtered down to max_size or less (0: full size, 256)

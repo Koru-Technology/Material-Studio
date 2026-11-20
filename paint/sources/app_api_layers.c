@@ -491,6 +491,32 @@ bool app_layer_move_below(int32_t id, int32_t upper_id) {
 	return app_layer_done(in_place ? app_layer_reparent(l, app_layer_parent_below(upper)) : layers_op_move(l, to));
 }
 
+bool app_layer_move_below_flat(int32_t id, int32_t upper_id) {
+	slot_layer_t *upper = upper_id >= 0 ? app_layer_by_id(upper_id) : NULL;
+	if (upper == NULL) {
+		return app_layer_move_below(id, -1);
+	}
+	slot_layer_t *root = upper;
+	while (root->parent != NULL) {
+		root = root->parent;
+	}
+	// Below the lowest of root and its masks, filters and children: under all of it
+	slot_layer_t *lowest = g_project->_->layers->buffer[array_index_of(g_project->_->layers, root) - slot_layer_count_descendants(root)];
+	slot_layer_t *l      = app_layer_by_id(id);
+	if (l == NULL || l == root) {
+		return false;
+	}
+	if (lowest == l) { // The lowest in its group already: out of it, where it is
+		return app_layer_set_group(id, -1);
+	}
+	bool ok = app_layer_move_below(id, lowest->id);
+	if (ok && l->parent != NULL && !slot_layer_is_mask(l) && !slot_layer_is_filter(l)) {
+		app_layer_reparent(l, NULL); // Out of its group
+		history_steps->buffer[history_steps->length - 1]->with_prev = true;
+	}
+	return ok;
+}
+
 bool app_layer_set_group(int32_t id, int32_t group_id) {
 	slot_layer_t *l = app_layer_by_id(id);
 	if (l == NULL || slot_layer_is_mask(l) || slot_layer_is_filter(l)) {

@@ -231,7 +231,8 @@ static i32  _layers_fill_projection   = FILL_PROJECTION_UV;
 static bool _layers_fill_from_material = false;
 
 void layers_create_fill_layer_on_next_frame(void *_) {
-	slot_layer_t *l = layers_new_layer(false, _layers_position, NULL);
+	i32           position = _layers_position == LAYERS_POSITION_TOP ? g_project->_->layers->length : _layers_position;
+	slot_layer_t *l        = layers_new_layer(false, position, NULL);
 	if (l == NULL) {
 		return;
 	}
@@ -245,6 +246,12 @@ void layers_create_fill_layer_on_next_frame(void *_) {
 	l->object_mask = g_context->layer_filter;
 	slot_layer_to_fill_layer(l, layers_new_fill(_layers_fill_projection, _layers_fill_from_material));
 	layers_history_with_prev(history_to_fill_layer); // One undo removes the new fill layer
+	// A white mask comes with it, its effects shape the fill. Undone with it, the fill layer stays selected
+	i32 before = history_steps->length;
+	if (layers_op_new_mask(l, 1) != NULL && history_steps->length > before) {
+		history_steps->buffer[history_steps->length - 1]->with_prev = true;
+	}
+	context_set_layer(l);
 }
 
 // A new fill layer on the next frame: of the selected material (from_material) or plain colors

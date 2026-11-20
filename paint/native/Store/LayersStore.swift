@@ -225,7 +225,7 @@ final class LayersStore: ChangeOnly {
 
 	private(set) var selectedLayerID: Int32 = -1
 	private(set) var layers: [LayerRow] = []
-	private(set) var visibleLayers: [LayerRow] = [] // Without the children of folded groups and layers
+	private(set) var visibleLayers: [LayerRow] = [] // Without masks and the children of folded groups
 	private(set) var thumbnailsVersion: UInt32 = 0
 	private(set) var materialNames: [String] = [] // Project materials, for the fill material picker
 	private(set) var imageNames: [String] = []    // Project images, for the image pickers of fill effects and fill layers
@@ -301,14 +301,14 @@ final class LayersStore: ChangeOnly {
 		return rows
 	}
 
-	// Children of a folded group or layer do not show
+	// Children of a folded group do not show. Masks never do: a layer's row shows its mask's thumbnail, which selects it
 	private static func visible(_ rows: [LayerRow]) -> [LayerRow] {
 		var shown: [Int32: Bool] = [:] // Layer id: its children show
 		var result: [LayerRow] = []
 		for row in rows {
 			let parentShows = row.parentID < 0 || (shown[row.parentID] ?? true)
-			shown[row.id] = parentShows && row.props.expanded
-			if parentShows {
+			shown[row.id] = parentShows && (row.kind != .group || row.props.expanded)
+			if parentShows && row.kind != .mask {
 				result.append(row)
 			}
 		}
@@ -336,6 +336,14 @@ final class LayersStore: ChangeOnly {
 
 	var selectedLayer: LayerRow? {
 		layers.first { $0.id == selectedLayerID }
+	}
+
+	// The selected layer, or the layer whose mask is selected
+	var selectedRowLayer: LayerRow? {
+		guard let l = selectedLayer else {
+			return nil
+		}
+		return l.kind == .mask ? layer(l.parentID) : l
 	}
 
 	func layer(_ id: Int32) -> LayerRow? {

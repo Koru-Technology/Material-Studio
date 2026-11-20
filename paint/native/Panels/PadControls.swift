@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 
 // iPad: the canvas fills the screen, the controls float over it on Liquid Glass.
-// Top left: actions and viewport menus. Top right: library popovers. Left: tools, size, opacity.
+// Top left: actions and viewport menus. Top right: the layer painted, library popovers. Left: tools, size, opacity.
 // Bottom left: undo, redo. Bottom right: frame, views, view cube.
 struct PadControls: View {
 	var body: some View {
@@ -15,10 +15,6 @@ struct PadControls: View {
 					Spacer()
 					PadPopoverBar()
 				}
-				Spacer()
-			}
-			VStack {
-				PadLayerTitle()
 				Spacer()
 			}
 			HStack {
@@ -43,17 +39,9 @@ struct PadControls: View {
 			}
 			VStack {
 				Spacer()
-				if CurveStore.shared.editing { // A stroke held into a curve
-					CurveButtons()
-						.transition(.opacity)
-				}
-				else if AppStore.shared.tool == APP_TOOL_DECAL.id {
-					DecalBar()
-						.transition(.opacity)
-				}
+				bottomBar
 			}
-			.animation(.easeOut(duration: 0.15), value: CurveStore.shared.editing)
-			.animation(.easeOut(duration: 0.15), value: AppStore.shared.tool == APP_TOOL_DECAL.id)
+			.animation(.easeOut(duration: 0.15), value: bottomBarKind)
 		}
 		.padding(16)
 		.padPanelHost()
@@ -70,6 +58,52 @@ struct PadControls: View {
 		}
 		.onDisappear {
 			PadPopovers.shared.close() // An editor over the canvas took the screen: its panel went with the controls
+		}
+	}
+}
+
+// Bottom middle, one at a time: a curve's buttons, Apply Material while the Materials panel is open, the Decal tool's
+// image, a fill layer's effects
+extension PadControls {
+	private enum BottomBar: Equatable {
+		case none, curve, applyMaterial, decal, effects(Int32)
+	}
+
+	private var bottomBarKind: BottomBar {
+		if CurveStore.shared.editing {
+			return .curve
+		}
+		if PadPopovers.shared.shown == "Materials" {
+			return .applyMaterial
+		}
+		if AppStore.shared.tool == APP_TOOL_DECAL.id {
+			return .decal
+		}
+		if let layer = LayersStore.shared.selectedRowLayer, layer.isFill, layer.kind == .layer {
+			return .effects(layer.id)
+		}
+		return .none
+	}
+
+	@ViewBuilder
+	private var bottomBar: some View {
+		switch bottomBarKind {
+		case .curve:
+			CurveButtons()
+				.transition(.opacity)
+		case .applyMaterial:
+			ApplyMaterialBar()
+				.transition(.opacity)
+		case .decal:
+			DecalBar()
+				.transition(.opacity)
+		case .effects(let id):
+			if let layer = LayersStore.shared.layer(id) {
+				FillEffectsBar(layer: layer)
+					.transition(.opacity)
+			}
+		case .none:
+			EmptyView()
 		}
 	}
 }
@@ -306,36 +340,6 @@ struct PadMenuBar: View {
 	}
 }
 
-// Top middle while the Materials or Layers panel is open: the layer painted, "Layer • Mask" when its mask is
-struct PadLayerTitle: View {
-	private var popovers = PadPopovers.shared
-	private var layers   = LayersStore.shared
-
-	var body: some View {
-		if popovers.shown == "Materials" || popovers.shown == "Layers", let title {
-			Text(title)
-				.font(.headline)
-				.lineLimit(1)
-				.truncationMode(.middle)
-				.padding(.horizontal, 18)
-				.frame(height: 44)
-				.glassEffect(.regular, in: .capsule)
-				.frame(maxWidth: 420)
-				.allowsHitTesting(false)
-		}
-	}
-
-	private var title: String? {
-		guard let layer = layers.selectedLayer else {
-			return nil
-		}
-		if layer.kind == .mask, let parent = layers.layer(layer.parentID) {
-			return "\(parent.name) \u{2022} \(layer.name)"
-		}
-		return layer.name
-	}
-}
-
 // Lit, path traced or a channel: a popover list, the 17 modes overflow a menu, which does not scroll
 struct ViewportButton: View {
 	private var store = AppStore.shared
@@ -394,13 +398,47 @@ struct PadPopoverBar: View {
 	var body: some View {
 		GlassEffectContainer(spacing: 8) {
 			HStack(spacing: 8) {
+				layersItem
 				item("Brushes", "paintbrush.pointed") { BrushesPopover() }
-				item("Layers", "square.3.layers.3d") { LayersView() }
 				item("Materials", "circle.circle", image: MaterialsStore.shared.selectedMaterial.flatMap { MaterialsStore.shared.thumbnail(for: $0) }) {
 					MaterialsPopover()
 				}
 				item("Color", "paintpalette") { ColorPopover() } // Next to the material: the color applies to it
 			}
+		}
+	}
+
+	// The layer painted (the layer of a selected mask): its thumbnail and name
+	private var layersItem: some View {
+		let layer = LayersStore.shared.selectedRowLayer
+		return Button {
+			popovers.toggle("Layers")
+		} label: {
+			HStack(spacing: 8) {
+				if let layer, layer.kind != .group {
+					LayerThumbnail(id: layer.id, mask: false, size: 30)
+				}
+				else {
+					Image(systemName: "square.3.layers.3d")
+						.frame(width: 30, height: 30)
+				}
+				Text(layer?.name ?? "Layers")
+					.font(.body.weight(.medium))
+					.lineLimit(1)
+					.truncationMode(.middle)
+					.frame(maxWidth: 160, alignment: .leading)
+					.fixedSize() // As wide as the name, up to 160
+			}
+			.padding(.leading, 7)
+			.padding(.trailing, 14)
+			.frame(height: 44)
+		}
+		.glassEffect(popovers.shown == "Layers" ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+		.foregroundStyle(.primary)
+		.accessibilityLabel("Layers: \(layer?.name ?? "")")
+		.padPopover("Layers") {
+			LayersView()
+				.frame(width: 380, height: 560)
 		}
 	}
 

@@ -448,6 +448,8 @@ typedef enum {
 } clone_layers_t;
 
 // Views sharing the window, see ui_dock.c
+#define LAYERS_POSITION_TOP -2 // layers_create_fill_layer: on top of the stack
+
 typedef enum {
 	DOCK_VIEW_3D    = 0,
 	DOCK_VIEW_2D    = 1,

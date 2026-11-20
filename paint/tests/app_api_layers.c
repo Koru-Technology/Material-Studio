@@ -159,12 +159,12 @@ void next() {
 		check(app_layer_new(1), "fill layer, next frame");
 	}
 	else if (step == 9) {
-		check(app_layer_count() == count1 + 1 && layer_by_id(selected())->fill != NULL, "fill layer added");
+		check(app_layer_count() == count1 + 2 && layer_by_id(selected())->fill != NULL, "fill layer added, with its white mask");
 		count1 = app_layer_count();
 		check(app_layer_new(2), "decal, next frame");
 	}
 	else if (step == 10) {
-		check(app_layer_count() == count1 + 1 && app_layer_fill_projection(selected()) == 2, "decal added");
+		check(app_layer_count() == count1 + 2 && app_layer_fill_projection(selected()) == 2, "decal added, with its white mask");
 		count1 = app_layer_count();
 		check(app_layer_new(3), "color layer, next frame");
 	}

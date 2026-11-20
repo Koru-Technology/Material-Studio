@@ -137,6 +137,29 @@ int32_t app_mask_add_effect(int32_t id, int32_t type) {
 	return mask_stack_count(m) - 1 - at;
 }
 
+int32_t app_mask_insert_effect(int32_t id, int32_t type, int32_t index) {
+	slot_layer_t *m = app_mask_by_id(id);
+	if (m == NULL || type < 0 || type >= MASK_EFFECT_COUNT || (type == MASK_EFFECT_PAINT && mask_stack_paint_index(m) >= 0)) {
+		return -1;
+	}
+	i32 n = mask_stack_count(m);
+	if (index < 0 || index > n) {
+		index = 0;
+	}
+	app_mask_history(m);
+	i32 at = mask_stack_add(m, type, n - index); // index effects above it
+	if (at < 0) {
+		return -1;
+	}
+	g_context->mask_effect = at;
+	m->show_panel          = true;
+	if (type == MASK_EFFECT_ID_SELECTION) {
+		ui_id_mask_begin_effect(m, at);
+	}
+	app_mask_done(true);
+	return mask_stack_count(m) - 1 - at;
+}
+
 bool app_mask_remove_effect(int32_t id, int32_t index) {
 	slot_layer_t *m = app_mask_by_id(id);
 	i32           i = app_mask_stack_index(m, index);

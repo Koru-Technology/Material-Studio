@@ -1,32 +1,14 @@
 import SwiftUI
 
-// The "+" menu: the layer kinds
+// The "+" menu: a paint or a fill layer
 struct NewLayerMenu: View {
 	private var store  = AppStore.shared
 	private var layers = LayersStore.shared
 
 	var body: some View {
 		Menu {
-			Section {
-				item("Paint Layer", "paintbrush", APP_LAYER_NEW_PAINT)
-				item("Fill Layer", "drop.fill", APP_LAYER_NEW_FILL)
-				item("Color Layer", "paintpalette", APP_LAYER_NEW_COLOR)
-				item("Decal", "seal", APP_LAYER_NEW_DECAL)
-			}
-			Section {
-				item("Text", "textformat", APP_LAYER_NEW_TEXT)
-				item("Path", "scribble", APP_LAYER_NEW_PATH)
-				item("Curve", "point.topleft.down.to.point.bottomright.curvepath", APP_LAYER_NEW_CURVE)
-			}
-			Section {
-				item("Group", "folder.badge.plus", APP_LAYER_NEW_GROUP)
-				item("Filter", "camera.filters", APP_LAYER_NEW_FILTER)
-			}
-			Section("Mask") {
-				item("Black Mask", "circle.fill", APP_LAYER_NEW_BLACK_MASK)
-				item("White Mask", "circle", APP_LAYER_NEW_WHITE_MASK)
-				item("ID Mask…", "square.grid.3x3.square", APP_LAYER_NEW_ID_MASK)
-			}
+			item("Paint Layer", "paintbrush", APP_LAYER_NEW_PAINT)
+			item("Fill Layer", "drop.fill", APP_LAYER_NEW_FILL) // With a white mask, its effects shape it
 		} label: {
 			Label("New Layer", systemImage: "plus")
 		}
@@ -156,6 +138,25 @@ struct LayerContextMenu: View {
 				store.perform { app_layer_export(layer.id) }
 			} label: {
 				Label("Export…", systemImage: "square.and.arrow.up")
+			}
+		}
+
+		if layer.isFill, let mask = layers.layer(p.maskID) { // Its mask, which the list does not show
+			Section {
+				if mask.props.showsFillPaint {
+					Button {
+						store.perform { app_layer_fill_paint(mask.id) }
+					} label: {
+						Label("Fill Mask", systemImage: "circle.fill")
+					}
+				}
+				if mask.props.showsClear {
+					Button {
+						store.perform { app_layer_clear(mask.id) }
+					} label: {
+						Label("Clear Mask", systemImage: "circle")
+					}
+				}
 			}
 		}
 

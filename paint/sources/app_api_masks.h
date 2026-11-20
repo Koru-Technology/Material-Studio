@@ -86,6 +86,7 @@ const char *app_mask_blending_name(int32_t blending); // "Normal", ..., "" past 
 
 // An ID Selection starts picking its parts (app_mask_effect_pick_ids) when added
 int32_t app_mask_add_effect(int32_t id, int32_t type);  // On top. Its index (0), -1: refused
+int32_t app_mask_insert_effect(int32_t id, int32_t type, int32_t index); // At index (0 the top), -1: refused
 int32_t app_layer_add_effect(int32_t id, int32_t type); // Layer, group or mask: into its mask, a black one made first. The mask id, -1: refused
 bool    app_mask_remove_effect(int32_t id, int32_t index); // Not the Paint effect
 bool    app_mask_move_effect(int32_t id, int32_t from, int32_t to);

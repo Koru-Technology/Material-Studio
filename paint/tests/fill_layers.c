@@ -137,7 +137,7 @@ void next() {
 	else if (step == 1) {
 		f = selected();
 		l = layer_by_id(f);
-		check(script_layer_count() == count0 + 1 && l != NULL && l->fill != NULL, "a fill layer was added");
+		check(script_layer_count() == count0 + 2 && l != NULL && l->fill != NULL, "a fill layer was added, with its white mask");
 		check(app_layer_fill_projection(f) == 0 && app_layer_fill_kind(f, 0) == 0, "uv projection, color sources");
 		check(string_equals(fill_test_shader(f), "ok"), string("its raster shader compiles (%s)", fill_test_shader(f)));
 		check(app_layer_set_fill_color(f, 0, 0, 1.0, 0.0, 0.0), "base color red");
@@ -240,12 +240,18 @@ void next() {
 	else if (step == 15) {
 		check(layer_by_id(f)->fill != NULL && app_layer_fill_kind(f, 3) == 2, "undo gives the fill back, sources and all");
 		check(!app_layer_add_mask(f, 11), "no fill masks"); // 11: APP_LAYER_NEW_ID_MASK, not a mask kind
-		check(app_layer_add_mask(f, 10), "white mask"); // APP_LAYER_NEW_WHITE_MASK
+		m = -1; // The white mask a new fill layer comes with
+		for (int i = 0; i < script_layer_count(); ++i) {
+			slot_layer_t *x = script_layer_at(i);
+			if (x->parent != NULL && x->parent->id == f && slot_layer_is_mask(x)) {
+				m = x->id;
+			}
+		}
+		check(m >= 0, "white mask");
 	}
 	else if (step == 16) {
-		m                = selected();
 		slot_layer_t *ml = layer_by_id(m);
-		check(ml != NULL && ml->fill == NULL && ml->parent == l, "the mask paints");
+		check(ml != NULL && ml->fill == NULL && ml->parent != NULL && ml->parent->id == f, "the mask paints");
 		check(ml != NULL && average(ml->texpaint, 0) > 0.99, "a white mask starts white");
 		check(app_layer_clear(m), "clear paint");
 	}
