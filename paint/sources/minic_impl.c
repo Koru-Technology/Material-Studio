@@ -618,8 +618,12 @@ void script_projects_take(void) {
 	}
 }
 
-// A project saved while a script runs (export_arm.c)
+// A project saved while a script runs (export_arm.c). One listed before the script is the user's (saved when the script
+// switched away from it with changes): never deleted.
 void script_projects_saved_to(char *path) {
+	if (script_projects_saved != NULL && string_array_index_of(script_projects_saved, project_recent_entry(path)) >= 0) {
+		return;
+	}
 	if (script_projects_made != NULL && string_array_index_of(script_projects_made, path) < 0) {
 		string_array_push(script_projects_made, string_copy(path));
 	}
