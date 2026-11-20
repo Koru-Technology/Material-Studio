@@ -182,6 +182,7 @@
 #include "util/util_clone.c"
 #include "util/util_cursor.c"
 #include "util/util_encode.c"
+#include "util/util_disk_cache.c"
 #include "util/util_fill.c"
 #include "util/util_env.c"
 #include "util/util_layer.c"

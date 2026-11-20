@@ -125,6 +125,7 @@ void iron_set_paste_callback(void (*callback)(char *, void *), void *data);
 
 bool        iron_internal_frame(void);
 const char *iron_internal_save_path(void);
+const char *iron_internal_cache_path(void); // Library/Caches/<app name>/: the system may purge it
 bool        iron_internal_handle_messages(void);
 void        iron_internal_shutdown(void);
 void        iron_internal_update_callback(void);

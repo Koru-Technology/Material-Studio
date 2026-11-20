@@ -15,7 +15,7 @@
 #include "util/util_hash.h"
 
 // ---- Blob store (history_store.c) ----
-// Content-addressed blobs, refcounted, LZ4 in RAM (T1), spilled to a journal on disk (T2), written into the project
+// Content-addressed blobs, refcounted, compressed in RAM (T1), spilled to a journal on disk (T2), written into the project
 // container on save. GPU tile pages (T0) are history_tiles.c, not this store.
 
 typedef enum hstore_kind { // Frozen

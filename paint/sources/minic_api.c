@@ -743,6 +743,7 @@ void minic_register_builtins() {
 	MINIC_F(uv_scale);
 	MINIC_F(uv_angle);
 	MINIC_I(id);
+	MINIC_I(uid);
 	MINIC_B(paint_base);
 	MINIC_B(paint_opac);
 	MINIC_B(paint_occ);

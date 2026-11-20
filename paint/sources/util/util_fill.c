@@ -506,12 +506,18 @@ typedef struct fill_tile {
 	bool              full;   // Its Material Maker buffers were full then
 	u64               keys[64];
 	i32               nkeys;
+	u64               disk_key;     // Its disk cache entry looked for (fill_tile_disk_load)
+	disk_cache_job_t *disk_job;     // Reading it
+	u64               disk_written; // The entry it was written to or read from
+	f64               save_at;      // Rendered full: saved then if its graph stayed (not every step of an edit)
 } fill_tile_t;
 
 static fill_tile_t fill_tiles[FILL_TILES_MAX];
 static bool        fill_tile_baking = false; // A tile's own bakes, see fill_tile_render
 static i32         fill_tile_count   = 0;
 static i32         fill_tile_renders = 0; // fill_stat(3)
+static i32         fill_tile_loads   = 0; // fill_stat(4): tiles read from disk
+static i32         fill_tile_saves   = 0; // fill_stat(5): tiles written to disk
 
 static fill_tile_t *fill_tile_find(u32 uid) {
 	for (i32 i = 0; i < fill_tile_count; ++i) {
@@ -524,6 +530,7 @@ static fill_tile_t *fill_tile_find(u32 uid) {
 
 static void fill_tile_free(i32 i) {
 	fill_tile_t *e = &fill_tiles[i];
+	disk_cache_job_drop(e->disk_job);
 	for (i32 k = 0; k < 3; ++k) {
 		if (e->tex[k] != NULL) {
 			gpu_delete_texture(e->tex[k]);
@@ -621,6 +628,158 @@ static void fill_tile_render(fill_tile_t *e, slot_material_t *m) {
 	draw_resume(saved);
 }
 
+// ---- Material tiles on disk (util_disk_cache.c) ----
+// A tile made from full Material Maker buffers is kept on disk under its graph's signature, so that an open (or the same
+// material in another project) shows it without the material's Material Maker passes: Book 1's took 25 s of GPU after
+// each open. Only tiles whose shader reads nothing but Material Maker passes of its graph (no images, layers, mesh maps or
+// bakes) are kept: their texels follow from the graph alone. Another build of the app makes its own (its shaders may
+// render differently).
+
+#define FILL_TILE_DISK_VERSION 1
+#define FILL_TILE_DISK         "fill_tiles"
+#define FILL_TILE_DISK_SETTLE  2.0
+
+static u64 fill_tile_disk_key(u64 sig, i32 res) {
+	u64 h    = hash_fnv1a_str(sig, __DATE__ " " __TIME__);
+	i32 v[3] = {res, (i32)layers_format(base_bits), FILL_TILE_DISK_VERSION};
+	return hash_fnv1a(h, v, sizeof(v));
+}
+
+static bool fill_tile_self_contained(fill_tile_t *e) {
+	shader_context_t *s = e->scon;
+	if (s == NULL || s->_ == NULL || s->_->pipe == NULL) {
+		return false;
+	}
+	for (i32 i = 0; s->texture_units != NULL && i < s->texture_units->length; ++i) {
+		tex_unit_t *tu = s->texture_units->buffer[i];
+		if (tu->link == NULL || !starts_with(tu->link, MM_BUFFERS_LINK)) {
+			return false;
+		}
+	}
+	return !mm_buffers_keys_read_cpu(e->keys, e->nkeys);
+}
+
+static void fill_tile_transfer_free(gpu_transfer_t *t, void *ud) {
+	gpu_transfer_destroy(t);
+}
+
+typedef struct {
+	u64 key;
+	i32 res;
+	i32 bpt;
+} fill_tile_save_t;
+
+static void fill_tile_saved(gpu_transfer_t *t, void *ud) {
+	fill_tile_save_t *sv  = ud;
+	u32               len = (u32)(3 * sv->res * sv->res * sv->bpt);
+	u8               *p   = malloc(len);
+	memcpy(p, gpu_transfer_map(t, 0), len);
+	disk_cache_write(FILL_TILE_DISK, sv->key, p, len, (u32)sv->res, (u32)sv->bpt); // Takes p
+	free(sv);
+	gpu_transfer_destroy(t);
+}
+
+// The tile just rendered goes to disk, read back without waiting
+static void fill_tile_disk_save(fill_tile_t *e) {
+	u64 key = fill_tile_disk_key(e->sig, e->res);
+	if (!e->full || e->disk_written == key || !fill_tile_self_contained(e)) {
+		return;
+	}
+	e->disk_written      = key;
+	fill_tile_saves++;
+	fill_tile_save_t *sv = calloc(1, sizeof(fill_tile_save_t));
+	sv->key              = key;
+	sv->res              = e->res;
+	sv->bpt              = gpu_texture_format_size(e->tex[0]->format);
+	size_t          one  = (size_t)sv->res * sv->res * sv->bpt;
+	gpu_transfer_t *t    = gpu_transfer_create(one * 3);
+	gpu_transfer_map(t, one * 3);
+	draw_saved_t saved = draw_suspend();
+	gpu_copy_regions_begin();
+	for (i32 k = 0; k < 3; ++k) {
+		gpu_copy_region_to_transfer(t, e->tex[k], 0, 0, sv->res, sv->res, one * k);
+	}
+	gpu_copy_regions_end();
+	draw_resume(saved);
+	gpu_transfer_commit(t, fill_tile_saved, sv);
+}
+
+// The tile's texels (data, its three textures one after the other) into its textures
+static bool fill_tile_upload(fill_tile_t *e, u8 *data, u32 len, i32 res) {
+	gpu_texture_format_t format = layers_format(base_bits);
+	size_t               one    = (size_t)res * res * gpu_texture_format_size(format);
+	if (len != one * 3) {
+		return false;
+	}
+	if (e->tex[0] == NULL || e->res != res || e->tex[0]->format != format) {
+		for (i32 k = 0; k < 3; ++k) {
+			if (e->tex[k] != NULL) {
+				gpu_delete_texture(e->tex[k]);
+			}
+			e->tex[k] = gpu_create_render_target(res, res, format);
+		}
+		e->res = res;
+	}
+	gpu_transfer_t *t = gpu_transfer_create(len);
+	memcpy(gpu_transfer_map(t, len), data, len);
+	draw_saved_t saved = draw_suspend();
+	gpu_copy_regions_begin();
+	for (i32 k = 0; k < 3; ++k) {
+		gpu_copy_region_from_transfer(t, e->tex[k], 0, 0, res, res, one * k);
+	}
+	gpu_copy_regions_end();
+	draw_resume(saved);
+	gpu_transfer_commit(t, fill_tile_transfer_free, NULL); // Freed once the GPU copied it
+	return true;
+}
+
+// The stale tile from disk: true while it is read, and once it came from there; false when it renders (no entry, or
+// an unreadable one)
+static bool fill_tile_disk_load(fill_tile_t *e, u64 sig) {
+	i32 res = fill_tile_res();
+	u64 key = fill_tile_disk_key(sig, res);
+	if (e->disk_job != NULL && e->disk_key != key) {
+		disk_cache_job_drop(e->disk_job); // Of another graph
+		e->disk_job = NULL;
+	}
+	if (e->disk_job != NULL) {
+		if (!disk_cache_job_done(e->disk_job)) {
+			return true;
+		}
+		u32 len  = 0;
+		u8 *data = disk_cache_job_take(e->disk_job, &len);
+		e->disk_job = NULL;
+		bool ok     = data != NULL && fill_tile_upload(e, data, len, res);
+		free(data);
+		if (!ok) {
+			return false;
+		}
+		e->sig          = sig;
+		e->full         = true;
+		e->landed       = mm_buffers_landed_count();
+		e->nkeys        = 0; // Its passes are not needed
+		e->disk_written = key;
+		fill_tile_loads++;
+		return true;
+	}
+	if (e->disk_key == key) {
+		return false; // Looked for: none
+	}
+	e->disk_key = key;
+	e->disk_job = disk_cache_read(FILL_TILE_DISK, key);
+	return e->disk_job != NULL;
+}
+
+// Tiles being read from disk or waiting to be saved (the idle sleep keeps frames coming for them)
+bool fill_tiles_loading(void) {
+	for (i32 i = 0; i < fill_tile_count; ++i) {
+		if (fill_tiles[i].disk_job != NULL || fill_tiles[i].save_at > 0.0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // Tiles of the materials fills use: made, rendered again when stale, the others freed. True when one rendered.
 static bool fill_tiles_update(void) {
 	u32 used[FILL_TILES_MAX];
@@ -663,10 +822,28 @@ static bool fill_tiles_update(void) {
 		bool stale = e->tex[0] == NULL || sig != e->sig || e->res != fill_tile_res() ||
 		             (!e->full && mm_buffers_landed_count() != e->landed);
 		if (!stale) {
+			if (e->save_at > 0.0 && iron_time() >= e->save_at) {
+				e->save_at = 0.0;
+				fill_tile_disk_save(e);
+			}
 			continue;
 		}
-		e->sig = sig;
-		fill_tile_render(e, m);
+		if (e->disk_job == NULL && e->tex[0] != NULL && e->res == fill_tile_res() && e->disk_written == fill_tile_disk_key(sig, e->res)) {
+			e->sig  = sig; // Its texels are the disk entry's for this graph: an entry's graph reads nothing an invalidation is
+			e->full = true; // about (images, layers, mesh maps, bakes), it stays as it is
+			continue;
+		}
+		bool from_disk = e->disk_job != NULL || e->tex[0] == NULL || sig != e->sig || e->res != fill_tile_res();
+		if (from_disk && fill_tile_disk_load(e, sig)) {
+			if (e->disk_job != NULL) {
+				continue; // Being read
+			}
+		}
+		else {
+			e->sig = sig;
+			fill_tile_render(e, m);
+			e->save_at = e->full ? iron_time() + FILL_TILE_DISK_SETTLE : 0.0;
+		}
 		rendered = true;
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) { // Not an edit: rasterized without waiting to settle
 			slot_layer_t *l = g_project->_->layers->buffer[i];
@@ -902,6 +1079,10 @@ i32 fill_stat(i32 what) {
 		return n;
 	case 3:
 		return fill_tile_renders;
+	case 4:
+		return fill_tile_loads;
+	case 5:
+		return fill_tile_saves;
 	}
 	return 0;
 }

@@ -1231,6 +1231,43 @@ i32 mm_buffers_links_tier(u64 *keys, i32 n) {
 	return tier;
 }
 
+static bool mm_buffers_reads_cpu(u64 key, i32 depth) {
+	mm_buffers_recipe_t *r = mm_buffers_find(key);
+	if (r == NULL || depth > 64) {
+		return true; // Unknown: as if it did
+	}
+	if (r->cpu) {
+		return true;
+	}
+	for (i32 i = 0; i < r->textures; ++i) {
+		if (r->inputs[i] != 0 && r->inputs[i] != key && mm_buffers_reads_cpu(r->inputs[i], depth + 1)) {
+			return true;
+		}
+	}
+	for (i32 i = 0; r->loop_inputs != NULL && i < r->loop_textures; ++i) {
+		if (r->loop_inputs[i] != 0 && r->loop_inputs[i] != key && mm_buffers_reads_cpu(r->loop_inputs[i], depth + 1)) {
+			return true;
+		}
+	}
+	for (i32 i = 0; i < r->nloop; ++i) {
+		if (r->loop[i] != key && mm_buffers_reads_cpu(r->loop[i], depth + 1)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Whether the passes of the keys read an image or text node's pixels, somewhere before them (or are unknown): what they
+// render then depends on more than their graph (disk caches of results, util_fill.c)
+bool mm_buffers_keys_read_cpu(u64 *keys, i32 n) {
+	for (i32 i = 0; i < n; ++i) {
+		if (mm_buffers_reads_cpu(keys[i], 0)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 i32 mm_buffers_landed_count(void) {
 	return mm_buffers_landed;
 }

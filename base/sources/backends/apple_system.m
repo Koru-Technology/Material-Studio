@@ -61,6 +61,17 @@ const char *iron_get_resource_path(void) {
 }
 
 // Application Support/<app name>/, created on first use
+const char *iron_internal_cache_path(void) {
+	static char path[PATH_MAX] = {0};
+	if (path[0] == 0) {
+		NSArray  *paths    = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+		NSString *resolved = [[paths objectAtIndex:0] stringByAppendingPathComponent:[NSString stringWithUTF8String:iron_application_name()]];
+		[[NSFileManager defaultManager] createDirectoryAtPath:resolved withIntermediateDirectories:YES attributes:nil error:nil];
+		snprintf(path, sizeof(path), "%s/", [resolved UTF8String]);
+	}
+	return path;
+}
+
 const char *iron_internal_save_path(void) {
 	static char path[PATH_MAX]      = {0};
 	static char path_name[PATH_MAX] = {0};

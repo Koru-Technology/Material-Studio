@@ -1216,8 +1216,7 @@ struct studio_graph {
 #define HSTORE_CHUNK_HEADER   32 // "CHNK" u8 kind, u8 codec, u16 flags, u64 hash.lo, u64 hash.hi, u32 raw_len, u32 comp_len
 #define HSTORE_JOURNAL_HEADER 16 // "MSJN" u32 version, 8 bytes 0
 #define HSTORE_CODEC_RAW      0
-#define HSTORE_CODEC_LZ4      1  // iron_lz4 block (read only: older files and journals)
-#define HSTORE_CODEC_ZSTD     2  // A zstd frame
+#define HSTORE_CODEC_ZSTD     2  // A zstd frame (1 was LZ4, dropped)
 #define HSTORE_CODEC_TEXELS   3  // Texels: u16 row texels, u8 texel bytes, u8 0, then a zstd frame of the byte planes as
                                  // residuals of the median predictor (history_store.c, hstore_texels_split)
 #define HSTORE_CHUNK_MARK     1  // Flag of a kind 0 chunk: the project was saved here (journal only)
@@ -1230,6 +1229,13 @@ typedef struct hstore_chunk {
 	u32       raw_len;
 	u32       comp_len;
 } hstore_chunk_t;
+
+typedef struct hstore_loc { // Where a blob's bytes are (hstore_locate)
+	hstore_chunk_t c;
+	const u8      *ram; // Its payload in RAM, else at off in fd
+	int            fd;
+	i64            off;
+} hstore_loc_t;
 
 // Entry of the index of a v31 project file (io/project_container.c), 40 bytes on disk
 typedef struct hstore_index_entry {

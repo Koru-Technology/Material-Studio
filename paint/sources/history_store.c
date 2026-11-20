@@ -5,8 +5,7 @@
 //
 // Codecs: tiles (hstore_put_texels) are split into byte planes, each the residual of the median predictor of its
 // texel's left, upper and upper left neighbours (LOCO-I), then zstd; other blobs zstd. Stored raw when that is not
-// smaller. On Book 1's paint tiles this took 47% of LZ4's bytes, and compressed faster than LZFSE or zlib. LZ4 chunks of
-// older files and journals still decode, a whole rewrite of a project encodes them again (hstore_chunk_recode).
+// smaller. On Book 1's paint tiles this took 47% of LZ4's bytes, and compressed faster than LZFSE or zlib.
 //
 // Chunk, the unit of the journal and of the v31 container (io/project_container.c), little endian:
 //   "CHNK" u8 kind, u8 codec, u16 flags, u64 hash.lo, u64 hash.hi, u32 raw_len, u32 comp_len, comp_len payload bytes
@@ -25,7 +24,7 @@
 #endif
 
 #define HSTORE_MB          (1024 * 1024)
-#define HSTORE_RAW_BELOW   64 // Smaller payloads are not compressed (lz4_encode reads past inputs under 12 bytes)
+#define HSTORE_RAW_BELOW   64 // Smaller payloads are not compressed (not worth it)
 #define HSTORE_JOURNAL_VER 31
 
 enum {
@@ -98,7 +97,7 @@ bool hstore_chunk_header_read(const u8 *p, hstore_chunk_t *c) {
 	memcpy(&c->h.hi, p + 16, 8);
 	memcpy(&c->raw_len, p + 24, 4);
 	memcpy(&c->comp_len, p + 28, 4);
-	return c->codec <= HSTORE_CODEC_TEXELS;
+	return c->codec == HSTORE_CODEC_RAW || c->codec == HSTORE_CODEC_ZSTD || c->codec == HSTORE_CODEC_TEXELS;
 }
 
 #define HSTORE_ZSTD_LEVEL    1 // Smaller than 3 on 4 KB tiles, and faster
@@ -124,8 +123,8 @@ static inline u8 hstore_texels_predict(const u8 *p, u32 x, u32 y, u32 stride, u3
 	return (u8)(c >= mx ? mn : c <= mn ? mx : a + b - c);
 }
 
-// Texels (rows of w texels of bpt bytes) into bpt byte planes of prediction residuals, and back
-static void hstore_texels_split(const u8 *raw, u8 *out, u32 len, u32 w, u32 bpt) {
+// Texels (rows of w texels of bpt bytes) into bpt byte planes of prediction residuals, and back (any thread)
+void hstore_texels_split(const u8 *raw, u8 *out, u32 len, u32 w, u32 bpt) {
 	u32 h      = len / (w * bpt);
 	u32 n      = w * h;
 	u32 stride = w * bpt;
@@ -139,7 +138,7 @@ static void hstore_texels_split(const u8 *raw, u8 *out, u32 len, u32 w, u32 bpt)
 	}
 }
 
-static void hstore_texels_join(const u8 *planes, u8 *raw, u32 len, u32 w, u32 bpt) {
+void hstore_texels_join(const u8 *planes, u8 *raw, u32 len, u32 w, u32 bpt) {
 	u32 h      = len / (w * bpt);
 	u32 n      = w * h;
 	u32 stride = w * bpt;
@@ -162,16 +161,30 @@ static u32 hstore_zstd(const void *data, u32 len, u8 *out, u32 at) {
 	return ZSTD_isError(n) ? 0 : (u32)n;
 }
 
+static bool hstore_unzstd_with(ZSTD_DCtx *dctx, const u8 *src, u32 n, u8 *dst, u32 len) {
+	size_t r = ZSTD_decompressDCtx(dctx, dst, len, src, n);
+	return !ZSTD_isError(r) && r == len;
+}
+
 static bool hstore_unzstd(const u8 *src, u32 n, u8 *dst, u32 len) {
 	if (hstore_zd == NULL) {
 		hstore_zd = ZSTD_createDCtx();
 	}
-	size_t r = ZSTD_decompressDCtx(hstore_zd, dst, len, src, n);
-	return !ZSTD_isError(r) && r == len;
+	return hstore_unzstd_with(hstore_zd, src, n, dst, len);
 }
+
+static u8 *hstore_chunk_decode_with(const hstore_chunk_t *c, const u8 *payload, bool verify, ZSTD_DCtx *dctx);
 
 // The raw bytes of a payload (malloc'd, at least 1 byte), NULL when it does not decode to raw_len bytes of hash h
 u8 *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify) {
+	if (hstore_zd == NULL) {
+		hstore_zd = ZSTD_createDCtx();
+	}
+	return hstore_chunk_decode_with(c, payload, verify, hstore_zd);
+}
+
+// As hstore_chunk_decode with a zstd context of the caller's: any thread
+static u8 *hstore_chunk_decode_with(const hstore_chunk_t *c, const u8 *payload, bool verify, ZSTD_DCtx *dctx) {
 	u8 *out = NULL;
 	if (c->codec == HSTORE_CODEC_RAW) {
 		if (c->comp_len != c->raw_len) {
@@ -180,23 +193,14 @@ u8 *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify)
 		out = malloc(c->raw_len > 0 ? c->raw_len : 1);
 		memcpy(out, payload, c->raw_len);
 	}
-	else if (c->codec == HSTORE_CODEC_LZ4) {
-		buffer_t  in  = {.buffer = (u8 *)payload, .length = c->comp_len, .capacity = c->comp_len};
-		buffer_t *dec = lz4_decode(&in, c->raw_len);
-		if (dec == NULL) {
-			return NULL;
-		}
-		out = dec->buffer;
-		free(dec);
-	}
 	else if (c->codec == HSTORE_CODEC_ZSTD) {
 		out = malloc(c->raw_len > 0 ? c->raw_len : 1);
-		if (!hstore_unzstd(payload, c->comp_len, out, c->raw_len)) {
+		if (!hstore_unzstd_with(dctx, payload, c->comp_len, out, c->raw_len)) {
 			free(out);
 			return NULL;
 		}
 	}
-	else {
+	else if (c->codec == HSTORE_CODEC_TEXELS) {
 		u16 w = 0;
 		memcpy(&w, payload, 2);
 		u32 bpt = payload[2];
@@ -205,13 +209,16 @@ u8 *hstore_chunk_decode(const hstore_chunk_t *c, const u8 *payload, bool verify)
 		}
 		u8 *planes = malloc(c->raw_len > 0 ? c->raw_len : 1);
 		out        = malloc(c->raw_len > 0 ? c->raw_len : 1);
-		if (!hstore_unzstd(payload + HSTORE_TEXELS_HEADER, c->comp_len - HSTORE_TEXELS_HEADER, planes, c->raw_len)) {
+		if (!hstore_unzstd_with(dctx, payload + HSTORE_TEXELS_HEADER, c->comp_len - HSTORE_TEXELS_HEADER, planes, c->raw_len)) {
 			free(planes);
 			free(out);
 			return NULL;
 		}
 		hstore_texels_join(planes, out, c->raw_len, w, bpt);
 		free(planes);
+	}
+	else {
+		return NULL; // Not a codec of this version
 	}
 	if (verify && !hash128_eq(hstore_hash(out, c->raw_len), c->h)) {
 		free(out);
@@ -857,39 +864,6 @@ void hstore_rebuild_refs(const hash128_t *roots, i32 n) {
 
 // ---- API (stroke_rec.h) ----
 
-// A chunk of an older codec (LZ4, or raw) encoded as a put does now, for a whole rewrite of a project: the new payload
-// (malloc'd, c takes its codec and length), NULL when it stays as it is. A tile's texel layout is not in its bytes: square
-// tiles of 4 byte texels, as the paint layers' (any other layout still decodes, its predictor is only less apt).
-u8 *hstore_chunk_recode(hstore_chunk_t *c, const u8 *payload) {
-	if (c->codec != HSTORE_CODEC_LZ4 && c->codec != HSTORE_CODEC_RAW) {
-		return NULL;
-	}
-	u8 *raw = hstore_chunk_decode(c, payload, false);
-	if (raw == NULL) {
-		return NULL;
-	}
-	u32 w = 0;
-	if (c->kind == HSTORE_TILE) {
-		u32 texels = c->raw_len / 4;
-		u32 side   = 1;
-		while ((side + 1) * (side + 1) <= texels) {
-			side++;
-		}
-		w = side * side * 4 == c->raw_len ? side : 0;
-	}
-	u32 comp_len;
-	u8  codec;
-	u8 *p = hstore_encode(raw, c->raw_len, w, 4, &comp_len, &codec);
-	free(raw);
-	if (codec == HSTORE_CODEC_RAW && c->codec == HSTORE_CODEC_RAW) {
-		free(p);
-		return NULL;
-	}
-	c->codec    = codec;
-	c->comp_len = comp_len;
-	return p;
-}
-
 static hash128_t hstore_put_as(hstore_kind_t kind, const void *data, u32 len, u32 w, u32 bpt);
 
 hash128_t hstore_put(hstore_kind_t kind, const void *data, u32 len) {
@@ -972,6 +946,43 @@ u8 *hstore_get(hash128_t h, u32 *len) {
 		*len = c.raw_len;
 	}
 	return out;
+}
+
+// Where a stored blob's bytes are, to read them off the main thread (hstore_read_located): false when it is not simply
+// stored (missing, or pending: hstore_get resolves those)
+bool hstore_locate(hash128_t h, hstore_loc_t *loc) {
+	hstore_entry_t *e = hstore_find(h);
+	if (e == NULL || (e->state & HSTORE_E_PENDING)) {
+		return false;
+	}
+	e->tick  = ++hstore_tick;
+	loc->c   = (hstore_chunk_t){.kind = e->kind, .codec = e->codec, .h = e->h, .raw_len = e->raw_len, .comp_len = e->comp_len};
+	loc->ram = e->ram;
+	loc->fd  = e->src == HSTORE_SRC_PROJECT ? hstore_pfd : hstore_fd;
+	loc->off = e->disk_off;
+	return loc->ram != NULL || (loc->fd >= 0 && loc->off >= 0);
+}
+
+// The raw bytes of a located blob (malloc'd), NULL when they can not be read: any thread, with its own zstd context
+// (ZSTD_createDCtx), while the main thread leaves the store as it is. *disk: whether they were read from a file.
+u8 *hstore_read_located(const hstore_loc_t *loc, void *dctx, bool *disk) {
+	*disk = loc->ram == NULL;
+	if (loc->ram != NULL) {
+		return hstore_chunk_decode_with(&loc->c, loc->ram, false, dctx);
+	}
+	u8 *p = malloc(loc->c.comp_len > 0 ? loc->c.comp_len : 1);
+	if (!hstore_pread_all(loc->fd, p, loc->c.comp_len, loc->off + HSTORE_CHUNK_HEADER)) {
+		free(p);
+		return NULL;
+	}
+	u8 *out = hstore_chunk_decode_with(&loc->c, p, true, dctx); // The disk can be corrupt
+	free(p);
+	return out;
+}
+
+// Chunks read off the main thread (hstore_read_located), counted with the others
+void hstore_count_disk_reads(i64 n) {
+	hstore_disk_reads += n;
 }
 
 bool hstore_has(hash128_t h) {

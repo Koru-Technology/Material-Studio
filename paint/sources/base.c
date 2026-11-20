@@ -108,6 +108,9 @@ static const char *base_idle_busy_work() {
 	if (make_material_mesh_pending()) {
 		return "viewport shaders";
 	}
+	if (fill_tiles_loading()) {
+		return "fill tiles from disk";
+	}
 	if (layer_cache_pending()) {
 		return "layer cache";
 	}

@@ -636,9 +636,7 @@ static bool pc_put_blob(hash128_t h, void *ud) {
 	hstore_chunk_t c;
 	u8            *payload = hstore_chunk_payload(h, &c);
 	if (payload != NULL) {
-		u8 *recoded = hstore_chunk_recode(&c, payload); // A chunk of an older codec, as a put encodes it now
-		pc_put(c.kind, c.codec, h, c.raw_len, recoded != NULL ? recoded : payload, c.comp_len);
-		free(recoded);
+		pc_put(c.kind, c.codec, h, c.raw_len, payload, c.comp_len);
 		free(payload);
 	}
 	return true;
