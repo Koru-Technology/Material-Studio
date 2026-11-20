@@ -410,7 +410,9 @@ static int32_t app_read_rgba8(gpu_texture_t *t, int32_t max_size, bool premultip
 			if (!r->inflight) {
 				app_reads_record(r, t);
 			}
-			return 0; // Asked for: it comes with a later frame
+			iron_delay_idle_sleep(); // It comes with a later frame: frames keep coming while the engine would sleep (the native
+			                         // panels refresh with frames, a popover's scrolling does not reach the engine)
+			return 0;
 		}
 		memcpy(out, r->rgba, bytes);
 		*w = ow;

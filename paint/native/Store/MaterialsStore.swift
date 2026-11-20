@@ -96,6 +96,7 @@ final class MaterialsStore: ChangeOnly {
 	// Icons of the library and smart materials by key, loaded a few per frame for the cells on screen
 	private(set) var icons: [UInt32: CGImage] = [:]
 	private(set) var iconsMissing: Set<UInt32> = [] // Items without an icon
+	private(set) var thumbnailsLanded: UInt32 = 0 // Views showing a thumbnail read it: they redraw when one asked for arrives
 
 	@ObservationIgnored var libraryShown = false {
 		didSet {
@@ -117,6 +118,7 @@ final class MaterialsStore: ChangeOnly {
 	@ObservationIgnored private var librarySignature: UInt32?
 	@ObservationIgnored private var smartSignature: UInt32?
 	@ObservationIgnored private var thumbnails: [Int32: (version: UInt32, image: CGImage)] = [:]
+	@ObservationIgnored private var thumbnailsWaiting = false // A thumbnail read back without waiting is on its way
 	@ObservationIgnored private var wanted: [UInt32: Int] = [:] // Keys of the cells on screen, how many cells show each
 	@ObservationIgnored private var iconUse: [UInt32: Int] = [:]  // Last use, the least recently used go past maxIcons
 	@ObservationIgnored private var iconClock = 0
@@ -138,6 +140,10 @@ final class MaterialsStore: ChangeOnly {
 		update(\.smartCanSave, s.smart_can_save)
 		update(\.canApplyToFill, s.can_apply_to_fill)
 		if s.materials_signature != materialsSignature || s.previews_version != previewsVersion {
+			if s.previews_version != previewsVersion && thumbnailsWaiting { // Readbacks landed (app_read_rgba8)
+				thumbnailsWaiting = false
+				thumbnailsLanded &+= 1
+			}
 			materialsSignature = s.materials_signature
 			previewsVersion    = s.previews_version
 			update(\.materials, readMaterials())
@@ -168,10 +174,12 @@ final class MaterialsStore: ChangeOnly {
 
 	// The preview sphere, read back again once its version changed. The last one while a new one is not ready.
 	func thumbnail(for row: MaterialRow) -> CGImage? {
+		_ = thumbnailsLanded
 		if let t = thumbnails[row.id], t.version == row.previewVersion {
 			return t.image
 		}
 		guard let image = reader.read(premultiplied: true, { app_material_thumbnail(row.id, 256, $0, $1, &$2, &$3) }).image else {
+			thumbnailsWaiting = true // Read back over the next frames
 			return thumbnails[row.id]?.image
 		}
 		thumbnails[row.id] = (row.previewVersion, image)
@@ -348,6 +356,9 @@ final class MaterialsStore: ChangeOnly {
 
 	func showIcon(_ key: UInt32) {
 		wanted[key, default: 0] += 1
+		if icons[key] == nil {
+			app_wake() // Scrolling the popover does not reach the engine: its frames load the icon (refresh, loadIcons)
+		}
 	}
 
 	func hideIcon(_ key: UInt32) {
