@@ -265,6 +265,7 @@ void context_select_tool(i32 i) {
 	}
 	i32 old         = g_context->tool;
 	g_context->tool = i;
+	context_decal_swap(); // The Decal tool's own material in or out
 	make_material_parse_paint_material(false); // Made for the tool. The material's node previews do not depend on it
 	g_context->ddirty = 3;
 	if (context_tool_shapes_mesh(old) || context_tool_shapes_mesh(i)) {
@@ -325,6 +326,67 @@ bool context_in_nodes() {
 
 bool context_is_pixel_snap() {
 	return g_config->pixel_snap && !context_is_decal() && !slot_layer_is_path(g_context->layer);
+}
+
+// The Decal tool paints with a material of its own, never in the project: what the decal bar and its channels set
+// (app_decal_*), base color white until it takes an image. Made for the current project, dropped with it.
+slot_material_t *context_decal_material() {
+	if (context_decal_project != g_project) {
+		context_decal_mat     = NULL;
+		context_decal_user    = NULL;
+		context_decal_project = g_project;
+	}
+	if (context_decal_mat == NULL) {
+		slot_material_t *m = slot_material_create(g_project->_->materials->buffer[0]->data, NULL);
+		m->id              = -1; // Not one of the project's
+		m->canvas->name    = "Decal";
+		ui_node_t *out     = ui_canvas_find_type(m->canvas, "OUTPUT_MATERIAL_PBR");
+		for (i32 i = 0; i < m->canvas->nodes->length; ++i) { // Only the output: values until images come
+			ui_node_t *n = m->canvas->nodes->buffer[i];
+			if (n != out) {
+				ui_remove_node(n, m->canvas);
+				--i;
+			}
+		}
+		if (out != NULL) {
+			out->inputs->buffer[0]->default_value = f32_array_create_xyzw(1.0, 1.0, 1.0, 1.0);
+		}
+		context_decal_mat = m;
+	}
+	return context_decal_mat;
+}
+
+// The project material selected: the one the Decal tool's material stands in for while it paints
+slot_material_t *context_user_material() {
+	if (context_decal_mat != NULL && g_context->material == context_decal_mat) {
+		return context_decal_user != NULL && array_index_of(g_project->_->materials, context_decal_user) >= 0 ? context_decal_user
+		                                                                                                       : g_project->_->materials->buffer[0];
+	}
+	return g_context->material;
+}
+
+// While the Decal tool is selected it paints with its material; out of the tool, or in a material editor, the project's
+// material is back. Does not make the paint shader: the caller does when it returns true.
+bool context_decal_swap() {
+	if (g_project == NULL || g_project->_->materials == NULL || g_project->_->materials->length == 0) {
+		return false;
+	}
+	bool editing = material_studio_show || (ui_nodes_show && ui_nodes_canvas_type == CANVAS_TYPE_MATERIAL);
+	bool want    = g_context->tool == TOOL_TYPE_DECAL && !editing;
+	bool stale   = context_decal_mat != NULL && context_decal_project != g_project; // Its project was closed
+	if (stale && g_context->material == context_decal_mat) {
+		g_context->material = g_project->_->materials->buffer[0];
+	}
+	if (want && g_context->material != context_decal_material()) {
+		context_decal_user  = g_context->material;
+		g_context->material = context_decal_mat;
+		return true;
+	}
+	if (!want && context_decal_mat != NULL && g_context->material == context_decal_mat) {
+		g_context->material = context_user_material();
+		return true;
+	}
+	return false;
 }
 
 bool context_is_decal() {

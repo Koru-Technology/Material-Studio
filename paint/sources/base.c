@@ -249,6 +249,14 @@ void base_handle_drop_paths() {
 }
 
 void base_update(void *_) {
+	if (context_decal_swap()) { // A material editor opened or closed, another material was picked, a project opened
+		make_material_parse_paint_material_async(true);
+		if (context_is_decal()) {
+			draw_saved_t gpu = draw_suspend();
+			util_render_make_decal_preview();
+			draw_resume(gpu);
+		}
+	}
 	util_pencil_update();
 	brush_previews_update();
 	ui_quick_menu_update();

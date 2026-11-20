@@ -1,15 +1,16 @@
 import Observation
 import SwiftUI
 
-// The Decal tool's image and channels (app_api_materials.h): the decal stamps the selected material, a decal material is
-// made of the picked image. Refreshed by AppStore while the tool is selected.
+// The Decal tool's image and channels (app_api_materials.h): those of the selected decal layer, otherwise of the tool's
+// own material (never one of the project's). Refreshed by AppStore while the tool is selected.
 @Observable
 final class DecalStore: ChangeOnly {
 	static let shared = DecalStore()
 
 	static let channelNames = ["Base Color", "Opacity", "Occlusion", "Roughness", "Metallic", "Normal", "Emission", "Height"]
 
-	private(set) var image: Int32 = -1 // Of the selected material, -1: not a decal material
+	private(set) var image: Int32 = -1 // The image the base color comes from, -1: a color
+	private(set) var editingLayer = false // A decal layer is selected: the bar sets it, not the tool's own material
 	private(set) var images: [String] = [] // The project's images
 	private(set) var channelImages = [Int32](repeating: -1, count: channelNames.count)
 	private(set) var channelValues = [Float](repeating: 0, count: channelNames.count)
@@ -28,6 +29,7 @@ final class DecalStore: ChangeOnly {
 			importFrom = nil
 			_ = app_decal_use_image(Int32(count - 1))
 		}
+		update(\.editingLayer, app_decal_editing_layer())
 		update(\.image, app_decal_image())
 		update(\.channelImages, (0..<Int32(Self.channelNames.count)).map { app_decal_channel_image($0) })
 		update(\.channelValues, (0..<Int32(Self.channelNames.count)).map { app_decal_channel_value($0) })
@@ -119,7 +121,7 @@ struct DecalChannelsPanel: View {
 					channel(c)
 				}
 			}
-			.navigationTitle("Decal")
+			.navigationTitle(store.editingLayer ? "Decal Layer" : "Decal")
 #if os(iOS)
 			.navigationBarTitleDisplayMode(.inline)
 #endif
@@ -131,7 +133,7 @@ struct DecalChannelsPanel: View {
 		let image = store.channelImages[c]
 		return Section(DecalStore.channelNames[c]) {
 			Picker("Image", selection: Binding(get: { image }, set: { v in
-				if ch == APP_DECAL_BASE.id && store.image < 0 { // Not a decal material yet: the image makes one, as the bar does
+				if ch == APP_DECAL_BASE.id && store.image < 0 { // No image yet: the opacity takes its alpha too, as the bar does
 					store.use(v)
 				}
 				else {
@@ -141,7 +143,7 @@ struct DecalChannelsPanel: View {
 				if ch != APP_DECAL_BASE.id {
 					Text(ch == APP_DECAL_NORMAL.id ? "None" : "Value").tag(Int32(-1))
 				}
-				else if image < 0 { // The selected material's own color
+				else if image < 0 { // White until an image comes
 					Text("Color").tag(Int32(-1))
 				}
 				ForEach(Array(store.images.enumerated()), id: \.offset) { i, name in

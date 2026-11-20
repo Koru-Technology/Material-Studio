@@ -100,6 +100,9 @@ string_array_t  *box_export_color_spaces;
 i32   box_projects_tab_index;
 char *box_projects_search = "";
 bool  box_projects_native_shown = false; // iPad: the native projects screen is up (app_api.h)
+struct slot_material *context_decal_mat      = NULL; // The Decal tool's own material, not in the project (context_decal_material)
+struct slot_material *context_decal_user     = NULL; // The project material it stands in for while the tool paints
+struct project       *context_decal_project  = NULL; // The project it was made for: its images
 bool  box_projects_native_closable = false; // Opened from a project: it can close back to it
 bool  box_projects_import_pending = false; // The model picked next starts a new project (box_projects_import)
 

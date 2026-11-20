@@ -254,6 +254,9 @@ bool app_layer_new(int32_t kind) {
 	}
 	slot_layer_t *l = g_context->layer;
 	bool          ok = true;
+	if (context_decal_mat != NULL && g_context->material == context_decal_mat) {
+		g_context->material = context_user_material(); // New layers take the project's material, the Decal tool's comes back next frame
+	}
 	switch (kind) {
 	case APP_LAYER_NEW_PAINT:
 		ok = layers_op_new() != NULL;
@@ -645,8 +648,8 @@ bool app_layer_set_fill_kind(int32_t id, int32_t channel, int32_t kind) {
 	}
 	app_fill_edit_begin(l);
 	fill_source_set_kind(s, channel, kind);
-	if (kind == FILL_SOURCE_MATERIAL && fill_source_material(s) == NULL && g_context->material != NULL) {
-		s->material = g_context->material->uid;
+	if (kind == FILL_SOURCE_MATERIAL && fill_source_material(s) == NULL && context_user_material() != NULL) {
+		s->material = context_user_material()->uid;
 	}
 	if (kind == FILL_SOURCE_TEXTURE && fill_source_asset(s) == NULL && g_project->_->assets->length > 0) {
 		s->image = g_project->_->assets->buffer[0]->id;

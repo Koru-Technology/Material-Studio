@@ -280,6 +280,9 @@ static u32 slot_material_color_serial = 0;
 static f64 slot_material_color_time   = 0.0;
 
 static void slot_material_color_history() {
+	if (array_index_of(g_project->_->materials, g_context->material) < 0) { // The Decal tool's own material: no undo
+		return;
+	}
 	i32             top  = history_steps->length - 1 - history_redos;
 	history_step_t *last = history_undos > 0 && top >= 0 ? history_steps->buffer[top] : NULL;
 	bool            held = mouse_down("left") && sys_time() - slot_material_color_time < 0.25;
