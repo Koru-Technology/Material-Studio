@@ -545,7 +545,11 @@ void export_glb_run_textured(char *path, any_array_t *paint_objects, char *mater
 	json_buf_append(&j, "{\"asset\":{\"generator\":\"Material Studio\",\"version\":\"2.0\"},\"scene\":0,");
 
 	// scenes
-	json_buf_append(&j, "\"scenes\":[{\"name\":\"Scene\",\"nodes\":[");
+	// With a material (Godot): the scene named after the file. Godot names the root after the file and a mesh resource
+	// <file>_<mesh>: a single object is Mesh / mesh there, not the name of the object it was imported as (Plane.001)
+	bool  generic    = material_name != NULL && n == 1;
+	char *scene_name = json_escape(material_name != NULL ? material_name : "Scene");
+	json_buf_append(&j, "\"scenes\":[{\"name\":\"%s\",\"nodes\":[", scene_name);
 	for (int i = 0; i < n; i++) {
 		if (i > 0)
 			json_buf_append(&j, ",");
@@ -559,7 +563,7 @@ void export_glb_run_textured(char *path, any_array_t *paint_objects, char *mater
 		if (i > 0)
 			json_buf_append(&j, ",");
 		mesh_object_t *p = (mesh_object_t *)paint_objects->buffer[i];
-		char          *name = json_escape(p->base->name);
+		char          *name = json_escape(generic ? "Mesh" : p->base->name);
 		json_buf_append(&j, "{\"mesh\":%d,\"name\":\"%s\"}", i, name);
 		free(name);
 	}
@@ -572,7 +576,7 @@ void export_glb_run_textured(char *path, any_array_t *paint_objects, char *mater
 			json_buf_append(&j, ",");
 		mesh_object_t *p       = (mesh_object_t *)paint_objects->buffer[i];
 		int            base_ac = i * 4;
-		char          *name    = json_escape(p->base->name);
+		char          *name    = json_escape(generic ? "mesh" : p->base->name);
 		json_buf_append(&j, "{\"name\":\"%s\",\"primitives\":[{\"attributes\":{\"POSITION\":%d,\"NORMAL\":%d,\"TEXCOORD_0\":%d},\"indices\":%d%s}]}",
 		                name, base_ac, base_ac + 1, base_ac + 2, base_ac + 3, material_name != NULL ? ",\"material\":0" : "");
 		free(name);
@@ -713,4 +717,5 @@ void export_glb_run_textured(char *path, any_array_t *paint_objects, char *mater
 	free(pmaxs);
 	free(bin);
 	free(j.buf);
+	free(scene_name);
 }
