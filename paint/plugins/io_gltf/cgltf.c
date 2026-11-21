@@ -362,7 +362,34 @@ static char *json_escape(const char *name) {
 	return out;
 }
 
+// The bytes of file, NULL when it can not be read
+static uint8_t *export_glb_read_file(const char *file, size_t *len) {
+	FILE *f = fopen(file, "rb");
+	if (f == NULL) {
+		return NULL;
+	}
+	fseek(f, 0, SEEK_END);
+	long n = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	uint8_t *b = n > 0 ? (uint8_t *)malloc((size_t)n) : NULL;
+	if (b != NULL && fread(b, 1, (size_t)n, f) != (size_t)n) {
+		free(b);
+		b = NULL;
+	}
+	fclose(f);
+	*len = b != NULL ? (size_t)n : 0;
+	return b;
+}
+
+void export_glb_run_textured(char *path, any_array_t *paint_objects, char *material_name, char **images);
+
 void export_glb_run(char *path, any_array_t *paint_objects) {
+	export_glb_run_textured(path, paint_objects, NULL, NULL);
+}
+
+// With a material: images (base color, normal, occlusion / roughness / metallic in r g b; png or jpg files, NULL for
+// none) embedded in the file, the material on every mesh
+void export_glb_run_textured(char *path, any_array_t *paint_objects, char *material_name, char **images) {
 	int n = (int)paint_objects->length;
 
 	int      *vcs     = (int *)malloc(n * sizeof(int));
@@ -481,6 +508,38 @@ void export_glb_run(char *path, any_array_t *paint_objects) {
 		bin[bin_len++] = 0;
 	}
 
+	// Images, each 4-byte aligned after the meshes
+	uint32_t    img_off[3]   = {0, 0, 0};
+	uint32_t    img_len[3]   = {0, 0, 0};
+	const char *img_mime[3]  = {NULL, NULL, NULL};
+	int         img_index[3] = {-1, -1, -1}; // In images and textures
+	int         nimages      = 0;
+	for (int k = 0; material_name != NULL && k < 3; k++) {
+		if (images[k] == NULL) {
+			continue;
+		}
+		size_t   len;
+		uint8_t *data = export_glb_read_file(images[k], &len);
+		if (data == NULL) {
+			continue;
+		}
+		while (bin_len + len + 3 > bin_cap) {
+			bin_cap *= 2;
+		}
+		bin = (uint8_t *)realloc(bin, bin_cap);
+		img_off[k] = (uint32_t)bin_len;
+		img_len[k] = (uint32_t)len;
+		memcpy(bin + bin_len, data, len);
+		bin_len += len;
+		while (bin_len % 4 != 0) {
+			bin[bin_len++] = 0;
+		}
+		free(data);
+		size_t pl   = strlen(images[k]);
+		img_mime[k] = pl >= 4 && (strcmp(images[k] + pl - 4, ".jpg") == 0 || strcmp(images[k] + pl - 4, ".JPG") == 0) ? "image/jpeg" : "image/png";
+		img_index[k] = nimages++;
+	}
+
 	// Build JSON string
 	json_buf_t j = {(char *)malloc(4096), 0, 4096};
 	json_buf_append(&j, "{\"asset\":{\"generator\":\"Material Studio\",\"version\":\"2.0\"},\"scene\":0,");
@@ -514,8 +573,8 @@ void export_glb_run(char *path, any_array_t *paint_objects) {
 		mesh_object_t *p       = (mesh_object_t *)paint_objects->buffer[i];
 		int            base_ac = i * 4;
 		char          *name    = json_escape(p->base->name);
-		json_buf_append(&j, "{\"name\":\"%s\",\"primitives\":[{\"attributes\":{\"POSITION\":%d,\"NORMAL\":%d,\"TEXCOORD_0\":%d},\"indices\":%d}]}",
-		                name, base_ac, base_ac + 1, base_ac + 2, base_ac + 3);
+		json_buf_append(&j, "{\"name\":\"%s\",\"primitives\":[{\"attributes\":{\"POSITION\":%d,\"NORMAL\":%d,\"TEXCOORD_0\":%d},\"indices\":%d%s}]}",
+		                name, base_ac, base_ac + 1, base_ac + 2, base_ac + 3, material_name != NULL ? ",\"material\":0" : "");
 		free(name);
 	}
 	json_buf_append(&j, "],");
@@ -554,7 +613,51 @@ void export_glb_run(char *path, any_array_t *paint_objects) {
 		json_buf_append(&j, ",{\"buffer\":0,\"byteOffset\":%u,\"byteLength\":%u}", tex_off[i], (uint32_t)(vc * 8));
 		json_buf_append(&j, ",{\"buffer\":0,\"byteOffset\":%u,\"byteLength\":%u}", idx_off[i], (uint32_t)(ic * 4));
 	}
+	for (int k = 0; k < 3; k++) { // Images' views follow the meshes'
+		if (img_index[k] >= 0) {
+			json_buf_append(&j, ",{\"buffer\":0,\"byteOffset\":%u,\"byteLength\":%u}", img_off[k], img_len[k]);
+		}
+	}
 	json_buf_append(&j, "],");
+
+	// The material, a texture per image
+	if (material_name != NULL) {
+		char *name = json_escape(material_name);
+		json_buf_append(&j, "\"materials\":[{\"name\":\"%s\",\"pbrMetallicRoughness\":{", name);
+		free(name);
+		bool comma = false;
+		if (img_index[0] >= 0) {
+			json_buf_append(&j, "\"baseColorTexture\":{\"index\":%d}", img_index[0]);
+			comma = true;
+		}
+		if (img_index[2] >= 0) {
+			json_buf_append(&j, "%s\"metallicRoughnessTexture\":{\"index\":%d}", comma ? "," : "", img_index[2]);
+		}
+		json_buf_append(&j, "}");
+		if (img_index[1] >= 0) {
+			json_buf_append(&j, ",\"normalTexture\":{\"index\":%d}", img_index[1]);
+		}
+		if (img_index[2] >= 0) {
+			json_buf_append(&j, ",\"occlusionTexture\":{\"index\":%d}", img_index[2]);
+		}
+		json_buf_append(&j, "}],");
+		if (nimages > 0) {
+			json_buf_append(&j, "\"samplers\":[{\"magFilter\":9729,\"minFilter\":9987,\"wrapS\":10497,\"wrapT\":10497}],");
+			json_buf_append(&j, "\"textures\":[");
+			for (int t = 0; t < nimages; t++) {
+				json_buf_append(&j, "%s{\"sampler\":0,\"source\":%d}", t > 0 ? "," : "", t);
+			}
+			json_buf_append(&j, "],\"images\":[");
+			int         view     = n * 4;
+			const char *names[3] = {"base", "nor", "orm"}; // Godot extracts them as <file>_<name>
+			for (int k = 0; k < 3; k++) {
+				if (img_index[k] >= 0) {
+					json_buf_append(&j, "%s{\"name\":\"%s\",\"bufferView\":%d,\"mimeType\":\"%s\"}", img_index[k] > 0 ? "," : "", names[k], view++, img_mime[k]);
+				}
+			}
+			json_buf_append(&j, "],");
+		}
+	}
 
 	// buffers
 	json_buf_append(&j, "\"buffers\":[{\"byteLength\":%u}]}", (uint32_t)bin_len);

@@ -174,7 +174,8 @@ static bool args_export_textures_prepare() {
 	char *preset = box_export_files->buffer[0];
 	for (i32 i = 0; i < box_export_files->length; ++i) {
 		if (string_equals(box_export_files->buffer[i], args_export_textures_preset)) {
-			preset = box_export_files->buffer[i];
+			preset                  = box_export_files->buffer[i];
+			box_export_preset_index = i;
 		}
 	}
 

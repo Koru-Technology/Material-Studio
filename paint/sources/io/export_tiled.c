@@ -115,6 +115,7 @@ static struct {
 	i32                  tile_layer;
 	i64                  bytes_base;
 	string_array_t      *written;
+	i32                  written_job; // Of written, the first of the job
 } et;
 
 static gpu_texture_t  *et_acc[3];
@@ -1671,9 +1672,10 @@ bool export_tiled_step(f64 budget_ms) {
 				export_tiled_finish(true);
 				return true;
 			}
-			et.tile  = 0;
-			et.tex   = 0;
-			et.phase = 1;
+			et.tile        = 0;
+			et.tex         = 0;
+			et.written_job = et.written->length;
+			et.phase       = 1;
 		}
 		else if (et.phase == 1) {
 			if (et.tile < et.ntiles) {
@@ -1703,6 +1705,7 @@ bool export_tiled_step(f64 budget_ms) {
 				et.units_done++;
 			}
 			else {
+				export_godot_job(et.path, et.file, job->object_name, et.written, et.written_job);
 				et.phase = 3;
 			}
 		}

@@ -264,6 +264,7 @@
 #include "paint_replay.c"
 #include "render/make_dab_resolve.c"
 #include "util/util_test.c"
+#include "io/export_godot.c"
 #include "io/export_tiled.c"
 #include "app_api_export.c"
 #include "util/util_layer_resolution.c"
