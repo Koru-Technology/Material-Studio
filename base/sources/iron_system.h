@@ -125,6 +125,10 @@ void iron_set_paste_callback(void (*callback)(char *, void *), void *data);
 
 bool        iron_internal_frame(void);
 const char *iron_internal_save_path(void);
+
+// The Mac's "save changes?" alert
+enum { IRON_SAVE_CHANGES_SAVE, IRON_SAVE_CHANGES_DISCARD, IRON_SAVE_CHANGES_CANCEL };
+int iron_ask_save_changes(void);
 const char *iron_internal_cache_path(void); // Library/Caches/<app name>/: the system may purge it
 bool        iron_internal_handle_messages(void);
 void        iron_internal_shutdown(void);
