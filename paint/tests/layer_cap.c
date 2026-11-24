@@ -60,11 +60,12 @@ void next() {
 
 	if (step == 0) {
 		max0 = layers_test_set_max(255);
+		c    = script_layer_new_color(0xff3366cc, 1.0, 0.4, 0.0); // First: a new layer above a group's layer joins the group
 		a    = script_layer_new();
 		b    = script_layer_new();
 		g    = script_layer_new_group(a);
 		check(g != NULL && script_layer_set_group(b, g), "a group of two layers");
-		c = script_layer_new_color(0xff3366cc, 1.0, 0.4, 0.0);
+		check(a->parent == g && b->parent == g && c->parent == NULL, "c out of the group");
 	}
 	else if (step == 1) {
 		room(2); // A group duplicate needs 3

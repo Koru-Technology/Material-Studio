@@ -22,6 +22,7 @@ int              nodes_b = 0; // Nodes of mb
 int              index_b = 0;
 int              count   = 0;
 int              undos   = 0;
+int              undos_removed = 0; // Steps of the removal: it undoes and redoes as one
 char            *nodes_before = NULL;
 char            *uids_before  = NULL;
 int              unused       = 0;
@@ -76,7 +77,7 @@ char *material_node_uids(slot_material_t *m) {
 }
 
 int fill_from(int uid) {
-	for (int c = 0; c < 9; ++c) {
+	for (int c = 0; c < 8; ++c) { // FILL_CHANNEL_COUNT
 		if (app_layer_fill_kind(fl->id, c) != 3) {
 			return 0;
 		}
@@ -86,7 +87,7 @@ int fill_from(int uid) {
 }
 
 int fill_plain() {
-	for (int c = 0; c < 9; ++c) {
+	for (int c = 0; c < 8; ++c) { // FILL_CHANNEL_COUNT
 		if (app_layer_fill_kind(fl->id, c) == 3) {
 			return 0;
 		}
@@ -152,6 +153,7 @@ void next() {
 		check(app_material_can_delete(mb->id), "b can be removed");
 		check(app_material_delete(mb->id), "b removed, a selected");
 		check(script_material_get() == ma, "a stays selected");
+		undos_removed = history_test_undos();
 		check_removed("removed");
 		history_undo();
 	}
@@ -161,7 +163,7 @@ void next() {
 		history_redo();
 	}
 	else if (step == 3) {
-		check(history_test_undos() == undos + 1, "one redo");
+		check(history_test_undos() == undos_removed, "one redo redoes all of it");
 		check_removed("redo");
 		int len = history_io_test_roundtrip(0);
 		check(len > 0, "the history encodes and decodes");
