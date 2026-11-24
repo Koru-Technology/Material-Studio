@@ -68,6 +68,53 @@ void base_save_and_quit_callback(bool save) {
 	}
 }
 
+// A project being opened: a marker file names it until its first frames drew. Found at launch, the app ended while it
+// opened (a crash, out of memory): the projects screen shows instead of opening it again and again.
+static char *base_opening_marker() {
+	return string("%sopening.txt", iron_internal_save_path());
+}
+
+static i32 base_opening_frames = 0;
+
+static void base_opening_tick(void *_) {
+	if (--base_opening_frames > 0) {
+		sys_notify_on_next_frame(&base_opening_tick, NULL);
+		return;
+	}
+	iron_delete_file(base_opening_marker());
+}
+
+void base_opening_begin(char *path) {
+	FILE *f = fopen(base_opening_marker(), "wb");
+	if (f != NULL) {
+		fputs(path, f);
+		fflush(f);
+		fsync(fileno(f));
+		fclose(f);
+	}
+}
+
+// The open is done: the marker goes once a few frames of the project drew
+void base_opening_end() {
+	if (base_opening_frames <= 0) {
+		sys_notify_on_next_frame(&base_opening_tick, NULL);
+	}
+	base_opening_frames = 30;
+}
+
+// The project the app was opening when it ended last time, NULL when none. The marker goes.
+static char *base_opening_crashed() {
+	char     *marker = base_opening_marker();
+	buffer_t *b      = iron_file_exists(marker) ? iron_load_blob(marker) : NULL;
+	char     *path   = b != NULL ? string_copy(sys_buffer_to_string(b)) : NULL;
+	iron_delete_file(marker);
+	return path;
+}
+
+static bool base_document_modified(void) {
+	return project_modified;
+}
+
 // Black like the launch screen while the last project is reopened on startup, so the default cube and the
 // first frames of the loaded project are not seen
 static bool base_startup_cover        = false;
@@ -211,15 +258,14 @@ void base_on_open_file(char *path) {
 }
 
 static void base_open_new_project(void *path) {
+	if (!project_leave()) {
+		return;
+	}
 	project_new(true);
 	sys_title_set(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, "."))); // The model names it
 	path = project_take_import(path); // iOS: into the project's Sources folder, named "<model> 2"... when taken
 	import_mesh_run(path, true, true, false);
 	console_info(tr("Model opened in a new project"));
-}
-
-static void base_open_after_save(void *path) {
-	sys_notify_on_next_frame(&base_open_new_project, path);
 }
 
 static void base_handle_open_paths() {
@@ -236,11 +282,7 @@ static void base_handle_open_paths() {
 	box_projects_import_pending = false;
 	ui_box_hide();
 	ui_menu_show = false;
-	// The open project is kept: saved first when it has a file
-	if (!string_equals(g_project->_->filepath, "")) {
-		project_save(false);
-	}
-	sys_notify_on_next_frame(&base_open_after_save, path);
+	sys_notify_on_next_frame(&base_open_new_project, path); // The open project is saved first (project_leave)
 }
 
 void base_handle_drop_paths() {
@@ -376,6 +418,7 @@ void base_init() {
 	iron_set_pencil_gesture_callback(&util_pencil_on_gesture);
 	iron_set_pointer_hidden_callback(&base_pointer_hidden);
 	iron_set_save_and_quit_callback(base_save_and_quit_callback);
+	iron_document_modified = base_document_modified;
 	project_autosave_init();
 	iron_idle_busy = base_idle_busy;
 
@@ -429,10 +472,17 @@ void base_init() {
 	bool  has_projects = g_config->recent_projects->length > 0;
 	char *reload       = NULL;
 	bool  shared       = base_open_paths != NULL && base_open_paths->length > 0; // Launched by sharing a model
+	char *crashed      = base_opening_crashed();
 	if (g_config->reload_project && has_projects && !args_use && !shared) {
 		reload = box_projects_recent_path(0);
 		if (!iron_file_exists(reload)) {
 			reload = NULL;
+		}
+		if (reload != NULL && crashed != NULL && string_equals(crashed, reload)) {
+			iron_log("The app ended while opening %s last time, not opened again", reload);
+			reload = NULL;
+			box_projects_show();
+			box_projects_native_closable = false; // No project behind it
 		}
 	}
 	if (reload != NULL) {

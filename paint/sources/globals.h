@@ -256,6 +256,8 @@ i32 brush_previews_group = -1; // Group shown in the brush list, its strokes ren
 // ---- console.c ----
 string_array_t *console_last_traces;
 char           *console_capture = NULL;
+u32             console_alert_serial = 0;  // Bumped by every console_alert, the native UI shows the text (app_alert)
+char           *console_alert_text   = "";
 
 // ---- project.c ----
 u32   project_uid_next = 1;    // Stable uids of layers and materials, saved with the project, never reused in it

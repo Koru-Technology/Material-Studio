@@ -1155,16 +1155,19 @@ static NSString *importCopy(NSURL *url) {
 	if (![[NSFileManager defaultManager] fileExistsAtPath:file_path]) {
 		[[NSFileManager defaultManager] createDirectoryAtPath:file_path withIntermediateDirectories:YES attributes:nil error:nil];
 	}
+	// A folder of its own: files picked together or shared at once may have the same name (project_take_import)
+	file_path = [file_path stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
+	[[NSFileManager defaultManager] createDirectoryAtPath:file_path withIntermediateDirectories:YES attributes:nil error:nil];
 	NSString *suggestedName = url.lastPathComponent;
 	file_path               = [file_path stringByAppendingPathComponent:suggestedName];
 	BOOL scoped             = [url startAccessingSecurityScopedResource];
-	[[NSFileManager defaultManager] removeItemAtPath:file_path error:nil];
-	BOOL ok = importCopyTree(url, file_path);
+	BOOL ok                 = importCopyTree(url, file_path);
 	if (scoped) {
 		[url stopAccessingSecurityScopedResource];
 	}
 	if (!ok) {
 		IMPORT_LOG(@"[import] import failed %@ -> %@", url, file_path);
+		[[NSFileManager defaultManager] removeItemAtPath:[file_path stringByDeletingLastPathComponent] error:nil];
 		return nil;
 	}
 	// Files shared by other apps arrive in Documents/Inbox, the copy is kept instead
@@ -1174,12 +1177,17 @@ static NSString *importCopy(NSURL *url) {
 	return file_path;
 }
 
+// Copies off the main thread (callers run on a background queue), hands the file to the engine on the main thread
 void importFile(NSURL *url) {
 	NSString *file_path = importCopy(url);
 	if (file_path == nil) {
 		return;
 	}
-	iron_internal_drop_files_callback((char *)[file_path UTF8String]);
+	char *cpath = strdup([file_path UTF8String]);
+	dispatch_async(dispatch_get_main_queue(), ^{
+		iron_internal_drop_files_callback(cpath);
+		free(cpath);
+	});
 }
 
 // A file shared with the app (Open in / Share sheet): copied off the main thread, opened on it
@@ -1213,6 +1221,9 @@ static void openSharedFile(NSURL *url) {
 	iron_internal_mouse_trigger_move(x, y);
 	iron_internal_surface_trigger_move(0, x, y);
 	for (UIDragItem *item in session.items) {
+		if (item.itemProvider.registeredTypeIdentifiers.count == 0) {
+			continue;
+		}
 		[item.itemProvider loadInPlaceFileRepresentationForTypeIdentifier:item.itemProvider.registeredTypeIdentifiers[0]
 		                                                completionHandler:^(NSURL *_Nullable url, BOOL isInPlace, NSError *_Nullable error) {
 			                                                if (url == nil) {

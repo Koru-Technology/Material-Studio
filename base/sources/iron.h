@@ -92,6 +92,11 @@ void (*iron_pen_down)(int, int, float);
 void (*iron_pen_up)(int, int, float);
 void (*iron_pen_move)(int, int, float);
 void (*iron_save_and_quit)(bool);
+bool (*iron_document_modified)(void); // The app has unsaved changes (the Mac asks before quitting)
+
+// The Mac's "save changes?" alert
+enum { IRON_SAVE_CHANGES_SAVE, IRON_SAVE_CHANGES_DISCARD, IRON_SAVE_CHANGES_CANCEL };
+int iron_ask_save_changes(void);
 
 char *_substring(char *s, int32_t start, int32_t end) {
 	char *buffer = calloc(1, end - start + 1);

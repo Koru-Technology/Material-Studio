@@ -978,28 +978,27 @@ int iron_window_display() {
 
 
 extern void (*iron_save_and_quit)(bool);
+extern bool (*iron_document_modified)(void);
+
+int iron_ask_save_changes(void) {
+	NSAlert *alert = [[NSAlert alloc] init];
+	[alert setMessageText:@"Project has been modified, save changes?"];
+	[alert addButtonWithTitle:@"Yes"];
+	[alert addButtonWithTitle:@"Cancel"];
+	[alert addButtonWithTitle:@"No"];
+	[alert setAlertStyle:NSAlertStyleWarning];
+	NSInteger res = [alert runModal];
+	return res == NSAlertFirstButtonReturn ? IRON_SAVE_CHANGES_SAVE : res == NSAlertThirdButtonReturn ? IRON_SAVE_CHANGES_DISCARD : IRON_SAVE_CHANGES_CANCEL;
+}
 
 bool _save_and_quit_callback_internal() {
-	bool      save  = false;
-	NSString *title = [window title];
-	bool      dirty = [title rangeOfString:@"* - Material Studio"].location != NSNotFound;
-	if (dirty) {
-		NSAlert *alert = [[NSAlert alloc] init];
-		[alert setMessageText:@"Project has been modified, save changes?"];
-		[alert addButtonWithTitle:@"Yes"];
-		[alert addButtonWithTitle:@"Cancel"];
-		[alert addButtonWithTitle:@"No"];
-		[alert setAlertStyle:NSAlertStyleWarning];
-		NSInteger res = [alert runModal];
-		if (res == NSAlertFirstButtonReturn) {
-			save = true;
-		}
-		else if (res == NSAlertThirdButtonReturn) {
-			save = false;
-		}
-		else { // Cancel
+	bool save = false;
+	if (iron_document_modified != NULL && iron_document_modified()) {
+		int answer = iron_ask_save_changes();
+		if (answer == IRON_SAVE_CHANGES_CANCEL) {
 			return false;
 		}
+		save = answer == IRON_SAVE_CHANGES_SAVE;
 	}
 	iron_save_and_quit(save);
 	return false;

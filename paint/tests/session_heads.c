@@ -134,10 +134,10 @@ void next() {
 		hstore_test_crash();
 	}
 	else if (step == 9) {
-		script_project_open(file);
+		script_project_open(file); // Recovers the unsaved work
 	}
 	else if (step == 10) {
-		check(project_session_recover(file), "recovered");
+		check(project_modified_get(), "recovered");
 	}
 	else if (step == 11) {
 		check(same_pixels(), "recovery gives the pixels of the head, the unrecorded write too");

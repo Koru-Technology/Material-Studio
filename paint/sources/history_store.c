@@ -1501,6 +1501,7 @@ void hstore_test_crash() {
 	hstore_ram   = 0;
 	hstore_dirty = 0;
 	hstore_dead  = 0;
+	project_modified = false; // The app is gone: nothing of it is saved when the next project opens (project_leave)
 }
 
 // Cuts bytes off the end of the project's journal (a write torn by a crash)

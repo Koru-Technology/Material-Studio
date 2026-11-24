@@ -349,6 +349,9 @@ void _kickstart() {
 	iron_set_app_name(manifest_title); // Used to locate external application data folder
 	config_load();
 	config_init();
+#ifdef IRON_IOS
+	project_scan_folders(); // The projects screen lists what the config does
+#endif
 	context_init();
 	sys_start(config_get_options());
 

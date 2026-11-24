@@ -417,13 +417,23 @@ buffer_t *export_arm_encode_project(char *path) {
 	return buffer;
 }
 
-void export_arm_run_project(char *path) {
+static bool export_arm_failed = false; // The last save failed and the user was told: autosaves failing again stay quiet
+
+// Returns false when the project could not be saved: the file on disk is the one before, the project stays modified
+bool export_arm_run_project(char *path) {
 	history_flush_restores(NULL); // Deferred undo restores land: the layers saved are the ones shown
 	export_arm_show_progress = true;
-	if (!project_container_save(path)) { // Appends to the file when it can
-		console_error(string("Could not save %s.", path)); // Still modified, saved again later
+	bool saved = project_container_save(path); // Appends to the file when it can
+	if (!saved) {
+		export_arm_show_progress = false;
+		char *name = substring(path, string_last_index_of(path, PATH_SEP) + 1, string_length(path) - (ends_with(path, ".arm") ? 4 : 0));
+		char *text = string("Could not save %s. Your changes are still open: free up storage, then save again.", name);
+		export_arm_failed ? console_error(text) : console_alert(text);
+		export_arm_failed = true;
+		return false;
 	}
-	else if (string_equals(path, g_project->_->filepath)) {
+	export_arm_failed = false;
+	if (string_equals(path, g_project->_->filepath)) {
 		project_modified = false;
 		hstore_journal_mark_saved(); // The history journal before here needs no recovery
 	}
@@ -455,7 +465,7 @@ void export_arm_run_project(char *path) {
 #endif
 
 	if (!string_equals(path, g_project->_->filepath)) {
-		return;
+		return true;
 	}
 
 	// Save to recent
@@ -468,6 +478,7 @@ void export_arm_run_project(char *path) {
 	script_projects_saved_to(path); // Deleted when a script that saved it quits
 
 	console_info(tr("Project saved"));
+	return true;
 }
 
 packed_asset_t_array_t *export_arm_get_packed_assets(char *project_path, string_array_t *texture_files) {

@@ -173,16 +173,26 @@ void import_arm_run_project(char *path) {
 	bool       import_as_mesh = false;
 	buffer_t  *b              = NULL;
 	if (project_container_is(path)) { // Version 31: the head, the index and the live layers are read
+		if (!project_leave()) { // Saved first, also when it is this file: what is read is what was just saved
+			return;
+		}
 		project = project_container_open(path);
 	}
 	else if ((b = data_get_blob(path)) == NULL) {
 		console_error(string("Could not open file %s.", path));
 		return;
 	}
-	else if (!import_arm_has_version(b)) {
-		import_as_mesh     = true;
+	else if (!import_arm_has_version(b)) { // A mesh, opened in a new project
 		scene_t *scene_raw = armpack_decode(b);
-		project            = ALLOC_INIT(project_t, {.mesh_datas = scene_raw->mesh_datas});
+		if (scene_raw == NULL || scene_raw->mesh_datas == NULL) {
+			console_error(string("Could not open file %s.", path));
+			return;
+		}
+		if (!project_leave()) {
+			return;
+		}
+		import_as_mesh = true;
+		project        = ALLOC_INIT(project_t, {.mesh_datas = scene_raw->mesh_datas});
 	}
 	else {
 		project = import_arm_decode(b);
@@ -235,7 +245,7 @@ void import_arm_run_project(char *path) {
 
 	project_new(import_as_mesh);
 	project_container_attach(); // After project_new reset the store
-	g_project->_->filepath = string_copy(path);
+	g_project->_->filepath = import_as_mesh ? "" : string_copy(path); // A mesh is not where the project saves
 	ui_files_filename      = string_copy(substring(path, string_last_index_of(path, PATH_SEP) + 1, string_last_index_of(path, ".")));
 #ifdef IRON_IOS
 	sys_title_set(ui_files_filename);
@@ -259,10 +269,13 @@ void import_arm_run_project(char *path) {
 	project->_ = g_project->_; // Carry over runtime arrays set up by project_new
 	g_project  = project;
 	project_uuid = g_project->uuid != NULL ? string_copy(g_project->uuid) : NULL; // A new one for older projects
-	if (project_uuid != NULL && hstore_journal_pending(project_uuid)) { // Unsaved work of a session that did not end
-		i32 recovered = hstore_recover();
-		if (project_session_recovering() && project_session_overlay(g_project)) {
-			iron_log("Unsaved work recovered (%d blobs)", recovered);
+	// Unsaved work of a session that did not end (a crash, iOS ended the app in the background) is laid over the file
+	bool recovered = false;
+	if (project_uuid != NULL && hstore_journal_pending(project_uuid)) {
+		i32 blobs = hstore_recover();
+		recovered = project_session_overlay(g_project);
+		if (recovered) {
+			iron_log("Unsaved work recovered (%d blobs)", blobs);
 		}
 	}
 	layer_data_t *l0                     = g_project->layer_datas->buffer[0];
@@ -596,6 +609,9 @@ void import_arm_run_project(char *path) {
 	g_context->ddirty = 4;
 	data_delete_blob(path);
 	project_container_loaded();
+	if (recovered) {
+		project_modified = true; // Not in the file yet: saved like any change
+	}
 	iron_profile_mark("project load end");
 }
 

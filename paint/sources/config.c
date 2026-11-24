@@ -27,6 +27,10 @@ void config_load() {
 		g_config            = config_from_json(config_string);
 		config_loaded       = g_config != NULL;
 		free(config_string);
+		if (!config_loaded) { // Kept aside, not overwritten by the defaults (a newer build's, a damaged one)
+			iron_log("config.json could not be read, kept as config.unreadable.json");
+			rename(path, string("%sconfig.unreadable.json", substring(path, 0, string_length(path) - 11)));
+		}
 	}
 	free(path);
 }

@@ -38,7 +38,7 @@ struct ProjectsView: View {
 						}
 						ForEach(store.projects(in: folder)) { project in
 							ProjectTile(project: project, folder: folder, size: tile, labelWidth: tile + gap - 16, iconsVersion: store.iconsVersion) {
-								AppStore.shared.perform { app_project_open(project.index) }
+								AppStore.shared.perform { app_project_open(project.entry) }
 							} onDelete: {
 								deleting = project
 							}
@@ -61,7 +61,7 @@ struct ProjectsView: View {
 		.confirmationDialog("Delete \(deleting?.name ?? "")?", isPresented: $deleting.isPresent(), titleVisibility: .visible) {
 			Button("Delete", role: .destructive) {
 				if let project = deleting {
-					AppStore.shared.perform { app_project_delete(project.index) }
+					AppStore.shared.perform { app_project_delete(project.entry) }
 					store.projectMoved(from: project.entry, to: nil)
 				}
 			}
@@ -356,7 +356,7 @@ private struct ProjectTile: View {
 		let folder = self.folder
 		var entry  = ""
 		AppStore.shared.perform {
-			entry = String(cString: app_project_duplicate(row.index))
+			entry = String(cString: app_project_duplicate(row.entry))
 		}
 		if !entry.isEmpty, let folder {
 			store.move(entry, to: folder)
@@ -367,7 +367,7 @@ private struct ProjectTile: View {
 		let row = project
 		RootAlert.shared.text("Rename Project", initial: row.name) { name in
 			AppStore.shared.perform {
-				let entry = String(cString: app_project_rename(row.index, name))
+				let entry = String(cString: app_project_rename(row.entry, name))
 				if !entry.isEmpty {
 					ProjectsStore.shared.projectMoved(from: row.entry, to: entry)
 				}

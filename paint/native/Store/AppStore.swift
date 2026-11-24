@@ -20,6 +20,7 @@ final class AppStore: ChangeOnly {
 	private(set) var redoName      = ""
 	private(set) var historyToast: HistoryToast? // The last undo or redo the user asked for, shown briefly
 	private var noticeSerial: UInt32 = 0
+	private var alertSerial: UInt32  = 0
 	private(set) var viewMode: Int32     = 0
 	private(set) var viewportMode: Int32 = 0
 	private(set) var brushAngle          = Float(0)
@@ -56,6 +57,11 @@ final class AppStore: ChangeOnly {
 		if notice.serial != noticeSerial {
 			noticeSerial = notice.serial
 			historyToast = HistoryToast(id: notice.serial, name: String(cString: notice.name), redo: notice.redo)
+		}
+		let alert = app_alert()
+		if alert.serial != alertSerial {
+			alertSerial = alert.serial
+			RootAlert.shared.notice(String(cString: alert.text))
 		}
 		update(\.viewMode, s.view_mode)
 		update(\.viewportMode, s.viewport_mode)

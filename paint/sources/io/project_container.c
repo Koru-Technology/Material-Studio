@@ -74,6 +74,7 @@ typedef struct pc_writer {
 	i32                         maps_cap;
 	bool                        no_history; // A copy without history: the live layers' tile maps only
 	bool                        session;    // A session head (project_session_write): no file, no packed assets
+	i32                         missing;    // Blobs the walk reached that could not be read: the save fails
 } pc_writer_t;
 
 static pc_writer_t *pc_w = NULL;
@@ -635,10 +636,12 @@ static bool pc_put_blob(hash128_t h, void *ud) {
 	}
 	hstore_chunk_t c;
 	u8            *payload = hstore_chunk_payload(h, &c);
-	if (payload != NULL) {
-		pc_put(c.kind, c.codec, h, c.raw_len, payload, c.comp_len);
-		free(payload);
+	if (payload == NULL) { // A file without it would open with pieces of layers or history gone
+		pc_w->missing++;
+		return false;
 	}
+	pc_put(c.kind, c.codec, h, c.raw_len, payload, c.comp_len);
+	free(payload);
 	return true;
 }
 
@@ -747,11 +750,8 @@ static bool pc_save(char *path, bool copy) {
 	}
 	bool                append = !copy && pc_can_append(path);
 	char               *target = append ? path : string_copy(string("%s.saving", path));
+	// Never written in place: the history blobs of the session are read from the file (hstore_pfd) as the save goes
 	iron_file_stream_t *s      = iron_file_stream_open(target, append);
-	if (s == NULL && !append) {
-		target = path; // No file next to it (a sandboxed single file): written in place
-		s      = iron_file_stream_open(target, false);
-	}
 	if (s == NULL) {
 		return false;
 	}
@@ -783,6 +783,27 @@ static bool pc_save(char *path, bool copy) {
 	}
 	w.maps_count = live_maps;
 	pc_w = NULL;
+	if (w.missing > 0) { // The file stays as it was
+		iron_log("Save stopped: %d blobs could not be read", w.missing);
+		iron_file_stream_close(s, false);
+		if (append) {
+			truncate(path, (off_t)pc.size); // The chunks written go, the last footer is the file's end again
+		}
+		else {
+			remove(target);
+		}
+		for (i32 i = 0; i < w.maps_count; ++i) {
+			hstore_unref(w.maps[i]);
+		}
+		free(w.maps);
+		free(w.index);
+		array_free(head);
+		free(head);
+		if (!copy) {
+			pc.size = -1; // The next save writes the file whole
+		}
+		return false;
+	}
 
 	qsort(w.index, w.count, sizeof(hstore_index_entry_t), pc_compare_entry);
 	i32 n = 0;
@@ -1047,14 +1068,13 @@ i32 project_test_mask_unequal(i32 i) {
 // history steps' blobs, its children), then the head as a container save writes it without meshes, packed assets and
 // material previews (recovery takes those from the saved file). Written at most every PC_SESSION_SECONDS after the
 // history changes, and when the app goes to the background without saving. The newest one after the journal's last
-// mark (a save) is the unsaved work: project_session_recover opens the saved file with it laid over.
+// mark (a save) is the unsaved work: opening the project lays it over the saved file (import_arm_run_project).
 
 #define PC_SESSION_SECONDS 5.0
 
 static hash128_t pc_session      = {0, 0}; // The last session head written, referenced
 static u64       pc_session_sig  = 0;      // History when it was written
 static f64       pc_session_time = 0.0;
-static bool      pc_recovering   = false;
 
 static void pc_session_children(const u8 *data, u32 len, hstore_visit_fn visit, void *ud) {
 	u32 n = 0;
@@ -1190,20 +1210,13 @@ bool project_session_pending(char *path) {
 	return uuid != NULL && hstore_journal_pending(uuid);
 }
 
-bool project_session_recovering() {
-	return pc_recovering;
-}
-
-// Opens the project in path with its unsaved work: the newest session head after the last save, laid over the file.
-// False when there is none.
+// Opens the project in path with its unsaved work: the newest session head after the last save, laid over the file
+// (any open does, import_arm_run_project). False when there is none.
 bool project_session_recover(char *path) {
 	if (!project_session_pending(path)) {
 		return false;
 	}
-	pc_recovering = true;
 	import_arm_run_project(path);
-	pc_recovering = false;
-	project_modified = true; // Not saved yet
 	return true;
 }
 

@@ -108,6 +108,12 @@ char *project_basepath_get() {
 void project_filepath_set(char *s) {
 	g_project->_->filepath = string_copy(s);
 }
+i32 project_modified_get() {
+	return project_modified ? 1 : 0;
+}
+i32 script_alert_serial() {
+	return (i32)console_alert_serial;
+}
 camera_object_t *script_get_camera() {
 	return scene_camera;
 }

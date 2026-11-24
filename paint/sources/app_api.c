@@ -640,8 +640,15 @@ const char *app_project_icon_path(int32_t index) {
 	return app_str(project_icon_path(box_projects_recent_path(index)));
 }
 
-void app_project_open(int32_t index) {
-	if (index < 0 || index >= app_project_count()) {
+// The index of a recent list entry, -1 when it is not listed (anymore): actions name the project by its entry, an index
+// the screen read earlier may point at another project once a save reordered the list
+static i32 app_project_index_of(const char *entry) {
+	return entry != NULL ? string_array_index_of(g_config->recent_projects, (char *)entry) : -1;
+}
+
+void app_project_open(const char *entry) {
+	i32 index = app_project_index_of(entry);
+	if (index < 0) {
 		return;
 	}
 	char *path = box_projects_recent_path(index);
@@ -649,14 +656,22 @@ void app_project_open(int32_t index) {
 		return;
 	}
 #ifdef IRON_IOS
-	console_toast(tr("Opening project"));
+	if (!project_is_open(path)) {
+		console_toast(tr("Opening project"));
+	}
 #endif
 	box_projects_load(path);
 }
 
-void app_project_delete(int32_t index) {
-	if (index < 0 || index >= app_project_count()) {
+void app_project_delete(const char *entry) {
+	i32 index = app_project_index_of(entry);
+	if (index < 0) {
 		return;
+	}
+	if (project_is_open(box_projects_recent_path(index))) { // Its files go: a new project takes its place
+		project_modified = false;
+		project_new(true);
+		box_projects_native_closable = false; // No project behind the screen
 	}
 	box_projects_delete(index);
 }
@@ -675,39 +690,41 @@ const char *app_project_entry(int32_t index) {
 	return app_str(g_config->recent_projects->buffer[index]);
 }
 
-const char *app_project_rename(int32_t index, const char *name) {
+const char *app_project_rename(const char *entry, const char *name) {
 #ifdef IRON_IOS
-	if (index < 0 || index >= app_project_count() || name == NULL) {
+	i32 index = app_project_index_of(entry);
+	if (index < 0 || name == NULL) {
 		return "";
 	}
 	char *path = project_rename(box_projects_recent_path(index), string_copy((char *)name));
 	if (path == NULL) {
 		return "";
 	}
-	char *entry = string_copy(project_recent_entry(path));
-	g_config->recent_projects->buffer[index] = entry;
+	char *new_entry = string_copy(project_recent_entry(path));
+	g_config->recent_projects->buffer[index] = new_entry;
 	config_save();
 	iron_delay_idle_sleep();
-	return app_str(entry);
+	return app_str(new_entry);
 #else
 	return "";
 #endif
 }
 
-const char *app_project_duplicate(int32_t index) {
+const char *app_project_duplicate(const char *entry) {
 #ifdef IRON_IOS
-	if (index < 0 || index >= app_project_count()) {
+	i32 index = app_project_index_of(entry);
+	if (index < 0) {
 		return "";
 	}
 	char *path = project_duplicate(box_projects_recent_path(index));
 	if (path == NULL) {
 		return "";
 	}
-	char *entry = string_copy(project_recent_entry(path));
-	array_insert(g_config->recent_projects, 0, entry); // First, as a project just saved
+	char *new_entry = string_copy(project_recent_entry(path));
+	array_insert(g_config->recent_projects, 0, new_entry); // First, as a project just saved
 	config_save();
 	iron_delay_idle_sleep();
-	return app_str(entry);
+	return app_str(new_entry);
 #else
 	return "";
 #endif
@@ -860,6 +877,10 @@ const char *app_redo_name(void) {
 
 app_history_notice_t app_history_notice(void) {
 	return (app_history_notice_t){.serial = history_notice_serial, .redo = history_notice_redo, .name = app_str(history_notice_name)};
+}
+
+app_alert_t app_alert(void) {
+	return (app_alert_t){.serial = console_alert_serial, .text = app_str(console_alert_text)};
 }
 
 void app_undo(void) {

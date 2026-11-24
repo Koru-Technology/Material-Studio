@@ -116,24 +116,95 @@ static void project_drop_unsaved_folder() {
 	}
 }
 
+// The files have the same bytes
+static bool project_same_file(char *a, char *b) {
+	FILE *fa = fopen(a, "rb");
+	FILE *fb = fopen(b, "rb");
+	bool  same = fa != NULL && fb != NULL;
+	static u8 ba[65536];
+	static u8 bb[65536];
+	while (same) {
+		size_t na = fread(ba, 1, sizeof(ba), fa);
+		size_t nb = fread(bb, 1, sizeof(bb), fb);
+		same      = na == nb && memcmp(ba, bb, na) == 0;
+		if (na < sizeof(ba)) {
+			break;
+		}
+	}
+	if (fa != NULL) {
+		fclose(fa);
+	}
+	if (fb != NULL) {
+		fclose(fb);
+	}
+	return same;
+}
+
+// A uuid of its own for a project file copied from another (its history journal is named by it). False when it could
+// not be written.
+static bool project_file_new_uuid(char *path) {
+	char *saved_uuid = project_uuid; // project_uuid_new sets the current one: the open project keeps its own
+	project_uuid_new();
+	bool ok      = project_container_set_uuid(path, project_uuid);
+	project_uuid = saved_uuid;
+	return ok;
+}
+
+// A project file picked (Open...) goes in a folder of its own in Documents/Projects, "<name>" or "<name> 2"..., with a
+// uuid of its own: it may be a copy of a project already there
+static char *project_take_project_file(char *path, char *name) {
+	char *free_name = project_free_name(substring(name, 0, string_last_index_of(name, ".")));
+	char *dir       = project_folder_of(free_name);
+	iron_create_directory(dir);
+	char *dst = string_copy(string("%s/%s.arm", dir, free_name));
+	if (rename(path, dst) != 0) {
+		iron_delete_file(dir);
+		return path;
+	}
+	project_file_new_uuid(dst);
+	return dst;
+}
+
 // A file picked or shared with the app lands in Documents/.imports (ios_system.m): it moves into the project's
-// Sources folder as the project imports it. A model imported into a new project names it.
+// Sources folder as the project imports it, "<name> 2.<ext>"... when a different file has the name there: the project
+// refers to its files by path. A model imported into a new project names it. A project file gets a folder of its own.
+static char *project_take_import_file(char *path, char *name) {
+	if (path_is_project(path) && project_container_is(path)) {
+		return project_take_project_file(path, name);
+	}
+	if (string_equals(g_project->_->filepath, "") && project_unsaved_folder == NULL && path_is_mesh(path)) {
+		sys_title_set(substring(name, 0, string_last_index_of(name, ".")));
+	}
+	char *sources = project_subfolder("Sources");
+	char *dst     = string("%s/%s", sources, name);
+	i32   dot     = string_last_index_of(name, ".");
+	char *stem    = dot > 0 ? substring(name, 0, dot) : name;
+	char *ext     = dot > 0 ? substring(name, dot, string_length(name)) : "";
+	for (i32 i = 2; iron_file_exists(dst); ++i) {
+		if (!path_is_folder(dst) && project_same_file(path, dst)) { // Picked again: the file there is used
+			iron_delete_file(path);
+			return string_copy(dst);
+		}
+		dst = string("%s/%s %d%s", sources, stem, i, ext);
+	}
+	if (rename(path, dst) != 0) {
+		return path;
+	}
+	return string_copy(dst);
+}
+
 char *project_take_import(char *path) {
 	char *imports = string("%s/.imports/", project_documents_dir());
 	if (!starts_with(project_canonical(path), imports)) {
 		return path;
 	}
-	path       = project_canonical(path);
-	char *name = substring(path, string_length(imports), string_length(path));
-	if (string_equals(g_project->_->filepath, "") && project_unsaved_folder == NULL && path_is_mesh(path)) {
-		sys_title_set(substring(name, 0, string_last_index_of(name, ".")));
+	path         = project_canonical(path);
+	char *holder = substring(path, 0, string_last_index_of(path, "/")); // .imports/<uuid>, the file's own (ios_system.m)
+	char *taken  = project_take_import_file(path, substring(path, string_last_index_of(path, "/") + 1, string_length(path)));
+	if (taken != path && string_length(holder) >= string_length(imports)) {
+		rmdir(holder); // Empty now
 	}
-	char *dst = string("%s/%s", project_subfolder("Sources"), name);
-	iron_delete_file(dst); // Picked again: the new file replaces it
-	if (rename(path, dst) != 0) {
-		return path;
-	}
-	return string_copy(dst);
+	return taken;
 }
 
 // A file of the open project that moved with its folder (from, to: the folder before and after, no trailing slash)
@@ -255,16 +326,58 @@ char *project_duplicate(char *path) {
 	if (rename(copied, new_path) != 0) {
 		return NULL;
 	}
-	char *saved_uuid = project_uuid; // project_uuid_new sets the current one: the open project keeps its own
-	project_uuid_new();
-	project_container_set_uuid(new_path, project_uuid);
-	project_uuid = saved_uuid;
+	if (!project_file_new_uuid(new_path)) { // Sharing the original's uuid, the two would share a history journal
+		iron_delete_file(new_dir); // Its own new folder (box_projects_delete_files would find the original's journal)
+		return NULL;
+	}
 	return new_path;
+}
+
+// Every project in Documents/Projects is listed: a list lost with config.json (unreadable, an older build's) or missing
+// a project (copied into Projects with the Files app) gets it back, newest last saved first after the listed ones.
+// Entries whose project is gone (deleted with the Files app) leave.
+void project_scan_folders() {
+	string_array_t *list = g_config->recent_projects;
+	for (i32 i = list->length - 1; i >= 0; --i) {
+		if (!iron_file_exists(box_projects_path_of(list->buffer[i]))) {
+			array_splice(list, i, 1);
+		}
+	}
+	char           *projects = string("%s/Projects", project_documents_dir());
+	string_array_t *names    = string_split(string_copy(iron_read_directory(projects)), "\n");
+	string_array_t *found    = any_array_create_from_raw((void *[]){}, 0);
+	f64            *times    = malloc(sizeof(f64) * (names->length + 1));
+	for (i32 i = 0; i < names->length; ++i) {
+		char       *name  = names->buffer[i];
+		char       *file  = project_file_of(name);
+		char       *entry = project_recent_entry(file);
+		struct stat st;
+		if (string_equals(name, "") || starts_with(name, ".") || string_array_index_of(list, entry) >= 0 || stat(file, &st) != 0) {
+			continue;
+		}
+		i32 at = 0; // Newest first
+		while (at < found->length && times[at] >= (f64)st.st_mtime) {
+			at++;
+		}
+		memmove(times + at + 1, times + at, sizeof(f64) * (found->length - at));
+		times[at] = (f64)st.st_mtime;
+		array_insert(found, at, string_copy(entry));
+	}
+	free(times);
+	for (i32 i = 0; i < found->length; ++i) {
+		string_array_push(list, found->buffer[i]);
+	}
+	if (found->length > 0) {
+		iron_log("%d projects in Documents/Projects were not listed, added", found->length);
+		config_save();
+	}
 }
 #else
 char *project_take_import(char *path) {
 	return path;
 }
+
+void project_scan_folders() {} // Projects are anywhere on the Mac
 #endif
 
 // The recent projects list entry of a project file: on iOS relative to Documents, the container moves between installs
@@ -292,13 +405,57 @@ static bool project_set_default_path() {
 #endif
 }
 
+// Wall clock time of the first change since the last save, 0 when unchanged.
+// Updates stop while the app is idle, the time keeps running and the idle wake checks it.
+static f64 project_autosave_since = 0.0;
+
+// The project file is the open project
+bool project_is_open(char *path) {
+	if (string_equals(g_project->_->filepath, "")) {
+		return false;
+	}
+#ifdef IRON_IOS
+	return string_equals(project_canonical(path), project_canonical(g_project->_->filepath));
+#else
+	return string_equals(path, g_project->_->filepath);
+#endif
+}
+
+// The open project is left for another one (opened, new, a shared model): its changes are saved first, never dropped.
+// False when they were not saved: the project stays open. On the Mac an untitled project asks where to save.
+bool project_leave() {
+	if (!project_modified || g_context->paint_object == NULL) {
+		return true;
+	}
+	util_curve_stroke_confirm(); // A curve being edited is in the file
+	if (string_equals(g_project->_->filepath, "") && !project_set_default_path()) {
+#ifdef IRON_MACOS
+		i32 answer = iron_ask_save_changes();
+		if (answer == IRON_SAVE_CHANGES_DISCARD) {
+			return true;
+		}
+		if (answer == IRON_SAVE_CHANGES_SAVE) {
+			project_save_as(false);
+		}
+		return false;
+#else
+		return true;
+#endif
+	}
+	if (!export_arm_run_project(g_project->_->filepath)) {
+		char *path = g_project->_->filepath;
+		char *name = substring(path, string_last_index_of(path, PATH_SEP) + 1, string_length(path) - 4);
+		console_alert(string("Could not save %s, it stays open. Free up storage, then try again.", name));
+		return false;
+	}
+	project_autosave_since = 0.0;
+	return true;
+}
+
 static bool project_autosave_busy() {
 	return g_context->brush_time > 0 || app_bake_running() || g_context->paint_object == NULL;
 }
 
-// Wall clock time of the first change since the last save, 0 when unchanged.
-// Updates stop while the app is idle, the time keeps running and the idle wake checks it.
-static f64 project_autosave_since = 0.0;
 
 static bool project_autosave_due() {
 	if (!g_config->autosave || !project_modified) {

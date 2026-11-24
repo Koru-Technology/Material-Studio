@@ -100,7 +100,7 @@ void next() {
 	}
 	else if (step == 7) {
 		check(string_equals(app_project_path(0), file), "the saved project is still listed");
-		app_project_delete(0);
+		app_project_delete(app_project_entry(0));
 		check(!iron_file_exists(folder), "deleting a project removes its folder");
 		char *model = string("%s.imports/folders_model.obj", docs);
 		write_obj(model);

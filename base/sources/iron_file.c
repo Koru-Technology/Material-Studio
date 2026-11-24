@@ -236,6 +236,7 @@ static bool iron_file_write_all(char *path, buffer_t *bytes, u64 length) {
 		return false;
 	}
 	bool ok = fwrite(bytes->buffer, 1, length, file) == length;
+	ok      = ok && fflush(file) == 0 && fsync(fileno(file)) == 0; // On disk before it is moved over the old file
 	ok      = fclose(file) == 0 && ok;
 	return ok;
 }

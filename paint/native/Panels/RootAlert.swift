@@ -11,6 +11,7 @@ final class RootAlert {
 	enum Kind {
 		case text(placeholder: String, commit: (String) -> Void) // A name to type, the action button commits it
 		case confirm(run: () -> Void)                             // A destructive action to confirm
+		case notice                                               // Something the user has to know, only OK
 	}
 
 	struct Request: Identifiable {
@@ -33,6 +34,10 @@ final class RootAlert {
 
 	func confirm(_ title: String, message: String? = nil, action: String = "Delete", run: @escaping () -> Void) {
 		request = Request(title: title, action: action, message: message, kind: .confirm(run: run))
+	}
+
+	func notice(_ title: String, message: String? = nil) {
+		request = Request(title: title, action: "OK", message: message, kind: .notice)
 	}
 
 	fileprivate var trimmed: String {
@@ -71,6 +76,8 @@ private struct RootAlertPresenter: ViewModifier {
 				case .confirm(let run):
 					Button("Cancel", role: .cancel) {}
 					Button(request.action, role: .destructive, action: run)
+				case .notice:
+					Button(request.action, role: .cancel) {}
 				}
 			} message: { request in
 				if let message = request.message {

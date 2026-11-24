@@ -138,15 +138,17 @@ void app_command(int32_t command);
 int32_t     app_project_count(void);
 const char *app_project_path(int32_t index); // Full path of the .arm file, valid until the next app_* call
 const char *app_project_icon_path(int32_t index); // Its preview, hidden next to it (project_icon_path)
-void        app_project_open(int32_t index); // Closes the screen, the project loads over the next frames
-void        app_project_delete(int32_t index); // With its files
+// Actions name a project by its entry (app_project_entry): a save reorders the list, an index read earlier may point
+// at another project. An entry no longer listed does nothing.
+void        app_project_open(const char *entry); // Closes the screen, the project loads over the next frames
+void        app_project_delete(const char *entry); // With its files. The open project: a new one takes its place
 void        app_project_new(void);           // Closes the screen
 void        app_projects_close(void);        // Back to the open project
 const char *app_project_entry(int32_t index); // Its entry in the recent list: on iOS the path relative to Documents, kept
                                              // across installs (the projects screen's folders are keyed by it)
-const char *app_project_rename(int32_t index, const char *name); // Its folder and files, the open project follows.
+const char *app_project_rename(const char *entry, const char *name); // Its folder and files, the open project follows.
                                                                 // Returns the new entry, "" when it could not be renamed
-const char *app_project_duplicate(int32_t index); // A copy in a folder of its own ("<name> copy"), first in the list. Returns
+const char *app_project_duplicate(const char *entry); // A copy in a folder of its own ("<name> copy"), first in the list. Returns
                                                   // its entry, "" when it could not be made
 
 // New project templates: the meshes and shapes a new project starts on
@@ -169,6 +171,14 @@ typedef struct {
 	const char *name;
 } app_history_notice_t;
 app_history_notice_t app_history_notice(void);
+
+// The last error the user has to see (a save failed, console_alert): a new serial is a new alert. Serial 0: none yet.
+// text is valid until the next app_* call.
+typedef struct {
+	uint32_t    serial;
+	const char *text;
+} app_alert_t;
+app_alert_t app_alert(void);
 void        app_undo(void); // Returns at once: layers to restore from history follow over the next frames
 void        app_redo(void);
 bool        app_history_busy(void); // Undo or redo still restores layers, the counts are already the new ones

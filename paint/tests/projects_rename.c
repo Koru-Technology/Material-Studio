@@ -57,7 +57,7 @@ void next() {
 	else if (step == 3) {
 		old_path = project_filepath_get();
 		check(string_equals(app_project_path(0), old_path), string("saved and listed first (%s)", old_path));
-		char *entry = app_project_rename(0, "koru rename one");
+		char *entry = app_project_rename(app_project_entry(0), "koru rename one");
 		new_path    = project_path("koru rename one");
 		check(string_equals(entry, "Projects/koru rename one/koru rename one.arm"), string("the entry follows (%s)", entry));
 		check(iron_file_exists(new_path) && !iron_file_exists(old_path), "the file moved with its folder");
@@ -65,7 +65,7 @@ void next() {
 		check(string_equals(project_filepath_get(), new_path), "the open project follows");
 		check(script_asset_index("/Projects/koru rename one/Sources/koru_rename_tex") >= 0 &&
 		      iron_file_exists(string("%s/Projects/koru rename one/Sources/koru_rename_tex.png", docs)), "its texture's file follows");
-		check(string_equals(app_project_rename(0, "a/b"), ""), "a name with a slash is refused");
+		check(string_equals(app_project_rename(app_project_entry(0), "a/b"), ""), "a name with a slash is refused");
 		project_save(0);
 	}
 	else if (step == 4) {
@@ -73,7 +73,7 @@ void next() {
 		script_project_new();
 	}
 	else if (step == 5) {
-		char *entry = app_project_rename(0, "koru rename two");
+		char *entry = app_project_rename(app_project_entry(0), "koru rename two");
 		old_path    = new_path;
 		new_path    = project_path("koru rename two");
 		check(string_equals(entry, "Projects/koru rename two/koru rename two.arm"), "renamed while closed");
@@ -86,7 +86,7 @@ void next() {
 		check(i >= 0, "the texture is found in the new folder");
 		gpu_texture_t *t = i >= 0 ? project_get_image(script_get_asset(i)) : NULL;
 		check(t != NULL && t->width == 16, "and loaded, not pink");
-		app_project_delete(0);
+		app_project_delete(app_project_entry(0));
 	}
 	else if (step == 7) {
 		check(!iron_file_exists(new_path), "deleted");

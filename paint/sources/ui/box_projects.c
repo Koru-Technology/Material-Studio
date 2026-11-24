@@ -31,7 +31,9 @@ void box_projects_load_on_next_frame(void *_) {
 		sys_notify_on_next_frame(&box_projects_load_on_next_frame, NULL);
 		return;
 	}
+	base_opening_begin(_box_projects_load_path);
 	import_arm_run_project(_box_projects_load_path);
+	base_opening_end();
 	base_startup_cover_done();
 }
 
@@ -43,6 +45,16 @@ void box_projects_cancel_load() {
 }
 
 void box_projects_load(char *path) {
+	if (project_is_open(path) && g_context->paint_object != NULL) { // The open project picked again: back to it
+#ifdef IRON_IOS
+		box_projects_native_shown   = false;
+		box_projects_import_pending = false;
+#endif
+		if (ui_box_show) {
+			ui_box_hide();
+		}
+		return;
+	}
 	_box_projects_load_cancelled = false;
 #ifdef IRON_IOS
 	box_projects_native_shown   = false;
@@ -99,6 +111,9 @@ static bool box_projects_title_taken(char *title) {
 }
 
 void box_projects_new() {
+	if (!project_leave()) {
+		return;
+	}
 	project_new(true);
 #ifdef IRON_IOS
 	box_projects_native_shown   = false;

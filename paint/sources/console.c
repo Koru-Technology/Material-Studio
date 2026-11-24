@@ -31,6 +31,14 @@ void console_error(char *s) {
 	console_log(s);
 }
 
+// An error the user has to see (a save failed): the native UI shows it in an alert (app_alert). No drawing here, it
+// may come while the app goes to the background.
+void console_alert(char *s) {
+	console_log(s);
+	console_alert_text = string_copy(s);
+	console_alert_serial++;
+}
+
 void console_log(char *s) {
 	iron_log(s);
 	string_array_push(console_last_traces, string_copy(s));

@@ -1,9 +1,8 @@
 #include "global.h"
 
-// Crash recovery (io/project_container.c session heads): work after the last save is
-// journaled as a session head; after a crash, opening the file gives the saved state and the journal stays (also through
-// another crash with no edits after the open), recovering gives the unsaved layers, pixels and timelines back. Saving
-// ends the pending state.
+// Crash recovery (io/project_container.c session heads): work after the last save is journaled as a session head; after a
+// crash, opening the file gives the unsaved layers, pixels and timelines back, as a modified project (also through
+// another crash with no edits after the open). Saving ends the pending state.
 
 int   fails      = 0;
 int   checks     = 0;
@@ -103,19 +102,20 @@ void next() {
 	}
 	else if (step == 6) {
 		script_project_open(file);
-		check(string_equals(layer_hash(find_uid(uid_a)), saved_a) && find_uid(uid_b) == NULL, "opening gives the saved state");
-		check(project_session_pending(file), "and keeps the unsaved work");
+		check(project_modified_get(), "opening recovers the unsaved work, a modified project");
+		check(find_uid(uid_b) != NULL, "with the new layer");
 	}
 	else if (step == 7) { // Frames went by after the open, nothing edited: the opened state is no session head
 		check(!project_session_changed() && !project_session_due(), "opening journals no session head of its own");
+		check(project_session_pending(file), "the unsaved work stays pending until saved");
 		hstore_test_crash(); // And the app dies again
 	}
 	else if (step == 8) {
-		script_project_open(file);
 		check(project_session_pending(file), "a crash with no edits keeps the unsaved work of the session before");
+		script_project_open(file);
 	}
 	else if (step == 9) {
-		check(project_session_recover(file), "recovered");
+		check(project_modified_get(), "recovered again");
 	}
 	else if (step == 10) {
 		slot_layer_t *a = find_uid(uid_a);
