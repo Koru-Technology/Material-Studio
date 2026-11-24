@@ -417,10 +417,12 @@ buffer_t *export_arm_encode_project(char *path) {
 	return buffer;
 }
 
-void export_arm_run_project(char *path) {
-	history_flush_restores(NULL); // Deferred undo restores land: the layers saved are the ones shown
+// False when the project could not be saved (the file could not be written, the gpu dropped work while the layers were
+// read back, the app is in the background): the file stays as it was, the project modified
+bool export_arm_run_project(char *path) {
 	export_arm_show_progress = true;
-	if (!project_container_save(path)) { // Appends to the file when it can
+	bool saved               = project_container_save(path); // Appends to the file when it can
+	if (!saved) {
 		console_error(string("Could not save %s.", path)); // Still modified, saved again later
 	}
 	else if (string_equals(path, g_project->_->filepath)) {
@@ -430,6 +432,9 @@ void export_arm_run_project(char *path) {
 	export_arm_progress(1.0);
 	export_arm_show_progress = false;
 	base_redraw_ui();
+	if (!saved) {
+		return false;
+	}
 
 #ifdef IRON_IOS
 	{
@@ -444,18 +449,21 @@ void export_arm_run_project(char *path) {
 		draw_scaled_image(tex, (256 - dw) / 2.0, (256 - dh) / 2.0, dw, dh); // Cover the square, also in portrait
 		draw_end();
 
-		buffer_t   *mesh_icon_pixels = gpu_get_texture_pixels(mesh_icon);
-		u8_array_t *u8a              = mesh_icon_pixels;
+		i32         gpu_errors_before = gpu_errors();
+		buffer_t   *mesh_icon_pixels  = gpu_get_texture_pixels(mesh_icon);
+		u8_array_t *u8a               = mesh_icon_pixels;
 		for (i32 i = 0; i < 256 * 256 * 4; ++i) {
 			u8a->buffer[i] = math_floor(math_pow(u8a->buffer[i] / 255.0, 1.0 / 2.2) * 255);
 		}
-		iron_write_png(project_icon_path(path), mesh_icon_pixels, 256, 256, 0);
+		if (gpu_errors() == gpu_errors_before) { // Not a preview of what the gpu dropped
+			iron_write_png(project_icon_path(path), mesh_icon_pixels, 256, 256, 0);
+		}
 		gpu_delete_texture(mesh_icon);
 	}
 #endif
 
 	if (!string_equals(path, g_project->_->filepath)) {
-		return;
+		return true;
 	}
 
 	// Save to recent
@@ -468,6 +476,7 @@ void export_arm_run_project(char *path) {
 	script_projects_saved_to(path); // Deleted when a script that saved it quits
 
 	console_info(tr("Project saved"));
+	return true;
 }
 
 packed_asset_t_array_t *export_arm_get_packed_assets(char *project_path, string_array_t *texture_files) {

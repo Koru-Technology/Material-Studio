@@ -271,6 +271,9 @@ slot_layer_t *layers_op_duplicate(slot_layer_t *l) {
 	if (!slot_layer_alive(l)) {
 		return NULL;
 	}
+	if (!layers_can_allocate(layers_tree_bytes(l))) {
+		return NULL;
+	}
 	draw_saved_t gpu = draw_suspend();
 	context_set_layer(l);
 	history_duplicate_layer();

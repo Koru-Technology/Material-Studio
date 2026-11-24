@@ -277,6 +277,14 @@ static void layers_resolution_update(void *_) {
 
 // The working resolution goes to w x h over the next frames, a layer each, undoable once done (the resolution controls)
 bool layers_resolution_begin(i32 w, i32 h) {
+	// A layer at a time: the converted ones at the new size, the others still at the old, one more at the new size
+	// meanwhile
+	i32 w0   = config_get_texture_res_x();
+	i32 h0   = config_get_texture_res_y();
+	i64 grow = layers_project_bytes(w, h, base_bits) - layers_project_bytes(w0, h0, base_bits) + layers_slot_bytes_at(LAYER_SLOT_TYPE_LAYER, w, h, base_bits);
+	if (!lr.active && (w > w0 || h > h0) && !layers_can_allocate(grow)) {
+		return false;
+	}
 	if (!layers_resolution_start(w, h, true)) {
 		return false;
 	}

@@ -19,9 +19,10 @@
 // stored first and drops them with it (timeline_tiles_children).
 // Transfers go through gpu_transfer: Metal only, as tiled undo.
 
-#define TL_TILES_DEPTH 64  // Deltas in a row before a capture is full again
-#define TL_TILES_BATCH 256 // Tiles per transfer round trip
-#define TL_TILES_CACHE 8   // Maps kept resolved
+#define TL_TILES_DEPTH      64                 // Deltas in a row before a capture is full again
+#define TL_TILES_BATCH      256                // Tiles per transfer round trip
+#define TL_TILES_CACHE      8                  // Maps kept resolved
+#define TL_TILES_XFER_BYTES (64 * 1024 * 1024) // The transfer at most: a round trip of fewer tiles when they are larger
 
 #define TL_TILES_FULL_HEADER  16
 #define TL_TILES_DELTA_HEADER 24
@@ -44,6 +45,23 @@ static gpu_transfer_t *tl_tiles_transfer = NULL;
 
 static i32 tl_tiles_per_channel() {
 	return HISTORY_TILES_GRID * HISTORY_TILES_GRID;
+}
+
+// Slots of slot_bytes a round trip takes: max at most, TL_TILES_XFER_BYTES of them at most
+static i32 tl_tiles_xfer_slots(size_t slot_bytes, i32 max) {
+	size_t n = TL_TILES_XFER_BYTES / (slot_bytes > 0 ? slot_bytes : 1);
+	return n < 1 ? 1 : n > (size_t)max ? max : (i32)n;
+}
+
+// The transfer memory goes (memory warnings, after an open restored every layer), made again on the next round trip
+void timeline_tiles_release_transfer() {
+	gpu_transfer_destroy(tl_tiles_transfer); // Command buffers still copying keep it until they are done
+	tl_tiles_transfer = NULL;
+}
+
+// Bytes of transfer memory held (tests)
+i32 timeline_tiles_transfer_bytes() {
+	return (i32)gpu_transfer_size(tl_tiles_transfer);
 }
 
 void timeline_tiles_children(const u8 *data, u32 len, hstore_visit_fn visit, void *ud);
@@ -452,10 +470,17 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 	if (tl_tiles_transfer == NULL) {
 		tl_tiles_transfer = gpu_transfer_create(0);
 	}
+	// Read back: a round trip the gpu dropped left stale bytes in the transfer, no map of them is made (NONE)
+	bool         ok    = true;
+	i32          batch = tl_tiles_xfer_slots((size_t)channels * bytes, TL_TILES_BATCH);
 	draw_saved_t saved = draw_suspend();
-	for (i32 b0 = 0; b0 < n; b0 += TL_TILES_BATCH) {
-		i32 bn = n - b0 < TL_TILES_BATCH ? n - b0 : TL_TILES_BATCH;
-		gpu_transfer_map(tl_tiles_transfer, (size_t)bn * channels * bytes);
+	for (i32 b0 = 0; b0 < n && ok; b0 += batch) {
+		i32 bn  = n - b0 < batch ? n - b0 : batch;
+		u8 *mem = gpu_transfer_map(tl_tiles_transfer, (size_t)bn * channels * bytes);
+		if (mem == NULL) {
+			ok = false;
+			break;
+		}
 		gpu_copy_regions_begin();
 		for (i32 i = 0; i < bn; ++i) {
 			i32 x, y, tw, th;
@@ -465,8 +490,10 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 			}
 		}
 		gpu_copy_regions_end();
-		gpu_execute_and_wait();
-		u8 *mem = gpu_transfer_map(tl_tiles_transfer, 0);
+		if (!gpu_execute_and_wait()) {
+			ok = false;
+			break;
+		}
 		for (i32 i = 0; i < bn; ++i) {
 			i32 t = list[b0 + i];
 			i32 x, y, tw, th;
@@ -479,6 +506,19 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 		}
 	}
 	draw_resume(saved);
+	if (!ok) {
+		iron_log("A layer capture failed: the gpu dropped its readback or no memory for it");
+		for (i32 idx = 0; idx < total; ++idx) {
+			if (read[idx]) {
+				hstore_unref(m.tiles[idx]);
+			}
+		}
+		free(m.tiles);
+		free(old);
+		free(list);
+		free(read);
+		return HASH128_NONE;
+	}
 
 	// Changed tiles, the read ones that did not change hold a reference for nothing
 	u32 *changed = malloc(total * sizeof(u32));
@@ -536,8 +576,9 @@ hash128_t timeline_tiles_capture(paint_target_t *src, hash128_t prev, const u64 
 
 // ---- Whole restores on threads ----
 // An open restores every layer whole: its tiles are read and decoded on threads (hstore_read_located), straight into the
-// transfer, and go to the GPU in one copy. One tile at a time on the main thread, a GPU wait every 256 of them, took 7 s
-// of Book 1's open on the iPad.
+// transfer, and go to the GPU a chunk of TL_TILES_XFER_BYTES at a time (a whole 8K layer in one transfer kept 768 MB of
+// shared memory). One tile at a time on the main thread, a GPU wait every 256 of them, took 7 s of Book 1's open on the
+// iPad.
 
 #define TL_TILES_THREADS 6
 
@@ -548,7 +589,6 @@ typedef struct {
 	hstore_loc_t    *locs;
 	u8              *status; // 0 to do on a thread, 1 inline, 2 on the main thread (not located, or failed), 3 a copy of same[i]
 	i32             *same;   // The first slot of the same tile (read once)
-	bool             image;  // mem holds the channels as images (lw x lh each, every tile listed): one copy each
 	i32            (*rects)[4];
 	u8              *mem;
 	i32              bytes;
@@ -567,16 +607,9 @@ static void tl_tiles_pack(const u8 *tile, i32 x, i32 y, i32 tw, const i32 *rect,
 	}
 }
 
-// Where tile slot i goes: its packed slot, or its place in its channel's image
-static void tl_tiles_put(tl_tiles_job_t *j, i32 i, const u8 *tile, i32 x, i32 y, i32 tw, i32 th) {
-	if (!j->image) {
-		tl_tiles_pack(tile, x, y, tw, j->rects[i], j->bpt, j->mem + (size_t)i * j->bytes);
-		return;
-	}
-	u8 *img = j->mem + (size_t)(j->list[i] / j->per) * j->lw * j->lh * j->bpt;
-	for (i32 row = 0; row < th; ++row) {
-		memcpy(img + ((size_t)(y + row) * j->lw + x) * j->bpt, tile + (size_t)row * tw * j->bpt, (size_t)tw * j->bpt);
-	}
+// Tile slot i into its packed slot
+static void tl_tiles_put(tl_tiles_job_t *j, i32 i, const u8 *tile, i32 x, i32 y, i32 tw) {
+	tl_tiles_pack(tile, x, y, tw, j->rects[i], j->bpt, j->mem + (size_t)i * j->bytes);
 }
 
 // A uniform tile's texels (bytes of them in p)
@@ -609,7 +642,7 @@ static void *tl_tiles_worker(void *param) {
 			if (j->status[i] == 1) { // Uniform
 				u8 *tile = malloc((size_t)tw * th * j->bpt);
 				tl_tiles_fill(j->want[idx], tile, tw * th * j->bpt, j->bpt);
-				tl_tiles_put(j, i, tile, x, y, tw, th);
+				tl_tiles_put(j, i, tile, x, y, tw);
 				free(tile);
 				continue;
 			}
@@ -621,7 +654,7 @@ static void *tl_tiles_worker(void *param) {
 				j->status[i] = 2;
 				continue;
 			}
-			tl_tiles_put(j, i, tile, x, y, tw, th);
+			tl_tiles_put(j, i, tile, x, y, tw);
 			free(tile);
 		}
 	}
@@ -630,13 +663,17 @@ static void *tl_tiles_worker(void *param) {
 	return NULL;
 }
 
-// Every tile of list into mem (slots of bytes), then copied to dst in one go. False when one could not be read (its part
-// cleared, as a restore one at a time does).
-static bool tl_tiles_restore_all(const hash128_t *want, const i32 *list, i32 n, paint_target_t *dst, i32 ox, i32 oy, i32 lw, i32 lh, i32 bytes,
-                                 i32 bpt) {
+// Every tile of list (a chunk) into the transfer (slots of bytes), then copied to dst in one go. False when one could not
+// be read (its part cleared, as a restore one at a time does), or the copy did not land.
+static bool tl_tiles_restore_chunk(const hash128_t *want, const i32 *list, i32 n, paint_target_t *dst, i32 ox, i32 oy, i32 lw, i32 lh, i32 bytes,
+                                   i32 bpt) {
+	u8 *mem = gpu_transfer_map(tl_tiles_transfer, (size_t)n * bytes);
+	if (mem == NULL) {
+		return false;
+	}
 	gpu_texture_t  *tex = dst->out[0];
 	i32             per = tl_tiles_per_channel();
-	tl_tiles_job_t  j   = {.want = want, .list = list, .n = n, .bytes = bytes, .bpt = bpt, .lw = lw, .lh = lh, .per = per};
+	tl_tiles_job_t  j   = {.want = want, .list = list, .n = n, .mem = mem, .bytes = bytes, .bpt = bpt, .lw = lw, .lh = lh, .per = per};
 	atomic_init(&j.next, 0);
 	atomic_init(&j.disk, 0);
 	j.locs   = malloc(sizeof(hstore_loc_t) * n);
@@ -649,9 +686,6 @@ static bool tl_tiles_restore_all(const hash128_t *want, const i32 *list, i32 n, 
 	i32 *first = malloc(sizeof(i32) * cap); // Open addressing by hash: a tile in several slots is read once
 	memset(first, 0xff, sizeof(i32) * cap);
 	j.rects  = malloc(sizeof(i32[4]) * n);
-	// Every tile of every channel, the target the layer's size: the channels as images, one copy each
-	j.image  = n == dst->channels * per && ox == 0 && oy == 0 && tex->width == lw && tex->height == lh;
-	j.mem    = gpu_transfer_map(tl_tiles_transfer, j.image ? (size_t)dst->channels * lw * lh * bpt : (size_t)n * bytes);
 	for (i32 i = 0; i < n; ++i) { // The store is read on this thread only: where each tile is
 		i32 idx = list[i];
 		i32 x, y, tw, th;
@@ -713,46 +747,37 @@ static bool tl_tiles_restore_all(const hash128_t *want, const i32 *list, i32 n, 
 			ok = false;
 			memset(tile, 0, tw * th * bpt);
 		}
-		tl_tiles_put(&j, i, tile, x, y, tw, th);
+		tl_tiles_put(&j, i, tile, x, y, tw);
 	}
 	for (i32 i = 0; i < n; ++i) { // Copies of a tile read once (the same size: same hash, same bytes)
-		if (j.status[i] != 3) {
-			continue;
-		}
-		i32 k = j.same[i];
-		if (!j.image) {
-			memcpy(j.mem + (size_t)i * bytes, j.mem + (size_t)k * bytes, (size_t)j.rects[i][2] * j.rects[i][3] * bpt);
-			continue;
-		}
-		i32 x, y, tw, th, kx, ky, ktw, kth;
-		tl_tiles_rect(lw, lh, list[i] % per, &x, &y, &tw, &th);
-		tl_tiles_rect(lw, lh, list[k] % per, &kx, &ky, &ktw, &kth);
-		u8 *src = j.mem + (size_t)(list[k] / per) * lw * lh * bpt;
-		u8 *dsti = j.mem + (size_t)(list[i] / per) * lw * lh * bpt;
-		for (i32 row = 0; row < th; ++row) {
-			memcpy(dsti + ((size_t)(y + row) * lw + x) * bpt, src + ((size_t)(ky + row) * lw + kx) * bpt, (size_t)tw * bpt);
+		if (j.status[i] == 3) {
+			memcpy(j.mem + (size_t)i * bytes, j.mem + (size_t)j.same[i] * bytes, (size_t)j.rects[i][2] * j.rects[i][3] * bpt);
 		}
 	}
 	free(tile);
 	gpu_copy_regions_begin();
-	if (j.image) {
-		for (i32 c = 0; c < dst->channels; ++c) {
-			gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[c], 0, 0, lw, lh, (size_t)c * lw * lh * bpt);
-		}
-	}
-	else {
-		for (i32 i = 0; i < n; ++i) {
-			i32 idx = list[i];
-			gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[idx / per], j.rects[i][0] - ox, j.rects[i][1] - oy, j.rects[i][2], j.rects[i][3],
-			                              (size_t)i * bytes);
-		}
+	for (i32 i = 0; i < n; ++i) {
+		i32 idx = list[i];
+		gpu_copy_region_from_transfer(tl_tiles_transfer, dst->out[idx / per], j.rects[i][0] - ox, j.rects[i][1] - oy, j.rects[i][2], j.rects[i][3],
+		                              (size_t)i * bytes);
 	}
 	gpu_copy_regions_end();
-	gpu_execute_and_wait(); // The memory is filled again by the next restore
+	ok = gpu_execute_and_wait() && ok; // The memory is filled again by the next chunk
 	free(j.locs);
 	free(j.status);
 	free(j.same);
 	free(j.rects);
+	return ok;
+}
+
+// Every tile of list into dst, a chunk at a time. False when one could not be read or a chunk did not land.
+static bool tl_tiles_restore_all(const hash128_t *want, const i32 *list, i32 n, paint_target_t *dst, i32 ox, i32 oy, i32 lw, i32 lh, i32 bytes,
+                                 i32 bpt) {
+	i32  chunk = tl_tiles_xfer_slots(bytes, INT32_MAX);
+	bool ok    = true;
+	for (i32 c0 = 0; c0 < n; c0 += chunk) {
+		ok = tl_tiles_restore_chunk(want, list + c0, n - c0 < chunk ? n - c0 : chunk, dst, ox, oy, lw, lh, bytes, bpt) && ok;
+	}
 	return ok;
 }
 
@@ -819,7 +844,7 @@ static i32 tl_tiles_restore_part(hash128_t map, hash128_t prev, paint_target_t *
 		}
 	}
 	i32 end = batches < (n - from + TL_TILES_BATCH - 1) / TL_TILES_BATCH ? from + batches * TL_TILES_BATCH : n;
-	if (from == 0 && end == n && n > TL_TILES_BATCH) { // Whole: on threads, one copy
+	if (from == 0 && end == n && n > TL_TILES_BATCH) { // Whole: on threads, a chunk of the transfer at a time
 		ok  = tl_tiles_restore_all(want, list, n, dst, ox, oy, lw, lh, bytes, bpt);
 		end = n;
 		from = n; // The loop below has nothing left
@@ -827,6 +852,10 @@ static i32 tl_tiles_restore_part(hash128_t map, hash128_t prev, paint_target_t *
 	for (i32 b0 = from; b0 < end; b0 += TL_TILES_BATCH) {
 		i32 bn  = end - b0 < TL_TILES_BATCH ? end - b0 : TL_TILES_BATCH;
 		u8 *mem = gpu_transfer_map(tl_tiles_transfer, (size_t)bn * bytes);
+		if (mem == NULL) {
+			ok = false;
+			break;
+		}
 		i32 rects[TL_TILES_BATCH][4]; // Part of each tile written: x, y, w, h in the layer
 		for (i32 i = 0; i < bn; ++i) {
 			i32 idx = list[b0 + i];
@@ -856,7 +885,7 @@ static i32 tl_tiles_restore_part(hash128_t map, hash128_t prev, paint_target_t *
 			                              (size_t)i * bytes);
 		}
 		gpu_copy_regions_end();
-		gpu_execute_and_wait(); // The memory is filled again by the next batch
+		ok = gpu_execute_and_wait() && ok; // The memory is filled again by the next batch
 	}
 	draw_resume(saved);
 	free(tile);

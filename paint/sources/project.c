@@ -230,8 +230,8 @@ char *project_duplicate(char *path) {
 	if (!iron_file_exists(path)) {
 		return NULL;
 	}
-	if (string_equals(project_canonical(g_project->_->filepath), path) && project_modified) {
-		export_arm_run_project(g_project->_->filepath);
+	if (string_equals(project_canonical(g_project->_->filepath), path) && project_modified && !export_arm_run_project(g_project->_->filepath)) {
+		return NULL; // Not a copy without the unsaved changes
 	}
 	char *new_name = project_free_name(string("%s copy", old_name));
 	char *new_dir  = string_copy(project_folder_of(new_name));
@@ -349,19 +349,21 @@ void project_autosave_init() {
 	iron_idle_wake         = project_idle_wake;
 }
 
-// Saves right away instead of on the next frame, for when the app is about to be suspended or closed
-void project_save_now() {
+// Saves right away instead of on the next frame, for when the app is about to be suspended or closed. False when a save
+// was due and failed.
+bool project_save_now() {
 	if (!g_config->autosave || !project_modified || project_autosave_busy()) {
 		if (project_modified && project_session_changed()) {
 			project_session_write(); // Not saved: the session head keeps the work for a crash
 		}
-		return;
+		return true;
 	}
 	if (string_equals(g_project->_->filepath, "") && !project_set_default_path()) {
-		return;
+		return true;
 	}
-	export_arm_run_project(g_project->_->filepath);
+	bool saved             = export_arm_run_project(g_project->_->filepath);
 	project_autosave_since = 0.0;
+	return saved;
 }
 
 void project_save(bool save_and_quit) {

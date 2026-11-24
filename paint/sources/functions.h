@@ -27,7 +27,7 @@ ui_node_socket_t *ui_get_socket(ui_node_t_array_t *nodes, i32 id);
 // ---- io/export_arm.c ----
 void      export_arm_run_mesh(char *path, mesh_object_t_array_t *paint_objects);
 buffer_t *export_arm_encode_project(char *path);
-void      export_arm_run_project(char *path);
+bool      export_arm_run_project(char *path);
 void      export_arm_run_material(char *path);
 buffer_t *export_arm_encode_library_material(slot_material_t *m);
 void      export_arm_pack_assets(project_t *raw, asset_t_array_t *assets);
@@ -1159,6 +1159,15 @@ void env_add_disc(f32 dx, f32 dy, f32 dz, f32 deg, f32 irradiance, f32 r, f32 g,
 void env_write(char *path);
 
 // ---- util/util_layer.c ----
+extern i32           layers_alloc_unchecked;
+i64                  layers_slot_bytes_at(layer_slot_type_t type, i32 w, i32 h, texture_bits_t bits);
+i64                  layers_slot_bytes(layer_slot_type_t type);
+i64                  layers_project_bytes(i32 w, i32 h, texture_bits_t bits);
+i64                  layers_tree_bytes(slot_layer_t *l);
+i64                  layers_memory_available();
+bool                 layers_can_allocate(i64 bytes);
+i32                  layers_alloc_refusals();
+i32                  layers_memory_available_mb();
 gpu_texture_format_t layers_format(texture_bits_t bits);
 gpu_pipeline_t      *layers_copy_pipe(texture_bits_t bits);
 void                 util_layer_update_preview();
@@ -1179,7 +1188,7 @@ bool                 disk_cache_has(const char *sub, u64 key);
 void                 layers_init();
 void                 layers_resize();
 void                 layers_resize_targets();
-void                 layers_set_bits();
+bool                 layers_set_bits();
 void                 layers_make_temp_img();
 void                 layers_make_temp_mask_img();
 void                 layers_make_export_img();
@@ -1624,6 +1633,8 @@ void args_run();
 
 // ---- base.c ----
 void            base_on_open_file(char *path);
+bool            base_gpu_available();
+void            base_on_memory_warning();
 bool            base_startup_covering();
 bool            base_startup_loading();
 void            base_startup_cover_done();
@@ -1940,6 +1951,8 @@ void timeline_ops_reset();
 
 // ---- timeline_tiles.c ----
 void timeline_tiles_cache_reset();
+void timeline_tiles_release_transfer();
+i32  timeline_tiles_transfer_bytes();
 bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 *channels);
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, struct paint_target *dst);
 bool timeline_tiles_uniform(hash128_t h);
@@ -2228,7 +2241,7 @@ i32             pipes_get_constant_location(char *type);
 void                   project_open();
 void                   project_autosave_update();
 void                   project_autosave_init();
-void                   project_save_now();
+bool                   project_save_now();
 void                   project_save(bool save_and_quit);
 char                  *project_icon_path(char *path);
 char                  *project_take_import(char *path);

@@ -67,15 +67,37 @@ bool gpu_work_done(uint64_t mark) {
 	return atomic_load(&cb_completed) >= mark;
 }
 
-static void wait_for_frames() {
+static bool gpu_report_error(id<MTLCommandBuffer> cb, const char *where);
+
+// Waits for the frames in flight, false when the gpu dropped the work of one
+static bool wait_for_frames() {
+	bool ok = true;
 	for (int i = 0; i < GPU_FRAMES_IN_FLIGHT; ++i) {
 		if (frames_pending[i] != nil) {
 			[frames_pending[i] waitUntilCompleted];
+			ok                = gpu_report_error(frames_pending[i], "frame") && ok;
 			frames_pending[i] = nil;
 			cb_done(frames_serial[i]); // Before its completed handler may have run
 		}
 		gpu_release_retired(i);
 	}
+	return ok;
+}
+
+// Frees what the frames in flight retired once they are done: waits for them, submits nothing (the iOS background)
+void gpu_release_finished(void) {
+	wait_for_frames();
+}
+
+// An allocation failed: the resources deleted so far are freed and it is tried again. The work recorded so far may
+// still use them: it is submitted and waited for first (a render pass in progress goes on in a new encoder). Only the
+// main thread records.
+static void free_deleted_for_retry(void) {
+	if (![NSThread isMainThread]) {
+		return;
+	}
+	gpu_execute_and_wait();
+	gpu_cleanup();
 }
 
 static MTLBlendFactor convert_blending_factor(gpu_blend_t factor) {
@@ -163,8 +185,7 @@ void gpu_render_target_init2(gpu_texture_t *target, uint32_t width, uint32_t hei
 		descriptor.resourceOptions       = MTLResourceStorageModePrivate;
 		target->impl._tex                = (__bridge_retained void *)[device newTextureWithDescriptor:descriptor];
 		if (target->impl._tex == nil) {
-			wait_for_frames();
-			gpu_cleanup();
+			free_deleted_for_retry();
 			target->impl._tex = (__bridge_retained void *)[device newTextureWithDescriptor:descriptor];
 			if (target->impl._tex == nil) {
 				iron_log("Could not create a %ux%u render target", width, height);
@@ -390,16 +411,20 @@ void gpu_end_internal() {
 	current_render_targets_count = 0;
 }
 
-// The gpu dropped a command buffer's work (a pass too long for the ios watchdog, out of memory): counted and logged,
-// from the thread completing it
-static void gpu_report_error(id<MTLCommandBuffer> cb, const char *where) {
-	if (cb.error != nil) {
-		__atomic_add_fetch(&gpu_error_count, 1, __ATOMIC_RELAXED);
-		fprintf(stderr, "GPU error (%s): %s\n", where, cb.error.localizedDescription.UTF8String);
+// The gpu dropped a command buffer's work (a pass too long for the ios watchdog, out of memory, a page fault, work
+// submitted from the background): counted (gpu_errors) and logged, false. Command buffers waited for (this one, the
+// readbacks, the frames) report as the wait ends, on the main thread: a readback checks its own. The ones only
+// committed (gpu_commit) report from the thread completing them.
+static bool gpu_report_error(id<MTLCommandBuffer> cb, const char *where) {
+	if (cb.error == nil) {
+		return true;
 	}
+	__atomic_add_fetch(&gpu_error_count, 1, __ATOMIC_RELAXED);
+	fprintf(stderr, "GPU error (%s): %s\n", where, cb.error.localizedDescription.UTF8String);
+	return false;
 }
 
-void gpu_execute_and_wait() {
+bool gpu_execute_and_wait() {
 	end_kept_encoder();
 	NSString *label = command_encoder.label;
 	if (gpu_in_use) {
@@ -412,8 +437,8 @@ void gpu_execute_and_wait() {
 	uint64_t serial = commit_main();
 	[command_buffer waitUntilCompleted];
 	cb_done(serial);
-	gpu_report_error(command_buffer, "execute");
-	wait_for_frames();
+	bool ok                   = gpu_report_error(command_buffer, "execute");
+	ok                        = wait_for_frames() && ok;
 	id<MTLCommandQueue> queue = get_metal_queue();
 	command_buffer            = [queue commandBuffer];
 
@@ -424,17 +449,17 @@ void gpu_execute_and_wait() {
 		render_pass_desc.depthAttachment.loadAction = MTLLoadActionLoad;
 		command_encoder                             = [command_buffer renderCommandEncoderWithDescriptor:render_pass_desc];
 		command_encoder.label                       = label;
-		id<MTLRenderPipelineState> pipe             = (__bridge id<MTLRenderPipelineState>)current_pipeline->impl.pipeline;
-		[command_encoder setRenderPipelineState:pipe];
-		id<MTLDepthStencilState> depth_state = (__bridge id<MTLDepthStencilState>)current_pipeline->impl.depth;
-		[command_encoder setDepthStencilState:depth_state];
-		[command_encoder setFrontFacingWinding:MTLWindingClockwise];
-		[command_encoder setCullMode:convert_cull_mode(current_pipeline->cull_mode)];
-		id<MTLBuffer> vb = (__bridge id<MTLBuffer>)current_vb->impl.metal_buffer;
-		[command_encoder setVertexBuffer:vb offset:0 atIndex:0];
+		if (current_pipeline != NULL && current_pipeline->impl.pipeline != NULL) { // None yet: a pass begun allocates
+			gpu_set_pipeline_internal(current_pipeline);
+		}
+		if (current_vb != NULL) {
+			id<MTLBuffer> vb = (__bridge id<MTLBuffer>)current_vb->impl.metal_buffer;
+			[command_encoder setVertexBuffer:vb offset:0 atIndex:0];
+		}
 		[command_encoder setViewport:current_viewport];
 		[command_encoder setScissorRect:current_scissor];
 	}
+	return ok;
 }
 
 // Submits the work recorded so far without waiting for it, outside a render pass. done (any thread) gets its GPU time.
@@ -550,10 +575,7 @@ void gpu_present_internal() {
 		  }
 		}];
 	}
-	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
-	  gpu_report_error(cb, "frame");
-	}];
-	frames_serial[gpu_frame_index]  = commit_main();
+	frames_serial[gpu_frame_index]  = commit_main(); // Errors reported when it is waited for
 	frames_pending[gpu_frame_index] = command_buffer;
 	gpu_retire_deleted(gpu_frame_index); // Freed once this frame completed
 
@@ -565,6 +587,7 @@ void gpu_present_internal() {
 	gpu_frame_index = (gpu_frame_index + 1) % GPU_FRAMES_IN_FLIGHT;
 	if (frames_pending[gpu_frame_index] != nil) {
 		[frames_pending[gpu_frame_index] waitUntilCompleted];
+		gpu_report_error(frames_pending[gpu_frame_index], "frame");
 		frames_pending[gpu_frame_index] = nil;
 		cb_done(frames_serial[gpu_frame_index]);
 	}
@@ -649,10 +672,12 @@ void gpu_set_index_buffer(gpu_buffer_t *buffer) {
 	current_ib = buffer;
 }
 
-void gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
-	gpu_execute_and_wait();
+// False when the texels could not be read (no memory for the copy, the gpu dropped the copy: data is zeroed) or the gpu
+// dropped work before it
+bool gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
+	bool ok = gpu_execute_and_wait();
 
-	int buffer_size = render_target->width * render_target->height * gpu_texture_format_size(render_target->format);
+	size_t buffer_size = (size_t)render_target->width * render_target->height * gpu_texture_format_size(render_target->format);
 	// Small readbacks (picking, previews) share a kept buffer, layer sized ones get a buffer released right after
 	const int     keep_max  = 4 * 1024 * 1024;
 	id<MTLBuffer> temporary = nil;
@@ -660,15 +685,23 @@ void gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
 		temporary = [get_metal_device() newBufferWithLength:buffer_size options:MTLResourceStorageModeShared];
 	}
 	else if (readback_buffer_size < buffer_size || readback_buffer == NULL) {
-		int size             = buffer_size < 256 * 1024 ? 256 * 1024 : buffer_size;
+		int size             = buffer_size < 256 * 1024 ? 256 * 1024 : (int)buffer_size;
 		readback_buffer_size = size;
 		if (readback_buffer != NULL) {
 			id<MTLBuffer> old = (__bridge_transfer id<MTLBuffer>)readback_buffer;
 			old               = nil;
 		}
 		readback_buffer = (__bridge_retained void *)[get_metal_device() newBufferWithLength:size options:MTLResourceStorageModeShared];
+		if (readback_buffer == NULL) {
+			readback_buffer_size = 0;
+		}
 	}
-	id<MTLBuffer> target_buffer = temporary != nil ? temporary : (__bridge id<MTLBuffer>)readback_buffer;
+	id<MTLBuffer> target_buffer = buffer_size > keep_max ? temporary : (__bridge id<MTLBuffer>)readback_buffer;
+	if (target_buffer == nil) {
+		iron_log("Could not read back a %ux%u texture", render_target->width, render_target->height);
+		memset(data, 0, buffer_size);
+		return false;
+	}
 
 	// Copy render target to readback buffer
 	id<MTLCommandQueue>       queue           = get_metal_queue();
@@ -686,10 +719,16 @@ void gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data) {
 	[command_encoder endEncoding];
 	[command_buffer commit];
 	[command_buffer waitUntilCompleted];
-	gpu_report_error(command_buffer, "readback");
+	bool copied = gpu_report_error(command_buffer, "readback");
 
-	// Read buffer
-	memcpy(data, [target_buffer contents], buffer_size);
+	// Read buffer, never the stale bytes of an earlier readback
+	if (copied) {
+		memcpy(data, [target_buffer contents], buffer_size);
+	}
+	else {
+		memset(data, 0, buffer_size);
+	}
+	return copied && ok;
 }
 
 void gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size) {
@@ -1153,8 +1192,7 @@ void gpu_texture_init_from_bytes(gpu_texture_t *texture, void *data, uint32_t wi
 	id<MTLTexture> tex    = [device newTextureWithDescriptor:descriptor];
 	if (tex == nil) {
 		// Free the textures waiting for destruction and retry once, a size the gpu can not create stays nil
-		wait_for_frames();
-		gpu_cleanup();
+		free_deleted_for_retry();
 		tex = [device newTextureWithDescriptor:descriptor];
 	}
 	if (tex == nil) {
@@ -1210,17 +1248,21 @@ void gpu_vertex_buffer_init(gpu_buffer_t *buffer, uint32_t count, gpu_vertex_str
 
 	id<MTLBuffer> buf = [device newBufferWithLength:gpu_buffer_alloc_size(count, buffer->stride) options:options];
 	if (buf == nil) {
-		wait_for_frames();
-		gpu_cleanup();
+		free_deleted_for_retry();
 		buf = [device newBufferWithLength:gpu_buffer_alloc_size(count, buffer->stride) options:options];
 		if (buf == nil) {
 			iron_log("Could not create a vertex buffer of %u vertices", count);
+			buffer->count = 0; // Locks return NULL
 		}
 	}
 	buffer->impl.metal_buffer = (__bridge_retained void *)buf;
 }
 
+// NULL when the buffer could not be created
 void *gpu_vertex_buffer_lock(gpu_buffer_t *buffer) {
+	if (buffer->impl.metal_buffer == NULL) {
+		return NULL;
+	}
 	if (!buffer->cpu_write) {
 		wait_for_frames();
 	}
@@ -1241,13 +1283,20 @@ void gpu_index_buffer_init(gpu_buffer_t *buffer, uint32_t count) {
 
 	buffer->impl.metal_buffer = (__bridge_retained void *)[device newBufferWithLength:gpu_buffer_alloc_size(count, sizeof(uint32_t)) options:options];
 	if (buffer->impl.metal_buffer == nil) {
-		wait_for_frames();
-		gpu_cleanup();
+		free_deleted_for_retry();
 		buffer->impl.metal_buffer = (__bridge_retained void *)[device newBufferWithLength:gpu_buffer_alloc_size(count, sizeof(uint32_t)) options:options];
+		if (buffer->impl.metal_buffer == nil) {
+			iron_log("Could not create an index buffer of %u indices", count);
+			buffer->count = 0; // Locks return NULL, draws with it are skipped
+		}
 	}
 }
 
+// NULL when the buffer could not be created
 void *gpu_index_buffer_lock(gpu_buffer_t *buffer) {
+	if (buffer->impl.metal_buffer == NULL) {
+		return NULL;
+	}
 	wait_for_frames();
 	id<MTLBuffer> buf = (__bridge id<MTLBuffer>)buffer->impl.metal_buffer;
 	return [buf contents];
@@ -1340,6 +1389,7 @@ void gpu_copy_regions_end(void) {
 struct gpu_transfer {
 	void  *buffer; // id<MTLBuffer>, shared storage, retained
 	size_t size;
+	bool   landed; // The copies of its last commit are in the memory (the gpu did not drop them)
 };
 
 gpu_transfer_t *gpu_transfer_create(size_t size) {
@@ -1359,6 +1409,7 @@ void gpu_transfer_destroy(gpu_transfer_t *t) {
 	free(t);
 }
 
+// NULL when the memory could not be had: copies to and from t are then skipped
 void *gpu_transfer_map(gpu_transfer_t *t, size_t size) {
 	if (t->buffer == NULL || t->size < size) {
 		if (t->buffer != NULL) {
@@ -1367,11 +1418,27 @@ void *gpu_transfer_map(gpu_transfer_t *t, size_t size) {
 		}
 		t->size   = size < 256 * 1024 ? 256 * 1024 : size;
 		t->buffer = (__bridge_retained void *)[get_metal_device() newBufferWithLength:t->size options:MTLResourceStorageModeShared];
+		if (t->buffer == NULL) {
+			iron_log("Could not create a transfer of %zu bytes", t->size);
+			t->size = 0;
+			return NULL;
+		}
 	}
 	return [(__bridge id<MTLBuffer>)t->buffer contents];
 }
 
+size_t gpu_transfer_size(gpu_transfer_t *t) {
+	return t != NULL ? t->size : 0;
+}
+
+bool gpu_transfer_ok(gpu_transfer_t *t) {
+	return t->landed;
+}
+
 void gpu_copy_region_to_transfer(gpu_transfer_t *t, gpu_texture_t *src, int sx, int sy, int w, int h, size_t offset) {
+	if (t->buffer == NULL) {
+		return;
+	}
 	int pitch = w * gpu_texture_format_size(src->format);
 	[region_blit copyFromTexture:(__bridge id<MTLTexture>)src->impl._tex
 	                 sourceSlice:0
@@ -1385,6 +1452,9 @@ void gpu_copy_region_to_transfer(gpu_transfer_t *t, gpu_texture_t *src, int sx, 
 }
 
 void gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *dst, int dx, int dy, int w, int h, size_t offset) {
+	if (t->buffer == NULL) {
+		return;
+	}
 	int pitch = w * gpu_texture_format_size(dst->format);
 	gpu_texture_written(dst);
 	[region_blit copyFromBuffer:(__bridge id<MTLBuffer>)t->buffer
@@ -1449,6 +1519,7 @@ static void gpu_transfer_run_done(bool wait) {
 			gpu_transfer_wait_one(p, gpu_transfer_first);
 		}
 		id<MTLCommandBuffer> cb = (__bridge_transfer id<MTLCommandBuffer>)p->cb;
+		p->t->landed            = cb.error == nil && p->t->buffer != NULL;
 		cb                      = nil;
 		p->cb                   = NULL;
 		gpu_transfer_first      = (gpu_transfer_first + 1) % GPU_TRANSFER_INFLIGHT;
@@ -1507,6 +1578,10 @@ void gpu_read_textures_async(gpu_texture_t **textures, int count) {
 	}
 	if (async_readback_buffer == nil || async_readback_buffer.length < size) {
 		async_readback_buffer = [get_metal_device() newBufferWithLength:size options:MTLResourceStorageModeShared];
+		if (async_readback_buffer == nil) { // No memory: the request never arrives
+			async_readback_state = 0;
+			return;
+		}
 	}
 	end_kept_encoder();
 	if (command_buffer == nil) {
@@ -1531,7 +1606,7 @@ void gpu_read_textures_async(gpu_texture_t **textures, int count) {
 	int request          = ++async_readback_request;
 	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
 		if (request == async_readback_request) {
-			async_readback_state = 2;
+			async_readback_state = cb.error == nil ? 2 : 0; // Dropped: never arrives, the next pick asks again
 		}
 	}];
 }

@@ -533,6 +533,7 @@ static bool history_layer_step(history_step_t *step, bool undo) {
 void history_undo() {
 	history_tiles_finalize();
 	timeline_finalize();
+	layers_alloc_unchecked++; // Layers come back as they were, never refused for memory
 	if (history_undos > 0) {
 		project_modified = true;
 		mask_stack_layer_changed(NULL); // Anchors read the layers as they were
@@ -641,10 +642,13 @@ void history_undo() {
 			ui_view2d_hwnd->redraws = 2;
 		}
 	}
+	layers_alloc_unchecked--;
 }
 
 static void history_redo_duplicate_layer(void *_) {
+	layers_alloc_unchecked++;
 	layers_duplicate_layer(g_context->layer);
+	layers_alloc_unchecked--;
 }
 
 // A new layer or mask redone as it was created: cleared and the image drawn now, steps redone after it in the same frame
@@ -669,6 +673,7 @@ static void history_redo_new_content(history_step_t *step, slot_layer_t *l) {
 void history_redo() {
 	history_tiles_finalize();
 	timeline_finalize();
+	layers_alloc_unchecked++; // Layers come back as they were, never refused for memory
 	if (history_redos > 0) {
 		project_modified = true;
 		mask_stack_layer_changed(NULL);
@@ -784,6 +789,7 @@ void history_redo() {
 			ui_view2d_hwnd->redraws = 2;
 		}
 	}
+	layers_alloc_unchecked--;
 }
 
 // Low memory, not in a stroke: snapshots go, the tiles of the last 4 steps only stay, older ones undo from their
@@ -929,7 +935,9 @@ history_step_t *history_push(history_action_t action) {
 }
 
 static void history_redo_smart_material(char *name) {
+	layers_alloc_unchecked++;
 	smart_materials_insert(name);
+	layers_alloc_unchecked--;
 }
 
 // Undo and redo the user asked for (buttons, shortcuts, gestures, the quick menu): the step's name is kept for the UI's

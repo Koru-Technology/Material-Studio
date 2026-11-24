@@ -60,9 +60,14 @@ static void bake_to_target_check_result(void *_) {
 
 // Bakes one map of the paint object into rt, drawn in place of the current layer.
 // Raytraced maps take g_context->bake_samples frames, the rest one frame (two from a high poly).
-// done(data) runs once the result is in rt as RGBA32. False while another bake runs.
+// done(data) runs once the result is in rt as RGBA32. False while another bake runs, or without the memory for the
+// layers at 32 bits a normal, height or derivative bake takes.
 bool bake_to_target(render_target_t *rt, bake_type_t bake_type, void (*done)(void *), void *data) {
 	if (bake_texture_node_baking) {
+		return false;
+	}
+	if (bake_to_target_rgba128(bake_type) && base_bits != TEXTURE_BITS_BITS32 &&
+	    !layers_can_allocate(layers_project_bytes(config_get_texture_res_x(), config_get_texture_res_y(), TEXTURE_BITS_BITS32))) {
 		return false;
 	}
 	_bake_to_target_tool = g_context->tool;

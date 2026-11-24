@@ -58,7 +58,7 @@ static void layers_thumbs_done(gpu_transfer_t *t, void *ud) {
 	size_t                 bytes = (size_t)b->size * b->size * 4;
 	u8                    *mem   = gpu_transfer_map(t, 0);
 	u8                    *rgba  = malloc(bytes);
-	for (i32 i = 0; i < b->count && b->project == g_project; ++i) {
+	for (i32 i = 0; i < b->count && b->project == g_project && gpu_transfer_ok(t); ++i) { // Dropped: the old ones stay
 		slot_layer_t *l = layers_thumbs_find(b->uids[i]);
 		if (l == NULL) {
 			continue;

@@ -116,6 +116,7 @@ static struct {
 	i64                  bytes_base;
 	string_array_t      *written;
 	i32                  written_job; // Of written, the first of the job
+	bool                 read_failed; // A readback did not land (no memory, the gpu dropped it): the files are not written
 } et;
 
 static gpu_texture_t  *et_acc[3];
@@ -253,18 +254,25 @@ static void export_tiled_read(gpu_texture_t **tex, i32 n, i32 x, i32 y, i32 w, i
 	if (et_xfer == NULL) {
 		et_xfer = gpu_transfer_create(total);
 	}
-	gpu_transfer_map(et_xfer, total);
-	gpu_copy_regions_begin();
-	for (i32 i = 0; i < n; ++i) {
-		gpu_copy_region_to_transfer(et_xfer, tex[i], x, y, w, h, off[i]);
-	}
-	gpu_copy_regions_end();
-	gpu_execute_and_wait();
 	u8 *mem = gpu_transfer_map(et_xfer, total);
+	if (mem != NULL) {
+		gpu_copy_regions_begin();
+		for (i32 i = 0; i < n; ++i) {
+			gpu_copy_region_to_transfer(et_xfer, tex[i], x, y, w, h, off[i]);
+		}
+		gpu_copy_regions_end();
+	}
+	bool ok = mem != NULL && gpu_execute_and_wait();
+	et.read_failed = et.read_failed || !ok;
 	for (i32 i = 0; i < n; ++i) {
 		size_t len = (size_t)w * h * gpu_texture_format_size(tex[i]->format);
 		out[i]     = malloc(len);
-		memcpy(out[i], mem + off[i], len);
+		if (ok) {
+			memcpy(out[i], mem + off[i], len);
+		}
+		else {
+			memset(out[i], 0, len);
+		}
 	}
 #else
 	for (i32 i = 0; i < n; ++i) {
@@ -1582,6 +1590,7 @@ static void export_tiled_unevict() {
 	free(et_evicted);
 	et_evicted                     = NULL;
 	et_nevicted                    = 0;
+	timeline_tiles_release_transfer(); // The memory the layers came back through
 	g_context->ddirty              = 2;
 	g_context->layer_preview_dirty = true;
 }
@@ -1723,6 +1732,10 @@ bool export_tiled_step(f64 budget_ms) {
 }
 
 static void export_tiled_finish(bool cancelled) {
+	if (!cancelled && et.read_failed) {
+		console_toast(tr("Export failed"));
+		cancelled = true; // Its files go
+	}
 	export_tiled_job_end();
 	i64 tiles_peak = util_texture_tracked_peak() - et.bytes_base;
 	export_tiled_release_targets();

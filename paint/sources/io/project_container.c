@@ -74,6 +74,7 @@ typedef struct pc_writer {
 	i32                         maps_cap;
 	bool                        no_history; // A copy without history: the live layers' tile maps only
 	bool                        session;    // A session head (project_session_write): no file, no packed assets
+	bool                        failed;     // A layer could not be read back: nothing is written
 } pc_writer_t;
 
 static pc_writer_t *pc_w = NULL;
@@ -563,7 +564,8 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 		}
 	}
 	if (hash128_is_none(h)) {
-		iron_log("Layer %s could not be captured, it is saved empty", l->name);
+		iron_log("Layer %s could not be captured, the save is not written", l->name);
+		pc_w->failed = true;
 	}
 	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
 	u8_array_t *a = u8_array_create(16);
@@ -739,7 +741,21 @@ void project_clear_history() {
 	hstore_trim(false);
 }
 
+static void pc_writer_drop(pc_writer_t *w) {
+	for (i32 i = 0; i < w->maps_count; ++i) {
+		hstore_unref(w->maps[i]);
+	}
+	free(w->maps);
+	free(w->index);
+}
+
+// False when the file could not be written, or the gpu dropped work while the layers were read back (stale bytes would
+// be saved): the file stays as it was, the project modified
 static bool pc_save(char *path, bool copy) {
+	if (!base_gpu_available()) { // The layers can not be read back
+		return false;
+	}
+	i32 gpu_errors_before = gpu_errors();
 	history_flush_restores(NULL); // Deferred undo restores land: the live layers are the ones shown
 	timeline_finalize(); // Pending entry states captured
 	if (!copy) {
@@ -772,6 +788,24 @@ static bool pc_save(char *path, bool copy) {
 	buffer_t *head = export_arm_encode_project(path); // Writes the packed assets, captures the tile maps
 	if (copy) {
 		project_uuid = uuid;
+	}
+	if (w.failed || gpu_errors() != gpu_errors_before) {
+		pc_w = NULL;
+		array_free(head);
+		free(head);
+		iron_file_stream_close(s, false);
+		if (append) {
+			truncate(path, pc.size); // The chunks written so far go, the file ends at its footer again
+		}
+		else if (target != path) {
+			remove(target);
+		}
+		else {
+			pc.size = -1; // Written in place: the next save writes it whole
+		}
+		pc_writer_drop(&w);
+		iron_log("Not saved: the gpu dropped work or a layer could not be read back");
+		return false;
 	}
 	i32 live_maps = w.maps_count;
 	if (!copy) {
@@ -830,11 +864,7 @@ static bool pc_save(char *path, bool copy) {
 		}
 	}
 	if (!ok || copy) { // A copy is not where the session saves
-		for (i32 i = 0; i < w.maps_count; ++i) {
-			hstore_unref(w.maps[i]);
-		}
-		free(w.maps);
-		free(w.index);
+		pc_writer_drop(&w);
 		if (!ok && !copy) {
 			pc.size = -1; // The next save writes the file whole
 		}
@@ -1093,15 +1123,22 @@ static bool pc_session_on() {
 
 // Journals the session head now, true when it was written
 bool project_session_write() {
-	if (!pc_session_on() || pc_w != NULL) {
+	if (!pc_session_on() || pc_w != NULL || !base_gpu_available()) {
 		return false;
 	}
 	pc_session_register();
 	history_settle();
-	pc_writer_t w = {.session = true};
-	pc_w          = &w;
+	i32         gpu_errors_before = gpu_errors();
+	pc_writer_t w                 = {.session = true};
+	pc_w                          = &w;
 	buffer_t *head = export_arm_encode_project(g_project->_->filepath);
 	pc_w           = NULL;
+	if (w.failed || gpu_errors() != gpu_errors_before) { // Stale layers are not journaled
+		array_free(head);
+		free(head);
+		pc_writer_drop(&w);
+		return false;
+	}
 	i32 live_maps  = w.maps_count;
 	pc_history_roots(&w.maps, &w.maps_count, &w.maps_cap);
 
