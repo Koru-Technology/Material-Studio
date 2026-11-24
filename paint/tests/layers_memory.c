@@ -44,10 +44,10 @@ void next() {
 		script_project_new();
 	}
 	else if (step == 1) {
-		project_test_set_res(8192, 8192);
+		project_test_set_res(4096, 4096);
 	}
 	else if (step == 2) {
-		check(config_get_texture_res_x() == 8192, "an 8K project");
+		check(config_get_texture_res_x() == 4096, "a 4K project");
 		count0         = script_layer_count();
 		refused_before = layers_alloc_refusals();
 		printf("[layers_memory] %d layers, %d MB available", count0, layers_memory_available_mb());

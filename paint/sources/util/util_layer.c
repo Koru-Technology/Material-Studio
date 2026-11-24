@@ -26,7 +26,7 @@ i32 layers_test_set_max(i32 n) {
 // iOS ends an app that takes more memory than it may. Layers are the largest allocations: a full resolution target a
 // channel, 768 MB for an 8K 8 bit layer. What the user adds (layers, masks, duplicates, smart materials, a higher
 // resolution or more bits, opening a project) is refused with a toast when it would leave less than the reserve: room
-// for the scratch targets painting, compositing and saving take (a 16 bit target of the working resolution) and the
+// for the targets of the working resolution painting, compositing and undo take (see layers_memory_fits) and the
 // rest of the app. Caches that render again are dropped first. Undo and redo bring back what existed, never refused
 // (history_applying, layers_alloc_unchecked). The Mac has swap: never refused.
 
@@ -92,7 +92,10 @@ static bool layers_memory_fits(i64 bytes) {
 	if (avail < 0) {
 		return true;
 	}
-	i64 reserve = (i64)LAYERS_MEMORY_RESERVE_MB * 1024 * 1024 + (i64)config_get_texture_res_x() * config_get_texture_res_y() * 8;
+	// Measured on an 8 GB iPad: past the layers, targets of the working resolution (scratch, composites, undo
+	// snapshots) take about 36 bytes a texel, 600 MB at 4K, 2.4 GB at 8K. They come lazily (the gpu commits memory
+	// on first use, after the memory available was read): counted up front.
+	i64 reserve = (i64)LAYERS_MEMORY_RESERVE_MB * 1024 * 1024 + (i64)config_get_texture_res_x() * config_get_texture_res_y() * 36;
 	return bytes + reserve <= avail;
 }
 

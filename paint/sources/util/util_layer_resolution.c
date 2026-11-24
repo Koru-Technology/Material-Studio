@@ -287,7 +287,9 @@ bool layers_resolution_begin(i32 w, i32 h) {
 	// meanwhile
 	i32 w0   = config_get_texture_res_x();
 	i32 h0   = config_get_texture_res_y();
-	i64 grow = layers_project_bytes(w, h, base_bits) - layers_project_bytes(w0, h0, base_bits) + layers_slot_bytes_at(LAYER_SLOT_TYPE_LAYER, w, h, base_bits);
+	// The targets of the working resolution grow too (36 bytes a texel, layers_memory_fits)
+	i64 grow = layers_project_bytes(w, h, base_bits) - layers_project_bytes(w0, h0, base_bits) + layers_slot_bytes_at(LAYER_SLOT_TYPE_LAYER, w, h, base_bits) +
+	           ((i64)w * h - (i64)w0 * h0) * 36;
 	if (!lr.active && (w > w0 || h > h0) && !layers_can_allocate(grow)) {
 		return false;
 	}
