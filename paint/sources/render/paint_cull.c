@@ -137,6 +137,14 @@ static paint_cull_mesh_t *paint_cull_get(mesh_data_t *data) {
 	m->spheres     = malloc(sizeof(f32) * 4 * m->chunks);
 	m->ib          = gpu_create_index_buffer(ia->length);
 	u32 *indices   = gpu_index_buffer_lock(m->ib);
+	if (indices == NULL) { // No memory for it: no culling
+		gpu_buffer_destroy(m->ib);
+		free(m->ib);
+		free(m->spheres);
+		*m = (paint_cull_mesh_t){0};
+		free(keys);
+		return NULL;
+	}
 	for (i32 c = 0; c < m->chunks; ++c) {
 		f32 lo[3] = {1e9, 1e9, 1e9};
 		f32 hi[3] = {-1e9, -1e9, -1e9};

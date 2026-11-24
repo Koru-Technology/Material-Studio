@@ -16,6 +16,9 @@ slot_layer_t *layers_new_layer(bool clear, i32 position, slot_layer_t *parent) {
 	if (!layers_room(1)) {
 		return NULL;
 	}
+	if (!layers_can_allocate(layers_slot_bytes(LAYER_SLOT_TYPE_LAYER))) {
+		return NULL;
+	}
 
 	slot_layer_t *l = slot_layer_create("", LAYER_SLOT_TYPE_LAYER, parent);
 	l->object_mask  = g_context->layer_filter;
@@ -60,6 +63,9 @@ void layers_new_mask_clear(slot_layer_t *l) {
 
 slot_layer_t *layers_new_mask(bool clear, slot_layer_t *parent, i32 position) {
 	if (!layers_room(1)) {
+		return NULL;
+	}
+	if (!layers_can_allocate(layers_slot_bytes(LAYER_SLOT_TYPE_MASK))) {
 		return NULL;
 	}
 
@@ -119,6 +125,9 @@ slot_layer_t *layers_new_text_layer() {
 
 void layers_create_filter_on_next_frame(void *_) {
 	if (slot_layer_get_filters(g_context->layer, true) != NULL || !layers_room(1)) {
+		return;
+	}
+	if (!layers_can_allocate(layers_slot_bytes(LAYER_SLOT_TYPE_LAYER))) { // Before its material is made
 		return;
 	}
 

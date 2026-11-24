@@ -324,6 +324,16 @@ static slot_material_t *smart_materials_material(char *name, char *file) {
 	return g_project->_->materials->length > before ? g_project->_->materials->buffer[g_project->_->materials->length - 1] : NULL;
 }
 
+// Bytes of the layers and masks of a smart material's count slots (kind 0 layer, 1 mask, 2 group)
+static i64 smart_materials_bytes(any_map_t *m, i32 count) {
+	i64 bytes = 0;
+	for (i32 i = 0; i < count; ++i) {
+		i32 kind = smart_materials_i32(m, string_copy(string_tmp("l%d", i)), "kind", 0);
+		bytes += layers_slot_bytes(kind == 2 ? LAYER_SLOT_TYPE_GROUP : kind == 1 ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER);
+	}
+	return bytes;
+}
+
 // Puts smart material name on top of the layer stack and selects its top layer, NULL when it can not be read
 slot_layer_t *smart_materials_insert(char *name) {
 	char *path = smart_materials_path(name, ".json");
@@ -357,6 +367,9 @@ slot_layer_t *smart_materials_insert(char *name) {
 		if (parent >= count || (parent >= 0 && parent <= i) || (kind == 1 && parent < 0)) {
 			return NULL;
 		}
+	}
+	if (!layers_can_allocate(smart_materials_bytes(m, count))) {
+		return NULL;
 	}
 
 	slot_material_t *_material = g_context->material;

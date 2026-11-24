@@ -260,7 +260,9 @@ void import_mesh_make_mesh(raw_mesh_t *mesh) {
 			slot_layer_t *l = array_pop(g_project->_->layers);
 			slot_layer_unload(l);
 		}
+		layers_alloc_unchecked++; // In place of the layers just freed
 		layers_new_layer(false, -1, NULL);
+		layers_alloc_unchecked--;
 		sys_notify_on_next_frame(&_import_mesh_make_mesh_clear_layers, NULL);
 		history_reset();
 	}

@@ -672,9 +672,11 @@ typedef struct {
 static void fill_tile_saved(gpu_transfer_t *t, void *ud) {
 	fill_tile_save_t *sv  = ud;
 	u32               len = (u32)(3 * sv->res * sv->res * sv->bpt);
-	u8               *p   = malloc(len);
-	memcpy(p, gpu_transfer_map(t, 0), len);
-	disk_cache_write(FILL_TILE_DISK, sv->key, p, len, (u32)sv->res, (u32)sv->bpt); // Takes p
+	if (gpu_transfer_ok(t)) { // Not what the gpu dropped (stale bytes)
+		u8 *p = malloc(len);
+		memcpy(p, gpu_transfer_map(t, 0), len);
+		disk_cache_write(FILL_TILE_DISK, sv->key, p, len, (u32)sv->res, (u32)sv->bpt); // Takes p
+	}
 	free(sv);
 	gpu_transfer_destroy(t);
 }
@@ -720,8 +722,13 @@ static bool fill_tile_upload(fill_tile_t *e, u8 *data, u32 len, i32 res) {
 		}
 		e->res = res;
 	}
-	gpu_transfer_t *t = gpu_transfer_create(len);
-	memcpy(gpu_transfer_map(t, len), data, len);
+	gpu_transfer_t *t   = gpu_transfer_create(len);
+	u8             *mem = gpu_transfer_map(t, len);
+	if (mem == NULL) { // No memory: renders instead
+		gpu_transfer_destroy(t);
+		return false;
+	}
+	memcpy(mem, data, len);
 	draw_saved_t saved = draw_suspend();
 	gpu_copy_regions_begin();
 	for (i32 k = 0; k < 3; ++k) {

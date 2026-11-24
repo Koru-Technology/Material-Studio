@@ -232,8 +232,14 @@ static void paint_rec_readback_done(gpu_transfer_t *t, void *ud) {
 	paint_rec_readback_t *rb = ud;
 	paint_rec_t          *r  = &paint_rec;
 	if (r->active && r->token == rb->token) {
-		f32 *src = gpu_transfer_map(t, 0);
-		memcpy(&r->dabs[rb->base * PAINT_DAB_TEXELS * 4], src, (size_t)rb->count * PAINT_DAB_TEXELS * 4 * sizeof(f32));
+		f32   *dst = &r->dabs[rb->base * PAINT_DAB_TEXELS * 4];
+		size_t len = (size_t)rb->count * PAINT_DAB_TEXELS * 4 * sizeof(f32);
+		if (gpu_transfer_ok(t)) {
+			memcpy(dst, gpu_transfer_map(t, 0), len);
+		}
+		else {
+			memset(dst, 0, len); // Dropped by the gpu: no stale dabs
+		}
 		r->pending--;
 	}
 	rb->busy = false;

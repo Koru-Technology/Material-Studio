@@ -75,6 +75,7 @@ typedef struct pc_writer {
 	bool                        no_history; // A copy without history: the live layers' tile maps only
 	bool                        session;    // A session head (project_session_write): no file, no packed assets
 	i32                         missing;    // Blobs the walk reached that could not be read: the save fails
+	bool                        failed;     // A layer could not be read back: nothing is written
 } pc_writer_t;
 
 static pc_writer_t *pc_w = NULL;
@@ -565,7 +566,8 @@ u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 		}
 	}
 	if (hash128_is_none(h)) {
-		iron_log("Layer %s could not be captured, it is saved empty", l->name);
+		iron_log("Layer %s could not be captured, the save is not written", l->name);
+		pc_w->failed = true;
 	}
 	pc_maps_push(&pc_w->maps, &pc_w->maps_count, &pc_w->maps_cap, h);
 	u8_array_t *a = u8_array_create(16);
@@ -743,7 +745,38 @@ void project_clear_history() {
 	hstore_trim(false);
 }
 
+static void pc_writer_drop(pc_writer_t *w) {
+	for (i32 i = 0; i < w->maps_count; ++i) {
+		hstore_unref(w->maps[i]);
+	}
+	free(w->maps);
+	free(w->index);
+}
+
+// A save that stops: the file stays as it was (an append's chunks are cut off, its last footer is the end again)
+static bool pc_save_abort(pc_writer_t *w, iron_file_stream_t *s, char *path, char *target, bool append, buffer_t *head, char *why) {
+	pc_w = NULL;
+	array_free(head);
+	free(head);
+	iron_file_stream_close(s, false);
+	if (append) {
+		truncate(path, (off_t)pc.size);
+	}
+	else {
+		remove(target);
+	}
+	pc_writer_drop(w);
+	iron_log("Not saved: %s", why);
+	return false;
+}
+
+// False when the file could not be written, the gpu dropped work while the layers were read back (stale bytes would be
+// saved) or blobs could not be read: the file stays as it was, the project modified
 static bool pc_save(char *path, bool copy) {
+	if (!base_gpu_available()) { // The layers can not be read back
+		return false;
+	}
+	i32 gpu_errors_before = gpu_errors();
 	history_flush_restores(NULL); // Deferred undo restores land: the live layers are the ones shown
 	timeline_finalize(); // Pending entry states captured
 	if (!copy) {
@@ -774,6 +807,9 @@ static bool pc_save(char *path, bool copy) {
 	if (copy) {
 		project_uuid = uuid;
 	}
+	if (w.failed || gpu_errors() != gpu_errors_before) {
+		return pc_save_abort(&w, s, path, target, append, head, "the gpu dropped work or a layer could not be read back");
+	}
 	i32 live_maps = w.maps_count;
 	if (!copy) {
 		pc_history_roots(&w.maps, &w.maps_count, &w.maps_cap); // Roots of the walk, not referenced by the save
@@ -784,26 +820,8 @@ static bool pc_save(char *path, bool copy) {
 	}
 	w.maps_count = live_maps;
 	pc_w = NULL;
-	if (w.missing > 0) { // The file stays as it was
-		iron_log("Save stopped: %d blobs could not be read", w.missing);
-		iron_file_stream_close(s, false);
-		if (append) {
-			truncate(path, (off_t)pc.size); // The chunks written go, the last footer is the file's end again
-		}
-		else {
-			remove(target);
-		}
-		for (i32 i = 0; i < w.maps_count; ++i) {
-			hstore_unref(w.maps[i]);
-		}
-		free(w.maps);
-		free(w.index);
-		array_free(head);
-		free(head);
-		if (!copy) {
-			pc.size = -1; // The next save writes the file whole
-		}
-		return false;
+	if (w.missing > 0) {
+		return pc_save_abort(&w, s, path, target, append, head, "blobs of the project could not be read");
 	}
 
 	qsort(w.index, w.count, sizeof(hstore_index_entry_t), pc_compare_entry);
@@ -852,11 +870,7 @@ static bool pc_save(char *path, bool copy) {
 		}
 	}
 	if (!ok || copy) { // A copy is not where the session saves
-		for (i32 i = 0; i < w.maps_count; ++i) {
-			hstore_unref(w.maps[i]);
-		}
-		free(w.maps);
-		free(w.index);
+		pc_writer_drop(&w);
 		if (!ok && !copy) {
 			pc.size = -1; // The next save writes the file whole
 		}
@@ -1114,15 +1128,22 @@ static bool pc_session_on() {
 
 // Journals the session head now, true when it was written
 bool project_session_write() {
-	if (!pc_session_on() || pc_w != NULL) {
+	if (!pc_session_on() || pc_w != NULL || !base_gpu_available()) {
 		return false;
 	}
 	pc_session_register();
 	history_settle();
-	pc_writer_t w = {.session = true};
-	pc_w          = &w;
+	i32         gpu_errors_before = gpu_errors();
+	pc_writer_t w                 = {.session = true};
+	pc_w                          = &w;
 	buffer_t *head = export_arm_encode_project(g_project->_->filepath);
 	pc_w           = NULL;
+	if (w.failed || gpu_errors() != gpu_errors_before) { // Stale layers are not journaled
+		array_free(head);
+		free(head);
+		pc_writer_drop(&w);
+		return false;
+	}
 	i32 live_maps  = w.maps_count;
 	pc_history_roots(&w.maps, &w.maps_count, &w.maps_cap);
 

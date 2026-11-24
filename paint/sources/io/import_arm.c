@@ -12,6 +12,17 @@ static void import_arm_free_deleted() {
 	gpu_cleanup();
 }
 
+// Bytes the layers of project p take more than the open project's, freed before they are made
+static i64 import_arm_layers_bytes(project_t *p) {
+	i64 bytes = 0;
+	for (i32 i = 0; p->layer_datas != NULL && i < p->layer_datas->length; ++i) {
+		layer_data_t  *ld   = p->layer_datas->buffer[i];
+		texture_bits_t bits = ld->bpp == 8 ? TEXTURE_BITS_BITS8 : ld->bpp == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
+		bytes += layers_slot_bytes_at(ld->type, ld->res_x, ld->res_y, bits);
+	}
+	return bytes - layers_project_bytes(config_get_texture_res_x(), config_get_texture_res_y(), base_bits);
+}
+
 // Materials whose preview was given before their import compiles on the next frame (a library thumbnail, the preview
 // saved in the material file): that compile does not render their preview
 static slot_material_t_array_t *import_arm_previews_given = NULL;
@@ -227,6 +238,10 @@ void import_arm_run_project(char *path) {
 
 	if (!import_arm_validate(project, import_as_mesh)) {
 		console_error(string("Could not open file %s.", path));
+		return;
+	}
+
+	if (!import_as_mesh && !layers_can_allocate(import_arm_layers_bytes(project))) { // The open project stays
 		return;
 	}
 
@@ -614,6 +629,7 @@ void import_arm_run_project(char *path) {
 	if (recovered) {
 		project_modified = true; // Not in the file yet: saved like any change
 	}
+	timeline_tiles_release_transfer(); // The memory the layers came through
 	iron_profile_mark("project load end");
 }
 

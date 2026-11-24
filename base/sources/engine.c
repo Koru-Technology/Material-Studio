@@ -790,6 +790,9 @@ i32 mesh_data_get_vertex_size(char *vertex_data) {
 void mesh_data_build_vertices(gpu_buffer_t *vertex_buffer, any_array_t *vertex_arrays) {
 	vertex_array_t *va0       = (vertex_array_t *)vertex_arrays->buffer[0];
 	int16_t        *vertices  = gpu_vertex_buffer_lock(vertex_buffer);
+	if (vertices == NULL) { // Not created (no memory)
+		return;
+	}
 	i32             size      = mesh_data_get_vertex_size(va0->data);
 	i32             num_verts = va0->values->length / size;
 	i32             count     = vertex_arrays->length;
@@ -818,6 +821,9 @@ void mesh_data_build_vertices(gpu_buffer_t *vertex_buffer, any_array_t *vertex_a
 
 void mesh_data_build_indices(gpu_buffer_t *index_buffer, u32_array_t *index_array) {
 	uint32_t *ia = gpu_index_buffer_lock(index_buffer);
+	if (ia == NULL) { // Not created (no memory): its count is 0, nothing draws
+		return;
+	}
 	memcpy(ia, index_array->buffer, index_buffer->count * 4);
 	gpu_index_buffer_unlock(index_buffer);
 }
@@ -839,6 +845,9 @@ void mesh_data_build(mesh_data_t *raw) {
 	mesh_data_build_vertices(raw->_->vertex_buffer, (any_array_t *)raw->vertex_arrays);
 	raw->_->index_buffer = gpu_create_index_buffer(raw->index_array->length);
 	mesh_data_build_indices(raw->_->index_buffer, raw->index_array);
+	if (raw->_->vertex_buffer->count == 0) {
+		raw->_->index_buffer->count = 0; // No vertices to draw (not created)
+	}
 }
 
 void mesh_data_calculate_aabb_min_max(mesh_data_t *raw, vec4_t *out_min, vec4_t *out_max) {

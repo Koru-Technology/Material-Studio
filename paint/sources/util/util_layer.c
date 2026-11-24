@@ -1,4 +1,7 @@
 #include "../global.h"
+#ifdef IRON_IOS
+#include <os/proc.h>
+#endif
 
 #ifdef IRON_IOS
 i32 layers_max_layers = 32;
@@ -17,6 +20,105 @@ i32 layers_test_set_max(i32 n) {
 	i32 old           = layers_max_layers;
 	layers_max_layers = n;
 	return old;
+}
+
+// ---- Memory for layers ----
+// iOS ends an app that takes more memory than it may. Layers are the largest allocations: a full resolution target a
+// channel, 768 MB for an 8K 8 bit layer. What the user adds (layers, masks, duplicates, smart materials, a higher
+// resolution or more bits, opening a project) is refused with a toast when it would leave less than the reserve: room
+// for the scratch targets painting, compositing and saving take (a 16 bit target of the working resolution) and the
+// rest of the app. Caches that render again are dropped first. Undo and redo bring back what existed, never refused
+// (history_applying, layers_alloc_unchecked). The Mac has swap: never refused.
+
+#define LAYERS_MEMORY_RESERVE_MB 512
+
+i32        layers_alloc_unchecked = 0; // > 0: allocations that replace what was just freed (a mesh import), not checked
+static i32 layers_alloc_refused   = 0;
+
+// Bytes of the full resolution targets of a layer (3 at bits) or a mask (1, RGBA32) of w x h, 0 for a group
+i64 layers_slot_bytes_at(layer_slot_type_t type, i32 w, i32 h, texture_bits_t bits) {
+	i64 texels = (i64)w * h;
+	return type == LAYER_SLOT_TYPE_LAYER  ? 3 * texels * gpu_texture_format_size(layers_format(bits))
+	       : type == LAYER_SLOT_TYPE_MASK ? texels * 4
+	                                      : 0;
+}
+
+// A new layer, mask or group of the working resolution and bits
+i64 layers_slot_bytes(layer_slot_type_t type) {
+	return layers_slot_bytes_at(type, config_get_texture_res_x(), config_get_texture_res_y(), base_bits);
+}
+
+static layer_slot_type_t layers_slot_type(slot_layer_t *l) {
+	return slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : slot_layer_is_group(l) ? LAYER_SLOT_TYPE_GROUP : LAYER_SLOT_TYPE_LAYER;
+}
+
+// The project's layers and masks at w x h and bits
+i64 layers_project_bytes(i32 w, i32 h, texture_bits_t bits) {
+	i64 bytes = 0;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		bytes += layers_slot_bytes_at(layers_slot_type(g_project->_->layers->buffer[i]), w, h, bits);
+	}
+	return bytes;
+}
+
+// l with its masks and children, as a duplicate copies them
+i64 layers_tree_bytes(slot_layer_t *l) {
+	i64 bytes = 0;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *c = g_project->_->layers->buffer[i];
+		for (slot_layer_t *p = c; p != NULL; p = p->parent) {
+			if (p == l) {
+				bytes += layers_slot_bytes(layers_slot_type(c));
+				break;
+			}
+		}
+	}
+	return bytes;
+}
+
+// The memory iOS still lets the app take, -1 when unknown (elsewhere)
+i64 layers_memory_available() {
+#ifdef IRON_IOS
+	if (__builtin_available(iOS 13.0, *)) {
+		i64 avail = (i64)os_proc_available_memory();
+		return avail > 0 ? avail : -1;
+	}
+#endif
+	return -1;
+}
+
+static bool layers_memory_fits(i64 bytes) {
+	i64 avail = layers_memory_available();
+	if (avail < 0) {
+		return true;
+	}
+	i64 reserve = (i64)LAYERS_MEMORY_RESERVE_MB * 1024 * 1024 + (i64)config_get_texture_res_x() * config_get_texture_res_y() * 8;
+	return bytes + reserve <= avail;
+}
+
+// True when bytes of layer targets can be allocated now. False after a toast: the caller allocates nothing.
+bool layers_can_allocate(i64 bytes) {
+	if (bytes <= 0 || history_applying > 0 || layers_alloc_unchecked > 0 || layers_memory_fits(bytes)) {
+		return true;
+	}
+	base_on_memory_warning(); // What renders again goes, then once more
+	if (layers_memory_fits(bytes)) {
+		return true;
+	}
+	layers_alloc_refused++;
+	iron_log("Not enough memory for %d MB of layers, %d MB available", (i32)(bytes >> 20), (i32)(layers_memory_available() >> 20));
+	console_toast(tr("Not enough memory"));
+	return false;
+}
+
+// Tests: allocations refused so far, the memory available in MB (-1 unknown)
+i32 layers_alloc_refusals() {
+	return layers_alloc_refused;
+}
+
+i32 layers_memory_available_mb() {
+	i64 avail = layers_memory_available();
+	return avail < 0 ? -1 : (i32)(avail >> 20);
 }
 
 mat4_t    _layers_decal_mat;
@@ -141,12 +243,28 @@ void layers_resize_targets() {
 	}
 }
 
-void layers_set_bits() {
+// The layers to base_bits. Every layer and mask is made again, the old ones held until the frame ends: refused when that
+// memory is not there (false, base_bits back to the bits of the layers).
+bool layers_set_bits() {
 	export_tiled_abort_for_project_change();
+	texture_bits_t now = base_bits;
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		if (slot_layer_is_layer(l) && l->texpaint != NULL) {
+			gpu_texture_format_t f = l->texpaint->format;
+			now = f == GPU_TEXTURE_FORMAT_RGBA32 ? TEXTURE_BITS_BITS8 : f == GPU_TEXTURE_FORMAT_RGBA64 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
+			break;
+		}
+	}
+	if (now != base_bits && !layers_can_allocate(layers_project_bytes(config_get_texture_res_x(), config_get_texture_res_y(), base_bits))) {
+		base_bits = now;
+		return false;
+	}
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_resize_and_set_bits(l);
 	}
+	return true;
 }
 
 // Tests: the layers at bits 8, 16 or 32 a channel

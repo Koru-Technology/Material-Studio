@@ -165,11 +165,14 @@ void gpu_end(void);
 void gpu_end_internal(void);
 // Names the current pass in GPU traces and captures; passes that continue one encoder add their names
 void gpu_label_pass(const char *label);
-void gpu_execute_and_wait(void);
+// Submits the work recorded so far and waits for it and the frames in flight. False when the gpu dropped work of them
+// (gpu_errors counts it): what a readback copied then is not to be trusted.
+bool gpu_execute_and_wait(void);
 // Submits the work recorded so far without waiting (outside a render pass); done, when given, gets its GPU time in ms
 // (-1 when unknown), on any thread. Elsewhere than Metal: gpu_execute_and_wait.
 void gpu_commit(void (*done)(void *data, double gpu_ms), void *data);
 void gpu_cleanup(void);
+void gpu_release_finished(void); // Frees what the frames in flight retired, waiting for them, submitting nothing
 // The command buffer being recorded (a mark), and whether the gpu finished it: a resource it reads can then be reused
 uint64_t gpu_work_mark(void);
 bool     gpu_work_done(uint64_t mark);
@@ -235,7 +238,7 @@ void  gpu_set_pipeline_internal(gpu_pipeline_t *pipeline);
 void  gpu_set_vertex_buffer(gpu_buffer_t *buffer);
 void  gpu_set_index_buffer(gpu_buffer_t *buffer);
 void  gpu_set_constant_buffer(gpu_buffer_t *buffer, uint32_t offset, size_t size);
-void  gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data);
+bool  gpu_get_render_target_pixels(gpu_texture_t *render_target, uint8_t *data); // False: not read (zeroed) or gpu work dropped
 void  gpu_read_textures_async(gpu_texture_t **textures, int count); // Up to 8, without waiting for the gpu
 bool  gpu_read_textures_async_poll(uint8_t **data);               // True once they arrived, data[i] is texture i
 
@@ -251,7 +254,8 @@ void gpu_copy_regions_end(void);
 typedef struct gpu_transfer gpu_transfer_t;
 gpu_transfer_t *gpu_transfer_create(size_t size);
 void            gpu_transfer_destroy(gpu_transfer_t *t);
-void           *gpu_transfer_map(gpu_transfer_t *t, size_t size); // Grows if needed, cpu pointer
+void           *gpu_transfer_map(gpu_transfer_t *t, size_t size); // Grows if needed, cpu pointer, NULL without memory
+size_t          gpu_transfer_size(gpu_transfer_t *t);             // Bytes it holds now
 void            gpu_copy_region_to_transfer(gpu_transfer_t *t, gpu_texture_t *src, int sx, int sy, int w, int h, size_t offset);
 void            gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *dst, int dx, int dy, int w, int h, size_t offset);
 
@@ -260,6 +264,7 @@ void            gpu_copy_region_from_transfer(gpu_transfer_t *t, gpu_texture_t *
 // mapped (or grown) until its done ran. At most GPU_TRANSFER_INFLIGHT pending: committing one more waits for the oldest.
 #define GPU_TRANSFER_INFLIGHT 8
 void gpu_transfer_commit(gpu_transfer_t *t, void (*done)(gpu_transfer_t *t, void *ud), void *ud);
+bool gpu_transfer_ok(gpu_transfer_t *t); // In done: the copies landed (false: no memory, or the gpu dropped them)
 void gpu_transfer_poll(void); // sys_render calls it first thing every frame
 void gpu_transfer_wait(void); // Submits the work recorded so far, runs every pending done
 int  gpu_transfer_pending(void);

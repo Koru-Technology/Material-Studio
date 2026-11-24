@@ -422,7 +422,8 @@ buffer_t *export_arm_encode_project(char *path) {
 
 static bool export_arm_failed = false; // The last save failed and the user was told: autosaves failing again stay quiet
 
-// Returns false when the project could not be saved: the file on disk is the one before, the project stays modified
+// False when the project could not be saved (the file could not be written, the gpu dropped work while the layers were
+// read back, the app is in the background): the file on disk is the one before, the project stays modified
 bool export_arm_run_project(char *path) {
 	history_flush_restores(NULL); // Deferred undo restores land: the layers saved are the ones shown
 	export_arm_show_progress = true;
@@ -457,12 +458,15 @@ bool export_arm_run_project(char *path) {
 		draw_scaled_image(tex, (256 - dw) / 2.0, (256 - dh) / 2.0, dw, dh); // Cover the square, also in portrait
 		draw_end();
 
-		buffer_t   *mesh_icon_pixels = gpu_get_texture_pixels(mesh_icon);
-		u8_array_t *u8a              = mesh_icon_pixels;
+		i32         gpu_errors_before = gpu_errors();
+		buffer_t   *mesh_icon_pixels  = gpu_get_texture_pixels(mesh_icon);
+		u8_array_t *u8a               = mesh_icon_pixels;
 		for (i32 i = 0; i < 256 * 256 * 4; ++i) {
 			u8a->buffer[i] = math_floor(math_pow(u8a->buffer[i] / 255.0, 1.0 / 2.2) * 255);
 		}
-		iron_write_png(project_icon_path(path), mesh_icon_pixels, 256, 256, 0);
+		if (gpu_errors() == gpu_errors_before) { // Not a preview of what the gpu dropped
+			iron_write_png(project_icon_path(path), mesh_icon_pixels, 256, 256, 0);
+		}
 		gpu_delete_texture(mesh_icon);
 	}
 #endif

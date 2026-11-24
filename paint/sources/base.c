@@ -12,6 +12,15 @@ void base_on_shutdown() {
 
 void gpu_release_staging_buffers(void);
 
+// The gpu takes work: not while the iOS app is in the background (iOS fails it there). The Mac draws in the background.
+bool base_gpu_available() {
+#ifdef IRON_IOS
+	return !in_background;
+#else
+	return true;
+#endif
+}
+
 // Low memory: drop what is created again when needed
 void base_on_memory_warning() {
 	if (g_context->brush_time == 0) {
@@ -22,8 +31,14 @@ void base_on_memory_warning() {
 	material_cache_trim(); // Material caches but the current material's
 	mask_gen_trim();       // Mask generator outputs but the selected mask's, texmask keeps the result
 	gpu_release_staging_buffers();
-	gpu_execute_and_wait(); // Free deleted textures now instead of on the next present
-	gpu_cleanup();
+	timeline_tiles_release_transfer();
+	if (base_gpu_available()) {
+		gpu_execute_and_wait(); // Free deleted textures now instead of on the next present
+		gpu_cleanup();
+	}
+	else {
+		gpu_release_finished(); // What the last frames retired; the ones deleted since go with the first frame back
+	}
 }
 
 // Home gesture or app switcher, save while the gpu can still read the layers back

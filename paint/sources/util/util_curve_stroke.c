@@ -624,7 +624,7 @@ static void curve_drag_done(gpu_transfer_t *t, void *ud) {
 	f32   *v = gpu_transfer_map(t, 0);
 	vec4_t p = {v[0], v[1], v[2], 1.0};
 	f32    d = (p.x - curve_drag.loc.x) * curve_drag.look.x + (p.y - curve_drag.loc.y) * curve_drag.look.y + (p.z - curve_drag.loc.z) * curve_drag.look.z;
-	curve_drag.hit   = d < curve_drag.far * 0.99; // Background reconstructs to the far plane (util_render_picked_on_mesh)
+	curve_drag.hit   = gpu_transfer_ok(t) && d < curve_drag.far * 0.99; // Background reconstructs to the far plane (util_render_picked_on_mesh)
 	curve_drag.world = p;
 	curve_drag.busy  = false;
 	curve_drag.ready = true;

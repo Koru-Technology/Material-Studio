@@ -1278,6 +1278,12 @@ X0(history_tiles_test_steps, "i()", i)
 X0(history_on_memory_warning, "v()", v)
 X1(timeline_tiles_test, "i(p:slot_layer_t l)", i, p)
 X0(timeline_tiles_test_reads, "i()", i)
+X0(timeline_tiles_transfer_bytes, "i()", i)
+
+// Memory for layers (util/util_layer.c)
+X0(layers_alloc_refusals, "i()", i)
+X0(layers_memory_available_mb, "i()", i)
+X0(base_on_memory_warning, "v()", v)
 
 // Texture export, wave 2
 X2(export_tiled_not_upscaled, "i(i w,i h)", i, i, i)

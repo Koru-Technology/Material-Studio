@@ -1164,6 +1164,15 @@ void env_write(char *path);
 // ---- util/util_layer.c ----
 bool                 layers_room(i32 n);
 i32                  layers_test_set_max(i32 n);
+extern i32           layers_alloc_unchecked;
+i64                  layers_slot_bytes_at(layer_slot_type_t type, i32 w, i32 h, texture_bits_t bits);
+i64                  layers_slot_bytes(layer_slot_type_t type);
+i64                  layers_project_bytes(i32 w, i32 h, texture_bits_t bits);
+i64                  layers_tree_bytes(slot_layer_t *l);
+i64                  layers_memory_available();
+bool                 layers_can_allocate(i64 bytes);
+i32                  layers_alloc_refusals();
+i32                  layers_memory_available_mb();
 gpu_texture_format_t layers_format(texture_bits_t bits);
 gpu_pipeline_t      *layers_copy_pipe(texture_bits_t bits);
 void                 util_layer_update_preview();
@@ -1184,7 +1193,7 @@ bool                 disk_cache_has(const char *sub, u64 key);
 void                 layers_init();
 void                 layers_resize();
 void                 layers_resize_targets();
-void                 layers_set_bits();
+bool                 layers_set_bits();
 void                 layers_test_set_bits(i32 bits);
 void                 layers_make_temp_img();
 void                 layers_make_temp_mask_img();
@@ -1630,6 +1639,8 @@ void args_run();
 
 // ---- base.c ----
 void            base_on_open_file(char *path);
+bool            base_gpu_available();
+void            base_on_memory_warning();
 bool            base_startup_covering();
 bool            base_startup_loading();
 void            base_startup_cover_done();
@@ -1947,6 +1958,8 @@ void timeline_ops_reset();
 
 // ---- timeline_tiles.c ----
 void timeline_tiles_cache_reset();
+void timeline_tiles_release_transfer();
+i32  timeline_tiles_transfer_bytes();
 bool timeline_tiles_info(hash128_t h, i32 *width, i32 *height, i32 *format, i32 *channels);
 bool timeline_tiles_restore_from(hash128_t map, hash128_t prev, struct paint_target *dst);
 bool timeline_tiles_uniform(hash128_t h);
@@ -2237,7 +2250,7 @@ i32             pipes_get_constant_location(char *type);
 void                   project_open();
 void                   project_autosave_update();
 void                   project_autosave_init();
-void                   project_save_now();
+bool                   project_save_now();
 bool                   project_leave();
 bool                   project_is_open(char *path);
 void                   project_scan_folders();
