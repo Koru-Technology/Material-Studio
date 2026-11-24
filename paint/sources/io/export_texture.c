@@ -4,6 +4,18 @@
 static f32             export_texture_gamma       = 1.0 / 2.2;
 static string_array_t *export_texture_baked_files = NULL;
 
+// What an export runs with, taken from the export settings when it starts: they may change while it runs
+typedef struct export_texture_settings {
+	export_preset_t     *preset; // A copy
+	char                *preset_name;
+	export_mode_t        layers;
+	export_destination_t destination;
+	texture_ldr_format_t format_type;
+	f32                  quality;
+	bool                 padding;
+	i32                  bits; // Per channel of the files: 8 (png, jpg), 16 or 32 (exr)
+} export_texture_settings_t;
+
 static i32  _export_texture_channel(i32 c, i32 bits);
 static f32  _export_texture_get_value(buffer_t *b, i32 pixel, i32 channel, i32 bits);
 static void export_texture_bake_material_add_texture(char *file);
@@ -25,11 +37,10 @@ static buffer_t *export_texture_pack_pixels(buffer_t *pixels, i32 count, i32 bit
 	return rgba;
 }
 
-// Writes pixels (res_x x res_y, native order) as file: type 1 rgb, 2 one channel at off, 3 rgba
-static void export_texture_write_texture(char *file, buffer_t *pixels, i32 res_x, i32 res_y, i32 type, i32 off) {
-	i32 bits_handle = base_bits;
-	i32 bits        = bits_handle == TEXTURE_BITS_BITS8 ? 8 : bits_handle == TEXTURE_BITS_BITS16 ? 16 : 32;
-	i32 format      = 0; // RGBA
+// Writes pixels (res_x x res_y, native order, s->bits a channel) as file: type 1 rgb, 2 one channel at off, 3 rgba
+static void export_texture_write_texture(export_texture_settings_t *s, char *file, buffer_t *pixels, i32 res_x, i32 res_y, i32 type, i32 off) {
+	i32 bits   = s->bits;
+	i32 format = 0; // RGBA
 	if (type == 1) {
 		format = 2; // RGB1
 	}
@@ -46,7 +57,7 @@ static void export_texture_write_texture(char *file, buffer_t *pixels, i32 res_x
 		format = 6; // AAA1
 	}
 
-	if (g_context->layers_destination == EXPORT_DESTINATION_PACK_INTO_PROJECT) {
+	if (s->destination == EXPORT_DESTINATION_PACK_INTO_PROJECT) {
 		// Packed textures are rgba8, apply the channel layout the file writers do
 		buffer_t      *rgba  = export_texture_pack_pixels(pixels, res_x * res_y, bits, format);
 		gpu_texture_t *image = gpu_create_texture_from_bytes(rgba, res_x, res_y, GPU_TEXTURE_FORMAT_RGBA32);
@@ -96,11 +107,11 @@ static void export_texture_write_texture(char *file, buffer_t *pixels, i32 res_x
 		return;
 	}
 
-	if (bits == 8 && g_context->format_type == TEXTURE_LDR_FORMAT_PNG) {
+	if (bits == 8 && s->format_type == TEXTURE_LDR_FORMAT_PNG) {
 		iron_write_png(file, pixels, res_x, res_y, format);
 	}
-	else if (bits == 8 && g_context->format_type == TEXTURE_LDR_FORMAT_JPG) {
-		iron_write_jpg(file, pixels, res_x, res_y, format, math_floor(g_context->format_quality));
+	else if (bits == 8 && s->format_type == TEXTURE_LDR_FORMAT_JPG) {
+		iron_write_jpg(file, pixels, res_x, res_y, format, math_floor(s->quality));
 	}
 	else { // Exr
 		buffer_t *b = export_exr_run(res_x, res_y, pixels, bits, type, off);
@@ -236,12 +247,8 @@ static void export_texture_set_channel(f32 value, buffer_t *to, i32 to_channel, 
 	}
 }
 
-static i32 export_texture_bits() {
-	return base_bits == TEXTURE_BITS_BITS8 ? 8 : base_bits == TEXTURE_BITS_BITS16 ? 16 : 32;
-}
-
 // The file name of a job's textures before the texture name: <project>[_<object>], *ext the rest (udim: <tile>.png)
-static char *export_texture_file_base(slot_layer_t_array_t *layers, char *object_name, char **ext_out) {
+static char *export_texture_file_base(export_texture_settings_t *s, slot_layer_t_array_t *layers, char *object_name, char **ext_out) {
 #ifdef IRON_IOS
 	char *f = sys_title();
 #else
@@ -250,24 +257,22 @@ static char *export_texture_file_base(slot_layer_t_array_t *layers, char *object
 	if (string_equals(f, "")) {
 		f = string_copy(tr("untitled"));
 	}
-	texture_ldr_format_t format_type = g_context->format_type;
-	i32                  bits        = export_texture_bits();
-	char                *ext         = bits > 8 ? ".exr" : format_type == TEXTURE_LDR_FORMAT_PNG ? ".png" : ".jpg";
+	char *ext = s->bits > 8 ? ".exr" : s->format_type == TEXTURE_LDR_FORMAT_PNG ? ".png" : ".jpg";
 	if (ends_with(f, ext)) {
 		f = string_copy(substring(f, 0, string_length(f) - 4));
 	}
 
-	if (bits > 8 && g_context->layers_destination == EXPORT_DESTINATION_PACK_INTO_PROJECT) {
+	if (s->bits > 8 && s->destination == EXPORT_DESTINATION_PACK_INTO_PROJECT) {
 		ext = ".png"; // Packed as rgba8 png
 	}
 
-	bool is_udim = g_context->layers_export == EXPORT_MODE_PER_UDIM_TILE;
+	bool is_udim = s->layers == EXPORT_MODE_PER_UDIM_TILE;
 	if (is_udim) {
 		ext = string("%s%s", object_name, ext);
 	}
 
 	// Append object mask name
-	bool export_selected = g_context->layers_export == EXPORT_MODE_SELECTED;
+	bool export_selected = s->layers == EXPORT_MODE_SELECTED;
 	if (export_selected && slot_layer_get_object_mask(layers->buffer[0]) > 0) {
 		f = string("%s_%s", f, g_project->_->paint_objects->buffer[slot_layer_get_object_mask(layers->buffer[0]) - 1]->base->name);
 	}
@@ -278,25 +283,25 @@ static char *export_texture_file_base(slot_layer_t_array_t *layers, char *object
 	return f;
 }
 
-// The atlas slot of the udim tile a job exports alone, -1 for none
-static i32 export_texture_udim_slot(slot_layer_t_array_t *layers, char *object_name) {
+// The atlas slot of the udim tile a job of layers mode exports alone, -1 for none
+static i32 export_texture_udim_slot(export_mode_t mode, slot_layer_t_array_t *layers, char *object_name) {
 	i32 udim_slot = -1;
 	if (util_mesh_udim_active()) {
 		i32 udim_tile = util_mesh_udim_tile(object_name);
 		if (udim_tile >= 0) {
 			udim_slot = util_mesh_udim_slot(udim_tile);
 		}
-		else if (g_context->layers_export == EXPORT_MODE_SELECTED) {
+		else if (mode == EXPORT_MODE_SELECTED) {
 			udim_slot = layers_udim_tile_slot(layers->buffer[0]);
 		}
 	}
 	return udim_slot;
 }
 
-// Layer l1 of a job goes into its textures
-static bool export_texture_layer_used(slot_layer_t *l1, char *object_name) {
-	bool export_selected = g_context->layers_export == EXPORT_MODE_SELECTED;
-	bool is_udim         = g_context->layers_export == EXPORT_MODE_PER_UDIM_TILE;
+// Layer l1 of a job of layers mode goes into its textures
+static bool export_texture_layer_used(export_mode_t mode, slot_layer_t *l1, char *object_name) {
+	bool export_selected = mode == EXPORT_MODE_SELECTED;
+	bool is_udim         = mode == EXPORT_MODE_PER_UDIM_TILE;
 	if (!export_selected && !slot_layer_is_visible(l1)) {
 		return false;
 	}
@@ -311,7 +316,7 @@ static bool export_texture_layer_used(slot_layer_t *l1, char *object_name) {
 		if (is_udim && !ends_with(g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l1) - 1]->base->name, object_name)) {
 			return false;
 		}
-		bool per_object = g_context->layers_export == EXPORT_MODE_PER_OBJECT;
+		bool per_object = mode == EXPORT_MODE_PER_OBJECT;
 		if (per_object && !string_equals(g_project->_->paint_objects->buffer[slot_layer_get_object_mask(l1) - 1]->base->name, object_name)) {
 			return false;
 		}
@@ -621,12 +626,12 @@ static i32 export_texture_output_socket(char *name) {
 	return -1;
 }
 
-static void export_texture_create_baked_material(slot_material_t *source) {
-	export_preset_t *preset = box_export_preset;
+static void export_texture_create_baked_material(export_texture_settings_t *s, slot_material_t *source) {
+	export_preset_t *preset = s->preset;
 	string_array_t  *files  = export_texture_baked_files;
 
 	// Bring the written files in as texture assets
-	if (g_context->layers_destination != EXPORT_DESTINATION_PACK_INTO_PROJECT) {
+	if (s->destination != EXPORT_DESTINATION_PACK_INTO_PROJECT) {
 		for (i32 i = 0; i < files->length; ++i) {
 			i32 index = export_texture_asset_index(files->buffer[i]);
 			if (index >= 0) {
@@ -725,9 +730,9 @@ static slot_layer_t_array_t *export_texture_bake_begin() {
 }
 
 // After the export of the bake: the baked material from the written files, when asked for
-static void export_texture_bake_end(slot_material_t *source) {
+static void export_texture_bake_end(export_texture_settings_t *s, slot_material_t *source) {
 	if (export_texture_baked_files != NULL) {
-		export_texture_create_baked_material(source);
+		export_texture_create_baked_material(s, source);
 		export_texture_baked_files = NULL;
 	}
 }
@@ -744,10 +749,37 @@ static void export_texture_init_preset() {
 	}
 }
 
-// The texture sets the export settings make (not bake material): fn(layers, object name, data) for each, the object
-// name a udim tile, an object or an atlas ("" for none)
-static void export_texture_for_each_job(void (*fn)(slot_layer_t_array_t *, char *, void *), void *data) {
-	if (g_context->layers_export == EXPORT_MODE_PER_UDIM_TILE) {
+// The export settings as they are now, the preset copied
+static export_texture_settings_t export_texture_settings_now() {
+	export_texture_init_preset();
+	bool             named  = box_export_preset_index >= 0 && box_export_preset_index < box_export_files->length;
+	texture_bits_t   b      = g_context->export_bits;
+	char            *json   = box_export_preset_to_json(box_export_preset);
+	export_preset_t *preset = json_parse(json); // Edits of the preset (the export box) leave it as it is
+	free(json);
+	return (export_texture_settings_t){
+	    .preset      = preset,
+	    .preset_name = string_copy(named ? box_export_files->buffer[box_export_preset_index] : ""),
+	    .layers      = g_context->layers_export,
+	    .destination = g_context->layers_destination,
+	    .format_type = g_context->format_type,
+	    .quality     = g_context->format_quality,
+	    .padding     = g_context->export_padding,
+	    .bits        = b == TEXTURE_BITS_BITS8 ? 8 : b == TEXTURE_BITS_BITS16 ? 16 : 32,
+	};
+}
+
+static void export_texture_settings_free(export_texture_settings_t *s) {
+	free(s->preset);
+	free(s->preset_name);
+	s->preset      = NULL;
+	s->preset_name = NULL;
+}
+
+// The texture sets of layers mode (not bake material): fn(layers, object name, data) for each, the object name a udim
+// tile, an object or an atlas ("" for none)
+static void export_texture_for_each_job(export_mode_t mode, void (*fn)(slot_layer_t_array_t *, char *, void *), void *data) {
+	if (mode == EXPORT_MODE_PER_UDIM_TILE) {
 		string_array_t *udim_tiles = any_array_create_from_raw((void *[]){}, 0);
 		for (i32 i = 0; i < g_project->_->paint_objects->length; ++i) {
 			char *name = g_project->_->paint_objects->buffer[i]->base->name;
@@ -769,7 +801,7 @@ static void export_texture_for_each_job(void (*fn)(slot_layer_t_array_t *, char 
 			fn(g_project->_->layers, "", data);
 		}
 	}
-	else if (g_context->layers_export == EXPORT_MODE_PER_OBJECT) {
+	else if (mode == EXPORT_MODE_PER_OBJECT) {
 		string_array_t *object_names = any_array_create_from_raw((void *[]){}, 0);
 		for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 			slot_layer_t *l = g_project->_->layers->buffer[i];
@@ -843,7 +875,7 @@ static void export_texture_for_each_job(void (*fn)(slot_layer_t_array_t *, char 
 		}
 		else {
 			slot_layer_t_array_t *layers;
-			if (g_context->layers_export == EXPORT_MODE_SELECTED) {
+			if (mode == EXPORT_MODE_SELECTED) {
 				if (slot_layer_is_group(g_context->layer)) {
 					layers = slot_layer_get_children(g_context->layer);
 				}
@@ -883,8 +915,8 @@ void export_texture_run(char *path, bool bake_material) {
 	export_tiled_run(path, bake_material);
 }
 
-// Tests: the settings of the export box. preset by name ("" keeps it), layers_export_mode_t, padding, bits 8 / 16 / 32,
-// format 0 png 1 jpg
+// Tests: the settings of the export box. preset by name ("" keeps it), layers_export_mode_t, padding, bits of the files
+// 8 / 16 / 32 (exr above 8, the layers keep theirs), format 0 png 1 jpg
 void export_texture_test_options(char *preset, i32 layers_export, bool padding, i32 bits, i32 format) {
 	if (box_export_files == NULL) {
 		box_export_fetch_presets();
@@ -900,9 +932,5 @@ void export_texture_test_options(char *preset, i32 layers_export, bool padding, 
 	g_context->layers_export = layers_export;
 	g_context->export_padding = padding;
 	g_context->format_type    = format;
-	i32 b                     = bits == 32 ? TEXTURE_BITS_BITS32 : bits == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS8;
-	if (b != base_bits) {
-		base_bits = b;
-		layers_set_bits();
-	}
+	g_context->export_bits    = bits == 32 ? TEXTURE_BITS_BITS32 : bits == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS8;
 }

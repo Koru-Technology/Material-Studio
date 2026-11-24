@@ -28,8 +28,8 @@ void app_export_get(app_export_options_t *out) {
 	out->preset       = box_export_preset_index;
 	out->preset_count = box_export_files->length;
 	out->layers       = g_context->layers_export;
-	out->format       = base_bits == TEXTURE_BITS_BITS32 ? APP_EXPORT_FORMAT_EXR32
-	                    : base_bits == TEXTURE_BITS_BITS16 ? APP_EXPORT_FORMAT_EXR16
+	out->format       = g_context->export_bits == TEXTURE_BITS_BITS32 ? APP_EXPORT_FORMAT_EXR32
+	                    : g_context->export_bits == TEXTURE_BITS_BITS16 ? APP_EXPORT_FORMAT_EXR16
 	                    : g_context->format_type == TEXTURE_LDR_FORMAT_JPG ? APP_EXPORT_FORMAT_JPG
 	                                                                       : APP_EXPORT_FORMAT_PNG;
 	out->quality      = g_context->format_quality;
@@ -37,6 +37,8 @@ void app_export_get(app_export_options_t *out) {
 	out->running      = export_tiled_running();
 }
 
+// The settings of the next export: one running keeps those it started with (export_texture_settings_t). The layers keep
+// their bits (base_bits), the format's are the files'.
 void app_export_set(const app_export_options_t *in) {
 	app_export_presets();
 	i32 max = 16384;
@@ -60,11 +62,7 @@ void app_export_set(const app_export_options_t *in) {
 	format = format > APP_EXPORT_FORMAT_JPG ? APP_EXPORT_FORMAT_PNG : format;
 #endif
 	g_context->format_type = format == APP_EXPORT_FORMAT_JPG ? TEXTURE_LDR_FORMAT_JPG : TEXTURE_LDR_FORMAT_PNG;
-	i32 bits               = format == APP_EXPORT_FORMAT_EXR32 ? TEXTURE_BITS_BITS32 : format == APP_EXPORT_FORMAT_EXR16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS8;
-	if (bits != base_bits) {
-		base_bits = bits;
-		layers_set_bits();
-	}
+	g_context->export_bits = format == APP_EXPORT_FORMAT_EXR32 ? TEXTURE_BITS_BITS32 : format == APP_EXPORT_FORMAT_EXR16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS8;
 }
 
 const char *app_export_preset_name(int32_t i) {
@@ -118,7 +116,7 @@ bool app_export_start(void) {
 		return false;
 	}
 	g_context->layers_destination = EXPORT_DESTINATION_DISK;
-	char *filters                 = base_bits != TEXTURE_BITS_BITS8 ? "exr" : g_context->format_type == TEXTURE_LDR_FORMAT_PNG ? "png" : "jpg";
+	char *filters                 = g_context->export_bits != TEXTURE_BITS_BITS8 ? "exr" : g_context->format_type == TEXTURE_LDR_FORMAT_PNG ? "png" : "jpg";
 	ui_files_show(filters, true, false, &app_export_path_picked);
 	return true;
 }
@@ -133,6 +131,25 @@ void app_export_cancel(void) {
 		sys_remove_update(&app_export_update);
 		export_tiled_set_resolution(0, 0);
 	}
+}
+
+// Tests: the export sheet opening (ExportSheet.load): the options read and set again as png. The format read.
+i32 app_export_test_sheet_open() {
+	app_export_options_t o;
+	app_export_get(&o);
+	i32 format = o.format;
+	o.format   = APP_EXPORT_FORMAT_PNG;
+	app_export_set(&o);
+	return format;
+}
+
+// Tests: the sheet's Preset and Layers pickers (index of app_export_preset_name, app_export_layers_t)
+void app_export_test_pick(i32 preset, i32 layers) {
+	app_export_options_t o;
+	app_export_get(&o);
+	o.preset = preset;
+	o.layers = layers;
+	app_export_set(&o);
 }
 
 void app_resolution_get(app_resolution_t *out) {

@@ -260,14 +260,20 @@ static u64 timeline_live_key(slot_layer_t *l) {
 
 // timeline_live_map reads nothing back for l
 bool timeline_live_map_fresh(slot_layer_t *l) {
-	return l->texpaint == NULL ||
+	return l->texpaint == NULL || !hash128_is_none(export_tiled_evicted_state(l)) ||
 	       (l->live_map_key == timeline_live_key(l) && !hash128_is_none(l->live_map) && hstore_has(l->live_map));
 }
 
 // The tile map of the live textures of l, a reference added: the last capture while no texture of l was written since,
 // otherwise a capture (a readback of the whole layer). Saves and session heads read the layers without a timeline state
-// this way: a layer costs a readback once a change, not once a head. NONE when it can not be captured.
+// this way: a layer costs a readback once a change, not once a head. While export mode holds l away, the state it keeps
+// of it (its textures are placeholders). NONE when it can not be captured.
 hash128_t timeline_live_map(slot_layer_t *l) {
+	hash128_t away = export_tiled_evicted_state(l);
+	if (!hash128_is_none(away)) {
+		hstore_ref(away);
+		return away;
+	}
 	if (timeline_live_map_fresh(l)) {
 		hstore_ref(l->live_map);
 		return l->live_map;

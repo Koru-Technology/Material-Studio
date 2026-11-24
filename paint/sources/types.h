@@ -459,6 +459,7 @@ typedef struct context {
 	f32                         light_angle;
 	bool                        cull_backfaces;
 	texture_ldr_format_t        format_type;
+	texture_bits_t              export_bits; // Of exported textures (8: png or jpg, else exr), apart from the layers' (base_bits)
 	f32                         format_quality;
 	export_destination_t        layers_destination;
 	bool                        export_padding;

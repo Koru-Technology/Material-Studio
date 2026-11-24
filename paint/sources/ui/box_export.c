@@ -67,10 +67,6 @@ void box_export_tab_export_textures_path_picked(char *path) {
 	sys_notify_on_next_frame(&box_export_tab_export_textures_run, NULL);
 }
 
-void box_export_tab_export_textures_on_next_frame(void *_) {
-	layers_set_bits();
-}
-
 void box_export_tab_export_textures(char *title, bool bake_material) {
 	bool tab_vertical = g_config->touch_ui;
 	if (ui_tab(&box_export_tab, title, tab_vertical, -1, false)) {
@@ -94,13 +90,13 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 		ui_combo(&box_export_size, size_combo, tr("Resolution"), true, UI_ALIGN_LEFT, true);
 
 #if defined(IRON_IOS)
-		string_array_t *base_bits_combo = any_array_create_from_raw_tmp(
+		string_array_t *bits_combo = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "8bit",
 		    },
 		    1);
 #else
-		string_array_t *base_bits_combo = any_array_create_from_raw_tmp(
+		string_array_t *bits_combo = any_array_create_from_raw_tmp(
 		    (void *[]){
 		        "8bit",
 		        "16bit",
@@ -109,13 +105,10 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 		    3);
 #endif
 
-		ui_combo(&base_bits, base_bits_combo, tr("Color"), true, UI_ALIGN_LEFT, true);
-		if (ui_item_changed()) {
-			sys_notify_on_next_frame(&box_export_tab_export_textures_on_next_frame, NULL);
-		}
+		ui_combo((int *)&g_context->export_bits, bits_combo, tr("Color"), true, UI_ALIGN_LEFT, true);
 
 		ui_row2();
-		if (base_bits == TEXTURE_BITS_BITS8) {
+		if (g_context->export_bits == TEXTURE_BITS_BITS8) {
 			string_array_t *format_combo = any_array_create_from_raw_tmp(
 			    (void *[]){
 			        "png",
@@ -133,7 +126,7 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 			ui_combo((int *)&g_context->format_type, format_combo, tr("Format"), true, UI_ALIGN_LEFT, true);
 		}
 
-		g_ui->enabled = g_context->format_type == TEXTURE_LDR_FORMAT_JPG && base_bits == TEXTURE_BITS_BITS8;
+		g_ui->enabled = g_context->format_type == TEXTURE_LDR_FORMAT_JPG && g_context->export_bits == TEXTURE_BITS_BITS8;
 
 		ui_slider(&g_context->format_quality, tr("Quality"), 0.0, 100.0, true, 1, true, UI_ALIGN_RIGHT, true);
 
@@ -185,7 +178,7 @@ void box_export_tab_export_textures(char *title, bool bake_material) {
 				sys_notify_on_next_frame(&box_export_tab_export_textures_run, NULL);
 			}
 			else {
-				char *filters             = base_bits != TEXTURE_BITS_BITS8 ? "exr" : g_context->format_type == TEXTURE_LDR_FORMAT_PNG ? "png" : "jpg";
+				char *filters             = g_context->export_bits != TEXTURE_BITS_BITS8 ? "exr" : g_context->format_type == TEXTURE_LDR_FORMAT_PNG ? "png" : "jpg";
 				_box_export_bake_material = bake_material;
 				ui_files_show(filters, true, false, &box_export_tab_export_textures_path_picked);
 			}

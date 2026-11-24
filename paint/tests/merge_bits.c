@@ -57,8 +57,9 @@ void sample_file(char *name) {
 }
 
 void build_scene() {
+	layers_test_set_bits(bits[depth]);
 	export_texture_test_options("generic", 0, 0, bits[depth], 0);
-	layer_red  = script_layer_new_color(0xffcc2020, 0.7, 0.4, 0.3);
+	layer_red = script_layer_new_color(0xffcc2020, 0.7, 0.4, 0.3);
 	layer_mask = script_layer_new_mask(layer_red, 1);
 	int e      = script_mask_add_effect(layer_mask, 1, -1); // Fill
 	script_mask_set_effect_param(layer_mask, e, 0, 0.5);
@@ -137,6 +138,7 @@ void next() {
 		check(same && d32 <= 3.0 / 255.0, string("32 bit as 8 bit: max diff %.2f/255", d32 * 255.0));
 		check(same && d <= 1.0 / 255.0, string("32 bit as 16 bit: max diff %.2f/255", d * 255.0));
 		export_texture_test_options("generic", 0, 0, 8, 0);
+		layers_test_set_bits(8);
 		printf("[merge_bits] %d checks, %d failures", checks, fails);
 		printf(fails == 0 ? "MERGE_BITS PASS" : "MERGE_BITS FAIL");
 		script_quit();

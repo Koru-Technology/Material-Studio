@@ -151,6 +151,7 @@ void slot_layer_delete(slot_layer_t *raw) {
 }
 
 void slot_layer_unload(slot_layer_t *raw) {
+	export_tiled_layer_unloading(raw); // Its textures may be export mode's placeholders, a job may read it
 	free(raw->thumb);
 	raw->thumb      = NULL;
 	raw->thumb_size = 0;

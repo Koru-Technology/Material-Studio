@@ -543,13 +543,14 @@ static hash128_t pc_timeline_state(slot_layer_t *l) {
 
 // The tile map of a layer's live state (layer_data_t.tilemap): its timeline's state at the cursor, else its last
 // capture while its textures were not written since (timeline_live_map), else a capture. A copy captures full maps of
-// its own (no delta chains). Its tiles are written with the store's blobs. NULL for a group.
+// its own (no delta chains), but of a layer export mode holds away (export_tiled_evict) the state it keeps: its live
+// textures are placeholders. Its tiles are written with the store's blobs. NULL for a group.
 u8_array_t *project_container_layer_tilemap(slot_layer_t *l) {
 	if (l->texpaint == NULL) {
 		return NULL;
 	}
 	hash128_t h = HASH128_NONE;
-	if (pc_w->no_history) {
+	if (pc_w->no_history && hash128_is_none(export_tiled_evicted_state(l))) {
 		paint_target_t t;
 		timeline_target_live(l, &t);
 		h = timeline_tiles_capture(&t, HASH128_NONE, NULL); // Full: unchanged tiles dedupe
@@ -702,9 +703,9 @@ static bool pc_can_append(char *path) {
 
 i32 project_container_last_save_appended = 0; // 1 when the last save appended (tests)
 
-// Live layer bytes: 4 times them, 1 GB at least, is the default history budget
+// Live layer bytes: 4 times them, 1 GB at least, is the default history budget. Those export mode holds away count.
 static i64 pc_live_layer_bytes() {
-	i64 n = 0;
+	i64 n = export_tiled_evicted_layer_bytes();
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t  *l     = g_project->_->layers->buffer[i];
 		gpu_texture_t *ts[3] = {l->texpaint, l->texpaint_nor, l->texpaint_pack};

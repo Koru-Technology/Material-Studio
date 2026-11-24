@@ -690,6 +690,7 @@ void project_fetch_default_meshes() {
 }
 
 void project_new(bool reset_layers) {
+	export_tiled_abort_for_project_change();
 #ifdef IRON_IOS
 	project_drop_unsaved_folder();
 #endif

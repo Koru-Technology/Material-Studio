@@ -14,6 +14,7 @@ void import_mesh_run(char *path, bool _clear_layers, bool replace_existing, bool
 		console_error(strings_unknown_asset_format());
 		return;
 	}
+	export_tiled_abort_for_project_change(); // It draws the meshes it replaces or joins
 
 	import_mesh_clear_layers = _clear_layers;
 	import_mesh_no_reset     = keep_camera;

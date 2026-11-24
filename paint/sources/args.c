@@ -141,18 +141,18 @@ static bool args_export_textures_prepare() {
 	}
 
 	if (string_equals(args_export_textures_type, "png")) {
-		base_bits              = TEXTURE_BITS_BITS8;
+		g_context->export_bits = TEXTURE_BITS_BITS8;
 		g_context->format_type = TEXTURE_LDR_FORMAT_PNG;
 	}
 	else if (string_equals(args_export_textures_type, "jpg")) {
-		base_bits              = TEXTURE_BITS_BITS8;
+		g_context->export_bits = TEXTURE_BITS_BITS8;
 		g_context->format_type = TEXTURE_LDR_FORMAT_JPG;
 	}
 	else if (string_equals(args_export_textures_type, "exr16")) {
-		base_bits = TEXTURE_BITS_BITS16;
+		g_context->export_bits = TEXTURE_BITS_BITS16;
 	}
 	else if (string_equals(args_export_textures_type, "exr32")) {
-		base_bits = TEXTURE_BITS_BITS32;
+		g_context->export_bits = TEXTURE_BITS_BITS32;
 	}
 	else {
 		iron_log(tr("Invalid texture type"));

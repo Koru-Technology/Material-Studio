@@ -57,6 +57,9 @@ void util_layer_update_preview() {
 		layers_update_linked_layers();
 		make_material_parse_mesh_material();
 	}
+	if (export_tiled_frozen()) { // The layers are placeholders: the previews wait for them
+		return;
+	}
 	if (g_context->layers_preview_dirty || (g_context->layer != NULL && g_context->layer_preview_dirty)) {
 		app_notify_previews();
 	}
@@ -139,9 +142,19 @@ void layers_resize_targets() {
 }
 
 void layers_set_bits() {
+	export_tiled_abort_for_project_change();
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
 		slot_layer_t *l = g_project->_->layers->buffer[i];
 		slot_layer_resize_and_set_bits(l);
+	}
+}
+
+// Tests: the layers at bits 8, 16 or 32 a channel
+void layers_test_set_bits(i32 bits) {
+	texture_bits_t b = bits == 32 ? TEXTURE_BITS_BITS32 : bits == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS8;
+	if (b != base_bits) {
+		base_bits = b;
+		layers_set_bits();
 	}
 }
 

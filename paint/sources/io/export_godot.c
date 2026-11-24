@@ -13,11 +13,7 @@ typedef enum {
 	EXPORT_GODOT_MATERIAL,
 } export_godot_t;
 
-static export_godot_t export_godot_target() {
-	if (box_export_files == NULL || box_export_preset_index < 0 || box_export_preset_index >= box_export_files->length) {
-		return EXPORT_GODOT_NONE;
-	}
-	char *name = box_export_files->buffer[box_export_preset_index];
+static export_godot_t export_godot_target(char *name) {
 	return string_equals(name, "godot_mesh") ? EXPORT_GODOT_MESH : string_equals(name, "godot_material") ? EXPORT_GODOT_MATERIAL : EXPORT_GODOT_NONE;
 }
 
@@ -77,16 +73,15 @@ static void export_godot_material(char *path, char *name, char **images) {
 	}
 }
 
-// The job's textures are written->buffer[first..], one a texture of the preset: its Godot file joins them
-void export_godot_job(char *dir, char *file, char *object_name, string_array_t *written, i32 first) {
-	export_godot_t target = export_godot_target();
-	if (target == EXPORT_GODOT_NONE || g_context->layers_destination == EXPORT_DESTINATION_PACK_INTO_PROJECT ||
-	    written->length - first != box_export_preset->textures->length) {
+// The job's textures are written->buffer[first..], one a texture of the export's preset: its Godot file joins them
+void export_godot_job(export_texture_settings_t *s, char *dir, char *file, char *object_name, string_array_t *written, i32 first) {
+	export_godot_t target = export_godot_target(s->preset_name);
+	if (target == EXPORT_GODOT_NONE || s->destination == EXPORT_DESTINATION_PACK_INTO_PROJECT || written->length - first != s->preset->textures->length) {
 		return;
 	}
 	char *images[3] = {NULL, NULL, NULL}; // Base color, normal, occlusion / roughness / metallic
-	for (i32 i = 0; i < box_export_preset->textures->length; ++i) {
-		export_texture_layout_t l = export_texture_layout(box_export_preset->textures->buffer[i]);
+	for (i32 i = 0; i < s->preset->textures->length; ++i) {
+		export_texture_layout_t l = export_texture_layout(s->preset->textures->buffer[i]);
 		if (l.src >= 0 && l.type == 1) {
 			images[l.src] = written->buffer[first + i];
 		}

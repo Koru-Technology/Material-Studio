@@ -21,6 +21,7 @@ void context_init() {
 	g_context->light_angle                  = 0.0;
 	g_context->cull_backfaces               = true;
 	g_context->format_type                  = TEXTURE_LDR_FORMAT_PNG;
+	g_context->export_bits                  = TEXTURE_BITS_BITS8;
 	g_context->format_quality               = 100.0;
 	g_context->layers_destination           = EXPORT_DESTINATION_DISK;
 	g_context->split_by                     = SPLIT_TYPE_OBJECT;

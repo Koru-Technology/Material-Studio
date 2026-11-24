@@ -225,11 +225,14 @@ buffer_t *export_arm_encode_project(char *path) {
 		export_arm_progress(0.1 + 0.6 * i / (f32)g_project->_->layers->length);
 		slot_layer_t *l       = g_project->_->layers->buffer[i];
 		u8_array_t   *tilemap = project_container_layer_tilemap(l); // Pixels go in chunks (io/project_container.c)
+		i32           res_x   = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x();
+		i32           res_y   = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y();
+		export_tiled_evicted_size(l, &res_x, &res_y); // Held away by export mode: its textures are placeholders
 		layer_data_t *d =
 		    ALLOC_INIT(layer_data_t, {.name               = l->name,
 		                              .type               = slot_layer_is_group(l) ? LAYER_SLOT_TYPE_GROUP : slot_layer_is_mask(l) ? LAYER_SLOT_TYPE_MASK : LAYER_SLOT_TYPE_LAYER,
-		                              .res_x              = l->texpaint != NULL ? l->texpaint->width : config_get_texture_res_x(),
-		                              .res_y              = l->texpaint != NULL ? l->texpaint->height : config_get_texture_res_y(),
+		                              .res_x              = res_x,
+		                              .res_y              = res_y,
 		                              .bpp                = bpp,
 		                              .uv_map             = l->uv_map,
 		                              .decal_mat          = l->fill != NULL ? mat4_to_f32_array(l->decal_mat) : NULL,

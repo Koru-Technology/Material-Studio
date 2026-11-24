@@ -46,6 +46,7 @@ struct ExportSheet: View {
 						}
 					}
 				}
+				.disabled(running) // The export in progress keeps the settings it started with
 				Section("Textures") {
 					Picker("Preset", selection: binding(\.preset)) {
 						ForEach(presets.indices, id: \.self) { i in
@@ -62,6 +63,7 @@ struct ExportSheet: View {
 						Toggle("Padding", isOn: binding(\.padding))
 					}
 				}
+				.disabled(running)
 				if !notUpscaled.isEmpty {
 					Section {
 						VStack(alignment: .leading, spacing: 4) {

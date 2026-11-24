@@ -173,6 +173,7 @@ void import_arm_run_project(char *path) {
 	bool       import_as_mesh = false;
 	buffer_t  *b              = NULL;
 	if (project_container_is(path)) { // Version 31: the head, the index and the live layers are read
+		export_tiled_abort_for_project_change(); // Before the open resets the store its states are in
 		if (!project_leave()) { // Saved first, also when it is this file: what is read is what was just saved
 			return;
 		}
@@ -188,6 +189,7 @@ void import_arm_run_project(char *path) {
 			console_error(string("Could not open file %s.", path));
 			return;
 		}
+		export_tiled_abort_for_project_change();
 		if (!project_leave()) {
 			return;
 		}

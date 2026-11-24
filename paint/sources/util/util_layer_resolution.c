@@ -195,6 +195,7 @@ static bool layers_resolution_start(i32 w, i32 h, bool push) {
 	if (lr.active || g_project->_->layers->length == 0 || !layers_resolution_valid(w, h)) {
 		return false;
 	}
+	export_tiled_abort_for_project_change(); // Its layers back at their size first
 	slot_layer_t *first = g_project->_->layers->buffer[0];
 	lr                  = (struct layers_resolution_job){.active = true, .push = push, .w0 = first->texpaint->width, .h0 = first->texpaint->height, .w1 = w, .h1 = h};
 	if (w == lr.w0 && h == lr.h0) {

@@ -517,6 +517,7 @@ void util_mesh_visibility_changed() {
 }
 
 void util_mesh_uv_unwrap(mesh_object_t_array_t *objects) {
+	export_tiled_abort_for_project_change(); // The layers' uvs change under it
 	if (objects == NULL) {
 		objects = g_project->_->paint_objects;
 	}
