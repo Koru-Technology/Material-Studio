@@ -13,7 +13,7 @@ void layers_new_layer_clear(slot_layer_t *l) {
 }
 
 slot_layer_t *layers_new_layer(bool clear, i32 position, slot_layer_t *parent) {
-	if (g_project->_->layers->length > layers_max_layers) {
+	if (!layers_room(1)) {
 		return NULL;
 	}
 
@@ -59,7 +59,7 @@ void layers_new_mask_clear(slot_layer_t *l) {
 }
 
 slot_layer_t *layers_new_mask(bool clear, slot_layer_t *parent, i32 position) {
-	if (g_project->_->layers->length > layers_max_layers) {
+	if (!layers_room(1)) {
 		return NULL;
 	}
 
@@ -77,7 +77,7 @@ slot_layer_t *layers_new_mask(bool clear, slot_layer_t *parent, i32 position) {
 }
 
 slot_layer_t *layers_new_group() {
-	if (g_project->_->layers->length > layers_max_layers) {
+	if (!layers_room(1)) {
 		return NULL;
 	}
 
@@ -118,7 +118,7 @@ slot_layer_t *layers_new_text_layer() {
 }
 
 void layers_create_filter_on_next_frame(void *_) {
-	if (slot_layer_get_filters(g_context->layer, true) != NULL || g_project->_->layers->length > layers_max_layers) {
+	if (slot_layer_get_filters(g_context->layer, true) != NULL || !layers_room(1)) {
 		return;
 	}
 
@@ -236,7 +236,11 @@ static void layers_duplicate_children(slot_layer_t *l, slot_layer_t *new_parent)
 	}
 }
 
-void layers_duplicate_layer(slot_layer_t *l) {
+// A copy of l with its masks and children above it, selected. False without room for all of them.
+bool layers_duplicate_layer(slot_layer_t *l) {
+	if (!layers_room(1 + slot_layer_count_descendants(l))) {
+		return false;
+	}
 	slot_layer_t *new_layer = slot_layer_is_group(l) ? layers_new_group() : slot_layer_duplicate(l);
 	new_layer->parent       = l->parent;
 	timeline_fork(l, new_layer); // Its pixels share the history of l
@@ -244,4 +248,5 @@ void layers_duplicate_layer(slot_layer_t *l) {
 	array_insert(g_project->_->layers, array_index_of(g_project->_->layers, l) + 1, new_layer);
 	layers_duplicate_children(l, new_layer);
 	context_set_layer(new_layer);
+	return true;
 }

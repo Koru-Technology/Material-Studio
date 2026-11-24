@@ -252,10 +252,13 @@ void history_new_material() {
 	step->canvas         = util_clone_canvas(g_context->material->canvas);
 }
 
-void history_delete_material() {
+// Before material m leaves the project (any material, the selected one or not)
+void history_delete_material(slot_material_t *m) {
 	history_step_t *step = history_push(HISTORY_ACTION_DELETE_MATERIAL);
 	step->canvas_type    = 0;
-	step->canvas         = util_clone_canvas(g_context->material->canvas);
+	step->canvas         = util_clone_canvas(m->canvas);
+	step->material       = array_index_of(g_project->_->materials, m);
+	step->material_uid   = m->uid;
 }
 
 void history_duplicate_material() {

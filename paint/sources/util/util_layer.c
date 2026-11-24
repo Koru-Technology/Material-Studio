@@ -6,6 +6,19 @@ i32 layers_max_layers = 32;
 i32 layers_max_layers = 255;
 #endif
 
+// Room for n more layers, masks and groups. Undo and redo bring back what they took out at any count: a project from the
+// Mac can hold more than the iPad makes.
+bool layers_room(i32 n) {
+	return history_applying > 0 || g_project->_->layers->length + n <= layers_max_layers;
+}
+
+// Tests: the layer limit at n (the iPad's on the Mac), the one before returned
+i32 layers_test_set_max(i32 n) {
+	i32 old           = layers_max_layers;
+	layers_max_layers = n;
+	return old;
+}
+
 mat4_t    _layers_decal_mat;
 i32       _layers_position;
 i32       _layers_base_color;

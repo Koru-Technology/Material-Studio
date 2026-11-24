@@ -231,6 +231,9 @@ static i32  _layers_fill_projection   = FILL_PROJECTION_UV;
 static bool _layers_fill_from_material = false;
 
 void layers_create_fill_layer_on_next_frame(void *_) {
+	if (!layers_room(2)) { // The fill layer and its white mask
+		return;
+	}
 	i32           position = _layers_position == LAYERS_POSITION_TOP ? g_project->_->layers->length : _layers_position;
 	slot_layer_t *l        = layers_new_layer(false, position, NULL);
 	if (l == NULL) {

@@ -927,12 +927,6 @@ void script_material_delete(slot_material_t *m) {
 	if (m == NULL || g_project == NULL || g_project->_ == NULL || g_project->_->materials == NULL) {
 		return;
 	}
-	if (g_project->_->materials->length <= 1) {
-		return;
-	}
-	if (array_index_of(g_project->_->materials, m) < 0) {
-		return;
-	}
 	slot_material_remove(m);
 }
 
