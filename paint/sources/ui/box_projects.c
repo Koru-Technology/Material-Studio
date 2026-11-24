@@ -43,6 +43,7 @@ void box_projects_cancel_load() {
 }
 
 void box_projects_load(char *path) {
+	export_tiled_abort_for_project_change();
 	_box_projects_load_cancelled = false;
 #ifdef IRON_IOS
 	box_projects_native_shown   = false;
@@ -99,6 +100,7 @@ static bool box_projects_title_taken(char *title) {
 }
 
 void box_projects_new() {
+	export_tiled_abort_for_project_change();
 	project_new(true);
 #ifdef IRON_IOS
 	box_projects_native_shown   = false;

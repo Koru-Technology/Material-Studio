@@ -167,6 +167,7 @@ static void import_arm_uid_next(u32 saved) {
 }
 
 void import_arm_run_project(char *path) {
+	export_tiled_abort_for_project_change(); // Before the open resets the store its states are in
 	iron_profile_mark("project load start");
 	base_draw_progress(0.0);
 	project_t *project;

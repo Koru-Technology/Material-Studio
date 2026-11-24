@@ -531,6 +531,9 @@ static bool history_layer_step(history_step_t *step, bool undo) {
 }
 
 void history_undo() {
+	if (history_undos > 0) { // A running export the step would change goes first
+		export_tiled_history_action(history_steps->buffer[history_steps->length - 1 - history_redos]->action);
+	}
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_undos > 0) {
@@ -667,6 +670,9 @@ static void history_redo_new_content(history_step_t *step, slot_layer_t *l) {
 
 
 void history_redo() {
+	if (history_redos > 0) {
+		export_tiled_history_action(history_steps->buffer[history_steps->length - history_redos]->action);
+	}
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_redos > 0) {
@@ -872,6 +878,7 @@ void history_settle_after_stroke(void) {
 }
 
 history_step_t *history_push(history_action_t action) {
+	export_tiled_history_action(action); // A running export the action would change goes first
 	history_flush_restores(action == HISTORY_ACTION_PAINT ? g_context->layer : NULL); // A stroke waits only for its own layer
 	history_tiles_finalize(); // The last stroke is over
 	timeline_finalize();

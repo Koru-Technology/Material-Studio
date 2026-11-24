@@ -58,9 +58,10 @@ typedef struct export_tiled_map {
 #define EXPORT_TILED_MM_KEYS 256
 
 static struct {
-	bool                 active;
-	char                *path;
-	bool                 bake;
+	bool                      active;
+	export_texture_settings_t set; // Taken when it starts
+	char                     *path;
+	bool                      bake;
 	slot_material_t     *bake_source;
 	export_tiled_job_t  *jobs;
 	i32                  njobs;
@@ -76,9 +77,11 @@ static struct {
 	i32                  h;
 	i32                  size; // Tile core
 	i32                  halo;
-	i32                  bits;
-	i32                  bpp; // Bytes a texel of a composite
-	gpu_texture_format_t format;
+	i32                  bits;        // Of the files
+	i32                  bpp;         // Bytes a texel of a composite read back (out_format)
+	gpu_texture_format_t format;      // Of the composites: the layers' depth or the files', the deeper
+	gpu_texture_format_t pack_format; // Of the pack composite (layers_pack_format)
+	gpu_texture_format_t out_format;  // At the files' depth
 	bool                 padding;
 	bool                 height;          // A layer paints height: it goes into the normals (layers_height_to_normal)
 	bool                 need_cov;        // The tile's uv coverage: padding, fill dilation
@@ -121,6 +124,7 @@ static struct {
 static gpu_texture_t  *et_acc[3];
 static gpu_texture_t  *et_temp;
 static gpu_texture_t  *et_temp_pack; // A copy of et_acc[2], in its format (layers_pack_format)
+static gpu_texture_t  *et_out[3];    // The composites at the files' depth, when it is lower than theirs
 static gpu_texture_t  *et_src[3];
 static gpu_texture_t  *et_mask;
 static gpu_texture_t  *et_mask_temp;
@@ -155,21 +159,34 @@ static i64 export_tiled_budget() {
 	return (i64)EXPORT_TILED_BUDGET_MB * 1024 * 1024;
 }
 
-// Bytes of the tile targets at core size s
-static i64 export_tiled_target_bytes(i32 s, i32 halo, gpu_texture_format_t format) {
-	i64 n = (i64)(s + 2 * halo) * (s + 2 * halo);
-	i32 f = export_tiled_bytes_per_texel(format);
-	i32 p = export_tiled_bytes_per_texel(layers_pack_format(base_bits));
-	return n * (3 * f + 2 * p + 3 * 16 + 3 * 4 + 2); // Composites and temps, layer sources (16 at most), masks, coverage and reach
+static texture_bits_t export_tiled_bits_of(i32 bits) {
+	return bits == 8 ? TEXTURE_BITS_BITS8 : bits == 16 ? TEXTURE_BITS_BITS16 : TEXTURE_BITS_BITS32;
+}
+
+// The depth the export composites at: the layers' or the files', the deeper (16 bit layers into an 8 bit file round
+// once, as the file is written)
+static texture_bits_t export_tiled_comp_bits() {
+	texture_bits_t f = export_tiled_bits_of(et.set.bits);
+	return f > base_bits ? f : base_bits;
+}
+
+// Bytes of the tile targets at core size s, composites of depth bits
+static i64 export_tiled_target_bytes(i32 s, i32 halo, texture_bits_t bits) {
+	i64 n   = (i64)(s + 2 * halo) * (s + 2 * halo);
+	i32 f   = export_tiled_bytes_per_texel(layers_format(bits));
+	i32 p   = export_tiled_bytes_per_texel(layers_pack_format(bits));
+	i32 o   = export_tiled_bytes_per_texel(layers_format(export_tiled_bits_of(et.set.bits)));
+	i32 out = o != f ? 3 * o : 0; // At the files' depth
+	return n * (3 * f + 2 * p + out + 3 * 16 + 3 * 4 + 2); // Composites and temps, layer sources (16 at most), masks, coverage and reach
 }
 
 static void export_tiled_targets(i32 s, i32 halo) {
 	i32 n = s + 2 * halo;
 	for (i32 k = 0; k < 3; ++k) {
-		util_texture_ensure_target(&et_acc[k], n, n, k == 2 ? layers_pack_format(base_bits) : et.format);
+		util_texture_ensure_target(&et_acc[k], n, n, k == 2 ? et.pack_format : et.format);
 	}
 	util_texture_ensure_target(&et_temp, n, n, et.format);
-	util_texture_ensure_target(&et_temp_pack, n, n, layers_pack_format(base_bits));
+	util_texture_ensure_target(&et_temp_pack, n, n, et.pack_format);
 	util_texture_ensure_target(&et_mask, n, n, GPU_TEXTURE_FORMAT_RGBA32);
 	util_texture_ensure_target(&et_mask_temp, n, n, GPU_TEXTURE_FORMAT_RGBA32);
 	util_texture_ensure_target(&et_cov, n, n, GPU_TEXTURE_FORMAT_R8);
@@ -181,6 +198,7 @@ static void export_tiled_release_targets() {
 		util_texture_release_target(&et_acc[k]);
 		util_texture_release_target(&et_src[k]);
 		util_texture_release_target(&et_grown[k]);
+		util_texture_release_target(&et_out[k]);
 	}
 	util_texture_release_target(&et_temp);
 	util_texture_release_target(&et_temp_pack);
@@ -869,7 +887,7 @@ static bool export_tiled_render_tile(export_tiled_job_t *job, export_tiled_tile_
 		}
 		i32           i  = et.tile_layer;
 		slot_layer_t *l1 = job->layers->buffer[i];
-		if (!export_texture_layer_used(l1, job->object_name)) {
+		if (!export_texture_layer_used(et.set.layers, l1, job->object_name)) {
 			et.tile_layer++;
 			continue;
 		}
@@ -907,12 +925,14 @@ static bool export_tiled_render_tile(export_tiled_job_t *job, export_tiled_tile_
 	}
 
 	u8            *comp[4];
-	gpu_texture_t *pack = et_acc[2];
-	if (pack->format != et.format) { // Read at the export's depth, height clamped to 0..1 as a file stores it
-		export_tiled_copy(et_temp, pack);
-		pack = et_temp;
+	gpu_texture_t *read[4] = {et_acc[0], et_acc[1], et_acc[2], et_reach};
+	for (i32 k = 0; k < 3; ++k) { // Read at the files' depth, height clamped to 0..1 as a file stores it
+		if (read[k]->format != et.out_format) {
+			gpu_texture_t *t = et.out_format == et.format ? et_temp : export_tiled_target(&et_out[k], et.out_format); // et_temp: the pack only
+			export_tiled_copy(t, read[k]);
+			read[k] = t;
+		}
 	}
-	gpu_texture_t *read[4] = {et_acc[0], et_acc[1], pack, et_reach};
 	export_tiled_read(read, et.padding ? 4 : 3, et.halo, et.halo, t->w, t->h, comp);
 	for (i32 k = 0; k < 3; ++k) {
 		export_tiled_spool_write(t, k, comp[k], t->w * t->h * et.bpp);
@@ -1043,7 +1063,7 @@ static u8 *export_tiled_tile_pixels(export_tiled_tile_t *t, i32 k, u8 *reach) {
 
 // Phase B: output file tex of the preset
 static void export_tiled_write_file(i32 tex) {
-	export_preset_t         *preset = box_export_preset;
+	export_preset_t         *preset = et.set.preset;
 	export_preset_texture_t *t      = preset->textures->buffer[tex];
 	export_texture_layout_t  layout = export_texture_layout(t);
 	char                    *path   = export_texture_out_path(et.path, et.file, t, et.ext);
@@ -1051,7 +1071,7 @@ static void export_tiled_write_file(i32 tex) {
 	i32                      type   = layout.src >= 0 ? layout.type : 3;
 	i32                      off    = layout.src >= 0 ? layout.off : 0;
 	// Exr streams a band of tiles at a time, png and jpg encode the whole image
-	bool stream = et.bits > 8 && g_context->layers_destination != EXPORT_DESTINATION_PACK_INTO_PROJECT && !et_test_whole;
+	bool stream = et.bits > 8 && et.set.destination != EXPORT_DESTINATION_PACK_INTO_PROJECT && !et_test_whole;
 	FILE *f     = stream ? export_exr_begin(path, et.w, et.h, et.bits) : NULL;
 	if (stream && f == NULL) {
 		console_error(string("Could not save %s.", path));
@@ -1114,7 +1134,7 @@ static void export_tiled_write_file(i32 tex) {
 		export_texture_bake_material_add_texture(path);
 	}
 	else {
-		export_texture_write_texture(path, out, et.w, et.h, type, off);
+		export_texture_write_texture(&et.set, path, out, et.w, et.h, type, off);
 	}
 	array_free(out);
 	free(out);
@@ -1165,12 +1185,15 @@ static bool export_tiled_has_generator(slot_layer_t *m) {
 static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	et.w         = et_res_w > 0 ? et_res_w : config_get_texture_res_x();
 	et.h         = et_res_h > 0 ? et_res_h : config_get_texture_res_y();
-	et.bits      = export_texture_bits();
-	et.format    = layers_format(base_bits);
-	et.bpp       = gpu_texture_format_size(et.format);
-	et.padding   = g_context->export_padding;
-	et.file      = export_texture_file_base(job->layers, job->object_name, &et.ext);
-	et.udim_slot = export_texture_udim_slot(job->layers, job->object_name);
+	texture_bits_t comp = export_tiled_comp_bits();
+	et.bits             = et.set.bits;
+	et.format           = layers_format(comp);
+	et.pack_format      = layers_pack_format(comp);
+	et.out_format       = layers_format(export_tiled_bits_of(et.bits));
+	et.bpp              = gpu_texture_format_size(et.out_format);
+	et.padding          = et.set.padding;
+	et.file             = export_texture_file_base(&et.set, job->layers, job->object_name, &et.ext);
+	et.udim_slot        = export_texture_udim_slot(et.set.layers, job->layers, job->object_name);
 	// The halo: what the passes on a tile read around its core (the dilate pass reaches 1.25 radius)
 	bool fills = false, gens = false; // Of any layer: anchors read others than the job's
 	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
@@ -1202,13 +1225,13 @@ static bool export_tiled_job_begin(export_tiled_job_t *job) {
 	i32 s = et.w > et.h ? et.w : et.h;
 	s     = s > EXPORT_TILED_MAX_TILE ? EXPORT_TILED_MAX_TILE : s;
 	i32 largest = s; // The largest core size the cap and budget allow (tests)
-	while (largest > 256 && export_tiled_target_bytes(largest, et.halo, et.format) > export_tiled_budget()) {
+	while (largest > 256 && export_tiled_target_bytes(largest, et.halo, comp) > export_tiled_budget()) {
 		largest--;
 	}
 	if (et_test_tile > 0 && et_test_tile < s) {
 		s = et_test_tile;
 	}
-	while (s > 256 && export_tiled_target_bytes(s, et.halo, et.format) > export_tiled_budget()) {
+	while (s > 256 && export_tiled_target_bytes(s, et.halo, comp) > export_tiled_budget()) {
 		s /= 2;
 	}
 	et.size      = s;
@@ -1408,7 +1431,7 @@ static bool export_tiled_upscales(slot_layer_t *l, bool tiles) {
 static void export_tiled_not_upscaled_job(slot_layer_t_array_t *layers, char *object_name, void *_) {
 	for (i32 i = 0; i < layers->length; ++i) {
 		slot_layer_t *l = layers->buffer[i];
-		if (!export_texture_layer_used(l, object_name)) {
+		if (!export_texture_layer_used(g_context->layers_export, l, object_name)) {
 			continue;
 		}
 		bool tiles = !util_mesh_udim_active() && !g_context->merged_object_is_atlas; // Identity maps (export_tiled_fill_ok)
@@ -1432,8 +1455,7 @@ i32 export_tiled_not_upscaled(i32 w, i32 h) {
 	if ((w <= config_get_texture_res_x() && h <= config_get_texture_res_y()) || w <= 0 || h <= 0) {
 		return 0;
 	}
-	export_texture_init_preset();
-	export_texture_for_each_job(&export_tiled_not_upscaled_job, NULL);
+	export_texture_for_each_job(g_context->layers_export, &export_tiled_not_upscaled_job, NULL);
 	return et_not_upscaled->length;
 }
 
@@ -1474,10 +1496,10 @@ static i64 export_tiled_predict() {
 	i32 s = w > h ? w : h; // The tile size export_tiled_job_begin chooses
 	s     = s > EXPORT_TILED_MAX_TILE ? EXPORT_TILED_MAX_TILE : s;
 	s     = et_test_tile > 0 && et_test_tile < s ? et_test_tile : s;
-	while (s > 256 && export_tiled_target_bytes(s, 22, layers_format(base_bits)) > export_tiled_budget()) {
+	while (s > 256 && export_tiled_target_bytes(s, 22, export_tiled_comp_bits()) > export_tiled_budget()) {
 		s /= 2;
 	}
-	return export_tiled_target_bytes(s, 22, layers_format(base_bits)) + (i64)mm_buffers_stat(6) * 1024 + export_tiled_layers_bytes();
+	return export_tiled_target_bytes(s, 22, export_tiled_comp_bits()) + (i64)mm_buffers_stat(6) * 1024 + export_tiled_layers_bytes();
 }
 
 static bool export_tiled_mode_wanted() {
@@ -1596,26 +1618,26 @@ bool export_tiled_start(char *path, bool bake_material) {
 		export_tiled_cancel();
 	}
 	fill_ensure_all(); // What reads the live layers sees every fill
-	export_texture_init_preset();
 	timeline_finalize();           // Strokes still being recorded land in their timelines
 	history_flush_restores(NULL); // Deferred undo restores land in the layers
 	memset(&et, 0, sizeof(et));
 	memset(et_stats, 0, sizeof(et_stats));
+	et.set     = export_texture_settings_now();
 	et.path    = string_copy(path);
 	et.bake    = bake_material;
 	et.written = any_array_create_from_raw((void *[]){}, 0);
 	if (bake_material) {
 		slot_layer_t_array_t *layers = export_texture_bake_begin();
-		if (layers == NULL) {
-			return false;
+		if (layers != NULL) {
+			et.bake_source = g_context->material;
+			export_tiled_add_job(layers, "", NULL);
 		}
-		et.bake_source = g_context->material;
-		export_tiled_add_job(layers, "", NULL);
 	}
 	else {
-		export_texture_for_each_job(&export_tiled_add_job, NULL);
+		export_texture_for_each_job(et.set.layers, &export_tiled_add_job, NULL);
 	}
 	if (et.njobs == 0) {
+		export_texture_settings_free(&et.set);
 		return false;
 	}
 	et.active          = true;
@@ -1635,7 +1657,7 @@ bool export_tiled_start(char *path, bool bake_material) {
 	i32 s = et_test_tile > 0 ? et_test_tile : EXPORT_TILED_MAX_TILE;
 	i32 w = config_get_texture_res_x(), h = config_get_texture_res_y();
 	i32 tiles       = ((w + s - 1) / s) * ((h + s - 1) / s);
-	et.units_total = et.njobs * (tiles + box_export_preset->textures->length);
+	et.units_total = et.njobs * (tiles + et.set.preset->textures->length);
 	et.phase       = -1;
 	if (export_tiled_mm_wanted()) {
 		export_tiled_mm_begin();
@@ -1700,12 +1722,12 @@ bool export_tiled_step(f64 budget_ms) {
 			}
 		}
 		else if (et.phase == 2) {
-			if (et.tex < box_export_preset->textures->length) {
+			if (et.tex < et.set.preset->textures->length) {
 				export_tiled_write_file(et.tex++);
 				et.units_done++;
 			}
 			else {
-				export_godot_job(et.path, et.file, job->object_name, et.written, et.written_job);
+				export_godot_job(&et.set, et.path, et.file, job->object_name, et.written, et.written_job);
 				et.phase = 3;
 			}
 		}
@@ -1723,6 +1745,7 @@ bool export_tiled_step(f64 budget_ms) {
 }
 
 static void export_tiled_finish(bool cancelled) {
+	et.active = false; // What the end does (the baked material's history step, layers restored) leaves it be
 	export_tiled_job_end();
 	i64 tiles_peak = util_texture_tracked_peak() - et.bytes_base;
 	export_tiled_release_targets();
@@ -1741,21 +1764,21 @@ static void export_tiled_finish(bool cancelled) {
 	}
 	if (cancelled) { // Files of this export go
 		for (i32 i = 0; i < et.written->length; ++i) {
-			if (g_context->layers_destination != EXPORT_DESTINATION_PACK_INTO_PROJECT) {
+			if (et.set.destination != EXPORT_DESTINATION_PACK_INTO_PROJECT) {
 				iron_delete_file(et.written->buffer[i]);
 			}
 		}
 	}
 	else {
 		if (et.bake) {
-			export_texture_bake_end(et.bake_source);
+			export_texture_bake_end(&et.set, et.bake_source);
 		}
 		export_texture_done();
 	}
+	export_texture_settings_free(&et.set);
 	free(et.jobs);
-	et.jobs   = NULL;
-	et.njobs  = 0;
-	et.active = false;
+	et.jobs  = NULL;
+	et.njobs = 0;
 }
 
 void export_tiled_cancel() {
@@ -1771,6 +1794,115 @@ bool export_tiled_frozen() {
 
 bool export_tiled_running() {
 	return et.active;
+}
+
+// While export mode holds l away its live textures are 1 x 1 placeholders: what saves and session heads read of it
+// instead. Its state (the tile map of what it shows, no reference added), NONE when it is not away.
+hash128_t export_tiled_evicted_state(slot_layer_t *l) {
+	export_tiled_evicted_t *e = export_tiled_evicted_find(l);
+	return e != NULL ? e->h : HASH128_NONE;
+}
+
+// The size of l's textures while export mode holds it away, false when it is not away
+bool export_tiled_evicted_size(slot_layer_t *l, i32 *w, i32 *h) {
+	export_tiled_evicted_t *e = export_tiled_evicted_find(l);
+	if (e == NULL) {
+		return false;
+	}
+	*w = e->w;
+	*h = e->hh;
+	return true;
+}
+
+// Bytes of the live textures export mode holds away
+i64 export_tiled_evicted_layer_bytes() {
+	return et_nevicted > 0 ? et_evicted_bytes : 0;
+}
+
+// The export reads l: a layer of its jobs, or held away by export mode
+static bool export_tiled_reads(slot_layer_t *l) {
+	if (!et.active) {
+		return false;
+	}
+	if (export_tiled_evicted_find(l) != NULL) {
+		return true;
+	}
+	for (i32 j = 0; j < et.njobs; ++j) {
+		if (array_index_of(et.jobs[j].layers, l) >= 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// The project is about to change under a running export (another project opened or made, the resolution or bits of
+// the layers, a layer freed): it is cancelled first, its layers back before anything changes. The update stepping it
+// (the export sheet's, the export box's) ends at its next step.
+void export_tiled_abort_for_project_change() {
+	if (!et.active) {
+		return;
+	}
+	export_tiled_cancel();
+	export_tiled_set_resolution(0, 0);
+	console_toast(tr("Export cancelled"));
+}
+
+// l is about to be freed (slot_layer_unload): an export reading it is cancelled first
+void export_tiled_layer_unloading(slot_layer_t *l) {
+	if (export_tiled_reads(l)) {
+		export_tiled_abort_for_project_change();
+	}
+}
+
+// History action a is about to be done or undone. Layer properties, materials and swatches leave a running export as
+// it is, painting and edits of a layer's pixels too unless export mode holds the layers away; anything else (layers
+// made, taken out or merged, the resolution) cancels it first.
+void export_tiled_history_action(history_action_t a) {
+	if (!et.active) {
+		return;
+	}
+	switch (a) {
+	case HISTORY_ACTION_EDIT_NODES:
+	case HISTORY_ACTION_ORDER_LAYERS:
+	case HISTORY_ACTION_LAYER_OPACITY:
+	case HISTORY_ACTION_LAYER_BLENDING:
+	case HISTORY_ACTION_LAYER_RAISE:
+	case HISTORY_ACTION_LAYER_VISIBLE:
+	case HISTORY_ACTION_LAYER_NAME:
+	case HISTORY_ACTION_LAYER_OBJECT:
+	case HISTORY_ACTION_DELETE_NODE_GROUP:
+	case HISTORY_ACTION_NEW_MATERIAL:
+	case HISTORY_ACTION_DELETE_MATERIAL:
+	case HISTORY_ACTION_DUPLICATE_MATERIAL:
+	case HISTORY_ACTION_NEW_BRUSH:
+	case HISTORY_ACTION_DELETE_BRUSH:
+	case HISTORY_ACTION_DUPLICATE_BRUSH:
+	case HISTORY_ACTION_NEW_SWATCH:
+	case HISTORY_ACTION_DELETE_SWATCH:
+	case HISTORY_ACTION_DUPLICATE_SWATCH:
+	case HISTORY_ACTION_REPLACE_SWATCHES:
+	case HISTORY_ACTION_EDIT_SWATCH:
+		return;
+	case HISTORY_ACTION_PAINT:
+	case HISTORY_ACTION_CLEAR_LAYER:
+	case HISTORY_ACTION_CLEAR_PAINT:
+	case HISTORY_ACTION_FILL_PAINT:
+	case HISTORY_ACTION_INVERT_MASK:
+	case HISTORY_ACTION_TO_FILL_LAYER:
+	case HISTORY_ACTION_TO_FILL_MASK:
+	case HISTORY_ACTION_TO_PAINT_LAYER:
+	case HISTORY_ACTION_TO_PAINT_MASK:
+	case HISTORY_ACTION_LAYER_FILL:
+	case HISTORY_ACTION_MASK_STACK:
+	case HISTORY_ACTION_PATH:
+		if (!export_tiled_frozen()) {
+			return;
+		}
+		break;
+	default:
+		break;
+	}
+	export_tiled_abort_for_project_change();
 }
 
 f32 export_tiled_progress() {
@@ -1835,8 +1967,8 @@ void export_tiled_set_mode(i32 mode) {
 i32 export_tiled_stat(i32 what) {
 	if (what == 6) {
 		i64 kb = 0;
-		gpu_texture_t *t[] = {et_acc[0], et_acc[1], et_acc[2], et_temp, et_temp_pack, et_src[0], et_src[1], et_src[2], et_mask, et_mask_temp, et_mask_src, et_cov, et_reach};
-		for (i32 i = 0; i < 13; ++i) {
+		gpu_texture_t *t[] = {et_acc[0], et_acc[1], et_acc[2], et_temp, et_temp_pack, et_src[0], et_src[1], et_src[2], et_mask, et_mask_temp, et_mask_src, et_cov, et_reach, et_out[0], et_out[1], et_out[2]};
+		for (i32 i = 0; i < 16; ++i) {
 			kb += t[i] != NULL ? (i64)t[i]->width * t[i]->height * gpu_texture_format_size(t[i]->format) / 1024 : 0;
 		}
 		return (i32)kb;
