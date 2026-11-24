@@ -16,6 +16,21 @@ int   nlayers = 0;
 int   hashes[24];
 int   undos = 0;
 
+
+// minic reads members of a local texture, not through l->texpaint->
+int tex_width(slot_layer_t *l) {
+	gpu_texture_t *t = l->texpaint;
+	return t != NULL ? t->width : 0;
+}
+int tex_height(slot_layer_t *l) {
+	gpu_texture_t *t = l->texpaint;
+	return t != NULL ? t->height : 0;
+}
+int tex_format(slot_layer_t *l) {
+	gpu_texture_t *t = l->texpaint;
+	return t != NULL ? t->format : -1;
+}
+
 void check(int ok, char *name) {
 	checks = checks + 1;
 	if (!ok) {
@@ -48,8 +63,8 @@ int same_layers(char *what) {
 	}
 	for (int i = 0; i < nlayers; ++i) {
 		slot_layer_t *l = script_layer_at(i);
-		if (l->texpaint != NULL && (l->texpaint->width != config_get_texture_res_x() || l->texpaint->height != config_get_texture_res_y())) {
-			printf("[export_save]   %s: layer %d is %d x %d", what, i, l->texpaint->width, l->texpaint->height);
+		if (l->texpaint != NULL && (tex_width(l) != config_get_texture_res_x() || tex_height(l) != config_get_texture_res_y())) {
+			printf("[export_save]   %s: layer %d is %d x %d", what, i, tex_width(l), tex_height(l));
 			ok = 0;
 		}
 	}
@@ -126,6 +141,9 @@ void next() {
 	else if (step == 3) {
 		check(export_tiled_running() && export_tiled_frozen(), "the export ran through the save");
 		check(history_test_undos() == undos, string("the save kept the undo steps (%d of %d)", history_test_undos(), undos));
+		slot_layer_t *renamed = script_layer_at(0);
+		check(app_layer_set_name(renamed->id, "renamed in export"), "an unsaved change during the export (a rename)");
+		check(export_tiled_running() && export_tiled_frozen(), "a rename leaves the export running");
 		check(project_session_write(), "a session head written during the export");
 		export_tiled_step(1.0);
 		end_export();
@@ -137,7 +155,8 @@ void next() {
 		check(same_layers("the save"), "the project saved during the export reopens with its layers at their size and pixels");
 	}
 	else if (step == 5) {
-		check(project_session_recover(file), "recovered from the head");
+		slot_layer_t *renamed = script_layer_at(0);
+		check(project_modified_get() && string_equals(renamed->name, "renamed in export"), "opening recovered the head: the rename, a modified project");
 	}
 	else if (step == 6) {
 		check(same_layers("the head"), "the session head written during the export recovers the layers");

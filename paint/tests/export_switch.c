@@ -15,6 +15,21 @@ int   nlayers = 0;
 int   hashes[24];
 int   half = 0;
 
+
+// minic reads members of a local texture, not through l->texpaint->
+int tex_width(slot_layer_t *l) {
+	gpu_texture_t *t = l->texpaint;
+	return t != NULL ? t->width : 0;
+}
+int tex_height(slot_layer_t *l) {
+	gpu_texture_t *t = l->texpaint;
+	return t != NULL ? t->height : 0;
+}
+int tex_format(slot_layer_t *l) {
+	gpu_texture_t *t = l->texpaint;
+	return t != NULL ? t->format : -1;
+}
+
 void check(int ok, char *name) {
 	checks = checks + 1;
 	if (!ok) {
@@ -47,8 +62,8 @@ int same_layers(char *what) {
 	}
 	for (int i = 0; i < nlayers; ++i) {
 		slot_layer_t *l = script_layer_at(i);
-		if (l->texpaint != NULL && (l->texpaint->width != config_get_texture_res_x() || l->texpaint->height != config_get_texture_res_y())) {
-			printf("[export_switch]   %s: layer %d is %d x %d", what, i, l->texpaint->width, l->texpaint->height);
+		if (l->texpaint != NULL && (tex_width(l) != config_get_texture_res_x() || tex_height(l) != config_get_texture_res_y())) {
+			printf("[export_switch]   %s: layer %d is %d x %d", what, i, tex_width(l), tex_height(l));
 			ok = 0;
 		}
 	}
@@ -117,7 +132,7 @@ void next() {
 		script_project_new();
 		check(cancelled(), "a new project cancelled the export");
 		slot_layer_t *l = script_layer_at(0);
-		check(script_layer_count() == 1 && l->texpaint->width == config_get_texture_res_x(), "the new project has its layer at the working resolution");
+		check(script_layer_count() == 1 && tex_width(l) == config_get_texture_res_x(), "the new project has its layer at the working resolution");
 	}
 	else if (step == 3) { // An open
 		start_export(1);
@@ -163,7 +178,7 @@ void next() {
 			script_notify_on_next_frame(next);
 			return;
 		}
-		check(top()->texpaint->width == half, string("the layers at the new resolution (%d of %d)", top()->texpaint->width, half));
+		check(tex_width(top()) == half, string("the layers at the new resolution (%d of %d)", tex_width(top()), half));
 	}
 	else {
 		export_tiled_set_resolution(0, 0);
