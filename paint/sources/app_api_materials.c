@@ -259,17 +259,17 @@ int32_t app_material_duplicate(int32_t id) {
 }
 
 bool app_material_can_delete(int32_t id) {
-	return app_mat_by_id(id) != NULL && g_project->_->materials->length > 1;
+	slot_material_t *m = app_mat_by_id(id);
+	return m != NULL && slot_material_can_remove(m);
 }
 
 bool app_material_delete(int32_t id) {
 	slot_material_t *m = app_mat_by_id(id);
-	if (m == NULL || g_project->_->materials->length <= 1) {
+	if (m == NULL || !slot_material_remove(m)) {
 		return false;
 	}
-	script_material_delete(m);
 	iron_delay_idle_sleep();
-	return app_mat_by_id(id) != m;
+	return true;
 }
 
 int32_t app_material_delete_unused(void) {

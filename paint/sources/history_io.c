@@ -146,7 +146,7 @@ static void hio_swatch(swatch_color_t *s, f32 *out) {
 	memcpy(out, v, sizeof(v));
 }
 
-#define HISTORY_IO_STEP_KEYS 45
+#define HISTORY_IO_STEP_KEYS 46
 
 static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	armpack_encode_map(HISTORY_IO_STEP_KEYS);
@@ -218,6 +218,8 @@ static void history_io_encode_step(history_step_t *s, hash128_t canvas) {
 	hio_i32s("path_props", p != NULL ? &pa : NULL);
 	hio_f32_array("fill_mask", s->fills[0]);
 	hio_f32_array("fill_layer", s->fills[1]);
+	i32_array_t res = {.buffer = s->resolution, .length = 4, .capacity = 4};
+	hio_i32s("resolution", &res);
 }
 
 // Upper bound of a step's encoded bytes
@@ -425,11 +427,15 @@ static history_step_t *history_io_decode_step(any_map_t *m) {
 	s->fill     = hio_get_f32_array(m, "fill");
 	s->fills[0] = hio_get_f32_array(m, "fill_mask");
 	s->fills[1] = hio_get_f32_array(m, "fill_layer");
+	i32_array_t *res = any_map_get(m, "resolution");
+	if (res != NULL && res->length == 4) {
+		memcpy(s->resolution, res->buffer, sizeof(s->resolution));
+	}
 	return s;
 }
 
-// A step loaded is usable: the timelines it moves are there, a canvas step has its canvas, its layer is in the project
-// or among the layers of a step
+// A step loaded is usable: the timelines it moves are there, a canvas step has its canvas, a resolution step its sizes,
+// its layer is in the project or among the layers of a step
 static bool history_io_step_ok(history_step_t *s, any_array_t *steps) {
 	for (i32 i = 0; s->tl_moves != NULL && i + 2 < s->tl_moves->length; i += 3) {
 		timeline_t *tl = timeline_find((u32)s->tl_moves->buffer[i]);
@@ -438,6 +444,10 @@ static bool history_io_step_ok(history_step_t *s, any_array_t *steps) {
 		}
 	}
 	if (s->action == HISTORY_ACTION_EDIT_NODES && s->canvas == NULL) {
+		return false;
+	}
+	if (s->action == HISTORY_ACTION_RESOLUTION &&
+	    (!layers_resolution_valid(s->resolution[0], s->resolution[1]) || !layers_resolution_valid(s->resolution[2], s->resolution[3]))) {
 		return false;
 	}
 	if (s->layer_uid == 0 || slot_layer_find_uid(s->layer_uid) != NULL) {

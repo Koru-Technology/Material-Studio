@@ -270,6 +270,7 @@ u32                     history_notice_serial = 0; // Bumped by every undo or re
 bool                    history_notice_redo   = false;
 char                   *history_notice_name   = "";
 bool                    history_push_undo = false; // Store undo on next paint
+i32                     history_applying  = 0;     // Undo or redo running: what they bring back is made past layers_max_layers
 
 // ---- nodes_brush.c ----
 ui_node_t_array_t   *nodes_brush_category0;

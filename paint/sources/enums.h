@@ -465,6 +465,13 @@ typedef enum {
 	TEXTURE_RES_CUSTOM   = 4,
 } texture_res_t;
 
+// Largest working resolution, either side (layers_resolution_valid)
+#ifdef IRON_IOS
+#define LAYERS_RESOLUTION_MAX 8192
+#else
+#define LAYERS_RESOLUTION_MAX 16384
+#endif
+
 typedef enum {
 	ICON18_EYE_ON  = 0,
 	ICON18_EYE_OFF = 1,

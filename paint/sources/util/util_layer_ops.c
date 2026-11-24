@@ -268,7 +268,7 @@ void layers_op_end(draw_saved_t g) {
 }
 
 slot_layer_t *layers_op_duplicate(slot_layer_t *l) {
-	if (!slot_layer_alive(l)) {
+	if (!slot_layer_alive(l) || !layers_room(1 + slot_layer_count_descendants(l))) {
 		return NULL;
 	}
 	draw_saved_t gpu = draw_suspend();

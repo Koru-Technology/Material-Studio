@@ -140,42 +140,113 @@ void slot_material_duplicate(i32 i) {
 	history_duplicate_material();
 }
 
-void slot_material_update_pointers(ui_node_t_array_t *nodes, i32 deleted) {
+// Material nodes after material deleted left: the ones of it point at no material, the ones past it one lower. count:
+// the materials left.
+static void slot_material_update_pointers(ui_node_t_array_t *nodes, i32 deleted, i32 count) {
 	for (i32 i = 0; i < nodes->length; ++i) {
 		ui_node_t *n = nodes->buffer[i];
 		if (string_equals(n->type, "MATERIAL")) {
-			if (n->buttons->buffer[0]->default_value->buffer[0] == deleted) {
-				n->buttons->buffer[0]->default_value->buffer[0] = 9999; // Material deleted
+			f32 *v = &n->buttons->buffer[0]->default_value->buffer[0];
+			if (*v == deleted) {
+				*v = 9999; // Material deleted
 			}
-			else if (n->buttons->buffer[0]->default_value->buffer[0] > deleted) {
-				n->buttons->buffer[0]->default_value->buffer[0]--; // Offset by deleted material
+			else if (*v > deleted && *v <= count) { // Indices past the end point at no material already
+				*v -= 1;
 			}
 		}
 	}
 }
 
 static void slot_material_on_removed(slot_material_t *m, i32 deleted) {
-	for (i32 i = 0; i < g_project->_->materials->length; ++i) {
-		slot_material_update_pointers(g_project->_->materials->buffer[i]->canvas->nodes, deleted);
+	i32 count = g_project->_->materials->length;
+	for (i32 i = 0; i < count; ++i) {
+		slot_material_update_pointers(g_project->_->materials->buffer[i]->canvas->nodes, deleted, count);
 	}
 	for (i32 i = 0; i < g_project->_->material_groups->length; ++i) {
-		slot_material_update_pointers(g_project->_->material_groups->buffer[i]->canvas->nodes, deleted);
+		slot_material_update_pointers(g_project->_->material_groups->buffer[i]->canvas->nodes, deleted, count);
 	}
 	for (i32 i = 0; i < m->canvas->nodes->length; ++i) {
 		ui_viewnodes_on_node_remove(m->canvas->nodes->buffer[i]);
 	}
 }
 
-void slot_material_remove(slot_material_t *m) {
-	i32 i = array_index_of(g_project->_->materials, m);
-	if (i < 0) {
-		return;
+// Material nodes that point at material index or one past it: they change when it goes
+static bool slot_material_nodes_from(ui_node_t_array_t *nodes, i32 index) {
+	i32 count = g_project->_->materials->length;
+	for (i32 i = 0; i < nodes->length; ++i) {
+		ui_node_t *n = nodes->buffer[i];
+		f32        v = string_equals(n->type, "MATERIAL") ? n->buttons->buffer[0]->default_value->buffer[0] : -1;
+		if (v >= index && v < count) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool slot_material_paints_path(slot_material_t *m) {
+	for (i32 i = 0; i < g_project->_->layers->length; ++i) {
+		slot_layer_t *l = g_project->_->layers->buffer[i];
+		if (slot_layer_is_path(l) && l->path_material == m) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Whether m can leave the project: not the last material, nor one a path layer paints with (it holds the material
+// itself, undo brings back a new one)
+bool slot_material_can_remove(slot_material_t *m) {
+	return array_index_of(g_project->_->materials, m) >= 0 && g_project->_->materials->length > 1 && !slot_material_paints_path(m);
+}
+
+static void slot_material_with_prev() {
+	history_steps->buffer[history_steps->length - 1]->with_prev = true;
+}
+
+// Material m out of the project, one undo step: undo brings it back where it was with what pointed at it, the Material
+// nodes (renumbered past it, the canvases changed as they were) and the fill channels it was the source of (plain
+// colors meanwhile). The selected material stays selected, a neighbour when it is m.
+bool slot_material_remove(slot_material_t *m) {
+	if (!slot_material_can_remove(m)) {
+		return false;
+	}
+	slot_material_t_array_t *materials = g_project->_->materials;
+	i32                      i         = array_index_of(materials, m);
+	history_delete_material(m); // Undone last of the steps: the material is back when the rest is
+	for (i32 j = 0; j < materials->length; ++j) {
+		slot_material_t *o = materials->buffer[j];
+		if (o != m && slot_material_nodes_from(o->canvas->nodes, i)) {
+			history_edit_nodes(o->canvas, CANVAS_TYPE_MATERIAL, -1);
+			history_step_t *step = history_steps->buffer[history_steps->length - 1];
+			step->material       = j;
+			step->material_uid   = o->uid;
+			slot_material_with_prev();
+		}
+	}
+	for (i32 j = 0; j < g_project->_->material_groups->length; ++j) {
+		ui_node_canvas_t *c = g_project->_->material_groups->buffer[j]->canvas;
+		if (slot_material_nodes_from(c->nodes, i)) {
+			history_edit_nodes(c, CANVAS_TYPE_MATERIAL, j);
+			history_step_t *step = history_steps->buffer[history_steps->length - 1];
+			step->material       = 0; // Selected on undo and redo: one that is there (not the Decal tool's)
+			step->material_uid   = 0;
+			slot_material_with_prev();
+		}
+	}
+	for (i32 j = 0; j < g_project->_->layers->length; ++j) {
+		slot_layer_t *l = g_project->_->layers->buffer[j];
+		if (fill_uses_material(l->fill, m)) {
+			history_layer_fill(l);
+			slot_material_with_prev();
+		}
 	}
 	fill_material_removed(m);
-	history_delete_material();
-	context_select_material(i == g_project->_->materials->length - 1 ? i - 1 : i + 1);
-	array_splice(g_project->_->materials, i, 1);
+	if (g_context->material == m) {
+		context_select_material(i == materials->length - 1 ? i - 1 : i + 1);
+	}
+	array_splice(materials, i, 1);
 	slot_material_on_removed(m, i);
+	return true;
 }
 
 static bool slot_material_nodes_link(ui_node_t_array_t *nodes, i32 index) {
@@ -217,30 +288,17 @@ void slot_material_delete_unused() {
 	for (i32 i = 0; i < count; ++i) {
 		used[i] = slot_material_is_used(i);
 	}
-
 	slot_material_t *selected = g_context->material;
-	bool             deleted  = false;
 	// Go backwards so the indices of the remaining materials stay valid
-	for (i32 i = count - 1; i >= 0 && g_project->_->materials->length > 1; --i) {
-		if (used[i]) {
-			continue;
+	for (i32 i = count - 1; i >= 0; --i) {
+		if (!used[i]) {
+			slot_material_remove(g_project->_->materials->buffer[i]);
 		}
-		slot_material_t *m  = g_project->_->materials->buffer[i];
-		g_context->material = m; // History stores the selected material
-		history_delete_material();
-		array_splice(g_project->_->materials, i, 1);
-		slot_material_on_removed(m, i);
-		if (m == selected) {
-			selected = NULL;
-		}
-		deleted = true;
 	}
 	free(used);
-
-	if (!deleted) {
-		return;
+	if (g_context->material != selected) { // The selected one went
+		context_set_material(g_project->_->materials->buffer[0]);
 	}
-	context_set_material(selected != NULL ? selected : g_project->_->materials->buffer[0]);
 }
 
 void slot_material_new_on_next_frame(void *_) {

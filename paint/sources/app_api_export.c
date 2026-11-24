@@ -136,12 +136,7 @@ void app_export_cancel(void) {
 }
 
 void app_resolution_get(app_resolution_t *out) {
-	*out = (app_resolution_t){.width = config_get_texture_res_x(), .height = config_get_texture_res_y()};
-#ifdef IRON_IOS
-	out->max_size = 8192;
-#else
-	out->max_size = 16384;
-#endif
+	*out = (app_resolution_t){.width = config_get_texture_res_x(), .height = config_get_texture_res_y(), .max_size = LAYERS_RESOLUTION_MAX};
 	out->running  = layers_resolution_running();
 	out->progress = layers_resolution_progress();
 }

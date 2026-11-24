@@ -186,8 +186,13 @@ static struct layers_resolution_job {
 
 static void layers_resolution_update(void *_);
 
+// A size layers can have here
+bool layers_resolution_valid(i32 w, i32 h) {
+	return w >= 1 && h >= 1 && w <= LAYERS_RESOLUTION_MAX && h <= LAYERS_RESOLUTION_MAX;
+}
+
 static bool layers_resolution_start(i32 w, i32 h, bool push) {
-	if (lr.active || g_project->_->layers->length == 0) {
+	if (lr.active || g_project->_->layers->length == 0 || !layers_resolution_valid(w, h)) {
 		return false;
 	}
 	slot_layer_t *first = g_project->_->layers->buffer[0];

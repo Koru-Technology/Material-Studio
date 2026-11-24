@@ -228,8 +228,9 @@ static bool history_step_valid_check(history_step_t *step, bool undo) {
 	case HISTORY_ACTION_DUPLICATE_SWATCH:
 	case HISTORY_ACTION_REPLACE_SWATCHES:
 	case HISTORY_ACTION_EDIT_SWATCH:
-	case HISTORY_ACTION_RESOLUTION:
 		return true;
+	case HISTORY_ACTION_RESOLUTION:
+		return layers_resolution_valid(step->resolution[0], step->resolution[1]) && layers_resolution_valid(step->resolution[2], step->resolution[3]);
 	case HISTORY_ACTION_NEW_LAYER:
 	case HISTORY_ACTION_NEW_BLACK_MASK:
 	case HISTORY_ACTION_NEW_WHITE_MASK:
@@ -266,6 +267,9 @@ static bool history_step_valid_check(history_step_t *step, bool undo) {
 		return history_in(step->layer, layers) && (undo || step->fill != NULL);
 	case HISTORY_ACTION_PAINT:
 		return history_in(step->layer, layers) && history_in(step->object, g_project->_->paint_objects->length);
+	case HISTORY_ACTION_APPLY_MASK: // Redo: the mask is there, on its layer
+		return history_in(step->layer, layers) && (undo || (slot_layer_is_mask(g_project->_->layers->buffer[step->layer]) &&
+		                                                    g_project->_->layers->buffer[step->layer]->parent != NULL));
 	default:
 		return history_in(step->layer, layers);
 	}
@@ -437,8 +441,7 @@ static void history_unapply_mask(history_step_t *step) {
 	history_defer_moves(step, true, false);
 	history_flush_restores(NULL);
 
-	layers_new_mask(false, current, mask_pos);
-	slot_layer_t *m = g_context->layer;
+	slot_layer_t *m = layers_new_mask(false, current, mask_pos); // Past the layer limit too (history_applying)
 	history_restore_uid(m, step->layer_uid);
 	paint_target_t t;
 	timeline_target_live(m, &t);
@@ -534,6 +537,7 @@ void history_undo() {
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_undos > 0) {
+		history_applying++;
 		project_modified = true;
 		mask_stack_layer_changed(NULL); // Anchors read the layers as they were
 		render_path_base_redraw();
@@ -640,11 +644,14 @@ void history_undo() {
 		if (ui_view2d_show) {
 			ui_view2d_hwnd->redraws = 2;
 		}
+		history_applying--;
 	}
 }
 
 static void history_redo_duplicate_layer(void *_) {
+	history_applying++;
 	layers_duplicate_layer(g_context->layer);
+	history_applying--;
 }
 
 // A new layer or mask redone as it was created: cleared and the image drawn now, steps redone after it in the same frame
@@ -670,6 +677,7 @@ void history_redo() {
 	history_tiles_finalize();
 	timeline_finalize();
 	if (history_redos > 0) {
+		history_applying++;
 		project_modified = true;
 		mask_stack_layer_changed(NULL);
 		render_path_base_redraw();
@@ -783,6 +791,7 @@ void history_redo() {
 		if (ui_view2d_show) {
 			ui_view2d_hwnd->redraws = 2;
 		}
+		history_applying--;
 	}
 }
 
@@ -929,7 +938,9 @@ history_step_t *history_push(history_action_t action) {
 }
 
 static void history_redo_smart_material(char *name) {
+	history_applying++;
 	smart_materials_insert(name);
+	history_applying--;
 }
 
 // Undo and redo the user asked for (buttons, shortcuts, gestures, the quick menu): the step's name is kept for the UI's

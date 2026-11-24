@@ -940,8 +940,8 @@ void slot_material_color_to_picked(slot_material_t *m);
 void slot_material_new_from_swatch(swatch_color_t *swatch);
 void slot_material_refresh();
 void slot_material_duplicate(i32 i);
-void slot_material_update_pointers(ui_node_t_array_t *nodes, i32 deleted);
-void slot_material_remove(slot_material_t *m);
+bool slot_material_can_remove(slot_material_t *m);
+bool slot_material_remove(slot_material_t *m);
 
 // ---- app_api_bake.c ----
 void           app_bake_update();
@@ -1159,6 +1159,8 @@ void env_add_disc(f32 dx, f32 dy, f32 dz, f32 deg, f32 irradiance, f32 r, f32 g,
 void env_write(char *path);
 
 // ---- util/util_layer.c ----
+bool                 layers_room(i32 n);
+i32                  layers_test_set_max(i32 n);
 gpu_texture_format_t layers_format(texture_bits_t bits);
 gpu_pipeline_t      *layers_copy_pipe(texture_bits_t bits);
 void                 util_layer_update_preview();
@@ -1203,7 +1205,7 @@ void          layers_create_image_mask(asset_t *asset);
 void          layers_create_image_layer(asset_t *asset);
 void          layers_create_image_at(i32 i, bool mask);
 void          layers_create_color_layer(i32 base_color, f32 occlusion, f32 roughness, f32 metallic, i32 position);
-void          layers_duplicate_layer(slot_layer_t *l);
+bool          layers_duplicate_layer(slot_layer_t *l);
 
 // ---- util/util_layer_ops.c ----
 slot_layer_t *layers_op_get(char *name);
@@ -1981,7 +1983,7 @@ void            history_new_swatch();
 void            history_delete_swatch(swatch_color_t *swatch);
 void            history_replace_swatches(char *name);
 void            history_new_material();
-void            history_delete_material();
+void            history_delete_material(slot_material_t *m);
 void            history_duplicate_material();
 void            history_delete_material_group(node_group_t *group);
 void            history_mask_stack();
@@ -2599,6 +2601,7 @@ i32  history_io_test_roundtrip(i32 _);
 
 // ---- util/util_layer_resolution.c ----
 void layers_resolution_apply(i32 w, i32 h);
+bool layers_resolution_valid(i32 w, i32 h);
 bool layers_resolution_begin(i32 w, i32 h);
 bool layers_resolution_step();
 bool layers_resolution_running();

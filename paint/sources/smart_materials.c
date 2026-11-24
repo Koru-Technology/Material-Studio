@@ -346,7 +346,7 @@ slot_layer_t *smart_materials_insert(char *name) {
 	char *mats_s  = any_map_get(m, "materials");
 	i32   count   = count_s != NULL ? atoi(count_s) : 0;
 	i32   mats    = mats_s != NULL ? atoi(mats_s) : 0;
-	if (count <= 0 || g_project->_->layers->length + count > layers_max_layers || mats < 0 || mats > SMART_MATERIALS_MAX) {
+	if (count <= 0 || !layers_room(count) || mats < 0 || mats > SMART_MATERIALS_MAX) {
 		return NULL;
 	}
 	// Parents sit above their masks and children (a later index), a mask has one
